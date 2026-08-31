@@ -75,13 +75,12 @@ describe('merchant protected-resource metadata discovery', () => {
   })
 })
 
-describe('authorization-server metadata with two resources', () => {
-  it('advertises the tenant_admin scope alongside superadmin', async () => {
+describe('merchant authorization-server metadata', () => {
+  it('advertises only merchant scopes', async () => {
     const body = await (
       await authServerRootGET(req(`${ORIGIN}/.well-known/oauth-authorization-server`))
     ).json()
 
-    expect(body.scopes_supported).toContain('superadmin')
-    expect(body.scopes_supported).toContain('tenant_admin')
+    expect(body.scopes_supported).toEqual(['tenant_admin', 'offline_access'])
   })
 })

@@ -78,7 +78,7 @@ describe('authorization-server metadata', () => {
     expect(body.code_challenge_methods_supported).toContain('S256')
     expect(body.grant_types_supported).toEqual(expect.arrayContaining(['authorization_code', 'refresh_token']))
     expect(body.token_endpoint_auth_methods_supported).toContain('none')
-    expect(body.scopes_supported).toEqual(expect.arrayContaining(['superadmin', 'offline_access']))
+    expect(body.scopes_supported).toEqual(['tenant_admin', 'offline_access'])
     expect(body.jwks_uri).toBe('https://x.example.com/.well-known/jwks.json')
     expect(body.id_token_signing_alg_values_supported).toEqual(['EdDSA'])
   })

@@ -1,4 +1,4 @@
-import { OAUTH_OFFLINE_SCOPE, OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
+import { OAUTH_OFFLINE_SCOPE, OAUTH_PATHS } from '@/lib/mcp/oauth-config'
 import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
 import { getSupabaseOAuthIssuer, getSuperadminMcpResource } from '@/lib/mcp/supabase-oauth-config'
 
@@ -63,7 +63,7 @@ export function buildAuthorizationServerMetadata(origin: string): AuthorizationS
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
-    scopes_supported: [OAUTH_SCOPE, MERCHANT_OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE],
+    scopes_supported: [MERCHANT_OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE],
     id_token_signing_alg_values_supported: ['EdDSA'],
   }
 }

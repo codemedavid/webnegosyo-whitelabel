@@ -13,7 +13,7 @@ import {
  * merchant's tenant. That binding must survive the entire chain: the
  * authorization code row, the access-token `mcp_api_keys` row (where phase 1's
  * verifier reads it), and the refresh-token row so refreshed access tokens stay
- * pinned. A superadmin authorization keeps tenant_id NULL everywhere.
+ * pinned.
  */
 
 const NOW = 1_700_000_000_000
@@ -89,35 +89,47 @@ describe('issueAuthorizationCode — tenant binding', () => {
     const codeInsert = inserts.find((i) => i.table === 'mcp_oauth_codes')!
     expect(codeInsert.payload.tenant_id).toBe(TENANT_ID)
   })
-
-  it('persists tenant_id null on a superadmin authorization code', async () => {
-    const { client, inserts } = makeClient()
-
-    await issueAuthorizationCode(
-      client,
-      {
-        clientId: 'client_1',
-        redirectUri: 'https://claude.ai/callback',
-        codeChallenge: s256(VERIFIER),
-        codeChallengeMethod: 'S256',
-        scope: 'superadmin offline_access',
-        userId: 'user_1',
-      },
-      { now: NOW, ttlSeconds: 600 },
-    )
-
-    const codeInsert = inserts.find((i) => i.table === 'mcp_oauth_codes')!
-    expect(codeInsert.payload.tenant_id).toBeNull()
-  })
 })
 
 describe('exchangeAuthorizationCode — tenant binding', () => {
-  it('stamps the code-bound tenant onto the access-token key row and the refresh-token row', async () => {
-    const { client, inserts, singleQueue } = makeClient()
-    singleQueue.push({ data: merchantCodeRow(), error: null }) // code lookup
-    singleQueue.push({ data: { id: 'code_1' }, error: null }) // consume
+  it.each(['tenant_admin', 'tenant_admin offline_access'])(
+    'stamps the code-bound tenant through a valid %s grant',
+    async (scope) => {
+      const { client, inserts, singleQueue } = makeClient()
+      singleQueue.push({ data: merchantCodeRow({ scope }), error: null }) // code lookup
+      singleQueue.push({ data: { id: 'code_1' }, error: null }) // consume
 
-    await exchangeAuthorizationCode(
+      await exchangeAuthorizationCode(
+        client,
+        {
+          code: 'the-code',
+          clientId: 'client_1',
+          redirectUri: 'https://claude.ai/callback',
+          codeVerifier: VERIFIER,
+        },
+        TOKEN_OPTS,
+      )
+
+      const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
+      expect(keyInsert.payload.tenant_id).toBe(TENANT_ID)
+      expect(keyInsert.payload.scopes).toEqual(['tenant_admin'])
+
+      const refreshInsert = inserts.find((i) => i.table === 'mcp_oauth_tokens')!
+      expect(refreshInsert.payload.tenant_id).toBe(TENANT_ID)
+      expect(refreshInsert.payload.scope).toBe(scope)
+    },
+  )
+
+  it.each([
+    ['a legacy superadmin code', { scope: 'superadmin', tenant_id: null }],
+    ['a code without merchant authority', { scope: 'offline_access' }],
+    ['a code without a tenant binding', { scope: 'tenant_admin offline_access', tenant_id: null }],
+    ['a code with an unsupported scope', { scope: 'tenant_admin offline_access profile' }],
+  ])('rejects %s before consuming it', async (_label, overrides) => {
+    const { client, inserts, singleQueue, updates } = makeClient()
+    singleQueue.push({ data: merchantCodeRow(overrides), error: null })
+
+    await expect(exchangeAuthorizationCode(
       client,
       {
         code: 'the-code',
@@ -126,67 +138,72 @@ describe('exchangeAuthorizationCode — tenant binding', () => {
         codeVerifier: VERIFIER,
       },
       TOKEN_OPTS,
-    )
+    )).rejects.toThrow(/invalid_grant/i)
 
-    const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
-    expect(keyInsert.payload.tenant_id).toBe(TENANT_ID)
-    expect(keyInsert.payload.scopes).toEqual(['tenant_admin'])
-
-    const refreshInsert = inserts.find((i) => i.table === 'mcp_oauth_tokens')!
-    expect(refreshInsert.payload.tenant_id).toBe(TENANT_ID)
-  })
-
-  it('keeps tenant_id null across superadmin token issuance', async () => {
-    const { client, inserts, singleQueue } = makeClient()
-    singleQueue.push({
-      data: merchantCodeRow({ scope: 'superadmin offline_access', tenant_id: null }),
-      error: null,
-    })
-    singleQueue.push({ data: { id: 'code_1' }, error: null })
-
-    await exchangeAuthorizationCode(
-      client,
-      {
-        code: 'the-code',
-        clientId: 'client_1',
-        redirectUri: 'https://claude.ai/callback',
-        codeVerifier: VERIFIER,
-      },
-      TOKEN_OPTS,
-    )
-
-    const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
-    expect(keyInsert.payload.tenant_id).toBeNull()
-    const refreshInsert = inserts.find((i) => i.table === 'mcp_oauth_tokens')!
-    expect(refreshInsert.payload.tenant_id).toBeNull()
+    expect(updates).toEqual([])
+    expect(inserts).toEqual([])
   })
 })
 
 describe('refreshAccessToken — tenant binding', () => {
-  it('carries the tenant pin through refresh so rotated tokens stay bound', async () => {
-    const { client, inserts, singleQueue } = makeClient()
+  it.each(['tenant_admin', 'tenant_admin offline_access'])(
+    'carries the tenant pin through a valid %s refresh',
+    async (scope) => {
+      const { client, inserts, singleQueue } = makeClient()
+      singleQueue.push({
+        data: {
+          id: 'token_1',
+          client_id: 'client_1',
+          subject: 'user_1',
+          scope,
+          revoked_at: null,
+          expires_at: new Date(NOW + 60_000).toISOString(),
+          tenant_id: TENANT_ID,
+        },
+        error: null,
+      })
+
+      await refreshAccessToken(
+        client,
+        { refreshToken: 'refresh-1', clientId: 'client_1' },
+        TOKEN_OPTS,
+      )
+
+      const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
+      expect(keyInsert.payload.tenant_id).toBe(TENANT_ID)
+      const refreshInsert = inserts.find((i) => i.table === 'mcp_oauth_tokens')!
+      expect(refreshInsert.payload.tenant_id).toBe(TENANT_ID)
+      expect(refreshInsert.payload.scope).toBe(scope)
+    },
+  )
+
+  it.each([
+    ['a legacy superadmin token', 'superadmin', null],
+    ['a token without merchant authority', 'offline_access', TENANT_ID],
+    ['a token without a tenant binding', 'tenant_admin offline_access', null],
+    ['a token with an unsupported scope', 'tenant_admin offline_access profile', TENANT_ID],
+  ])('rejects %s without rotating or issuing tokens', async (_label, scope, tenantId) => {
+    const { client, inserts, singleQueue, updates } = makeClient()
     singleQueue.push({
       data: {
         id: 'token_1',
         client_id: 'client_1',
         subject: 'user_1',
-        scope: 'tenant_admin offline_access',
+        scope,
         revoked_at: null,
         expires_at: new Date(NOW + 60_000).toISOString(),
-        tenant_id: TENANT_ID,
+        tenant_id: tenantId,
       },
       error: null,
     })
 
-    await refreshAccessToken(
+    await expect(refreshAccessToken(
       client,
       { refreshToken: 'refresh-1', clientId: 'client_1' },
       TOKEN_OPTS,
-    )
+    )).rejects.toThrow(/invalid_grant/i)
 
-    const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
-    expect(keyInsert.payload.tenant_id).toBe(TENANT_ID)
-    const refreshInsert = inserts.find((i) => i.table === 'mcp_oauth_tokens')!
-    expect(refreshInsert.payload.tenant_id).toBe(TENANT_ID)
+    expect(updates).toEqual([])
+    expect(inserts).toEqual([])
   })
 })

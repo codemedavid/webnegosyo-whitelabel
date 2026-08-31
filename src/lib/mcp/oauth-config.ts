@@ -1,11 +1,9 @@
 /**
- * Shared configuration + helpers for the SmartMenu MCP OAuth routes. Keeps the
- * route handlers thin: TTLs, the single supported scope, endpoint paths, origin
- * resolution, and secret access all live here.
+ * Shared configuration + helpers for SmartMenu MCP authentication. Keeps the
+ * remaining local merchant issuer routes thin while also providing common
+ * endpoint paths, Bearer challenges, origin resolution, and secret access.
  */
 
-/** The only scope this AS grants — superadmin authority over the admin API. */
-export const OAUTH_SCOPE = 'superadmin'
 /** Standard scope ChatGPT requests when refreshable access is advertised. */
 export const OAUTH_OFFLINE_SCOPE = 'offline_access'
 
@@ -69,7 +67,7 @@ export function getOrigin(req: Request): string {
   return `${proto}://${host}`
 }
 
-/** HS256 signing secret for OAuth access tokens. Grok will not attach opaque tokens. */
+/** HS256 signing secret for local merchant OAuth access tokens. */
 export function getJwtSecret(): string {
   const secret = process.env.MCP_OAUTH_JWT_SECRET?.trim()
   if (!secret) {
