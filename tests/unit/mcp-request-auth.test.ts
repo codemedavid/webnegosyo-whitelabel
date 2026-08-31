@@ -45,7 +45,7 @@ describe('withSmartMenuAuth', () => {
     expect(handler).toHaveBeenCalledTimes(1)
   })
 
-  it('returns HTTP 401 with WWW-Authenticate on anonymous tools/call so clients can start OAuth', async () => {
+  it('returns HTTP 401 with authorization_uri on anonymous tools/call', async () => {
     const handler = jest.fn(async () => new Response('unexpected'))
     const wrapped = withSmartMenuAuth(handler, async () => undefined, {
       resourceMetadataPath: metadataPath,
@@ -63,12 +63,13 @@ describe('withSmartMenuAuth', () => {
     expect(challenge).toContain(
       'resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
     )
-    expect(challenge).toContain('error="invalid_token"')
-    expect(challenge).toContain('scope="superadmin"')
+    expect(challenge).toContain(
+      'authorization_uri="https://example.com/api/mcp/oauth/authorize"',
+    )
     expect(handler).not.toHaveBeenCalled()
   })
 
-  it('returns HTTP 401 with WWW-Authenticate on anonymous GET probes of the MCP endpoint', async () => {
+  it('returns HTTP 401 with authorization_uri on anonymous GET probes of the MCP endpoint', async () => {
     const handler = jest.fn(async () => new Response('unexpected'))
     const wrapped = withSmartMenuAuth(handler, async () => undefined, {
       resourceMetadataPath: metadataPath,
@@ -78,7 +79,13 @@ describe('withSmartMenuAuth', () => {
     const response = await wrapped(new Request('https://example.com/api/mcp/mcp'), {})
 
     expect(response.status).toBe(401)
-    expect(response.headers.get('WWW-Authenticate')).toContain('resource_metadata=')
+    const challenge = response.headers.get('WWW-Authenticate')
+    expect(challenge).toContain(
+      'resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+    )
+    expect(challenge).toContain(
+      'authorization_uri="https://example.com/api/mcp/oauth/authorize"',
+    )
     expect(handler).not.toHaveBeenCalled()
   })
 

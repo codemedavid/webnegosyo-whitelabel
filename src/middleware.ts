@@ -9,6 +9,7 @@ import {
   type AppUserScopeRow,
 } from '@/lib/queries/fetch-app-user-scope'
 import { isMcpProtocolRoute } from '@/lib/mcp/route-isolation'
+import { rewriteMcpPathWellKnown } from '@/lib/mcp/mcp-path-well-known'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -22,6 +23,12 @@ export async function middleware(request: NextRequest) {
   // sessions in their route handlers and must not be rewritten, refreshed, or
   // otherwise coupled to the tenant/application middleware.
   if (isMcpProtocolRoute(pathname)) {
+    const wellKnownDestination = rewriteMcpPathWellKnown(pathname)
+    if (wellKnownDestination) {
+      const rewrittenUrl = request.nextUrl.clone()
+      rewrittenUrl.pathname = wellKnownDestination
+      return NextResponse.rewrite(rewrittenUrl)
+    }
     return supabaseResponse
   }
 

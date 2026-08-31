@@ -8,6 +8,8 @@ import { GET as authServerRootGET } from '@/app/.well-known/oauth-authorization-
 import { GET as authServerNestedGET } from '@/app/.well-known/oauth-authorization-server/[...path]/route'
 import { GET as openidRootGET } from '@/app/.well-known/openid-configuration/route'
 import { GET as openidNestedGET } from '@/app/.well-known/openid-configuration/[...path]/route'
+import { GET as merchantProtectedResourceGET } from '@/app/.well-known/oauth-protected-resource/[...path]/route'
+import { rewriteMcpPathWellKnown } from '@/lib/mcp/mcp-path-well-known'
 
 function req(url: string): Request {
   return { url, headers: new Headers() } as unknown as Request
@@ -60,5 +62,76 @@ describe('OpenID Connect discovery fallback', () => {
 
     expect(oidcRoot).toEqual(asBody)
     expect(oidcNested).toEqual(asBody)
+  })
+})
+
+// ChatGPT's plugin Authenticate button treats the MCP URL as the server and
+// probes well-known documents there (not only at the origin root). A 404 at
+// these URLs surfaces as "didn't provide a sign-in link". Next.js only serves
+// `.well-known` from the app root, so the MCP-path probes are rewritten.
+describe('ChatGPT well-known probes on the MCP resource URL', () => {
+  it('rewrites /api/mcp/mcp/.well-known/oauth-authorization-server onto the origin document', async () => {
+    const destination = rewriteMcpPathWellKnown('/api/mcp/mcp/.well-known/oauth-authorization-server')
+    expect(destination).toBe('/.well-known/oauth-authorization-server')
+
+    const body = await (await authServerRootGET(req(`${ORIGIN}${destination}`))).json()
+    expect(body.authorization_endpoint).toBe(`${ORIGIN}/api/mcp/oauth/authorize`)
+  })
+
+  it('rewrites /api/mcp/mcp/.well-known/openid-configuration onto the origin document', async () => {
+    const destination = rewriteMcpPathWellKnown('/api/mcp/mcp/.well-known/openid-configuration')
+    expect(destination).toBe('/.well-known/openid-configuration')
+
+    const body = await (await openidRootGET(req(`${ORIGIN}${destination}`))).json()
+    expect(body.authorization_endpoint).toBe(`${ORIGIN}/api/mcp/oauth/authorize`)
+  })
+
+  it('rewrites /api/mcp/mcp/.well-known/oauth-protected-resource onto the origin document', async () => {
+    const destination = rewriteMcpPathWellKnown('/api/mcp/mcp/.well-known/oauth-protected-resource')
+    expect(destination).toBe('/.well-known/oauth-protected-resource')
+
+    const body = await (await protectedResourceRootGET(req(`${ORIGIN}${destination}`))).json()
+    expect(body.resource).toBe(`${ORIGIN}/api/mcp/mcp`)
+    expect(body.authorization_servers).toEqual([ORIGIN])
+  })
+
+  it('rewrites RFC 8414 path insertion under /api/mcp onto the origin authorization-server document', async () => {
+    const destination = rewriteMcpPathWellKnown('/api/mcp/.well-known/oauth-authorization-server/mcp')
+    expect(destination).toBe('/.well-known/oauth-authorization-server')
+
+    const body = await (await authServerRootGET(req(`${ORIGIN}${destination}`))).json()
+    expect(body.authorization_endpoint).toBe(`${ORIGIN}/api/mcp/oauth/authorize`)
+  })
+
+  it('rewrites merchant MCP well-known PRM onto the merchant resource document', async () => {
+    const destination = rewriteMcpPathWellKnown(
+      '/api/mcp/merchant/mcp/.well-known/oauth-protected-resource',
+    )
+    expect(destination).toBe('/.well-known/oauth-protected-resource/api/mcp/merchant')
+
+    const body = await (await merchantProtectedResourceGET(req(`${ORIGIN}${destination}`))).json()
+    expect(body.resource).toBe(`${ORIGIN}/api/mcp/merchant/mcp`)
+    expect(body.scopes_supported).toEqual(['tenant_admin'])
+  })
+
+  it('still serves merchant PRM when the handler sees ChatGPT\'s original MCP-path URL', async () => {
+    const originalProbe = `${ORIGIN}/api/mcp/merchant/mcp/.well-known/oauth-protected-resource`
+    const body = await (await merchantProtectedResourceGET(req(originalProbe))).json()
+    expect(body.resource).toBe(`${ORIGIN}/api/mcp/merchant/mcp`)
+    expect(body.scopes_supported).toEqual(['tenant_admin'])
+  })
+
+  it('rewrites RFC 8414 merchant PRM insertion onto the merchant document', () => {
+    expect(rewriteMcpPathWellKnown('/api/mcp/.well-known/oauth-protected-resource/merchant')).toBe(
+      '/.well-known/oauth-protected-resource/api/mcp/merchant',
+    )
+    expect(rewriteMcpPathWellKnown('/api/mcp/.well-known/oauth-protected-resource/mcp')).toBe(
+      '/.well-known/oauth-protected-resource/mcp',
+    )
+  })
+
+  it('does not rewrite the MCP transport or OAuth endpoints', () => {
+    expect(rewriteMcpPathWellKnown('/api/mcp/mcp')).toBeNull()
+    expect(rewriteMcpPathWellKnown('/api/mcp/oauth/authorize')).toBeNull()
   })
 })

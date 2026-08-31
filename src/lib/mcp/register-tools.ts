@@ -3,7 +3,7 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { listOps, executeOp } from '@/lib/mcp/provisioning-ops'
-import { OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
+import { buildBearerChallenge, OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
 
 const SMARTMENU_ORIGIN = 'https://www.webnegosyo.com'
 const OAUTH_SECURITY_SCHEMES = [{ type: 'oauth2' as const, scopes: [OAUTH_SCOPE] }]
@@ -19,13 +19,18 @@ function textResult(text: string, isError = false): CallToolResult {
 
 /** Returns the MCP-standard OAuth challenge used by ChatGPT to start login. */
 function authenticationRequired(): CallToolResult {
-    const resourceMetadata = `${SMARTMENU_ORIGIN}${OAUTH_PATHS.protectedResourceMetadata}`
     return {
         content: [{ type: 'text', text: 'Authentication required.' }],
         isError: true,
         _meta: {
             'mcp/www_authenticate': [
-                `Bearer resource_metadata="${resourceMetadata}", scope="${OAUTH_SCOPE}", error="invalid_token", error_description="Authentication required"`,
+                buildBearerChallenge({
+                    origin: SMARTMENU_ORIGIN,
+                    resourceMetadataPath: OAUTH_PATHS.protectedResourceMetadata,
+                    error: 'invalid_token',
+                    description: 'Authentication required',
+                    scope: OAUTH_SCOPE,
+                }),
             ],
         },
     }

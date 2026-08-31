@@ -1,6 +1,6 @@
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import { extractBearerToken } from '@/lib/mcp-auth'
-import { getOrigin } from '@/lib/mcp/oauth-config'
+import { buildBearerChallenge, getOrigin } from '@/lib/mcp/oauth-config'
 
 type McpRouteHandler = (req: Request, ctx: unknown) => Promise<Response>
 type TokenVerifier = (req: Request, bearerToken?: string) => Promise<AuthInfo | undefined>
@@ -21,9 +21,9 @@ interface SmartMenuAuthOptions {
  * When `required` is false, the MCP handshake (`initialize`, `tools/list`,
  * `ping`, notifications) stays anonymous so clients can discover tools. Every
  * other request — including `tools/call` and GET probes — returns HTTP 401 with
- * `WWW-Authenticate`. Claude and ChatGPT only start OAuth from a transport-level
- * 401; a 200 tool error with `_meta.mcp/www_authenticate` is treated as chat
- * text and never shows a Connect / login link.
+ * `WWW-Authenticate` (including `authorization_uri`). Claude starts OAuth from
+ * that transport 401. ChatGPT's plugin Authenticate button also needs the
+ * authorization-server document at the MCP resource URL.
  */
 export function withSmartMenuAuth(
   handler: McpRouteHandler,
@@ -34,7 +34,7 @@ export function withSmartMenuAuth(
 
   return async (req, ctx) => {
     const bearerToken = extractBearerToken(req.headers.get('authorization')) ?? undefined
-    const resourceMetadata = `${getOrigin(req)}${options.resourceMetadataPath}`
+    const origin = getOrigin(req)
 
     if (!bearerToken && options.required === false) {
       if (await isPublicMcpHandshake(req)) {
@@ -44,7 +44,8 @@ export function withSmartMenuAuth(
         401,
         'invalid_token',
         'Missing or invalid access token',
-        resourceMetadata,
+        origin,
+        options.resourceMetadataPath,
         requiredScope,
       )
     }
@@ -56,12 +57,20 @@ export function withSmartMenuAuth(
         401,
         'invalid_token',
         'Missing or invalid access token',
-        resourceMetadata,
+        origin,
+        options.resourceMetadataPath,
         requiredScope,
       )
     }
     if (!authInfo.scopes.includes(requiredScope)) {
-      return oauthErrorResponse(403, 'insufficient_scope', `Required scope: ${requiredScope}`, resourceMetadata, requiredScope)
+      return oauthErrorResponse(
+        403,
+        'insufficient_scope',
+        `Required scope: ${requiredScope}`,
+        origin,
+        options.resourceMetadataPath,
+        requiredScope,
+      )
     }
 
     ;(req as Request & { auth?: AuthInfo }).auth = authInfo
@@ -102,15 +111,17 @@ function oauthErrorResponse(
   status: 401 | 403,
   error: 'invalid_token' | 'insufficient_scope',
   description: string,
-  resourceMetadata: string,
+  origin: string,
+  resourceMetadataPath: string,
   scope?: string,
 ): Response {
-  const challenge = [
-    `Bearer error="${error}"`,
-    `error_description="${description}"`,
-    `resource_metadata="${resourceMetadata}"`,
-    ...(scope ? [`scope="${scope}"`] : []),
-  ].join(', ')
+  const challenge = buildBearerChallenge({
+    origin,
+    resourceMetadataPath,
+    error,
+    description,
+    scope,
+  })
 
   return Response.json(
     { error, error_description: description },

@@ -67,6 +67,62 @@ const nextConfig: NextConfig = {
   // Enable static optimization where possible
   staticPageGenerationTimeout: 120,
 
+  // ChatGPT probes OAuth discovery on the MCP resource URL. Next.js only
+  // serves `.well-known` from the app root, so these rewrites (plus the
+  // matching middleware rewrite) expose the existing origin documents there.
+  async rewrites() {
+    return [
+      {
+        source: '/api/mcp/mcp/.well-known/oauth-authorization-server',
+        destination: '/.well-known/oauth-authorization-server',
+      },
+      {
+        source: '/api/mcp/mcp/.well-known/openid-configuration',
+        destination: '/.well-known/openid-configuration',
+      },
+      {
+        source: '/api/mcp/mcp/.well-known/oauth-protected-resource',
+        destination: '/.well-known/oauth-protected-resource',
+      },
+      {
+        source: '/api/mcp/.well-known/oauth-authorization-server/:path*',
+        destination: '/.well-known/oauth-authorization-server',
+      },
+      {
+        source: '/api/mcp/.well-known/openid-configuration/:path*',
+        destination: '/.well-known/openid-configuration',
+      },
+      {
+        source: '/api/mcp/.well-known/oauth-protected-resource/:path*',
+        destination: '/.well-known/oauth-protected-resource/:path*',
+      },
+      {
+        source: '/api/mcp/merchant/mcp/.well-known/oauth-authorization-server',
+        destination: '/.well-known/oauth-authorization-server',
+      },
+      {
+        source: '/api/mcp/merchant/mcp/.well-known/openid-configuration',
+        destination: '/.well-known/openid-configuration',
+      },
+      {
+        source: '/api/mcp/merchant/mcp/.well-known/oauth-protected-resource',
+        destination: '/.well-known/oauth-protected-resource/api/mcp/merchant',
+      },
+      {
+        source: '/api/mcp/merchant/.well-known/oauth-authorization-server/:path*',
+        destination: '/.well-known/oauth-authorization-server',
+      },
+      {
+        source: '/api/mcp/merchant/.well-known/openid-configuration/:path*',
+        destination: '/.well-known/openid-configuration',
+      },
+      {
+        source: '/api/mcp/merchant/.well-known/oauth-protected-resource/:path*',
+        destination: '/.well-known/oauth-protected-resource/api/mcp/merchant',
+      },
+    ]
+  },
+
   // Headers for caching
   async headers() {
     return [

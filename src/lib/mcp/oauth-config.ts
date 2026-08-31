@@ -25,6 +25,28 @@ export const OAUTH_PATHS = {
   protectedResourceMetadata: '/.well-known/oauth-protected-resource',
 } as const
 
+/**
+ * RFC 6750 / RFC 9728 WWW-Authenticate value. ChatGPT's plugin Authenticate
+ * button looks here for a URL it can open; without `authorization_uri` it
+ * reports "didn't provide a sign-in link" even when resource_metadata is set.
+ */
+export function buildBearerChallenge(options: {
+  origin: string
+  resourceMetadataPath: string
+  error: string
+  description: string
+  scope?: string
+}): string {
+  const params = [
+    `resource_metadata="${options.origin}${options.resourceMetadataPath}"`,
+    `authorization_uri="${options.origin}${OAUTH_PATHS.authorize}"`,
+    ...(options.scope ? [`scope="${options.scope}"`] : []),
+    `error="${options.error}"`,
+    `error_description="${options.description}"`,
+  ]
+  return `Bearer ${params.join(', ')}`
+}
+
 /** CORS headers so browser-based connectors can read discovery metadata. */
 export const OAUTH_CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
