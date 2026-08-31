@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { generateOAuthAccessKey } from '@/lib/mcp-auth'
+import { generateOAuthAccessKey, hashApiKey } from '@/lib/mcp-auth'
 import { signAccessToken } from '@/lib/mcp/oauth-jwt'
 
 /**
@@ -334,6 +334,12 @@ async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promis
     expires_at: new Date(p.now + p.refreshTtlSeconds * 1000).toISOString(),
   })
   if (error) {
+    if (!p.jwtSecret) {
+      await client
+        .from('mcp_api_keys')
+        .update({ revoked_at: new Date(p.now).toISOString() })
+        .eq('key_hash', hashApiKey(accessToken))
+    }
     throw new Error(`Failed to persist refresh token: ${error.message}`)
   }
 

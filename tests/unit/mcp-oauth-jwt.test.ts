@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
+import { createHmac } from 'crypto'
 import { signAccessToken, verifyAccessToken } from '@/lib/mcp/oauth-jwt'
 
 const SECRET = 'test-secret-please-change-0123456789'
@@ -66,5 +67,15 @@ describe('signAccessToken / verifyAccessToken', () => {
 
   it('rejects a malformed token', () => {
     expect(() => verifyAccessToken('smk_oauth_not-a-jwt', { secret: SECRET, now: 1 })).toThrow()
+  })
+
+  it('rejects a signed payload that is missing required string claims', () => {
+    const nowMs = 1_700_000_000_000
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
+    const payload = Buffer.from(JSON.stringify({ sub: 123, iat: 1, exp: 9_999_999_999 })).toString('base64url')
+    const signature = createHmac('sha256', SECRET).update(`${header}.${payload}`).digest('base64url')
+    expect(() =>
+      verifyAccessToken(`${header}.${payload}.${signature}`, { secret: SECRET, now: nowMs }),
+    ).toThrow(/missing/i)
   })
 })

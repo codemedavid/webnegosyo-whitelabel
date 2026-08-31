@@ -66,7 +66,10 @@ export function getOrigin(req: Request): string {
 }
 
 /** HS256 signing secret for OAuth access tokens. Grok will not attach opaque tokens. */
-export function getJwtSecret(): string | undefined {
-  const secret = process.env.MCP_OAUTH_JWT_SECRET
-  return secret && secret.length > 0 ? secret : undefined
+export function getJwtSecret(): string {
+  const secret = process.env.MCP_OAUTH_JWT_SECRET?.trim()
+  if (!secret) {
+    throw new Error('MCP_OAUTH_JWT_SECRET is not configured')
+  }
+  return secret
 }

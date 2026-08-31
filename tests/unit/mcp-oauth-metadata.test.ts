@@ -1,8 +1,8 @@
 /**
  * @jest-environment node
  */
-import { describe, it, expect } from '@jest/globals'
-import { getOrigin } from '@/lib/mcp/oauth-config'
+import { describe, it, expect, afterEach } from '@jest/globals'
+import { getOrigin, getJwtSecret } from '@/lib/mcp/oauth-config'
 import { GET as protectedResourceGET } from '@/app/.well-known/oauth-protected-resource/route'
 import { GET as authServerGET } from '@/app/.well-known/oauth-authorization-server/route'
 
@@ -22,6 +22,25 @@ describe('getOrigin', () => {
   it('falls back to the request URL host when no forwarding headers are present', () => {
     const req = reqWithHeaders('https://direct.example.com/x')
     expect(getOrigin(req)).toBe('https://direct.example.com')
+  })
+})
+
+describe('getJwtSecret', () => {
+  const original = process.env.MCP_OAUTH_JWT_SECRET
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.MCP_OAUTH_JWT_SECRET
+    else process.env.MCP_OAUTH_JWT_SECRET = original
+  })
+
+  it('throws when the signing secret is missing', () => {
+    delete process.env.MCP_OAUTH_JWT_SECRET
+    expect(() => getJwtSecret()).toThrow(/MCP_OAUTH_JWT_SECRET/)
+  })
+
+  it('returns the configured secret', () => {
+    process.env.MCP_OAUTH_JWT_SECRET = 'configured-secret'
+    expect(getJwtSecret()).toBe('configured-secret')
   })
 })
 

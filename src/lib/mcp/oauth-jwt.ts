@@ -93,15 +93,16 @@ export function verifyAccessToken(token: string, opts: VerifyOptions): VerifiedA
     throw new Error('Invalid token: signature verification failed')
   }
 
-  let payload: VerifiedAccessToken
+  let parsed: unknown
   try {
-    payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf-8')) as VerifiedAccessToken
+    parsed = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf-8'))
   } catch {
     throw new Error('Invalid token: unreadable payload')
   }
+  const payload = asVerifiedAccessToken(parsed)
 
   const nowSeconds = Math.floor((opts.now ?? Date.now()) / 1000)
-  if (typeof payload.exp !== 'number' || nowSeconds >= payload.exp) {
+  if (nowSeconds >= payload.exp) {
     throw new Error('Invalid token: expired')
   }
   if (opts.audience && payload.aud !== opts.audience) {
@@ -112,4 +113,32 @@ export function verifyAccessToken(token: string, opts: VerifyOptions): VerifiedA
   }
 
   return payload
+}
+
+function asVerifiedAccessToken(value: unknown): VerifiedAccessToken {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Invalid token: unreadable payload')
+  }
+  const record = value as Record<string, unknown>
+  if (typeof record.sub !== 'string' || !record.sub) throw new Error('Invalid token: missing sub')
+  if (typeof record.scope !== 'string') throw new Error('Invalid token: missing scope')
+  if (typeof record.client_id !== 'string' || !record.client_id) throw new Error('Invalid token: missing client_id')
+  if (typeof record.aud !== 'string' || !record.aud) throw new Error('Invalid token: missing aud')
+  if (typeof record.iss !== 'string' || !record.iss) throw new Error('Invalid token: missing iss')
+  if (typeof record.iat !== 'number' || typeof record.exp !== 'number') {
+    throw new Error('Invalid token: missing iat/exp')
+  }
+  if (record.tenant_id !== undefined && typeof record.tenant_id !== 'string') {
+    throw new Error('Invalid token: malformed tenant_id')
+  }
+  return {
+    sub: record.sub,
+    scope: record.scope,
+    client_id: record.client_id,
+    aud: record.aud,
+    iss: record.iss,
+    iat: record.iat,
+    exp: record.exp,
+    ...(record.tenant_id ? { tenant_id: record.tenant_id } : {}),
+  }
 }
