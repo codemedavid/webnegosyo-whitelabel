@@ -85,6 +85,10 @@ const nextConfig: NextConfig = {
         destination: '/.well-known/oauth-protected-resource',
       },
       {
+        source: '/api/mcp/mcp/.well-known/jwks.json',
+        destination: '/.well-known/jwks.json',
+      },
+      {
         source: '/api/mcp/.well-known/oauth-authorization-server/:path*',
         destination: '/.well-known/oauth-authorization-server',
       },
@@ -107,6 +111,10 @@ const nextConfig: NextConfig = {
       {
         source: '/api/mcp/merchant/mcp/.well-known/oauth-protected-resource',
         destination: '/.well-known/oauth-protected-resource/api/mcp/merchant',
+      },
+      {
+        source: '/api/mcp/merchant/mcp/.well-known/jwks.json',
+        destination: '/.well-known/jwks.json',
       },
       {
         source: '/api/mcp/merchant/.well-known/oauth-authorization-server/:path*',

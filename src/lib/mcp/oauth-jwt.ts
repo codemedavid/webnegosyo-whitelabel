@@ -1,13 +1,34 @@
-import { createHmac, timingSafeEqual } from 'crypto'
+import {
+  createHash,
+  createHmac,
+  createPrivateKey,
+  createPublicKey,
+  sign as nodeSign,
+  timingSafeEqual,
+  verify as nodeVerify,
+  type KeyObject,
+} from 'crypto'
 
 /**
- * Minimal, dependency-free HS256 JWT for SmartMenu MCP OAuth access tokens.
+ * JWT access tokens for SmartMenu MCP OAuth.
  *
- * Grok (and other MCP connectors) verify signature, issuer, and audience on
- * the access token and will not send an opaque `smk_oauth_` secret as Bearer.
- * We are both issuer and verifier, so HMAC-SHA256 is sufficient. Short TTL
- * plus refresh-token revocation covers logout.
+ * Grok (CLI and grok.com connectors) verifies the access token as a public-key
+ * JWT using the authorization server's JWKS. HS256 cannot be checked that way
+ * — the client has no shared secret — so it drops the token and the next MCP
+ * POST arrives with no Bearer (HTTP 401, no DB lookup).
+ *
+ * Access tokens are Ed25519 (`EdDSA`). The private key is derived
+ * deterministically from `MCP_OAUTH_JWT_SECRET`, so every serverless instance
+ * mints and verifies the same key without a second env var. HS256 verification
+ * remains for tokens issued before this switch (1 hour TTL).
  */
+
+/** JWT `kid` / JWKS key id. Stable so clients can cache the JWK. */
+export const MCP_JWT_KID = 'smartmenu-mcp-ed25519'
+export const MCP_JWT_ALG = 'EdDSA'
+
+/** PKCS#8 prefix for a 32-byte Ed25519 seed (RFC 8410). */
+const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex')
 
 export interface AccessTokenClaims {
   /** Subject — the user id that authorized the connector. */
@@ -46,28 +67,14 @@ interface VerifyOptions {
   now?: number
 }
 
-const HEADER = { alg: 'HS256', typ: 'JWT' } as const
+const HS256_HEADER = { alg: 'HS256', typ: 'JWT' } as const
 
 function base64url(input: string | Buffer): string {
   return Buffer.from(input).toString('base64url')
 }
 
-function sign(data: string, secret: string): string {
+function hmacSign(data: string, secret: string): string {
   return createHmac('sha256', secret).update(data).digest('base64url')
-}
-
-/** Signs a compact HS256 JWT carrying the given claims. */
-export function signAccessToken(claims: AccessTokenClaims, opts: SignOptions): string {
-  const nowSeconds = Math.floor((opts.now ?? Date.now()) / 1000)
-  const payload = {
-    ...claims,
-    iat: nowSeconds,
-    exp: nowSeconds + opts.expiresInSeconds,
-  }
-  const encodedHeader = base64url(JSON.stringify(HEADER))
-  const encodedPayload = base64url(JSON.stringify(payload))
-  const signingInput = `${encodedHeader}.${encodedPayload}`
-  return `${signingInput}.${sign(signingInput, opts.secret)}`
 }
 
 function signaturesMatch(a: string, b: string): boolean {
@@ -77,9 +84,94 @@ function signaturesMatch(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB)
 }
 
+/** 32-byte Ed25519 seed derived from the configured signing secret. */
+function ed25519Seed(secret: string): Buffer {
+  return createHash('sha256').update(secret).digest()
+}
+
+function ed25519PrivateKey(secret: string): KeyObject {
+  const der = Buffer.concat([ED25519_PKCS8_PREFIX, ed25519Seed(secret)])
+  const pem = `-----BEGIN PRIVATE KEY-----\n${der.toString('base64')}\n-----END PRIVATE KEY-----`
+  return createPrivateKey({ key: pem, format: 'pem' })
+}
+
+/** Public JWK for the Ed25519 key derived from `secret`. Safe to publish. */
+export function publicJwkFromSecret(secret: string): {
+  kty: 'OKP'
+  crv: 'Ed25519'
+  x: string
+  kid: string
+  use: 'sig'
+  alg: 'EdDSA'
+} {
+  const jwk = createPublicKey(ed25519PrivateKey(secret)).export({ format: 'jwk' }) as {
+    x?: string
+  }
+  if (!jwk.x) {
+    throw new Error('Failed to export Ed25519 public JWK')
+  }
+  return {
+    kty: 'OKP',
+    crv: 'Ed25519',
+    x: jwk.x,
+    kid: MCP_JWT_KID,
+    use: 'sig',
+    alg: MCP_JWT_ALG,
+  }
+}
+
+export function buildJwks(secret: string): { keys: ReturnType<typeof publicJwkFromSecret>[] } {
+  return { keys: [publicJwkFromSecret(secret)] }
+}
+
+/** Signs a compact EdDSA JWT carrying the given claims. */
+export function signAccessToken(claims: AccessTokenClaims, opts: SignOptions): string {
+  const nowSeconds = Math.floor((opts.now ?? Date.now()) / 1000)
+  const payload = {
+    ...claims,
+    typ: 'access_token',
+    iat: nowSeconds,
+    exp: nowSeconds + opts.expiresInSeconds,
+  }
+  const header = { alg: MCP_JWT_ALG, typ: 'JWT', kid: MCP_JWT_KID }
+  const encodedHeader = base64url(JSON.stringify(header))
+  const encodedPayload = base64url(JSON.stringify(payload))
+  const signingInput = `${encodedHeader}.${encodedPayload}`
+  const signature = nodeSign(null, Buffer.from(signingInput), ed25519PrivateKey(opts.secret)).toString(
+    'base64url',
+  )
+  return `${signingInput}.${signature}`
+}
+
+/** Test-only: mint an HS256 token so the verifier's legacy path stays covered. */
+export function signHs256AccessToken(claims: AccessTokenClaims, opts: SignOptions): string {
+  const nowSeconds = Math.floor((opts.now ?? Date.now()) / 1000)
+  const payload = {
+    ...claims,
+    iat: nowSeconds,
+    exp: nowSeconds + opts.expiresInSeconds,
+  }
+  const encodedHeader = base64url(JSON.stringify(HS256_HEADER))
+  const encodedPayload = base64url(JSON.stringify(payload))
+  const signingInput = `${encodedHeader}.${encodedPayload}`
+  return `${signingInput}.${hmacSign(signingInput, opts.secret)}`
+}
+
+function parseJwtHeader(encodedHeader: string): { alg?: string } {
+  try {
+    const parsed = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf-8')) as {
+      alg?: unknown
+    }
+    return { alg: typeof parsed.alg === 'string' ? parsed.alg : undefined }
+  } catch {
+    throw new Error('Invalid token: unreadable header')
+  }
+}
+
 /**
- * Verifies a compact HS256 JWT and returns its claims. Throws on a malformed
- * token, a bad signature, an expired token, or an issuer/audience mismatch.
+ * Verifies a compact JWT (EdDSA or legacy HS256) and returns its claims.
+ * Throws on a malformed token, a bad signature, an expired token, or an
+ * issuer/audience mismatch.
  */
 export function verifyAccessToken(token: string, opts: VerifyOptions): VerifiedAccessToken {
   const parts = token.split('.')
@@ -87,10 +179,26 @@ export function verifyAccessToken(token: string, opts: VerifyOptions): VerifiedA
     throw new Error('Invalid token: malformed JWT')
   }
   const [encodedHeader, encodedPayload, signature] = parts
+  const signingInput = `${encodedHeader}.${encodedPayload}`
+  const header = parseJwtHeader(encodedHeader)
 
-  const expected = sign(`${encodedHeader}.${encodedPayload}`, opts.secret)
-  if (!signaturesMatch(signature, expected)) {
-    throw new Error('Invalid token: signature verification failed')
+  if (header.alg === MCP_JWT_ALG) {
+    const ok = nodeVerify(
+      null,
+      Buffer.from(signingInput),
+      createPublicKey(ed25519PrivateKey(opts.secret)),
+      Buffer.from(signature, 'base64url'),
+    )
+    if (!ok) {
+      throw new Error('Invalid token: signature verification failed')
+    }
+  } else if (header.alg === 'HS256') {
+    const expected = hmacSign(signingInput, opts.secret)
+    if (!signaturesMatch(signature, expected)) {
+      throw new Error('Invalid token: signature verification failed')
+    }
+  } else {
+    throw new Error(`Invalid token: unsupported alg ${header.alg ?? '(missing)'}`)
   }
 
   let parsed: unknown

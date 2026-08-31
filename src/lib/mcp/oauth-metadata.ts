@@ -22,11 +22,13 @@ export interface AuthorizationServerMetadata {
   authorization_endpoint: string
   token_endpoint: string
   registration_endpoint: string
+  jwks_uri: string
   response_types_supported: string[]
   grant_types_supported: string[]
   code_challenge_methods_supported: string[]
   token_endpoint_auth_methods_supported: string[]
   scopes_supported: string[]
+  id_token_signing_alg_values_supported: string[]
 }
 
 /** RFC 9728 — tells an MCP client which authorization server guards the endpoint. */
@@ -56,10 +58,12 @@ export function buildAuthorizationServerMetadata(origin: string): AuthorizationS
     authorization_endpoint: `${origin}${OAUTH_PATHS.authorize}`,
     token_endpoint: `${origin}${OAUTH_PATHS.token}`,
     registration_endpoint: `${origin}${OAUTH_PATHS.register}`,
+    jwks_uri: `${origin}${OAUTH_PATHS.jwks}`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
     scopes_supported: [OAUTH_SCOPE, MERCHANT_OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE],
+    id_token_signing_alg_values_supported: ['EdDSA'],
   }
 }

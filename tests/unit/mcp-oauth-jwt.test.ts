@@ -1,6 +1,13 @@
 import { describe, it, expect } from '@jest/globals'
-import { createHmac } from 'crypto'
-import { signAccessToken, verifyAccessToken } from '@/lib/mcp/oauth-jwt'
+import { createHmac, createPublicKey, verify as nodeVerify } from 'crypto'
+import {
+  MCP_JWT_ALG,
+  MCP_JWT_KID,
+  publicJwkFromSecret,
+  signAccessToken,
+  signHs256AccessToken,
+  verifyAccessToken,
+} from '@/lib/mcp/oauth-jwt'
 
 const SECRET = 'test-secret-please-change-0123456789'
 const RESOURCE = 'https://x.example.com/api/mcp/mcp'
@@ -24,6 +31,33 @@ describe('signAccessToken / verifyAccessToken', () => {
     expect(decoded.iat).toBe(Math.floor(nowMs / 1000))
     expect(decoded.exp).toBe(Math.floor(nowMs / 1000) + 3600)
     expect(token.split('.')).toHaveLength(3)
+  })
+
+  it('mints an EdDSA token whose signature verifies with the published JWK alone', () => {
+    const token = signAccessToken(claims, { secret: SECRET, expiresInSeconds: 60, now: 1_700_000_000_000 })
+    const [encodedHeader, encodedPayload, encodedSignature] = token.split('.')
+    const header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf-8')) as {
+      alg: string
+      kid: string
+    }
+    expect(header).toMatchObject({ alg: MCP_JWT_ALG, kid: MCP_JWT_KID })
+
+    const jwk = publicJwkFromSecret(SECRET)
+    expect(jwk.kid).toBe(header.kid)
+    const ok = nodeVerify(
+      null,
+      Buffer.from(`${encodedHeader}.${encodedPayload}`),
+      createPublicKey({ key: jwk, format: 'jwk' }),
+      Buffer.from(encodedSignature, 'base64url'),
+    )
+    expect(ok).toBe(true)
+  })
+
+  it('still verifies a legacy HS256 access token', () => {
+    const nowMs = 1_700_000_000_000
+    const token = signHs256AccessToken(claims, { secret: SECRET, expiresInSeconds: 60, now: nowMs })
+    const decoded = verifyAccessToken(token, { secret: SECRET, now: nowMs, audience: RESOURCE, issuer: ISSUER })
+    expect(decoded.sub).toBe(claims.sub)
   })
 
   it('rejects a token whose signature was tampered with', () => {

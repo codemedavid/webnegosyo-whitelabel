@@ -6,7 +6,7 @@
  */
 
 const MCP_PATH_WELL_KNOWN =
-  /^\/api\/mcp(?:\/merchant)?(?:\/mcp)?\/\.well-known\/(oauth-authorization-server|openid-configuration|oauth-protected-resource)(\/.*)?$/
+  /^\/api\/mcp(?:\/merchant)?(?:\/mcp)?\/\.well-known\/(oauth-authorization-server|openid-configuration|oauth-protected-resource|jwks\.json)(\/.*)?$/
 
 function isMerchantSuffix(suffix: string): boolean {
   return suffix === '/merchant' || suffix.startsWith('/merchant/') || suffix === '/api/mcp/merchant' || suffix.startsWith('/api/mcp/merchant/')
@@ -24,6 +24,9 @@ export function rewriteMcpPathWellKnown(pathname: string): string | null {
   }
   if (document === 'oauth-protected-resource' && suffix) {
     return `/.well-known/oauth-protected-resource${suffix}`
+  }
+  if (document === 'jwks.json') {
+    return '/.well-known/jwks.json'
   }
   return `/.well-known/${document}`
 }
