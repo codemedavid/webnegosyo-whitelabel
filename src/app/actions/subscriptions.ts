@@ -28,6 +28,7 @@ import {
   sanitizeOutletAllowance,
   sanitizeStaffAllowance,
 } from '@/lib/billing/tenant-allowances'
+import type { Database } from '@/types/database'
 
 const NOT_ALLOWED = 'Only a platform superadmin can manage subscriptions.'
 
@@ -167,7 +168,7 @@ export async function updateTenantLimitsAction(
   if (!superadminId) return { success: false as const, error: NOT_ALLOWED }
 
   try {
-    const patch: Record<string, number> = {}
+    const patch: Pick<Database['public']['Tables']['tenants']['Update'], 'max_outlets' | 'max_staff_per_branch'> = {}
     if (limits.maxOutlets !== undefined) {
       patch.max_outlets = sanitizeOutletAllowance(limits.maxOutlets)
     }

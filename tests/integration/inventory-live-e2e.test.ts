@@ -93,9 +93,9 @@ interface Snapshot {
 async function snapshot(tenantId: string): Promise<Snapshot> {
   const count = async (table: string, apply?: (q: never) => unknown) => {
     let query = supabase
-      .from(table)
+      .from(table as never)
       .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id' as never, tenantId)
     if (apply) query = apply(query as never) as typeof query
     const { count: n } = await query
     return n ?? 0
@@ -181,7 +181,7 @@ beforeAll(async () => {
   // --- seed -----------------------------------------------------------------
   const insertOne = async (table: string, row: Record<string, unknown>) => {
     const { data, error } = await supabase
-      .from(table)
+      .from(table as never)
       .insert(row as never)
       .select('id')
       .single()

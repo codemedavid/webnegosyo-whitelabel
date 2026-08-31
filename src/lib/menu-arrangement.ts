@@ -93,8 +93,17 @@ async function existingIds(
   tenantId: string,
   categoryId?: string,
 ): Promise<string[]> {
-  let query = ctx.client.from(table).select('id').eq('tenant_id', tenantId)
-  if (categoryId) query = query.eq('category_id', categoryId)
+  if (table === 'menu_items' && categoryId) {
+    const { data, error } = await ctx.client
+      .from('menu_items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('category_id', categoryId)
+    if (error) throw new Error(`Could not read the current ${table} order: ${error.message}`)
+    return ((data ?? []) as IdRow[]).map((r) => r.id)
+  }
+
+  const query = ctx.client.from(table).select('id').eq('tenant_id', tenantId)
 
   const { data, error } = await query
   if (error) {

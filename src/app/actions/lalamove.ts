@@ -16,7 +16,7 @@ import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
 import { checkRateLimit } from '@/lib/rate-limit'
-import type { Tenant } from '@/types/database'
+import type { Database, Tenant } from '@/types/database'
 
 /**
  * The tenant columns Lalamove work actually needs. Several of these actions
@@ -99,6 +99,7 @@ export async function createQuotationAction(
     }
   }
 }
+
 
 /**
  * Check if quotation is still valid (not expired)
@@ -436,7 +437,7 @@ export async function syncLalamoveOrderAction(
     // Only fields Lalamove actually returned are written. Blanking a tracking
     // url or driver name because one poll came back thin would wipe details a
     // merchant needs for a delivery already on the road.
-    const updateData: Record<string, unknown> = {}
+    const updateData: Partial<Database['public']['Tables']['orders']['Update']> = {}
     if (lalamoveOrder?.status) updateData.lalamove_status = lalamoveOrder.status
     if (lalamoveOrder?.shareLink) updateData.lalamove_tracking_url = lalamoveOrder.shareLink
 
@@ -613,4 +614,3 @@ export async function cancelLalamoveOrderAction(
     }
   }
 }
-
