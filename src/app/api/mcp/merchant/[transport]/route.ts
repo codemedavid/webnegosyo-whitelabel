@@ -38,8 +38,9 @@ const handler = createMcpHandler(
 type McpRouteHandler = (req: Request, ctx: unknown) => Promise<Response>
 
 // A supplied credential is still verified at the transport boundary and added
-// to the MCP request context. Missing credentials are allowed through only so
-// initialize/tools/list can run; tool callbacks return the MCP OAuth challenge.
+// to the MCP request context. Missing credentials are allowed through only for
+// initialize/tools/list; tools/call and GET probes return HTTP 401 with
+// WWW-Authenticate so Claude/ChatGPT can start OAuth.
 const authHandler = withSmartMenuAuth(handler as unknown as McpRouteHandler, createMcpTokenVerifier(adminClient), {
     resourceMetadataPath: MERCHANT_OAUTH_PATHS.protectedResourceMetadata,
     requiredScope: MERCHANT_OAUTH_SCOPE,
