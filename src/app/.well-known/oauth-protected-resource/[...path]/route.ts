@@ -17,8 +17,15 @@ const WELL_KNOWN_PREFIX = '/.well-known/oauth-protected-resource'
 
 function isMerchantResourcePath(url: string): boolean {
   try {
-    const suffix = new URL(url).pathname.slice(WELL_KNOWN_PREFIX.length)
-    return suffix === '/api/mcp/merchant' || suffix.startsWith('/api/mcp/merchant/')
+    const pathname = new URL(url).pathname
+    // Match both RFC 9728 suffixes and ChatGPT's MCP-path probes. After a
+    // rewrite, `req.url` may still be the original `/api/mcp/merchant/mcp/...`
+    // path instead of the destination well-known URL.
+    return (
+      pathname.includes('/api/mcp/merchant') ||
+      pathname.includes(`${WELL_KNOWN_PREFIX}/merchant`) ||
+      pathname.includes(`${WELL_KNOWN_PREFIX}/api/mcp/merchant`)
+    )
   } catch {
     return false
   }

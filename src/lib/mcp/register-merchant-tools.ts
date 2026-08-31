@@ -4,6 +4,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { listMerchantOps, executeMerchantOp } from '@/lib/mcp/merchant-ops'
 import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
+import { buildBearerChallenge } from '@/lib/mcp/oauth-config'
 
 const SMARTMENU_ORIGIN = 'https://www.webnegosyo.com'
 const OAUTH_SECURITY_SCHEMES = [{ type: 'oauth2' as const, scopes: [MERCHANT_OAUTH_SCOPE] }]
@@ -19,13 +20,18 @@ function textResult(text: string, isError = false): CallToolResult {
 
 /** Returns the MCP-standard OAuth challenge pointing at the MERCHANT resource. */
 function authenticationRequired(): CallToolResult {
-    const resourceMetadata = `${SMARTMENU_ORIGIN}${MERCHANT_OAUTH_PATHS.protectedResourceMetadata}`
     return {
         content: [{ type: 'text', text: 'Authentication required.' }],
         isError: true,
         _meta: {
             'mcp/www_authenticate': [
-                `Bearer resource_metadata="${resourceMetadata}", scope="${MERCHANT_OAUTH_SCOPE}", error="invalid_token", error_description="Authentication required"`,
+                buildBearerChallenge({
+                    origin: SMARTMENU_ORIGIN,
+                    resourceMetadataPath: MERCHANT_OAUTH_PATHS.protectedResourceMetadata,
+                    error: 'invalid_token',
+                    description: 'Authentication required',
+                    scope: MERCHANT_OAUTH_SCOPE,
+                }),
             ],
         },
     }

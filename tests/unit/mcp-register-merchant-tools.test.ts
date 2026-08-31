@@ -66,7 +66,7 @@ describe('registerMerchantTools', () => {
     expect(result.isError).toBe(true)
     expect(result._meta?.['mcp/www_authenticate']).toEqual([
       expect.stringMatching(
-        /resource_metadata="https:\/\/www\.webnegosyo\.com\/\.well-known\/oauth-protected-resource\/api\/mcp\/merchant".*scope="tenant_admin".*error="invalid_token"/,
+        /resource_metadata="https:\/\/www\.webnegosyo\.com\/\.well-known\/oauth-protected-resource\/api\/mcp\/merchant".*authorization_uri="https:\/\/www\.webnegosyo\.com\/api\/mcp\/oauth\/authorize".*scope="tenant_admin".*error="invalid_token"/,
       ),
     ])
     expect(executeMerchantOp).not.toHaveBeenCalled()
