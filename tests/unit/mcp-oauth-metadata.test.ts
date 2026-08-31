@@ -3,8 +3,10 @@
  */
 import { describe, it, expect, afterEach } from '@jest/globals'
 import { getOrigin, getJwtSecret } from '@/lib/mcp/oauth-config'
+import { publicJwkFromSecret } from '@/lib/mcp/oauth-jwt'
 import { GET as protectedResourceGET } from '@/app/.well-known/oauth-protected-resource/route'
 import { GET as authServerGET } from '@/app/.well-known/oauth-authorization-server/route'
+import { GET as jwksGET } from '@/app/.well-known/jwks.json/route'
 
 function reqWithHeaders(url: string, headers: Record<string, string> = {}): Request {
   return { url, headers: new Headers(headers) } as unknown as Request
@@ -65,5 +67,28 @@ describe('authorization-server metadata', () => {
     expect(body.grant_types_supported).toEqual(expect.arrayContaining(['authorization_code', 'refresh_token']))
     expect(body.token_endpoint_auth_methods_supported).toContain('none')
     expect(body.scopes_supported).toEqual(expect.arrayContaining(['superadmin', 'offline_access']))
+    expect(body.jwks_uri).toBe('https://x.example.com/.well-known/jwks.json')
+    expect(body.id_token_signing_alg_values_supported).toEqual(['EdDSA'])
+  })
+})
+
+describe('JWKS', () => {
+  const original = process.env.MCP_OAUTH_JWT_SECRET
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.MCP_OAUTH_JWT_SECRET
+    else process.env.MCP_OAUTH_JWT_SECRET = original
+  })
+
+  it('publishes the Ed25519 public key derived from the signing secret', () => {
+    process.env.MCP_OAUTH_JWT_SECRET = 'jwks-secret-please-change-0123456789'
+    const res = jwksGET()
+    expect(res.status).toBe(200)
+    return res.json().then((body: { keys: Array<{ kty: string; crv: string; kid: string; x: string }> }) => {
+      expect(body.keys).toHaveLength(1)
+      expect(body.keys[0]).toEqual(publicJwkFromSecret('jwks-secret-please-change-0123456789'))
+      expect(body.keys[0].kty).toBe('OKP')
+      expect(body.keys[0].crv).toBe('Ed25519')
+    })
   })
 })

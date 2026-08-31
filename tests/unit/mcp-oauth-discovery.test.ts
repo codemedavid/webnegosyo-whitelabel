@@ -78,6 +78,10 @@ describe('ChatGPT well-known probes on the MCP resource URL', () => {
     expect(body.authorization_endpoint).toBe(`${ORIGIN}/api/mcp/oauth/authorize`)
   })
 
+  it('rewrites /api/mcp/mcp/.well-known/jwks.json onto the origin JWKS document', () => {
+    expect(rewriteMcpPathWellKnown('/api/mcp/mcp/.well-known/jwks.json')).toBe('/.well-known/jwks.json')
+  })
+
   it('rewrites /api/mcp/mcp/.well-known/openid-configuration onto the origin document', async () => {
     const destination = rewriteMcpPathWellKnown('/api/mcp/mcp/.well-known/openid-configuration')
     expect(destination).toBe('/.well-known/openid-configuration')

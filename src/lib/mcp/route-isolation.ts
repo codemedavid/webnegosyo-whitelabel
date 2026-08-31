@@ -2,6 +2,7 @@ const MCP_WELL_KNOWN_PREFIXES = [
   '/.well-known/oauth-protected-resource',
   '/.well-known/oauth-authorization-server',
   '/.well-known/openid-configuration',
+  '/.well-known/jwks.json',
 ] as const
 
 /** Protocol endpoints own their authentication and must bypass app sessions. */

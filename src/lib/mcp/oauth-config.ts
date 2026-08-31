@@ -23,6 +23,7 @@ export const OAUTH_PATHS = {
   register: '/api/mcp/oauth/register',
   authorizationServerMetadata: '/.well-known/oauth-authorization-server',
   protectedResourceMetadata: '/.well-known/oauth-protected-resource',
+  jwks: '/.well-known/jwks.json',
 } as const
 
 /**
