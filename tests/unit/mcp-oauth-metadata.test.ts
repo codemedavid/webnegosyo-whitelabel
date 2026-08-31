@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { describe, it, expect, afterEach } from '@jest/globals'
+import { describe, it, expect, afterEach, beforeEach } from '@jest/globals'
 import { getOrigin, getJwtSecret } from '@/lib/mcp/oauth-config'
 import { publicJwkFromSecret } from '@/lib/mcp/oauth-jwt'
 import { GET as protectedResourceGET } from '@/app/.well-known/oauth-protected-resource/route'
@@ -47,11 +47,23 @@ describe('getJwtSecret', () => {
 })
 
 describe('protected-resource metadata', () => {
-  it('points the MCP endpoint at the same-origin authorization server', async () => {
+  const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co/'
+  })
+
+  afterEach(() => {
+    if (originalSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl
+  })
+
+  it('points the MCP endpoint at Supabase Auth without named scopes', async () => {
     const res = await protectedResourceGET(reqWithHeaders('https://x.example.com/.well-known/oauth-protected-resource'))
     const body = await res.json()
     expect(body.resource).toBe('https://x.example.com/api/mcp/mcp')
-    expect(body.authorization_servers).toEqual(['https://x.example.com'])
+    expect(body.authorization_servers).toEqual(['https://project.supabase.co/auth/v1'])
+    expect(body.scopes_supported).toBeUndefined()
   })
 })
 

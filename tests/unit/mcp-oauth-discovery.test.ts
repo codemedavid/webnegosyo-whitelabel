@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { describe, it, expect } from '@jest/globals'
+import { afterAll, beforeAll, describe, it, expect } from '@jest/globals'
 import { GET as protectedResourceRootGET } from '@/app/.well-known/oauth-protected-resource/route'
 import { GET as protectedResourceNestedGET } from '@/app/.well-known/oauth-protected-resource/[...path]/route'
 import { GET as authServerRootGET } from '@/app/.well-known/oauth-authorization-server/route'
@@ -16,6 +16,16 @@ function req(url: string): Request {
 }
 
 const ORIGIN = 'https://x.example.com'
+const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+beforeAll(() => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co/'
+})
+
+afterAll(() => {
+  if (originalSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL
+  else process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl
+})
 
 // RFC 9728 §3.1 / RFC 8414 §3.1: a client holding the resource URL
 // `https://host/api/mcp/mcp` builds the metadata URL by inserting the
@@ -32,7 +42,8 @@ describe('protected-resource metadata discovery (RFC 9728 §3.1)', () => {
 
     expect(nestedBody).toEqual(rootBody)
     expect(nestedBody.resource).toBe(`${ORIGIN}/api/mcp/mcp`)
-    expect(nestedBody.authorization_servers).toEqual([ORIGIN])
+    expect(nestedBody.authorization_servers).toEqual(['https://project.supabase.co/auth/v1'])
+    expect(nestedBody.scopes_supported).toBeUndefined()
   })
 })
 
@@ -96,7 +107,8 @@ describe('ChatGPT well-known probes on the MCP resource URL', () => {
 
     const body = await (await protectedResourceRootGET(req(`${ORIGIN}${destination}`))).json()
     expect(body.resource).toBe(`${ORIGIN}/api/mcp/mcp`)
-    expect(body.authorization_servers).toEqual([ORIGIN])
+    expect(body.authorization_servers).toEqual(['https://project.supabase.co/auth/v1'])
+    expect(body.scopes_supported).toBeUndefined()
   })
 
   it('rewrites RFC 8414 path insertion under /api/mcp onto the origin authorization-server document', async () => {

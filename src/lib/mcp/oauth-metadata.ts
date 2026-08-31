@@ -1,5 +1,6 @@
 import { OAUTH_OFFLINE_SCOPE, OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
 import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
+import { getSupabaseOAuthIssuer, getSuperadminMcpResource } from '@/lib/mcp/supabase-oauth-config'
 
 /**
  * Builders for the OAuth discovery documents. Kept separate from the route
@@ -14,7 +15,7 @@ export interface ProtectedResourceMetadata {
   resource: string
   authorization_servers: string[]
   bearer_methods_supported: string[]
-  scopes_supported: string[]
+  scopes_supported?: string[]
 }
 
 export interface AuthorizationServerMetadata {
@@ -34,10 +35,9 @@ export interface AuthorizationServerMetadata {
 /** RFC 9728 — tells an MCP client which authorization server guards the endpoint. */
 export function buildProtectedResourceMetadata(origin: string): ProtectedResourceMetadata {
   return {
-    resource: `${origin}${OAUTH_PATHS.mcp}`,
-    authorization_servers: [origin],
+    resource: getSuperadminMcpResource(origin),
+    authorization_servers: [getSupabaseOAuthIssuer()],
     bearer_methods_supported: ['header'],
-    scopes_supported: [OAUTH_SCOPE],
   }
 }
 
