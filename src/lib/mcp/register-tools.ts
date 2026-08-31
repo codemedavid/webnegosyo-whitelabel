@@ -3,10 +3,11 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { listOps, executeOp } from '@/lib/mcp/provisioning-ops'
-import { buildBearerChallenge, OAUTH_PATHS, OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
+import { buildBearerChallenge, OAUTH_PATHS } from '@/lib/mcp/oauth-config'
+import { SUPERADMIN_INTERNAL_SCOPE } from '@/lib/mcp/supabase-oauth-config'
 
 const SMARTMENU_ORIGIN = 'https://www.webnegosyo.com'
-const OAUTH_SECURITY_SCHEMES = [{ type: 'oauth2' as const, scopes: [OAUTH_SCOPE] }]
+const OAUTH_SECURITY_SCHEMES = [{ type: 'oauth2' as const, scopes: [] }]
 
 interface ToolRequestExtra {
     authInfo?: AuthInfo
@@ -29,7 +30,7 @@ function authenticationRequired(): CallToolResult {
                     resourceMetadataPath: OAUTH_PATHS.protectedResourceMetadata,
                     error: 'invalid_token',
                     description: 'Authentication required',
-                    scope: OAUTH_SCOPE,
+                    includeAuthorizationUri: false,
                 }),
             ],
         },
@@ -56,7 +57,7 @@ export function registerProvisioningTools(server: McpServer, ctx: ProvisioningCt
                 _meta: { securitySchemes: OAUTH_SECURITY_SCHEMES },
             },
             async (args: unknown, extra: ToolRequestExtra): Promise<CallToolResult> => {
-                if (!extra.authInfo?.scopes.includes(OAUTH_SCOPE)) {
+                if (!extra.authInfo?.scopes.includes(SUPERADMIN_INTERNAL_SCOPE)) {
                     return authenticationRequired()
                 }
 

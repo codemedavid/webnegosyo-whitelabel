@@ -13,6 +13,25 @@ function jsonRpcRequest(method: string, extra: Record<string, unknown> = {}): Re
 }
 
 describe('withSmartMenuAuth', () => {
+  it('protects initialize and emits only the standard resource_metadata challenge', async () => {
+    const handler = jest.fn(async () => new Response('unexpected'))
+    const wrapped = withSmartMenuAuth(handler, async () => undefined, {
+      resourceMetadataPath: '/.well-known/oauth-protected-resource',
+      required: true,
+      requiredScope: 'superadmin',
+      challengeScope: false,
+      includeAuthorizationUri: false,
+    })
+
+    const response = await wrapped(jsonRpcRequest('initialize'), {})
+    expect(response.status).toBe(401)
+    const challenge = response.headers.get('WWW-Authenticate')!
+    expect(challenge).toContain('resource_metadata=')
+    expect(challenge).not.toContain('authorization_uri=')
+    expect(challenge).not.toContain('scope=')
+    expect(handler).not.toHaveBeenCalled()
+  })
+
   it('allows an anonymous MCP handshake when transport authentication is optional', async () => {
     const handler = jest.fn(async () => Response.json({ ok: true }))
     const verify = jest.fn(async () => undefined)

@@ -28,8 +28,8 @@ export const OAUTH_PATHS = {
 
 /**
  * RFC 6750 / RFC 9728 WWW-Authenticate value. ChatGPT's plugin Authenticate
- * button looks here for a URL it can open; without `authorization_uri` it
- * reports "didn't provide a sign-in link" even when resource_metadata is set.
+ * Legacy resources can include `authorization_uri`; standards-only resources
+ * can direct clients exclusively through `resource_metadata`.
  */
 export function buildBearerChallenge(options: {
   origin: string
@@ -37,10 +37,13 @@ export function buildBearerChallenge(options: {
   error: string
   description: string
   scope?: string
+  includeAuthorizationUri?: boolean
 }): string {
   const params = [
     `resource_metadata="${options.origin}${options.resourceMetadataPath}"`,
-    `authorization_uri="${options.origin}${OAUTH_PATHS.authorize}"`,
+    ...(options.includeAuthorizationUri === false
+      ? []
+      : [`authorization_uri="${options.origin}${OAUTH_PATHS.authorize}"`]),
     ...(options.scope ? [`scope="${options.scope}"`] : []),
     `error="${options.error}"`,
     `error_description="${options.description}"`,
