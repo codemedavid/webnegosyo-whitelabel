@@ -9,6 +9,8 @@ interface SmartMenuAuthOptions {
   resourceMetadataPath: string
   requiredScope?: string
   required?: boolean
+  challengeScope?: string | false
+  includeAuthorizationUri?: boolean
 }
 
 /**
@@ -21,9 +23,9 @@ interface SmartMenuAuthOptions {
  * When `required` is false, the MCP handshake (`initialize`, `tools/list`,
  * `ping`, notifications) stays anonymous so clients can discover tools. Every
  * other request — including `tools/call` and GET probes — returns HTTP 401 with
- * `WWW-Authenticate` (including `authorization_uri`). Claude starts OAuth from
- * that transport 401. ChatGPT's plugin Authenticate button also needs the
- * authorization-server document at the MCP resource URL.
+ * `WWW-Authenticate`. Challenge fields are resource-specific: the merchant
+ * resource keeps its local authorization link while superadmin uses only the
+ * standard protected-resource metadata link.
  */
 export function withSmartMenuAuth(
   handler: McpRouteHandler,
@@ -31,6 +33,9 @@ export function withSmartMenuAuth(
   options: SmartMenuAuthOptions,
 ): McpRouteHandler {
   const requiredScope = options.requiredScope ?? 'superadmin'
+  const challengeScope = options.challengeScope === false
+    ? undefined
+    : options.challengeScope ?? requiredScope
 
   return async (req, ctx) => {
     const bearerToken = extractBearerToken(req.headers.get('authorization')) ?? undefined
@@ -46,7 +51,8 @@ export function withSmartMenuAuth(
         'Missing or invalid access token',
         origin,
         options.resourceMetadataPath,
-        requiredScope,
+        challengeScope,
+        options.includeAuthorizationUri,
       )
     }
 
@@ -59,7 +65,8 @@ export function withSmartMenuAuth(
         'Missing or invalid access token',
         origin,
         options.resourceMetadataPath,
-        requiredScope,
+        challengeScope,
+        options.includeAuthorizationUri,
       )
     }
     if (!authInfo.scopes.includes(requiredScope)) {
@@ -69,7 +76,8 @@ export function withSmartMenuAuth(
         `Required scope: ${requiredScope}`,
         origin,
         options.resourceMetadataPath,
-        requiredScope,
+        challengeScope,
+        options.includeAuthorizationUri,
       )
     }
 
@@ -114,6 +122,7 @@ function oauthErrorResponse(
   origin: string,
   resourceMetadataPath: string,
   scope?: string,
+  includeAuthorizationUri?: boolean,
 ): Response {
   const challenge = buildBearerChallenge({
     origin,
@@ -121,6 +130,7 @@ function oauthErrorResponse(
     error,
     description,
     scope,
+    includeAuthorizationUri,
   })
 
   return Response.json(

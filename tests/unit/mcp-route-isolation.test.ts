@@ -6,6 +6,7 @@ describe('isMcpProtocolRoute', () => {
     '/api/mcp/mcp',
     '/api/mcp/oauth/authorize',
     '/api/mcp/oauth/token',
+    '/api/mcp/supabase/decision',
     '/.well-known/oauth-protected-resource',
     '/.well-known/oauth-authorization-server/api/mcp/mcp',
     '/.well-known/openid-configuration',

@@ -1,6 +1,4 @@
-import { OAUTH_SCOPE } from '@/lib/mcp/oauth-config'
-
-const OAUTH_SECURITY_SCHEMES = [{ type: 'oauth2', scopes: [OAUTH_SCOPE] }] as const
+export type McpSecurityScheme = { type: 'oauth2'; scopes: string[] }
 
 /**
  * Adds the top-level tool auth metadata required by OpenAI clients.
@@ -9,11 +7,14 @@ const OAUTH_SECURITY_SCHEMES = [{ type: 'oauth2', scopes: [OAUTH_SCOPE] }] as co
  * the equivalent top-level field from `tools/list`. This adapter runs only for
  * that discovery response and keeps both representations in sync.
  */
-export async function withSmartMenuToolSecurity(response: Response): Promise<Response> {
+export async function withSmartMenuToolSecurity(
+  response: Response,
+  schemes: readonly McpSecurityScheme[],
+): Promise<Response> {
   const contentType = response.headers.get('content-type') ?? ''
   if (contentType.includes('application/json')) {
     const payload = await response.json() as unknown
-    addSecuritySchemes(payload)
+    addSecuritySchemes(payload, schemes)
     return copyResponse(response, JSON.stringify(payload))
   }
   if (!contentType.includes('text/event-stream')) return response
@@ -21,29 +22,35 @@ export async function withSmartMenuToolSecurity(response: Response): Promise<Res
   const body = await response.text()
   const securedBody = body
     .split('\n')
-    .map((line) => secureSseDataLine(line))
+    .map((line) => secureSseDataLine(line, schemes))
     .join('\n')
 
   return copyResponse(response, securedBody)
 }
 
-function secureSseDataLine(line: string): string {
+function secureSseDataLine(
+  line: string,
+  schemes: readonly McpSecurityScheme[],
+): string {
   if (!line.startsWith('data: ')) return line
 
   try {
     const payload = JSON.parse(line.slice('data: '.length)) as unknown
-    addSecuritySchemes(payload)
+    addSecuritySchemes(payload, schemes)
     return `data: ${JSON.stringify(payload)}`
   } catch {
     return line
   }
 }
 
-function addSecuritySchemes(payload: unknown): void {
+function addSecuritySchemes(
+  payload: unknown,
+  schemes: readonly McpSecurityScheme[],
+): void {
   if (!isRecord(payload) || !isRecord(payload.result) || !Array.isArray(payload.result.tools)) return
 
   for (const tool of payload.result.tools) {
-    if (isRecord(tool)) tool.securitySchemes = OAUTH_SECURITY_SCHEMES
+    if (isRecord(tool)) tool.securitySchemes = schemes
   }
 }
 

@@ -67,39 +67,10 @@ const nextConfig: NextConfig = {
   // Enable static optimization where possible
   staticPageGenerationTimeout: 120,
 
-  // ChatGPT probes OAuth discovery on the MCP resource URL. Next.js only
-  // serves `.well-known` from the app root, so these rewrites (plus the
-  // matching middleware rewrite) expose the existing origin documents there.
+  // Merchant MCP clients may probe OAuth discovery on the resource URL.
+  // These rewrites expose only the remaining merchant authorization server.
   async rewrites() {
     return [
-      {
-        source: '/api/mcp/mcp/.well-known/oauth-authorization-server',
-        destination: '/.well-known/oauth-authorization-server',
-      },
-      {
-        source: '/api/mcp/mcp/.well-known/openid-configuration',
-        destination: '/.well-known/openid-configuration',
-      },
-      {
-        source: '/api/mcp/mcp/.well-known/oauth-protected-resource',
-        destination: '/.well-known/oauth-protected-resource',
-      },
-      {
-        source: '/api/mcp/mcp/.well-known/jwks.json',
-        destination: '/.well-known/jwks.json',
-      },
-      {
-        source: '/api/mcp/.well-known/oauth-authorization-server/:path*',
-        destination: '/.well-known/oauth-authorization-server',
-      },
-      {
-        source: '/api/mcp/.well-known/openid-configuration/:path*',
-        destination: '/.well-known/openid-configuration',
-      },
-      {
-        source: '/api/mcp/.well-known/oauth-protected-resource/:path*',
-        destination: '/.well-known/oauth-protected-resource/:path*',
-      },
       {
         source: '/api/mcp/merchant/mcp/.well-known/oauth-authorization-server',
         destination: '/.well-known/oauth-authorization-server',

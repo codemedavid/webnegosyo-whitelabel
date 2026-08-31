@@ -12,7 +12,7 @@ import {
 } from '@/lib/mcp/oauth-service'
 
 const NOW = 1_700_000_000_000
-const AUDIENCE = 'https://example.com/api/mcp/mcp'
+const AUDIENCE = 'https://example.com/api/mcp/merchant/mcp'
 const ISSUER = 'https://example.com'
 const JWT_SECRET = 'test-secret-please-change-0123456789'
 const BASE_TOKEN_OPTS = {
@@ -122,8 +122,9 @@ describe('issueAuthorizationCode', () => {
         redirectUri: 'https://claude.ai/cb',
         codeChallenge: 'chal',
         codeChallengeMethod: 'S256',
-        scope: 'superadmin',
+        scope: 'tenant_admin offline_access',
         userId: 'user_1',
+        tenantId: 'tenant_1',
       },
       { now: NOW, ttlSeconds: 600 },
     )
@@ -137,8 +138,9 @@ describe('issueAuthorizationCode', () => {
       redirect_uri: 'https://claude.ai/cb',
       code_challenge: 'chal',
       code_challenge_method: 'S256',
-      scope: 'superadmin',
+      scope: 'tenant_admin offline_access',
       created_by: 'user_1',
+      tenant_id: 'tenant_1',
     })
     expect(typeof payload.expires_at).toBe('string')
   })
@@ -152,10 +154,11 @@ describe('exchangeAuthorizationCode', () => {
     redirect_uri: 'https://claude.ai/cb',
     code_challenge: s256(verifier),
     code_challenge_method: 'S256',
-    scope: 'superadmin',
+    scope: 'tenant_admin offline_access',
     created_by: 'user_1',
     consumed_at: null,
     expires_at: new Date(NOW + 60_000).toISOString(),
+    tenant_id: 'tenant_1',
     ...overrides,
   })
 
@@ -179,8 +182,9 @@ describe('exchangeAuthorizationCode', () => {
     expect(accessInsert?.payload).toMatchObject({
       key_hash: hashApiKey(result.access_token),
       key_prefix: MCP_OAUTH_KEY_PREFIX,
-      scopes: ['superadmin'],
+      scopes: ['tenant_admin'],
       created_by: 'user_1',
+      tenant_id: 'tenant_1',
     })
     // the code is marked consumed and only the refresh token HASH is stored
     expect(stub.updates.some((u) => u.table === 'mcp_oauth_codes' && 'consumed_at' in u.payload)).toBe(true)
@@ -274,9 +278,10 @@ describe('refreshAccessToken', () => {
         id: 'tok_1',
         client_id: 'client_1',
         subject: 'user_1',
-        scope: 'superadmin',
+        scope: 'tenant_admin offline_access',
         revoked_at: null,
         expires_at: new Date(NOW + 100_000).toISOString(),
+        tenant_id: 'tenant_1',
       },
       error: null,
     })
@@ -296,7 +301,7 @@ describe('refreshAccessToken', () => {
   it('rejects a revoked refresh token', async () => {
     const stub = makeClient()
     stub.singleQueue.push({
-      data: { id: 'tok_1', client_id: 'client_1', subject: 'user_1', scope: 'superadmin', revoked_at: new Date(NOW).toISOString(), expires_at: new Date(NOW + 100_000).toISOString() },
+      data: { id: 'tok_1', client_id: 'client_1', subject: 'user_1', scope: 'tenant_admin', revoked_at: new Date(NOW).toISOString(), expires_at: new Date(NOW + 100_000).toISOString(), tenant_id: 'tenant_1' },
       error: null,
     })
     await expect(

@@ -2,7 +2,8 @@ import { createMcpHandler } from 'mcp-handler'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { registerProvisioningTools } from '@/lib/mcp/register-tools'
-import { createMcpTokenVerifier } from '@/lib/mcp/auth-adapter'
+import { createSuperadminTokenVerifier } from '@/lib/mcp/superadmin-auth'
+import { SUPERADMIN_INTERNAL_SCOPE } from '@/lib/mcp/supabase-oauth-config'
 import { withCorsHeaders, corsPreflightResponse } from '@/lib/mcp/cors'
 import { withSmartMenuAuth } from '@/lib/mcp/request-auth'
 import { withSmartMenuToolSecurity } from '@/lib/mcp/tool-discovery'
@@ -12,9 +13,9 @@ import { withMcpAcceptCompatibility } from '@/lib/mcp/request-compatibility'
 // branding provisioning. One URL serves both Claude remote connectors and
 // ChatGPT custom connectors.
 //
-// The MCP handshake and tool discovery remain available anonymously, as OAuth
-// MCP clients require them immediately after redirect. Every registered tool
-// advertises OAuth and checks the verified superadmin scope before dispatching.
+// Every MCP request is authenticated by Supabase before it reaches the handler.
+// Tool discovery advertises standards-based OAuth without a named public scope;
+// tools still check the internal superadmin authorization scope before dispatch.
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -23,6 +24,7 @@ export const maxDuration = 60
 // enforced by withMcpAuth, not by this client.
 const adminClient = createAdminClient()
 const ctx: ProvisioningCtx = { client: adminClient }
+const TOOL_SECURITY_SCHEMES = [{ type: 'oauth2' as const, scopes: [] }]
 
 const handler = createMcpHandler(
     (server) => {
@@ -32,14 +34,15 @@ const handler = createMcpHandler(
     { basePath: '/api/mcp', maxDuration: 60, disableSse: true },
 )
 
-// A supplied credential is still verified at the transport boundary and added
-// to the MCP request context. Missing credentials are allowed through only for
-// initialize/tools/list; tools/call and GET probes return HTTP 401 with
-// WWW-Authenticate so Claude/ChatGPT can start OAuth.
-const authHandler = withSmartMenuAuth(handler as unknown as McpRouteHandler, createMcpTokenVerifier(adminClient), {
+// Supabase OAuth credentials are required uniformly for initialize, ping,
+// tools/list, tools/call, and transport probes. The 401 challenge points clients
+// to protected-resource metadata, which identifies Supabase as the issuer.
+const authHandler = withSmartMenuAuth(handler as unknown as McpRouteHandler, createSuperadminTokenVerifier(adminClient), {
     resourceMetadataPath: '/.well-known/oauth-protected-resource',
-    requiredScope: 'superadmin',
-    required: false,
+    requiredScope: SUPERADMIN_INTERNAL_SCOPE,
+    required: true,
+    challengeScope: false,
+    includeAuthorizationUri: false,
 })
 const compatibleAuthHandler = withMcpAcceptCompatibility(authHandler as unknown as McpRouteHandler)
 
@@ -56,7 +59,7 @@ const corsHandler: McpRouteHandler = async (req, ctx) => {
     const isToolDiscovery = await isToolsListRequest(req)
     const response = await compatibleAuthHandler(req, ctx)
     const securedResponse = isToolDiscovery
-        ? await withSmartMenuToolSecurity(response)
+        ? await withSmartMenuToolSecurity(response, TOOL_SECURITY_SCHEMES)
         : response
     return withCorsHeaders(securedResponse)
 }

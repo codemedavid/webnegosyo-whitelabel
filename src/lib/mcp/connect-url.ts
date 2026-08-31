@@ -1,5 +1,6 @@
 const MCP_TRANSPORT_PATH = '/api/mcp/mcp'
 const MERCHANT_MCP_TRANSPORT_PATH = '/api/mcp/merchant/mcp'
+const SMARTMENU_PRODUCTION_ORIGIN = 'https://www.webnegosyo.com'
 
 interface McpConnectUrlEnv {
   NEXT_PUBLIC_APP_URL?: string
@@ -21,6 +22,14 @@ export function resolveMcpConnectUrl(env: McpConnectUrlEnv): string {
 /** The public MERCHANT (tenant admin) MCP endpoint shown on the admin page. */
 export function resolveMerchantMcpConnectUrl(env: McpConnectUrlEnv): string {
   return resolveTransportUrl(env, MERCHANT_MCP_TRANSPORT_PATH)
+}
+
+/** Exact trusted site origin for browser-to-server superadmin MCP requests. */
+export function resolveSmartMenuSiteOrigin(env: McpConnectUrlEnv): string {
+  const connectUrl = resolveMcpConnectUrl(env)
+  return connectUrl.startsWith('/')
+    ? SMARTMENU_PRODUCTION_ORIGIN
+    : new URL(connectUrl).origin
 }
 
 function resolveTransportUrl(env: McpConnectUrlEnv, transportPath: string): string {

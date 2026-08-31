@@ -1,6 +1,22 @@
-// RFC 8414 §3.1 path-suffixed form of the authorization server metadata, e.g.
-// `/.well-known/oauth-authorization-server/api/mcp/mcp`.
-export { GET, OPTIONS } from '../route'
+import { OAUTH_CORS_HEADERS } from '@/lib/mcp/oauth-config'
+import { GET as getRootMetadata, OPTIONS } from '../route'
+
+const MERCHANT_SUFFIXES = new Set([
+  '/api/mcp/merchant',
+  '/api/mcp/merchant/mcp',
+])
+
+export function GET(req: Request): Response {
+  const prefix = '/.well-known/oauth-authorization-server'
+  const pathname = new URL(req.url).pathname
+  const suffix = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : ''
+  if (!MERCHANT_SUFFIXES.has(suffix)) {
+    return new Response(null, { status: 404, headers: OAUTH_CORS_HEADERS })
+  }
+  return getRootMetadata(req)
+}
+
+export { OPTIONS }
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

@@ -1,13 +1,15 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { generateOAuthAccessKey, hashApiKey } from '@/lib/mcp-auth'
+import { MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
+import { OAUTH_OFFLINE_SCOPE } from '@/lib/mcp/oauth-config'
 import { signAccessToken } from '@/lib/mcp/oauth-jwt'
 
 /**
- * OAuth 2.1 authorization-server logic for the SmartMenu MCP, backing the
- * "automatic login" connect flow (no copy-pasted keys). This module is the pure,
- * testable core: it takes an explicit Supabase client and an injectable clock,
- * and never touches cookies or HTTP directly. The route handlers wrap it.
+ * OAuth 2.1 authorization-server logic for the merchant MCP, backing the
+ * automatic login flow. This module is the pure, testable core: it takes an
+ * explicit Supabase client and an injectable clock, and never touches cookies
+ * or HTTP directly. The route handlers wrap it.
  *
  * Design:
  * - Public clients + PKCE (no client secret), per the MCP OAuth spec.
@@ -40,6 +42,15 @@ function constantTimeEquals(a: string, b: string): boolean {
   const bufB = Buffer.from(b)
   if (bufA.length !== bufB.length) return false
   return timingSafeEqual(bufA, bufB)
+}
+
+function isValidMerchantGrant(scope: string, tenantId: string | null): boolean {
+  const requested = scope.split(/\s+/).filter(Boolean)
+  const allowed = new Set([MERCHANT_OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE])
+  return typeof tenantId === 'string'
+    && tenantId.trim().length > 0
+    && requested.includes(MERCHANT_OAUTH_SCOPE)
+    && requested.every((item) => allowed.has(item))
 }
 
 /** RFC 7636 PKCE verification. `S256` compares base64url(sha256(verifier)). */
@@ -147,7 +158,7 @@ export interface IssueCodeInput {
   codeChallengeMethod: PkceMethod
   scope: string
   userId: string
-  /** Tenant a tenant_admin authorization is pinned to; omit for superadmin. */
+  /** Tenant a tenant_admin authorization is pinned to. */
   tenantId?: string | null
 }
 
@@ -253,6 +264,9 @@ export async function exchangeAuthorizationCode(
   if (!verifyPkce(input.codeVerifier, row.code_challenge, row.code_challenge_method)) {
     throw new Error('invalid_grant: PKCE verification failed')
   }
+  if (!isValidMerchantGrant(row.scope, row.tenant_id)) {
+    throw new Error('invalid_grant: authorization code is not a merchant grant')
+  }
 
   // Single-use: consume the code before issuing tokens.
   const { error: consumeError } = await client
@@ -283,7 +297,7 @@ interface IssueTokensParams {
   clientId: string
   subject: string
   scope: string
-  /** Tenant pin carried through the whole credential chain; null = superadmin. */
+  /** Required merchant tenant pin carried through the whole credential chain. */
   tenantId: string | null
   now: number
   accessTtlSeconds: number
@@ -399,6 +413,9 @@ export async function refreshAccessToken(
   }
   if (row.client_id !== input.clientId) {
     throw new Error('invalid_grant: client mismatch')
+  }
+  if (!isValidMerchantGrant(row.scope, row.tenant_id)) {
+    throw new Error('invalid_grant: refresh token is not a merchant grant')
   }
 
   const { error: revokeError } = await client

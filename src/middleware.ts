@@ -140,6 +140,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/support') ||
     pathname.startsWith('/download') ||
     pathname.includes('/login') ||
+    pathname === '/superadmin/mcp/authorize' ||
     pathname.startsWith('/superadmin/login')
 
   // Protect superadmin routes: require auth + role
