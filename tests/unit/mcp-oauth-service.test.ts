@@ -12,6 +12,16 @@ import {
 } from '@/lib/mcp/oauth-service'
 
 const NOW = 1_700_000_000_000
+const AUDIENCE = 'https://example.com/api/mcp/mcp'
+const ISSUER = 'https://example.com'
+const JWT_SECRET = 'test-secret-please-change-0123456789'
+const BASE_TOKEN_OPTS = {
+  now: NOW,
+  accessTtlSeconds: 3600,
+  refreshTtlSeconds: 2_592_000,
+  audience: AUDIENCE,
+  issuer: ISSUER,
+} as const
 
 /** Chainable Supabase stub with per-table terminal queues keyed by call order. */
 function makeClient() {
@@ -158,7 +168,7 @@ describe('exchangeAuthorizationCode', () => {
     const result = await exchangeAuthorizationCode(
       stub.client,
       { code: 'plaintext-code', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-      { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 2_592_000 },
+      BASE_TOKEN_OPTS,
     )
 
     expect(result.token_type).toBe('Bearer')
@@ -179,6 +189,22 @@ describe('exchangeAuthorizationCode', () => {
     expect(JSON.stringify(refreshInsert?.payload)).not.toContain(result.refresh_token)
   })
 
+  it('issues a JWT access token when a signing secret is provided, without hashing it into mcp_api_keys', async () => {
+    const stub = makeClient()
+    stub.singleQueue.push({ data: storedCodeRow(), error: null })
+    stub.singleQueue.push({ data: { id: 'code_row_1', consumed_at: 'x' }, error: null })
+
+    const result = await exchangeAuthorizationCode(
+      stub.client,
+      { code: 'plaintext-code', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
+      { ...BASE_TOKEN_OPTS, jwtSecret: JWT_SECRET },
+    )
+
+    expect(result.access_token.split('.')).toHaveLength(3)
+    expect(stub.inserts.some((i) => i.table === 'mcp_api_keys')).toBe(false)
+    expect(stub.inserts.some((i) => i.table === 'mcp_oauth_tokens')).toBe(true)
+  })
+
   it('rejects an unknown code', async () => {
     const stub = makeClient()
     stub.singleQueue.push({ data: null, error: null })
@@ -186,7 +212,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'nope', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
+        { ...BASE_TOKEN_OPTS, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -198,7 +224,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
+        { ...BASE_TOKEN_OPTS, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -210,7 +236,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: verifier },
-        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
+        { ...BASE_TOKEN_OPTS, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -222,7 +248,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://claude.ai/cb', codeVerifier: 'wrong'.repeat(16) },
-        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
+        { ...BASE_TOKEN_OPTS, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant|pkce/i)
   })
@@ -234,7 +260,7 @@ describe('exchangeAuthorizationCode', () => {
       exchangeAuthorizationCode(
         stub.client,
         { code: 'c', clientId: 'client_1', redirectUri: 'https://evil.example/cb', codeVerifier: verifier },
-        { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 100 },
+        { ...BASE_TOKEN_OPTS, refreshTtlSeconds: 100 },
       ),
     ).rejects.toThrow(/invalid_grant/i)
   })
@@ -258,7 +284,7 @@ describe('refreshAccessToken', () => {
     const result = await refreshAccessToken(
       stub.client,
       { refreshToken: 'refresh-plain', clientId: 'client_1' },
-      { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 2_592_000 },
+      BASE_TOKEN_OPTS,
     )
 
     expect(result.access_token.startsWith(MCP_OAUTH_KEY_PREFIX)).toBe(true)
@@ -274,7 +300,7 @@ describe('refreshAccessToken', () => {
       error: null,
     })
     await expect(
-      refreshAccessToken(stub.client, { refreshToken: 'r', clientId: 'client_1' }, { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 2_592_000 }),
+      refreshAccessToken(stub.client, { refreshToken: 'r', clientId: 'client_1' }, BASE_TOKEN_OPTS),
     ).rejects.toThrow(/invalid_grant/i)
   })
 })

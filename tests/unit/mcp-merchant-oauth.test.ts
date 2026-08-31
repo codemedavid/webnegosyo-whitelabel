@@ -18,6 +18,13 @@ import {
 
 const NOW = 1_700_000_000_000
 const TENANT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+const TOKEN_OPTS = {
+  now: NOW,
+  accessTtlSeconds: 3600,
+  refreshTtlSeconds: 86_400,
+  audience: 'https://example.com/api/mcp/merchant/mcp',
+  issuer: 'https://example.com',
+} as const
 
 /** Chainable Supabase stub with per-table terminal queues keyed by call order. */
 function makeClient() {
@@ -118,7 +125,7 @@ describe('exchangeAuthorizationCode — tenant binding', () => {
         redirectUri: 'https://claude.ai/callback',
         codeVerifier: VERIFIER,
       },
-      { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 86_400 },
+      TOKEN_OPTS,
     )
 
     const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
@@ -145,7 +152,7 @@ describe('exchangeAuthorizationCode — tenant binding', () => {
         redirectUri: 'https://claude.ai/callback',
         codeVerifier: VERIFIER,
       },
-      { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 86_400 },
+      TOKEN_OPTS,
     )
 
     const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
@@ -174,7 +181,7 @@ describe('refreshAccessToken — tenant binding', () => {
     await refreshAccessToken(
       client,
       { refreshToken: 'refresh-1', clientId: 'client_1' },
-      { now: NOW, accessTtlSeconds: 3600, refreshTtlSeconds: 86_400 },
+      TOKEN_OPTS,
     )
 
     const keyInsert = inserts.find((i) => i.table === 'mcp_api_keys')!
