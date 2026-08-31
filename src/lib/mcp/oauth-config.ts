@@ -64,3 +64,9 @@ export function getOrigin(req: Request): string {
   const proto = req.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '')
   return `${proto}://${host}`
 }
+
+/** HS256 signing secret for OAuth access tokens. Grok will not attach opaque tokens. */
+export function getJwtSecret(): string | undefined {
+  const secret = process.env.MCP_OAUTH_JWT_SECRET
+  return secret && secret.length > 0 ? secret : undefined
+}

@@ -5,8 +5,10 @@ import {
   REFRESH_TOKEN_TTL_SECONDS,
   OAUTH_CORS_HEADERS,
   OAUTH_PATHS,
+  getJwtSecret,
   getOrigin,
 } from '@/lib/mcp/oauth-config'
+import { MERCHANT_OAUTH_PATHS } from '@/lib/mcp/merchant-config'
 
 // OAuth 2.1 token endpoint. Exchanges an authorization code (with PKCE verifier)
 // or a refresh token for a Bearer access token. Accepts both form-encoded (the
@@ -44,13 +46,27 @@ export async function POST(req: Request): Promise<Response> {
 
   const admin = createAdminClient()
   const grantType = params.grant_type
-  const audience = `${getOrigin(req)}${OAUTH_PATHS.mcp}`
+  const origin = getOrigin(req)
+  const superadminAudience = `${origin}${OAUTH_PATHS.mcp}`
+  const merchantAudience = `${origin}${MERCHANT_OAUTH_PATHS.mcp}`
+  const audience = params.resource === merchantAudience ? merchantAudience : superadminAudience
+  const jwtSecret = getJwtSecret()
+  if (!jwtSecret) {
+    console.error('[SmartMenu OAuth] MCP_OAUTH_JWT_SECRET is not set; issuing opaque tokens that Grok will not attach')
+  }
 
   // RFC 8707: when the client supplies a resource indicator it must target
-  // this MCP server. Missing is tolerated for older MCP clients, but every
-  // token is still audience-bound to the one canonical SmartMenu resource.
-  if (params.resource && params.resource !== audience) {
+  // this MCP server. Missing is tolerated for older MCP clients.
+  if (params.resource && params.resource !== superadminAudience && params.resource !== merchantAudience) {
     return oauthError('invalid_target', 'resource does not match the SmartMenu MCP endpoint', 400)
+  }
+
+  const tokenOpts = {
+    accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS,
+    refreshTtlSeconds: REFRESH_TOKEN_TTL_SECONDS,
+    audience,
+    issuer: origin,
+    jwtSecret,
   }
 
   try {
@@ -63,10 +79,7 @@ export async function POST(req: Request): Promise<Response> {
           redirectUri: params.redirect_uri ?? '',
           codeVerifier: params.code_verifier ?? '',
         },
-        {
-          accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS,
-          refreshTtlSeconds: REFRESH_TOKEN_TTL_SECONDS,
-        },
+        tokenOpts,
       )
       return tokenResponse(tokens)
     }
@@ -75,10 +88,7 @@ export async function POST(req: Request): Promise<Response> {
       const tokens = await refreshAccessToken(
         admin,
         { refreshToken: params.refresh_token ?? '', clientId: params.client_id ?? '' },
-        {
-          accessTtlSeconds: ACCESS_TOKEN_TTL_SECONDS,
-          refreshTtlSeconds: REFRESH_TOKEN_TTL_SECONDS,
-        },
+        tokenOpts,
       )
       return tokenResponse(tokens)
     }

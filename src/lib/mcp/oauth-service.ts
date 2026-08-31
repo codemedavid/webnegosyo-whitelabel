@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { generateOAuthAccessKey } from '@/lib/mcp-auth'
+import { signAccessToken } from '@/lib/mcp/oauth-jwt'
 
 /**
  * OAuth 2.1 authorization-server logic for the SmartMenu MCP, backing the
@@ -204,6 +205,12 @@ export interface ExchangeCodeOptions {
   now?: number
   accessTtlSeconds: number
   refreshTtlSeconds: number
+  /** Canonical MCP resource URI bound into the access token `aud`. */
+  audience: string
+  /** Authorization-server issuer bound into the access token `iss`. */
+  issuer: string
+  /** When set, access tokens are HS256 JWTs; otherwise opaque `smk_oauth_` keys. */
+  jwtSecret?: string
 }
 
 /**
@@ -266,6 +273,9 @@ export async function exchangeAuthorizationCode(
     now,
     accessTtlSeconds: opts.accessTtlSeconds,
     refreshTtlSeconds: opts.refreshTtlSeconds,
+    audience: opts.audience,
+    issuer: opts.issuer,
+    jwtSecret: opts.jwtSecret,
   })
 }
 
@@ -278,22 +288,41 @@ interface IssueTokensParams {
   now: number
   accessTtlSeconds: number
   refreshTtlSeconds: number
+  audience: string
+  issuer: string
+  jwtSecret?: string
 }
 
 async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promise<TokenResponse> {
-  const accessKey = generateOAuthAccessKey(p.accessTtlSeconds, p.now)
   const refreshToken = opaque(32)
+  let accessToken: string
 
-  const { error: accessError } = await client.from('mcp_api_keys').insert({
-    key_hash: accessKey.hash,
-    key_prefix: accessKey.prefix,
-    label: `OAuth access for ${p.clientId}`,
-    scopes: p.scope.split(' ').filter((scope) => scope !== 'offline_access'),
-    created_by: p.subject,
-    tenant_id: p.tenantId,
-  })
-  if (accessError) {
-    throw new Error(`Failed to persist access token: ${accessError.message}`)
+  if (p.jwtSecret) {
+    accessToken = signAccessToken(
+      {
+        sub: p.subject,
+        scope: p.scope,
+        client_id: p.clientId,
+        aud: p.audience,
+        iss: p.issuer,
+        ...(p.tenantId ? { tenant_id: p.tenantId } : {}),
+      },
+      { secret: p.jwtSecret, expiresInSeconds: p.accessTtlSeconds, now: p.now },
+    )
+  } else {
+    const accessKey = generateOAuthAccessKey(p.accessTtlSeconds, p.now)
+    accessToken = accessKey.plaintext
+    const { error: accessError } = await client.from('mcp_api_keys').insert({
+      key_hash: accessKey.hash,
+      key_prefix: accessKey.prefix,
+      label: `OAuth access for ${p.clientId}`,
+      scopes: p.scope.split(' ').filter((scope) => scope !== 'offline_access'),
+      created_by: p.subject,
+      tenant_id: p.tenantId,
+    })
+    if (accessError) {
+      throw new Error(`Failed to persist access token: ${accessError.message}`)
+    }
   }
 
   const { error } = await client.from('mcp_oauth_tokens').insert({
@@ -305,15 +334,11 @@ async function issueTokens(client: SupabaseClient, p: IssueTokensParams): Promis
     expires_at: new Date(p.now + p.refreshTtlSeconds * 1000).toISOString(),
   })
   if (error) {
-    await client
-      .from('mcp_api_keys')
-      .update({ revoked_at: new Date(p.now).toISOString() })
-      .eq('key_hash', accessKey.hash)
     throw new Error(`Failed to persist refresh token: ${error.message}`)
   }
 
   return {
-    access_token: accessKey.plaintext,
+    access_token: accessToken,
     token_type: 'Bearer',
     expires_in: p.accessTtlSeconds,
     refresh_token: refreshToken,
@@ -336,7 +361,14 @@ interface StoredTokenRow {
 export async function refreshAccessToken(
   client: SupabaseClient,
   input: { refreshToken: string; clientId: string },
-  opts: { now?: number; accessTtlSeconds: number; refreshTtlSeconds: number },
+  opts: {
+    now?: number
+    accessTtlSeconds: number
+    refreshTtlSeconds: number
+    audience: string
+    issuer: string
+    jwtSecret?: string
+  },
 ): Promise<TokenResponse> {
   const now = opts.now ?? Date.now()
 
@@ -379,6 +411,9 @@ export async function refreshAccessToken(
     now,
     accessTtlSeconds: opts.accessTtlSeconds,
     refreshTtlSeconds: opts.refreshTtlSeconds,
+    audience: opts.audience,
+    issuer: opts.issuer,
+    jwtSecret: opts.jwtSecret,
   })
 }
 

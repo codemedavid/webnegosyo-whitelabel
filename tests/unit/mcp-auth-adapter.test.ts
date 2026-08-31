@@ -5,11 +5,14 @@ jest.mock('@/lib/mcp-auth', () => ({
   __esModule: true,
   hashApiKey: (value: string) => `fingerprint-${value.length}`,
   verifyMcpKey: jest.fn(),
+  MCP_KEY_PREFIX: 'smk_live_',
+  MCP_OAUTH_KEY_PREFIX: 'smk_oauth_',
 }))
 
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const { verifyMcpKey } = jest.requireMock('@/lib/mcp-auth') as any
 const { createMcpTokenVerifier } = require('@/lib/mcp/auth-adapter')
+const { signAccessToken } = require('@/lib/mcp/oauth-jwt') as typeof import('@/lib/mcp/oauth-jwt')
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 
 const client = {} as never
@@ -63,5 +66,25 @@ describe('createMcpTokenVerifier', () => {
     const verify = createMcpTokenVerifier(client)
     const token = 'smk_oauth_expired_random'
     await expect(verify(req, token)).resolves.toBeUndefined()
+  })
+
+  it('accepts an HS256 JWT access token without hitting the key store', async () => {
+    const secret = 'adapter-jwt-secret-0123456789'
+    const token = signAccessToken(
+      {
+        sub: 'user_1',
+        scope: 'superadmin',
+        client_id: 'client_1',
+        aud: 'https://www.webnegosyo.com/api/mcp/mcp',
+        iss: 'https://www.webnegosyo.com',
+      },
+      { secret, expiresInSeconds: 3600, now: 1_700_000_000_000 },
+    )
+    const verify = createMcpTokenVerifier(client, { jwtSecret: secret, now: () => 1_700_000_000_000 })
+
+    const auth = await verify(req, token)
+
+    expect(auth).toMatchObject({ clientId: 'client_1', scopes: ['superadmin'] })
+    expect(verifyMcpKey).not.toHaveBeenCalled()
   })
 })
