@@ -50,9 +50,11 @@ export async function POST(req: Request): Promise<Response> {
   const superadminAudience = `${origin}${OAUTH_PATHS.mcp}`
   const merchantAudience = `${origin}${MERCHANT_OAUTH_PATHS.mcp}`
   const audience = params.resource === merchantAudience ? merchantAudience : superadminAudience
-  const jwtSecret = getJwtSecret()
-  if (!jwtSecret) {
-    console.error('[SmartMenu OAuth] MCP_OAUTH_JWT_SECRET is not set; issuing opaque tokens that Grok will not attach')
+  let jwtSecret: string
+  try {
+    jwtSecret = getJwtSecret()
+  } catch {
+    return oauthError('server_error', 'MCP_OAUTH_JWT_SECRET is not configured', 500)
   }
 
   // RFC 8707: when the client supplies a resource indicator it must target

@@ -3,7 +3,7 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import type { Database } from '@/types/database'
 import { hashApiKey, MCP_KEY_PREFIX, MCP_OAUTH_KEY_PREFIX, verifyMcpKey } from '@/lib/mcp-auth'
 import { verifyAccessToken } from '@/lib/mcp/oauth-jwt'
-import { getOrigin, OAUTH_PATHS } from '@/lib/mcp/oauth-config'
+import { getJwtSecret, getOrigin, OAUTH_PATHS } from '@/lib/mcp/oauth-config'
 import { MERCHANT_OAUTH_PATHS } from '@/lib/mcp/merchant-config'
 
 /**
@@ -26,7 +26,7 @@ export function createMcpTokenVerifier(
     client: SupabaseClient<Database>,
     options: McpTokenVerifierOptions = {},
 ) {
-    const jwtSecret = options.jwtSecret ?? process.env.MCP_OAUTH_JWT_SECRET
+    const jwtSecret = options.jwtSecret ?? (process.env.MCP_OAUTH_JWT_SECRET ? getJwtSecret() : undefined)
     const now = options.now ?? (() => Date.now())
 
     return async (req: Request, bearerToken?: string): Promise<AuthInfo | undefined> => {
