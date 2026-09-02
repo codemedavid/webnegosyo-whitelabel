@@ -83,6 +83,7 @@ export const createOrder = mutation({
         bundleId: v.optional(v.string()),
         bundleName: v.optional(v.string()),
         slotName: v.optional(v.string()),
+        presellDate: v.optional(v.string()),
       })
     ),
   },

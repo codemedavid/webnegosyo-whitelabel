@@ -23,6 +23,8 @@ import {
 import type { Order } from '@/types/database'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 import { convexScheduledForArg } from '@/lib/advance-order-utils'
+import { convexPresellItemFields } from '@/lib/presell/convex-args'
+import { readPresellClaim } from '@/lib/presell/checkout-schedule'
 import {
   buildOrderParityColumns,
   buildOrderItemParityColumns,
@@ -216,6 +218,24 @@ async function redepleteStockForUncancelledOrder(
   await redepleteOrderStockBestEffort(tenantId, orderId)
 }
 
+/**
+ * A cancelled pre-order gives its per-date stock back. The claim id and lines
+ * were stamped into customer_data at checkout precisely so this needs no
+ * other row. Best-effort, like the ingredient restore beside it. Un-cancelling
+ * does NOT re-reserve: the date may have sold out meanwhile, and a silent
+ * re-claim that fails would look exactly like one that worked.
+ */
+async function releasePresellForCancelledOrder(
+  order: unknown,
+  tenantId: string,
+): Promise<void> {
+  const claim = readPresellClaim((order as { customer_data?: unknown } | null)?.customer_data)
+  if (!claim) return
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const { releasePresellForOrder } = await import('@/lib/presell/order-claim')
+  await releasePresellForOrder(createAdminClient(), tenantId, claim.claimId, claim.lines)
+}
+
 export async function updateOrderStatus(
   orderId: string,
   tenantId: string,
@@ -256,6 +276,7 @@ export async function updateOrderStatus(
   const previousStatus = (existingOrder as unknown as Order | null)?.status
   if (status === 'cancelled' && previousStatus !== 'cancelled') {
     await restoreStockForCancelledOrder(orderId, tenantId)
+    await releasePresellForCancelledOrder(existingOrder, tenantId)
   }
 
   // And the reverse flip: leaving 'cancelled' for any active status deducts
@@ -382,6 +403,7 @@ export async function createOrder(
     addons: string[]
     quantity: number
     price: number
+    presell_date?: string
     subtotal: number
     special_instructions?: string
     isUpsellItem?: boolean
@@ -759,6 +781,7 @@ export async function createOrderConvex(
     addons: string[] | { name: string; price: number; quantity?: number }[]
     quantity: number
     price: number
+    presell_date?: string
     subtotal: number
     special_instructions?: string
     isUpsellItem?: boolean
@@ -852,6 +875,8 @@ export async function createOrderConvex(
       ...(item.bundleId ? { bundleId: item.bundleId } : {}),
       ...(item.bundleName ? { bundleName: item.bundleName } : {}),
       ...(item.slotName ? { slotName: item.slotName } : {}),
+      // Version-guarded: a pre-v25 validator rejects the field (see convex-args).
+      ...convexPresellItemFields(item.presell_date, tenantConvexSchemaVersion),
     })),
   }
 

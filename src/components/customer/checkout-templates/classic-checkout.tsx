@@ -1,5 +1,7 @@
 'use client'
 
+import { formatPresellDateLabel } from '@/lib/presell/month-grid'
+
 /**
  * Classic checkout design — the original single-column layout, preserved
  * verbatim and wired to the shared useCheckout() hook. This is the default and
@@ -19,6 +21,7 @@ import { SmsOptInCheckbox, MinimumOrderNotice } from './checkout-primitives'
 import { VoucherField } from './voucher-field'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
+import { isPaymentProofRequired } from '@/lib/payment-proof'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
 const MapboxAddressAutocomplete = dynamic(
@@ -33,7 +36,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
     router, tenant, orderTypes, orderType, setOrderType, selectedOrderTypeData,
     advanceConfig, scheduleMode, setScheduleMode, scheduleDate, scheduleTime, setScheduleTime,
-    scheduleDates, timeSlots, scheduledForLabel, handleScheduleDateChange,
+    scheduleDates, timeSlots, scheduledForLabel, handleScheduleDateChange, cartPresellDate,
     formFields, customerData, setCustomerData,
     items, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount, grandTotal,
     paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog, handleCopyText, copiedText,
@@ -44,10 +47,12 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   if (!tenant) return null
 
   const palette = getCheckoutPalette(checkout.tenant, checkout.branding)
+  const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod) ?? null
   const ctaLabel = resolveCheckoutCtaLabel({
     hasPaymentMethods: paymentMethods.length > 0,
     isMessengerEnabled: messengerEnabled,
     isAfterBillingPayment: isAfterBillingPaymentEnabled(checkout.selectedOrderTypeData),
+    requiresPaymentProof: isPaymentProofRequired(selectedMethod),
   })
   const accentColor = typeof checkout.tenant?.checkout_accent_color === 'string' && checkout.tenant.checkout_accent_color ? checkout.tenant.checkout_accent_color : undefined
 
@@ -128,6 +133,11 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                     <h3 className="text-base sm:text-lg font-bold text-gray-900" style={{ color: palette.text }}>When would you like it?</h3>
                   </div>
 
+                  {cartPresellDate && (
+                    <p className="mb-3 rounded-xl border border-orange-100 bg-orange-50/40 p-3 text-sm text-gray-700" style={{ color: palette.text }}>
+                      Your cart has a pre-order for <span className="font-semibold">{formatPresellDateLabel(cartPresellDate)}</span>. Pick a pickup time below.
+                    </p>
+                  )}
                   <div className={`grid gap-2.5 sm:gap-3 ${advanceConfig.allowAsap ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {advanceConfig.allowAsap && (
                       <button

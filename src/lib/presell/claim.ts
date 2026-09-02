@@ -8,18 +8,15 @@
  * 'shortfall' are both definite answers, and a network error is neither.
  */
 
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/supabase'
 import type { PresellCartLine } from '@/lib/presell/availability'
 
 /** The marker `apply_presell_order()` raises when a date cannot cover a sale. */
 const SHORTFALL_PATTERN = /PRESELL_SHORTFALL:([^:\s]+):(\d{4}-\d{2}-\d{2})/
 
-/** Any Supabase client with rpc — callers hold the service-role client. */
-interface RpcClient {
-  rpc: (
-    fn: string,
-    args: Record<string, unknown>,
-  ) => PromiseLike<{ data: unknown; error: { message?: string } | null }>
-}
+/** The service-role client's rpc surface — typed against the generated function signature. */
+export type RpcClient = Pick<SupabaseClient<Database>, 'rpc'>
 
 export type PresellApplyResult =
   | { status: 'applied' }

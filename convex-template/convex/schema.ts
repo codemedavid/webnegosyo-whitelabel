@@ -135,6 +135,8 @@ export default defineSchema({
     bundleId: v.optional(v.string()),
     bundleName: v.optional(v.string()),
     slotName: v.optional(v.string()),
+    /** YYYY-MM-DD pickup date for a presell (per-date stock) line. v25. */
+    presellDate: v.optional(v.string()),
   }).index("by_order", ["orderId"]),
 
   analyticsEvents: defineTable({
