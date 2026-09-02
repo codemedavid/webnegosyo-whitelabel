@@ -50,3 +50,28 @@ describe("OrderCard scheduled chip", () => {
     expect(screen.queryByText(/^Scheduled ·/)).toBeNull();
   });
 });
+
+describe("OrderCard pre-order chip", () => {
+  it("marks a pre-sold order with its pickup date", () => {
+    render(
+      <OrderCard
+        order={{
+          ...baseOrder,
+          customerData: { scheduled_for_label: "Sat, Jun 20 · 12:00 PM", presell_date: "2026-06-20" },
+        }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Pre-order · Sat, Jun 20")).toBeTruthy();
+  });
+
+  it("shows no pre-order chip on an ordinary scheduled order", () => {
+    render(
+      <OrderCard
+        order={{ ...baseOrder, customerData: { scheduled_for_label: "Sat, Jun 20 · 12:00 PM" } }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText(/Pre-order ·/)).toBeNull();
+  });
+});
