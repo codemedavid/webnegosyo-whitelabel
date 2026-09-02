@@ -7,6 +7,7 @@
  * interstitial are rendered by the page shell (shared).
  */
 
+import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, Trash2, Pencil, ArrowLeft, ShoppingBag, Package } from 'lucide-react'
@@ -22,7 +23,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
     router, tenantSlug, tenant,
     items, bundleItems, total,
     updateQuantity, removeBundleFromCart, updateBundleQuantity,
-    setItemToRemove, setItemToEdit, handleDecreaseQuantity,
+    setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor,
     isNavigating, requestCheckout, exitToMenu,
   } = cart
 
@@ -146,6 +147,12 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             <span className="font-medium">Note:</span> {item.special_instructions}
                           </p>
                         )}
+                        {item.presell_date && (
+                          <p className="text-sm" style={{ color: palette.accent }}>
+                            <span className="font-medium">Pre-order for:</span> {formatPresellDateLabel(item.presell_date)}
+                            {presellHintFor(item) && <span className="ml-2 text-xs" style={{ color: palette.mutedText }}>{presellHintFor(item)}</span>}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-between mt-4">
@@ -166,6 +173,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             size="icon"
                             className="h-10 w-10 rounded-full hover:bg-orange-50 border-gray-200 hover:border-orange-300 touch-manipulation"
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            disabled={!canIncreaseItem(item)}
                           >
                             <Plus className="h-4 w-4" />
                           </Button>

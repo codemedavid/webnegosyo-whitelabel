@@ -19,6 +19,7 @@ import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { toast } from 'sonner'
+import { usePresellCartCaps } from '@/hooks/use-presell-cart-caps'
 import type { Tenant, CartItem, MenuItem, Variation, Addon, VariationOption } from '@/types/database'
 
 export function useCartView() {
@@ -121,11 +122,17 @@ export function useCartView() {
       quantity: number,
       specialInstructions?: string
     ) => {
-      updateItemConfiguration(cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions)
+      // Editing a presell line keeps its date; the date is chosen on the
+      // product page, not in the edit sheet.
+      const presellDate = items.find((line) => line.id === cartItemId)?.presell_date
+      updateItemConfiguration(cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions, presellDate)
       setItemToEdit(null)
     },
-    [updateItemConfiguration]
+    [updateItemConfiguration, items]
   )
+
+  // Presell lines stop where their date's stock does.
+  const { canIncreaseItem, presellHintFor } = usePresellCartCaps(tenant?.id, items)
 
   // Reliable in-cart "exit": always return to the menu. Using router.back()
   // exits the whole browser when the cart is the entry point (e.g. opened from
@@ -200,6 +207,9 @@ export function useCartView() {
     handleDecreaseQuantity,
     handleConfirmRemove,
     handleCancelRemove,
+    // presell caps (true / null for ordinary lines)
+    canIncreaseItem,
+    presellHintFor,
     // edit-item dialog
     itemToEdit,
     setItemToEdit,

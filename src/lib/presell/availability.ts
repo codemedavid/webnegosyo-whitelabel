@@ -137,3 +137,95 @@ export function collectPresellLines(
   }
   return [...byKey.values()]
 }
+
+/**
+ * The date this cart is already committed to, when it differs from the one
+ * being offered — `null` when the new line may join. An order has a single
+ * `scheduled_for`, so a second presell date is refused at the cart, where the
+ * customer can still choose, rather than at checkout.
+ */
+export function findPresellDateConflict(
+  items: readonly { presell_date?: string }[],
+  presellDate: string,
+): string | null {
+  const committed = findCartPresellDate(items)
+  if (committed === null || committed === presellDate) return null
+  return committed
+}
+
+/**
+ * What the cart already holds of one dish on one date, across every
+ * configuration of it. `excludeLineId` leaves out the line a stepper is about
+ * to change, so that line's own quantity is not counted against itself.
+ */
+export function countPresellInCart(
+  items: readonly (PresellCartSource & { id: string })[],
+  menuItemId: string,
+  presellDate: string,
+  excludeLineId?: string,
+): number {
+  return items.reduce((sum, item) => {
+    if (item.id === excludeLineId) return sum
+    if (item.menu_item.id !== menuItemId || item.presell_date !== presellDate) return sum
+    return sum + item.quantity
+  }, 0)
+}
+
+/** The slice of `CartItem` the re-check needs; `subtotal` is re-derived per unit. */
+interface ReconcilableLine extends PresellCartSource {
+  id: string
+  subtotal: number
+}
+
+export interface PresellReconcileResult<T> {
+  items: T[]
+  removed: T[]
+  hasChanges: boolean
+}
+
+/**
+ * Fit the cart's presell lines to what their dates have left.
+ *
+ * Runs inside the cart's periodic re-check, next to the "dish went
+ * unavailable" pass: a date that sold out while the tab sat in the background
+ * shrinks its line to the remainder (re-priced per unit) or drops it. Dishes
+ * whose calendar was not re-read are left alone — absent means "could not
+ * check", never "gone". Earlier lines keep their quantity first, so the
+ * customer's original choice survives and only the later duplicate shrinks.
+ */
+export function reconcilePresellLines<T extends ReconcilableLine>(
+  items: readonly T[],
+  calendars: ReadonlyMap<string, PresellCalendar>,
+): PresellReconcileResult<T> {
+  const budget = new Map<string, number>()
+  const kept: T[] = []
+  const removed: T[] = []
+  let hasChanges = false
+
+  for (const item of items) {
+    const calendar = item.presell_date ? calendars.get(item.menu_item.id) : undefined
+    if (!item.presell_date || !calendar) {
+      kept.push(item)
+      continue
+    }
+    const key = `${item.menu_item.id}|${item.presell_date}`
+    const left = budget.get(key) ?? (calendar.get(item.presell_date) ?? 0)
+    const allowed = Math.max(0, Math.min(item.quantity, left))
+    budget.set(key, left - allowed)
+
+    if (allowed === 0) {
+      removed.push(item)
+      hasChanges = true
+      continue
+    }
+    if (allowed === item.quantity) {
+      kept.push(item)
+      continue
+    }
+    const unit = item.subtotal / item.quantity
+    kept.push({ ...item, quantity: allowed, subtotal: unit * allowed })
+    hasChanges = true
+  }
+
+  return hasChanges ? { items: kept, removed, hasChanges } : { items: items as T[], removed, hasChanges }
+}

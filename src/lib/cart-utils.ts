@@ -91,7 +91,8 @@ export function getCartItemCount(items: CartItem[]): number {
 export function generateCartItemId(
   menuItemId: string,
   variationOrVariations?: string | { [typeId: string]: VariationOption },
-  addonIds?: string[]
+  addonIds?: string[],
+  presellDate?: string
 ): string {
   const parts = [menuItemId]
 
@@ -113,6 +114,11 @@ export function generateCartItemId(
   if (addonIds && addonIds.length > 0) {
     parts.push(addonIds.sort().join('-'))
   }
+  // A presell date is part of the line's identity: the same bilao for two
+  // different pickup dates is two lines, each capped by its own date's stock.
+  if (presellDate) {
+    parts.push(`@${presellDate}`)
+  }
   return parts.join('_')
 }
 
@@ -129,8 +135,15 @@ export function makeCartItem(
   addons: Addon[],
   quantity: number,
   specialInstructions?: string,
-  upsell?: { upsellSource?: CartItem['upsellSource']; upsellSourceItemId?: string }
+  options?: {
+    upsellSource?: CartItem['upsellSource']
+    upsellSourceItemId?: string
+    /** YYYY-MM-DD pickup date for a presell item; absent for ordinary dishes. */
+    presellDate?: string
+  }
 ): CartItem {
+  const upsell = options
+  const presellDate = options?.presellDate
   const isNewFormat =
     !!variationOrVariations &&
     typeof variationOrVariations === 'object' &&
@@ -140,9 +153,15 @@ export function makeCartItem(
     ? generateCartItemId(
         menuItem.id,
         variationOrVariations as { [typeId: string]: VariationOption },
-        addons.map((a) => a.id)
+        addons.map((a) => a.id),
+        presellDate
       )
-    : generateCartItemId(menuItem.id, (variationOrVariations as Variation | undefined)?.id, addons.map((a) => a.id))
+    : generateCartItemId(
+        menuItem.id,
+        (variationOrVariations as Variation | undefined)?.id,
+        addons.map((a) => a.id),
+        presellDate
+      )
 
   const subtotal = calculateCartItemSubtotal(
     getEffectiveItemPrice(menuItem),
@@ -164,6 +183,7 @@ export function makeCartItem(
     ...(upsell?.upsellSource
       ? { upsellSource: upsell.upsellSource, upsellSourceItemId: upsell.upsellSourceItemId }
       : {}),
+    ...(presellDate ? { presell_date: presellDate } : {}),
   }
 }
 
