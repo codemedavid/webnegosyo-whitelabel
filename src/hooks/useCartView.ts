@@ -125,7 +125,11 @@ export function useCartView() {
       // Editing a presell line keeps its date; the date is chosen on the
       // product page, not in the edit sheet.
       const presellDate = items.find((line) => line.id === cartItemId)?.presell_date
-      updateItemConfiguration(cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions, presellDate)
+      updateItemConfiguration(
+        cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions,
+        // Appended only for a presell line so ordinary edits keep their exact arity.
+        ...(presellDate ? [presellDate] : []),
+      )
       setItemToEdit(null)
     },
     [updateItemConfiguration, items]

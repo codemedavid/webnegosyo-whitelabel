@@ -150,7 +150,11 @@ export function CartDrawer({
       specialInstructions?: string
     ) => {
       const presellDate = items.find((line) => line.id === cartItemId)?.presell_date
-      updateItemConfiguration(cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions, presellDate)
+      updateItemConfiguration(
+        cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions,
+        // Appended only for a presell line so ordinary edits keep their exact arity.
+        ...(presellDate ? [presellDate] : []),
+      )
       setItemToEdit(null)
     },
     [updateItemConfiguration, items]

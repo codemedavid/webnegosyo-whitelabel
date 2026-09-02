@@ -32,6 +32,7 @@ const config = {
   // drive a real browser, so Jest picking them up only ever produces failures.
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',
+    '<rootDir>/.worktrees/',
     '<rootDir>/webnegosyo-app/',
     '<rootDir>/sms/',
     '<rootDir>/e2e/',
