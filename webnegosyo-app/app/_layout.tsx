@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { InteractionManager, Platform } from "react-native";
+import Constants from "expo-constants";
 import {
   Stack,
   router,
@@ -30,6 +31,18 @@ import {
   platformPushCleanup,
 } from "../lib/push-registration";
 import { CrashFallback } from "../components/CrashFallback";
+import { warnAboutScreensRuntime } from "../lib/native-runtime-parity";
+
+/**
+ * Runs at import time, before the first screen commits. Expo Go ships an
+ * older `react-native-screens` natively than this app is built against, and
+ * the resulting native TypeError gets blamed on the <Stack> below — so say so
+ * in words first. Silent in every runtime that is not affected.
+ */
+warnAboutScreensRuntime(
+  { appOwnership: Constants.appOwnership, isDev: __DEV__ },
+  (message) => console.warn(message),
+);
 
 /**
  * App-wide Error Boundary. expo-router automatically wraps the route tree with
