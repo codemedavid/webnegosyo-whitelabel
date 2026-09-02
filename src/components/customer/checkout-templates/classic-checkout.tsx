@@ -23,6 +23,7 @@ import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
 import { isPaymentProofRequired } from '@/lib/payment-proof'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
 
 const MapboxAddressAutocomplete = dynamic(
   () => import('@/components/shared/mapbox-address-autocomplete').then(mod => ({ default: mod.MapboxAddressAutocomplete })),
@@ -270,14 +271,14 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
               <div className="grid gap-4 md:grid-cols-2">
                 {formFields.map((field) => (
-                  <div key={field.id} className={field.field_type === 'textarea' || field.field_name === 'delivery_address' ? 'md:col-span-2' : ''}>
+                  <div key={field.id} className={field.field_type === 'textarea' || isDeliveryAddressField(field) ? 'md:col-span-2' : ''}>
                     <label className="block text-sm font-medium text-gray-700 mb-2" style={{ color: palette.mutedText }}>
                       {field.field_label}
                       {field.is_required && <span className="text-red-500 ml-1">*</span>}
                     </label>
 
                     {/* Special handling for delivery address with Mapbox Autocomplete */}
-                    {field.field_name === 'delivery_address' ? (
+                    {isDeliveryAddressField(field) ? (
                       <MapboxAddressAutocomplete
                         value={customerData[field.field_name] || ''}
                         onChange={(address, coordinates) => {

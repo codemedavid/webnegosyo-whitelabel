@@ -30,6 +30,7 @@ import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { VoucherField } from './voucher-field'
+import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
 
 const MapboxAddressAutocomplete = dynamic(
   () => import('@/components/shared/mapbox-address-autocomplete').then(mod => ({ default: mod.MapboxAddressAutocomplete })),
@@ -72,7 +73,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
     >
       {formFields.map((field) => {
         const fieldId = `${reactId}-${field.id}`
-        const fullWidth = field.field_type === 'textarea' || field.field_name === 'delivery_address'
+        const fullWidth = field.field_type === 'textarea' || isDeliveryAddressField(field)
         return (
           <div key={field.id} className={fullWidth && columns === 2 ? 'md:col-span-2' : ''}>
             <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -80,7 +81,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
               {field.is_required && <span className="text-red-500 ml-1">*</span>}
             </label>
 
-            {field.field_name === 'delivery_address' ? (
+            {isDeliveryAddressField(field) ? (
               <MapboxAddressAutocomplete
                 value={customerData[field.field_name] || ''}
                 onChange={(address, coordinates) => {
@@ -170,14 +171,14 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
               />
             )}
 
-            {field.field_name === 'delivery_address' && checkout.deliveryOutOfRange && (
+            {isDeliveryAddressField(field) && checkout.deliveryOutOfRange && (
               <p className="mt-1.5 text-sm font-medium text-red-600">
                 This address is outside the delivery area
                 {checkout.tenant?.delivery_radius_km ? ` (${checkout.tenant.delivery_radius_km} km)` : ''}.
                 {' '}Please choose a closer address or switch to pickup.
               </p>
             )}
-            {field.field_name === 'delivery_address' &&
+            {isDeliveryAddressField(field) &&
               !checkout.deliveryOutOfRange &&
               checkout.deliveryFee !== null &&
               checkout.deliveryDistanceKm !== null && (
