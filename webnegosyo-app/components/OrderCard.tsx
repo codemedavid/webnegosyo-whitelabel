@@ -13,6 +13,7 @@ import {
   formatTimeAgo,
 } from "../lib/order-visuals";
 import { getScheduledISO, getScheduledLabel } from "../lib/scheduled-orders";
+import { getPresellDate, formatPresellDate } from "../lib/presell-orders";
 
 export interface OrderCardOrder {
   _id: string;
@@ -35,6 +36,8 @@ export interface OrderCardOrder {
   /** Raw customer payload; carries the schedule for web-created Convex orders
    * (`scheduled_for` / `scheduled_for_label`). */
   customerData?: Record<string, unknown> | null;
+  /** Order lines, when the caller loaded them; carries `presellDate` on Convex v25+. */
+  items?: readonly { presellDate?: string | null }[] | null;
 }
 
 interface OrderCardProps {
@@ -66,6 +69,7 @@ export function OrderCard({
   const isActive = order.status !== "delivered" && order.status !== "cancelled";
   const scheduledISO = getScheduledISO(order);
   const scheduledLabel = getScheduledLabel(order);
+  const presellDate = getPresellDate(order);
   const scheduledAtMs = scheduledISO ? new Date(scheduledISO).getTime() : null;
   const urgencyColor = getUrgencyColor(
     getScheduleAwareUrgency(order._creationTime, scheduledAtMs),
@@ -120,6 +124,11 @@ export function OrderCard({
         {scheduledLabel ? (
           <View style={styles.scheduledChip}>
             <Text style={styles.scheduledText}>Scheduled · {scheduledLabel}</Text>
+          </View>
+        ) : null}
+        {presellDate ? (
+          <View style={styles.presellChip}>
+            <Text style={styles.presellText}>Pre-order · {formatPresellDate(presellDate)}</Text>
           </View>
         ) : null}
         {isUnpaid ? (
@@ -234,6 +243,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningLight,
   },
   scheduledText: { ...typography.small, color: colors.warning, fontWeight: "700" },
+  presellChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  presellText: { ...typography.small, color: colors.primary, fontWeight: "700" },
   unpaidChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,

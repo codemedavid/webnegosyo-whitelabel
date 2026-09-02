@@ -22,6 +22,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { OrderCard, type OrderCardOrder } from "../../components/OrderCard";
+import { presellCountsByDay } from "../../lib/presell-orders";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 
@@ -68,6 +69,9 @@ export default function ScheduledScreen() {
   }, [scope, orders]);
 
   const strip = useMemo(() => buildDateStrip(scheduled, nowMs), [scheduled, nowMs]);
+  // Pre-sold orders per day: the merchant chose how many to sell on each date,
+  // so the strip says how many of today's chips are that kind of promise.
+  const presellCounts = useMemo(() => presellCountsByDay(scheduled, nowMs), [scheduled, nowMs]);
 
   // A selected day can empty out under the merchant (orders complete, the day
   // passes); an unknown key falls back to Today rather than a blank screen.
@@ -110,6 +114,7 @@ export default function ScheduledScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
           {strip.map((day) => {
             const isActive = day.key === activeKey;
+            const presellCount = presellCounts.get(day.key) ?? 0;
             return (
               <TouchableOpacity
                 key={day.key}
@@ -117,7 +122,7 @@ export default function ScheduledScreen() {
                 onPress={() => setSelectedKey(day.key)}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel={`${day.label}, ${day.count} scheduled order${day.count === 1 ? "" : "s"}`}
+                accessibilityLabel={`${day.label}, ${day.count} scheduled order${day.count === 1 ? "" : "s"}${presellCount > 0 ? `, ${presellCount} pre-sold` : ""}`}
               >
                 <Text style={[styles.dayChipLabel, isActive && styles.dayChipLabelActive]}>
                   {day.label}
@@ -128,6 +133,11 @@ export default function ScheduledScreen() {
                       {day.count}
                     </Text>
                   </View>
+                ) : null}
+                {presellCount > 0 ? (
+                  <Text style={[styles.dayChipPresell, isActive && styles.dayChipPresellActive]}>
+                    {presellCount} pre-sold
+                  </Text>
                 ) : null}
               </TouchableOpacity>
             );
@@ -265,6 +275,8 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   dayChipCountTextActive: { color: colors.textOnDark },
+  dayChipPresell: { ...typography.small, color: colors.primary, fontWeight: "700", marginTop: 2 },
+  dayChipPresellActive: { color: colors.textOnDark },
   agenda: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 96,
