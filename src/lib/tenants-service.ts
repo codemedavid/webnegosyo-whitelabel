@@ -117,6 +117,8 @@ export const tenantSchema = z.object({
   inventory_enabled: z.boolean().default(false),
   low_stock_alerts_enabled: z.boolean().default(false),
   auto_86_enabled: z.boolean().default(false),
+  // Presell per-date stock (migration 20260830120000)
+  presell_enabled: z.boolean().default(false),
   // Multi-branch outlets. Defaults false like every other flag: turning it on
   // makes the storefront ask the customer to choose a branch, which no tenant
   // may get without asking. Omitting this key made `parse` strip it, so the
@@ -319,6 +321,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
+    presell_enabled: parsed.presell_enabled,
     multi_branch_enabled: parsed.multi_branch_enabled,
     outlet_selection_timing: parsed.outlet_selection_timing,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,
@@ -459,6 +462,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
+    presell_enabled: parsed.presell_enabled,
     multi_branch_enabled: parsed.multi_branch_enabled,
     outlet_selection_timing: parsed.outlet_selection_timing,
     qr_handoff_enabled: parsed.qr_handoff_enabled ?? false,

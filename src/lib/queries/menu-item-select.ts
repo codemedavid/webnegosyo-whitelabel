@@ -27,7 +27,8 @@ export const MENU_ITEM_DETAIL_SELECT = `
   modifier_groups,
   variations,
   variation_types,
-  addons
+  addons,
+  presell_enabled
 `
 
 /** Menu page grid + quick-view sheet (`menu-server`). */
@@ -35,5 +36,5 @@ export const MENU_ITEM_LIST_SELECT = `
   id, tenant_id, category_id, name, description, price, discounted_price, image_url,
   is_available, is_featured, order,
   modifier_groups, variations, variation_types, addons,
-  bcg_classification, badge_text
+  bcg_classification, badge_text, presell_enabled
 `

@@ -145,6 +145,7 @@ export type Database = {
       app_users: {
         Row: {
           created_at: string
+          default_tab: string | null
           display_name: string | null
           email: string | null
           is_owner: boolean
@@ -157,6 +158,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_tab?: string | null
           display_name?: string | null
           email?: string | null
           is_owner?: boolean
@@ -169,6 +171,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_tab?: string | null
           display_name?: string | null
           email?: string | null
           is_owner?: boolean
@@ -344,10 +347,10 @@ export type Database = {
       }
       categories: {
         Row: {
+          card_template: string | null
           created_at: string
           default_addons: Json | null
           description: string | null
-          card_template: string | null
           display_layout: string | null
           icon: string | null
           icon_color: string | null
@@ -359,10 +362,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          card_template?: string | null
           created_at?: string
           default_addons?: Json | null
           description?: string | null
-          card_template?: string | null
           display_layout?: string | null
           icon?: string | null
           icon_color?: string | null
@@ -374,10 +377,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          card_template?: string | null
           created_at?: string
           default_addons?: Json | null
           description?: string | null
-          card_template?: string | null
           display_layout?: string | null
           icon?: string | null
           icon_color?: string | null
@@ -1174,6 +1177,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          in_stock: number | null
           kind: string
           last_synced_at: string
           local_key: string
@@ -1188,6 +1192,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          in_stock?: number | null
           kind: string
           last_synced_at?: string
           local_key?: string
@@ -1202,6 +1207,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          in_stock?: number | null
           kind?: string
           last_synced_at?: string
           local_key?: string
@@ -1241,6 +1247,7 @@ export type Database = {
           last_used_at: string | null
           revoked_at: string | null
           scopes: string[]
+          tenant_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -1252,6 +1259,7 @@ export type Database = {
           last_used_at?: string | null
           revoked_at?: string | null
           scopes?: string[]
+          tenant_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -1263,8 +1271,17 @@ export type Database = {
           last_used_at?: string | null
           revoked_at?: string | null
           scopes?: string[]
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "mcp_api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       mcp_oauth_clients: {
         Row: {
@@ -1300,6 +1317,7 @@ export type Database = {
           id: string
           redirect_uri: string
           scope: string
+          tenant_id: string | null
         }
         Insert: {
           client_id: string
@@ -1313,6 +1331,7 @@ export type Database = {
           id?: string
           redirect_uri: string
           scope?: string
+          tenant_id?: string | null
         }
         Update: {
           client_id?: string
@@ -1326,8 +1345,17 @@ export type Database = {
           id?: string
           redirect_uri?: string
           scope?: string
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "mcp_oauth_codes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       mcp_oauth_tokens: {
         Row: {
@@ -1338,6 +1366,7 @@ export type Database = {
           revoked_at: string | null
           scope: string
           subject: string | null
+          tenant_id: string | null
           token_hash: string
         }
         Insert: {
@@ -1348,6 +1377,7 @@ export type Database = {
           revoked_at?: string | null
           scope?: string
           subject?: string | null
+          tenant_id?: string | null
           token_hash: string
         }
         Update: {
@@ -1358,9 +1388,18 @@ export type Database = {
           revoked_at?: string | null
           scope?: string
           subject?: string | null
+          tenant_id?: string | null
           token_hash?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "mcp_oauth_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       menu_item_tags: {
         Row: {
@@ -1417,9 +1456,11 @@ export type Database = {
           image_url: string
           is_available: boolean
           is_featured: boolean
+          loyverse_item_id: string | null
           modifier_groups: Json
           name: string
           order: number
+          presell_enabled: boolean
           price: number
           show_in_checkout_upsell: boolean
           tenant_id: string
@@ -1441,9 +1482,11 @@ export type Database = {
           image_url: string
           is_available?: boolean
           is_featured?: boolean
+          loyverse_item_id?: string | null
           modifier_groups?: Json
           name: string
           order?: number
+          presell_enabled?: boolean
           price: number
           show_in_checkout_upsell?: boolean
           tenant_id: string
@@ -1465,9 +1508,11 @@ export type Database = {
           image_url?: string
           is_available?: boolean
           is_featured?: boolean
+          loyverse_item_id?: string | null
           modifier_groups?: Json
           name?: string
           order?: number
+          presell_enabled?: boolean
           price?: number
           show_in_checkout_upsell?: boolean
           tenant_id?: string
@@ -1491,6 +1536,87 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      menu_items_loyverse_dupe_backup_20260821: {
+        Row: {
+          addons: Json | null
+          auto_disabled_at: string | null
+          badge_text: string | null
+          bcg_classification: string | null
+          boost_priority: number | null
+          category_id: string | null
+          created_at: string | null
+          description: string | null
+          discounted_price: number | null
+          id: string | null
+          image_url: string | null
+          is_available: boolean | null
+          is_featured: boolean | null
+          loyverse_item_id: string | null
+          modifier_groups: Json | null
+          name: string | null
+          order: number | null
+          price: number | null
+          rn: number | null
+          show_in_checkout_upsell: boolean | null
+          tenant_id: string | null
+          updated_at: string | null
+          variation_types: Json | null
+          variations: Json | null
+        }
+        Insert: {
+          addons?: Json | null
+          auto_disabled_at?: string | null
+          badge_text?: string | null
+          bcg_classification?: string | null
+          boost_priority?: number | null
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          discounted_price?: number | null
+          id?: string | null
+          image_url?: string | null
+          is_available?: boolean | null
+          is_featured?: boolean | null
+          loyverse_item_id?: string | null
+          modifier_groups?: Json | null
+          name?: string | null
+          order?: number | null
+          price?: number | null
+          rn?: number | null
+          show_in_checkout_upsell?: boolean | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          variation_types?: Json | null
+          variations?: Json | null
+        }
+        Update: {
+          addons?: Json | null
+          auto_disabled_at?: string | null
+          badge_text?: string | null
+          bcg_classification?: string | null
+          boost_priority?: number | null
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          discounted_price?: number | null
+          id?: string | null
+          image_url?: string | null
+          is_available?: boolean | null
+          is_featured?: boolean | null
+          loyverse_item_id?: string | null
+          modifier_groups?: Json | null
+          name?: string | null
+          order?: number | null
+          price?: number | null
+          rn?: number | null
+          show_in_checkout_upsell?: boolean | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          variation_types?: Json | null
+          variations?: Json | null
+        }
+        Relationships: []
       }
       messenger_sessions: {
         Row: {
@@ -1873,6 +1999,7 @@ export type Database = {
           advance_order_lead_time_minutes: number
           advance_order_max_days_ahead: number
           advance_order_slot_interval_minutes: number
+          after_billing_payment_enabled: boolean
           created_at: string
           description: string | null
           id: string
@@ -1895,6 +2022,7 @@ export type Database = {
           advance_order_lead_time_minutes?: number
           advance_order_max_days_ahead?: number
           advance_order_slot_interval_minutes?: number
+          after_billing_payment_enabled?: boolean
           created_at?: string
           description?: string | null
           id?: string
@@ -1917,6 +2045,7 @@ export type Database = {
           advance_order_lead_time_minutes?: number
           advance_order_max_days_ahead?: number
           advance_order_slot_interval_minutes?: number
+          after_billing_payment_enabled?: boolean
           created_at?: string
           description?: string | null
           id?: string
@@ -1986,6 +2115,8 @@ export type Database = {
           payment_proof_uploaded_at: string | null
           payment_proof_url: string | null
           payment_status: string | null
+          prep_minutes: number | null
+          promised_ready_at: string | null
           revision_number: number
           scheduled_for: string | null
           service_charge_amount: number | null
@@ -2037,6 +2168,8 @@ export type Database = {
           payment_proof_uploaded_at?: string | null
           payment_proof_url?: string | null
           payment_status?: string | null
+          prep_minutes?: number | null
+          promised_ready_at?: string | null
           revision_number?: number
           scheduled_for?: string | null
           service_charge_amount?: number | null
@@ -2088,6 +2221,8 @@ export type Database = {
           payment_proof_uploaded_at?: string | null
           payment_proof_url?: string | null
           payment_status?: string | null
+          prep_minutes?: number | null
+          promised_ready_at?: string | null
           revision_number?: number
           scheduled_for?: string | null
           service_charge_amount?: number | null
@@ -2461,6 +2596,7 @@ export type Database = {
           details: string | null
           id: string
           is_active: boolean
+          loyverse_payment_type_id: string | null
           name: string
           order_index: number
           qr_code_url: string | null
@@ -2473,6 +2609,7 @@ export type Database = {
           details?: string | null
           id?: string
           is_active?: boolean
+          loyverse_payment_type_id?: string | null
           name: string
           order_index?: number
           qr_code_url?: string | null
@@ -2485,6 +2622,7 @@ export type Database = {
           details?: string | null
           id?: string
           is_active?: boolean
+          loyverse_payment_type_id?: string | null
           name?: string
           order_index?: number
           qr_code_url?: string | null
@@ -2537,6 +2675,86 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      presell_stock: {
+        Row: {
+          created_at: string | null
+          id: string
+          menu_item_id: string
+          presell_date: string
+          sold_qty: number
+          stock_qty: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          menu_item_id: string
+          presell_date: string
+          sold_qty?: number
+          stock_qty: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string
+          presell_date?: string
+          sold_qty?: number
+          stock_qty?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presell_stock_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presell_stock_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presell_stock_applications: {
+        Row: {
+          created_at: string | null
+          id: string
+          order_id: string
+          reason: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          order_id: string
+          reason: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          order_id?: string
+          reason?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presell_stock_applications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_analytics: {
         Row: {
@@ -3371,6 +3589,69 @@ export type Database = {
           },
         ]
       }
+      staff_shifts: {
+        Row: {
+          closed_at: string | null
+          closing_count: number | null
+          created_at: string
+          expected_cash: number | null
+          id: string
+          note: string | null
+          opened_at: string
+          opening_float: number
+          outlet_id: string | null
+          staff_name: string
+          staff_user_id: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closing_count?: number | null
+          created_at?: string
+          expected_cash?: number | null
+          id?: string
+          note?: string | null
+          opened_at?: string
+          opening_float?: number
+          outlet_id?: string | null
+          staff_name: string
+          staff_user_id?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          closing_count?: number | null
+          created_at?: string
+          expected_cash?: number | null
+          id?: string
+          note?: string | null
+          opened_at?: string
+          opening_float?: number
+          outlet_id?: string | null
+          staff_name?: string
+          staff_user_id?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_shifts_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_shifts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_alerts: {
         Row: {
           created_at: string | null
@@ -3967,9 +4248,12 @@ export type Database = {
           loyverse_payment_type_id: string | null
           loyverse_push_mode: string
           loyverse_store_id: string | null
+          loyverse_webhook_error: string | null
+          loyverse_webhooks_registered_at: string | null
           mapbox_enabled: boolean | null
           max_outlets: number
           max_staff_per_branch: number
+          mcp_enabled: boolean
           menu_cart_badge_background_color: string | null
           menu_cart_badge_text_color: string | null
           menu_category_active_color: string | null
@@ -4002,11 +4286,12 @@ export type Database = {
           page_layout: string | null
           pairing_rules_enabled: boolean | null
           pickup_scan_enabled: boolean
-          receipt_layout: Json | null
+          presell_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
           promotion_image_url: string | null
           qr_handoff_enabled: boolean
+          receipt_layout: Json | null
           restaurant_address: string | null
           restaurant_latitude: number | null
           restaurant_longitude: number | null
@@ -4035,6 +4320,24 @@ export type Database = {
           timezone: string
           updated_at: string
           warning_color: string | null
+          welcome_background_color: string | null
+          welcome_cta_background_color: string | null
+          welcome_cta_text: string | null
+          welcome_cta_text_color: string | null
+          welcome_entry_mode: string
+          welcome_heading_color: string | null
+          welcome_heading_text: string | null
+          welcome_page_banners: Json
+          welcome_show_copy: boolean
+          welcome_show_header: boolean
+          welcome_show_logo: boolean
+          welcome_show_order_types: boolean
+          welcome_subheading_text: string | null
+          welcome_subtext_color: string | null
+          welcome_text_align: string
+          welcome_tile_background_color: string | null
+          welcome_tile_icon_color: string | null
+          welcome_tile_text_color: string | null
         }
         Insert: {
           accent_color?: string | null
@@ -4213,9 +4516,12 @@ export type Database = {
           loyverse_payment_type_id?: string | null
           loyverse_push_mode?: string
           loyverse_store_id?: string | null
+          loyverse_webhook_error?: string | null
+          loyverse_webhooks_registered_at?: string | null
           mapbox_enabled?: boolean | null
           max_outlets?: number
           max_staff_per_branch?: number
+          mcp_enabled?: boolean
           menu_cart_badge_background_color?: string | null
           menu_cart_badge_text_color?: string | null
           menu_category_active_color?: string | null
@@ -4248,11 +4554,12 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
-          receipt_layout?: Json | null
+          presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
           qr_handoff_enabled?: boolean
+          receipt_layout?: Json | null
           restaurant_address?: string | null
           restaurant_latitude?: number | null
           restaurant_longitude?: number | null
@@ -4281,6 +4588,24 @@ export type Database = {
           timezone?: string
           updated_at?: string
           warning_color?: string | null
+          welcome_background_color?: string | null
+          welcome_cta_background_color?: string | null
+          welcome_cta_text?: string | null
+          welcome_cta_text_color?: string | null
+          welcome_entry_mode?: string
+          welcome_heading_color?: string | null
+          welcome_heading_text?: string | null
+          welcome_page_banners?: Json
+          welcome_show_copy?: boolean
+          welcome_show_header?: boolean
+          welcome_show_logo?: boolean
+          welcome_show_order_types?: boolean
+          welcome_subheading_text?: string | null
+          welcome_subtext_color?: string | null
+          welcome_text_align?: string
+          welcome_tile_background_color?: string | null
+          welcome_tile_icon_color?: string | null
+          welcome_tile_text_color?: string | null
         }
         Update: {
           accent_color?: string | null
@@ -4459,9 +4784,12 @@ export type Database = {
           loyverse_payment_type_id?: string | null
           loyverse_push_mode?: string
           loyverse_store_id?: string | null
+          loyverse_webhook_error?: string | null
+          loyverse_webhooks_registered_at?: string | null
           mapbox_enabled?: boolean | null
           max_outlets?: number
           max_staff_per_branch?: number
+          mcp_enabled?: boolean
           menu_cart_badge_background_color?: string | null
           menu_cart_badge_text_color?: string | null
           menu_category_active_color?: string | null
@@ -4494,11 +4822,12 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
-          receipt_layout?: Json | null
+          presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
           promotion_image_url?: string | null
           qr_handoff_enabled?: boolean
+          receipt_layout?: Json | null
           restaurant_address?: string | null
           restaurant_latitude?: number | null
           restaurant_longitude?: number | null
@@ -4527,6 +4856,24 @@ export type Database = {
           timezone?: string
           updated_at?: string
           warning_color?: string | null
+          welcome_background_color?: string | null
+          welcome_cta_background_color?: string | null
+          welcome_cta_text?: string | null
+          welcome_cta_text_color?: string | null
+          welcome_entry_mode?: string
+          welcome_heading_color?: string | null
+          welcome_heading_text?: string | null
+          welcome_page_banners?: Json
+          welcome_show_copy?: boolean
+          welcome_show_header?: boolean
+          welcome_show_logo?: boolean
+          welcome_show_order_types?: boolean
+          welcome_subheading_text?: string | null
+          welcome_subtext_color?: string | null
+          welcome_text_align?: string
+          welcome_tile_background_color?: string | null
+          welcome_tile_icon_color?: string | null
+          welcome_tile_text_color?: string | null
         }
         Relationships: [
           {
@@ -4806,10 +5153,85 @@ export type Database = {
         Args: { order_outlet_id: string; order_tenant_id: string }
         Returns: boolean
       }
+      apply_presell_order: {
+        Args: {
+          p_direction: string
+          p_lines: Json
+          p_order_id: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      get_customer_order: {
+        Args: { p_order_id: string }
+        Returns: {
+          amount_paid: number
+          client_order_id: string | null
+          created_at: string
+          customer_contact: string | null
+          customer_data: Json | null
+          customer_id: string | null
+          customer_name: string | null
+          delivery_fee: number | null
+          discount_data: Json | null
+          discount_total: number
+          edited_at: string | null
+          edited_by: string | null
+          has_bundle_items: boolean
+          has_upsell_items: boolean
+          id: string
+          item_count: number | null
+          lalamove_driver_id: string | null
+          lalamove_driver_name: string | null
+          lalamove_driver_phone: string | null
+          lalamove_order_id: string | null
+          lalamove_quotation_id: string | null
+          lalamove_status: string | null
+          lalamove_tracking_url: string | null
+          loyverse_push_error: string | null
+          loyverse_push_status: string | null
+          loyverse_pushed_at: string | null
+          loyverse_receipt_number: string | null
+          order_token_expires_at: string | null
+          order_token_hash: string | null
+          order_type: string | null
+          order_type_id: string | null
+          outlet_id: string | null
+          payment_method_details: string | null
+          payment_method_id: string | null
+          payment_method_name: string | null
+          payment_method_qr_code_url: string | null
+          payment_proof_public_id: string | null
+          payment_proof_reference: string | null
+          payment_proof_uploaded_at: string | null
+          payment_proof_url: string | null
+          payment_status: string | null
+          prep_minutes: number | null
+          promised_ready_at: string | null
+          revision_number: number
+          scheduled_for: string | null
+          service_charge_amount: number | null
+          source: string
+          status: string
+          tenant_id: string
+          total: number
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       growth_coach_openrouter_key: { Args: never; Returns: string }
       initialize_order_types_for_tenant: {
         Args: { tenant_uuid: string }
         Returns: undefined
+      }
+      order_accepts_anon_items: {
+        Args: { p_order_id: string }
+        Returns: boolean
       }
       redeem_voucher: {
         Args: {
@@ -4824,6 +5246,7 @@ export type Database = {
         }
         Returns: string
       }
+      superadmin_mcp_access_token_hook: { Args: { event: Json }; Returns: Json }
     }
     Enums: {
       [_ in never]: never
@@ -4842,12 +5265,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4871,11 +5294,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4896,11 +5319,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4921,11 +5344,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4938,11 +5361,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

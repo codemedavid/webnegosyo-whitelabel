@@ -86,6 +86,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       tenant?.outlet_selection_timing === 'after' ? ('after' as const) : ('before' as const),
     low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
     auto_86_enabled: tenant?.auto_86_enabled ?? false,
+    presell_enabled: tenant?.presell_enabled ?? false,
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // Email notifications
     admin_email: tenant?.admin_email || '',
@@ -160,6 +161,7 @@ export function TenantForm({ tenant }: TenantFormProps) {
       outlet_selection_timing: formData.outlet_selection_timing,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
       auto_86_enabled: formData.auto_86_enabled,
+      presell_enabled: formData.presell_enabled,
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // Email notifications
       admin_email: formData.admin_email || null,
