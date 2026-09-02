@@ -1436,7 +1436,9 @@ export function useCheckout(tenantSlug: string) {
     // Whether the fulfillment section is a question at all. A sole order type
     // is already selected below, so rendering it would be a step made of an
     // answer — see lib/checkout-fulfillment-choice.
-    shouldAskFulfillment: shouldAskFulfillmentMethod(orderTypes),
+    // A presell cart forces scheduling on, and the scheduler lives inside the
+    // fulfillment section — so the effective config decides, not the stored flag.
+    shouldAskFulfillment: shouldAskFulfillmentMethod(orderTypes, { isSchedulingForced: advanceConfig.enabled }),
     selectedOrderTypeData,
     messengerEnabled,
     // kiosk mode (counter tablet): no Messenger, auto-return to the menu
