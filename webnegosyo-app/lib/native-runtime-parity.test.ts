@@ -27,6 +27,7 @@ import {
   PINNED_REACT_NATIVE_SCREENS,
   parsePodfileLockScreensVersion,
   screensRuntimeWarning,
+  warnAboutScreensRuntime,
 } from "./native-runtime-parity";
 
 const appRoot = join(__dirname, "..");
@@ -123,5 +124,43 @@ describe("screensRuntimeWarning", () => {
 
   it("stays silent in production, where the check cannot help anyone", () => {
     expect(screensRuntimeWarning({ appOwnership: "expo", isDev: false })).toBeNull();
+  });
+});
+
+describe("warnAboutScreensRuntime", () => {
+  it("emits the warning through the given logger when running in Expo Go", () => {
+    // Arrange
+    const lines: string[] = [];
+
+    // Act
+    warnAboutScreensRuntime({ appOwnership: "expo", isDev: true }, (m) =>
+      lines.push(m),
+    );
+
+    // Assert — the developer is told before the native TypeError lands.
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("expo start --dev-client");
+  });
+
+  it("says nothing in a runtime that is not affected", () => {
+    const lines: string[] = [];
+    warnAboutScreensRuntime({ appOwnership: null, isDev: true }, (m) =>
+      lines.push(m),
+    );
+    expect(lines).toEqual([]);
+  });
+});
+
+describe("root layout wiring", () => {
+  // The warning is worthless unless something actually runs it, and the only
+  // place early enough to beat the first screen commit is the root layout.
+  const layout = readFileSync(join(appRoot, "app/_layout.tsx"), "utf8");
+
+  it("imports the parity check into app/_layout.tsx", () => {
+    expect(layout).toContain("native-runtime-parity");
+  });
+
+  it("runs the parity check at module scope, before any screen renders", () => {
+    expect(layout).toMatch(/^warnAboutScreensRuntime\(/m);
   });
 });
