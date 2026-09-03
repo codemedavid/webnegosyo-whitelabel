@@ -12,9 +12,10 @@
 import { useRef, useState } from 'react'
 import { Upload, X, Receipt, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 import {
   PAYMENT_PROOF_FOLDER,
   PAYMENT_PROOF_MAX_FILE_SIZE,
@@ -90,16 +91,10 @@ export function PaymentProofField({
           : 'Optionally upload a screenshot or enter your payment reference number.'}
       </p>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpg,image/jpeg,image/webp"
-        onChange={handleFileSelect}
-        disabled={isUploading}
-        className="hidden"
-      />
-
-      {/* Screenshot upload */}
+      {/* Screenshot upload. The file input is nested in the visible label and
+          stretched over the tap target — iOS Safari ignores programmatic
+          .click() on a display:none/sr-only input, and an unlabeled sr-only
+          input would stay in the a11y tree after upload. */}
       {screenshotUrl ? (
         <div className="relative inline-block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -118,16 +113,21 @@ export function PaymentProofField({
           </button>
         </div>
       ) : configured ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full sm:w-auto border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-          disabled={isUploading}
-          onClick={(e) => {
-            e.preventDefault()
-            fileInputRef.current?.click()
-          }}
+        <label
+          className={cn(
+            buttonVariants({ variant: 'outline' }),
+            'relative w-full sm:w-auto cursor-pointer overflow-hidden border-emerald-300 text-emerald-700 hover:bg-emerald-100 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50',
+            isUploading && 'pointer-events-none opacity-50',
+          )}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpg,image/jpeg,image/webp"
+            onChange={handleFileSelect}
+            disabled={isUploading}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
           {isUploading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -139,7 +139,7 @@ export function PaymentProofField({
               Upload Screenshot
             </>
           )}
-        </Button>
+        </label>
       ) : (
         <div className="text-xs text-gray-500">Screenshot upload is not configured.</div>
       )}

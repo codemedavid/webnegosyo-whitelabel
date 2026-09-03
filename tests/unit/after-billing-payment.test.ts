@@ -89,6 +89,51 @@ describe('resolvePaymentSubmitPlan', () => {
       })
     ).toBe('submit-order')
   })
+
+  it('still opens the payment-details step when after-billing is on but the method requires a screenshot', () => {
+    expect(
+      resolvePaymentSubmitPlan({
+        hasPaymentMethods: true,
+        hasSelectedPaymentMethod: true,
+        isAfterBillingPayment: true,
+        requiresPaymentProof: true,
+      })
+    ).toBe('payment-details')
+  })
+
+  it('QR-handoff still lets the customer skip choosing a method (unchanged)', () => {
+    expect(
+      resolvePaymentSubmitPlan({
+        hasPaymentMethods: true,
+        hasSelectedPaymentMethod: false,
+        isAfterBillingPayment: false,
+        isQrHandoff: true,
+      })
+    ).toBe('submit-order')
+  })
+
+  it('QR-handoff still skips the payment-details step for methods that do not require proof', () => {
+    expect(
+      resolvePaymentSubmitPlan({
+        hasPaymentMethods: true,
+        hasSelectedPaymentMethod: true,
+        isAfterBillingPayment: false,
+        isQrHandoff: true,
+      })
+    ).toBe('submit-order')
+  })
+
+  it('QR-handoff still opens the payment-details step when the method requires a screenshot', () => {
+    expect(
+      resolvePaymentSubmitPlan({
+        hasPaymentMethods: true,
+        hasSelectedPaymentMethod: true,
+        isAfterBillingPayment: false,
+        isQrHandoff: true,
+        requiresPaymentProof: true,
+      })
+    ).toBe('payment-details')
+  })
 })
 
 // ---- CTA label ------------------------------------------------------------
@@ -126,6 +171,17 @@ describe('resolveCheckoutCtaLabel with after-billing', () => {
   it('existing callers that do not pass the flag are unchanged', () => {
     expect(
       resolveCheckoutCtaLabel({ hasPaymentMethods: true, isMessengerEnabled: true })
+    ).toBe('Proceed to Payment')
+  })
+
+  it('keeps Proceed to Payment when after-billing is on but the method requires proof', () => {
+    expect(
+      resolveCheckoutCtaLabel({
+        hasPaymentMethods: true,
+        isMessengerEnabled: true,
+        isAfterBillingPayment: true,
+        requiresPaymentProof: true,
+      })
     ).toBe('Proceed to Payment')
   })
 })
