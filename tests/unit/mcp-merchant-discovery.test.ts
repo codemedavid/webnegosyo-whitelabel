@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { describe, it, expect } from '@jest/globals'
+import { afterAll, beforeAll, describe, it, expect } from '@jest/globals'
 import { GET as protectedResourceRootGET } from '@/app/.well-known/oauth-protected-resource/route'
 import { GET as protectedResourceNestedGET } from '@/app/.well-known/oauth-protected-resource/[...path]/route'
 import { GET as authServerRootGET } from '@/app/.well-known/oauth-authorization-server/route'
@@ -11,6 +11,16 @@ function req(url: string): Request {
 }
 
 const ORIGIN = 'https://x.example.com'
+const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+beforeAll(() => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co/'
+})
+
+afterAll(() => {
+  if (originalSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL
+  else process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl
+})
 
 // The deployment now exposes TWO protected resources on one origin:
 // the superadmin MCP at /api/mcp/mcp and the merchant MCP at
@@ -50,7 +60,8 @@ describe('merchant protected-resource metadata discovery', () => {
     ).json()
 
     expect(body.resource).toBe(`${ORIGIN}/api/mcp/mcp`)
-    expect(body.scopes_supported).toEqual(['superadmin'])
+    expect(body.authorization_servers).toEqual(['https://project.supabase.co/auth/v1'])
+    expect(body.scopes_supported).toBeUndefined()
   })
 
   it('keeps serving the superadmin document at the root URL (legacy clients)', async () => {
@@ -59,16 +70,17 @@ describe('merchant protected-resource metadata discovery', () => {
     ).json()
 
     expect(body.resource).toBe(`${ORIGIN}/api/mcp/mcp`)
+    expect(body.authorization_servers).toEqual(['https://project.supabase.co/auth/v1'])
+    expect(body.scopes_supported).toBeUndefined()
   })
 })
 
-describe('authorization-server metadata with two resources', () => {
-  it('advertises the tenant_admin scope alongside superadmin', async () => {
+describe('merchant authorization-server metadata', () => {
+  it('advertises only merchant scopes', async () => {
     const body = await (
       await authServerRootGET(req(`${ORIGIN}/.well-known/oauth-authorization-server`))
     ).json()
 
-    expect(body.scopes_supported).toContain('superadmin')
-    expect(body.scopes_supported).toContain('tenant_admin')
+    expect(body.scopes_supported).toEqual(['tenant_admin', 'offline_access'])
   })
 })

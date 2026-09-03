@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { describe, it, expect, afterEach } from '@jest/globals'
+import { describe, it, expect, afterEach, beforeEach } from '@jest/globals'
 import { getOrigin, getJwtSecret } from '@/lib/mcp/oauth-config'
 import { publicJwkFromSecret } from '@/lib/mcp/oauth-jwt'
 import { GET as protectedResourceGET } from '@/app/.well-known/oauth-protected-resource/route'
@@ -47,11 +47,23 @@ describe('getJwtSecret', () => {
 })
 
 describe('protected-resource metadata', () => {
-  it('points the MCP endpoint at the same-origin authorization server', async () => {
+  const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co/'
+  })
+
+  afterEach(() => {
+    if (originalSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl
+  })
+
+  it('points the MCP endpoint at Supabase Auth without named scopes', async () => {
     const res = await protectedResourceGET(reqWithHeaders('https://x.example.com/.well-known/oauth-protected-resource'))
     const body = await res.json()
     expect(body.resource).toBe('https://x.example.com/api/mcp/mcp')
-    expect(body.authorization_servers).toEqual(['https://x.example.com'])
+    expect(body.authorization_servers).toEqual(['https://project.supabase.co/auth/v1'])
+    expect(body.scopes_supported).toBeUndefined()
   })
 })
 
@@ -66,7 +78,7 @@ describe('authorization-server metadata', () => {
     expect(body.code_challenge_methods_supported).toContain('S256')
     expect(body.grant_types_supported).toEqual(expect.arrayContaining(['authorization_code', 'refresh_token']))
     expect(body.token_endpoint_auth_methods_supported).toContain('none')
-    expect(body.scopes_supported).toEqual(expect.arrayContaining(['superadmin', 'offline_access']))
+    expect(body.scopes_supported).toEqual(['tenant_admin', 'offline_access'])
     expect(body.jwks_uri).toBe('https://x.example.com/.well-known/jwks.json')
     expect(body.id_token_signing_alg_values_supported).toEqual(['EdDSA'])
   })

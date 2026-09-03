@@ -26,6 +26,7 @@ export const maxDuration = 60
 // enforced by withSmartMenuAuth + the tenant pin, not by this client.
 const adminClient = createAdminClient()
 const ctx: ProvisioningCtx = { client: adminClient }
+const TOOL_SECURITY_SCHEMES = [{ type: 'oauth2' as const, scopes: [MERCHANT_OAUTH_SCOPE] }]
 
 const handler = createMcpHandler(
     (server) => {
@@ -57,7 +58,7 @@ const corsHandler: McpRouteHandler = async (req, routeCtx) => {
     const isToolDiscovery = await isToolsListRequest(req)
     const response = await compatibleAuthHandler(req, routeCtx)
     const securedResponse = isToolDiscovery
-        ? await withSmartMenuToolSecurity(response)
+        ? await withSmartMenuToolSecurity(response, TOOL_SECURITY_SCHEMES)
         : response
     return withCorsHeaders(securedResponse)
 }

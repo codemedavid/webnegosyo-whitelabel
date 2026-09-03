@@ -1079,7 +1079,7 @@ export async function bulkDeleteTenantsAction(
         }
 
         // Delete related data in FK-safe order
-        await adminClient.from('order_items').delete().eq('tenant_id', tenantId)
+        await adminClient.from('order_items').delete().eq('tenant_id' as never, tenantId)
         await adminClient.from('orders').delete().eq('tenant_id', tenantId)
         await adminClient.from('menu_items').delete().eq('tenant_id', tenantId)
         await adminClient.from('categories').delete().eq('tenant_id', tenantId)

@@ -47,7 +47,7 @@ describe('registerProvisioningTools', () => {
     expect(create.config).toMatchObject({ description: 'Create a tenant' })
     expect(create.config.inputSchema).toBe(OPS[0].input)
     expect(create.config._meta.securitySchemes).toEqual([
-      { type: 'oauth2', scopes: ['superadmin'] },
+      { type: 'oauth2', scopes: [] },
     ])
     const listTenants = calls.find((c) => c.name === 'list_tenants')!
     expect(listTenants.config.annotations).toMatchObject({
@@ -67,11 +67,15 @@ describe('registerProvisioningTools', () => {
     }
 
     expect(result.isError).toBe(true)
-    expect(result._meta?.['mcp/www_authenticate']).toEqual([
+    const challenges = result._meta?.['mcp/www_authenticate'] as string[]
+    expect(challenges).toEqual([
       expect.stringMatching(
-        /resource_metadata="https:\/\/www\.webnegosyo\.com\/\.well-known\/oauth-protected-resource".*authorization_uri="https:\/\/www\.webnegosyo\.com\/api\/mcp\/oauth\/authorize".*error="invalid_token".*error_description="Authentication required"/,
+        /resource_metadata="https:\/\/www\.webnegosyo\.com\/\.well-known\/oauth-protected-resource".*error="invalid_token".*error_description="Authentication required"/,
       ),
     ])
+    const challenge = challenges[0]
+    expect(challenge).not.toContain('authorization_uri=')
+    expect(challenge).not.toContain('scope=')
     expect(executeOp).not.toHaveBeenCalled()
   })
 

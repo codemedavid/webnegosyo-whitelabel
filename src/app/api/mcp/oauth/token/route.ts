@@ -4,7 +4,6 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
   OAUTH_CORS_HEADERS,
-  OAUTH_PATHS,
   getJwtSecret,
   getOrigin,
 } from '@/lib/mcp/oauth-config'
@@ -16,6 +15,14 @@ import { MERCHANT_OAUTH_PATHS } from '@/lib/mcp/merchant-config'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+export function resolveMerchantTokenAudience(
+  origin: string,
+  resource: string | undefined,
+): string | null {
+  const merchantAudience = `${origin}${MERCHANT_OAUTH_PATHS.mcp}`
+  return !resource || resource === merchantAudience ? merchantAudience : null
+}
 
 async function readParams(req: Request): Promise<Record<string, string>> {
   const contentType = req.headers.get('content-type') ?? ''
@@ -47,20 +54,15 @@ export async function POST(req: Request): Promise<Response> {
   const admin = createAdminClient()
   const grantType = params.grant_type
   const origin = getOrigin(req)
-  const superadminAudience = `${origin}${OAUTH_PATHS.mcp}`
-  const merchantAudience = `${origin}${MERCHANT_OAUTH_PATHS.mcp}`
-  const audience = params.resource === merchantAudience ? merchantAudience : superadminAudience
+  const audience = resolveMerchantTokenAudience(origin, params.resource)
+  if (!audience) {
+    return oauthError('invalid_target', 'resource does not match the SmartMenu merchant MCP endpoint', 400)
+  }
   let jwtSecret: string
   try {
     jwtSecret = getJwtSecret()
   } catch {
     return oauthError('server_error', 'MCP_OAUTH_JWT_SECRET is not configured', 500)
-  }
-
-  // RFC 8707: when the client supplies a resource indicator it must target
-  // this MCP server. Missing is tolerated for older MCP clients.
-  if (params.resource && params.resource !== superadminAudience && params.resource !== merchantAudience) {
-    return oauthError('invalid_target', 'resource does not match the SmartMenu MCP endpoint', 400)
   }
 
   const tokenOpts = {

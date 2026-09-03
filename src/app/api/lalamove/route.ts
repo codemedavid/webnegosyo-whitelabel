@@ -12,7 +12,7 @@ import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
 import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
-import type { Tenant } from '@/types/database'
+import type { Database, Tenant } from '@/types/database'
 
 /**
  * POST /api/lalamove
@@ -267,7 +267,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // Only fields Lalamove actually returned are written. Blanking a driver
       // name because one poll came back thin would wipe the number a merchant
       // needs to call about a delivery already on the road.
-      const patch: Record<string, string> = {}
+      const patch: Partial<Database['public']['Tables']['orders']['Update']> = {}
       if (live?.status) patch.lalamove_status = live.status
       if (live?.shareLink) patch.lalamove_tracking_url = live.shareLink
       if (live?.driver?.name) patch.lalamove_driver_name = live.driver.name

@@ -5,7 +5,7 @@ import { buildAuthorizationServerMetadata } from '@/lib/mcp/oauth-metadata'
 // (authorize/token/register), supported grants, and PKCE so Claude/ChatGPT can
 // self-configure and run the "automatic login" flow without a copy-pasted key.
 //
-// Also served from `[...path]/route.ts` (RFC 8414 §3.1 path-suffixed form) and
+// Also served at the merchant resource suffix through `[...path]/route.ts` and
 // from `/.well-known/openid-configuration`, which some clients probe first.
 
 export const runtime = 'nodejs'
