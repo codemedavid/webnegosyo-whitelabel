@@ -107,9 +107,13 @@ Added `withTenantScope(invoke, tenantId)` to
 
 ## Deployment (required — the fix is inert until then)
 
-1. Deploy the edge function: `supabase functions deploy manage-staff` (deployed
-   version was v2 at the time of writing).
-2. Ship the app change: OTA update or EAS build for `webnegosyo-app`.
+1. ~~Deploy the edge function~~ — **done 2026-09-04** via Supabase MCP
+   (`deploy_edge_function`), v2 → v3, ACTIVE, `verify_jwt` still true. Smoke
+   test: no Authorization header → `401`; anon token → `401 {"success":false,
+   "error":"Invalid or expired session."}`, i.e. the new bundle boots and runs
+   the handler.
+2. **Pending:** ship the app change — OTA update or EAS build for
+   `webnegosyo-app`.
 
 Both halves are needed. The server alone lets a superadmin act once a tenant
 arrives; the app alone sends a tenant the old server ignores.
