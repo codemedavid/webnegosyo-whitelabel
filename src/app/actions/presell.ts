@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PresellStock } from '@/types/database'
+import { releasePresellForCancelledConvexOrder } from '@/lib/presell/convex-cancel'
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
 
@@ -147,5 +148,26 @@ export async function deletePresellAllocationAction(
     return { success: true }
   } catch (error) {
     return fail(error, 'Failed to remove presell date')
+  }
+}
+
+/**
+ * Give a cancelled Convex order's presell dates back.
+ *
+ * A Convex tenant's cancel never reaches `updateOrderStatus`, where the claim
+ * is released for platform-backed orders — see lib/presell/convex-cancel.
+ * Unauthenticated by design, exactly like `restoreOrderStockAction` beside it
+ * in the same cancel handler: it can only ever return stock the order itself
+ * claimed, and it is driven by the admin sheet that just cancelled it.
+ */
+export async function releasePresellForCancelledConvexOrderAction(
+  tenantId: string,
+  customerData: unknown,
+) {
+  try {
+    await releasePresellForCancelledConvexOrder(tenantId, customerData)
+    return { success: true as const }
+  } catch (error) {
+    return fail(error, 'Failed to release the pre-order stock for the cancelled order')
   }
 }

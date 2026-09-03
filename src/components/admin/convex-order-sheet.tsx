@@ -48,8 +48,10 @@ import {
   useUpdateConvexPaymentStatus,
 } from "@/hooks/use-convex-orders";
 import { restoreOrderStockAction } from "@/app/actions/inventory";
+import { releasePresellForCancelledConvexOrderAction } from "@/app/actions/presell";
 import { orderSummaryRows } from "@/lib/order-summary-rows";
 import { readOrderDiscount } from "@/lib/order-discount";
+import { displayCustomerName } from '@/lib/order-display-name'
 
 interface ConvexOrderSheetProps {
   orderId: string | null;
@@ -126,6 +128,9 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
     // already happened and must not be undone by a stock write.
     if (tenantId) {
       await restoreOrderStockAction(tenantId, orderId);
+      // The pre-order dates this order held go back on sale too. The claim
+      // rides in customerData, so no lookup is needed.
+      await releasePresellForCancelledConvexOrderAction(tenantId, order?.customerData);
     }
   }
 
@@ -365,7 +370,7 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="text-sm font-medium">{order.customerName}</div>
+                <div className="text-sm font-medium">{displayCustomerName(order.customerName)}</div>
                 {order.customerContact && (
                   <a
                     href={`tel:${order.customerContact}`}
