@@ -2640,6 +2640,127 @@ export type Database = {
           },
         ]
       }
+      platform_announcement_reads: {
+        Row: {
+          announcement_id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_announcement_reads_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "platform_announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_announcements: {
+        Row: {
+          audience_tenant_ids: string[] | null
+          blocks: Json
+          cover_image_url: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          published_at: string | null
+          push_body: string | null
+          push_recipient_count: number | null
+          push_sent_at: string | null
+          push_title: string | null
+          show_popup: boolean
+          status: string
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience_tenant_ids?: string[] | null
+          blocks?: Json
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          published_at?: string | null
+          push_body?: string | null
+          push_recipient_count?: number | null
+          push_sent_at?: string | null
+          push_title?: string | null
+          show_popup?: boolean
+          status?: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience_tenant_ids?: string[] | null
+          blocks?: Json
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          published_at?: string | null
+          push_body?: string | null
+          push_recipient_count?: number | null
+          push_sent_at?: string | null
+          push_title?: string | null
+          show_popup?: boolean
+          status?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_device_tokens: {
+        Row: {
+          created_at: string
+          last_seen_at: string
+          platform: string
+          tenant_id: string | null
+          token: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          last_seen_at?: string
+          platform: string
+          tenant_id?: string | null
+          token: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          last_seen_at?: string
+          platform?: string
+          tenant_id?: string | null
+          token?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_device_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_payment_methods: {
         Row: {
           created_at: string

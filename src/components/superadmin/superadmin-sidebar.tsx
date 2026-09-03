@@ -15,6 +15,7 @@ import {
   ShoppingCart,
   KeyRound,
   CreditCard,
+  Megaphone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -54,6 +55,7 @@ const navGroups: SidebarGroup[] = [
       { label: 'Checkout Leads', href: '/superadmin/checkout-leads', icon: ShoppingCart },
       { label: 'MCP Keys', href: '/superadmin/mcp-keys', icon: KeyRound },
       { label: 'Subscriptions', href: '/superadmin/subscriptions', icon: CreditCard },
+      { label: "What's New", href: '/superadmin/whats-new', icon: Megaphone },
     ],
   },
 ]
