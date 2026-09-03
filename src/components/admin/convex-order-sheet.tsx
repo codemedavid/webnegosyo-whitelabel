@@ -48,6 +48,7 @@ import {
   useUpdateConvexPaymentStatus,
 } from "@/hooks/use-convex-orders";
 import { restoreOrderStockAction } from "@/app/actions/inventory";
+import { visibleCustomerFields } from "@/lib/admin/order-customer-fields";
 import { releasePresellForCancelledConvexOrderAction } from "@/app/actions/presell";
 import { orderSummaryRows } from "@/lib/order-summary-rows";
 import { readOrderDiscount } from "@/lib/order-discount";
@@ -380,24 +381,16 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
                     {order.customerContact}
                   </a>
                 )}
-                {order.customerData && typeof order.customerData === "object" && (
+                {visibleCustomerFields(order.customerData).length > 0 && (
                   <div className="mt-2 space-y-1 rounded-md bg-muted/50 p-2">
-                    {Object.entries(order.customerData as Record<string, unknown>)
-                      .filter(([key, value]) =>
-                        // The branch has its own banner above; these are the raw carrier keys behind it.
-                        !["scheduled_for", "scheduled_for_label", "delivery_lat", "delivery_lng", "messenger_psid", "outlet_id", "outlet_name"].includes(key) &&
-                        value !== "" && value != null
-                      )
-                      .map(
-                      ([key, value]) => (
-                        <div key={key} className="flex justify-between text-xs">
-                          <span className="text-muted-foreground capitalize">
-                            {key.replace(/_/g, " ")}
-                          </span>
-                          <span>{String(value)}</span>
-                        </div>
-                      )
-                    )}
+                    {visibleCustomerFields(order.customerData).map((field) => (
+                      <div key={field.key} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground capitalize">
+                          {field.label}
+                        </span>
+                        <span>{field.value}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
