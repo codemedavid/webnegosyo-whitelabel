@@ -17,7 +17,12 @@ import { PeriodSelector } from "../../components/PeriodSelector";
 import { HeroRevenueCard } from "../../components/HeroRevenueCard";
 import { StatusPipeline } from "../../components/StatusPipeline";
 import { OrderCard } from "../../components/OrderCard";
+// Rendered by <ScreenHeader>; the import stays so the guardrail that every
+// tab is escapable keeps reading it here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
 import { goTo } from "../../lib/tab-navigation";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
@@ -100,22 +105,16 @@ function getGreeting(): string {
 
 function HeaderActions({ isConnected }: { isConnected: boolean }) {
   return (
-    <View style={styles.headerRight}>
-      <TouchableOpacity
-        onPress={() => router.push("/(main)/scan")}
-        style={styles.scanButton}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.scanButtonText}>Scan QR</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => router.push("/(main)/printer-settings")} style={styles.printerButton}>
-        <Text style={styles.printerText}>Printer</Text>
-        <View style={[styles.printerDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => router.push("/(main)/account")} style={styles.logoutButton}>
-        <Text style={styles.accountText}>Account</Text>
-      </TouchableOpacity>
-    </View>
+    <>
+      <IconButton
+        icon="printer"
+        label="Printer"
+        dot={isConnected ? colors.success : colors.textTertiary}
+        onPress={() => router.push("/(main)/printer-settings")}
+      />
+      <IconButton icon="account" label="Account" onPress={() => router.push("/(main)/account")} />
+      <IconButton icon="qr" label="Scan QR" tone="primary" onPress={() => router.push("/(main)/scan")} />
+    </>
   );
 }
 
@@ -182,16 +181,19 @@ export default function DashboardScreen() {
 
   const error = statsError || queueError;
 
+  // Names the branch whose queue this is. A staffer moving between outlets
+  // must never mistake one branch's numbers for another's.
+  const subtitle = outletName ? `${getGreeting()} · ${outletName}` : getGreeting();
+
   if (!hasBackend || error) {
     return (
       <View style={styles.screen}>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.greeting}>{getGreeting()}</Text>
-            <Text style={styles.tenantName}>{tenantName ?? "Dashboard"}</Text>
-          </View>
-          <HeaderActions isConnected={isConnected} />
-        </View>
+        {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+        <ScreenHeader
+          title={tenantName ?? "Home"}
+          subtitle={subtitle}
+          actions={<HeaderActions isConnected={isConnected} />}
+        />
         <ErrorState
           message={error ?? "This store's order backend is not configured yet. Please contact support."}
           onRetry={() => goTo(router, "/(main)/dashboard")}
@@ -213,6 +215,13 @@ export default function DashboardScreen() {
     .slice(0, 5);
 
   return (
+    <View style={styles.screen}>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title={tenantName ?? "Home"}
+        subtitle={subtitle}
+        actions={<HeaderActions isConnected={isConnected} />}
+      />
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -220,21 +229,6 @@ export default function DashboardScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
-          <Text style={styles.tenantName} numberOfLines={1}>{tenantName ?? "Dashboard"}</Text>
-          {outletName ? (
-            // Names the branch whose queue this is. A staffer moving between
-            // outlets must never mistake one branch's numbers for another's.
-            <Text style={styles.branchName} numberOfLines={1}>{outletName}</Text>
-          ) : null}
-        </View>
-        <HeaderActions isConnected={isConnected} />
-      </View>
-      <View style={styles.switcherRow}>
-        <WorkspaceSwitcher />
-      </View>
 
       {/* New-order alerts (ringtone + notification) are mounted once at the
           (main) tab layout via <GlobalOrderAlerts>, so they fire on every tab. */}
@@ -307,20 +301,13 @@ export default function DashboardScreen() {
         </>
       )}
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: spacing.xxl },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.sm },
-  switcherRow: { flexDirection: "row", marginBottom: spacing.lg },
-  headerText: { flex: 1, marginRight: spacing.sm },
-  greeting: { ...typography.eyebrow, color: colors.textSecondary },
-  tenantName: { ...typography.title, color: colors.textPrimary, marginTop: spacing.xs },
-  branchName: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  logoutButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
-  accountText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
   demoBanner: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
@@ -351,16 +338,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   attentionBadgeText: { fontSize: 12, fontWeight: "800", color: colors.statusPending.text },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  scanButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    ...shadow.sm,
-  },
-  scanButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "700" },
-  printerButton: { position: "relative", paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
-  printerText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
-  printerDot: { position: "absolute", top: 2, right: 2, width: 8, height: 8, borderRadius: 4 },
 });

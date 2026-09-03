@@ -1,0 +1,24 @@
+appId: com.webnegosyo.admin
+---
+# Switches the merchant app to a workspace view.
+#
+# Every flow enters through here, so this is also where per-flow isolation is
+# enforced: relaunching drops whatever screen the previous flow finished on and
+# returns to the tab root. The launch deliberately does NOT clear state — that
+# would sign the merchant out and cost the suite its session.
+- launchApp
+- waitForAnimationToEnd
+# Debug builds raise the expo-dev-client menu on launch.
+- tapOn:
+    text: "Continue"
+    optional: true
+
+# The switcher chip sits in every tab screen's header; its sheet names each
+# row "Switch to <view>", so rows are addressed by label rather than position.
+- tapOn:
+    text: "Current view.*"
+- waitForAnimationToEnd
+- tapOn:
+    text: "Switch to ${VIEW}"
+- waitForAnimationToEnd
+- assertVisible: "Current view: ${VIEW}.*"

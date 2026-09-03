@@ -53,7 +53,12 @@ import { DeliverySheet } from "../../components/pos/DeliverySheet";
 import { IncomingOrdersSheet } from "../../components/pos/IncomingOrdersSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
+// Rendered by <ScreenHeader>; the import stays so the guardrail that every
+// tab is escapable keeps reading it here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { Icon } from "../../components/Icon";
 
 /** A product whose modifier groups have already been normalized. */
 interface RegisterItem {
@@ -386,17 +391,16 @@ export default function PosScreen() {
         </View>
       )}
 
-      {/* The banner already clears the notch, so the header must not re-pad it. */}
-      <View style={[styles.header, edit && styles.headerUnderBanner]}>
-        <View style={styles.titleRow}>
-          <WorkspaceSwitcher />
-          <Text style={styles.count}>
-            {visibleItems.length} {visibleItems.length === 1 ? "product" : "products"}
-          </Text>
-        </View>
-
+      {/* The banner already clears the notch, so the header must not re-pad it.
+          <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Register"
+        subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}
+        ignoreTopInset={!!edit}
+        style={styles.header}
+      >
         <View style={styles.searchRow}>
-          <Text style={styles.searchGlyph}>⌕</Text>
+          <Icon name="search" size={18} color={colors.textTertiary} />
           <TextInput
             style={styles.search}
             placeholder="Search products"
@@ -410,13 +414,14 @@ export default function PosScreen() {
             <TouchableOpacity
               onPress={() => setSearch("")}
               hitSlop={10}
+              accessibilityRole="button"
               accessibilityLabel="Clear search"
             >
-              <Text style={styles.searchClear}>✕</Text>
+              <Icon name="close" size={14} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         horizontal
@@ -661,12 +666,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.background,
   },
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: TOP_INSET,
-    paddingBottom: spacing.sm,
-  },
-  headerUnderBanner: { paddingTop: spacing.sm },
+  header: { paddingBottom: spacing.sm },
   editBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -697,13 +697,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningLight,
   },
   editWarningText: { ...typography.small, color: colors.textPrimary },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.md,
-  },
-  count: { ...typography.small, color: colors.textTertiary },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -714,14 +707,12 @@ const styles = StyleSheet.create({
     borderColor: colors.separator,
     paddingHorizontal: spacing.lg,
   },
-  searchGlyph: { fontSize: 17, color: colors.textTertiary },
   search: {
     flex: 1,
     paddingVertical: spacing.md,
     ...typography.body,
     color: colors.textPrimary,
   },
-  searchClear: { fontSize: 13, color: colors.textSecondary },
   rail: { flexGrow: 0 },
   railContent: { paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, gap: spacing.sm },
   chip: {

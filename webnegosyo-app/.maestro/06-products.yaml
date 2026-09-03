@@ -1,0 +1,76 @@
+appId: com.webnegosyo.admin
+name: Products - performance, menu management, stock, daily report, payments
+---
+# As a merchant, I want to see which items sell, edit the menu, count stock,
+# reconcile the day, and manage how customers pay, so that I can run the
+# storefront without opening a laptop.
+- runFlow:
+    file: helpers/switch-view.yaml
+    env:
+      VIEW: Products
+
+# --- Performance (the view's default tab) ------------------------------------
+- assertVisible: "Performance"
+- assertVisible: "What sells, and what doesn't"
+- assertVisible: "SALES"
+- assertVisible: "UNITS"
+- assertVisible: "ORDERS"
+- assertVisible: "Search products by name"
+- assertVisible: "Filters, none active"
+- assertVisible: "Export daily sales as CSV"
+# Ranked items carry a position and their sales contribution.
+- assertVisible: "#1"
+- assertVisible: ".*\\d+ units, \\d+ orders, ₱.*sales"
+# The range selector re-scopes the ranking.
+- tapOn: "Show 7 Days"
+- waitForAnimationToEnd
+- assertVisible: "SALES"
+- tapOn: "Show Today"
+- waitForAnimationToEnd
+- assertVisible: "SALES"
+
+# --- Manage ------------------------------------------------------------------
+- tapOn: "Manage, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "Manage products"
+- assertVisible: "Create, edit, and price your menu"
+- assertVisible: "Add new product"
+# Each menu item exposes an edit affordance.
+- assertVisible: "Edit .*"
+
+# --- Stock -------------------------------------------------------------------
+- tapOn: "Stock, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "Stock"
+- assertVisible: "SHELF STATUS"
+- assertVisible: ".*Stocked"
+- assertVisible: ".*Low"
+- assertVisible: ".*Out"
+- assertVisible: "STOCK COUNT"
+- assertVisible: "Start stock count"
+
+# --- Daily report ------------------------------------------------------------
+- tapOn: "Report, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "Daily report"
+- assertVisible: "Did the shelf match the orders?"
+# The report is navigable day to day.
+- assertVisible: "Previous day"
+- assertVisible: "Next day"
+- tapOn: "Previous day"
+- waitForAnimationToEnd
+- assertVisible: "Daily report"
+
+# --- Payments ----------------------------------------------------------------
+# Payment methods are store setup rather than a shift screen, so they live in
+# the Menu hub instead of on the Products tab bar.
+- tapOn: "Menu, tab.*"
+- waitForAnimationToEnd
+- tapOn: "Payments. How customers pay you"
+- waitForAnimationToEnd
+- assertVisible: "Payment methods"
+- assertVisible: "How customers pay you"
+- assertVisible: "Add a payment method"
+# An existing method is listed, active, editable, and reorderable.
+- assertVisible: "Cash active"
+- assertVisible: "Edit Cash"

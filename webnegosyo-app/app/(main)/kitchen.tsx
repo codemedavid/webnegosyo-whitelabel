@@ -38,7 +38,11 @@ import { usePrinterStore } from "../../stores/printer-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
+// Rendered by <ScreenHeader>; the import stays so the guardrail that every
+// tab is escapable keeps reading it here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { TicketCard, kds } from "../../components/kitchen/TicketCard";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -279,23 +283,17 @@ export default function KitchenScreen() {
 }
 
 function Header({ outletName, count }: { outletName: string | null; count: number }) {
+  const open = `${count} open`;
   return (
-    <View style={styles.header}>
-      <View style={styles.headerText}>
-        <Text style={styles.title}>Kitchen</Text>
-        {outletName ? (
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {outletName}
-          </Text>
-        ) : null}
-      </View>
-      <View style={styles.headerRight}>
-        <View style={styles.countPill}>
-          <Text style={styles.countText}>{count} open</Text>
-        </View>
-        <WorkspaceSwitcher />
-      </View>
-    </View>
+    <>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Kitchen"
+        subtitle={outletName ? `${open} · ${outletName}` : open}
+        tone="dark"
+        style={styles.header}
+      />
+    </>
   );
 }
 
@@ -305,45 +303,9 @@ const styles = StyleSheet.create({
     backgroundColor: kds.background,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 56,
-    paddingBottom: 12,
-  },
-  headerText: {
-    flexShrink: 1,
-  },
-  title: {
-    color: kds.ink,
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    color: kds.inkSoft,
-    fontSize: 13,
-    fontWeight: "600",
-    marginTop: 1,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  countPill: {
-    borderWidth: 1,
-    borderColor: kds.cardBorder,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  countText: {
-    color: kds.ink,
-    fontSize: 13,
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
+    backgroundColor: kds.background,
+    borderBottomWidth: 1,
+    borderBottomColor: kds.cardBorder,
   },
   allDay: {
     marginHorizontal: 12,

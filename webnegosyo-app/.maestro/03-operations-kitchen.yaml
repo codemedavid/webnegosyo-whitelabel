@@ -1,0 +1,28 @@
+appId: com.webnegosyo.admin
+name: Operations - kitchen display board
+---
+# As a chef, I want the open tickets on one board with their line items and how
+# long they have been waiting, so that I can cook the oldest order first.
+- runFlow:
+    file: helpers/switch-view.yaml
+    env:
+      VIEW: Operations
+
+- tapOn: "Kitchen, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "Kitchen"
+
+# The board reports how many tickets are open and rolls the lines up into an
+# all-day count for the pass.
+- assertVisible: "\\d+ open"
+- assertVisible: "All day · \\d+ items.*"
+
+# Each ticket carries a short code, a quantity-prefixed line item, and an age.
+- assertVisible: "#[A-Z0-9]{4}"
+- assertVisible: "\\d+×, .*"
+
+# The bump control is the chef's one action on a ticket. It is asserted here
+# rather than tapped: bumping mutates a live customer's order status and cannot
+# be undone. Ticket mutation is covered in 04, against an order this suite
+# creates itself.
+- assertVisible: "Bump · Ready"

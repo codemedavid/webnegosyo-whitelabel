@@ -6,11 +6,12 @@ import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
 import { colors, typography, spacing, radius } from "../../../theme/colors";
 import { Card } from "../../../components/Card";
 import { Badge } from "../../../components/Badge";
+import { BackHeader } from "../../../components/BackHeader";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
 import { useOrderItemImages } from "../../../hooks/use-order-item-images";
-import { getInitials, getAvatarColor } from "../../../lib/order-visuals";
+import { displayCustomerName, getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
 import { restoreStockForStatusChange } from "../../../lib/order-cancel-stock";
@@ -681,25 +682,20 @@ export default function OrderDetailScreen() {
   const nextStatus = NEXT_STATUS[order.status];
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backText}>← Back</Text>
-      </TouchableOpacity>
-
-      <View style={styles.statusHeader}>
-        <View>
-          <Text style={styles.eyebrow}>Order</Text>
-          <Text style={styles.title}>Order Details</Text>
-        </View>
-        <Badge label={order.status} variant={order.status} />
-      </View>
+    <View style={styles.screen}>
+      <BackHeader
+        title="Order details"
+        subtitle={displayCustomerName(order.customerName)}
+        actions={<Badge label={order.status} variant={order.status} />}
+      />
+      <ScrollView contentContainerStyle={styles.content}>
 
       <Card style={styles.section}>
         <StatusStepper currentStatus={order.status} />
       </Card>
 
       <Card title="Customer" style={styles.section}>
-        <Text style={styles.value}>{order.customerName}</Text>
+        <Text style={styles.value}>{displayCustomerName(order.customerName)}</Text>
         <Text style={styles.sub}>{order.customerContact}</Text>
         <View style={styles.orderTypeRow}>
           <View style={styles.orderTypePill}>
@@ -972,18 +968,14 @@ export default function OrderDetailScreen() {
           )}
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60 },
-  backButton: { marginBottom: spacing.md },
-  backText: { ...typography.body, color: colors.primary },
-  statusHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.lg },
-  eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.xs },
-  title: { ...typography.title, color: colors.textPrimary },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
   section: { marginBottom: spacing.md },
   value: { ...typography.heading, color: colors.textPrimary },
   sub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },

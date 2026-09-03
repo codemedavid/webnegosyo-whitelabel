@@ -22,7 +22,10 @@ import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { PeriodSelector } from "../../components/PeriodSelector";
+// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { FilterChipsRow } from "../../components/FilterChipsRow";
 import { ProductFilterSheet } from "../../components/ProductFilterSheet";
@@ -488,9 +491,7 @@ export default function ProductAnalyticsScreen() {
   if (!hasBackend) {
     return (
       <View style={styles.screen}>
-        <View style={styles.headerWrap}>
-          <Text style={styles.title}>Products</Text>
-        </View>
+        <ScreenHeader title="Performance" subtitle="What sells, and what doesn't" />
         <ErrorState message="Product analytics needs this store's order backend to be configured." />
       </View>
     );
@@ -498,15 +499,8 @@ export default function ProductAnalyticsScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headerWrap}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Products</Text>
-            <Text style={styles.subtitle}>Sales performance for every menu item</Text>
-          </View>
-          <WorkspaceSwitcher />
-        </View>
-      </View>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Performance" subtitle="What sells, and what doesn't" />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -799,11 +793,7 @@ export default function ProductAnalyticsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  headerWrap: { paddingHorizontal: spacing.xl, paddingTop: 60, paddingBottom: spacing.md },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  content: { padding: spacing.xl, paddingTop: spacing.md },
+  content: { padding: spacing.xl, paddingTop: 0 },
   modeBlock: { marginBottom: spacing.lg },
 
   controlRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },

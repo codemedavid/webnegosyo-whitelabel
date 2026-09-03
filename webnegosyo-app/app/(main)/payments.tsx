@@ -27,7 +27,11 @@ import { colors, typography, spacing, radius, shadow } from "../../theme/colors"
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
+import { Icon } from "../../components/Icon";
 
 export default function PaymentMethodsScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
@@ -109,23 +113,19 @@ export default function PaymentMethodsScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headerWrap}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Payment Methods</Text>
-            <Text style={styles.subtitle}>How customers pay you at checkout</Text>
-          </View>
-          <WorkspaceSwitcher />
-        </View>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={handleAdd}
-          accessibilityRole="button"
-          accessibilityLabel="Add a payment method"
-        >
-          <Text style={styles.addButtonText}>+ Add payment method</Text>
-        </TouchableOpacity>
-      </View>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Payment methods"
+        subtitle="How customers pay you"
+        actions={
+          <IconButton
+            icon="plus"
+            label="Add a payment method"
+            tone="primary"
+            onPress={handleAdd}
+          />
+        }
+      />
 
       <ScrollView
         style={styles.list}
@@ -143,7 +143,13 @@ export default function PaymentMethodsScreen() {
         ) : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : methods.length === 0 ? (
-          <EmptyState message="No payment methods yet. Add one so customers can pay you." />
+          <EmptyState
+            icon="payments"
+            title="No payment methods yet"
+            message="Add one so customers can pay you at checkout."
+            actionLabel="Add a payment method"
+            onAction={handleAdd}
+          />
         ) : (
           methods.map((method, index) => (
             <View key={method.id} style={styles.row}>
@@ -200,25 +206,25 @@ export default function PaymentMethodsScreen() {
                 />
                 <View style={styles.moveRow}>
                   <TouchableOpacity
-                    style={[styles.moveButton, index === 0 && styles.moveButtonDisabled]}
+                    style={[styles.reorder, index === 0 && styles.reorderDisabled]}
                     disabled={index === 0}
                     onPress={() => handleMove(method, "up")}
                     accessibilityRole="button"
                     accessibilityLabel={`Move ${method.name} up`}
                   >
-                    <Text style={styles.moveButtonText}>↑</Text>
+                    <Icon name="chevron-down" size={16} color={colors.textPrimary} style={styles.flip} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
-                      styles.moveButton,
-                      index === methods.length - 1 && styles.moveButtonDisabled,
+                      styles.reorder,
+                      index === methods.length - 1 && styles.reorderDisabled,
                     ]}
                     disabled={index === methods.length - 1}
                     onPress={() => handleMove(method, "down")}
                     accessibilityRole="button"
                     accessibilityLabel={`Move ${method.name} down`}
                   >
-                    <Text style={styles.moveButtonText}>↓</Text>
+                    <Icon name="chevron-down" size={16} color={colors.textPrimary} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -232,33 +238,16 @@ export default function PaymentMethodsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  headerWrap: {
-    paddingTop: 60,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  headerText: { flex: 1 },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  addButton: {
-    marginTop: spacing.md,
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingVertical: spacing.md,
-    alignItems: "center",
-  },
-  addButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
   list: { flex: 1 },
-  content: { padding: spacing.lg, paddingTop: spacing.sm },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl * 2 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.lg,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
     ...shadow.sm,
   },
   rowMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md },
@@ -286,14 +275,14 @@ const styles = StyleSheet.create({
   badgeWarningText: { color: colors.warning },
   rowControls: { alignItems: "center", gap: spacing.sm },
   moveRow: { flexDirection: "row", gap: spacing.xs },
-  moveButton: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: colors.background,
+  reorder: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceSubtle,
     alignItems: "center",
     justifyContent: "center",
   },
-  moveButtonDisabled: { opacity: 0.3 },
-  moveButtonText: { ...typography.body, color: colors.textSecondary, fontWeight: "700" },
+  reorderDisabled: { opacity: 0.3 },
+  flip: { transform: [{ rotate: "180deg" }] },
 });

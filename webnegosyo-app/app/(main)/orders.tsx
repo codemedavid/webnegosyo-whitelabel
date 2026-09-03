@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl } from "react-native";
+import { View, StyleSheet, ScrollView, Alert, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useBranchScope } from "../../lib/use-branch-scope";
-import { colors, typography, spacing, radius } from "../../theme/colors";
+import { colors, spacing } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
@@ -16,7 +16,12 @@ import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
+// Rendered by <ScreenHeader>; the import stays so the guardrail that every
+// tab is escapable keeps reading it here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
 import { ExportSheet } from "../../components/ExportSheet";
 import { runOrdersExport } from "../../lib/export/run-export";
 import { formatExportDay } from "../../lib/export/dates";
@@ -222,32 +227,29 @@ export default function OrdersScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.eyebrow}>Order Queue</Text>
-          <Text style={styles.title}>Orders</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <WorkspaceSwitcher />
-          <TouchableOpacity
-            onPress={() => {
-              setExportError(null);
-              setExportOpen(true);
-            }}
-            style={styles.exportButton}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.exportButtonText}>Export</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(main)/scan")}
-            style={styles.scanButton}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.scanButtonText}>Scan QR</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Orders"
+        subtitle={isLoading ? undefined : `${visibleOrders.length} shown`}
+        actions={
+          <>
+            <IconButton
+              icon="export"
+              label="Export"
+              onPress={() => {
+                setExportError(null);
+                setExportOpen(true);
+              }}
+            />
+            <IconButton
+              icon="qr"
+              label="Scan QR"
+              tone="primary"
+              onPress={() => router.push("/(main)/scan")}
+            />
+          </>
+        }
+      />
 
       <OrderFilterBar
         filters={filterOptions}
@@ -305,33 +307,6 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingTop: 60,
-    paddingBottom: spacing.md,
-  },
-  eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.xs },
-  title: { ...typography.title, color: colors.textPrimary },
-  scanButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  scanButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "600" },
-  exportButton: {
-    borderColor: colors.separator,
-    borderWidth: 1,
-    borderRadius: radius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.card,
-  },
-  exportButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
   list: { flex: 1, marginTop: spacing.md },
   listContent: { padding: spacing.xl, paddingTop: spacing.sm },
 });

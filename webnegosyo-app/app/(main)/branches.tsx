@@ -24,7 +24,9 @@ import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { StoreHeroCard } from "../../components/StoreHeroCard";
 import { BranchPerformanceCard } from "../../components/BranchPerformanceCard";
 import { HourVolumeChart } from "../../components/HourVolumeChart";
@@ -125,38 +127,35 @@ export default function BranchesScreen() {
   const needsAttention = branchRows.filter((row) => row.verdict.tone === "bad").length;
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-      }
-    >
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>Branches</Text>
-        <WorkspaceSwitcher />
-      </View>
-
-      <View style={styles.periodRow}>
-        {PERIOD_CHOICES.map((choice) => {
-          const isActive = choice.days === periodDays;
-          return (
-            <TouchableOpacity
-              key={choice.days}
-              style={[styles.periodPill, isActive && styles.periodPillActive]}
-              onPress={() => setPeriodDays(choice.days)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-            >
-              <Text style={[styles.periodText, isActive && styles.periodTextActive]}>
-                {choice.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
+    <View style={styles.screen}>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Compare branches" subtitle="Branch against branch">
+        <View style={styles.periodRow}>
+          {PERIOD_CHOICES.map((choice) => {
+            const isActive = choice.days === periodDays;
+            return (
+              <TouchableOpacity
+                key={choice.days}
+                style={[styles.periodPill, isActive && styles.periodPillActive]}
+                onPress={() => setPeriodDays(choice.days)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+              >
+                <Text style={[styles.periodText, isActive && styles.periodTextActive]}>
+                  {choice.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </ScreenHeader>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
       <StoreHeroCard
         totals={totals}
         periodLabel={periodChoice.label}
@@ -214,19 +213,14 @@ export default function BranchesScreen() {
         Prime cost and marketing return are not shown because this platform does not hold labour
         hours or ad spend.
       </Text>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  title: { ...typography.title, color: colors.textPrimary },
+  content: { paddingHorizontal: spacing.xl, gap: spacing.md, paddingBottom: spacing.xxl },
   periodRow: { flexDirection: "row", gap: spacing.sm },
   periodPill: {
     paddingHorizontal: spacing.lg,

@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
 
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
@@ -28,6 +27,7 @@ import {
   type StaffMember,
 } from "../../lib/staff-service";
 import { isTabAllowed } from "../../lib/staff-permissions";
+import { BackHeader } from "../../components/BackHeader";
 import {
   PERMISSION_OPTIONS,
   PINNABLE_SCREENS,
@@ -208,30 +208,28 @@ export default function TeamScreen() {
 
   if (!allowed) {
     return (
-      <View style={[styles.screen, styles.center]}>
-        <Text style={styles.title}>Team</Text>
-        <Text style={styles.sub}>
-          Only the store owner or a branch admin can manage staff.
-        </Text>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
+      <View style={styles.screen}>
+        <BackHeader title="Team" />
+        <View style={styles.center}>
+          <Text style={styles.sub}>
+            Only the store owner or a branch admin can manage staff.
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backText}>← Back</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.title}>Team</Text>
-      <Text style={styles.sub}>
-        {isOwner
-          ? "Add staff accounts and choose what each one can do."
-          : `Staff for ${outletName(myOutletId)}.`}
-      </Text>
+    <View style={styles.screen}>
+      <BackHeader
+        title="Team"
+        subtitle={
+          isOwner
+            ? "Add staff accounts and choose what each one can do"
+            : `Staff for ${outletName(myOutletId)}`
+        }
+      />
+      <ScrollView contentContainerStyle={styles.content}>
 
       <TouchableOpacity
         style={styles.addButton}
@@ -510,7 +508,8 @@ export default function TeamScreen() {
           );
         })
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -536,12 +535,9 @@ function Chip({ label, selected, onPress }: ChipProps) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  center: { justifyContent: "center", alignItems: "center", padding: spacing.xl },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: spacing.xxl },
-  backButton: { marginBottom: spacing.md },
-  backText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.xs },
-  sub: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.xl },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
+  sub: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg, textAlign: "center" },
   addButton: {
     backgroundColor: colors.card,
     borderRadius: radius.full,

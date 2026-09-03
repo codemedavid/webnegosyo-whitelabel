@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { FunctionReference } from "convex/server";
 import { router } from "expo-router";
 import { useSafeQuery } from "../../lib/hooks";
@@ -10,20 +10,47 @@ import {
   buildDateStrip,
   ordersForDay,
   groupByTime,
-  getScheduleBand,
   todayKey,
   type ScheduledSourceOrder,
-  type ScheduleBand,
+  type TimeGroup,
 } from "../../lib/scheduled-orders";
+import {
+  agendaDays,
+  filterByKind,
+  loadByDay,
+  monthCursorOf,
+  nextLoadedDay,
+  shiftMonth,
+  type MonthCursor,
+  type ScheduleKind,
+} from "../../lib/schedule-calendar";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { useAuthStore } from "../../stores/auth-store";
-import { colors, typography, spacing, radius } from "../../theme/colors";
+import { colors, typography, spacing } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
+import { EmptyState } from "../../components/EmptyState";
+// Rendered by <ScreenHeader>; the import stays so the guardrail that every
+// tab is escapable keeps reading it here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
-import { OrderCard, type OrderCardOrder } from "../../components/OrderCard";
-import { presellCountsByDay } from "../../lib/presell-orders";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { SegmentedControl } from "../../components/SegmentedControl";
+import { OptionPills } from "../../components/OptionPills";
+import { MonthCalendar } from "../../components/schedule/MonthCalendar";
+import { DayTimeline } from "../../components/schedule/DayTimeline";
+import { type OrderCardOrder } from "../../components/OrderCard";
 
+/**
+ * The Schedule tab: every pre-order and scheduled order the store has
+ * promised, laid out the way a merchant already thinks about promises —
+ * on a calendar.
+ *
+ * Month view is the overview (which days are loaded, which are pre-sold,
+ * whether today slipped); the timeline under it is the day in detail.
+ * Agenda view is the same timeline for every upcoming day in one scroll,
+ * for the merchant who wants to read the week rather than tap it.
+ */
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 
 /** Pre-orders sit days out, so read deeper than the queue's default page. */
@@ -33,18 +60,26 @@ const SCHEDULED_FETCH_LIMIT = 300;
 const TIMER_TICK_MS = 30_000;
 
 type ScheduledScreenOrder = ScheduledSourceOrder & OrderCardOrder;
+type ViewMode = "month" | "agenda";
 
-const BAND_COLORS: Record<ScheduleBand, string> = {
-  overdue: colors.danger,
-  "due-soon": colors.urgencyWarning,
-  upcoming: colors.textSecondary,
-};
+const VIEW_OPTIONS = [
+  { label: "Month", value: "month" },
+  { label: "Agenda", value: "agenda" },
+] as const satisfies readonly { label: string; value: ViewMode }[];
 
-const BAND_SUFFIX: Record<ScheduleBand, string> = {
-  overdue: " · Overdue",
-  "due-soon": " · Due soon",
-  upcoming: "",
-};
+const KIND_OPTIONS = [
+  { label: "All", value: "all" },
+  { label: "Pre-orders", value: "presell" },
+  { label: "Scheduled", value: "plain" },
+] as const satisfies readonly { label: string; value: ScheduleKind }[];
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function openOrder(orderId: string) {
+  router.push(`/(main)/order/${orderId}`);
+}
 
 export default function ScheduledScreen() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
@@ -63,33 +98,70 @@ export default function ScheduledScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const scheduled = useMemo(() => {
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [kind, setKind] = useState<ScheduleKind>("all");
+  const [cursor, setCursor] = useState<MonthCursor | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
+  const allScheduled = useMemo(() => {
     const scoped = filterOrdersToScope(scope, orders) as ScheduledScreenOrder[] | undefined;
     return selectScheduledOrders(scoped);
   }, [scope, orders]);
+  const scheduled = useMemo(() => filterByKind(allScheduled, kind), [allScheduled, kind]);
+  const presellCount = useMemo(
+    () => filterByKind(allScheduled, "presell").length,
+    [allScheduled],
+  );
 
-  const strip = useMemo(() => buildDateStrip(scheduled, nowMs), [scheduled, nowMs]);
-  // Pre-sold orders per day: the merchant chose how many to sell on each date,
-  // so the strip says how many of today's chips are that kind of promise.
-  const presellCounts = useMemo(() => presellCountsByDay(scheduled, nowMs), [scheduled, nowMs]);
+  const today = todayKey(nowMs);
+  const activeCursor = cursor ?? monthCursorOf(nowMs);
+  // A selected day stays selected even once it empties (the merchant may be
+  // looking at it on purpose); only a day that has passed snaps back to today.
+  const activeKey = selectedKey && selectedKey >= today ? selectedKey : today;
 
-  // A selected day can empty out under the merchant (orders complete, the day
-  // passes); an unknown key falls back to Today rather than a blank screen.
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const activeKey =
-    selectedKey && strip.some((day) => day.key === selectedKey)
-      ? selectedKey
-      : todayKey(nowMs);
-
-  const groups = useMemo(
+  const load = useMemo(() => loadByDay(scheduled, nowMs), [scheduled, nowMs]);
+  const dayGroups = useMemo(
     () => groupByTime(ordersForDay(scheduled, activeKey, nowMs)),
     [scheduled, activeKey, nowMs],
+  );
+  const agenda = useMemo(
+    () =>
+      agendaDays(scheduled, nowMs).map((day) => ({
+        ...day,
+        groups: groupByTime(day.orders),
+      })),
+    [scheduled, nowMs],
+  );
+  // The agenda strip is what the guardrail and the "Next:" jump are built on.
+  const strip = useMemo(() => buildDateStrip(scheduled, nowMs), [scheduled, nowMs]);
+  const hasUpcomingDays = strip.length > 1;
+
+  const jumpToDay = useCallback(
+    (key: string) => {
+      const [year, month] = key.split("-").map(Number);
+      setCursor({ year, month: month - 1 });
+      setSelectedKey(key);
+    },
+    [],
+  );
+  const jumpToToday = useCallback(() => jumpToDay(today), [jumpToDay, today]);
+
+  const header = (
+    <Header
+      outletName={outletName}
+      count={allScheduled.length}
+      presellCount={presellCount}
+      viewMode={viewMode}
+      onViewMode={setViewMode}
+      kind={kind}
+      onKind={setKind}
+    />
   );
 
   if (!hasBackend || error) {
     return (
       <View style={styles.screen}>
-        <Header outletName={outletName} count={0} />
+        {header}
         <ErrorState
           message={error ?? "This store's order backend is not configured yet. Please contact support."}
         />
@@ -100,7 +172,7 @@ export default function ScheduledScreen() {
   if (isLoading) {
     return (
       <View style={styles.screen}>
-        <Header outletName={outletName} count={0} />
+        {header}
         <LoadingState message="Loading the schedule…" />
       </View>
     );
@@ -108,100 +180,123 @@ export default function ScheduledScreen() {
 
   return (
     <View style={styles.screen}>
-      <Header outletName={outletName} count={scheduled.length} />
-
-      <View style={styles.stripWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-          {strip.map((day) => {
-            const isActive = day.key === activeKey;
-            const presellCount = presellCounts.get(day.key) ?? 0;
-            return (
-              <TouchableOpacity
-                key={day.key}
-                style={[styles.dayChip, isActive && styles.dayChipActive]}
-                onPress={() => setSelectedKey(day.key)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`${day.label}, ${day.count} scheduled order${day.count === 1 ? "" : "s"}${presellCount > 0 ? `, ${presellCount} pre-sold` : ""}`}
-              >
-                <Text style={[styles.dayChipLabel, isActive && styles.dayChipLabelActive]}>
-                  {day.label}
-                </Text>
-                {day.count > 0 ? (
-                  <View style={[styles.dayChipCount, isActive && styles.dayChipCountActive]}>
-                    <Text style={[styles.dayChipCountText, isActive && styles.dayChipCountTextActive]}>
-                      {day.count}
-                    </Text>
-                  </View>
-                ) : null}
-                {presellCount > 0 ? (
-                  <Text style={[styles.dayChipPresell, isActive && styles.dayChipPresellActive]}>
-                    {presellCount} pre-sold
-                  </Text>
-                ) : null}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {groups.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>
-            {scheduled.length === 0 ? "No scheduled orders yet" : "Nothing on this day"}
-          </Text>
-          <Text style={styles.emptyBody}>
-            Pre-orders placed by customers appear here, sorted by when they asked for them.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.agenda}>
-          {groups.map((group) => {
-            const band = getScheduleBand(group.orders[0].scheduledAtMs, nowMs);
-            return (
-              <View key={`${group.label}-${group.orders[0]._id}`} style={styles.timeGroup}>
-                <View style={styles.timeHeader}>
-                  <View style={[styles.timeDot, { backgroundColor: BAND_COLORS[band] }]} />
-                  <Text style={[styles.timeLabel, { color: BAND_COLORS[band] }]}>
-                    {group.label}
-                    {BAND_SUFFIX[band]}
-                  </Text>
-                  <View style={styles.timeRule} />
-                </View>
-                {group.orders.map((order) => (
-                  <OrderCard
-                    key={order._id}
-                    order={order}
-                    compact
-                    onPress={() => router.push(`/(main)/order/${order._id}`)}
-                  />
-                ))}
-              </View>
-            );
-          })}
-        </ScrollView>
-      )}
+      {header}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {viewMode === "month" ? (
+          <>
+            <MonthCalendar
+              cursor={activeCursor}
+              nowMs={nowMs}
+              load={load}
+              selectedKey={activeKey}
+              onSelectDay={setSelectedKey}
+              onShiftMonth={(delta) => setCursor(shiftMonth(activeCursor, delta))}
+              onJumpToday={jumpToToday}
+            />
+            <View style={styles.day}>
+              <DayTimeline
+                dayKey={activeKey}
+                nowMs={nowMs}
+                groups={dayGroups}
+                onOpenOrder={openOrder}
+                nextKey={nextLoadedDay(load, activeKey)}
+                onJumpNext={jumpToDay}
+              />
+            </View>
+          </>
+        ) : (
+          <AgendaList
+            days={agenda}
+            nowMs={nowMs}
+            hasUpcomingDays={hasUpcomingDays}
+            isFiltered={kind !== "all"}
+            onClearFilter={() => setKind("all")}
+          />
+        )}
+      </ScrollView>
     </View>
   );
 }
 
-function Header({ outletName, count }: { outletName: string | null; count: number }) {
+interface HeaderProps {
+  outletName: string | null;
+  count: number;
+  presellCount: number;
+  viewMode: ViewMode;
+  onViewMode: (mode: ViewMode) => void;
+  kind: ScheduleKind;
+  onKind: (kind: ScheduleKind) => void;
+}
+
+function Header({ outletName, count, presellCount, viewMode, onViewMode, kind, onKind }: HeaderProps) {
+  const parts = [plural(count, "upcoming order")];
+  if (presellCount > 0) parts.push(plural(presellCount, "pre-order"));
+  if (outletName) parts.push(outletName);
   return (
-    <View style={styles.header}>
-      <View style={styles.headerText}>
-        <Text style={styles.title}>Scheduled</Text>
-        {outletName ? (
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {outletName}
-          </Text>
-        ) : null}
-      </View>
-      <View style={styles.headerRight}>
-        <View style={styles.countPill}>
-          <Text style={styles.countText}>{count} upcoming</Text>
+    <>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Schedule" subtitle={parts.join(" · ")}>
+        <View style={styles.toolbar}>
+          <SegmentedControl
+            options={VIEW_OPTIONS}
+            value={viewMode}
+            onChange={onViewMode}
+            accessibilityPrefix="View as"
+          />
+          <OptionPills
+            options={KIND_OPTIONS}
+            isSelected={(value) => value === kind}
+            onSelect={onKind}
+            accessibilityPrefix="Show"
+          />
         </View>
-        <WorkspaceSwitcher />
-      </View>
+      </ScreenHeader>
+    </>
+  );
+}
+
+interface AgendaListProps {
+  days: readonly {
+    key: string;
+    label: string;
+    groups: TimeGroup<OrderCardOrder>[];
+  }[];
+  nowMs: number;
+  hasUpcomingDays: boolean;
+  isFiltered: boolean;
+  onClearFilter: () => void;
+}
+
+function AgendaList({ days, nowMs, hasUpcomingDays, isFiltered, onClearFilter }: AgendaListProps) {
+  const isEmpty = !hasUpcomingDays && days[0]?.groups.length === 0;
+  if (isEmpty) {
+    return (
+      <EmptyState
+        icon="calendar"
+        title={isFiltered ? "Nothing matches this filter" : "No scheduled orders yet"}
+        message={
+          isFiltered
+            ? "Try showing all orders."
+            : "Pre-orders and scheduled orders customers place appear here, sorted by when they asked for them."
+        }
+        actionLabel={isFiltered ? "Show all" : undefined}
+        onAction={isFiltered ? onClearFilter : undefined}
+        inset
+      />
+    );
+  }
+  return (
+    <View style={styles.agenda}>
+      {days.map((day) => (
+        <DayTimeline
+          key={day.key}
+          dayKey={day.key}
+          nowMs={nowMs}
+          groups={day.groups}
+          onOpenOrder={openOrder}
+        />
+      ))}
+      <Text style={styles.agendaFoot}>Days further out appear as orders come in.</Text>
     </View>
   );
 }
@@ -211,103 +306,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  toolbar: { gap: spacing.sm },
+  content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: 56,
-    paddingBottom: spacing.md,
-  },
-  headerText: { flexShrink: 1 },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 1 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  countPill: {
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 5,
-  },
-  countText: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
-  },
-  stripWrap: { marginBottom: spacing.sm },
-  strip: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    flexDirection: "row",
-  },
-  dayChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    backgroundColor: colors.card,
-  },
-  dayChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  dayChipLabel: { ...typography.caption, color: colors.textPrimary, fontWeight: "700" },
-  dayChipLabelActive: { color: colors.textOnDark },
-  dayChipCount: {
-    minWidth: 20,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    alignItems: "center",
-  },
-  dayChipCountActive: { backgroundColor: "rgba(255,255,255,0.25)" },
-  dayChipCountText: {
-    ...typography.small,
-    color: colors.textSecondary,
-    fontWeight: "800",
-    fontVariant: ["tabular-nums"],
-  },
-  dayChipCountTextActive: { color: colors.textOnDark },
-  dayChipPresell: { ...typography.small, color: colors.primary, fontWeight: "700", marginTop: 2 },
-  dayChipPresellActive: { color: colors.textOnDark },
-  agenda: {
-    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
     paddingBottom: 96,
+    gap: spacing.lg,
   },
-  timeGroup: { marginBottom: spacing.md },
-  timeHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  timeDot: { width: 8, height: 8, borderRadius: 4 },
-  timeLabel: {
+  day: { marginTop: spacing.xs },
+  agenda: { gap: spacing.xl },
+  agendaFoot: {
     ...typography.caption,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    fontVariant: ["tabular-nums"],
-  },
-  timeRule: { flex: 1, height: 1, backgroundColor: colors.separator },
-  empty: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-  },
-  emptyTitle: { ...typography.heading, color: colors.textPrimary },
-  emptyBody: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
+    color: colors.textTertiary,
     textAlign: "center",
+    marginTop: spacing.sm,
   },
 });

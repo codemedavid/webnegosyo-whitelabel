@@ -3,9 +3,9 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Platform, Switch,
 } from "react-native";
-import { router } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
+import { BackHeader } from "../../components/BackHeader";
 import { usePrinterStore } from "../../stores/printer-store";
 import { type PrintTrigger } from "../../lib/print-trigger";
 import {
@@ -217,12 +217,9 @@ export default function PrinterSettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backText}>← Back</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.title}>Printer Settings</Text>
+    <View style={styles.screen}>
+      <BackHeader title="Printer" subtitle="Receipt and kitchen printers" />
+      <ScrollView contentContainerStyle={styles.content}>
 
       {!printerSupported && (
         <View style={styles.warningBanner}>
@@ -428,16 +425,14 @@ export default function PrinterSettingsScreen() {
           </TouchableOpacity>
         </Card>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60 },
-  backButton: { marginBottom: spacing.md },
-  backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.lg },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
   addTitle: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
   section: { marginBottom: spacing.lg },
   statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm },

@@ -45,7 +45,24 @@ export type IconName =
   | "plus"
   | "chevron"
   | "calendar"
-  | "clock";
+  | "clock"
+  // Navigation chrome
+  | "menu"
+  | "back"
+  | "chevron-down"
+  | "close"
+  | "qr"
+  | "printer"
+  | "account"
+  | "settings"
+  | "logout"
+  | "export"
+  | "info"
+  | "warning"
+  | "arrow-right"
+  | "chevron-left"
+  | "minus"
+  | "trash";
 
 interface IconProps {
   name: IconName;
@@ -275,6 +292,123 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
     <>
       <Circle cx={12} cy={12} r={8.5} />
       <Polyline points="12,6.5 12,12 16.5,14" />
+    </>
+  ),
+
+  // Four panels: the whole app laid out on one screen.
+  menu: (
+    <>
+      <Rect x={3.5} y={3.5} width={7} height={7} />
+      <Rect x={13.5} y={3.5} width={7} height={7} />
+      <Rect x={3.5} y={13.5} width={7} height={7} />
+      <Rect x={13.5} y={13.5} width={7} height={7} />
+    </>
+  ),
+
+  back: <Polyline points="15,4 7,12 15,20" />,
+
+  "chevron-down": <Polyline points="4,9 12,17 20,9" />,
+
+  close: (
+    <>
+      <Line x1={5} y1={5} x2={19} y2={19} />
+      <Line x1={19} y1={5} x2={5} y2={19} />
+    </>
+  ),
+
+  // Three finder squares and a scatter of modules.
+  qr: (
+    <>
+      <Rect x={3.5} y={3.5} width={7} height={7} />
+      <Rect x={13.5} y={3.5} width={7} height={7} />
+      <Rect x={3.5} y={13.5} width={7} height={7} />
+      <Line x1={6.5} y1={7} x2={7.5} y2={7} />
+      <Line x1={16.5} y1={7} x2={17.5} y2={7} />
+      <Line x1={6.5} y1={17} x2={7.5} y2={17} />
+      <Line x1={13.5} y1={14} x2={16} y2={14} />
+      <Line x1={20.5} y1={14} x2={20.5} y2={16.5} />
+      <Line x1={14} y1={20.5} x2={16.5} y2={20.5} />
+      <Line x1={19} y1={18.5} x2={20.5} y2={20.5} />
+    </>
+  ),
+
+  printer: (
+    <>
+      <Path d="M7 8V3.5h10V8" />
+      <Path d="M7 16H3.5V8h17v8H17" />
+      <Rect x={7} y={13} width={10} height={7.5} />
+    </>
+  ),
+
+  account: (
+    <>
+      <Circle cx={12} cy={8} r={4} />
+      <Path d="M4 20.5v-.5c0-3.3 3.6-5.5 8-5.5s8 2.2 8 5.5v.5" />
+    </>
+  ),
+
+  // Two sliders: the settings that get adjusted, not a gear that decorates.
+  settings: (
+    <>
+      <Line x1={4} y1={7.5} x2={12.5} y2={7.5} />
+      <Circle cx={15.5} cy={7.5} r={2.5} />
+      <Line x1={18} y1={7.5} x2={20} y2={7.5} />
+      <Line x1={4} y1={16.5} x2={6} y2={16.5} />
+      <Circle cx={8.5} cy={16.5} r={2.5} />
+      <Line x1={11} y1={16.5} x2={20} y2={16.5} />
+    </>
+  ),
+
+  logout: (
+    <>
+      <Path d="M14 4.5h5.5v15H14" />
+      <Line x1={3.5} y1={12} x2={14.5} y2={12} />
+      <Polyline points="10.5,8 14.5,12 10.5,16" />
+    </>
+  ),
+
+  export: (
+    <>
+      <Path d="M4 14.5v5.5h16v-5.5" />
+      <Line x1={12} y1={4} x2={12} y2={15} />
+      <Polyline points="8,8 12,4 16,8" />
+    </>
+  ),
+
+  info: (
+    <>
+      <Circle cx={12} cy={12} r={8.5} />
+      <Line x1={12} y1={11} x2={12} y2={16.5} />
+      <Line x1={12} y1={7.5} x2={12} y2={8} />
+    </>
+  ),
+
+  // A triangle with the mark inside: the shape merchants already know from
+  // every road sign, drawn on the same stroke as the rest of the set.
+  warning: (
+    <>
+      <Path d="M12 3.5L21 20H3z" />
+      <Line x1={12} y1={9.5} x2={12} y2={14} />
+      <Line x1={12} y1={16.5} x2={12} y2={17} />
+    </>
+  ),
+
+  "arrow-right": (
+    <>
+      <Line x1={4} y1={12} x2={19.5} y2={12} />
+      <Polyline points="13.5,6 19.5,12 13.5,18" />
+    </>
+  ),
+
+  "chevron-left": <Polyline points="14.5,5.5 8,12 14.5,18.5" />,
+
+  minus: <Line x1={5} y1={12} x2={19} y2={12} />,
+
+  trash: (
+    <>
+      <Line x1={4} y1={7} x2={20} y2={7} />
+      <Path d="M9.5 7V4h5v3" />
+      <Path d="M6 7l1 13.5h10L18 7" />
     </>
   ),
 };

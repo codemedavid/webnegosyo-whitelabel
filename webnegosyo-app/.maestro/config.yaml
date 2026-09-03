@@ -1,0 +1,4 @@
+# Only the numbered flows at the top level are suite entry points. helpers/ holds
+# subflows that require env vars from a caller and cannot run standalone.
+flows:
+  - "*.yaml"

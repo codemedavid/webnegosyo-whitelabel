@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -83,7 +85,17 @@ export function DeliverySheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <TouchableOpacity
+          style={styles.backdropFill}
+          onPress={onClose}
+          activeOpacity={1}
+          accessibilityLabel="Dismiss delivery details"
+        />
+
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title}>Delivery details</Text>
@@ -92,7 +104,10 @@ export function DeliverySheet({
             </TouchableOpacity>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled">
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent}
+          >
             <Text style={styles.sectionLabel}>Delivery fee (optional)</Text>
             <TextInput
               style={styles.input}
@@ -149,7 +164,7 @@ export function DeliverySheet({
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -160,6 +175,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "flex-end",
   },
+  backdropFill: { ...StyleSheet.absoluteFillObject },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.lg,
@@ -169,6 +185,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     maxHeight: "85%",
   },
+  scrollContent: { paddingBottom: spacing.lg },
   header: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,0 +1,62 @@
+appId: com.webnegosyo.admin
+name: Insights - analytics, growth coach, customers, trends
+---
+# As an owner, I want sales broken down by type and payment method, a growth
+# plan built from my own numbers, my guest list, and a daily trend line, so
+# that I can tell what is working and what to do next.
+- runFlow:
+    file: helpers/switch-view.yaml
+    env:
+      VIEW: Insights
+
+# --- Analytics (the view's default tab) -------------------------------------
+- assertVisible: "SALES OVERVIEW"
+- assertVisible: "REVENUE"
+- assertVisible: "Orders"
+- assertVisible: "Avg Order Value"
+- assertVisible: "Cancel Rate"
+- assertVisible: "BREAKDOWNS"
+- assertVisible: "REVENUE BY ORDER TYPE"
+- assertVisible: "REVENUE BY PAYMENT METHOD"
+- assertVisible: "PAYMENT METHOD DETAIL"
+- assertVisible: "Export analytics report as CSV"
+
+# The period selector re-scopes the overview.
+- tapOn: "7 days"
+- waitForAnimationToEnd
+- assertVisible: "SALES OVERVIEW"
+- tapOn: "30 days"
+- waitForAnimationToEnd
+- assertVisible: "SALES OVERVIEW"
+
+# --- Growth ------------------------------------------------------------------
+- tapOn: "Growth, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "GROWTH ENGINE"
+- assertVisible: "REVENUE · LAST 30 DAYS"
+# The three growth levers the coach reasons over.
+- assertVisible: "PER ORDER"
+- assertVisible: "PER CUSTOMER"
+- assertVisible: "Ticket size"
+- assertVisible: "Margin"
+# The coach states a constraint and a target input.
+- assertVisible: "Target monthly revenue"
+- assertVisible: "ASK THE COACH"
+- assertVisible: "Growth Coach"
+
+# --- Customers ---------------------------------------------------------------
+- tapOn: "Customers, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "Customers"
+- assertVisible: "Export"
+
+# --- Trends ------------------------------------------------------------------
+- tapOn: "Trends, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "DAILY TRENDS"
+- assertVisible: "OVERVIEW"
+- assertVisible: "TOTAL REVENUE"
+- assertVisible: "TOTAL ORDERS"
+- assertVisible: "AVG ORDER VALUE"
+- assertVisible: "DAILY REVENUE"
+- assertVisible: "DAILY ORDERS"

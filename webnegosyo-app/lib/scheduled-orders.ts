@@ -145,7 +145,8 @@ export function todayKey(nowMs: number): string {
   return dayKeyOf(nowMs);
 }
 
-function dayLabel(key: string, nowMs: number): string {
+/** "Today" / "Tomorrow" / "Sat, Jun 20" for a local day key. */
+export function dayLabel(key: string, nowMs: number): string {
   if (key === todayKey(nowMs)) return "Today";
   const [year, month, day] = key.split("-").map(Number);
   const dt = new Date(year, month - 1, day);

@@ -177,6 +177,10 @@ describe("merchant app wiring", () => {
   });
 
   it("gates the Business tabs in the tab bar", () => {
-    expect(read("app", "(main)", "_layout.tsx")).toMatch(/isBusinessTabVisible/);
+    // The bar asks one shared rule (lib/tab-visibility.ts), and that rule is
+    // the one that asks the branch-count gate — so the gate cannot be dropped
+    // from the bar without also dropping it from the Menu hub.
+    expect(read("app", "(main)", "_layout.tsx")).toMatch(/isTabOnBar/);
+    expect(read("lib", "tab-visibility.ts")).toMatch(/isBusinessTabVisible/);
   });
 });

@@ -35,7 +35,11 @@ import { colors, typography, spacing, radius, shadow } from "../../theme/colors"
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
+import { Icon } from "../../components/Icon";
 
 const ALL_BRANCHES = "all";
 const ALL_CATEGORIES = "all";
@@ -203,32 +207,26 @@ export default function BranchMenuScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headerWrap}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Branch products</Text>
-            <Text style={styles.subtitle}>Choose what each branch sells</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={handleCreate}
-              accessibilityRole="button"
-              accessibilityLabel="Add new product"
-            >
-              <Text style={styles.addButtonText}>+ Add</Text>
-            </TouchableOpacity>
-            <WorkspaceSwitcher />
-          </View>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Branch products"
+        subtitle="Choose what each branch sells"
+        actions={
+          <IconButton icon="plus" label="Add new product" tone="primary" onPress={handleCreate} />
+        }
+      >
+        <View style={styles.searchRow}>
+          <Icon name="search" size={18} color={colors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search products"
+            placeholderTextColor={colors.textTertiary}
+            accessibilityLabel="Search products"
+          />
         </View>
-        <TextInput
-          style={styles.searchInput}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search products"
-          placeholderTextColor={colors.textTertiary}
-        />
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         horizontal
@@ -434,30 +432,18 @@ export default function BranchMenuScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  headerWrap: { paddingHorizontal: spacing.xl, paddingTop: 60, paddingBottom: spacing.md },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  headerText: { flex: 1 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  addButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  addButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  searchInput: {
-    marginTop: spacing.md,
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    height: 44,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.card,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: 15,
-    color: colors.textPrimary,
     borderWidth: 1,
     borderColor: colors.separator,
   },
+  searchInput: { flex: 1, fontSize: 15, color: colors.textPrimary, paddingVertical: 0 },
   filterScroll: { flexGrow: 0, flexShrink: 0 },
   filterRow: {
     paddingHorizontal: spacing.xl,
