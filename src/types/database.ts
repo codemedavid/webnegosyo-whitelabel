@@ -204,6 +204,8 @@ export interface Tenant {
   // Inventory alerts (migration 20260728120000)
   low_stock_alerts_enabled?: boolean;
   auto_86_enabled?: boolean;
+  // Presell per-date stock (migration 20260830120000)
+  presell_enabled?: boolean;
   // Pairing rules
   pairing_rules_enabled?: boolean;
   // QR-handoff ordering
@@ -315,6 +317,10 @@ export interface Tenant {
   // Tenant-admin switch for scan-to-collect pickup. Column defaults to true, so
   // undefined/null must read as enabled. See src/lib/pickup-qr-gating.ts.
   pickup_scan_enabled?: boolean | null;
+  // Thermal receipt layout: a preset name (JSON string) or a custom
+  // {version:1,blocks:[...]} stack. NULL = Classic preset. Shape-checked by
+  // the receipt renderer; invalid values fall back to Classic.
+  receipt_layout?: unknown;
   created_at: string;
   updated_at: string;
   // Index signature for compatibility with getTenantBranding(Record<string, unknown>)
@@ -592,7 +598,26 @@ export interface MenuItem {
   badge_text?: string;
   show_in_checkout_upsell?: boolean;
   boost_priority?: number;
+  /** Customers must pick a presell date with remaining allocation (migration 20260830120000). */
+  presell_enabled?: boolean;
   order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One per-date presell allocation for a menu item (migration 20260830120000).
+ * Remaining = stock_qty - sold_qty; sold_qty moves only through the
+ * apply_presell_order() SQL function.
+ */
+export interface PresellStock {
+  id: string;
+  tenant_id: string;
+  menu_item_id: string;
+  /** Plain YYYY-MM-DD in the store's business day sense — no instant, no timezone. */
+  presell_date: string;
+  stock_qty: number;
+  sold_qty: number;
   created_at: string;
   updated_at: string;
 }
@@ -611,6 +636,8 @@ export interface CartItem {
   selected_addons: Addon[];
   quantity: number;
   special_instructions?: string;
+  /** YYYY-MM-DD the customer chose for a presell item; part of the cart line key. */
+  presell_date?: string;
   subtotal: number;
   // Upsell attribution: tracks which upsell modal added this item
   upsellSource?: 'checkout_modal' | 'suggestion' | 'upgrade' | 'bundle';

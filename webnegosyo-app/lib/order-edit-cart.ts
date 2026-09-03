@@ -24,7 +24,12 @@
 
 import type { ModifierGroup } from "./modifier-groups";
 import type { OrderAddon, OrderItemDto, OrderVariationSelection } from "./backends/supabase-orders";
-import { addLine, type PosCartLine, type PosCartSelection } from "./pos-cart";
+import {
+  addLine,
+  type OrderLineCarryover,
+  type PosCartLine,
+  type PosCartSelection,
+} from "./pos-cart";
 
 /** Live modifier groups per menu item, as the register already loads them. */
 export type ModifierCatalog = Record<string, ModifierGroup[]>;
@@ -58,6 +63,14 @@ export interface RevisedOrderItem {
   specialInstructions?: string;
   variationSelections?: OrderVariationSelection[];
   addons?: OrderAddon[];
+  /** Legacy variation string and bundle/upsell markers, carried through an
+   * edit untouched — see {@link OrderLineCarryover}. */
+  variation?: string;
+  isUpsellItem?: boolean;
+  isBundleItem?: boolean;
+  bundleId?: string;
+  bundleName?: string;
+  slotName?: string;
 }
 
 /**
@@ -133,6 +146,36 @@ function toSelection(
   };
 }
 
+/**
+ * Group name a legacy-string variation orphans into. Distinct from
+ * {@link ORPHAN_GROUP} so `partitionSelections` keeps it a variation —
+ * "Large" reclassified as an add-on would corrupt the order on save.
+ */
+const LEGACY_VARIATION_GROUP = "Variation";
+
+/**
+ * Hydrate the legacy joined variation string ("Large" / "Large, Spicy") into
+ * selections, so the edit cart and modifier sheet can actually show it.
+ *
+ * Priced at 0: the legacy format never carried per-option prices, and the
+ * money already lives in the subtotal the unit price is derived from.
+ */
+function legacyVariationSelections(
+  variation: string,
+  groups: ModifierGroup[],
+  onUnresolved: (groupName: string | undefined, optionName: string) => void,
+): PosCartSelection[] {
+  return variation
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map((optionName) => {
+      const match = findOption(groups, optionName);
+      if (match) return toSelection(groups, optionName, 0, match.group.name, onUnresolved);
+      return toSelection(groups, optionName, 0, LEGACY_VARIATION_GROUP, onUnresolved);
+    });
+}
+
 function selectionsFor(
   item: HydratableOrderItem,
   groups: ModifierGroup[],
@@ -148,11 +191,18 @@ function selectionsFor(
     ),
   );
 
+  // Only when no structured selections exist — a row carrying both formats
+  // describes the same choice twice, and the structured one carries prices.
+  const legacy =
+    !variations.length && item.variation
+      ? legacyVariationSelections(item.variation, groups, onUnresolved)
+      : [];
+
   const addons = (item.addons ?? []).map((addon) =>
     toSelection(groups, addon.name, addon.price, undefined, onUnresolved),
   );
 
-  return [...variations, ...addons];
+  return [...variations, ...legacy, ...addons];
 }
 
 /**
@@ -177,9 +227,34 @@ export type HydratableOrderItem = Pick<
   Partial<
     Pick<
       OrderItemDto,
-      "menuItemId" | "specialInstructions" | "variationSelections" | "addons"
+      | "menuItemId"
+      | "specialInstructions"
+      | "variationSelections"
+      | "addons"
+      | "variation"
+      | "isUpsellItem"
+      | "isBundleItem"
+      | "bundleId"
+      | "bundleName"
+      | "slotName"
     >
   >;
+
+/** The metadata a hydrated line must hand back on serialization, if any. */
+function carryoverOf(item: HydratableOrderItem): OrderLineCarryover | undefined {
+  // `variation` deliberately absent: the legacy string hydrates into real
+  // selections and serialization regenerates it from whatever the cashier
+  // left selected — carrying the original would resurrect an edited-away
+  // variation on the chit.
+  const carryover: OrderLineCarryover = {
+    ...(item.isUpsellItem !== undefined ? { isUpsellItem: item.isUpsellItem } : {}),
+    ...(item.isBundleItem !== undefined ? { isBundleItem: item.isBundleItem } : {}),
+    ...(item.bundleId !== undefined ? { bundleId: item.bundleId } : {}),
+    ...(item.bundleName !== undefined ? { bundleName: item.bundleName } : {}),
+    ...(item.slotName !== undefined ? { slotName: item.slotName } : {}),
+  };
+  return Object.keys(carryover).length > 0 ? carryover : undefined;
+}
 
 export function hydratePosCart(
   items: readonly HydratableOrderItem[],
@@ -204,6 +279,8 @@ export function hydratePosCart(
     const unitPrice = round2(item.subtotal / item.quantity);
     const modifierTotal = selections.reduce((sum, s) => sum + s.priceModifier, 0);
 
+    const carryover = carryoverOf(item);
+
     return addLine(cart, {
       menuItemId: item.menuItemId ?? "",
       name: item.menuItemName,
@@ -211,6 +288,7 @@ export function hydratePosCart(
       quantity: item.quantity,
       selections,
       ...(item.specialInstructions ? { note: item.specialInstructions } : {}),
+      ...(carryover ? { carryover } : {}),
     });
   }, []);
 
@@ -277,13 +355,25 @@ export function posCartToOrderItems(
   lines: readonly PosCartLine[],
   catalog: ModifierCatalog = {},
 ): RevisedOrderItem[] {
-  return lines.map((line) => ({
-    menuItemId: line.menuItemId,
-    menuItemName: line.name,
-    quantity: line.quantity,
-    price: line.unitPrice,
-    subtotal: line.subtotal,
-    ...(line.note ? { specialInstructions: line.note } : {}),
-    ...partitionSelections(line, catalog),
-  }));
+  return lines.map((line) => {
+    const partitioned = partitionSelections(line, catalog);
+    // The legacy chit string mirrors the CURRENT variation selections — the
+    // format mobile checkout writes — so string-only readers stay correct
+    // even after the cashier changes or removes a variation.
+    const variation = (partitioned.variationSelections ?? [])
+      .map((selection) => selection.optionName)
+      .join(", ");
+
+    return {
+      menuItemId: line.menuItemId,
+      menuItemName: line.name,
+      quantity: line.quantity,
+      price: line.unitPrice,
+      subtotal: line.subtotal,
+      ...(line.note ? { specialInstructions: line.note } : {}),
+      ...partitioned,
+      ...(line.carryover ?? {}),
+      ...(variation ? { variation } : {}),
+    };
+  });
 }

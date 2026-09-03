@@ -413,3 +413,116 @@ describe("buildRevisionRows discount payload", () => {
     expect(orderPatch.total).toBe(140);
   });
 });
+
+describe("buildRevisionRows — legacy and bundle field carry-through", () => {
+  /**
+   * The platform edit path rewrites an order's items by delete-and-reinsert.
+   * Rows written by web/mobile checkout carry a legacy `variation` string and
+   * bundle/upsell markers that the edit screen does not re-derive — so a
+   * quantity change must not strip "(Large)" off the chit or unlink a bundle
+   * line. These fields pass through verbatim when the caller supplies them.
+   */
+  it("passes variation and bundle metadata through to the rewritten rows", () => {
+    const { itemRows } = buildRevisionRows(
+      TENANT,
+      reviseArgs({
+        items: [
+          {
+            menuItemId: "item-latte",
+            menuItemName: "Latte",
+            quantity: 2,
+            price: 100,
+            subtotal: 200,
+            variation: "Large",
+            isUpsellItem: true,
+            isBundleItem: true,
+            bundleId: "bundle-1",
+            bundleName: "Breakfast Combo",
+            slotName: "Drink",
+          },
+        ],
+      }),
+      previous(),
+    );
+
+    expect(itemRows[0]).toMatchObject({
+      variation: "Large",
+      is_upsell_item: true,
+      is_bundle_item: true,
+      bundle_id: "bundle-1",
+      bundle_name: "Breakfast Combo",
+      slot_name: "Drink",
+    });
+  });
+
+  it("writes clean defaults when the metadata is absent", () => {
+    const { itemRows } = buildRevisionRows(TENANT, reviseArgs(), previous());
+
+    expect(itemRows[0]).toMatchObject({
+      variation: null,
+      is_upsell_item: false,
+      is_bundle_item: false,
+      bundle_id: null,
+      bundle_name: null,
+      slot_name: null,
+    });
+  });
+});
+
+describe("buildRevisionRows — the named service charge", () => {
+  /**
+   * `serviceChargeAmount` is the TOTAL channel: it carries the service charge,
+   * the re-priced discount and any rounding residue rolled into one signed
+   * figure, and it must stay that way or the bill would be built from two
+   * addends that can disagree.
+   *
+   * What it cannot do is say what the money WAS. `serviceCharge` is the named
+   * figure, written to the breakdown column so the order screen and the
+   * printer can label it — a record, never a second addend. The pairing
+   * mirrors `discount_data`, which is likewise stored beside a total it does
+   * not contribute to.
+   */
+  it("stores the named charge in the breakdown column", () => {
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ serviceCharge: 24, serviceChargeAmount: 24 }),
+      previous(),
+    );
+
+    expect(orderPatch.service_charge_amount).toBe(24);
+  });
+
+  it("never totals from the named charge", () => {
+    // Both fields present and DIFFERENT: the total must follow
+    // `serviceChargeAmount` alone. Adding them would bill the charge twice —
+    // the exact defect that keeping one money channel exists to prevent.
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ serviceCharge: 24, serviceChargeAmount: -6 }),
+      previous(),
+    );
+
+    expect(orderPatch.total).toBe(194);
+  });
+
+  it("clears the column when the edit left no charge", () => {
+    // Matching `delivery_fee`: removing a wrongly-applied charge must blank
+    // the column, not leave the old figure contradicting the new total.
+    const { orderPatch } = buildRevisionRows(
+      "tenant-1",
+      reviseArgs({ serviceCharge: 0 }),
+      previous(),
+    );
+
+    expect(orderPatch.service_charge_amount).toBeNull();
+  });
+
+  it("leaves the stored charge alone when the caller sent none", () => {
+    // An app build that predates this field omits it entirely. Writing a
+    // blanking for those edits would strip the charge off every legacy order
+    // the moment its quantity changed.
+    const { orderPatch } = buildRevisionRows("tenant-1", reviseArgs({}), previous());
+
+    expect(orderPatch).not.toHaveProperty("service_charge_amount");
+  });
+});

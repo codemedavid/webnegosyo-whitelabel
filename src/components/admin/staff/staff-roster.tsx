@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { KeyRound, Shuffle, Trash2, UserPlus, Wrench } from 'lucide-react'
+import { KeyRound, MonitorPlay, Shuffle, Trash2, UserPlus, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -32,14 +32,21 @@ import {
 } from '@/lib/staff-permissions'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import {
+  DEFAULT_SCREEN_OPTIONS,
+  selectableDefaultScreens,
+  validateDefaultTab,
+} from '@/lib/staff-default-screen'
+import {
   createStaffAction,
   removeStaffAction,
   resetStaffPasswordAction,
   updateStaffBranchAction,
+  updateStaffDefaultScreenAction,
   updateStaffPermissionsAction,
 } from '@/app/actions/staff'
 import {
   BranchRadioGroup,
+  DefaultScreenRadioGroup,
   PermissionCheckboxes,
   branchLabel,
   togglePermission,
@@ -76,6 +83,14 @@ const EMPTY_FORM = {
   permissions: [] as string[],
   /** '' means the whole store; `resolveStaffOutletId` reads it as null. */
   outletId: '',
+  /** '' means no preference — the app opens where it always has. */
+  defaultTab: '',
+}
+
+/** How a pinned screen is named on the roster row. */
+function screenLabel(tab: string | null | undefined): string | null {
+  if (!tab) return null
+  return DEFAULT_SCREEN_OPTIONS.find((option) => option.tab === tab)?.label ?? null
 }
 
 function displayNameOf(member: RosterStaff): string {
@@ -124,6 +139,9 @@ export function StaffRoster({
   const [moveTarget, setMoveTarget] = useState<RosterStaff | null>(null)
   const [moveOutletId, setMoveOutletId] = useState('')
 
+  const [screenTarget, setScreenTarget] = useState<RosterStaff | null>(null)
+  const [screenTab, setScreenTab] = useState('')
+
   const [removeTarget, setRemoveTarget] = useState<RosterStaff | null>(null)
 
   const handleCreate = async () => {
@@ -133,6 +151,8 @@ export function StaffRoster({
       // On a branch page the branch is not a question the owner should be asked
       // twice; the page they are standing on is the answer.
       outletId: scopeOutlet ? scopeOutlet.id : addForm.outletId,
+      // '' is the "No preference" option; the service takes null for it.
+      defaultTab: addForm.defaultTab === '' ? null : addForm.defaultTab,
     })
     setIsSaving(false)
     if (!result.success) {
@@ -161,6 +181,25 @@ export function StaffRoster({
     }
     toast.success('Permissions updated')
     setEditTarget(null)
+    router.refresh()
+  }
+
+  const handleUpdateDefaultScreen = async () => {
+    if (!screenTarget) return
+    setIsSaving(true)
+    const result = await updateStaffDefaultScreenAction(
+      tenantId,
+      tenantSlug,
+      screenTarget.user_id,
+      screenTab === '' ? null : screenTab
+    )
+    setIsSaving(false)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    toast.success('Default screen updated')
+    setScreenTarget(null)
     router.refresh()
   }
 
@@ -256,6 +295,11 @@ export function StaffRoster({
                       {branchLabel(member.outlet_id, outlets)}
                     </Badge>
                   )}
+                  {screenLabel(member.default_tab) && (
+                    <Badge variant="secondary" className="text-xs">
+                      Opens on {screenLabel(member.default_tab)}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
@@ -270,6 +314,18 @@ export function StaffRoster({
                 >
                   <Wrench className="mr-2 h-4 w-4" />
                   Permissions
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={`Default screen for ${displayNameOf(member)}`}
+                  onClick={() => {
+                    setScreenTarget(member)
+                    setScreenTab(member.default_tab ?? '')
+                  }}
+                >
+                  <MonitorPlay className="mr-2 h-4 w-4" />
+                  Default screen
                 </Button>
                 {canMove && (
                   <Button
@@ -372,13 +428,35 @@ export function StaffRoster({
               <PermissionCheckboxes
                 idPrefix="add-staff"
                 selected={addForm.permissions}
-                onToggle={(key) =>
+                onToggle={(key) => {
+                  const permissions = togglePermission(addForm.permissions, key)
                   setAddForm({
                     ...addForm,
-                    permissions: togglePermission(addForm.permissions, key),
+                    permissions,
+                    // Dropping a permission drops any screen it was the key to.
+                    // Left alone, the form would submit a choice the service is
+                    // about to reject, and the owner would never learn it did
+                    // not stick.
+                    defaultTab: validateDefaultTab(addForm.defaultTab, permissions) ?? '',
                   })
-                }
+                }}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Opens on</Label>
+              <DefaultScreenRadioGroup
+                idPrefix="add-staff"
+                options={selectableDefaultScreens({
+                  permissions: addForm.permissions,
+                  isBranchScoped: Boolean(scopeOutlet) || addForm.outletId !== '',
+                  branchCount: outlets.length,
+                })}
+                value={addForm.defaultTab}
+                onChange={(defaultTab) => setAddForm({ ...addForm, defaultTab })}
+              />
+              <p className="text-xs text-muted-foreground">
+                The screen this account sees first in the merchant app.
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -412,6 +490,39 @@ export function StaffRoster({
             </Button>
             <Button onClick={handleUpdatePermissions} disabled={isSaving}>
               {isSaving ? 'Saving…' : 'Save permissions'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Default screen */}
+      <Dialog open={screenTarget !== null} onOpenChange={(open) => !open && setScreenTarget(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Default screen — {screenTarget ? displayNameOf(screenTarget) : ''}
+            </DialogTitle>
+            <DialogDescription>
+              Where the merchant app opens for this account. Only screens their permissions
+              already allow are offered.
+            </DialogDescription>
+          </DialogHeader>
+          <DefaultScreenRadioGroup
+            idPrefix="screen-staff"
+            options={selectableDefaultScreens({
+              permissions: screenTarget?.permissions ?? null,
+              isBranchScoped: Boolean(screenTarget?.outlet_id),
+              branchCount: outlets.length,
+            })}
+            value={screenTab}
+            onChange={setScreenTab}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScreenTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateDefaultScreen} disabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

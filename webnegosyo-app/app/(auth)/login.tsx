@@ -65,7 +65,7 @@ export default function LoginScreen() {
 
       const { data: appUser } = await supabase
         .from("app_users")
-        .select("tenant_id, role, is_owner, permissions, outlet_id")
+        .select("tenant_id, role, is_owner, permissions, outlet_id, default_tab")
         .eq("user_id", authData.user.id)
         .in("role", ["admin", "superadmin"])
         .single();
@@ -75,7 +75,7 @@ export default function LoginScreen() {
       if (appUser && needsTenantLookup(appUser)) {
         const { data: tenantRow } = await supabase
           .from("tenants")
-          .select("id, slug, name, convex_deployment_url, convex_schema_version, order_backend")
+          .select("id, slug, name, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, logo_url")
           .eq("id", appUser.tenant_id)
           .single();
         tenant = (tenantRow as TenantRow | null) ?? null;
@@ -124,7 +124,7 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Merchant Admin</Text>
-          <Text style={styles.title}>WebNegosyo</Text>
+          <Text style={styles.title}>SmartMenu</Text>
           <Text style={styles.subtitle}>
             Run your store from anywhere — for any food or retail business
           </Text>

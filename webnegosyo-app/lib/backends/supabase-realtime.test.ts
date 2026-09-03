@@ -264,3 +264,15 @@ describe("isRefRealtimeBacked", () => {
     expect(isRefRealtimeBacked("analytics:getUpsellAnalytics")).toBe(false);
   });
 });
+
+describe("isRefRealtimeBacked — order line items", () => {
+  /**
+   * Line items are written in the same breath as their order, so an order
+   * change is the freshness signal for `getAllOrderItems` too. Left off this
+   * list, the kitchen board polls a 10k-row join every 15 seconds forever and
+   * a new ticket renders with no items for up to a full poll interval.
+   */
+  it("refreshes the tenant's line items on an order change", () => {
+    expect(isRefRealtimeBacked("orders:getAllOrderItems")).toBe(true);
+  });
+});

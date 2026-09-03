@@ -4,14 +4,18 @@ import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
 import { lalamoveStatusLabel } from "../lib/lalamove-status";
 import {
+  displayCustomerName,
   getInitials,
   getAvatarColor,
-  getUrgency,
+  getScheduleAwareUrgency,
   getUrgencyColor,
   getOrderTypeMeta,
   getStatusMeta,
   formatTimeAgo,
 } from "../lib/order-visuals";
+import { getScheduledISO, getScheduledLabel } from "../lib/scheduled-orders";
+import { getPresellDate, formatPresellDate } from "../lib/presell-orders";
+import { getOrderTableNumber } from "../lib/order-table-number";
 
 export interface OrderCardOrder {
   _id: string;
@@ -27,6 +31,15 @@ export interface OrderCardOrder {
   /** Raw Lalamove delivery status — shows a rider chip so deliveries needing
    * attention are visible without opening each order. */
   lalamoveStatus?: string;
+  /** Requested fulfillment time of a pre-order (UTC ISO) — shows a scheduled
+   * chip and keys the urgency accent off the requested moment, not the
+   * ticket's age. */
+  scheduledFor?: string | null;
+  /** Raw customer payload; carries the schedule for web-created Convex orders
+   * (`scheduled_for` / `scheduled_for_label`). */
+  customerData?: Record<string, unknown> | null;
+  /** Order lines, when the caller loaded them; carries `presellDate` on Convex v25+. */
+  items?: readonly { presellDate?: string | null }[] | null;
 }
 
 interface OrderCardProps {
@@ -54,9 +67,17 @@ export function OrderCard({
   compact = false,
 }: OrderCardProps) {
   const status = getStatusMeta(order.status);
+  const customerName = displayCustomerName(order.customerName);
+  const tableNumber = getOrderTableNumber(order.customerData);
   const typeMeta = getOrderTypeMeta(order.orderType);
   const isActive = order.status !== "delivered" && order.status !== "cancelled";
-  const urgencyColor = getUrgencyColor(getUrgency(order._creationTime));
+  const scheduledISO = getScheduledISO(order);
+  const scheduledLabel = getScheduledLabel(order);
+  const presellDate = getPresellDate(order);
+  const scheduledAtMs = scheduledISO ? new Date(scheduledISO).getTime() : null;
+  const urgencyColor = getUrgencyColor(
+    getScheduleAwareUrgency(order._creationTime, scheduledAtMs),
+  );
   const accentColor = isActive ? urgencyColor : colors.separator;
   const isUnpaid = order.paymentStatus != null && order.paymentStatus !== "paid";
 
@@ -69,15 +90,15 @@ export function OrderCard({
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`Order for ${order.customerName}, ${status.label}, ${formatPeso(order.total)}`}
+      accessibilityLabel={`Order for ${customerName}, ${status.label}, ${formatPeso(order.total)}`}
     >
       <View style={styles.topRow}>
-        <View style={[styles.avatar, { backgroundColor: getAvatarColor(order.customerName) }]}>
-          <Text style={styles.avatarText}>{getInitials(order.customerName)}</Text>
+        <View style={[styles.avatar, { backgroundColor: getAvatarColor(customerName) }]}>
+          <Text style={styles.avatarText}>{getInitials(customerName)}</Text>
         </View>
         <View style={styles.identity}>
           <Text style={styles.name} numberOfLines={1}>
-            {order.customerName}
+            {customerName}
           </Text>
           {order.customerContact ? (
             <Text style={styles.contact} numberOfLines={1}>
@@ -104,6 +125,21 @@ export function OrderCard({
         {order.source ? <Text style={styles.meta}>{order.source}</Text> : null}
         <Text style={styles.metaDot}>·</Text>
         <Text style={styles.meta}>{formatTimeAgo(order._creationTime)}</Text>
+        {tableNumber ? (
+          <View style={styles.tableChip}>
+            <Text style={styles.tableText}>Table {tableNumber}</Text>
+          </View>
+        ) : null}
+        {scheduledLabel ? (
+          <View style={styles.scheduledChip}>
+            <Text style={styles.scheduledText}>Scheduled · {scheduledLabel}</Text>
+          </View>
+        ) : null}
+        {presellDate ? (
+          <View style={styles.presellChip}>
+            <Text style={styles.presellText}>Pre-order · {formatPresellDate(presellDate)}</Text>
+          </View>
+        ) : null}
         {isUnpaid ? (
           <View style={styles.unpaidChip}>
             <Text style={styles.unpaidText}>Unpaid</Text>
@@ -148,7 +184,7 @@ export function OrderCard({
               onPress={onCancel}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel={`Cancel order for ${order.customerName}`}
+              accessibilityLabel={`Cancel order for ${customerName}`}
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -209,6 +245,27 @@ const styles = StyleSheet.create({
   },
   meta: { ...typography.caption, color: colors.textSecondary },
   metaDot: { ...typography.caption, color: colors.textTertiary },
+  scheduledChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.warningLight,
+  },
+  scheduledText: { ...typography.small, color: colors.warning, fontWeight: "700" },
+  tableChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  tableText: { ...typography.small, color: colors.primary, fontWeight: "700" },
+  presellChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  presellText: { ...typography.small, color: colors.primary, fontWeight: "700" },
   unpaidChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,

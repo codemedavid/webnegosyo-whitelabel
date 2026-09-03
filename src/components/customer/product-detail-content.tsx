@@ -23,6 +23,14 @@ import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
 import { useBranchPricing } from '@/hooks/use-branch-pricing'
+import { useStockCeilings, selectCeiling } from '@/hooks/use-stock-ceilings'
+import { resolveAddableQuantity, describeRemainingStock } from '@/lib/inventory/stepper-cap'
+import { MAX_CART_ITEM_QUANTITY } from '@/lib/cart-utils'
+import { usePresellAvailability } from '@/hooks/use-presell-availability'
+import { PresellDatePicker } from '@/components/customer/presell-date-picker'
+import { countPresellInCart, describePresellRemaining, findCartPresellDate, resolvePresellAddable } from '@/lib/presell/availability'
+import { formatPresellDateLabel } from '@/lib/presell/month-grid'
+import { toBusinessDayKey } from '@/lib/inventory/business-day'
 import { applyMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -337,7 +345,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         () => (previewDraft ? getTenantBranding(tenant as unknown as Record<string, unknown>) : brandingProp),
         [previewDraft, tenant, brandingProp]
     )
-    const { addItem, setTenantContext } = useCart()
+    const { addItem, setTenantContext, items: cartItems } = useCart()
     const mainContentRef = useRef<HTMLElement | null>(null)
     const [isPageTransitioning, setIsPageTransitioning] = useState(false)
     const pendingNavigationRef = useRef<string | null>(null)
@@ -408,9 +416,50 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const useGroups = modifierGroupsEnabled && mg.active
     const effectiveQuantity = useGroups ? mg.quantity : quantity
     const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice
-    const effectiveIncreaseQuantity = useGroups ? mg.incrementQuantity : handleIncreaseQuantity
+    const rawIncreaseQuantity = useGroups ? mg.incrementQuantity : handleIncreaseQuantity
     const effectiveDecreaseQuantity = useGroups ? mg.decrementQuantity : handleDecreaseQuantity
     const showCustomizations = useGroups ? mg.groups.length > 0 : hasCustomizations
+
+    // ── Stock ceiling (how many of this dish the kitchen can actually make) ──
+    // Checkout refuses an uncoverable cart on every backend; this is the same
+    // ceiling surfaced where the number is chosen, so nobody walks through the
+    // whole checkout to be turned away on the last screen. Untracked dishes get
+    // `null` and behave exactly as they always have.
+    const ceilings = useStockCeilings(tenant.id, branchPricing.selectedOutletId)
+    const stockCeiling = selectCeiling(ceilings, item.id)
+    // What the cart already holds of this dish, across every configuration of
+    // it: five in the cart as three Large and two Small is still five pizzas'
+    // worth of flour.
+    const alreadyInCart = useMemo(
+        () => cartItems.reduce((sum, line) => (line.menu_item.id === item.id ? sum + line.quantity : sum), 0),
+        [cartItems, item.id],
+    )
+    // ── Presell (per-date stock) ──
+    // A presell dish is sold against a DATE, not a shelf: the customer picks a
+    // pickup date from the calendar and the stepper stops where that date's
+    // allocation does. No allocation on a date means zero, deliberately the
+    // inverse of ingredient ceilings. A cart holds one presell date, so a date
+    // already committed to is pre-selected here.
+    const isPresell = Boolean(tenant.presell_enabled && item.presell_enabled)
+    const { calendar: presellCalendar, isLoading: isPresellLoading } = usePresellAvailability(tenant.id, item.id, isPresell)
+    const presellTodayKey = useMemo(() => toBusinessDayKey(new Date().toISOString()), [])
+    const committedPresellDate = useMemo(() => findCartPresellDate(cartItems), [cartItems])
+    const [presellDate, setPresellDate] = useState<string | null>(committedPresellDate)
+    const presellRemaining = isPresell && presellDate ? (presellCalendar.get(presellDate) ?? null) : null
+    const presellAlreadyInCart = isPresell && presellDate ? countPresellInCart(cartItems, item.id, presellDate) : 0
+
+    const addableQuantity = isPresell
+        ? (presellDate ? resolvePresellAddable(presellRemaining, presellAlreadyInCart, MAX_CART_ITEM_QUANTITY) : MAX_CART_ITEM_QUANTITY)
+        : resolveAddableQuantity(stockCeiling, alreadyInCart, MAX_CART_ITEM_QUANTITY)
+    const stockHint = isPresell
+        ? (presellDate && presellRemaining !== null ? describePresellRemaining(presellRemaining, presellAlreadyInCart) : null)
+        : describeRemainingStock(stockCeiling, alreadyInCart)
+    const canIncreaseQuantity = effectiveQuantity < addableQuantity
+
+    const effectiveIncreaseQuantity = useCallback(() => {
+        if (!canIncreaseQuantity) return
+        rawIncreaseQuantity()
+    }, [canIncreaseQuantity, rawIncreaseQuantity])
 
     // Merge customization settings with branding. The Branding Studio streams
     // product-detail edits under __productDetailDraft (kept separate from the
@@ -639,16 +688,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     }, [useGroups, mg.groups, mg.selection, useNewVariations, item.variation_types, selectedVariations, selectedVariation, selectedAddons, themeColors.footerEmptySummaryText])
 
     // Helper to add the current item to cart with current selections
-    const addCurrentItemToCart = useCallback(() => {
-        if (useGroups) {
-            const { selectedVariations: mgVariations, selectedAddons: mgAddons } = mg.cartFormat
-            addItem(item, mgVariations, mgAddons, mg.quantity)
-        } else {
-            const variationData = useNewVariations ? selectedVariations : selectedVariation
-            addItem(item, variationData, selectedAddons, quantity)
+    const addCurrentItemToCart = useCallback((): boolean => {
+        const presell = isPresell && presellDate ? presellDate : undefined
+        const result = useGroups
+            ? addItem(item, mg.cartFormat.selectedVariations, mg.cartFormat.selectedAddons, mg.quantity, undefined, undefined, undefined, presell)
+            : addItem(item, useNewVariations ? selectedVariations : selectedVariation, selectedAddons, quantity, undefined, undefined, undefined, presell)
+        if (!result.ok) {
+            toast.error(`Your cart is already for ${formatPresellDateLabel(result.committedDate)}. Pre-orders are placed one date at a time.`)
+            return false
         }
-        toast.success(`Added ${item.name} to cart`)
-    }, [useGroups, mg.cartFormat, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem])
+        toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
+        return true
+    }, [useGroups, mg.cartFormat, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate])
 
     const matchingBundle = useMemo(() => {
         if (!bundlesEnabled || !upsellBundles?.length) return null
@@ -693,8 +744,24 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             }
         }
 
+        // A presell dish needs a date before anything else, and the number
+        // chosen must still fit that date (or the shelf) right now — the
+        // stepper cap is advisory, this is the re-check.
+        if (isPresell && !presellDate) {
+            toast.error(`Please choose a pickup date for ${item.name}.`)
+            return
+        }
+        if (effectiveQuantity > addableQuantity) {
+            toast.error(
+                addableQuantity <= 0
+                    ? `${item.name} is sold out${isPresell && presellDate ? ` for ${formatPresellDateLabel(presellDate)}` : ''}.`
+                    : `Only ${addableQuantity} more of ${item.name} can be added.`
+            )
+            return
+        }
+
         // Add the item to cart
-        addCurrentItemToCart()
+        if (!addCurrentItemToCart()) return
 
         // Check if any upsell data exists
         const hasSuggestions = (menuEngineeringEnabled || pairingRulesEnabled) && complementaryUpsells && complementaryUpsells.length > 0
@@ -726,7 +793,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, isOrderable])
+    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, isOrderable, isPresell, presellDate, effectiveQuantity, addableQuantity])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -1111,6 +1178,33 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         </div>
                     )}
 
+                    {/* Presell date picker: a pre-order dish is sold per pickup date. */}
+                    {isPresell && (
+                        <div className="mt-6" data-branding-scope="product/presell">
+                            <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--pd-section-title, inherit)' }}>
+                                Choose a pickup date
+                            </h3>
+                            <p className="text-xs text-muted-foreground mb-3">
+                                {presellDate
+                                    ? `Pre-order for ${formatPresellDateLabel(presellDate)}`
+                                    : committedPresellDate
+                                        ? `Your cart is for ${formatPresellDateLabel(committedPresellDate)}`
+                                        : 'This item is made to order. Pick the date you want it.'}
+                            </p>
+                            {isPresellLoading ? (
+                                <div className="h-40 rounded-2xl bg-black/5 animate-pulse" />
+                            ) : (
+                                <PresellDatePicker
+                                    calendar={presellCalendar}
+                                    todayKey={presellTodayKey}
+                                    selectedDate={presellDate}
+                                    onSelect={setPresellDate}
+                                    accentColor={branding.buttonPrimary}
+                                />
+                            )}
+                        </div>
+                    )}
+
                     {/* Inline Upgrade Section (McDonald's kiosk style) */}
                     {/* Related Items Section */}
                     {relatedItems.length > 0 && (
@@ -1345,7 +1439,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             <button
                                 type="button"
                                 onClick={effectiveIncreaseQuantity}
-                                className="h-9 w-9 rounded-full flex items-center justify-center active:scale-95 transition-all"
+                                disabled={!canIncreaseQuantity}
+                                className="h-9 w-9 rounded-full flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all"
                                 style={{ backgroundColor: 'var(--pd-qty-bg)' }}
                                 aria-label="Increase quantity"
                             >
@@ -1353,6 +1448,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                             </button>
                         </div>
                     </div>
+                    {/*
+                      A disabled + button with no explanation reads as a broken
+                      page — the same reasoning as the closed-store banner
+                      below. Only shown when stock is actually short; a
+                      storefront that cries shortage on every dish trains
+                      customers to ignore it on the one that matters.
+                    */}
+                    {stockHint && (
+                        <p className="pt-2 text-right text-xs font-medium text-muted-foreground">
+                            {stockHint}
+                        </p>
+                    )}
                 </div>
 
                 <StoreClosedBanner status={openStatus} />

@@ -59,13 +59,18 @@ export interface MobileDownload {
 /**
  * Android is not on Google Play yet, so it ships as a sideloaded APK.
  *
- * The APK is served straight from its EAS build artifact rather than from
- * `public/downloads/`: at 107 MB it exceeds GitHub's 100 MB file limit, so it
- * cannot be committed. Note the tradeoff — EAS build artifacts expire (30 days
- * on the free tier), and when this URL dies the button 404s silently, exactly
- * as `public/downloads/*.dmg` does today after being gitignored for size.
- * Re-point `href` at the new artifact on every Android release, or move both
- * binaries to durable hosting (GitHub Release asset / object storage).
+ * The APK is served from a GitHub Release asset rather than `public/downloads/`:
+ * at 108 MB it exceeds GitHub's 100 MB *file* limit, so it cannot be committed,
+ * but release assets are exempt from that limit and are public on a public repo.
+ *
+ * This used to point at the EAS build artifact URL, which expires after ~30 days
+ * on the free tier — when it lapsed the button would 404 silently, exactly as
+ * `public/downloads/*.dmg` does today after being gitignored for size. A release
+ * asset does not expire, so the link outlives the build that produced it.
+ *
+ * Cut a new release and re-point `href` on every Android release. The version
+ * below is pinned to `webnegosyo-app/app.config.ts` by `tests/unit/downloads.test.ts`,
+ * so letting it drift behind the app fails the suite instead of misleading merchants.
  */
 export const mobileDownloads: MobileDownload[] = [
   {
@@ -81,9 +86,9 @@ export const mobileDownloads: MobileDownload[] = [
     label: "WebNegosyo for Android",
     store: "Direct download",
     kind: "apk",
-    href: "https://expo.dev/artifacts/eas/dTKFzzHrE7qF_IIsnPorfz55mz_ELMe8fu0brfqHMvU.apk",
+    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.4/SmartMenu-1.0.4.apk",
     available: true,
-    version: "1.0.2",
-    size: "107 MB",
+    version: "1.0.4",
+    size: "108 MB",
   },
 ];

@@ -110,6 +110,7 @@ const SUPPORTED_MUTATION_REFS = [
   "orders:updatePaymentStatus",
   "orders:reviseOrder",
   "orders:recordPayment",
+  "orders:setPrepTime",
 ] as const;
 
 const SUPPORTED_REFS: readonly string[] = [
@@ -242,7 +243,12 @@ async function getAllOrderItems(
         .eq("orders.tenant_id", tenantId),
       scope,
       "orders.outlet_id"
-    ).limit(STATS_LIMIT)
+    )
+      // Newest parent order first, so the STATS_LIMIT cap drops history rather
+      // than letting the database pick which rows survive — unordered, it is
+      // the NEWEST orders' items that silently vanish past 10k line items.
+      .order("orders(created_at)", { ascending: false })
+      .limit(STATS_LIMIT)
   );
 
   return (rows ?? []).map((row) => toOrderItemDto(row));
@@ -388,12 +394,21 @@ async function patchOrder(
   patch: Record<string, unknown>,
   scope: BranchScope
 ) {
-  await unwrap(
+  // Read back what the write touched. An UPDATE that matches no row (RLS
+  // refusal, out-of-branch order, deleted order) is a PostgREST success with
+  // zero rows — resolving on it would show the cashier a tap that "worked"
+  // while nothing was written.
+  const rows = await unwrap<{ id: string }[] | null>(
     scopeToBranch(
       client.from("orders").update(patch).eq("id", orderId).eq("tenant_id", tenantId),
       scope
-    )
+    ).select("id")
   );
+  if (!rows || rows.length === 0) {
+    throw new Error(
+      "That order no longer exists in your branch — it may have been moved or deleted."
+    );
+  }
   return orderId;
 }
 
@@ -457,6 +472,14 @@ async function reviseOrder(
       ...(row.variation_selections
         ? { variationSelections: row.variation_selections }
         : {}),
+      // The audit snapshot must show what the lines WERE — including the
+      // legacy variation string and bundle markers the columns carry.
+      ...(row.variation ? { variation: row.variation } : {}),
+      ...(row.is_upsell_item ? { isUpsellItem: true } : {}),
+      ...(row.is_bundle_item ? { isBundleItem: true } : {}),
+      ...(row.bundle_id ? { bundleId: row.bundle_id } : {}),
+      ...(row.bundle_name ? { bundleName: row.bundle_name } : {}),
+      ...(row.slot_name ? { slotName: row.slot_name } : {}),
     })),
   });
 
@@ -534,14 +557,18 @@ export async function runPlatformQuery(
       return getRealtimeQueue(client, tenant, scope);
     case "orders:getDashboardStats":
       return getStatsBetween(client, tenant, scope, localDayStartMs(Date.now()));
-    case "orders:getDashboardStatsByPeriod":
-      return getStatsBetween(
-        client,
-        tenant,
-        scope,
-        Number(params.startDate),
-        Number(params.endDate)
-      );
+    case "orders:getDashboardStatsByPeriod": {
+      // `Number(undefined)` is NaN and `new Date(NaN).toISOString()` throws a
+      // bare RangeError with no clue which screen sent it — refuse loudly.
+      const startMs = Number(params.startDate);
+      const endMs = Number(params.endDate);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+        throw new Error(
+          "Invalid date range for period stats — startDate and endDate must be epoch milliseconds."
+        );
+      }
+      return getStatsBetween(client, tenant, scope, startMs, endMs);
+    }
     default:
       throw new Error(`Query "${ref}" is not supported by the platform backend.`);
   }
@@ -575,6 +602,20 @@ export async function runPlatformMutation(
         tenant,
         params.orderId,
         { payment_status: params.paymentStatus },
+        scope
+      );
+    case "orders:setPrepTime":
+      // Written as one patch, with the status, so a ticket can never carry a
+      // promise while still reading as not-yet-started.
+      return patchOrder(
+        client,
+        tenant,
+        params.orderId,
+        {
+          prep_minutes: params.prepMinutes,
+          promised_ready_at: params.promisedReadyAt,
+          status: params.status,
+        },
         scope
       );
     case "orders:reviseOrder":

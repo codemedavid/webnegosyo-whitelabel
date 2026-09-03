@@ -4,8 +4,9 @@
  * Some order types (typically Dine In) settle the bill after the meal. The
  * customer still declares a payment method — the merchant wants it on the
  * ticket — but nothing is paid at checkout, so the payment-details step
- * (account numbers, QR codes, proof upload) must never open. Choosing a
- * method and tapping the CTA places the order directly.
+ * (account numbers, QR codes, proof upload) must not open for methods that
+ * do not require proof. If the chosen method requires a screenshot or
+ * reference, the details step still opens so checkout can collect it.
  *
  * Strictly opt-in: rows saved before the column existed (undefined/null) and
  * rows with the flag off keep today's behavior exactly.
@@ -33,12 +34,23 @@ export function resolvePaymentSubmitPlan({
   hasPaymentMethods,
   hasSelectedPaymentMethod,
   isAfterBillingPayment,
+  requiresPaymentProof = false,
+  isQrHandoff = false,
 }: {
   hasPaymentMethods: boolean
   hasSelectedPaymentMethod: boolean
   isAfterBillingPayment: boolean
+  /** When the chosen method requires a screenshot/reference, the details step
+   *  (where that proof is collected) must still open — even for after-billing
+   *  and QR-handoff. */
+  requiresPaymentProof?: boolean
+  /** QR-handoff skips the details step (the vendor rings them up) unless
+   *  the chosen method still requires a screenshot. */
+  isQrHandoff?: boolean
 }): PaymentSubmitPlan {
   if (!hasPaymentMethods) return 'submit-order'
-  if (!hasSelectedPaymentMethod) return 'blocked-no-method'
-  return isAfterBillingPayment ? 'submit-order' : 'payment-details'
+  if (!hasSelectedPaymentMethod) return isQrHandoff ? 'submit-order' : 'blocked-no-method'
+  if (requiresPaymentProof) return 'payment-details'
+  if (isQrHandoff || isAfterBillingPayment) return 'submit-order'
+  return 'payment-details'
 }

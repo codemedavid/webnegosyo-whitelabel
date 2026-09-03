@@ -38,7 +38,7 @@ const TOTALS_OWNERS = ["lib/pos-cart.ts", "lib/pos-edit-mode.ts"];
  * `order.total` and not this figure.
  */
 const VERIFICATION_ONLY = [
-  "const expectedTotal = subtotal + (order.deliveryFee ?? 0) - (discount?.total ?? 0);",
+  "const expectedTotal = ctx.subtotal + (order.deliveryFee ?? 0) - (ctx.discount?.total ?? 0);",
 ];
 
 /**
@@ -108,7 +108,7 @@ describe("POS money wiring", () => {
   it("prints the backend total on the receipt rather than a recomputed one", () => {
     // The receipt derives a subtotal to CHECK the total, and must never print
     // that check in place of what the customer was charged.
-    const source = readFileSync(join(APP_ROOT, "lib/receipt-formatter.ts"), "utf8");
+    const source = readFileSync(join(APP_ROOT, "lib/receipt-layout.ts"), "utf8");
 
     expect(source).toContain('leftRight("TOTAL:", `P${order.total.toFixed(2)}`');
   });

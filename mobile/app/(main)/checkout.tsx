@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { View, ScrollView, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native'
+import { uuid } from 'expo-modules-core'
 import { router } from 'expo-router'
 import { useTheme } from '@/theme/provider'
 import { useCartStore, useCartHydrated } from '@/stores/cart-store'
@@ -388,8 +389,14 @@ export default function CheckoutScreen() {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase generic DB types resolve to never due to index signature on Tenant
         const ordersTable = supabase().from('orders') as any
-        const { data: order, error: orderError } = await ordersTable
+        // The anon role has no SELECT policy on orders, so INSERT..RETURNING
+        // fails wholesale under PostgREST. Generate the id here (native
+        // crypto-strength uuid — the id doubles as the tracking capability)
+        // and insert without asking for the row back.
+        const newOrderId = uuid.v4()
+        const { error: orderError } = await ordersTable
           .insert({
+            id: newOrderId,
             tenant_id: tenant.id,
             order_type_id: selectedOrderType.id,
             order_type: selectedOrderType.name,
@@ -420,13 +427,11 @@ export default function CheckoutScreen() {
               ? new Date().toISOString()
               : null,
           })
-          .select()
-          .single()
 
         if (orderError) {
           console.warn('Order creation failed, proceeding to Messenger...', orderError)
-        } else if (order) {
-          orderId = (order as { id: string }).id
+        } else {
+          orderId = newOrderId
           const itemsToInsert = orderItems.map(oi => ({
             order_id: orderId!,
             ...oi,

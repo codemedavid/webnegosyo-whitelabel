@@ -1,8 +1,11 @@
 import { useState, useCallback } from "react";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
-import { printReceipt } from "../lib/printer";
-import { formatReceipt } from "../lib/receipt-formatter";
+import { printForRole } from "../lib/printer";
+import { printersForRole } from "../lib/printer-registry";
+import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
+import { fetchTrackingUrl } from "../lib/receipt-tracking";
+import { supabase } from "../lib/supabase";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 
 interface PrintableOrder {
@@ -36,21 +39,46 @@ interface PrintableOrder {
  */
 export function useOrderPrint() {
   const tenantName = useAuthStore((s) => s.tenantName);
-  const { printTrigger, printer } = usePrinterStore();
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const receiptLayout = useAuthStore((s) => s.receiptLayout);
+  const receiptLogoUrl = useAuthStore((s) => s.receiptLogoUrl);
+  const { printTrigger, printers } = usePrinterStore();
+  // The receipt is the cashier's paper; a device whose printers are all
+  // kitchen-role has nothing to print it on.
+  const hasCashierPrinter = printersForRole(printers, "cashier").length > 0;
   const [isPrinting, setIsPrinting] = useState(false);
 
   const printOrder = useCallback(
     async (order: PrintableOrder): Promise<boolean> => {
-      if (!printer) return false;
+      if (!hasCashierPrinter) return false;
 
       setIsPrinting(true);
       try {
-        const receipt = formatReceipt(order, { storeName: tenantName ?? "Store" });
-        const result = await printReceipt(receipt);
-        if (!result.success) {
-          console.warn("[useOrderPrint] Print failed:", result.error);
+        // The QR needs a server-minted signed URL; skipped entirely for
+        // layouts without a qr block, and best-effort otherwise — a failed
+        // mint prints a QR-less receipt rather than no receipt.
+        let trackingUrl: string | null = null;
+        if (tenantId && layoutWantsQr(receiptLayout)) {
+          const { data } = await supabase.auth.getSession();
+          trackingUrl = await fetchTrackingUrl(
+            { orderId: order._id, tenantId },
+            { accessToken: data.session?.access_token ?? null },
+          );
         }
-        return result.success;
+
+        const segments = buildReceiptSegments(
+          order,
+          tenantName ?? "Store",
+          receiptLayout,
+          trackingUrl,
+          receiptLogoUrl,
+        );
+        const outcome = await printForRole("cashier", segments);
+        if (!outcome.anySuccess) {
+          const firstError = outcome.results[0]?.result.error;
+          console.warn("[useOrderPrint] Print failed:", firstError ?? "no cashier printer");
+        }
+        return outcome.anySuccess;
       } catch (err: unknown) {
         console.warn("[useOrderPrint] Print failed:", err instanceof Error ? err.message : err);
         return false;
@@ -58,7 +86,7 @@ export function useOrderPrint() {
         setIsPrinting(false);
       }
     },
-    [printer, tenantName]
+    [hasCashierPrinter, tenantName, tenantId, receiptLayout, receiptLogoUrl]
   );
 
   /**
@@ -66,8 +94,8 @@ export function useOrderPrint() {
    * A device with no printer never prints, whatever the setting says.
    */
   const shouldPrint = useCallback(
-    (moment: PrintMoment): boolean => !!printer && shouldPrintAt(moment, printTrigger),
-    [printer, printTrigger],
+    (moment: PrintMoment): boolean => hasCashierPrinter && shouldPrintAt(moment, printTrigger),
+    [hasCashierPrinter, printTrigger],
   );
 
   /**
@@ -88,6 +116,6 @@ export function useOrderPrint() {
     shouldPrint,
     isPrinting,
     printTrigger,
-    hasPrinter: !!printer,
+    hasPrinter: hasCashierPrinter,
   };
 }

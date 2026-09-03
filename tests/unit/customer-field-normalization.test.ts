@@ -5,6 +5,7 @@ import {
   normalizeTextField,
   normalizeCustomerFieldValue,
   normalizeCustomerData,
+  type NormalizableField,
 } from '@/lib/customer-field-normalization'
 import type { CustomerFormField } from '@/types/database'
 
@@ -130,5 +131,25 @@ describe('normalizeCustomerData', () => {
     const result = normalizeCustomerData(raw, fields)
     expect(result).toEqual({ customer_phone: '+639171234567' })
     expect('customer_email' in result).toBe(false)
+  })
+})
+
+describe('table number normalization', () => {
+  it('normalizes the reserved table_number field by name, whatever its declared type', () => {
+    const fields: NormalizableField[] = [
+      { field_name: 'table_number', field_type: 'text' },
+      { field_name: 'customer_name', field_type: 'text' },
+    ]
+    const result = normalizeCustomerData(
+      { table_number: ' table 12 ', customer_name: '  Maria  Cruz ' },
+      fields
+    )
+    expect(result.table_number).toBe('12')
+    expect(result.customer_name).toBe('Maria Cruz')
+  })
+
+  it('leaves an ordinary text field named anything else alone', () => {
+    const fields: NormalizableField[] = [{ field_name: 'notes', field_type: 'text' }]
+    expect(normalizeCustomerData({ notes: ' table 12 ' }, fields).notes).toBe('table 12')
   })
 })

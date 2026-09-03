@@ -14,6 +14,7 @@
  * this module cleans the human-visible field values that sit alongside it.
  */
 import { normalizePhoneE164 } from '@/lib/phone'
+import { TABLE_NUMBER_FIELD_NAME, normalizeTableNumber } from '@/lib/order-table-number'
 import type { CustomerFormField } from '@/types/database'
 
 /** The subset of a form field this module needs to normalize a value. */
@@ -80,7 +81,12 @@ export function normalizeCustomerData(
   for (const field of formFields) {
     const value = result[field.field_name]
     if (typeof value !== 'string') continue
-    result[field.field_name] = normalizeCustomerFieldValue(value, field.field_type)
+    // The table field is keyed on its reserved NAME, not its type: a merchant
+    // may have saved it as text or number, and either way "Table 12" → "12".
+    result[field.field_name] =
+      field.field_name === TABLE_NUMBER_FIELD_NAME
+        ? normalizeTableNumber(value)
+        : normalizeCustomerFieldValue(value, field.field_type)
   }
 
   return result

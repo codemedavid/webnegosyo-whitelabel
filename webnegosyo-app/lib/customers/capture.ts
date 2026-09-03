@@ -15,14 +15,9 @@
  * sale because a bookkeeping call failed is not.
  */
 
-import Constants from "expo-constants";
-import { supabase } from "../supabase";
+import { postAuthorized } from "../authorized-post";
 import { resolveCustomerIdentity } from "../customer-identity";
 import type { OrderBackend } from "../order-backend";
-
-function getWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
 
 /** One line of the sale, as the customer profile aggregate consumes it. */
 export interface CaptureItem {
@@ -116,21 +111,8 @@ export async function notifyCustomerCapture(
   const payload = buildCapturePayload(tenantId, facts);
   if (!payload) return;
 
-  try {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (!token) return;
-
-    await fetch(`${getWebAppUrl()}/api/customers/capture-order`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    // Best-effort — the sale already succeeded. A profile that misses one order
-    // is fixable; a tender screen that fails after the customer has paid is not.
-  }
+  // Bounded and never-throwing: the sale already succeeded by the time this
+  // runs. A profile that misses one order is fixable; a tender screen still
+  // spinning after the customer has paid is not.
+  await postAuthorized("/api/customers/capture-order", payload);
 }

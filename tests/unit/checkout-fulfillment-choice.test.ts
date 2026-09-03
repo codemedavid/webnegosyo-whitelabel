@@ -58,4 +58,31 @@ describe('asking for a fulfillment method', () => {
     // Act & Assert
     expect(shouldAskFulfillmentMethod([])).toBe(false)
   })
+  it('asks when a presell cart forces scheduling onto an order type that never scheduled', () => {
+    // Arrange: SeaCook ships one Delivery type with advance orders OFF, so the
+    // stored config says "nothing to ask". A presell cart overrides that at
+    // runtime — scheduling is forced on and ASAP is gone — and the scheduler
+    // lives inside this very section. Judging by the stored flag alone hides
+    // the only place the customer can pick a pickup time.
+    const types = [orderType('delivery', { type: 'delivery', advance_order_enabled: false })]
+
+    // Act & Assert
+    expect(shouldAskFulfillmentMethod(types, { isSchedulingForced: true })).toBe(true)
+  })
+
+  it('leaves the ordinary verdict alone when nothing is forced', () => {
+    // Arrange
+    const types = [orderType('dine-in')]
+
+    // Act & Assert
+    expect(shouldAskFulfillmentMethod(types, { isSchedulingForced: false })).toBe(false)
+  })
+
+  it('still refuses before load even when scheduling is forced', () => {
+    // Arrange: an empty list is "not yet". A forced flag must not conjure a
+    // section out of an unloaded page.
+
+    // Act & Assert
+    expect(shouldAskFulfillmentMethod([], { isSchedulingForced: true })).toBe(false)
+  })
 })

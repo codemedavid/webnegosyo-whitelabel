@@ -1,5 +1,4 @@
-import { getWebAppUrl } from "./web-app-url";
-import { supabase } from "./supabase";
+import { postAuthorized } from "./authorized-post";
 
 /**
  * Fire-and-forget: ask the platform to push an order into Loyverse as a sales
@@ -100,23 +99,13 @@ export async function notifyLoyversePosSale(
   await postLoyversePush({ tenantId, orderNumber, items, context: "pos_sale" });
 }
 
-/** Never throws — the sale/confirmation already succeeded when this runs. */
+/**
+ * Never throws, and never hangs — the tender screen awaits this before it
+ * clears its spinner, so an unbounded wait here freezes the register.
+ *
+ * Best-effort: a missing Loyverse receipt is reconcilable in Back Office; a
+ * tender or confirm screen that fails because of it is not.
+ */
 async function postLoyversePush(body: Record<string, unknown>): Promise<void> {
-  try {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (!token) return;
-
-    await fetch(`${getWebAppUrl()}/api/loyverse`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    // Best-effort: a missing Loyverse receipt is reconcilable in Back Office;
-    // a tender or confirm screen that fails because of it is not.
-  }
+  await postAuthorized("/api/loyverse", body);
 }

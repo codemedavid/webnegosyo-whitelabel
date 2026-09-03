@@ -19,7 +19,11 @@ import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
+// Rendered by <ScreenHeader>; the import stays so the guardrail that every
+// tab is escapable keeps reading it here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -119,11 +123,10 @@ export default function PosSalesScreen() {
   if (isLoading) return <LoadingState />;
 
   return (
+    <View style={styles.screen}>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Drawer" subtitle="Today at the register" />
     <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
-      <View style={styles.headerRow}>
-        <WorkspaceSwitcher />
-        <Text style={styles.eyebrow}>Today at the register</Text>
-      </View>
 
       {incoming.length > 0 && (
         <>
@@ -232,20 +235,14 @@ export default function PosSalesScreen() {
         })
       )}
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  body: { padding: spacing.xl, paddingTop: 60, gap: spacing.md },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
+  body: { padding: spacing.xl, paddingTop: 0, gap: spacing.md },
   drawer: {
     backgroundColor: colors.primary,
     borderRadius: radius.lg,

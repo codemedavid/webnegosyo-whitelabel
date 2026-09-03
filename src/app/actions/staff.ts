@@ -9,6 +9,7 @@ import {
   removeStaff,
   resetStaffPassword,
   updateStaffBranch,
+  updateStaffDefaultScreen,
   updateStaffPermissions,
   type StaffBranchContext,
   type StaffRecord,
@@ -30,7 +31,7 @@ function makeSupabaseStaffStore(): StaffStore {
       const { data, error } = await admin
         .from('app_users')
         .select(
-          'user_id, tenant_id, role, is_owner, outlet_id, permissions, display_name, email, created_at'
+          'user_id, tenant_id, role, is_owner, outlet_id, permissions, display_name, email, default_tab, created_at'
         )
         .eq('tenant_id', tenantId)
         .eq('role', 'admin')
@@ -59,6 +60,7 @@ function makeSupabaseStaffStore(): StaffStore {
         permissions: row.permissions,
         display_name: row.display_name,
         email: row.email,
+        default_tab: row.default_tab ?? null,
       } as unknown as never)
       if (error) {
         // Don't leave an orphaned auth user behind if the row insert fails.
@@ -143,6 +145,7 @@ export async function createStaffAction(
     displayName: string
     permissions: string[]
     outletId?: string | null
+    defaultTab?: string | null
   }
 ) {
   try {
@@ -190,6 +193,25 @@ export async function updateStaffPermissionsAction(
     return { success: true as const }
   } catch (error) {
     return { success: false as const, error: errorMessage(error, 'Failed to update permissions') }
+  }
+}
+
+export async function updateStaffDefaultScreenAction(
+  tenantId: string,
+  tenantSlug: string,
+  userId: string,
+  defaultTab: string | null
+) {
+  try {
+    const context = await staffManagerContext(tenantId)
+    await updateStaffDefaultScreen(makeSupabaseStaffStore(), tenantId, userId, defaultTab, context)
+    revalidatePath(`/${tenantSlug}/admin/settings`)
+    return { success: true as const }
+  } catch (error) {
+    return {
+      success: false as const,
+      error: errorMessage(error, 'Failed to update the default screen'),
+    }
   }
 }
 

@@ -108,7 +108,7 @@ export default function SuperadminDashboardScreen() {
       <ScreenHeader
         eyebrow="Platform"
         title="Overview"
-        subtitle={`${pluralize(summary.total, "restaurant")} on WebNegosyo`}
+        subtitle={`${pluralize(summary.total, "restaurant")} on SmartMenu`}
       >
         {/* Headline metric lives in the header so the first thing read is the
             health of the platform, not a grid of equal-weight numbers. */}

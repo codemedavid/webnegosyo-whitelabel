@@ -1,18 +1,14 @@
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
+import { canOpenTeam } from "../../lib/staff-service";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
-import { Card } from "../../components/Card";
+import { BackHeader } from "../../components/BackHeader";
+import { ListRow } from "../../components/ListRow";
+import { Button } from "../../components/Button";
+import { SectionHeader } from "../../components/SectionHeader";
 
 const SUPPORT_EMAIL = "support@webnegosyo.com";
 
@@ -20,6 +16,12 @@ export default function AccountScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const isDemo = useAuthStore((s) => s.isDemo);
   const clear = useAuthStore((s) => s.clear);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  const outletId = useAuthStore((s) => s.outletId);
+
+  const showTeamEntry = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
 
   const [email, setEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -110,17 +112,44 @@ export default function AccountScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backText}>← Back</Text>
-      </TouchableOpacity>
+    <View style={styles.screen}>
+      <BackHeader title="Account" />
+      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.group}>
+        <ListRow
+          icon="account"
+          title={tenantName ?? "Your store"}
+          subtitle={isDemo ? "Demo session, no account" : email ?? "Signed in"}
+          accessibilityLabel={`Signed in as ${tenantName ?? "your store"}`}
+        />
+      </View>
 
-      <Text style={styles.title}>Account</Text>
-
-      <Card title="Signed in as" style={styles.section}>
-        <Text style={styles.value}>{tenantName ?? "Your store"}</Text>
-        <Text style={styles.sub}>{isDemo ? "Demo session — no account" : email ?? "—"}</Text>
-      </Card>
+      <View style={styles.group}>
+        <ListRow
+          icon="info"
+          title="What's New"
+          subtitle="Release notes and announcements from WebNegosyo"
+          onPress={() => router.push("/(main)/whats-new")}
+          grouped
+        />
+        {showTeamEntry && (
+          <ListRow
+            icon="customers"
+            title="Team"
+            subtitle="Add staff accounts and choose what each one can do"
+            onPress={() => router.push("/(main)/team")}
+            grouped
+          />
+        )}
+        <ListRow
+          icon="logout"
+          title="Sign Out"
+          subtitle={signingOut ? "Signing out…" : "Return to the sign-in screen"}
+          accessibilityLabel="Sign Out"
+          onPress={signingOut || deleting ? undefined : handleSignOut}
+          trailing={signingOut ? <ActivityIndicator color={colors.primary} /> : undefined}
+        />
+      </View>
 
       {isDemo && (
         <View style={styles.demoNote}>
@@ -131,54 +160,40 @@ export default function AccountScreen() {
         </View>
       )}
 
-      <TouchableOpacity
-        style={styles.signOutButton}
-        onPress={handleSignOut}
-        disabled={signingOut || deleting}
-        activeOpacity={0.8}
-      >
-        {signingOut ? (
-          <ActivityIndicator color={colors.primary} />
-        ) : (
-          <Text style={styles.signOutText}>Sign Out</Text>
-        )}
-      </TouchableOpacity>
-
       {!isDemo && (
-        <View style={styles.dangerZone}>
-          <Text style={styles.dangerTitle}>Delete account</Text>
-          <Text style={styles.dangerBody}>
-            Permanently delete your sign-in account and remove your access to
-            this store. Your store&apos;s orders and menu are preserved. This
-            cannot be undone.
-          </Text>
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={confirmDelete}
-            disabled={deleting}
-            activeOpacity={0.8}
-          >
-            {deleting ? (
-              <ActivityIndicator color={colors.textOnDark} />
-            ) : (
-              <Text style={styles.deleteButtonText}>Delete Account</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+        <>
+          <SectionHeader title="Delete account" />
+          <View style={styles.dangerZone}>
+            <Text style={styles.dangerBody}>
+              Permanently delete your sign-in account and remove your access to
+              this store. Your store&apos;s orders and menu are preserved. This
+              cannot be undone.
+            </Text>
+            <Button
+              label="Delete Account"
+              tone="danger"
+              onPress={confirmDelete}
+              isLoading={deleting}
+              fullWidth
+            />
+          </View>
+        </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60 },
-  backButton: { marginBottom: spacing.md },
-  backText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.xl },
-  section: { marginBottom: spacing.lg },
-  value: { ...typography.heading, color: colors.textPrimary },
-  sub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
+  group: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    marginBottom: spacing.lg,
+    ...shadow.sm,
+  },
   demoNote: {
     backgroundColor: colors.surfaceSubtle,
     borderRadius: radius.md,
@@ -188,32 +203,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   demoNoteText: { ...typography.caption, color: colors.textSecondary },
-  signOutButton: {
-    backgroundColor: colors.card,
-    borderRadius: radius.full,
-    paddingVertical: 16,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.separator,
-    ...shadow.sm,
-  },
-  signOutText: { ...typography.heading, color: colors.textPrimary },
   dangerZone: {
-    marginTop: spacing.xxl,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.dangerLight,
     backgroundColor: colors.card,
     padding: spacing.xl,
-    ...shadow.sm,
   },
-  dangerTitle: { ...typography.heading, color: colors.danger, marginBottom: spacing.xs },
-  dangerBody: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg },
-  deleteButton: {
-    backgroundColor: colors.danger,
-    borderRadius: radius.full,
-    paddingVertical: 14,
-    alignItems: "center",
+  dangerBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 19,
+    marginBottom: spacing.lg,
   },
-  deleteButtonText: { ...typography.heading, color: colors.textOnDark, fontWeight: "800" },
 });

@@ -171,6 +171,22 @@ export default async function SettingsPage({
             initialEnforce={tenant.enforce_operating_hours === true}
           />
 
+          {/* Receipt Studio */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Receipt Studio</CardTitle>
+              <CardDescription>
+                Design your thermal receipt — formats, custom blocks, and a
+                scannable order-tracking QR.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline">
+                <Link href={`/${tenantSlug}/admin/receipt-editor`}>Open Receipt Studio</Link>
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Scan-to-collect pickup */}
           <PickupScanCard
             tenantId={tenant.id}

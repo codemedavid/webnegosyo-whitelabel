@@ -63,7 +63,7 @@ export default function SignupScreen() {
         <Text style={styles.successCheck}>✓</Text>
         <Text style={styles.successTitle}>Request received!</Text>
         <Text style={styles.successBody}>
-          Thanks for your interest in WebNegosyo. Our team will reach out by
+          Thanks for your interest in SmartMenu. Our team will reach out by
           email to set up your store. In the meantime, you can explore the demo
           to see how it works.
         </Text>
@@ -91,7 +91,7 @@ export default function SignupScreen() {
           <Text style={styles.eyebrow}>Get Started</Text>
           <Text style={styles.title}>Create your store</Text>
           <Text style={styles.subtitle}>
-            WebNegosyo is open to any food or retail business. Tell us about
+            SmartMenu is open to any food or retail business. Tell us about
             yours and we&apos;ll get you set up.
           </Text>
         </View>

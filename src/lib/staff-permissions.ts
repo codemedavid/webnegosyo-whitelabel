@@ -15,6 +15,10 @@ export const STAFF_PERMISSION_KEYS = [
   'order_edit',
   'order_refund',
   'vouchers',
+  // The kitchen display — sees every active ticket and bumps orders to ready.
+  // Its own key (not 'orders') so a cook's tablet can show the board without
+  // also granting the full order queue, payments, and cancellations.
+  'kitchen',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -66,6 +70,10 @@ export const STAFF_PERMISSION_LABELS: Record<
   vouchers: {
     label: 'Vouchers & Discounts',
     description: 'Create and retire discount codes — grant sparingly',
+  },
+  kitchen: {
+    label: 'Kitchen Display',
+    description: 'See active tickets on the kitchen display and mark them ready',
   },
 }
 
@@ -138,6 +146,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   outlets: 'store_setup',
   'payment-methods': 'store_setup',
   branding: 'store_setup',
+  'receipt-editor': 'store_setup',
   'hero-designer': 'store_setup',
   // Minting an MCP key grants full merchant authority — owner/store_setup only.
   mcp: 'store_setup',

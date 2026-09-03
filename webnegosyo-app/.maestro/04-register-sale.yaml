@@ -1,0 +1,74 @@
+appId: com.webnegosyo.admin
+name: Register - ring up a cash sale end to end
+---
+# As a cashier, I want to ring up a counter sale with an add-on, take cash, and
+# see the drawer account for it, so that the till matches what I sold.
+#
+# WRITE FLOW. This commits a real ₱154.00 cash sale to the signed-in store and
+# there is no undo from the app. Point it at a demo tenant unless you actually
+# intend to move the till.
+- runFlow:
+    file: helpers/switch-view.yaml
+    env:
+      VIEW: Register
+
+- assertVisible: "Tap a product to start the sale"
+- assertVisible: "\\d+ products"
+
+# --- Build the sale ----------------------------------------------------------
+- tapOn: "Calamari.*"
+- waitForAnimationToEnd
+- assertVisible: "ADD-ONS  OPTIONAL"
+- assertVisible: "Increase quantity"
+- assertVisible: "Add ₱129.00"
+
+# Choosing a ₱25.00 add-on re-prices the line before it is committed.
+- tapOn: ".*Java rice.*"
+- waitForAnimationToEnd
+- assertVisible: "Add ₱154.00"
+- tapOn: "Add ₱154.00"
+- waitForAnimationToEnd
+
+# The cart carries the line and offers the sale-level adjustments.
+- assertVisible: "Calamari.*1 in sale"
+- assertVisible: "Add a discount"
+- assertVisible: "Charge.*₱154.00"
+
+# --- Tender ------------------------------------------------------------------
+- tapOn: "Charge.*"
+- waitForAnimationToEnd
+- assertVisible: "AMOUNT DUE"
+- assertVisible: "PAYMENT METHOD"
+- assertVisible: "CASH RECEIVED"
+- assertVisible: "Enter the cash received"
+
+# Under-tendered, the sale cannot be completed yet.
+- assertNotVisible: "Swipe to complete.*"
+
+# Quick-cash ₱200.00 against ₱154.00 due leaves ₱46.00 change, and only then
+# does the confirm control appear.
+- tapOn: "₱200.00"
+- waitForAnimationToEnd
+- assertVisible: "CHANGE"
+- assertVisible: "₱46.00"
+- assertVisible: "Swipe to complete.*₱154.00"
+
+# --- Complete ----------------------------------------------------------------
+# Slide-to-confirm: a deliberate gesture, not a tap, so the till cannot move by
+# accident.
+- swipe:
+    start: "10%, 84%"
+    end: "93%, 84%"
+    duration: 700
+- waitForAnimationToEnd
+
+# --- The drawer accounts for it ----------------------------------------------
+- assertVisible: "TODAY AT THE REGISTER"
+- assertVisible: "EXPECTED IN DRAWER"
+- assertVisible: "Gross"
+- assertVisible: "Non-cash"
+# The sale lands in the day's tape with its tender and change.
+- assertVisible: ".*Cash  ·  ₱46.00 change, ₱154.00"
+# Online orders can be pulled into the same reconciliation.
+- assertVisible: "INCOMING ORDERS"
+- assertVisible: "Count Smart Menu orders"

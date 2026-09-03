@@ -81,7 +81,22 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // unbookable with no recovery path) and accepts lalamoveQuotationId on the
 // updateLalamoveDetails mutations. The app calls requote only against
 // deployments recorded at >= 20.
-const CURRENT_SCHEMA_VERSION = 20;
+// v22 adds orders:updateCustomerContact — the receipt-QR contact capture
+// (once-only fill of a blank customerContact). Deployments below 22 return
+// "unavailable" from /api/orders/contact until redeployed.
+// v23 stores the service charge on the order (`orders.serviceCharge`), accepted
+// by createOrder and patched by reviseOrder. Below 23 the field is rejected by
+// the deployment's validator, so the app must omit it — the charge then stays
+// recoverable only as the anonymous residue, exactly as before.
+// v24 adds orders:setPrepTime plus `prepMinutes` / `promisedReadyAt` on the
+// order — the kitchen's ready-by promise, which the customer's tracking page
+// renders. Below 24 the mutation does not exist, so the merchant app hides the
+// prep-time control rather than offering one that throws on tap.
+// v25 accepts `items[].presellDate` on createOrder (and stores it on
+// orderItems) — the per-date presell pickup date. Below 25 the validator
+// rejects the field, so the web omits it (convexPresellItemFields) and readers
+// fall back to customerData.presell_date.
+const CURRENT_SCHEMA_VERSION = 25;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

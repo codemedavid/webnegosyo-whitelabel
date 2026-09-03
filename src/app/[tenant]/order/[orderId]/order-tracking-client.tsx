@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { ArrowLeft, Clock, CheckCircle2, ChefHat, Package, Truck, XCircle, CalendarClock } from 'lucide-react'
+import { ArrowLeft, Bell, BellRing, Clock, CheckCircle2, ChefHat, Package, Truck, XCircle, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,10 @@ import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
 import { isPickupScanEnabled, shouldShowPickupQr } from '@/lib/pickup-qr-gating'
 import { PickupQrCard } from '@/components/customer/pickup-qr-card'
+import { ContactCaptureCard } from '@/components/customer/contact-capture-card'
+import { shouldRingForTransition } from '@/lib/order-ready-alert'
+import { describePrepPromise } from '@/lib/prep-time'
+import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
 
 interface OrderTrackingClientProps {
   orderId: string
@@ -56,6 +60,20 @@ export function OrderTrackingClient({
   const router = useRouter()
   const [trackingData, setTrackingData] = useState<TrackingData>(initialData)
   const isTerminalRef = useRef(initialData.isTerminal)
+  // Ready-alert: opt-in (audio needs a user gesture) and rings exactly once,
+  // on the transition into `ready` observed by the poll.
+  const [alertsEnabled, setAlertsEnabled] = useState(false)
+  const lastStatusRef = useRef<string>(initialData.status)
+  const alertsEnabledRef = useRef(false)
+
+  const handleEnableAlerts = useCallback(async () => {
+    setAlertsEnabled(true)
+    alertsEnabledRef.current = true
+    // Unlock the Web Audio context inside the tap, and ask for notifications.
+    try {
+      await requestNotificationPermission()
+    } catch { /* alerts still ring via audio/vibration */ }
+  }, [])
 
   // Remove from localStorage when terminal
   const cleanupLocalStorage = useCallback(() => {
@@ -93,6 +111,27 @@ export function OrderTrackingClient({
       if (!res.ok) return
 
       const data: TrackingData = await res.json()
+
+      if (
+        alertsEnabledRef.current &&
+        shouldRingForTransition(lastStatusRef.current, data.status)
+      ) {
+        try {
+          playNotificationSound()
+        } catch { /* ring is best-effort */ }
+        try {
+          navigator.vibrate?.([200, 100, 200])
+        } catch { /* not every device vibrates */ }
+        try {
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification('Your order is ready! 🎉', {
+              body: `Order #${orderId.slice(0, 8).toUpperCase()} is ready for pickup.`,
+            })
+          }
+        } catch { /* notification is best-effort */ }
+      }
+      lastStatusRef.current = data.status
+
       setTrackingData(data)
 
       // Sync status to localStorage so the banner knows the current stage
@@ -110,9 +149,22 @@ export function OrderTrackingClient({
   useEffect(() => {
     if (isTerminalRef.current) return
 
-    const interval = setInterval(fetchStatus, 10000)
+    // Poll faster once the customer asked to be rung — the alert is the point.
+    const interval = setInterval(fetchStatus, alertsEnabled ? 5000 : 10000)
     return () => clearInterval(interval)
-  }, [fetchStatus])
+  }, [fetchStatus, alertsEnabled])
+
+  // The kitchen's promise, counted from the SERVER's clock: a device set
+  // twenty minutes fast would otherwise show a nonsense estimate for an order
+  // that is perfectly on time. Falls back to the device clock only when an
+  // older deployment sends no server time.
+  const serverNowMs = trackingData.serverNowMs ?? Date.now()
+  const prepPromise = describePrepPromise({
+    promisedReadyAt: trackingData.promisedReadyAt,
+    status: trackingData.status,
+    nowMs: serverNowMs,
+    orderTypeKind: trackingData.orderTypeKind,
+  })
 
   const currentIndex = getStatusIndex(trackingData.status)
   const isCancelled = trackingData.status === 'cancelled'
@@ -162,6 +214,66 @@ export function OrderTrackingClient({
               </div>
             )}
           </div>
+
+          {/* The kitchen's ready-by promise. Absent until a chef commits to a
+              time, and dropped again once the food is actually ready. */}
+          {prepPromise && (
+            <div
+              aria-live="polite"
+              className={`rounded-2xl border p-4 text-center ${
+                prepPromise.tone === 'late'
+                  ? 'border-amber-200 bg-amber-50'
+                  : 'border-green-200 bg-green-50'
+              }`}
+            >
+              <p
+                className={`text-lg font-bold ${
+                  prepPromise.tone === 'late' ? 'text-amber-800' : 'text-green-800'
+                }`}
+              >
+                {prepPromise.headline}
+              </p>
+              <p
+                className={`text-sm mt-0.5 ${
+                  prepPromise.tone === 'late' ? 'text-amber-700' : 'text-green-700'
+                }`}
+              >
+                {prepPromise.detail}
+              </p>
+            </div>
+          )}
+
+          {/* Ready-alert opt-in — audio needs a tap, so it can't be automatic */}
+          {!trackingData.isTerminal && trackingData.status !== 'ready' && !isCancelled && (
+            <Button
+              variant={alertsEnabled ? 'secondary' : 'outline'}
+              className="w-full h-11 rounded-full"
+              onClick={handleEnableAlerts}
+              disabled={alertsEnabled}
+            >
+              {alertsEnabled ? (
+                <>
+                  <BellRing className="mr-2 h-4 w-4 text-green-600" />
+                  You&apos;ll be alerted when it&apos;s ready
+                </>
+              ) : (
+                <>
+                  <Bell className="mr-2 h-4 w-4" />
+                  Ring me when my order is ready
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Attach-a-number card (walk-in / POS orders without a contact) */}
+          {trackingData.hasContact === false && !isCancelled && (
+            <ContactCaptureCard
+              orderId={orderId}
+              tenantId={tenantId}
+              trackingToken={trackingToken}
+              hasName={Boolean(trackingData.customerName && trackingData.customerName.toLowerCase() !== 'walk-in')}
+            />
+          )}
 
           {/* Scan-to-collect code (pickup orders only) */}
           {showPickupQr && (

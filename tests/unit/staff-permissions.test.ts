@@ -36,6 +36,9 @@ describe('staff permission registry', () => {
       // Vouchers: a standing discount on the merchant's own revenue, kept off
       // 'menu' so it is not handed to everyone who can rename a dish.
       'vouchers',
+      // Kitchen display: see active tickets and bump them, without the full
+      // order queue that 'orders' grants.
+      'kitchen',
     ])
   })
 

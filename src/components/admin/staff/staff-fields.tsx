@@ -6,6 +6,7 @@ import {
   STAFF_PERMISSION_LABELS,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
+import type { DefaultScreenOption } from '@/lib/staff-default-screen'
 
 /** A branch as the staff surfaces need to show and offer it. */
 export interface StaffOutlet {
@@ -70,6 +71,67 @@ export function BranchRadioGroup({
             onChange={() => onChange(option.id)}
           />
           <span className="text-sm font-medium leading-none">{option.name}</span>
+        </label>
+      ))}
+    </div>
+  )
+}
+
+export const NO_DEFAULT_SCREEN_LABEL = 'No preference'
+
+/**
+ * Which screen the merchant app opens this account on.
+ *
+ * The options are passed in already filtered rather than derived here, because
+ * what is on offer depends on permissions that are still being edited in the
+ * same form — the caller is the only one holding that pending state.
+ *
+ * Each input carries an explicit `aria-label` so its accessible name is the
+ * screen, not the screen plus its explanation. The description is for the
+ * owner reading the form; it would only make the control harder to name.
+ */
+export function DefaultScreenRadioGroup({
+  options,
+  value,
+  onChange,
+  idPrefix,
+}: {
+  options: readonly DefaultScreenOption[]
+  /** '' means no preference — the app decides, as it does today. */
+  value: string
+  onChange: (tab: string) => void
+  idPrefix: string
+}) {
+  const choices = [
+    {
+      tab: '',
+      label: NO_DEFAULT_SCREEN_LABEL,
+      description: 'Open wherever the app normally opens',
+    },
+    ...options,
+  ]
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {choices.map((choice) => (
+        <label
+          key={choice.tab || 'none'}
+          htmlFor={`${idPrefix}-screen-${choice.tab || 'none'}`}
+          className="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-muted/50"
+        >
+          <input
+            type="radio"
+            id={`${idPrefix}-screen-${choice.tab || 'none'}`}
+            name={`${idPrefix}-screen`}
+            aria-label={choice.label}
+            className="mt-0.5 h-4 w-4"
+            checked={value === choice.tab}
+            onChange={() => onChange(choice.tab)}
+          />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium leading-none">{choice.label}</span>
+            <span className="block text-xs text-muted-foreground">{choice.description}</span>
+          </span>
         </label>
       ))}
     </div>

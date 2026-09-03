@@ -93,6 +93,30 @@ describe("localDayStartMs", () => {
   });
 });
 
+describe("toOrderDto — prep time", () => {
+  it("carries the kitchen's prep promise onto the DTO", () => {
+    // `toOrderDto` is an explicit field-by-field projection: a column not named
+    // here vanishes on every platform-backend tenant with no error at all. The
+    // board would then show no promised time no matter what the chef tapped.
+    const row = orderRow({
+      prep_minutes: 15,
+      promised_ready_at: "2026-07-27T02:15:00.000Z",
+    });
+
+    const dto = toOrderDto(row);
+
+    expect(dto.prepMinutes).toBe(15);
+    expect(dto.promisedReadyAt).toBe("2026-07-27T02:15:00.000Z");
+  });
+
+  it("leaves both fields undefined for an order the kitchen never timed", () => {
+    const dto = toOrderDto(orderRow({ prep_minutes: null, promised_ready_at: null }));
+
+    expect(dto.prepMinutes).toBeUndefined();
+    expect(dto.promisedReadyAt).toBeUndefined();
+  });
+});
+
 describe("toOrderDto", () => {
   it("maps a SQL row onto the Convex DTO shape the screens consume", () => {
     // Arrange
@@ -574,5 +598,117 @@ describe("buildCreateOrderRows branch attribution", () => {
     // Assert
     expect(blank.order.outlet_id).toBeNull();
     expect(wrongType.order.outlet_id).toBeNull();
+  });
+});
+
+describe("buildCreateOrderRows — delivery details", () => {
+  const args = {
+    customerName: "Ana",
+    customerContact: "09171234567",
+    total: 290,
+    itemCount: 2,
+    source: "pos" as const,
+    deliveryFee: 50,
+    customerData: { delivery_address: "12 Mabini St", customer_phone: "0917 000 1234" },
+    items: [
+      { menuItemId: "menu-1", menuItemName: "Latte", quantity: 2, price: 120, subtotal: 240 },
+    ],
+  };
+
+  it("stores the fee in the breakdown column", () => {
+    expect(buildCreateOrderRows("tenant-1", args).order.delivery_fee).toBe(50);
+  });
+
+  it("promotes the blob address into the delivery_address column", () => {
+    // Same rule as outlet_id: the register can only write the blob, but the
+    // platform reads the column — an address left in the blob alone would be
+    // invisible to every column-based reader.
+    expect(buildCreateOrderRows("tenant-1", args).order.delivery_address).toBe("12 Mabini St");
+  });
+
+  it("leaves the column null for a sale with no address", () => {
+    const bare = { ...args, customerData: {} };
+    expect(buildCreateOrderRows("tenant-1", bare).order.delivery_address).toBeNull();
+  });
+});
+
+import { getOrderOutletId } from "../branch-scope";
+
+describe("branch attribution on the order DTO", () => {
+  /**
+   * The server narrows branch reads on the `outlet_id` COLUMN, but the DTO the
+   * client re-filters (and the chime gate reads) used to drop it — so an order
+   * whose branch lived only in the column rang the alert yet never appeared in
+   * a branch account's queue. The DTO must carry the column through.
+   */
+  it("carries outlet_id through toOrderDto so client-side scoping sees it", () => {
+    const dto = toOrderDto(orderRow({ outlet_id: "outlet-north" }));
+
+    expect(getOrderOutletId(dto)).toBe("outlet-north");
+  });
+
+  it("still attributes blob-only rows through customer_data", () => {
+    const dto = toOrderDto(
+      orderRow({ outlet_id: null, customer_data: { outlet_id: "outlet-south" } })
+    );
+
+    expect(getOrderOutletId(dto)).toBe("outlet-south");
+  });
+
+  it("leaves a single-location order unattributed", () => {
+    expect(getOrderOutletId(toOrderDto(orderRow()))).toBeNull();
+  });
+});
+
+describe("service charge — stored, projected, and readable", () => {
+  /**
+   * The platform `orders` table has carried a `service_charge_amount` column
+   * since the order-types migration, and the web admin has always written and
+   * read it. The merchant app did neither: the register folded the charge into
+   * `total` and threw the figure away, so every serviced order arrived at the
+   * order screen and the printer as an unexplained gap between the items and
+   * the bill. These lock both halves of the round trip.
+   */
+  const args = {
+    customerName: "Ana",
+    customerContact: "09171234567",
+    total: 264,
+    itemCount: 2,
+    source: "pos" as const,
+    serviceCharge: 24,
+    items: [
+      { menuItemId: "menu-1", menuItemName: "Latte", quantity: 2, price: 120, subtotal: 240 },
+    ],
+  };
+
+  it("writes the charge the total was computed with", () => {
+    expect(buildCreateOrderRows("tenant-1", args).order.service_charge_amount).toBe(24);
+  });
+
+  it("writes NULL rather than zero for an unserviced sale", () => {
+    // Matching `delivery_fee`: a stored 0 and an absent charge are the same
+    // bill, and NULL is what the web checkout path already writes.
+    const { order } = buildCreateOrderRows("tenant-1", { ...args, serviceCharge: 0 });
+
+    expect(order.service_charge_amount).toBeNull();
+  });
+
+  it("projects the stored charge onto the DTO", () => {
+    const dto = toOrderDto(orderRow({ service_charge_amount: 24 }));
+
+    expect(dto.serviceCharge).toBe(24);
+  });
+
+  it("leaves the charge undefined when the column is NULL", () => {
+    // An unserviced order must not surface a zero row on the receipt.
+    expect(toOrderDto(orderRow({ service_charge_amount: null })).serviceCharge).toBeUndefined();
+  });
+
+  it("reads a numeric string, as the driver returns numerics", () => {
+    // `delivery_fee` needed the same coercion — Postgres numerics arrive as
+    // strings, and a string amount would print as "P[object]" on the chit.
+    const dto = toOrderDto(orderRow({ service_charge_amount: "24.50" as unknown as number }));
+
+    expect(dto.serviceCharge).toBe(24.5);
   });
 });

@@ -18,6 +18,7 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, Trash2, Pencil, ShoppingBag, Package } from 'lucide-react'
 import { EmptyState } from '@/components/shared/empty-state'
 import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
+import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import { getCartPalette } from '@/lib/branding-utils'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import type { CartItem, CartBundleItem } from '@/types/database'
@@ -28,9 +29,11 @@ function useCartPalette(cart: UseCartViewReturn) {
 
 /** A single cart line item with image, variations, addons, quantity stepper. */
 export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; item: CartItem; index: number }) {
-  const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity } = cart
+  const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor } = cart
   const p = useCartPalette(cart)
   const mi = item.menu_item
+  const canIncrease = canIncreaseItem(item)
+  const presellHint = presellHintFor(item)
   const canEdit =
     (mi.variation_types?.length ?? 0) > 0 || mi.variations.length > 0 || mi.addons.length > 0
 
@@ -96,6 +99,12 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
             {item.special_instructions && (
               <p className="text-sm italic text-gray-500 mt-0.5" style={{ color: p.mutedText }}><span className="font-medium">Note:</span> {item.special_instructions}</p>
             )}
+            {item.presell_date && (
+              <p className="text-sm mt-0.5" style={{ color: p.accent }}>
+                <span className="font-medium">Pre-order for:</span> {formatPresellDateLabel(item.presell_date)}
+                {presellHint && <span className="ml-2 text-xs" style={{ color: p.mutedText }}>{presellHint}</span>}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-between mt-3">
@@ -110,9 +119,10 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
               </button>
               <span className="w-9 text-center font-bold text-lg text-gray-900" style={{ color: p.text }}>{item.quantity}</span>
               <button
-                className="h-9 w-9 inline-flex items-center justify-center rounded-full border touch-manipulation transition-colors"
+                className="h-9 w-9 inline-flex items-center justify-center rounded-full border touch-manipulation transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ borderColor: p.accentSoft, color: p.accent }}
                 onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                disabled={!canIncrease}
                 aria-label="Increase quantity"
               >
                 <Plus className="h-4 w-4" />

@@ -17,6 +17,9 @@ import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { useSafeQuery } from "../../lib/hooks";
 import { notifyMenuRevalidate } from "../../lib/menu-revalidate";
 import { productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
+import { Icon } from "../../components/Icon";
 import {
   describeMenuAvailability,
   MENU_AVAILABILITY_LABEL,
@@ -120,29 +123,28 @@ export default function ProductManagementScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headerWrap}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Manage Products</Text>
-            <Text style={styles.subtitle}>Create, edit, and price your menu</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={handleCreate}
-            accessibilityRole="button"
-            accessibilityLabel="Add new product"
-          >
-            <Text style={styles.addButtonText}>+ Add</Text>
-          </TouchableOpacity>
+      <ScreenHeader
+        title="Manage products"
+        subtitle="Create, edit, and price your menu"
+        actions={
+          <IconButton icon="plus" label="Add product" tone="primary" onPress={handleCreate} />
+        }
+      >
+        <View style={styles.searchBox}>
+          <Icon name="search" size={18} color={colors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search products"
+            placeholderTextColor={colors.textTertiary}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            accessibilityLabel="Search products by name"
+          />
         </View>
-        <TextInput
-          style={styles.searchInput}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search products"
-          placeholderTextColor={colors.textTertiary}
-        />
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         horizontal
@@ -259,28 +261,18 @@ export default function ProductManagementScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  headerWrap: { paddingHorizontal: spacing.xl, paddingTop: 60, paddingBottom: spacing.md },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  addButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  addButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
-  searchInput: {
-    marginTop: spacing.md,
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    height: 44,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.card,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: 15,
-    color: colors.textPrimary,
     borderWidth: 1,
     borderColor: colors.separator,
   },
+  searchInput: { flex: 1, ...typography.body, color: colors.textPrimary, padding: 0 },
   filterScroll: { flexGrow: 0, flexShrink: 0 },
   filterRow: { paddingHorizontal: spacing.xl, gap: spacing.sm, paddingBottom: spacing.sm, alignItems: "center" },
   filterPill: {

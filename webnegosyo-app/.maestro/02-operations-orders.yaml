@@ -1,0 +1,43 @@
+appId: com.webnegosyo.admin
+name: Operations - order list, status filters, and order detail
+---
+# As a merchant, I want to filter the order list by status and open a single
+# order, so that I can find and work the order a customer is asking about.
+- runFlow:
+    file: helpers/switch-view.yaml
+    env:
+      VIEW: Operations
+
+- tapOn: "Orders, tab.*"
+- waitForAnimationToEnd
+- assertVisible: "Orders"
+
+# Status filter chips carry live counts.
+- assertVisible: "All, \\d+"
+- assertVisible: "Pending, \\d+"
+- assertVisible: "Confirmed, \\d+"
+- assertVisible: "Preparing, \\d+"
+
+# Exporting the order history is offered from the list.
+- assertVisible: "Export"
+
+# Filtering to Confirmed keeps the list on screen and the chip selectable.
+- tapOn: "Confirmed, \\d+"
+- waitForAnimationToEnd
+- assertVisible: "Confirmed, \\d+"
+
+- tapOn: "All, \\d+"
+- waitForAnimationToEnd
+
+# The sort control is present and toggles without leaving the list.
+- assertVisible: "Sort by .*"
+- tapOn: "Sort by .*"
+- waitForAnimationToEnd
+- assertVisible: "Orders"
+
+# Opening the first order reaches a detail screen for that order.
+- tapOn:
+    text: "Order for .*"
+    index: 0
+- waitForAnimationToEnd
+- assertVisible: "₱[\\d,]+\\.\\d\\d"

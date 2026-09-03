@@ -39,6 +39,13 @@ import {
 import { toast } from 'sonner'
 import { getAdvanceOrderConfig, formatLeadTime } from '@/lib/advance-order-utils'
 import { isMessengerEnabledForOrderType } from '@/lib/messenger-availability'
+import {
+  buildFieldFromPreset,
+  getAvailableFieldPresets,
+  getCheckoutFieldPreset,
+  getFieldBadgeLabel,
+  resolvePresetIdForField,
+} from '@/lib/checkout-field-presets'
 import type { OrderType, CustomerFormField } from '@/types/database'
 
 interface OrderTypeDetailProps {
@@ -51,15 +58,6 @@ const orderTypeColors = {
   dine_in: 'bg-green-100 text-green-800 border-green-300',
   pickup: 'bg-blue-100 text-blue-800 border-blue-300',
   delivery: 'bg-orange-100 text-orange-800 border-orange-300',
-}
-
-const fieldTypeLabels = {
-  text: 'Text',
-  email: 'Email',
-  phone: 'Phone',
-  textarea: 'Textarea',
-  select: 'Select',
-  number: 'Number',
 }
 
 export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDetailProps) {
@@ -563,7 +561,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{field.field_label}</span>
                       <Badge variant="outline" className="text-xs">
-                        {fieldTypeLabels[field.field_type]}
+                        {getFieldBadgeLabel(field)}
                       </Badge>
                       {field.is_required && (
                         <Badge variant="outline" className="text-xs bg-red-50 text-red-700">
@@ -674,7 +672,7 @@ interface FieldDialogProps {
   onSuccess: () => void
 }
 
-function FieldDialog({
+export function FieldDialog({
   open,
   onOpenChange,
   field,
@@ -686,6 +684,7 @@ function FieldDialog({
 }: FieldDialogProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState({
+    preset_id: field ? resolvePresetIdForField(field) : 'text',
     field_name: field?.field_name || '',
     field_label: field?.field_label || '',
     field_type: (field?.field_type || 'text') as CustomerFormField['field_type'],
@@ -693,6 +692,29 @@ function FieldDialog({
     placeholder: field?.placeholder || '',
     options: Array.isArray(field?.options) ? field.options.join(', ') : '',
   })
+
+  // A reserved preset (delivery address) already exists on this order type is
+  // hidden, unless it is the field currently being edited.
+  const availablePresets = getAvailableFieldPresets(existingFields, field?.field_name)
+  const selectedPreset = getCheckoutFieldPreset(formData.preset_id)
+  const isReservedName = Boolean(selectedPreset?.reservedFieldName)
+
+  const handlePresetChange = (presetId: string) => {
+    const defaults = buildFieldFromPreset(presetId)
+    setFormData((prev) => {
+      const previousPreset = getCheckoutFieldPreset(prev.preset_id)
+      // Leaving a reserved preset frees the name the merchant never typed.
+      const keptName = previousPreset?.reservedFieldName ? '' : prev.field_name
+      return {
+        ...prev,
+        preset_id: presetId,
+        field_type: defaults.field_type,
+        field_name: defaults.field_name || keptName,
+        field_label: prev.field_label || defaults.field_label,
+        placeholder: prev.placeholder || defaults.placeholder,
+      }
+    })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -764,10 +786,12 @@ function FieldDialog({
                 onChange={(e) => setFormData({ ...formData, field_name: e.target.value })}
                 placeholder="e.g., customer_name, delivery_address"
                 required
-                disabled={!!field}
+                disabled={!!field || isReservedName}
               />
               <p className="text-xs text-muted-foreground">
-                Internal identifier (cannot be changed after creation)
+                {isReservedName
+                  ? 'Reserved identifier — the checkout looks for this exact name'
+                  : 'Internal identifier (cannot be changed after creation)'}
               </p>
             </div>
 
@@ -787,23 +811,24 @@ function FieldDialog({
           <div className="space-y-2">
             <Label htmlFor="field_type">Field Type</Label>
             <Select
-              value={formData.field_type}
-              onValueChange={(value) =>
-                setFormData({ ...formData, field_type: value as CustomerFormField['field_type'] })
-              }
+              value={formData.preset_id}
+              onValueChange={handlePresetChange}
+              disabled={!!field && isReservedName}
             >
-              <SelectTrigger>
+              <SelectTrigger id="field_type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="text">Text</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="phone">Phone</SelectItem>
-                <SelectItem value="textarea">Textarea</SelectItem>
-                <SelectItem value="select">Select (Dropdown)</SelectItem>
-                <SelectItem value="number">Number</SelectItem>
+                {availablePresets.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {selectedPreset?.description && (
+              <p className="text-xs text-muted-foreground">{selectedPreset.description}</p>
+            )}
           </div>
 
           <div className="space-y-2">

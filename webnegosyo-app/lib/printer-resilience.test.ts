@@ -49,10 +49,12 @@ jest.mock("@haroldtran/react-native-thermal-printer", () => ({
 
 jest.mock("../stores/printer-store", () => {
   const state = {
-    printer: null as unknown,
+    printers: [] as unknown[],
+    connectedAddress: null as string | null,
     isConnected: false,
-    setConnected: jest.fn((connected: boolean) => {
-      state.isConnected = connected;
+    setConnectedAddress: jest.fn((address: string | null) => {
+      state.connectedAddress = address;
+      state.isConnected = address !== null;
     }),
   };
   return { usePrinterStore: { getState: () => state } };

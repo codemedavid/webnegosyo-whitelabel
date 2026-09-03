@@ -436,7 +436,7 @@ export default function ScanScreen() {
           <Text style={styles.permissionText}>
             {canPrompt
               ? "This screen uses the camera to scan customer order QR codes. Tap Continue to choose your camera preference."
-              : "Scanning order QR codes needs camera access, which is currently turned off for WebNegosyo. You can turn it on in Settings."}
+              : "Scanning order QR codes needs camera access, which is currently turned off for SmartMenu. You can turn it on in Settings."}
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}

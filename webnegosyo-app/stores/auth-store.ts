@@ -14,6 +14,13 @@ interface AuthState {
    * to pick the Convex client or the platform-Supabase adapter.
    */
   orderBackend: OrderBackend | null;
+  /**
+   * The tenant's saved receipt layout (preset name or custom block stack),
+   * passed through unvalidated; `lib/receipt-print.ts` shape-checks at print.
+   */
+  receiptLayout: unknown;
+  /** Store logo URL for receipt printing; null when the tenant has none. */
+  receiptLogoUrl: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   /**
@@ -43,6 +50,11 @@ interface AuthState {
   outletId: string | null;
   /** The branch's name at sign-in, snapshotted onto counter sales. */
   outletName: string | null;
+  /**
+   * Screen this account opens on, or null for the app's own choice. Read once
+   * per session by lib/use-branch-landing.ts.
+   */
+  defaultTab: string | null;
   setAuth: (data: Partial<AuthState>) => void;
   clear: () => void;
 }
@@ -55,6 +67,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   convexUrl: null,
   convexSchemaVersion: null,
   orderBackend: null,
+  receiptLayout: null,
+  receiptLogoUrl: null,
   isLoading: true,
   isAuthenticated: false,
   isDemo: false,
@@ -65,6 +79,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   role: null,
   outletId: null,
   outletName: null,
+  defaultTab: null,
   setAuth: (data) => set(data),
   clear: () =>
     set({
@@ -75,6 +90,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       convexUrl: null,
   convexSchemaVersion: null,
       orderBackend: null,
+      receiptLayout: null,
+      receiptLogoUrl: null,
       isLoading: false,
       isAuthenticated: false,
       isDemo: false,
@@ -85,5 +102,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       role: null,
       outletId: null,
       outletName: null,
+      defaultTab: null,
     }),
 }));

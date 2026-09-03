@@ -69,6 +69,8 @@ export interface SelectedTenant {
     checkout_upsell_max_items?: number | null
     bundles_enabled?: boolean
     pairing_rules_enabled?: boolean
+    /** Per-date presell stock (see src/lib/presell). */
+    presell_enabled?: boolean
     /** Unified modifier groups (multi-select with min/max picks) on the storefront. */
     modifier_groups_enabled?: boolean
     // Convex integration (only non-secret fields - deploy_key must never be sent to client)

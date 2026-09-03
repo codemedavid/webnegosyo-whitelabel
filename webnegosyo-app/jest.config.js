@@ -52,7 +52,9 @@ const logic = {
 const components = {
   displayName: "components",
   preset: "react-native",
-  roots: ["<rootDir>/components"],
+  // `lib` is included for the rare hook test (`lib/**/*.test.tsx`) that needs a
+  // renderer; the logic project only picks up `.test.ts` so nothing runs twice.
+  roots: ["<rootDir>/components", "<rootDir>/lib"],
   testMatch: ["**/*.test.tsx"],
   setupFilesAfterEnv: ["<rootDir>/jest.components.setup.js"],
   transformIgnorePatterns: [

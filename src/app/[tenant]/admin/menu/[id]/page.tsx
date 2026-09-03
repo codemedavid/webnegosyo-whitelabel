@@ -76,6 +76,7 @@ export default async function EditMenuItemPage({
         modifierGroupsEnabled={tenant.modifier_groups_enabled ?? false}
         linkableItems={linkableItems}
         inventoryEnabled={tenant.inventory_enabled ?? false}
+        presellEnabled={tenant.presell_enabled ?? false}
         convexUrl={tenant.convex_deployment_url ?? undefined}
       />
 

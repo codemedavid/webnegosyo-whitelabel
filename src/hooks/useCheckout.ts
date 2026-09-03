@@ -32,6 +32,9 @@ import {
   isValidScheduledTime,
   formatScheduledFor,
 } from '@/lib/advance-order-utils'
+import { findCartPresellDate } from '@/lib/presell/availability'
+import { presellAdvanceConfig, presellScheduleDates } from '@/lib/presell/checkout-schedule'
+import { preflightPresellAction } from '@/app/actions/presell-checkout'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { computeOrderTotals } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
@@ -55,8 +58,9 @@ import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
-import { getPaymentProofError } from '@/lib/payment-proof'
+import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
+import { resolveActiveOrderType } from '@/lib/checkout-order-type'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
@@ -205,7 +209,12 @@ export function useCheckout(tenantSlug: string) {
   // Advance order configuration + derived scheduling values for the selected order type.
   // Only surface dates that still have at least one selectable slot (a too-late "today"
   // or a day fully inside the lead window is dropped).
-  const advanceConfig = getAdvanceOrderConfig(selectedOrderTypeData)
+  // A presell cart is committed to one pickup date: scheduling is forced on,
+  // ASAP is off, and the horizon stretches to reach that date. See
+  // src/lib/presell/checkout-schedule.ts.
+  const cartPresellDate = useMemo(() => findCartPresellDate(items), [items])
+  const baseAdvanceConfig = getAdvanceOrderConfig(selectedOrderTypeData)
+  const advanceConfig = cartPresellDate ? presellAdvanceConfig(baseAdvanceConfig, cartPresellDate, now) : baseAdvanceConfig
   // Operating hours bound the selectable slot window per weekday (closed days are dropped).
   const operatingHours = useMemo(
     () => normalizeOperatingHours(tenant?.operating_hours ?? null),
@@ -216,9 +225,10 @@ export function useCheckout(tenantSlug: string) {
   // ASAP checkouts are gated.
   const openStatus = useStoreOpenStatus(tenant)
 
-  const scheduleDates = advanceConfig.enabled
+  const generatedScheduleDates = advanceConfig.enabled
     ? generateScheduleDates(advanceConfig, now, operatingHours).filter(d => generateTimeSlots(advanceConfig, d.value, now, operatingHours).length > 0)
     : []
+  const scheduleDates = cartPresellDate ? presellScheduleDates(generatedScheduleDates, cartPresellDate) : generatedScheduleDates
   const timeSlots = advanceConfig.enabled && scheduleDate
     ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours)
     : []
@@ -397,12 +407,14 @@ export function useCheckout(tenantSlug: string) {
         setOrderTypes(enabledOrderTypes)
         setAreOrderTypesReady(true)
 
-        // Determine the active order type for form fields fetch
+        // Determine the active order type for form fields fetch. The stored
+        // selection is shared across tenants, so it must be validated against
+        // this tenant's order types before it drives any fetch.
         let activeOrderType = orderType
-        if (!hasInitializedOrderType.current && enabledOrderTypes.length > 0) {
-          if (!orderType) {
-            activeOrderType = enabledOrderTypes[0].id
-            setOrderType(enabledOrderTypes[0].id)
+        if (!hasInitializedOrderType.current) {
+          activeOrderType = resolveActiveOrderType(orderType, enabledOrderTypes)
+          if (activeOrderType !== orderType) {
+            setOrderType(activeOrderType)
           }
           hasInitializedOrderType.current = true
         }
@@ -734,6 +746,19 @@ export function useCheckout(tenantSlug: string) {
   // (possibly shrunk) horizon; otherwise just snaps the time to a valid slot for that date.
   useEffect(() => {
     if (!advanceConfig.enabled || scheduleMode !== 'scheduled') return
+    // A presell cart's date is not a suggestion: pin it, then only snap the time.
+    if (cartPresellDate) {
+      if (scheduleDate !== cartPresellDate) {
+        setScheduleDate(cartPresellDate)
+        setScheduleTime(generateTimeSlots(advanceConfig, cartPresellDate, now, operatingHours)[0]?.value ?? '')
+        return
+      }
+      const presellSlots = generateTimeSlots(advanceConfig, cartPresellDate, now, operatingHours)
+      if (presellSlots.length > 0 && (!scheduleTime || !presellSlots.some(s => s.value === scheduleTime))) {
+        setScheduleTime(presellSlots[0].value)
+      }
+      return
+    }
     const dates = generateScheduleDates(advanceConfig, now, operatingHours)
     const dateValid = !!scheduleDate && dates.some(d => d.value === scheduleDate)
     const slots = dateValid ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours) : []
@@ -764,6 +789,16 @@ export function useCheckout(tenantSlug: string) {
   const handleQrHandoff = () => {
     if (!tenant || isProcessing || !orderType) return
     if (isOrderingClosed()) return
+
+    const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
+    const proofError = getPaymentProofError(selectedMethodForProof, {
+      screenshotUrl: paymentProofUrl,
+      reference: paymentProofReference,
+    })
+    if (proofError) {
+      toast.error(proofError)
+      return
+    }
 
     setIsProcessing(true)
 
@@ -896,6 +931,13 @@ export function useCheckout(tenantSlug: string) {
         customerData: {
           ...normalizedCustomerData,
           ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
+          ...((paymentProofUrl || paymentProofReference)
+            ? {
+                payment_proof_url: paymentProofUrl || undefined,
+                payment_proof_public_id: paymentProofPublicId || undefined,
+                payment_proof_reference: paymentProofReference || undefined,
+              }
+            : {}),
         },
         items: qrItems,
         total: grandTotalForQr,
@@ -984,21 +1026,16 @@ export function useCheckout(tenantSlug: string) {
       }
     }
 
-    // QR-handoff: skip both the Messenger flow and createOrderAction entirely.
-    // The vendor scanner writes the order; the customer just shows a QR.
-    if (tenant?.qr_handoff_enabled) {
-      handleQrHandoff()
-      return
-    }
-
     // One decision: block until a method is chosen, open the payment-details
-    // step, or submit directly (no methods configured, or the order type is
-    // pay-after-billing — nothing is paid at checkout, so there are no
-    // account details or proof to collect).
+    // step (including QR-handoff / after-billing when the method requires a
+    // screenshot), or submit directly.
+    const selectedMethodForPlan = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
     const submitPlan = resolvePaymentSubmitPlan({
       hasPaymentMethods: paymentMethods.length > 0,
       hasSelectedPaymentMethod: !!selectedPaymentMethod,
       isAfterBillingPayment: isAfterBillingPaymentEnabled(selectedOrderTypeData),
+      requiresPaymentProof: isPaymentProofRequired(selectedMethodForPlan),
+      isQrHandoff: !!tenant?.qr_handoff_enabled,
     })
 
     if (submitPlan === 'blocked-no-method') {
@@ -1013,6 +1050,14 @@ export function useCheckout(tenantSlug: string) {
 
     if (submitPlan === 'payment-details') {
       setShowPaymentDetails(true)
+      return
+    }
+
+    // QR-handoff: skip Messenger and createOrderAction. The vendor scanner
+    // writes the order; the customer just shows a QR. Reached only after the
+    // plan above — a proof-required method still collected a screenshot first.
+    if (tenant?.qr_handoff_enabled) {
+      handleQrHandoff()
       return
     }
 
@@ -1052,19 +1097,16 @@ export function useCheckout(tenantSlug: string) {
     if (isOrderingClosed()) return
 
     // Enforce per-method payment-proof requirement (screenshot OR reference).
-    // Never for pay-after-billing: nothing has been paid yet, and the proof UI
-    // lives on the payment-details step this flow skips — enforcing it would
-    // make checkout impossible to complete.
-    if (!isAfterBillingPaymentEnabled(selectedOrderTypeData)) {
-      const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
-      const proofError = getPaymentProofError(selectedMethodForProof, {
-        screenshotUrl: paymentProofUrl,
-        reference: paymentProofReference,
-      })
-      if (proofError) {
-        toast.error(proofError)
-        return
-      }
+    // After-billing still honours this: a proof-required method opens the
+    // details step, so checkout is never blocked by a UI that was skipped.
+    const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
+    const proofError = getPaymentProofError(selectedMethodForProof, {
+      screenshotUrl: paymentProofUrl,
+      reference: paymentProofReference,
+    })
+    if (proofError) {
+      toast.error(proofError)
+      return
     }
 
     setIsProcessing(true)
@@ -1143,6 +1185,21 @@ export function useCheckout(tenantSlug: string) {
           messengerUrl = generateMessengerDirectUrl(pageId)
         } else {
           messengerUrl = generateMessengerUrl(pageId, message)
+        }
+      }
+
+      // ── Presell preflight ──
+      // The confirmation screen below is optimistic, so a server refusal after
+      // it would be invisible. A pre-order re-checks its dates first.
+      if (cartPresellDate) {
+        const verdict = await preflightPresellAction(
+          tenant.id,
+          items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity, presellDate: item.presell_date })),
+        )
+        if (!verdict.ok) {
+          toast.error(verdict.message)
+          setIsProcessing(false)
+          return
         }
       }
 
@@ -1231,6 +1288,7 @@ export function useCheckout(tenantSlug: string) {
             option_ids: selection.optionIds,
             addon_ids: selection.addonIds,
             ...(item.upsellSource ? { isUpsellItem: true } : {}),
+            ...(item.presell_date ? { presell_date: item.presell_date } : {}),
           }
         })
 
@@ -1378,7 +1436,9 @@ export function useCheckout(tenantSlug: string) {
     // Whether the fulfillment section is a question at all. A sole order type
     // is already selected below, so rendering it would be a step made of an
     // answer — see lib/checkout-fulfillment-choice.
-    shouldAskFulfillment: shouldAskFulfillmentMethod(orderTypes),
+    // A presell cart forces scheduling on, and the scheduler lives inside the
+    // fulfillment section — so the effective config decides, not the stored flag.
+    shouldAskFulfillment: shouldAskFulfillmentMethod(orderTypes, { isSchedulingForced: advanceConfig.enabled }),
     selectedOrderTypeData,
     messengerEnabled,
     // kiosk mode (counter tablet): no Messenger, auto-return to the menu
@@ -1433,6 +1493,7 @@ export function useCheckout(tenantSlug: string) {
     isScheduleValid,
     now,
     handleScheduleDateChange,
+    cartPresellDate,
     // dialogs + clipboard
     showPaymentDetails,
     setShowPaymentDetails,

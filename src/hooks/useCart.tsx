@@ -14,6 +14,16 @@ import {
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
 import { fetchFreshCartItemData } from '@/lib/cart-refresh'
 import { readOutletSelection } from '@/lib/outlets/outlet-selection'
+import { findPresellDateConflict, reconcilePresellLines, type PresellCalendar } from '@/lib/presell/availability'
+import { fetchPresellCalendar } from '@/lib/presell/calendar-client'
+
+/**
+ * Why `addItem` refused, when it did. A cart holds one presell date because
+ * an order has one `scheduled_for`; the page turns this into a toast.
+ */
+export type AddItemResult =
+  | { ok: true }
+  | { ok: false; reason: 'presell_date_conflict'; committedDate: string }
 
 interface CartContextType extends Cart {
   orderType: string | null
@@ -30,8 +40,9 @@ interface CartContextType extends Cart {
     quantity: number,
     specialInstructions?: string,
     upsellSource?: CartItem['upsellSource'],
-    upsellSourceItemId?: string
-  ) => void
+    upsellSourceItemId?: string,
+    presellDate?: string
+  ) => AddItemResult
   removeItem: (cartItemId: string) => void
   updateItemConfiguration: (
     cartItemId: string,
@@ -39,7 +50,8 @@ interface CartContextType extends Cart {
     variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
     addons: Addon[],
     quantity: number,
-    specialInstructions?: string
+    specialInstructions?: string,
+    presellDate?: string
   ) => void
   updateQuantity: (cartItemId: string, quantity: number) => void
   clearCart: () => void
@@ -389,6 +401,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         return hasChanges ? updated : prevItems
       })
+
+      // Presell lines re-check against their DATE, not the dish: a date that
+      // sold out while the tab sat in the background shrinks or leaves.
+      const presellItemIds = [...new Set(currentItems.filter((i) => i.presell_date).map((i) => i.menu_item.id))]
+      if (presellItemIds.length > 0) {
+        const reads = await Promise.allSettled(
+          presellItemIds.map(async (id) => [id, await fetchPresellCalendar(currentTenantId, id)] as const)
+        )
+        const calendars = new Map<string, PresellCalendar>()
+        for (const read of reads) {
+          if (read.status === 'fulfilled') calendars.set(read.value[0], read.value[1])
+        }
+        setItems((prevItems) => {
+          const result = reconcilePresellLines(prevItems, calendars)
+          for (const gone of result.removed) {
+            console.warn(`[useCart] "${gone.menu_item.name}" sold out for ${gone.presell_date}, removing from cart`)
+          }
+          return result.hasChanges ? result.items : prevItems
+        })
+      }
     } catch {
       // Silent fail — cart refresh is non-critical
     }
@@ -586,8 +618,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
       quantity: number,
       specialInstructions?: string,
       upsellSource?: CartItem['upsellSource'],
-      upsellSourceItemId?: string
-    ) => {
+      upsellSourceItemId?: string,
+      presellDate?: string
+    ): AddItemResult => {
+      // One presell date per cart: an order has a single scheduled_for.
+      if (presellDate) {
+        const committedDate = findPresellDateConflict(itemsRef.current, presellDate)
+        if (committedDate) {
+          return { ok: false, reason: 'presell_date_conflict', committedDate }
+        }
+      }
+
       // Cross-tenant contamination prevention: if the item belongs to a different
       // tenant than the current cart context, clear the cart before adding
       const currentTenantId = tenantIdRef.current
@@ -607,7 +648,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         addons,
         quantity,
         specialInstructions,
-        upsellSource ? { upsellSource, upsellSourceItemId } : undefined
+        { upsellSource, upsellSourceItemId, presellDate }
       )
       const cartItemId = newItem.id
 
@@ -639,6 +680,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // Add new item (already built via makeCartItem above)
         return [...prevItems, newItem]
       })
+      return { ok: true }
     },
     []
   )
@@ -658,10 +700,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
       variationOrVariations: Variation | { [typeId: string]: VariationOption } | undefined,
       addons: Addon[],
       quantity: number,
-      specialInstructions?: string
+      specialInstructions?: string,
+      presellDate?: string
     ) => {
       const clampedQuantity = Math.min(Math.max(1, quantity), MAX_QUANTITY)
-      const newItem = makeCartItem(menuItem, variationOrVariations, addons, clampedQuantity, specialInstructions)
+      const newItem = makeCartItem(menuItem, variationOrVariations, addons, clampedQuantity, specialInstructions, { presellDate })
       setItems((prevItems) => replaceCartItem(prevItems, cartItemId, newItem, MAX_QUANTITY))
     },
     []

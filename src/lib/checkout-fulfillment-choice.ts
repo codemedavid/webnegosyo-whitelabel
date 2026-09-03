@@ -13,6 +13,11 @@
  * orders still has a real question in it; hiding it would remove the only way
  * to place a pre-order. Ask when there is something to answer.
  *
+ * The stored flag is not the whole answer either. A presell cart forces
+ * scheduling on at runtime over an order type that never scheduled, and the
+ * scheduler lives inside this section — so the caller passes that verdict in
+ * rather than letting this read a config that is already out of date.
+ *
  * Pure so every checkout design reaches the same verdict — the section exists
  * five times over, and they must not disagree about whether it is a question.
  */
@@ -20,11 +25,23 @@
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import type { OrderType } from '@/types/database'
 
-export function shouldAskFulfillmentMethod(orderTypes: readonly OrderType[]): boolean {
+interface FulfillmentChoiceOptions {
+  /**
+   * Scheduling forced on from outside the order type — today, a presell cart.
+   * The stored `advance_order_enabled` says nothing about it.
+   */
+  isSchedulingForced?: boolean
+}
+
+export function shouldAskFulfillmentMethod(
+  orderTypes: readonly OrderType[],
+  { isSchedulingForced = false }: FulfillmentChoiceOptions = {},
+): boolean {
   // Empty is "not loaded yet", not "no choices". An empty section is not a
-  // question either way, and the existing loading state covers the moment.
+  // question either way, and the existing loading state covers the moment —
+  // and a forced flag must not conjure a section out of an unloaded page.
   if (orderTypes.length === 0) return false
   if (orderTypes.length > 1) return true
 
-  return getAdvanceOrderConfig(orderTypes[0]).enabled
+  return isSchedulingForced || getAdvanceOrderConfig(orderTypes[0]).enabled
 }

@@ -2,6 +2,7 @@
 // functions only (no React, no Convex) so they are unit-tested under the
 // lib/ Jest root and reused across the dashboard and orders screens.
 import { colors } from "../theme/colors";
+import { getScheduleBand } from "./scheduled-orders";
 
 export type OrderStatus =
   | "pending"
@@ -19,6 +20,21 @@ const WARNING_MAX_MINUTES = 15;
 const MS_PER_MINUTE = 60_000;
 const MS_PER_HOUR = 3_600_000;
 const MS_PER_DAY = 86_400_000;
+
+/** What an order with no captured customer name is called on every screen. */
+export const GUEST_CUSTOMER_NAME = "Guest";
+
+/**
+ * The name a merchant sees for an order. A checkout that left the name field
+ * empty stores NULL, which the adapters project as "". Rendering that blank
+ * left the card with no identity and a "?" avatar, so every blank becomes
+ * "Guest" here — at display time, never at write time, so customer capture
+ * and follow-ups keep seeing the honest empty value.
+ */
+export function displayCustomerName(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  return trimmed.length > 0 ? trimmed : GUEST_CUSTOMER_NAME;
+}
 
 /** Two-letter avatar initials from a customer/product name. */
 export function getInitials(name: string): string {
@@ -51,6 +67,27 @@ export function getUrgency(creationTimeMs: number, nowMs: number = Date.now()): 
   if (minutes < FRESH_MAX_MINUTES) return "fresh";
   if (minutes < WARNING_MAX_MINUTES) return "warning";
   return "urgent";
+}
+
+/**
+ * Urgency for an order that may be a pre-order. An ASAP order ages from the
+ * moment it was placed; a scheduled one is not late for being booked early —
+ * it warms up as the requested moment approaches and only goes red once that
+ * moment passes. Without this, every Saturday pre-order turned urgent fifteen
+ * minutes after it was placed.
+ */
+export function getScheduleAwareUrgency(
+  creationTimeMs: number,
+  scheduledAtMs: number | null,
+  nowMs: number = Date.now(),
+): Urgency {
+  if (scheduledAtMs == null || !Number.isFinite(scheduledAtMs)) {
+    return getUrgency(creationTimeMs, nowMs);
+  }
+  const band = getScheduleBand(scheduledAtMs, nowMs);
+  if (band === "overdue") return "urgent";
+  if (band === "due-soon") return "warning";
+  return "fresh";
 }
 
 export function getUrgencyColor(urgency: Urgency): string {

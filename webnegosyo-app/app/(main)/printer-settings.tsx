@@ -1,18 +1,25 @@
 import React, { useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Platform,
+  TextInput, Alert, ActivityIndicator, Platform, Switch,
 } from "react-native";
-import { router } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
+import { BackHeader } from "../../components/BackHeader";
 import { usePrinterStore } from "../../stores/printer-store";
 import { type PrintTrigger } from "../../lib/print-trigger";
+import {
+  printersForRole,
+  suggestedRoles,
+  PRINTER_ROLES,
+  type PrinterRole,
+  type RegisteredPrinter,
+} from "../../lib/printer-registry";
 import {
   discoverBluetoothPrinters,
   connectPrinter,
   disconnectPrinter,
-  printTestPage,
+  printToPrinter,
   isPrinterSupported,
   requestBluetoothPermissions,
 } from "../../lib/printer";
@@ -27,28 +34,59 @@ const PRINT_TRIGGER_OPTIONS: { value: PrintTrigger; label: string; hint: string 
   {
     value: "confirmation",
     label: "On order confirmation",
-    hint: "Kitchen ticket — prints when you accept the order",
+    hint: "Prints when you accept the order",
   },
   {
     value: "billout",
     label: "On bill out",
-    hint: "Customer receipt — prints when payment is settled",
+    hint: "Prints when payment is settled",
   },
-  { value: "both", label: "Both", hint: "A ticket on confirm and a receipt on payment" },
+  { value: "both", label: "Both", hint: "On confirm and again on payment" },
   { value: "off", label: "Never", hint: "Only print when you tap Reprint Receipt" },
 ];
 
+const ROLE_LABELS: Record<PrinterRole, string> = {
+  cashier: "Cashier",
+  kitchen: "Kitchen",
+};
+
+const TEST_PAGE_TEXT = [
+  "================================",
+  "        PRINTER TEST PAGE       ",
+  "================================",
+  "",
+  "If you can read this, your",
+  "printer is working correctly!",
+  "",
+  `Platform: ${Platform.OS}`,
+  "",
+  "================================",
+  "",
+].join("\n");
+
 export default function PrinterSettingsScreen() {
-  const { printer, isConnected, printTrigger, setPrinter, setPrintTrigger } = usePrinterStore();
-  const [tab, setTab] = useState<"bluetooth" | "network">(printer?.type ?? "bluetooth");
+  const {
+    printers,
+    connectedAddress,
+    printTrigger,
+    kitchenAutoPrint,
+    addPrinter,
+    removePrinter,
+    updatePrinter,
+    setPrintTrigger,
+    setKitchenAutoPrint,
+  } = usePrinterStore();
+  const [tab, setTab] = useState<"bluetooth" | "network">("bluetooth");
   const [scanning, setScanning] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredPrinter[]>([]);
   const [networkIp, setNetworkIp] = useState("");
   const [networkPort, setNetworkPort] = useState("9100");
   const [connecting, setConnecting] = useState(false);
-  const [testing, setTesting] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   const printerSupported = isPrinterSupported();
+  const hasKitchenPrinter = printersForRole(printers, "kitchen").length > 0;
+  const hasCashierPrinter = printersForRole(printers, "cashier").length > 0;
 
   const handleScan = async () => {
     if (!printerSupported) {
@@ -64,11 +102,11 @@ export default function PrinterSettingsScreen() {
     }
 
     setScanning(true);
-    const { printers, status } = await discoverBluetoothPrinters();
-    setDiscovered(printers);
+    const { printers: found, status } = await discoverBluetoothPrinters();
+    setDiscovered(found);
     setScanning(false);
 
-    if (printers.length > 0) return;
+    if (found.length > 0) return;
 
     // Each dead end sends the merchant somewhere different, so never collapse
     // them into one "no printers found".
@@ -96,12 +134,25 @@ export default function PrinterSettingsScreen() {
     );
   };
 
+  const saveConnectedPrinter = async (
+    type: "bluetooth" | "network",
+    name: string,
+    address: string,
+  ) => {
+    const roles = suggestedRoles(printers);
+    await addPrinter({ type, name, address, roles });
+    const roleText = roles.map((r) => ROLE_LABELS[r]).join(" + ");
+    Alert.alert(
+      "Printer Added",
+      `${name} was added as your ${roleText} printer. Tap its role chips below to change what it prints.`,
+    );
+  };
+
   const handleSelectBluetooth = async (device: DiscoveredPrinter) => {
     setConnecting(true);
     const result = await connectPrinter("bluetooth", device.address);
     if (result.success) {
-      setPrinter({ type: "bluetooth", name: device.name, address: device.address });
-      Alert.alert("Connected", `Connected to ${device.name}`);
+      await saveConnectedPrinter("bluetooth", device.name, device.address);
     } else {
       Alert.alert("Connection Failed", result.error ?? "Could not connect to printer. Try again.");
     }
@@ -117,18 +168,17 @@ export default function PrinterSettingsScreen() {
     const address = `${networkIp.trim()}:${networkPort.trim() || "9100"}`;
     const result = await connectPrinter("network", address);
     if (result.success) {
-      setPrinter({ type: "network", name: `Network (${networkIp})`, address });
-      Alert.alert("Connected", `Connected to ${address}`);
+      await saveConnectedPrinter("network", `Network (${networkIp.trim()})`, address);
     } else {
       Alert.alert("Connection Failed", result.error ?? "Could not connect. Check IP and port.");
     }
     setConnecting(false);
   };
 
-  const handleTestPrint = async () => {
-    setTesting(true);
-    const result = await printTestPage();
-    setTesting(false);
+  const handleTestPrint = async (printer: RegisteredPrinter) => {
+    setTestingId(printer.id);
+    const result = await printToPrinter(printer, [{ type: "text", text: TEST_PAGE_TEXT }]);
+    setTestingId(null);
     if (!result.success) {
       Alert.alert("Test Failed", result.error ?? "Could not print test page. Check printer connection.");
     } else {
@@ -136,18 +186,40 @@ export default function PrinterSettingsScreen() {
     }
   };
 
-  const handleDisconnect = async () => {
-    await disconnectPrinter();
-    setPrinter(null);
+  const handleRemove = (printer: RegisteredPrinter) => {
+    Alert.alert("Remove Printer", `Remove ${printer.name}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          if (connectedAddress === printer.address) await disconnectPrinter();
+          await removePrinter(printer.id);
+        },
+      },
+    ]);
+  };
+
+  const handleToggleRole = (printer: RegisteredPrinter, role: PrinterRole) => {
+    const hasRole = printer.roles.includes(role);
+    if (hasRole && printer.roles.length === 1) {
+      // Stripping the last role leaves a printer nothing can print to.
+      Alert.alert(
+        "Last Role",
+        "A printer needs at least one role. Remove the printer instead if it should not print anything.",
+      );
+      return;
+    }
+    const roles = hasRole
+      ? printer.roles.filter((r) => r !== role)
+      : [...printer.roles, role];
+    void updatePrinter(printer.id, { roles });
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backText}>← Back</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.title}>Printer Settings</Text>
+    <View style={styles.screen}>
+      <BackHeader title="Printer" subtitle="Receipt and kitchen printers" />
+      <ScrollView contentContainerStyle={styles.content}>
 
       {!printerSupported && (
         <View style={styles.warningBanner}>
@@ -158,28 +230,110 @@ export default function PrinterSettingsScreen() {
       )}
 
       <Card style={styles.section}>
-        <View style={styles.statusRow}>
-          <View style={[styles.statusDot, { backgroundColor: isConnected ? colors.success : colors.textTertiary }]} />
-          <Text style={styles.statusText}>
-            {printer ? `${printer.name} (${isConnected ? "Connected" : "Disconnected"})` : "No printer configured"}
-          </Text>
-        </View>
-        {printer && (
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.smallButton} onPress={handleTestPrint} disabled={testing}>
-              {testing ? <ActivityIndicator size="small" color={colors.textOnDark} /> : <Text style={styles.smallButtonText}>Test Print</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.smallButton, styles.dangerButton]} onPress={handleDisconnect}>
-              <Text style={styles.smallButtonText}>Remove</Text>
-            </TouchableOpacity>
+        <Text style={styles.toggleLabel}>Your Printers</Text>
+        <Text style={styles.toggleSub}>
+          Cashier printers print customer receipts. Kitchen printers print kitchen tickets.
+        </Text>
+        {printers.length === 0 ? (
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: colors.textTertiary }]} />
+            <Text style={styles.statusText}>No printer configured — add one below</Text>
           </View>
+        ) : (
+          printers.map((printer) => {
+            const isConnectedPrinter = connectedAddress === printer.address;
+            return (
+              <View key={printer.id} style={styles.printerRow}>
+                <View style={styles.statusRow}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      { backgroundColor: isConnectedPrinter ? colors.success : colors.textTertiary },
+                    ]}
+                  />
+                  <View style={styles.printerInfo}>
+                    <Text style={styles.deviceName}>{printer.name}</Text>
+                    <Text style={styles.deviceAddress}>
+                      {printer.type === "bluetooth" ? "Bluetooth" : "Network"} · {printer.address}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.roleRow}>
+                  {PRINTER_ROLES.map((role) => {
+                    const isActive = printer.roles.includes(role);
+                    return (
+                      <TouchableOpacity
+                        key={role}
+                        style={[styles.roleChip, isActive && styles.roleChipActive]}
+                        onPress={() => handleToggleRole(printer, role)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: isActive }}
+                        accessibilityLabel={`${ROLE_LABELS[role]} role`}
+                      >
+                        <Text style={[styles.roleChipText, isActive && styles.roleChipTextActive]}>
+                          {isActive ? "✓ " : ""}{ROLE_LABELS[role]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={styles.smallButton}
+                    onPress={() => handleTestPrint(printer)}
+                    disabled={testingId !== null}
+                  >
+                    {testingId === printer.id ? (
+                      <ActivityIndicator size="small" color={colors.textOnDark} />
+                    ) : (
+                      <Text style={styles.smallButtonText}>Test Print</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.smallButton, styles.dangerButton]}
+                    onPress={() => handleRemove(printer)}
+                  >
+                    <Text style={styles.smallButtonText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })
         )}
       </Card>
 
       <Card style={styles.section}>
-        <Text style={styles.toggleLabel}>When to print</Text>
+        <View style={styles.toggleRow}>
+          <View style={styles.triggerText}>
+            <Text style={styles.toggleLabel}>Kitchen Auto-Print</Text>
+            <Text style={styles.toggleSub}>
+              {hasKitchenPrinter
+                ? "Print the kitchen ticket automatically the moment a new order arrives."
+                : "Add a printer with the Kitchen role to enable auto-printing."}
+            </Text>
+          </View>
+          <Switch
+            value={kitchenAutoPrint}
+            onValueChange={(value) => void setKitchenAutoPrint(value)}
+            disabled={!hasKitchenPrinter}
+            accessibilityLabel="Kitchen auto-print"
+          />
+        </View>
+        {kitchenAutoPrint && hasKitchenPrinter ? (
+          <Text style={styles.toggleSub}>
+            The app must stay open (any tab) for tickets to print — printing can&apos;t run while
+            the app is closed or in the background.
+          </Text>
+        ) : null}
+      </Card>
+
+      <Card style={styles.section}>
+        <Text style={styles.toggleLabel}>When receipts print</Text>
         <Text style={styles.toggleSub}>
-          Choose the moment a receipt comes out automatically
+          Applies to the cashier receipt.
+          {hasKitchenPrinter && hasCashierPrinter
+            ? " Tip: with a kitchen printer auto-printing tickets, “On bill out” avoids a duplicate on confirm."
+            : ""}
         </Text>
         {PRINT_TRIGGER_OPTIONS.map((option) => (
           <TouchableOpacity
@@ -199,6 +353,7 @@ export default function PrinterSettingsScreen() {
         ))}
       </Card>
 
+      <Text style={styles.addTitle}>Add a Printer</Text>
       <View style={styles.tabRow}>
         <TouchableOpacity
           style={[styles.tab, tab === "bluetooth" && styles.tabActive]}
@@ -236,7 +391,7 @@ export default function PrinterSettingsScreen() {
                 <Text style={styles.deviceAddress}>{device.address}</Text>
               </View>
               {connecting ? <ActivityIndicator size="small" color={colors.primary} /> : (
-                <Text style={styles.connectText}>Connect</Text>
+                <Text style={styles.connectText}>Add</Text>
               )}
             </TouchableOpacity>
           ))}
@@ -265,25 +420,42 @@ export default function PrinterSettingsScreen() {
             {connecting ? (
               <ActivityIndicator size="small" color={colors.textOnDark} />
             ) : (
-              <Text style={styles.primaryButtonText}>Connect</Text>
+              <Text style={styles.primaryButtonText}>Add Printer</Text>
             )}
           </TouchableOpacity>
         </Card>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60 },
-  backButton: { marginBottom: spacing.md },
-  backText: { ...typography.body, color: colors.primary },
-  title: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.lg },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
+  addTitle: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
   section: { marginBottom: spacing.lg },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm },
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusText: { ...typography.body, color: colors.textPrimary, flex: 1 },
+  printerRow: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 0.5,
+    borderTopColor: colors.separator,
+  },
+  printerInfo: { flex: 1 },
+  roleRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  roleChip: {
+    borderWidth: 1,
+    borderColor: colors.separator,
+    borderRadius: radius.full,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  roleChipActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  roleChipText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
+  roleChipTextActive: { color: colors.primary },
   actionRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
   smallButton: {
     backgroundColor: colors.primary,
@@ -293,7 +465,12 @@ const styles = StyleSheet.create({
   },
   dangerButton: { backgroundColor: colors.danger },
   smallButtonText: { ...typography.caption, color: colors.textOnDark, fontWeight: "600" },
-  toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.md,
+  },
   toggleLabel: { ...typography.heading, color: colors.textPrimary },
   triggerRow: {
     flexDirection: "row",

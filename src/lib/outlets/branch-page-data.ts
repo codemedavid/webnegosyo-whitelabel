@@ -49,7 +49,7 @@ export async function loadBranchOrders(tenant: Tenant): Promise<AnalyticsOrderLi
 export async function loadBranchStaff(tenantId: string): Promise<RosterStaff[]> {
   const { data, error } = await createAdminClient()
     .from('app_users')
-    .select('user_id, outlet_id, is_owner, display_name, email, permissions')
+    .select('user_id, outlet_id, is_owner, display_name, email, permissions, default_tab')
     .eq('tenant_id', tenantId)
     .eq('role', 'admin')
     .order('created_at', { ascending: true })

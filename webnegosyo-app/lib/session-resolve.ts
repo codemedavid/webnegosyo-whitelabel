@@ -25,6 +25,11 @@ export interface AppUserRow {
   permissions: string[] | null;
   /** Branch this account is confined to. NULL = the whole store. */
   outlet_id?: string | null;
+  /**
+   * Screen this account opens on, as an app/(main) route name. NULL means the
+   * app decides, which is what every account did before this was settable.
+   */
+  default_tab?: string | null;
 }
 
 /** Shape of the `outlets` row the app selects for a branch-scoped account. */
@@ -42,6 +47,10 @@ export interface TenantRow {
   /** The Convex bundle this tenant is running, when it has been recorded. */
   convex_schema_version?: number | null;
   order_backend?: OrderBackend | null;
+  /** Saved receipt layout: a preset name or a custom block stack. Untrusted. */
+  receipt_layout?: unknown;
+  /** Store logo image URL — printed by the receipt's logo block. */
+  logo_url?: string | null;
 }
 
 export type SessionMode = "superadmin" | "merchant" | "denied";
@@ -67,6 +76,13 @@ export interface SessionAuthPatch {
    * who holds no tenant until they impersonate one.
    */
   orderBackend: OrderBackend | null;
+  /**
+   * The tenant's saved receipt layout, passed through unvalidated — the print
+   * path (`lib/receipt-print.ts`) shape-checks it and falls back to Classic.
+   */
+  receiptLayout: unknown;
+  /** Store logo URL for the receipt's logo block; null when the tenant has none. */
+  receiptLogoUrl: string | null;
   isLoading: false;
   isAuthenticated: true;
   isSuperadmin: boolean;
@@ -83,6 +99,12 @@ export interface SessionAuthPatch {
    * renaming a branch does not rewrite the tickets it already took.
    */
   outletName: string | null;
+  /**
+   * Screen this account is pinned to, or null for the app's own choice. Held
+   * as stored — see `lib/default-landing.ts`, which decides whether it is
+   * still usable at the moment the app lands.
+   */
+  defaultTab: string | null;
 }
 
 export interface SessionResult {
@@ -153,6 +175,8 @@ export function resolveSession(
         // No tenant attached, so no deployment to have a version.
         convexSchemaVersion: null,
         orderBackend: null,
+        receiptLayout: null,
+        receiptLogoUrl: null,
         isLoading: false,
         isAuthenticated: true,
         isSuperadmin: true,
@@ -162,6 +186,8 @@ export function resolveSession(
         // A superadmin is never confined to a branch, impersonating or not.
         outletId: null,
         outletName: null,
+        // The platform surface has no merchant tabs to open on.
+        defaultTab: null,
       },
     };
   }
@@ -187,6 +213,8 @@ export function resolveSession(
       convexUrl: tenant.convex_deployment_url ?? null,
       convexSchemaVersion: tenant.convex_schema_version ?? null,
       orderBackend: resolveOrderBackend(tenant),
+      receiptLayout: tenant.receipt_layout ?? null,
+      receiptLogoUrl: tenant.logo_url ?? null,
       isLoading: false,
       isAuthenticated: true,
       isSuperadmin: false,
@@ -201,6 +229,10 @@ export function resolveSession(
       // A missing branch row now costs the *name*, never the confinement.
       outletId: confinedOutletId(appUser),
       outletName: outlet?.name ?? null,
+      // Passed through unvalidated: what counts as a usable screen depends on
+      // the branch count, which is not known yet at sign-in. lib/default-landing.ts
+      // makes that call once the branch list lands.
+      defaultTab: appUser.default_tab ?? null,
     },
   };
 }

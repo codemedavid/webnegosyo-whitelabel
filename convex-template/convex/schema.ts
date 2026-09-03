@@ -30,6 +30,12 @@ export default defineSchema({
     paymentMethodDetails: v.optional(v.string()),
     paymentStatus: v.optional(v.string()),
     deliveryFee: v.optional(v.number()),
+    // What the shop levied for service, already inside `total`. Stored so the
+    // order screen and the receipt can NAME it: without the field the charge
+    // was only recoverable by subtracting items and delivery from the total,
+    // which yields an anonymous residue that also absorbs discounts and
+    // rounding, and so could never be captioned.
+    serviceCharge: v.optional(v.number()),
     deliveryAddress: v.optional(v.string()),
     deliveryLatitude: v.optional(v.number()),
     deliveryLongitude: v.optional(v.number()),
@@ -49,6 +55,13 @@ export default defineSchema({
     revisionNumber: v.optional(v.number()),
     editedAt: v.optional(v.string()),
     editedBy: v.optional(v.string()),
+    // The kitchen's promise. `prepMinutes` is what the chef tapped;
+    // `promisedReadyAt` is the absolute instant it landed on, stamped at the
+    // tap. The customer's countdown reads only the latter — a stored duration
+    // cannot know when its clock started. Both optional: no order placed before
+    // v24 has a promise, and absence means "not yet committed".
+    prepMinutes: v.optional(v.number()),
+    promisedReadyAt: v.optional(v.string()),
     // The branch this order belongs to, promoted out of `customerData.outlet_id`
     // on create so it can be queried and indexed. Optional: single-location
     // stores stamp no branch, and orders written before v15 have none.
@@ -122,6 +135,8 @@ export default defineSchema({
     bundleId: v.optional(v.string()),
     bundleName: v.optional(v.string()),
     slotName: v.optional(v.string()),
+    /** YYYY-MM-DD pickup date for a presell (per-date stock) line. v25. */
+    presellDate: v.optional(v.string()),
   }).index("by_order", ["orderId"]),
 
   analyticsEvents: defineTable({

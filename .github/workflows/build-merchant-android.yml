@@ -62,7 +62,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: `eas-version: latest` resolves to eas-cli 23, which
+          # depends on @oclif/plugin-autocomplete@3.3.0 with `engines.node
+          # >=22.0.0`. On Node 20 the Setup EAS step dies at yarn's engine check
+          # ("Found incompatible module") before a single line is compiled, so
+          # the pin silently rots the moment eas-cli ships a Node-22 dependency.
+          node-version: 22
           cache: npm
           cache-dependency-path: webnegosyo-app/package-lock.json
 

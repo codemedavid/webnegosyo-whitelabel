@@ -39,15 +39,26 @@ import {
   type ModifierSource,
 } from "../../lib/modifier-groups";
 import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
+import { fetchPosStockCeilings } from "../../lib/pos-stock-ceilings";
+import {
+  resolvePosStockWarning,
+  type PosStockCeilings,
+} from "../../lib/pos-stock-warning";
 import { formatPeso } from "../../lib/format";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
 import { DiscountSheet } from "../../components/pos/DiscountSheet";
+import { DeliverySheet } from "../../components/pos/DeliverySheet";
 import { IncomingOrdersSheet } from "../../components/pos/IncomingOrdersSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
+// Rendered by <ScreenHeader>; the import stays so the guardrail that every
+// tab is escapable keeps reading it here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { Icon } from "../../components/Icon";
 
 /** A product whose modifier groups have already been normalized. */
 interface RegisterItem {
@@ -67,6 +78,9 @@ const INITIAL_ROWS = 6;
 // TODO: Replace double assertion with a generated Convex function reference once
 // codegen is wired into the mobile app (same workaround used across the screens).
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+
+/** No stock read yet, or none possible. Read as "no opinion", never as empty shelves. */
+const EMPTY_CEILINGS: PosStockCeilings = new Map();
 
 function toRows<T>(items: T[], size: number): T[][] {
   return items.reduce<T[][]>((rows, item, index) => {
@@ -100,7 +114,11 @@ export default function PosScreen() {
   const removeVoucher = usePosCartStore((s) => s.removeVoucher);
   const setManualDiscount = usePosCartStore((s) => s.setManualDiscount);
   const clearManualDiscount = usePosCartStore((s) => s.clearManualDiscount);
+  const delivery = usePosCartStore((s) => s.delivery);
+  const setDelivery = usePosCartStore((s) => s.setDelivery);
+  const setEditDeliveryFee = usePosCartStore((s) => s.setEditDeliveryFee);
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
+  const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
 
   const [items, setItems] = useState<RegisterItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -136,8 +154,10 @@ export default function PosScreen() {
     // Recompute whenever the sale changes; `totals()` reads the live store.
     // `discount` belongs here too: applying a code changes the total without
     // touching a line, and leaving it out would show the undiscounted amount.
+    // `delivery` too: attaching a fee changes the total and what a
+    // free-delivery voucher is worth, without touching a line.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge, discount],
+    [lines, serviceCharge, discount, delivery],
   );
 
   // Priced against the current cart, so a voucher that stops qualifying after
@@ -145,7 +165,7 @@ export default function PosScreen() {
   const discountLines = useMemo(
     () => usePosCartStore.getState().sessionDiscount().lines,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge, discount],
+    [lines, serviceCharge, discount, delivery],
   );
 
   const inSale = useMemo(() => quantityByItem(lines), [lines]);
@@ -165,6 +185,27 @@ export default function PosScreen() {
   // owner, a single-location merchant) gets the store-wide menu, exactly as
   // before per-branch pricing existed.
   const registerOutletId = scope.kind === "branch" ? scope.outletId : null;
+
+  // ── What the kitchen can actually make ──
+  // A WARNING, never a refusal: the cashier is facing a paying customer and can
+  // see the shelf, so the software says its piece and the human decides. The
+  // web checkout refuses instead, because nobody is standing over that customer.
+  // Refetched whenever the cart changes, since every sale moves the number.
+  const [stockCeilings, setStockCeilings] = useState<PosStockCeilings>(EMPTY_CEILINGS);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPosStockCeilings(tenantId, registerOutletId).then((ceilings) => {
+      if (!cancelled) setStockCeilings(ceilings);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, registerOutletId, lines]);
+
+  const stockWarning = useMemo(
+    () => resolvePosStockWarning(lines, stockCeilings),
+    [lines, stockCeilings],
+  );
 
   useEffect(() => {
     if (!tenantId) return;
@@ -350,17 +391,16 @@ export default function PosScreen() {
         </View>
       )}
 
-      {/* The banner already clears the notch, so the header must not re-pad it. */}
-      <View style={[styles.header, edit && styles.headerUnderBanner]}>
-        <View style={styles.titleRow}>
-          <WorkspaceSwitcher />
-          <Text style={styles.count}>
-            {visibleItems.length} {visibleItems.length === 1 ? "product" : "products"}
-          </Text>
-        </View>
-
+      {/* The banner already clears the notch, so the header must not re-pad it.
+          <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Register"
+        subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}
+        ignoreTopInset={!!edit}
+        style={styles.header}
+      >
         <View style={styles.searchRow}>
-          <Text style={styles.searchGlyph}>⌕</Text>
+          <Icon name="search" size={18} color={colors.textTertiary} />
           <TextInput
             style={styles.search}
             placeholder="Search products"
@@ -374,13 +414,14 @@ export default function PosScreen() {
             <TouchableOpacity
               onPress={() => setSearch("")}
               hitSlop={10}
+              accessibilityRole="button"
               accessibilityLabel="Clear search"
             >
-              <Text style={styles.searchClear}>✕</Text>
+              <Icon name="close" size={14} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         horizontal
@@ -489,9 +530,37 @@ export default function PosScreen() {
         />
       )}
 
+      {/*
+        Sits above the cart, where the cashier is already looking before they
+        charge. Deliberately not a modal and not a blocker — it informs the
+        person who can see the shelf, and they ring the sale anyway if they
+        have the stock.
+      */}
+      {stockWarning && (
+        <View style={styles.stockWarning}>
+          <Text style={styles.stockWarningText}>{stockWarning}</Text>
+        </View>
+      )}
+
       <CartSheet
         lines={lines}
-        totals={totals}
+        // In edit mode the fees live on the edit context, not the counter sale
+        // — shown here so the rows the cashier reads reflect what the revision
+        // will actually charge. The service charge is the figure the order was
+        // PLACED with; the register cannot recompute it (the order type's rate
+        // may have moved since) and must not try.
+        totals={
+          editContext
+            ? {
+                ...totals,
+                deliveryFee: editContext.deliveryFee,
+                serviceCharge: editContext.serviceCharge,
+              }
+            : totals
+        }
+        // Whatever the placed bill held beyond items, service and delivery.
+        // Named `Adjustment` rather than left invisible — see CartSheet.
+        adjustment={editContext ? editContext.carriedCharges : 0}
         // The order type is fixed for the life of a placed order: switching it
         // mid-edit would swap the service charge and invalidate the basis the
         // delivery fee was quoted under. Passing none renders no chips.
@@ -513,6 +582,7 @@ export default function PosScreen() {
         // who produces a voucher after ordering no longer needs the order
         // cancelled and re-rung.
         onAddDiscount={() => setIsDiscountOpen(true)}
+        onEditDelivery={() => setIsDeliveryOpen(true)}
         onRemoveDiscount={(line) => {
           if (line.code) removeVoucher(line.code);
           else clearManualDiscount();
@@ -562,6 +632,28 @@ export default function PosScreen() {
         onRemoveVoucher={removeVoucher}
         onRemoveManual={clearManualDiscount}
       />
+
+      <DeliverySheet
+        visible={isDeliveryOpen}
+        onClose={() => setIsDeliveryOpen(false)}
+        // Editing a placed order revises the fee it carries; address and phone
+        // belong to the order and are not editable at the till, so the sheet
+        // shows the fee alone there.
+        feeOnly={editContext !== null}
+        delivery={
+          editContext
+            ? {
+                fee: editContext.deliveryFee > 0 ? editContext.deliveryFee : null,
+                address: "",
+                phone: "",
+              }
+            : delivery
+        }
+        onSave={(details) => {
+          if (editContext) setEditDeliveryFee(details.fee ?? 0);
+          else setDelivery(details);
+        }}
+      />
     </View>
   );
 }
@@ -574,12 +666,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.background,
   },
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: TOP_INSET,
-    paddingBottom: spacing.sm,
-  },
-  headerUnderBanner: { paddingTop: spacing.sm },
+  header: { paddingBottom: spacing.sm },
   editBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -590,6 +677,16 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     backgroundColor: colors.accentLight,
   },
+  // Amber, not red: this is something to know, not something that went wrong.
+  stockWarning: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningLight,
+  },
+  stockWarningText: { ...typography.caption, color: colors.warning, fontWeight: "600" },
   editBannerMain: { flex: 1 },
   editBannerTitle: { ...typography.caption, fontWeight: "700", color: colors.accent },
   editBannerTotals: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
@@ -600,13 +697,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningLight,
   },
   editWarningText: { ...typography.small, color: colors.textPrimary },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.md,
-  },
-  count: { ...typography.small, color: colors.textTertiary },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -617,14 +707,12 @@ const styles = StyleSheet.create({
     borderColor: colors.separator,
     paddingHorizontal: spacing.lg,
   },
-  searchGlyph: { fontSize: 17, color: colors.textTertiary },
   search: {
     flex: 1,
     paddingVertical: spacing.md,
     ...typography.body,
     color: colors.textPrimary,
   },
-  searchClear: { fontSize: 13, color: colors.textSecondary },
   rail: { flexGrow: 0 },
   railContent: { paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, gap: spacing.sm },
   chip: {

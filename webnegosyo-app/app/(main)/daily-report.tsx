@@ -28,7 +28,9 @@ import { colors, typography, spacing, radius, shadow } from "../../theme/colors"
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { DailyReportRowCard } from "../../components/DailyReportRowCard";
 
 /**
@@ -303,15 +305,8 @@ export default function DailyReportScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headerWrap}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Daily Report</Text>
-            <Text style={styles.subtitle}>Did the shelf match the orders?</Text>
-          </View>
-          <WorkspaceSwitcher />
-        </View>
-      </View>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Daily report" subtitle="Did the shelf match the orders?" />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -360,17 +355,7 @@ function Total({ label, value, tint }: { label: string; value: string; tint?: st
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  headerWrap: {
-    paddingTop: 60,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    backgroundColor: colors.background,
-  },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  headerText: { flex: 1 },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  content: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: 40 },
+  content: { padding: spacing.lg, paddingTop: 0, gap: spacing.lg, paddingBottom: 40 },
 
   dayNav: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   dayButton: {

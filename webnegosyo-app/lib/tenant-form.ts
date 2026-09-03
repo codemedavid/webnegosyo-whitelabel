@@ -72,6 +72,8 @@ export interface TenantEditorRow {
    * stranding the app — the same contract the web resolver declares.
    */
   order_backend?: OrderBackend | null;
+  /** Saved receipt layout, carried into impersonation so reprints match. */
+  receipt_layout?: unknown;
   admin_email: string | null;
   email_notifications_enabled: boolean;
 }

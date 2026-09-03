@@ -116,6 +116,8 @@ export const menuItemSchema = z.object({
   bcg_classification: z.enum(['star', 'plowhorse', 'puzzle', 'dog', 'unclassified']).optional().default('unclassified'),
   badge_text: z.string().nullable().optional(),
   show_in_checkout_upsell: z.boolean().default(false),
+  // Presell: customers must pick an allocated date (migration 20260830120000)
+  presell_enabled: z.boolean().default(false),
   order: z.number().int().min(0).default(0),
 })
 
@@ -150,6 +152,7 @@ export const menuItemUpdateSchema = z.object({
   bcg_classification: z.enum(['star', 'plowhorse', 'puzzle', 'dog', 'unclassified']),
   badge_text: z.string().nullable(),
   show_in_checkout_upsell: z.boolean(),
+  presell_enabled: z.boolean(),
   order: z.number().int().min(0),
 }).partial()
 

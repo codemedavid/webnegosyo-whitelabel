@@ -1,0 +1,37 @@
+appId: com.webnegosyo.admin
+name: Account identity and order QR scanner
+---
+# As a merchant, I want to see which account and store I am signed in to, and
+# to scan a customer's pickup QR, so that I hand orders to the right person.
+- runFlow:
+    file: helpers/switch-view.yaml
+    env:
+      VIEW: Operations
+
+# --- Account -----------------------------------------------------------------
+- tapOn: "Account"
+- waitForAnimationToEnd
+- assertVisible: "Account"
+- assertVisible: "SIGNED IN AS"
+# Identity and the resolved tenant are both shown, so a merchant can tell at a
+# glance that they are not looking at another store's till.
+- assertVisible: ".*@.*\\..*"
+- assertVisible: "Sign Out"
+
+# Account deletion is offered with its consequences spelled out. It is asserted
+# only and never tapped: it is irreversible and would end the suite's session.
+- assertVisible: "Delete Account"
+- assertVisible: "Permanently delete your sign-in account and remove your access to this store. Your store's orders and menu are preserved. This cannot be undone."
+
+- tapOn: "Back"
+- waitForAnimationToEnd
+
+# --- Pickup QR scanner -------------------------------------------------------
+- tapOn: "Scan QR"
+- waitForAnimationToEnd
+- assertVisible: "Scan QR"
+- assertVisible: "Point at the customer's order QR"
+# The scanner is dismissible without a scan; the simulator has no camera to
+# feed it a real code, so decoding is covered by lib/qr-pickup-codec.test.ts.
+- tapOn: "Close"
+- waitForAnimationToEnd

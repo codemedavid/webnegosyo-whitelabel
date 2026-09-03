@@ -1,6 +1,10 @@
 import { Platform, PermissionsAndroid } from "react-native";
 import Constants from "expo-constants";
 import { usePrinterStore } from "../stores/printer-store";
+import { buildQrBmpBase64 } from "./receipt-qr";
+import { fetchLogoBase64 } from "./receipt-logo";
+import { printersForRole, type PrinterRole, type RegisteredPrinter } from "./printer-registry";
+import { planPrintJobs, jobsForRole } from "./print-queue";
 
 // ESC/POS commands for text formatting.
 // Note: init/feed/cut are handled by the library's printBill (EPToolkit) so we
@@ -292,11 +296,11 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
         "Printer connection"
       );
     }
-    usePrinterStore.getState().setConnected(true);
+    usePrinterStore.getState().setConnectedAddress(address);
     return { success: true };
   } catch (err: unknown) {
     console.warn("Printer connection failed:", err instanceof Error ? err.message : err);
-    usePrinterStore.getState().setConnected(false);
+    usePrinterStore.getState().setConnectedAddress(null);
     return { success: false, error: err instanceof Error ? err.message : "Connection failed" };
   }
 }
@@ -315,7 +319,7 @@ export async function disconnectPrinter(): Promise<void> {
   } catch {
     // Ignore disconnect errors
   }
-  usePrinterStore.getState().setConnected(false);
+  usePrinterStore.getState().setConnectedAddress(null);
 }
 
 /**
@@ -327,14 +331,15 @@ export async function disconnectPrinter(): Promise<void> {
 function printBillAsync(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   printerInstance: any,
-  text: string
+  text: string,
+  options: { cut: boolean } = { cut: true }
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     try {
       printerInstance.printBill(text, {
         beep: false,
-        cut: true,
+        cut: options.cut,
         tailingLine: true,
         encoding: "UTF8",
         onError: (err: Error) => {
@@ -359,29 +364,181 @@ function printBillAsync(
   });
 }
 
-export async function printReceipt(receiptText: string): Promise<PrinterResult> {
-  const mod = getPrinterModule();
-  if (!mod) return { success: false, error: NOT_AVAILABLE_MSG };
+/** One printable piece of a receipt; see renderReceiptSegments. */
+export type PrintSegment =
+  | { type: "text"; text: string }
+  | { type: "qr"; data: string }
+  | { type: "image"; url: string };
 
-  const { printer, isConnected } = usePrinterStore.getState();
-  if (!printer) return { success: false, error: "No printer configured." };
+/**
+ * Print width for the store logo, in dots. A 58mm head is 384 dots wide;
+ * printing narrower leaves a margin and keeps the raster transfer quick.
+ */
+const LOGO_PRINT_WIDTH = 320;
 
-  // Reconnect if needed
-  if (!isConnected) {
-    const result = await connectPrinter(printer.type, printer.address);
-    if (!result.success) return result;
+/**
+ * Give the printer's image buffer a moment to drain before more data follows.
+ * printImageBase64 is fire-and-forget with no completion callback, and a text
+ * write racing a half-transferred raster garbles both.
+ */
+const IMAGE_SETTLE_MS = 700;
+
+/**
+ * Send the segments to an already-connected printer instance. Text goes
+ * through printBill, QR segments are rasterized (lib/receipt-qr) and sent
+ * through printImageBase64. Exactly one cut happens, at the very end — never
+ * between segments. A QR that cannot be built (or a printer whose firmware
+ * ignores rasters) skips the image; the paper receipt itself always comes
+ * first. Throws on print errors — the callers translate to PrinterResult.
+ */
+async function runSegmentsOnInstance(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  instance: any,
+  segments: PrintSegment[],
+): Promise<void> {
+  const lastIndex = segments.length - 1;
+  let hasCut = false;
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]!;
+    if (segment.type === "text") {
+      const isFinal = i === lastIndex;
+      await printBillAsync(instance, segment.text, { cut: isFinal });
+      hasCut = isFinal;
+      continue;
+    }
+
+    if (segment.type === "image") {
+      // The store logo, downloaded as-is (PNG/JPEG decode on-device).
+      const logo = await fetchLogoBase64(segment.url);
+      if (!logo) continue; // unfetchable logo — the text receipt still prints
+      instance.printImageBase64(logo, { imageWidth: LOGO_PRINT_WIDTH });
+      await new Promise((resolve) => setTimeout(resolve, IMAGE_SETTLE_MS));
+      continue;
+    }
+
+    const qr = buildQrBmpBase64(segment.data);
+    if (!qr) continue; // unbuildable payload — the text receipt still prints
+    instance.printImageBase64(qr.base64, { imageWidth: qr.widthPx });
+    await new Promise((resolve) => setTimeout(resolve, IMAGE_SETTLE_MS));
   }
 
-  try {
+  if (!hasCut) {
+    // The receipt ended on a QR (or a skipped one) — feed and cut after it.
+    await printBillAsync(instance, "\n", { cut: true });
+  }
+}
+
+// The native lib holds ONE active connection per transport and printBill is
+// fire-and-forget, so all print jobs on this device funnel through a single
+// promise-chain mutex: a receipt and a chit racing each other would interleave
+// bytes on the wire and garble both.
+let printQueueTail: Promise<unknown> = Promise.resolve();
+
+function enqueuePrintJob<T>(job: () => Promise<T>): Promise<T> {
+  const result = printQueueTail.then(job, job);
+  printQueueTail = result.catch(() => undefined);
+  return result;
+}
+
+/**
+ * Print segments on one specific saved printer, through the device-wide print
+ * queue. Connects (or switches the connection) only when the target differs
+ * from the currently connected printer; a failed print drops the connection
+ * and retries once — connectPrinter already carries the iOS rescan fallback.
+ */
+export function printToPrinter(
+  printer: RegisteredPrinter,
+  segments: PrintSegment[],
+): Promise<PrinterResult> {
+  return enqueuePrintJob(async () => {
+    const mod = getPrinterModule();
+    if (!mod) return { success: false, error: NOT_AVAILABLE_MSG };
+
     const instance = printer.type === "bluetooth" ? mod.BLEPrinter : mod.NetPrinter;
-    await printBillAsync(instance, receiptText);
-    return { success: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn("Print failed:", message);
-    usePrinterStore.getState().setConnected(false);
-    return { success: false, error: message || "Print failed" };
+
+    const [step] = planPrintJobs(
+      [{ targetId: printer.id, segments }],
+      [printer],
+      usePrinterStore.getState().connectedAddress,
+    );
+    if (step?.needsConnect) {
+      // Let the previous printer's fire-and-forget transfer drain before the
+      // connection moves to a different device.
+      if (step.settleBeforeConnectMs > 0) await delay(step.settleBeforeConnectMs);
+      const connected = await connectPrinter(printer.type, printer.address);
+      if (!connected.success) return connected;
+    }
+
+    try {
+      await runSegmentsOnInstance(instance, segments);
+      return { success: true };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn("Print failed, reconnecting for one retry:", message);
+      usePrinterStore.getState().setConnectedAddress(null);
+
+      const reconnected = await connectPrinter(printer.type, printer.address);
+      if (!reconnected.success) return { success: false, error: message || "Print failed" };
+      try {
+        await runSegmentsOnInstance(instance, segments);
+        return { success: true };
+      } catch (retryErr: unknown) {
+        const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        console.warn("Print retry failed:", retryMessage);
+        usePrinterStore.getState().setConnectedAddress(null);
+        return { success: false, error: retryMessage || "Print failed" };
+      }
+    }
+  });
+}
+
+export interface RolePrintResult {
+  results: { printerId: string; printerName: string; result: PrinterResult }[];
+  anySuccess: boolean;
+}
+
+/**
+ * Print for a role: the kitchen chit fans out to EVERY kitchen-role printer,
+ * the cashier receipt goes to the first cashier-role printer only (see
+ * jobsForRole). Runs sequentially through the queue, collects per-printer
+ * results, and never throws — one dead printer cannot block the others.
+ */
+export async function printForRole(
+  role: PrinterRole,
+  segments: PrintSegment[],
+): Promise<RolePrintResult> {
+  const { printers } = usePrinterStore.getState();
+  const jobs = jobsForRole(printers, role, segments);
+  const byId = new Map(printers.map((p) => [p.id, p]));
+
+  const results: RolePrintResult["results"] = [];
+  for (const job of jobs) {
+    const printer = byId.get(job.targetId);
+    if (!printer) continue;
+    const result = await printToPrinter(printer, job.segments);
+    results.push({ printerId: printer.id, printerName: printer.name, result });
   }
+
+  return { results, anySuccess: results.some((r) => r.result.success) };
+}
+
+/**
+ * Legacy entry point: print on "the" printer. Routes to the first
+ * cashier-role printer, falling back to the first saved printer so a
+ * kitchen-only device can still test-print and reprint.
+ */
+export async function printReceiptSegments(
+  segments: PrintSegment[]
+): Promise<PrinterResult> {
+  const { printers } = usePrinterStore.getState();
+  const target = printersForRole(printers, "cashier")[0] ?? printers[0];
+  if (!target) return { success: false, error: "No printer configured." };
+  return printToPrinter(target, segments);
+}
+
+export async function printReceipt(receiptText: string): Promise<PrinterResult> {
+  return printReceiptSegments([{ type: "text", text: receiptText }]);
 }
 
 export async function printTestPage(): Promise<PrinterResult> {

@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
+import { isRealContact } from '@/lib/order-contact'
 import {
   isPickupScanEnabled,
   resolveOrderTypeKind,
@@ -42,10 +43,31 @@ export interface TrackingData {
    */
   pickupScanEnabled?: boolean
   customerName?: string
+  /**
+   * Whether the order already carries a real (non-placeholder) contact. The
+   * tracking page shows the receipt-QR contact form only when false; the
+   * contact itself is never exposed here — the token is printed on paper.
+   */
+  hasContact?: boolean
   createdAt: string
   isTerminal: boolean
   /** Pre-computed, hydration-safe label for a scheduled (advance) order, or null for ASAP. */
   scheduledLabel?: string | null
+  /**
+   * The absolute instant the kitchen promised this order would be ready, or
+   * null when no chef has committed to a time. The countdown on the tracking
+   * page is derived from this and nothing else — a stored duration cannot know
+   * when its clock started.
+   */
+  promisedReadyAt?: string | null
+  /** What the chef actually chose. Kept for the merchant, not rendered here. */
+  prepMinutes?: number | null
+  /**
+   * The server's clock at the moment this payload was built. The page counts
+   * down from this rather than `Date.now()`, so a device whose clock is twenty
+   * minutes fast does not show a nonsense estimate for an on-time order.
+   */
+  serverNowMs?: number
 }
 
 /**
@@ -98,7 +120,10 @@ export async function fetchOrderTrackingData(
     // because the flag lives on the platform tenants row either way.
     const pickupScanEnabled = await fetchPickupScanEnabled(supabaseAdmin, tenantId)
 
-    return { data: { ...result, pickupScanEnabled }, error: null }
+    return {
+      data: { ...result, pickupScanEnabled, serverNowMs: Date.now() },
+      error: null,
+    }
   } catch (err) {
     console.error('[Order Tracking] Error:', err instanceof Error ? err.message : err)
     return { data: null, error: 'Order not found' }
@@ -138,6 +163,41 @@ async function fetchPickupScanEnabled(
     )
   } catch {
     return true
+  }
+}
+
+/** The two prep-time columns, read on their own. */
+const PREP_TIME_COLUMNS = 'prep_minutes, promised_ready_at'
+
+/**
+ * Read the kitchen's promise separately from the order itself.
+ *
+ * Same reasoning as `fetchPickupScanEnabled` above: the order query names an
+ * explicit column list, and naming a column a deployment has not migrated yet
+ * fails the ENTIRE query — which would take the customer's order page down
+ * rather than merely hiding an estimate. Isolated here, the worst case is no
+ * estimate, which is exactly what every order looked like yesterday.
+ */
+async function fetchPrepPromise(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string,
+  tenantId: string
+): Promise<{ promisedReadyAt: string | null; prepMinutes: number | null }> {
+  try {
+    const { data } = await supabase
+      .from('orders')
+      .select(PREP_TIME_COLUMNS)
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    const row = data as { prep_minutes?: number | null; promised_ready_at?: string | null } | null
+    return {
+      promisedReadyAt: row?.promised_ready_at ?? null,
+      prepMinutes: row?.prep_minutes ?? null,
+    }
+  } catch {
+    return { promisedReadyAt: null, prepMinutes: null }
   }
 }
 
@@ -203,8 +263,11 @@ async function fetchFromConvex(
       orderTypeSnapshot: order.orderType ?? null,
     }),
     customerName: order.customerName,
+    hasContact: isRealContact(order.customerContact),
     createdAt: new Date(order._creationTime).toISOString(),
     isTerminal,
+    promisedReadyAt: order.promisedReadyAt ?? null,
+    prepMinutes: order.prepMinutes ?? null,
     scheduledLabel: getOrderScheduledLabel({
       scheduled_for: null,
       customer_data: (order.customerData ?? null) as Record<string, unknown> | null,
@@ -220,7 +283,7 @@ async function fetchFromSupabase(
   const { data: order, error } = await supabase
     .from('orders')
     .select(`
-      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, created_at,
+      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, created_at,
       scheduled_for, customer_data,
       order_items(menu_item_name, quantity, price, subtotal, variation, addons)
     `)
@@ -238,6 +301,7 @@ async function fetchFromSupabase(
     o.order_type_id,
     tenantId
   )
+  const prepPromise = await fetchPrepPromise(supabase, orderId, tenantId)
 
   return {
     status: o.status,
@@ -258,8 +322,11 @@ async function fetchFromSupabase(
       orderTypeSnapshot: o.order_type ?? null,
     }),
     customerName: o.customer_name,
+    hasContact: isRealContact(o.customer_contact),
     createdAt: o.created_at,
     isTerminal,
+    promisedReadyAt: prepPromise.promisedReadyAt,
+    prepMinutes: prepPromise.prepMinutes,
     scheduledLabel: getOrderScheduledLabel({
       scheduled_for: o.scheduled_for ?? null,
       customer_data: (o.customer_data ?? null) as Record<string, unknown> | null,

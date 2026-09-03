@@ -253,3 +253,58 @@ describe("buildPosOrder with a discount", () => {
     expect(readOrderDiscount(order)).toBeNull();
   });
 });
+
+describe("buildPosOrder — the service charge is stored, not just spent", () => {
+  /**
+   * The register has always folded the order type's service charge into
+   * `total` and then dropped the figure. Nothing downstream could name it: the
+   * order screen showed items that did not sum to the bill, the receipt
+   * printed the same gap, and an edit could only recover it as an anonymous
+   * residue. The amount travels beside the total now, exactly as the delivery
+   * fee already does.
+   */
+  const context = {
+    cart,
+    tender: cashTender,
+    clientOrderId: "sale-1",
+    orderType: "Dine-in",
+  };
+
+  it("sends the charge alongside the total it is part of", () => {
+    const order = buildPosOrder({
+      ...context,
+      serviceCharge: { type: "percentage", value: 10 },
+    });
+
+    expect(order.serviceCharge).toBe(36.75);
+    expect(order.total).toBe(404.25);
+  });
+
+  it("omits the field entirely for an order type that charges none", () => {
+    // Same rule as `deliveryFee`: an absent key, so the backends store NULL
+    // and no reader renders a zero row.
+    expect(buildPosOrder(context)).not.toHaveProperty("serviceCharge");
+  });
+
+  it("sends a fixed charge at face value", () => {
+    const order = buildPosOrder({
+      ...context,
+      serviceCharge: { type: "fixed", value: 25 },
+    });
+
+    expect(order.serviceCharge).toBe(25);
+  });
+
+  it("reports the charge on the cart, not on the discounted bill", () => {
+    // A discount comes off AFTER the charge is levied. Reporting the net would
+    // understate what the shop actually charged for service, and the discount
+    // is already recorded on its own rows.
+    const order = buildPosOrder({
+      ...context,
+      serviceCharge: { type: "percentage", value: 10 },
+      discounts: [{ label: "STAFF", amount: 50 }],
+    });
+
+    expect(order.serviceCharge).toBe(36.75);
+  });
+});

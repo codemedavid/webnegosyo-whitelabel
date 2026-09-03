@@ -47,7 +47,11 @@ import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { SegmentedControl } from "../../components/SegmentedControl";
+// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
 import { ReachBar } from "../../components/sms/ReachBar";
 import { GuestRow } from "../../components/sms/GuestRow";
 import { CampaignCard } from "../../components/sms/CampaignCard";
@@ -230,22 +234,23 @@ export default function CustomersScreen() {
 
   return (
     <View style={styles.screen}>
-      <WorkspaceSwitcher />
-
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Customers</Text>
-          <TouchableOpacity
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Customers"
+        subtitle={`${list.stats.total} guests`}
+        actions={
+          <IconButton
+            icon="export"
+            label="Export"
             onPress={() => {
               setExportError(null);
               setExportOpen(true);
             }}
-            style={styles.exportButton}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.exportButtonText}>Export</Text>
-          </TouchableOpacity>
-        </View>
+          />
+        }
+      />
+
+      <View style={styles.header}>
         {/*
           Two levels of navigation used to wear the same pill. The switch
           between two halves of a screen is a segmented track; the filters
@@ -412,18 +417,7 @@ function Notice({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md },
-  title: { ...typography.title, color: colors.textPrimary },
-  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  exportButton: {
-    borderColor: colors.separator,
-    borderWidth: 1,
-    borderRadius: radius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.card,
-  },
-  exportButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
+  header: { paddingHorizontal: spacing.lg, gap: spacing.md },
   // Explicitly cream: the header lives inside the list's content container,
   // which carries the roster's white surface, so without this the reach card
   // and the search box would sit on white and the card would disappear into

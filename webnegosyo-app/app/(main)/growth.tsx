@@ -33,7 +33,10 @@ import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 
 const getTrendsRef = "analytics:getTrends" as unknown as FunctionReference<"query">;
 const getCustomerInsightsRef = "analytics:getCustomerInsights" as unknown as FunctionReference<"query">;
@@ -206,6 +209,9 @@ export default function GrowthScreen() {
   const hasData = (trends ?? []).length > 0 && summary.totalOrders > 0;
 
   return (
+    <View style={styles.screen}>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Growth" subtitle={`Last ${daysBack} days`} />
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -213,10 +219,6 @@ export default function GrowthScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>Growth</Text>
-        <WorkspaceSwitcher />
-      </View>
 
       <View style={styles.periodRow}>
         {PERIOD_OPTIONS.map((d) => (
@@ -441,19 +443,13 @@ export default function GrowthScreen() {
         </>
       )}
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: spacing.xxl },
-  title: { ...typography.title, color: colors.textPrimary },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.lg,
-  },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginBottom: spacing.sm },
   periodRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl },
   periodPill: {

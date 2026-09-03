@@ -17,6 +17,7 @@ import { AddonEditor } from '@/components/admin/addon-editor'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
 import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
 import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
+import { PresellStockPanel } from '@/components/admin/presell-stock-panel'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { serializeGroups, splitGroupsToLegacyColumns } from '@/lib/modifier-groups-form'
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
@@ -51,6 +52,8 @@ interface MenuItemFormProps {
   /** Menu items an add-on option may link to (live reference). */
   linkableItems?: LinkableMenuItem[]
   inventoryEnabled?: boolean
+  /** Tenant flag: per-date presell allocations (migration 20260830120000). */
+  presellEnabled?: boolean
   convexUrl?: string
 }
 
@@ -81,7 +84,7 @@ type FormErrors = {
   category_id?: string
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, linkableItems, inventoryEnabled, convexUrl }: MenuItemFormProps) {
+export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, linkableItems, inventoryEnabled, presellEnabled, convexUrl }: MenuItemFormProps) {
   const router = useRouter()
   // Recipe-derived costs for the per-option margin display. No-ops when the
   // tenant has no inventory or the item has not been saved yet.
@@ -102,6 +105,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     show_in_checkout_upsell: item?.show_in_checkout_upsell ?? false,
     bcg_classification: (item?.bcg_classification || 'unclassified') as BcgClassification,
     badge_text: item?.badge_text || '',
+    presell_enabled: item?.presell_enabled ?? false,
   })
 
   const [variations, setVariations] = useState(item?.variations || [])
@@ -198,6 +202,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           bcg_classification: formData.bcg_classification,
           badge_text: formData.badge_text || null,
         } : {}),
+        ...(presellEnabled ? { presell_enabled: formData.presell_enabled } : {}),
       }
 
       const result = item
@@ -598,6 +603,32 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
               <span className="text-sm font-medium">Show in Checkout Upsell</span>
             </label>
           </div>
+
+          {presellEnabled && (
+            <div className="border-t pt-4 mt-2 space-y-3">
+              <label
+                className="flex items-center gap-2 cursor-pointer"
+                title="Customers must pick one of the dates below when ordering this item"
+              >
+                <input
+                  type="checkbox"
+                  checked={formData.presell_enabled}
+                  onChange={(e) => setFormData({ ...formData, presell_enabled: e.target.checked })}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm font-medium">Pre-order (limited stock per date)</span>
+              </label>
+              {formData.presell_enabled && (
+                item ? (
+                  <PresellStockPanel tenantId={tenantId} tenantSlug={tenantSlug} menuItemId={item.id} />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Save the item first, then come back to set stock per date.
+                  </p>
+                )
+              )}
+            </div>
+          )}
 
           {menuEngineeringEnabled && (
             <>

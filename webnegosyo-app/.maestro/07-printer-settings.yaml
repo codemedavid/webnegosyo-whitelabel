@@ -1,0 +1,51 @@
+appId: com.webnegosyo.admin
+name: Printer settings - roles, transports, auto-print, receipt timing
+---
+# As a merchant, I want to pair a receipt printer and a kitchen printer and say
+# when each one fires, so that the counter gets a receipt and the pass gets a
+# ticket without anyone pressing print.
+- runFlow:
+    file: helpers/switch-view.yaml
+    env:
+      VIEW: Operations
+
+- tapOn: "Printer"
+- waitForAnimationToEnd
+- assertVisible: "Printer"
+- assertVisible: "Receipt and kitchen printers"
+
+# Pairing: both transports are offered, and discovery is reachable.
+- assertVisible: "Your Printers"
+- assertVisible: "Add a Printer"
+- assertVisible: "Bluetooth"
+- assertVisible: "Network"
+- assertVisible: "Scan for Printers"
+
+# Roles are explained, because which printer gets which job is the whole point
+# of the multi-printer model.
+- assertVisible: "Cashier printers print customer receipts. Kitchen printers print kitchen tickets."
+- assertVisible: "Both"
+
+# Kitchen auto-print is gated on a kitchen-role printer existing.
+- assertVisible: "Kitchen Auto-Print"
+- assertVisible: "Kitchen auto-print"
+- assertVisible: "Add a printer with the Kitchen role to enable auto-printing."
+
+# Receipt timing is a three-way choice that applies to the cashier receipt.
+- assertVisible: "When receipts print"
+- assertVisible: "Applies to the cashier receipt."
+- assertVisible: "Never"
+- assertVisible: "On bill out"
+- assertVisible: "On order confirmation"
+
+# The timing choice is selectable. This setting is stored on the device, so
+# exercising it does not change anything for the store; it is restored below.
+- tapOn: "On bill out"
+- waitForAnimationToEnd
+- assertVisible: "When receipts print"
+- tapOn: "On order confirmation"
+- waitForAnimationToEnd
+- assertVisible: "When receipts print"
+
+- tapOn: "Back"
+- waitForAnimationToEnd

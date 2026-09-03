@@ -22,6 +22,7 @@ export const TENANT_STOREFRONT_SELECT = `
   button_primary_color, button_primary_text_color, button_secondary_color, button_secondary_text_color,
   link_color, shadow_color, success_color, warning_color, error_color,
   is_active, menu_engineering_enabled, pairing_rules_enabled, hide_currency_symbol, bundles_enabled,
+  presell_enabled,
   modifier_groups_enabled, multi_branch_enabled, outlet_selection_timing,
   welcome_entry_mode, welcome_show_order_types, welcome_cta_text,
   welcome_heading_text, welcome_subheading_text, welcome_page_banners,

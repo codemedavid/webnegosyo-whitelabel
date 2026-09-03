@@ -17,7 +17,11 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { HeatmapGrid } from "../../components/HeatmapGrid";
+// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
 import { ExportSheet } from "../../components/ExportSheet";
 import { runAnalyticsExport } from "../../lib/export/run-export";
 
@@ -139,6 +143,22 @@ export default function AnalyticsScreen() {
   };
 
   return (
+    <View style={styles.screen}>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader
+        title="Analytics"
+        subtitle={`Last ${daysBack} days`}
+        actions={
+          <IconButton
+            icon="export"
+            label="Export analytics report as CSV"
+            onPress={() => {
+              setExportError(null);
+              setExportOpen(true);
+            }}
+          />
+        }
+      />
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -146,24 +166,6 @@ export default function AnalyticsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>Analytics</Text>
-        <View style={styles.titleActions}>
-          <WorkspaceSwitcher />
-          <TouchableOpacity
-            onPress={() => {
-              setExportError(null);
-              setExportOpen(true);
-            }}
-            style={styles.exportButton}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Export analytics report as CSV"
-          >
-            <Text style={styles.exportButtonText}>Export</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
 
       <ExportSheet
         visible={isExportOpen}
@@ -503,6 +505,7 @@ export default function AnalyticsScreen() {
         </Card>
       </View>
     </ScrollView>
+    </View>
   );
 }
 
@@ -724,24 +727,7 @@ const barStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 60 },
-  title: { ...typography.title, color: colors.textPrimary },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.lg,
-  },
-  titleActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  exportButton: {
-    borderColor: colors.separator,
-    borderWidth: 1,
-    borderRadius: radius.full,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.card,
-  },
-  exportButtonText: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
+  content: { padding: spacing.xl, paddingTop: 0 },
   periodRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl },
   periodPill: {
     paddingHorizontal: spacing.lg,

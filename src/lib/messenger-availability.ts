@@ -70,19 +70,23 @@ export function isMessengerRedirectEnabledForOrderType(
  * Label for the primary checkout CTA.
  *
  * An after-billing order type skips the payment-details step, so "Proceed to
- * Payment" would promise a step that never comes — label it as the final
- * submit it actually is.
+ * Payment" would promise a step that never comes — unless the chosen method
+ * requires a screenshot, in which case that step still opens.
  */
 export function resolveCheckoutCtaLabel({
   hasPaymentMethods,
   isMessengerEnabled,
   isAfterBillingPayment = false,
+  requiresPaymentProof = false,
 }: {
   hasPaymentMethods: boolean
   isMessengerEnabled: boolean
   isAfterBillingPayment?: boolean
+  requiresPaymentProof?: boolean
 }): string {
-  if (hasPaymentMethods && !isAfterBillingPayment) return CHECKOUT_CTA_LABEL.payment
+  if (hasPaymentMethods && (!isAfterBillingPayment || requiresPaymentProof)) {
+    return CHECKOUT_CTA_LABEL.payment
+  }
   return isMessengerEnabled ? CHECKOUT_CTA_LABEL.messenger : CHECKOUT_CTA_LABEL.complete
 }
 

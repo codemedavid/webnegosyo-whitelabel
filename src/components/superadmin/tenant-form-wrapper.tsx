@@ -110,6 +110,8 @@ interface TenantFormData {
   // Inventory alerts
   low_stock_alerts_enabled: boolean
   auto_86_enabled: boolean
+  // Presell per-date stock
+  presell_enabled: boolean
   // Pairing rules
   pairing_rules_enabled: boolean
   // Unified modifier groups (multi-select with min/max picks)
@@ -883,6 +885,21 @@ function InventoryFeatureSection({
             </p>
           </div>
         )}
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="presell_enabled">Enable Presell (per-date stock)</Label>
+            <p className="text-sm text-muted-foreground">
+              Lets the merchant allocate stock per calendar date on individual items. Customers
+              must pick an available date when ordering, and each date sells out independently.
+            </p>
+          </div>
+          <Switch
+            id="presell_enabled"
+            checked={formData.presell_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, presell_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
       </CardContent>
     </Card>
   )
@@ -1944,6 +1961,7 @@ export function TenantFormWrapper({
     outlet_selection_timing: tenant?.outlet_selection_timing === 'after' ? 'after' : 'before',
     low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
     auto_86_enabled: tenant?.auto_86_enabled ?? false,
+    presell_enabled: tenant?.presell_enabled ?? false,
     // Pairing rules
     pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
     // QR-handoff ordering
@@ -2034,6 +2052,7 @@ export function TenantFormWrapper({
       outlet_selection_timing: formData.outlet_selection_timing,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
       auto_86_enabled: formData.auto_86_enabled,
+      presell_enabled: formData.presell_enabled,
       // Pairing rules
       pairing_rules_enabled: formData.pairing_rules_enabled,
       // QR-handoff ordering

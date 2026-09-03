@@ -15,6 +15,8 @@ import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
 import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backend'
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
+import { findCartPresellDate } from '@/lib/presell/availability'
+import { presellAdvanceConfig, withPresellCustomerData, type PresellClaimRecord } from '@/lib/presell/checkout-schedule'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { computeOrderTotals } from '@/lib/order-totals'
@@ -175,6 +177,8 @@ export async function createOrderAction(
     bundleId?: string
     bundleName?: string
     slotName?: string
+    /** YYYY-MM-DD pickup date for a presell line (see src/lib/presell). */
+    presell_date?: string
   }>,
   customerInfo?: {
     name?: string
@@ -330,7 +334,12 @@ export async function createOrderAction(
           .eq('id', orderTypeId)
           .eq('tenant_id', tenantId)
           .maybeSingle()
-        const cfg = getAdvanceOrderConfig(otRow as Parameters<typeof getAdvanceOrderConfig>[0])
+        // A presell cart schedules against its allocated date, which may lie
+        // past the order type's horizon (or the type may never schedule at
+        // all). The same stretch the checkout hook applied is applied here.
+        const baseCfg = getAdvanceOrderConfig(otRow as Parameters<typeof getAdvanceOrderConfig>[0])
+        const cartPresellDate = findCartPresellDate(items)
+        const cfg = cartPresellDate ? presellAdvanceConfig(baseCfg, cartPresellDate, new Date()) : baseCfg
         const nowMs = Date.now()
         const minMs = nowMs + cfg.leadTimeMinutes * 60_000 - 5 * 60_000 // 5-min submit grace
         const maxMs = nowMs + (cfg.maxDaysAhead + 1) * 24 * 60 * 60_000 // generous horizon
@@ -389,6 +398,62 @@ export async function createOrderAction(
     // object when no branch resolved — see withOrderOutlet.
     effectiveCustomerData = withOrderOutlet(effectiveCustomerData, resolvedOutlet)
 
+    // ── Producible-quantity stock guard (authoritative; every order backend) ──
+    // The Loyverse check above, and auto-86, both only ever ask "is this dish
+    // above zero?" — which stays true right up until the order that empties the
+    // shelf is accepted in full. This asks the question a quantity stepper
+    // actually poses: can the kitchen make the number in this cart? Flour for
+    // two burgers has always accepted a cart of fifty until now.
+    //
+    // Deliberately placed AFTER the branch is resolved: which shelf this is
+    // judged against is the branch fulfilling the order, and that is settled
+    // above from the tenant's own outlets — never from the customer's payload.
+    // Silent on every failure path (inventory off, failed read, no recipe), so
+    // a tenant without inventory issues exactly the queries they issue today.
+    {
+      const { findCheckoutStockShortfallMessage } = await import(
+        '@/lib/inventory/checkout-stock-guard'
+      )
+      const shortfallMessage = await findCheckoutStockShortfallMessage(
+        tenantId,
+        items.map((item) => ({
+          menuItemId: item.menu_item_id,
+          quantity: item.quantity,
+        })),
+        resolvedOutlet?.id ?? null,
+      )
+      if (shortfallMessage) {
+        return { success: false, error: shortfallMessage }
+      }
+    }
+
+    // ── Presell claim (per-date stock) ──
+    // Reserved under a server-generated claim id BEFORE any order row exists,
+    // so an oversold cart is refused with nothing written. The claim rides in
+    // customer_data on every backend so a cancel can release it later. Any
+    // refusal below this point hands the stock back.
+    let presellClaim: PresellClaimRecord | null = null
+    {
+      const { claimPresellForOrder } = await import('@/lib/presell/order-claim')
+      const claimId = crypto.randomUUID()
+      const outcome = await claimPresellForOrder(supabaseAdmin, tenantId, claimId, items)
+      if (!outcome.ok) {
+        return { success: false, error: outcome.message }
+      }
+      if (outcome.lines.length > 0) {
+        const presellDate = findCartPresellDate(items) as string
+        presellClaim = { presellDate, claimId, lines: outcome.lines }
+        effectiveCustomerData = withPresellCustomerData(effectiveCustomerData, presellClaim)
+      }
+    }
+    const refuse = async (error: string): Promise<{ success: false; error: string }> => {
+      if (presellClaim) {
+        const { releasePresellForOrder } = await import('@/lib/presell/order-claim')
+        await releasePresellForOrder(supabaseAdmin, tenantId, presellClaim.claimId, presellClaim.lines)
+      }
+      return { success: false, error }
+    }
+
     // ── Server-side distance-based delivery fee (authoritative) ──
     // For tenants on the non-Lalamove distance path, recompute the fee from the
     // store↔customer straight-line distance + tenant config, and reject out-of-range
@@ -420,10 +485,10 @@ export async function createOrderAction(
         const destLat = Number(cd.delivery_lat)
         const destLng = Number(cd.delivery_lng)
         if (!Number.isFinite(storeLat) || !Number.isFinite(storeLng)) {
-          return { success: false, error: 'Delivery is unavailable: the store location has not been configured.' }
+          return await refuse('Delivery is unavailable: the store location has not been configured.')
         }
         if (!Number.isFinite(destLat) || !Number.isFinite(destLng)) {
-          return { success: false, error: 'Please select your delivery address from the suggestions so we can calculate the delivery fee.' }
+          return await refuse('Please select your delivery address from the suggestions so we can calculate the delivery fee.')
         }
         const quote = quoteDistanceDelivery(
           { lat: storeLat, lng: storeLng },
@@ -431,7 +496,7 @@ export async function createOrderAction(
           distanceCfg
         )
         if (!quote.withinRadius) {
-          return { success: false, error: `Sorry, this address is outside our delivery area (${distanceCfg.radiusKm} km).` }
+          return await refuse(`Sorry, this address is outside our delivery area (${distanceCfg.radiusKm} km).`)
         }
         effectiveDeliveryFee = quote.fee
       }
@@ -505,7 +570,7 @@ export async function createOrderAction(
       .in('id', menuItemIds)
 
     if (priceCheckError) {
-      return { success: false, error: 'Failed to verify item prices' }
+      return await refuse('Failed to verify item prices')
     }
 
     const storeItems = new Map(
@@ -527,7 +592,7 @@ export async function createOrderAction(
       // sells at the store-wide price", which on a failed query would charge one
       // branch's customers another branch's prices.
       if (overrideError) {
-        return { success: false, error: 'Failed to verify branch prices' }
+        return await refuse('Failed to verify branch prices')
       }
       branchOverrides = buildOutletMenuIndex(
         (overrideRows ?? []) as unknown as OutletMenuOverrideRow[]
@@ -545,7 +610,7 @@ export async function createOrderAction(
       )
 
       if (!result.ok) {
-        return { success: false, error: result.error }
+        return await refuse(result.error)
       }
 
       pricedItems.push({ ...item, price: result.price, subtotal: result.subtotal })

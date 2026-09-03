@@ -1,5 +1,7 @@
 'use client'
 
+import { formatPresellDateLabel } from '@/lib/presell/month-grid'
+
 /**
  * Branding-aware checkout building blocks.
  *
@@ -22,11 +24,13 @@ import {
 import { formatPrice } from '@/lib/cart-utils'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
+import { isPaymentProofRequired } from '@/lib/payment-proof'
 import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { VoucherField } from './voucher-field'
+import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
 
 const MapboxAddressAutocomplete = dynamic(
   () => import('@/components/shared/mapbox-address-autocomplete').then(mod => ({ default: mod.MapboxAddressAutocomplete })),
@@ -69,7 +73,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
     >
       {formFields.map((field) => {
         const fieldId = `${reactId}-${field.id}`
-        const fullWidth = field.field_type === 'textarea' || field.field_name === 'delivery_address'
+        const fullWidth = field.field_type === 'textarea' || isDeliveryAddressField(field)
         return (
           <div key={field.id} className={fullWidth && columns === 2 ? 'md:col-span-2' : ''}>
             <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -77,7 +81,7 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
               {field.is_required && <span className="text-red-500 ml-1">*</span>}
             </label>
 
-            {field.field_name === 'delivery_address' ? (
+            {isDeliveryAddressField(field) ? (
               <MapboxAddressAutocomplete
                 value={customerData[field.field_name] || ''}
                 onChange={(address, coordinates) => {
@@ -167,14 +171,14 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
               />
             )}
 
-            {field.field_name === 'delivery_address' && checkout.deliveryOutOfRange && (
+            {isDeliveryAddressField(field) && checkout.deliveryOutOfRange && (
               <p className="mt-1.5 text-sm font-medium text-red-600">
                 This address is outside the delivery area
                 {checkout.tenant?.delivery_radius_km ? ` (${checkout.tenant.delivery_radius_km} km)` : ''}.
                 {' '}Please choose a closer address or switch to pickup.
               </p>
             )}
-            {field.field_name === 'delivery_address' &&
+            {isDeliveryAddressField(field) &&
               !checkout.deliveryOutOfRange &&
               checkout.deliveryFee !== null &&
               checkout.deliveryDistanceKm !== null && (
@@ -296,6 +300,7 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
   const {
     advanceConfig, scheduleMode, setScheduleMode, scheduleDate, scheduleTime, setScheduleTime,
     scheduleDates, timeSlots, scheduledForLabel, selectedOrderTypeData, handleScheduleDateChange,
+    cartPresellDate,
   } = checkout
   const { accent, accentText, accentSoft } = useAccent(checkout)
 
@@ -332,10 +337,16 @@ export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutRetur
         <h3 className="text-base sm:text-lg font-bold text-gray-900">When would you like it?</h3>
       </div>
 
-      <div className={`grid gap-2.5 sm:gap-3 ${advanceConfig.allowAsap ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {advanceConfig.allowAsap && modeButton('asap', <Zap className="h-5 w-5" />, 'As soon as possible', 'Prepare my order now')}
-        {modeButton('scheduled', <CalendarClock className="h-5 w-5" />, 'Schedule for later', advanceConfig.allowAsap ? 'Pick a date & time' : 'Advance order required')}
-      </div>
+      {cartPresellDate ? (
+        <p className="rounded-xl border p-3 text-sm text-gray-700" style={{ borderColor: setAlpha(accent, 0.25), backgroundColor: setAlpha(accent, 0.04) }}>
+          Your cart has a pre-order for <span className="font-semibold">{formatPresellDateLabel(cartPresellDate)}</span>. Pick a pickup time below.
+        </p>
+      ) : (
+        <div className={`grid gap-2.5 sm:gap-3 ${advanceConfig.allowAsap ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {advanceConfig.allowAsap && modeButton('asap', <Zap className="h-5 w-5" />, 'As soon as possible', 'Prepare my order now')}
+          {modeButton('scheduled', <CalendarClock className="h-5 w-5" />, 'Schedule for later', advanceConfig.allowAsap ? 'Pick a date & time' : 'Advance order required')}
+        </div>
+      )}
 
       {scheduleMode === 'scheduled' && (
         <div className="mt-4 rounded-xl border p-3.5 sm:p-4" style={{ borderColor: setAlpha(accent, 0.25), backgroundColor: setAlpha(accent, 0.04) }}>
@@ -702,12 +713,14 @@ export function MinimumOrderNotice({
 }
 
 export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckoutReturn; className?: string }) {
-  const { paymentMethods, isProcessing, handleProceedToPayment, grandTotal, messengerEnabled, orderMinimum } = checkout
+  const { paymentMethods, selectedPaymentMethod, isProcessing, handleProceedToPayment, grandTotal, messengerEnabled, orderMinimum } = checkout
   const { accent, accentText, button } = useAccent(checkout)
+  const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod) ?? null
   const ctaLabel = resolveCheckoutCtaLabel({
     hasPaymentMethods: paymentMethods.length > 0,
     isMessengerEnabled: messengerEnabled,
     isAfterBillingPayment: isAfterBillingPaymentEnabled(checkout.selectedOrderTypeData),
+    requiresPaymentProof: isPaymentProofRequired(selectedMethod),
   })
 
   return (

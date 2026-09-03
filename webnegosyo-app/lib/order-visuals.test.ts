@@ -1,7 +1,10 @@
 import {
+  displayCustomerName,
+  GUEST_CUSTOMER_NAME,
   getInitials,
   getAvatarColor,
   getUrgency,
+  getScheduleAwareUrgency,
   getUrgencyColor,
   getOrderTypeMeta,
   getStatusMeta,
@@ -67,6 +70,29 @@ describe("getUrgency", () => {
   });
 });
 
+describe("getScheduleAwareUrgency", () => {
+  const now = 1_700_000_000_000;
+  const placedLongAgo = now - 60 * 60_000;
+
+  it("falls back to age-based urgency for ASAP orders", () => {
+    expect(getScheduleAwareUrgency(placedLongAgo, null, now)).toBe("urgent");
+    expect(getScheduleAwareUrgency(now - 2 * 60_000, null, now)).toBe("fresh");
+  });
+
+  it("keeps a pre-order for later calm no matter how old the ticket is", () => {
+    // Placed an hour ago, wanted three hours from now: not late, just booked.
+    expect(getScheduleAwareUrgency(placedLongAgo, now + 3 * 60 * 60_000, now)).toBe("fresh");
+  });
+
+  it("warms up as the requested moment approaches", () => {
+    expect(getScheduleAwareUrgency(placedLongAgo, now + 30 * 60_000, now)).toBe("warning");
+  });
+
+  it("goes urgent once the requested moment has passed", () => {
+    expect(getScheduleAwareUrgency(placedLongAgo, now - 60_000, now)).toBe("urgent");
+  });
+});
+
 describe("getUrgencyColor", () => {
   it("maps each urgency level to its token", () => {
     expect(getUrgencyColor("fresh")).toBe(colors.urgencyFresh);
@@ -128,5 +154,23 @@ describe("formatTimeAgo", () => {
     expect(formatTimeAgo(now - 5 * 60_000, now)).toBe("5m ago");
     expect(formatTimeAgo(now - 3 * 3_600_000, now)).toBe("3h ago");
     expect(formatTimeAgo(now - 2 * 86_400_000, now)).toBe("2d ago");
+  });
+});
+
+describe("displayCustomerName", () => {
+  // A web checkout whose name field was left empty writes `customer_name =
+  // NULL`; the platform adapter turns that into "" and the card rendered a
+  // blank identity row with a "?" avatar. Merchants need a word to call the
+  // order by, so every blank resolves to "Guest".
+  it("returns the trimmed name when one was captured", () => {
+    expect(displayCustomerName("  Maria Cruz ")).toBe("Maria Cruz");
+  });
+
+  it("falls back to Guest for null, undefined, empty, and whitespace", () => {
+    expect(displayCustomerName(null)).toBe(GUEST_CUSTOMER_NAME);
+    expect(displayCustomerName(undefined)).toBe(GUEST_CUSTOMER_NAME);
+    expect(displayCustomerName("")).toBe(GUEST_CUSTOMER_NAME);
+    expect(displayCustomerName("   ")).toBe(GUEST_CUSTOMER_NAME);
+    expect(GUEST_CUSTOMER_NAME).toBe("Guest");
   });
 });

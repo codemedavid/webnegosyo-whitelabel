@@ -89,7 +89,8 @@ describe("allowedWorkspaces", () => {
   it("drops views with no permitted tabs and filters tabs inside kept views", () => {
     const views = allowedWorkspaces(ordersOnly);
     expect(views.map((w) => w.key)).toEqual(["operations"]);
-    expect(views[0].tabs).toEqual(["dashboard", "orders"]);
+    // The scheduled agenda rides the same orders grant as the queue it re-sorts.
+    expect(views[0].tabs).toEqual(["dashboard", "orders", "scheduled"]);
   });
 
   it("gives a pos-only cashier the register view and nothing else", () => {

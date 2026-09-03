@@ -487,10 +487,61 @@ describe("runPlatformMutation — orders:createOrder", () => {
   });
 });
 
+describe("runPlatformMutation — prep time", () => {
+  it("is claimed by the allowlist AND served by the switch", async () => {
+    // Both halves matter. A ref in SUPPORTED_MUTATION_REFS with no case in the
+    // switch routes to the platform and then throws; a case with no allowlist
+    // entry never routes here at all.
+    expect(isPlatformRefSupported("orders:setPrepTime")).toBe(true);
+
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-1" }], error: null }] });
+
+    await runPlatformMutation(client, TENANT, "orders:setPrepTime", {
+      orderId: "order-1",
+      prepMinutes: 15,
+      promisedReadyAt: "2026-07-27T02:15:00.000Z",
+      status: "preparing",
+    });
+
+    expect(opsOf(calls, "update")[0]).toEqual([
+      {
+        prep_minutes: 15,
+        promised_ready_at: "2026-07-27T02:15:00.000Z",
+        status: "preparing",
+      },
+    ]);
+    expect(opsOf(calls, "eq")).toContainEqual(["id", "order-1"]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+
+  it("refuses a prep time for an order outside the caller's branch", async () => {
+    // Same guard every other write here carries: a branch-scoped account must
+    // not be able to re-time another branch's ticket.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformMutation(
+        client,
+        TENANT,
+        "orders:setPrepTime",
+        {
+          orderId: "order-1",
+          prepMinutes: 15,
+          promisedReadyAt: "2026-07-27T02:15:00.000Z",
+          status: "preparing",
+        },
+        { kind: "branch", outletId: "outlet-9" }
+      )
+    ).rejects.toThrow();
+
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-9"]);
+  });
+});
+
 describe("runPlatformMutation — status updates", () => {
   it("advances an order's status within the caller's tenant", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-1" }], error: null }] });
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
@@ -506,7 +557,7 @@ describe("runPlatformMutation — status updates", () => {
 
   it("records a payment status change", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-1" }], error: null }] });
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updatePaymentStatus", {
@@ -745,7 +796,7 @@ describe("branch-scoped writes", () => {
 
   it("narrows a status patch to the account's branch", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-9" }], error: null }] });
 
     // Act
     await runPlatformMutation(
@@ -762,7 +813,7 @@ describe("branch-scoped writes", () => {
 
   it("narrows a payment-status patch to the account's branch", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-9" }], error: null }] });
 
     // Act
     await runPlatformMutation(
@@ -780,7 +831,7 @@ describe("branch-scoped writes", () => {
   it("refuses to revise an order outside the account's branch", async () => {
     // Arrange: the revise path reads the order first, so an out-of-branch order
     // comes back as absent under the same filter the reads use.
-    const { client } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client } = fakeClient({ orders: [{ data: [{ id: "order-9" }], error: null }] });
 
     // Act + Assert
     await expect(
@@ -796,7 +847,9 @@ describe("branch-scoped writes", () => {
 
   it("adds no branch filter to a store-wide account's patch", async () => {
     // Arrange
-    const { client, calls } = fakeClient({ orders: [{ data: null, error: null }] });
+    const { client, calls } = fakeClient({
+      orders: [{ data: [{ id: "order-9" }], error: null }],
+    });
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
@@ -819,5 +872,77 @@ describe("tenant guard", () => {
     await expect(runPlatformQuery(client, "", "orders:getOrders", {})).rejects.toThrow(
       /tenant/i
     );
+  });
+});
+
+describe("runPlatformQuery — getAllOrderItems ordering", () => {
+  /**
+   * The read is capped at STATS_LIMIT rows. Without an explicit ordering the
+   * database chooses which rows survive the cap — and past 10,000 line items it
+   * is the NEWEST orders' items that silently vanish from the kitchen board and
+   * product analytics. Newest-parent-first makes the cap drop history instead.
+   */
+  it("orders items newest-parent-first before applying the cap", async () => {
+    const { client, calls } = fakeClient({ order_items: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {});
+
+    expect(opsOf(calls, "order")).toContainEqual([
+      "orders(created_at)",
+      { ascending: false },
+    ]);
+    expect(opsOf(calls, "limit").length).toBeGreaterThan(0);
+  });
+});
+
+describe("runPlatformMutation — silent no-op writes", () => {
+  /**
+   * An UPDATE that matches no row (RLS refusal, out-of-branch order, deleted
+   * order) used to resolve as success — the cashier saw the tap "work" while
+   * nothing was written. The write must read back what it touched and refuse
+   * loudly when that is nothing.
+   */
+  it("throws when a status update matched no row instead of claiming success", async () => {
+    const { client } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+        orderId: "order-gone",
+        status: "preparing",
+      })
+    ).rejects.toThrow(/no longer|not found|matched no/i);
+  });
+
+  it("throws when a payment-status update matched no row", async () => {
+    const { client } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:updatePaymentStatus", {
+        orderId: "order-gone",
+        paymentStatus: "paid",
+      })
+    ).rejects.toThrow(/no longer|not found|matched no/i);
+  });
+});
+
+describe("runPlatformQuery — period stats input validation", () => {
+  /**
+   * `Number(undefined)` is NaN, and `new Date(NaN).toISOString()` throws a bare
+   * RangeError("Invalid time value") — a crash with no clue which screen sent
+   * it. A malformed period must be refused with a message a human can act on.
+   */
+  it("rejects a period query with a missing or malformed date range", async () => {
+    const { client } = fakeClient({});
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getDashboardStatsByPeriod", {})
+    ).rejects.toThrow(/date range/i);
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getDashboardStatsByPeriod", {
+        startDate: "yesterday-ish",
+        endDate: 2,
+      })
+    ).rejects.toThrow(/date range/i);
   });
 });

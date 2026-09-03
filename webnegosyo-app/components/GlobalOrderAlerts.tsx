@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../lib/hooks";
 import { useAuthStore } from "../stores/auth-store";
@@ -6,10 +7,15 @@ import { shouldAlertOnNewOrders, type AlertableOrder } from "../lib/order-alerts
 import { selectIncomingOrders, type RealtimeQueue } from "../lib/pos-incoming";
 import { filterOrdersToScope } from "../lib/branch-scope";
 import { useBranchScope } from "../lib/use-branch-scope";
+import { syncScheduledOrderReminders } from "../lib/scheduled-reminder-alerts";
+import type { ReminderOrderLike } from "../lib/scheduled-reminders";
 
 // TODO: Replace double assertion with a generated Convex function reference once
 // codegen is wired into the mobile app (same workaround used across the screens).
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
+
+/** Every status the realtime queue carries — a pre-order can sit in any of them. */
+const QUEUE_STATUSES = ["pending", "confirmed", "preparing", "ready"] as const;
 
 /**
  * App-wide new-order ringtone host. Mounted once in the (main) tab layout so a
@@ -22,6 +28,11 @@ const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionRefe
  * order, so mounting this at layout time touches no native audio code on the
  * post-login path. Gated to a real, live merchant session — never the read-only
  * demo, which must stay silent.
+ *
+ * The same queue drives the pre-order reminders: this is the one place already
+ * watching every live order on every tab, so it hands the scheduled ones to
+ * the local-notification planner as they change. Behind the same gate — the
+ * demo must not schedule reminders for a real store's pre-orders.
  */
 export function GlobalOrderAlerts() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
@@ -32,7 +43,18 @@ export function GlobalOrderAlerts() {
   // Called before the early return below so the hook order stays stable.
   const scope = useBranchScope();
 
-  if (!shouldAlertOnNewOrders({ convexUrl, orderBackend, isDemo })) return null;
+  const isAlertable = shouldAlertOnNewOrders({ convexUrl, orderBackend, isDemo });
+
+  useEffect(() => {
+    if (!isAlertable || !queue) return;
+    // A branch account only reminds for its own branch, same as the ringtone.
+    const active = QUEUE_STATUSES.flatMap((status) => [
+      ...filterOrdersToScope(scope, queue[status]),
+    ]) as ReminderOrderLike[];
+    void syncScheduledOrderReminders(active);
+  }, [isAlertable, queue, scope]);
+
+  if (!isAlertable) return null;
 
   // Still pending-only — an order the kitchen has already confirmed is not news.
   // Routed through the shared selector so a sale rung up at the register can

@@ -385,8 +385,8 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
     showPaymentDetails, selectedPaymentMethod, paymentMethods, total, deliveryFee,
-    deliveryFeeAddress, customerData, grandTotal,
-    serviceChargeAmount, isProcessing, handleCheckout, setShowPaymentDetails,
+    deliveryFeeAddress, customerData, grandTotal, tenant,
+    serviceChargeAmount, isProcessing, handleCheckout, handleQrHandoff, setShowPaymentDetails,
     handleCopyText, copiedText,
     paymentProofUrl, paymentProofReference, setPaymentProofReference,
     handlePaymentProofUploaded, handleRemovePaymentProof, messengerEnabled,
@@ -400,9 +400,10 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
     screenshotUrl: paymentProofUrl,
     reference: paymentProofReference,
   })
+  const isQrHandoff = !!tenant?.qr_handoff_enabled
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-100 rounded-full mb-4">
@@ -479,6 +480,19 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
             </div>
           )}
 
+          {/* Required proof sits right after the QR/instructions so a phone
+              does not have to scroll past the order summary to find it. */}
+          {proofRequired && (
+            <PaymentProofField
+              required={proofRequired}
+              screenshotUrl={paymentProofUrl}
+              reference={paymentProofReference}
+              onUploaded={handlePaymentProofUploaded}
+              onRemove={handleRemovePaymentProof}
+              onReferenceChange={setPaymentProofReference}
+            />
+          )}
+
           {/* Order Summary */}
           <div className="bg-gray-50 rounded-xl p-6">
             <h4 className="font-semibold text-gray-900 mb-4">Order Summary</h4>
@@ -509,15 +523,17 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
             </div>
           </div>
 
-          {/* Payment Proof (screenshot and/or reference number) */}
-          <PaymentProofField
-            required={proofRequired}
-            screenshotUrl={paymentProofUrl}
-            reference={paymentProofReference}
-            onUploaded={handlePaymentProofUploaded}
-            onRemove={handleRemovePaymentProof}
-            onReferenceChange={setPaymentProofReference}
-          />
+          {/* Optional proof stays after the summary so it does not crowd the pay step. */}
+          {!proofRequired && (
+            <PaymentProofField
+              required={proofRequired}
+              screenshotUrl={paymentProofUrl}
+              reference={paymentProofReference}
+              onUploaded={handlePaymentProofUploaded}
+              onRemove={handleRemovePaymentProof}
+              onReferenceChange={setPaymentProofReference}
+            />
+          )}
 
           {/* Important Note */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -530,9 +546,11 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
               <div className="flex-1 text-sm text-blue-800">
                 <p className="font-medium mb-1">Next Step:</p>
                 <p>
-                  {messengerEnabled
-                    ? 'After completing payment, click the button below to send your order confirmation to the restaurant via Messenger.'
-                    : 'After completing payment, click the button below to submit your order to the restaurant.'}
+                  {isQrHandoff
+                    ? 'After completing payment, click the button below to generate your order QR for the cashier.'
+                    : messengerEnabled
+                      ? 'After completing payment, click the button below to send your order confirmation to the restaurant via Messenger.'
+                      : 'After completing payment, click the button below to submit your order to the restaurant.'}
                 </p>
               </div>
             </div>
@@ -551,7 +569,7 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
             </Button>
             <Button
               size="lg"
-              onClick={handleCheckout}
+              onClick={isQrHandoff ? handleQrHandoff : handleCheckout}
               disabled={isProcessing || (proofRequired && !proofSatisfied)}
               className="flex-1 bg-orange-500 hover:bg-orange-600"
             >
@@ -562,8 +580,10 @@ export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn
                 </>
               ) : (
                 <>
-                  {messengerEnabled ? <MessageCircle className="h-5 w-5 mr-2" /> : <CheckCircle2 className="h-5 w-5 mr-2" />}
-                  {resolveFinalSubmitLabel({ isMessengerEnabled: messengerEnabled })}
+                  {isQrHandoff || !messengerEnabled
+                    ? <CheckCircle2 className="h-5 w-5 mr-2" />
+                    : <MessageCircle className="h-5 w-5 mr-2" />}
+                  {resolveFinalSubmitLabel({ isMessengerEnabled: !isQrHandoff && messengerEnabled })}
                 </>
               )}
             </Button>
@@ -582,7 +602,7 @@ export function QrCodeDialog({ checkout }: { checkout: UseCheckoutReturn }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
       onClick={() => setQrDialogOpen(false)}
     >
       <div

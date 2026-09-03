@@ -15,6 +15,8 @@ import {
   normalizePaymentAmount,
   netAmountPaid,
   mergeOrderDiscount,
+  revisedDeliveryFeePatch,
+  revisedServiceChargePatch,
 } from "./orderRevise";
 
 // --- MUTATIONS ---
@@ -39,6 +41,10 @@ export const createOrder = mutation({
     paymentMethod: v.optional(v.string()),
     paymentMethodDetails: v.optional(v.string()),
     deliveryFee: v.optional(v.number()),
+    // What the order type levied for service, already inside `total`. Spread
+    // into the insert with the rest of `orderData`, so accepting it here is
+    // what persists it — see the schema comment for why it is stored at all.
+    serviceCharge: v.optional(v.number()),
     deliveryAddress: v.optional(v.string()),
     deliveryLatitude: v.optional(v.number()),
     deliveryLongitude: v.optional(v.number()),
@@ -77,6 +83,7 @@ export const createOrder = mutation({
         bundleId: v.optional(v.string()),
         bundleName: v.optional(v.string()),
         slotName: v.optional(v.string()),
+        presellDate: v.optional(v.string()),
       })
     ),
   },
@@ -158,6 +165,83 @@ export const updateOrderStatus = mutation({
   },
 });
 
+/**
+ * Record the kitchen's prep-time promise.
+ *
+ * Writes both halves in one transaction together with the status move: a chef
+ * committing to a time IS the chef starting the order, so a `confirmed` ticket
+ * becomes `preparing` on the same tap. Splitting these would leave tickets
+ * carrying a promise with a stale status if the second call failed.
+ *
+ * Bounds are enforced here as well as on the client because this is the
+ * transaction boundary, and because the value ends up on a stranger's phone.
+ */
+export const setPrepTime = mutation({
+  args: {
+    orderId: v.id("orders"),
+    prepMinutes: v.number(),
+    promisedReadyAt: v.string(),
+    status: v.union(v.literal("preparing"), v.literal("confirmed")),
+  },
+  handler: async (ctx, args) => {
+    if (
+      !Number.isInteger(args.prepMinutes) ||
+      args.prepMinutes < 1 ||
+      args.prepMinutes > 240
+    ) {
+      throw new Error("Prep time must be a whole number of minutes between 1 and 240.");
+    }
+    if (Number.isNaN(Date.parse(args.promisedReadyAt))) {
+      throw new Error("Promised ready time is not a valid timestamp.");
+    }
+
+    await ctx.db.patch(args.orderId, {
+      prepMinutes: args.prepMinutes,
+      promisedReadyAt: args.promisedReadyAt,
+      status: args.status,
+    });
+    return args.orderId;
+  },
+});
+
+/**
+ * Attach a contact to an order after the fact (receipt-QR capture).
+ *
+ * Authorized upstream by the order's HMAC tracking token, which is printed on
+ * paper anyone can photograph — so this is strictly once-only: it fills a
+ * blank/placeholder contact and never overwrites a real one. The guard lives
+ * here as well as on the web server because Convex is the transaction
+ * boundary; two concurrent submissions cannot both land.
+ */
+export const updateCustomerContact = mutation({
+  args: {
+    orderId: v.id("orders"),
+    contact: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Order not found");
+
+    const existing = (order.customerContact ?? "").trim().toLowerCase();
+    const placeholders = ["", "n/a", "na", "-", "none", "walk-in"];
+    if (!placeholders.includes(existing)) {
+      throw new Error("Contact already set");
+    }
+
+    const contact = args.contact.trim();
+    if (contact.length < 3 || contact.length > 64) {
+      throw new Error("Invalid contact");
+    }
+
+    await ctx.db.patch(args.orderId, {
+      customerContact: contact,
+      ...(args.name ? { customerName: args.name.trim().slice(0, 64) } : {}),
+    });
+    return args.orderId;
+  },
+});
+
 export const updatePaymentStatus = mutation({
   args: {
     orderId: v.id("orders"),
@@ -187,6 +271,15 @@ export const reviseOrder = mutation({
     items: v.array(v.any()),
     deliveryFee: v.optional(v.number()),
     serviceChargeAmount: v.optional(v.number()),
+    /**
+     * The NAMED service charge, stored so the row can be captioned.
+     *
+     * Distinct from `serviceChargeAmount` above, which is this mutation's
+     * single money channel and also carries the discount and any rounding
+     * residue. The total is built from that one alone; adding this as well
+     * would bill the service twice.
+     */
+    serviceCharge: v.optional(v.number()),
     reason: v.optional(v.string()),
     revisedBy: v.optional(v.string()),
     outletId: v.optional(v.string()),
@@ -243,6 +336,10 @@ export const reviseOrder = mutation({
 
     await ctx.db.patch(args.orderId, {
       total,
+      // The fee the total above was computed with — see revisedDeliveryFeePatch.
+      ...revisedDeliveryFeePatch(args.deliveryFee),
+      // The named charge, recorded but NOT totalled from — see the arg comment.
+      ...revisedServiceChargePatch(args.serviceCharge),
       itemCount: countRevisedItems(priced),
       revisionNumber,
       editedAt: args.editedAt,

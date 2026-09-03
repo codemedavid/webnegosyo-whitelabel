@@ -30,6 +30,7 @@ import {
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
 import { staleBackendMessage } from "../../lib/stale-backend";
+import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
 import { posOutletContext } from "../../lib/order-outlet";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
@@ -62,12 +63,30 @@ export default function PosTenderScreen() {
   const outletName = useAuthStore((s) => s.outletName);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
+  const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
+
+  /**
+   * The `serviceCharge` argument to send with an order write, if any.
+   *
+   * The platform backend has a real column and takes it whatever the version;
+   * only Convex validates its arguments strictly, so only Convex is gated.
+   */
+  const serviceChargeArg = useCallback(
+    (amount: number | undefined) =>
+      orderBackend === "supabase"
+        ? amount && amount > 0
+          ? { serviceCharge: amount }
+          : {}
+        : convexServiceChargeArg(amount, convexSchemaVersion),
+    [orderBackend, convexSchemaVersion],
+  );
   const hasOrderBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
 
   const lines = usePosCartStore((s) => s.lines);
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
   const orderTypeName = usePosCartStore((s) => s.orderTypeName);
   const serviceCharge = usePosCartStore((s) => s.serviceCharge);
+  const delivery = usePosCartStore((s) => s.delivery);
   const customerName = usePosCartStore((s) => s.customerName);
   const setCustomerName = usePosCartStore((s) => s.setCustomerName);
   const attachedCustomer = usePosCartStore((s) => s.attachedCustomer);
@@ -124,8 +143,11 @@ export default function PosTenderScreen() {
 
   const totals = useMemo(
     () => usePosCartStore.getState().totals(),
+    // `delivery` belongs here: backing out to attach a fee and returning moves
+    // no line, and a stale total would show an amount due the charge then
+    // refuses as insufficient.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge],
+    [lines, serviceCharge, delivery],
   );
 
   // Editing a placed order: what it is now worth, and what still has to move.
@@ -261,6 +283,14 @@ export default function PosTenderScreen() {
         deliveryFee: editContext.deliveryFee,
         // The only channel the mutation offers for the rest of the bill.
         serviceChargeAmount: saved.carriedChargesForSave,
+        // The NAMED charge, so the next reader can caption the row instead of
+        // finding an unexplained gap. A record only — the money above already
+        // includes it, and sending it as a second addend would bill twice.
+        //
+        // Version-gated on Convex: a deployment below v23 rejects the whole
+        // mutation over the unknown field, so an ungated send would stop every
+        // un-redeployed store from saving an edit at all.
+        ...serviceChargeArg(editContext.serviceCharge),
         reason: editReason.trim() || undefined,
         revisedBy: userId ?? undefined,
         editedAt: new Date().toISOString(),
@@ -391,13 +421,19 @@ export default function PosTenderScreen() {
         // Priced from the cart as it stands at the moment of tender, not from
         // whatever was showing when the code was typed.
         discounts: discountLines,
+        // Read at tender time for the same reason as the discount lines: the
+        // fee the customer is charged is whatever the sale holds NOW.
+        delivery: usePosCartStore.getState().delivery,
         // A counter sale belongs to the till that rang it, so the branch on
         // the session is stamped onto the order. Null for a single-location
         // register, which stamps nothing.
         outlet: posOutletContext(outletId, outletName),
       });
 
-      const orderId = await createOrder(args);
+      // `buildPosOrder` reports the charge unconditionally; the gate decides
+      // whether this particular deployment can be told about it.
+      const { serviceCharge: builtCharge, ...rest } = args;
+      const orderId = await createOrder({ ...rest, ...serviceChargeArg(builtCharge) });
 
       // Counter sales are settled at the drawer, so they are paid on creation.
       // A failure here must not lose the sale — the order already exists.
@@ -407,60 +443,60 @@ export default function PosTenderScreen() {
         console.warn("[pos] Could not mark the sale paid:", err);
       }
 
-      // Spend the sale's ingredients. The order lives in Convex, so it never
-      // passes through the web app's createOrderAction where depletion is
-      // wired — this is the register's way into that same path. Never throws.
+      // Everything the sale owes the platform, reported TOGETHER rather than
+      // one after another. None of them can throw and none depends on
+      // another's answer, so run in sequence they only add up their deadlines —
+      // and a cashier watching four of those in a row reads the spinner as the
+      // register having hung again.
       if (tenantId) {
-        await notifyPosStockDepletion(
-          tenantId,
-          String(orderId),
-          buildPosStockItems(lines),
-        );
+        await Promise.all([
+          // Spend the sale's ingredients. The order lives in Convex, so it
+          // never passes through the web app's createOrderAction where
+          // depletion is wired — this is the register's way into that path.
+          notifyPosStockDepletion(
+            tenantId,
+            String(orderId),
+            buildPosStockItems(lines),
+          ),
 
-        // Record the counter sale in Loyverse as a completed receipt. Fires
-        // once per tender; the server no-ops for non-Loyverse tenants. Never
-        // throws — a missing back-office receipt must not fail a paid sale.
-        await notifyLoyversePosSale(
-          tenantId,
-          String(orderId).slice(-6).toUpperCase(),
-          posLinesToLoyverseOrderLines(lines),
-        );
+          // Record the counter sale in Loyverse as a completed receipt. Fires
+          // once per tender; the server no-ops for non-Loyverse tenants. A
+          // missing back-office receipt must not fail a paid sale.
+          notifyLoyversePosSale(
+            tenantId,
+            String(orderId).slice(-6).toUpperCase(),
+            posLinesToLoyverseOrderLines(lines),
+          ),
 
-        // Burn what this sale used. The register cannot call redeem_voucher()
-        // itself — it is service_role only — so this goes through the web app
-        // on the cashier's own token. Never throws: the customer has already
-        // paid, and the burn is keyed on the order id so a retry is a no-op.
-        await burnPosRedemptions(
-          tenantId,
-          String(orderId),
-          discountLines,
-          outletId,
-        );
-      }
+          // Burn what this sale used. The register cannot call redeem_voucher()
+          // itself — it is service_role only — so this goes through the web app
+          // on the cashier's own token. The customer has already paid, and the
+          // burn is keyed on the order id so a retry is a no-op.
+          burnPosRedemptions(tenantId, String(orderId), discountLines, outletId),
 
-      // Roll the sale into its guest's profile. Same reasoning as depletion
-      // above: counter sales reach none of the web app's order actions, which
-      // are the only places customer capture is wired, so without this a POS
-      // sale is invisible to the Regulars list. Skips itself for an anonymous
-      // walk-in, and never throws.
-      if (tenantId) {
-        await notifyCustomerCapture(tenantId, {
-          backend: resolveOrderBackend({
-            order_backend: orderBackend,
-            convex_deployment_url: convexUrl,
+          // Roll the sale into its guest's profile. Same reasoning as depletion:
+          // counter sales reach none of the web app's order actions, which are
+          // the only places customer capture is wired, so without this a POS
+          // sale is invisible to the Regulars list. Skips itself for an
+          // anonymous walk-in.
+          notifyCustomerCapture(tenantId, {
+            backend: resolveOrderBackend({
+              order_backend: orderBackend,
+              convex_deployment_url: convexUrl,
+            }),
+            orderId: String(orderId),
+            name: args.customerName,
+            contact: args.customerContact,
+            customerData: args.customerData,
+            total: args.total,
+            createdAt: new Date().toISOString(),
+            channel: args.orderType ?? null,
+            items: lines.map((line) => ({
+              name: line.name,
+              quantity: line.quantity,
+            })),
           }),
-          orderId: String(orderId),
-          name: args.customerName,
-          contact: args.customerContact,
-          customerData: args.customerData,
-          total: args.total,
-          createdAt: new Date().toISOString(),
-          channel: args.orderType ?? null,
-          items: lines.map((line) => ({
-            name: line.name,
-            quantity: line.quantity,
-          })),
-        });
+        ]);
       }
 
       // A settled counter sale IS the bill-out moment, so it obeys the same

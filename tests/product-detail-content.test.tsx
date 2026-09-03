@@ -4,6 +4,7 @@
 
 import React from 'react'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProductDetailContent } from '@/components/customer/product-detail-content'
 import type { MenuItem, Category } from '@/types/database'
 import type { SelectedTenant } from '@/lib/product-detail-data'
@@ -23,7 +24,10 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/hooks/useCart', () => ({
     useCart: () => ({
         addItem: jest.fn(),
-        setTenantContext: jest.fn()
+        setTenantContext: jest.fn(),
+        // The real hook always returns a list; a mock that omits it would let
+        // the component pass here while crashing on a live storefront.
+        items: []
     })
 }))
 
@@ -207,10 +211,23 @@ describe('ProductDetailContent', () => {
         updated_at: ''
     }
 
+
+/**
+ * The storefront lives under the root layout's QueryProvider, so anything it
+ * renders may use React Query. Rendering it bare here would only ever prove
+ * that the test harness differs from production.
+ */
+const renderWithQuery = (ui: React.ReactElement) =>
+    render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+            {ui}
+        </QueryClientProvider>,
+    )
+
     it('should render basic item information', () => {
         const item = createMockItem()
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -233,7 +250,7 @@ describe('ProductDetailContent', () => {
             ]
         })
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -257,7 +274,7 @@ describe('ProductDetailContent', () => {
             ]
         })
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -277,7 +294,7 @@ describe('ProductDetailContent', () => {
             { id: 'item-3', name: 'Related Item 2', price: 20, image_url: '', category_id: 'cat-1', tenant_id: 'tenant-1', is_available: true, description: '', variations: [], addons: [], order: 0, created_at: '', updated_at: '' }
         ]
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -307,7 +324,7 @@ describe('ProductDetailContent', () => {
             ]
         })
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -327,7 +344,7 @@ describe('ProductDetailContent', () => {
     it('should render breadcrumbs with category', () => {
         const item = createMockItem()
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -349,7 +366,7 @@ describe('ProductDetailContent', () => {
         }
         const item = createMockItem()
 
-        const { container } = render(
+        const { container } = renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -369,7 +386,7 @@ describe('ProductDetailContent', () => {
             description: 'Warm chocolate drink topped with marshmallows'
         })
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}
@@ -386,7 +403,7 @@ describe('ProductDetailContent', () => {
             description: 'Crispy chicken wings tossed in hot sauce'
         })
 
-        render(
+        renderWithQuery(
             <ProductDetailContent
                 tenant={mockTenant}
                 item={item}

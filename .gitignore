@@ -3,6 +3,9 @@
 # Brainstorming mockups
 .superpowers/
 
+# Isolated agent development worktrees
+/.worktrees/
+
 # dependencies
 /node_modules
 /convex-template/node_modules

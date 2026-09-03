@@ -17,8 +17,14 @@ import {
   FileText,
   ShoppingBag,
   CalendarClock,
-  Store
+  Store,
+  Printer
 } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { getReceiptContext } from '@/app/actions/receipt'
+import { buildAdminReceiptText, openReceiptPrintWindow } from '@/lib/receipt-web'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +41,7 @@ import { OrderStatusManagement } from '@/components/admin/order-status-managemen
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { getOrderOutletLabel } from '@/lib/outlets/order-outlet-display'
 import type { OrderWithItems } from '@/lib/orders-service'
+import { displayCustomerName } from '@/lib/order-display-name'
 
 // Lazy-load LalamoveDeliveryPanel since it's only shown conditionally
 const LalamoveDeliveryPanel = dynamic(
@@ -98,6 +105,30 @@ function getOrderTypeConfig(orderType: string | undefined | null) {
 }
 
 export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: OrderDetailDialogProps) {
+  const [isPrintingReceipt, setIsPrintingReceipt] = useState(false)
+
+  // Browser print of the same block layout the thermal printer uses. The
+  // tenant's layout + name are fetched on click so the published layout, not
+  // a page-load snapshot, is what prints.
+  const handlePrintReceipt = async () => {
+    setIsPrintingReceipt(true)
+    try {
+      const context = await getReceiptContext(tenantId)
+      const text = buildAdminReceiptText(
+        order,
+        context?.storeName ?? tenantSlug,
+        context?.receiptLayout ?? null,
+      )
+      if (!openReceiptPrintWindow(text)) {
+        toast.error('Allow pop-ups to print the receipt')
+      }
+    } catch {
+      toast.error('Could not prepare the receipt')
+    } finally {
+      setIsPrintingReceipt(false)
+    }
+  }
+
   const orderTypeConfig = getOrderTypeConfig(order.order_type)
   const currentStatus = statusConfig[order.status]
   const StatusIcon = currentStatus.icon
@@ -134,6 +165,17 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                   </span>
                 </DialogDescription>
               </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={handlePrintReceipt}
+                disabled={isPrintingReceipt}
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                {isPrintingReceipt ? 'Preparing…' : 'Print receipt'}
+              </Button>
 
               {/* Order Type Badge */}
               {orderTypeConfig && (
@@ -289,15 +331,13 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                   <div className="grid md:grid-cols-2 gap-6">
                     {/* Basic Info */}
                     <div className="space-y-4">
-                      {order.customer_name && (
-                        <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
-                          <User className="h-5 w-5 text-muted-foreground mt-0.5" />
-                          <div>
-                            <div className="text-sm text-muted-foreground mb-1">Name</div>
-                            <div className="font-medium">{order.customer_name}</div>
-                          </div>
+                      <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
+                        <User className="h-5 w-5 text-muted-foreground mt-0.5" />
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1">Name</div>
+                          <div className="font-medium">{displayCustomerName(order.customer_name)}</div>
                         </div>
-                      )}
+                      </div>
 
                       {order.customer_contact && (
                         <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">

@@ -1,17 +1,21 @@
 import { Tabs, router, type ErrorBoundaryProps } from "expo-router";
-import { colors } from "../../theme/colors";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, spacing } from "../../theme/colors";
 import { TabIcon } from "../../components/Icon";
 import { CrashFallback } from "../../components/CrashFallback";
 import { useAuthStore } from "../../stores/auth-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
-import { isTabInWorkspace } from "../../lib/workspaces";
-import { isTabAllowed } from "../../lib/staff-permissions";
-import { activeWorkspace, isBusinessTabVisible } from "../../lib/portfolio-landing";
+import { isTabOnBar } from "../../lib/tab-visibility";
+import { tabLabel } from "../../lib/workspace-presentation";
+import { useAdvanceOrdering } from "../../lib/use-advance-ordering";
+import { activeWorkspace } from "../../lib/portfolio-landing";
 import { usePortfolioAudience } from "../../lib/use-portfolio-audience";
 import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
+import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
+import { WhatsNewPopup } from "../../components/WhatsNewPopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
 
 /**
@@ -40,6 +44,9 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   );
 }
 
+/** Icon + label rows of the bar, before the home-indicator inset is added. */
+const TAB_BAR_CONTENT_HEIGHT = 56;
+
 export default function MainLayout() {
   // The app is split into focused views (Operations / Insights / Products).
   // Only the active view's tabs are visible; the rest keep href: null so
@@ -59,25 +66,35 @@ export default function MainLayout() {
   // what this account may actually see — otherwise a persisted "business"
   // leaves a branch manager with an empty tab bar.
   const workspace = activeWorkspace(storedWorkspace, caller, audience);
-  // Three gates: the active view owns the tab, the account's staff grants
-  // permit it, and — for the Business tabs — the account runs the store rather
-  // than one branch. A registered tab is reachable even when the switcher
-  // never named its view, so the branch rule has to be asked here too.
-  const show = (tab: string) =>
-    isTabInWorkspace(tab, workspace) &&
-    isTabAllowed(caller, tab) &&
-    isBusinessTabVisible(tab, audience)
-      ? undefined
-      : null;
+  // The Scheduled tab exists only for stores that take pre-orders at all —
+  // gated on config rather than data so it never flickers with the order list.
+  const takesAdvanceOrders = useAdvanceOrdering();
+  // Four gates, answered in one place (lib/tab-visibility.ts) so the Menu hub
+  // lists exactly the screens the bar would show: the active view owns the
+  // tab, the account's staff grants permit it, the Business tabs need a store
+  // that runs several branches, and Scheduled needs a store that takes
+  // pre-orders. A registered tab is reachable even when the switcher never
+  // named its view, so every rule has to be asked here, not just in the
+  // switcher. The Menu hub itself is always on the bar.
+  const ctx = { caller, audience, takesAdvanceOrders };
+  const show = (tab: string) => (isTabOnBar(tab, workspace, ctx) ? undefined : null);
+  // The bar sits on the home-indicator inset rather than a fixed 85pt guess
+  // that was too tall on Android and too short on some iPhones.
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, spacing.sm);
 
   return (
     <>
       {/* App-wide new-order ringtone — active on every tab, not just Dashboard. */}
       <GlobalOrderAlerts />
+      {/* Auto-prints kitchen chits on new orders, whichever tab is open. */}
+      <GlobalKitchenAutoPrint />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}
       <BranchContextBar />
+      {/* Greets a signed-in merchant with the newest unread platform post. */}
+      <WhatsNewPopup />
       <Tabs
       screenOptions={{
         headerShown: false,
@@ -85,12 +102,14 @@ export default function MainLayout() {
           backgroundColor: colors.tabBar,
           borderTopColor: colors.tabBarBorder,
           borderTopWidth: 0.5,
-          height: 85,
-          paddingTop: 8,
+          height: tabBarHeight,
+          paddingTop: spacing.sm,
+          paddingBottom: Math.max(insets.bottom, spacing.sm),
         },
         tabBarActiveTintColor: colors.tabBarActive,
         tabBarInactiveTintColor: colors.tabBarInactive,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600", marginTop: 2 },
+        tabBarItemStyle: { paddingVertical: 2 },
       }}
     >
       {/* Operations view */}
@@ -98,7 +117,7 @@ export default function MainLayout() {
         name="dashboard"
         options={{
           href: show("dashboard"),
-          tabBarLabel: "Home",
+          tabBarLabel: tabLabel("dashboard"),
           tabBarIcon: ({ color }) => <TabIcon name="dashboard" color={color} />,
         }}
       />
@@ -106,8 +125,24 @@ export default function MainLayout() {
         name="orders"
         options={{
           href: show("orders"),
-          tabBarLabel: "Orders",
+          tabBarLabel: tabLabel("orders"),
           tabBarIcon: ({ color }) => <TabIcon name="orders" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="kitchen"
+        options={{
+          href: show("kitchen"),
+          tabBarLabel: tabLabel("kitchen"),
+          tabBarIcon: ({ color }) => <TabIcon name="kitchen" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="scheduled"
+        options={{
+          href: show("scheduled"),
+          tabBarLabel: tabLabel("scheduled"),
+          tabBarIcon: ({ color }) => <TabIcon name="calendar" color={color} />,
         }}
       />
       {/* Register view */}
@@ -115,7 +150,7 @@ export default function MainLayout() {
         name="pos"
         options={{
           href: show("pos"),
-          tabBarLabel: "Register",
+          tabBarLabel: tabLabel("pos"),
           tabBarIcon: ({ color }) => <TabIcon name="register" color={color} />,
         }}
       />
@@ -123,7 +158,7 @@ export default function MainLayout() {
         name="pos-sales"
         options={{
           href: show("pos-sales"),
-          tabBarLabel: "Drawer",
+          tabBarLabel: tabLabel("pos-sales"),
           tabBarIcon: ({ color }) => <TabIcon name="drawer" color={color} />,
         }}
       />
@@ -132,7 +167,7 @@ export default function MainLayout() {
         name="analytics"
         options={{
           href: show("analytics"),
-          tabBarLabel: "Analytics",
+          tabBarLabel: tabLabel("analytics"),
           tabBarIcon: ({ color }) => <TabIcon name="analytics" color={color} />,
         }}
       />
@@ -140,7 +175,7 @@ export default function MainLayout() {
         name="growth"
         options={{
           href: show("growth"),
-          tabBarLabel: "Growth",
+          tabBarLabel: tabLabel("growth"),
           tabBarIcon: ({ color }) => <TabIcon name="growth" color={color} />,
         }}
       />
@@ -149,7 +184,7 @@ export default function MainLayout() {
         options={{
           href: show("customers"),
           title: "Customers",
-          tabBarLabel: "Customers",
+          tabBarLabel: tabLabel("customers"),
           tabBarIcon: ({ color }) => <TabIcon name="customers" color={color} />,
         }}
       />
@@ -157,7 +192,7 @@ export default function MainLayout() {
         name="trends"
         options={{
           href: show("trends"),
-          tabBarLabel: "Trends",
+          tabBarLabel: tabLabel("trends"),
           tabBarIcon: ({ color }) => <TabIcon name="trends" color={color} />,
         }}
       />
@@ -166,7 +201,7 @@ export default function MainLayout() {
         name="product-analytics"
         options={{
           href: show("product-analytics"),
-          tabBarLabel: "Performance",
+          tabBarLabel: tabLabel("product-analytics"),
           tabBarIcon: ({ color }) => <TabIcon name="performance" color={color} />,
         }}
       />
@@ -175,7 +210,7 @@ export default function MainLayout() {
         options={{
           href: show("product-management"),
           title: "Manage Products",
-          tabBarLabel: "Manage",
+          tabBarLabel: tabLabel("product-management"),
           tabBarIcon: ({ color }) => <TabIcon name="manage" color={color} />,
         }}
       />
@@ -184,7 +219,7 @@ export default function MainLayout() {
         options={{
           href: show("inventory"),
           title: "Inventory",
-          tabBarLabel: "Stock",
+          tabBarLabel: tabLabel("inventory"),
           tabBarIcon: ({ color }) => <TabIcon name="stock" color={color} />,
         }}
       />
@@ -193,7 +228,7 @@ export default function MainLayout() {
         options={{
           href: show("daily-report"),
           title: "Daily Report",
-          tabBarLabel: "Report",
+          tabBarLabel: tabLabel("daily-report"),
           tabBarIcon: ({ color }) => <TabIcon name="report" color={color} />,
         }}
       />
@@ -202,7 +237,7 @@ export default function MainLayout() {
         options={{
           href: show("payments"),
           title: "Payment Methods",
-          tabBarLabel: "Payments",
+          tabBarLabel: tabLabel("payments"),
           tabBarIcon: ({ color }) => <TabIcon name="payments" color={color} />,
         }}
       />
@@ -212,7 +247,7 @@ export default function MainLayout() {
         options={{
           href: show("portfolio"),
           title: "Your business",
-          tabBarLabel: "Branches",
+          tabBarLabel: tabLabel("portfolio"),
           tabBarIcon: ({ color }) => <TabIcon name="storefront" color={color} />,
         }}
       />
@@ -221,7 +256,7 @@ export default function MainLayout() {
         options={{
           href: show("branches"),
           title: "Branch performance",
-          tabBarLabel: "Compare",
+          tabBarLabel: tabLabel("branches"),
           tabBarIcon: ({ color }) => <TabIcon name="compare" color={color} />,
         }}
       />
@@ -230,8 +265,17 @@ export default function MainLayout() {
         options={{
           href: show("branch-menu"),
           title: "Branch products",
-          tabBarLabel: "Products",
+          tabBarLabel: tabLabel("branch-menu"),
           tabBarIcon: ({ color }) => <TabIcon name="list" color={color} />,
+        }}
+      />
+      {/* Always on the bar, whatever the view: the map of the whole app. */}
+      <Tabs.Screen
+        name="menu"
+        options={{
+          href: show("menu"),
+          tabBarLabel: tabLabel("menu"),
+          tabBarIcon: ({ color }) => <TabIcon name="menu" color={color} />,
         }}
       />
       {/* Detail/utility screens — never tabs */}
@@ -271,6 +315,19 @@ export default function MainLayout() {
       <Tabs.Screen
         name="account"
         options={{ href: null, title: "Account" }}
+      />
+      <Tabs.Screen
+        name="team"
+        options={{ href: null, title: "Team" }}
+      />
+      {/* Platform "What's New" inbox + post — reached from Account or a push, never a tab. */}
+      <Tabs.Screen
+        name="whats-new/index"
+        options={{ href: null, title: "What's New" }}
+      />
+      <Tabs.Screen
+        name="whats-new/[announcementId]"
+        options={{ href: null, title: "Update" }}
       />
       </Tabs>
     </>

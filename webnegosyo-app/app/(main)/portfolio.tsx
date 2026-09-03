@@ -19,7 +19,9 @@ import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { StoreHeroCard } from "../../components/StoreHeroCard";
 import { BranchPerformanceCard } from "../../components/BranchPerformanceCard";
 
@@ -98,18 +100,15 @@ export default function PortfolioScreen() {
   const unassignedRow = rows.find((row) => row.outletId === null);
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-      }
-    >
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>Your business</Text>
-        <WorkspaceSwitcher />
-      </View>
-
+    <View style={styles.screen}>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Your business" subtitle="Tap a branch to run it" />
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
       <StoreHeroCard
         totals={totals}
         periodLabel={LANDING_PERIOD.label}
@@ -122,7 +121,6 @@ export default function PortfolioScreen() {
         </Card>
       ) : (
         <>
-          <Text style={styles.eyebrow}>Tap a branch to run it</Text>
           {branchRows.map((row) => (
             <BranchPerformanceCard
               key={row.outletId}
@@ -142,19 +140,13 @@ export default function PortfolioScreen() {
         Last {LANDING_PERIOD.label.toLowerCase()}, from the most recent {formatCount(ORDER_WINDOW)}{" "}
         orders. Open Branches for longer periods and what to do about each one.
       </Text>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  title: { ...typography.title, color: colors.textPrimary },
-  eyebrow: { ...typography.eyebrow, color: colors.textSecondary, marginTop: spacing.xs },
+  content: { paddingHorizontal: spacing.xl, gap: spacing.md, paddingBottom: spacing.xxl },
   note: { ...typography.small, color: colors.textTertiary, marginTop: spacing.sm, lineHeight: 16 },
 });

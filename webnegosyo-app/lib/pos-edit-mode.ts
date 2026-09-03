@@ -88,8 +88,14 @@ export interface OrderEditContext {
    * no option ids, and an option's recipe is found by id.
    */
   originalStockItems: PosStockItem[];
-  /** Carried across untouched; the register cannot recompute it. */
+  /**
+   * Carried from the placed order, but EDITABLE via {@link withEditDeliveryFee}
+   * — the register cannot recompute a quoted fee, but the cashier can correct
+   * or attach one deliberately.
+   */
   deliveryFee: number;
+  /** The fee as placed, so a fee-only change registers as dirty. */
+  originalDeliveryFee: number;
   /**
    * Everything in the placed total that is neither a line item nor the
    * delivery fee — see {@link deriveCarriedCharges}.
@@ -100,6 +106,25 @@ export interface OrderEditContext {
    * May be negative.
    */
   carriedCharges: number;
+  /**
+   * The service charge the order was placed with, as STORED.
+   *
+   * Zero for an order whose backend never kept the figure — every order placed
+   * before it was stored, and any backend still on an older schema. There the
+   * charge is indistinguishable from the rest of {@link carriedCharges} and
+   * stays inside it, exactly as before.
+   *
+   * Kept OUT of `carriedCharges` when it IS known, so the screen can put a name
+   * on it. That is the whole point: a residue recovered by subtraction cannot
+   * be captioned, because it also holds rounding and untracked discounts, and a
+   * cashier editing an order saw a fee with nothing to say what it was.
+   *
+   * Travels to the revise mutation as its own `serviceCharge` argument — a
+   * record. The MONEY still goes as `serviceChargeAmount`, which carries this
+   * and the residue together, so the split changes what is shown and never
+   * what is billed.
+   */
+  serviceCharge: number;
   /** The settlement ledger as it stood when the register opened the order. */
   payments: OrderPayment[];
   /**
@@ -127,6 +152,12 @@ export interface EditableOrderLike {
   total: number;
   revisionNumber?: number;
   deliveryFee?: number;
+  /**
+   * The service charge the order was placed with, when the backend stored one.
+   * Absent on every order written before the field existed — see
+   * {@link OrderEditContext.serviceCharge}.
+   */
+  serviceCharge?: number;
   items: HydratableOrderItem[];
   /**
    * Where the discount breakdown rides, per backend. Untyped on purpose —
@@ -276,6 +307,12 @@ function loadOrder(
   // Zero, not undefined: `undefined + subtotal` is NaN, and the tender screen
   // would ask the cashier for "₱NaN".
   const deliveryFee = order.deliveryFee ?? 0;
+  // Zero when the backend stored none — see OrderEditContext.serviceCharge for
+  // why absent must not be guessed at.
+  const serviceCharge =
+    Number.isFinite(order.serviceCharge) && (order.serviceCharge ?? 0) > 0
+      ? round2(order.serviceCharge as number)
+      : 0;
   const storedDiscount = readOrderDiscount(order);
 
   return {
@@ -291,7 +328,15 @@ function loadOrder(
       originalItems: posCartToOrderItems(lines, catalog),
       originalStockItems: buildPosStockItems(lines),
       deliveryFee,
-      carriedCharges: deriveCarriedCharges(order.total, lines, deliveryFee, storedDiscount),
+      originalDeliveryFee: deliveryFee,
+      carriedCharges: deriveCarriedCharges(
+        order.total,
+        lines,
+        deliveryFee,
+        storedDiscount,
+        serviceCharge,
+      ),
+      serviceCharge,
       payments: [...payments],
       storedDiscount,
       // Fetched by the screen once the order is open; see `withEditVouchers`.
@@ -462,12 +507,19 @@ function deriveCarriedCharges(
   cart: readonly PosCartLine[],
   deliveryFee: number,
   storedDiscount: OrderDiscountPayload | null,
+  serviceCharge: number,
 ): number {
   // A recorded discount is added back, because it is re-priced separately
   // against the edited cart. Left in, it would come off twice: once inside
   // this residue and again as a discount line.
   const recorded = storedDiscount?.total ?? 0;
-  return round2(placedTotal - itemsTotalOf(cart) - deliveryFee + recorded);
+  // The stored service charge comes out for the same reason the items and the
+  // delivery do: it is KNOWN, so leaving it in would keep money anonymous that
+  // the screen is now able to name. Zero when nothing was stored, which is the
+  // old behaviour exactly.
+  return round2(
+    placedTotal - itemsTotalOf(cart) - deliveryFee - serviceCharge + recorded,
+  );
 }
 
 /**
@@ -482,6 +534,23 @@ export function withEditVouchers(
   vouchers: Voucher[] | null,
 ): OrderEditContext {
   return { ...context, discountVouchers: vouchers };
+}
+
+/**
+ * Change the delivery fee on an order being edited.
+ *
+ * Zero is a legitimate value — it is how a wrongly-charged fee is removed —
+ * so a corrupt or negative figure clamps there rather than being refused.
+ * `carriedCharges` is untouched: it is the residue of the PLACED bill, derived
+ * once at load, and re-deriving it against a changed fee would smuggle the
+ * change in twice.
+ */
+export function withEditDeliveryFee(
+  context: OrderEditContext,
+  fee: number,
+): OrderEditContext {
+  const next = Number.isFinite(fee) && fee > 0 ? round2(fee) : 0;
+  return { ...context, deliveryFee: next };
 }
 
 /**
@@ -512,7 +581,7 @@ export function editModeTotals(
     cart,
     // The residue is whatever the placed bill carried beyond items and
     // delivery, which is the register's stand-in for a service charge here.
-    serviceCharge: context.carriedCharges + context.deliveryFee,
+    serviceCharge: context.carriedCharges + context.serviceCharge + context.deliveryFee,
     // Passed separately as well, and NOT double-counted: above it is part of
     // the chargeable cap, here it is the thing a free-delivery voucher
     // discounts. A delivery order edited without it lost that voucher.
@@ -524,14 +593,21 @@ export function editModeTotals(
   // already carried. Capped against the two together rather than separately:
   // two lines that each fit under the bill can still sum past it, and a
   // negative total is money invented.
-  const chargeable = round2(itemsTotal + context.carriedCharges + context.deliveryFee);
+  // The named charge is added back to every sum below. Splitting it out of the
+  // residue was a change to what the screen can SAY, never to what the bill is
+  // — a cap computed without it would let a discount exceed the order.
+  const chargeable = round2(
+    itemsTotal + context.carriedCharges + context.serviceCharge + context.deliveryFee,
+  );
   const added = addedDiscountsOf(addedDiscountLines, discount.lines);
   const discountTotal = Math.min(round2(discount.total + added), Math.max(chargeable, 0));
 
   // Folded once, here, so the shown total and the saved one cannot disagree:
   // `revisedOrderTotal(items, delivery, carriedChargesForSave)` reproduces
   // `newTotal` exactly, which is what the revise mutation recomputes.
-  const carriedChargesForSave = round2(context.carriedCharges - discountTotal);
+  const carriedChargesForSave = round2(
+    context.carriedCharges + context.serviceCharge - discountTotal,
+  );
 
   const settledLines = [
     ...discount.lines,
@@ -557,7 +633,10 @@ export function editModeTotals(
   // disabled on an edit whose only point was the discount.
   const isDirty =
     diffOrderItems(context.originalItems, posCartToOrderItems(cart)).length > 0 ||
-    added > 0;
+    added > 0 ||
+    // A fee correction moves no line, and a Save button that stays dead is a
+    // correction that cannot be made.
+    context.deliveryFee !== context.originalDeliveryFee;
 
   // Two different empties. A revise with nothing left is a cashier deleting an
   // order through the back door; an append with nothing rung up has simply not

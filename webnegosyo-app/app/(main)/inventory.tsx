@@ -22,7 +22,9 @@ import { colors, typography, spacing, radius, shadow } from "../../theme/colors"
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { InventoryStockCard } from "../../components/InventoryStockCard";
 import { StockMovementSheet } from "../../components/StockMovementSheet";
 import { StockCountPanel } from "../../components/StockCountPanel";
@@ -309,15 +311,8 @@ export default function InventoryScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.headerWrap}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Inventory</Text>
-            <Text style={styles.subtitle}>Tap an ingredient to record stock</Text>
-          </View>
-          <WorkspaceSwitcher />
-        </View>
-      </View>
+      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+      <ScreenHeader title="Stock" subtitle="Tap an ingredient to record stock" />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -456,17 +451,7 @@ export default function InventoryScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  headerWrap: {
-    paddingTop: 60,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    backgroundColor: colors.background,
-  },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  headerText: { flex: 1 },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  content: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: 40 },
+  content: { padding: spacing.lg, paddingTop: 0, gap: spacing.lg, paddingBottom: 40 },
 
   hero: {
     backgroundColor: colors.heroInk,

@@ -13,6 +13,7 @@
  */
 
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { CartDrawer } from '@/components/customer/cart-drawer'
 import type { CartItem, MenuItem, VariationOption } from '@/types/database'
@@ -137,7 +138,9 @@ function makeLine(id: string, flavorName: string, quantity: number): CartItem {
 
 function renderDrawer() {
   return render(
-    <CartDrawer open onClose={jest.fn()} tenantSlug="acme" branding={branding} />
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <CartDrawer open onClose={jest.fn()} tenantSlug="acme" branding={branding} />
+    </QueryClientProvider>
   )
 }
 

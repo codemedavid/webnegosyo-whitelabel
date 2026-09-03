@@ -29,6 +29,18 @@ export interface ReviseOrderItem {
   specialInstructions?: string;
   variationSelections?: OrderVariationSelection[];
   addons?: OrderAddon[];
+  /**
+   * Legacy variation string and bundle/upsell markers, carried through the
+   * rewrite verbatim. The edit rewrites items by delete-and-reinsert, so a
+   * quantity change that omitted these would strip "(Large)" off the chit of
+   * a web-created order and unlink its bundle lines.
+   */
+  variation?: string;
+  isUpsellItem?: boolean;
+  isBundleItem?: boolean;
+  bundleId?: string;
+  bundleName?: string;
+  slotName?: string;
 }
 
 export interface ReviseOrderArgs {
@@ -41,6 +53,20 @@ export interface ReviseOrderArgs {
   items: ReviseOrderItem[];
   deliveryFee?: number;
   serviceChargeAmount?: number;
+  /**
+   * The NAMED service charge, stored so the row can be captioned.
+   *
+   * Distinct from `serviceChargeAmount` above, which is this edit's single
+   * money channel and also carries the re-priced discount and any rounding
+   * residue. The total is built from that one alone; adding this as well would
+   * bill the service twice. A record, exactly like `discount` below.
+   *
+   * Three states, matching `discount`:
+   *   `undefined` — the caller predates the field; leave the stored charge be.
+   *   a positive  — this is the charge now.
+   *   `0`         — the edit left no charge; the column is blanked.
+   */
+  serviceCharge?: number;
   reason?: string;
   revisedBy?: string;
   outletId?: string;
@@ -95,6 +121,19 @@ const UNEDITABLE_STATUSES: Record<string, string> = {
 
 export interface OrderRevisionPatch {
   total: number;
+  /**
+   * The fee the new total was computed WITH. Written on every revision so the
+   * breakdown column can never disagree with the bill — the original defect
+   * here was a total built from `args.deliveryFee` beside a column still
+   * holding the old figure. Null (not 0) for a fee-less order, matching the
+   * create path.
+   */
+  delivery_fee: number | null;
+  /**
+   * The named service charge. Written only when the edit had something to say
+   * about it, so an old app build cannot blank a charge it never knew about.
+   */
+  service_charge_amount?: number | null;
   item_count: number;
   revision_number: number;
   edited_at: string | null;
@@ -112,6 +151,12 @@ export interface OrderItemRow {
   special_instructions: string | null;
   variation_selections: OrderVariationSelection[] | null;
   addons: OrderAddon[] | null;
+  variation: string | null;
+  is_upsell_item: boolean;
+  is_bundle_item: boolean;
+  bundle_id: string | null;
+  bundle_name: string | null;
+  slot_name: string | null;
 }
 
 export interface OrderRevisionRow {
@@ -168,6 +213,12 @@ function toItemRow(item: ReviseOrderItem): OrderItemRow {
     special_instructions: item.specialInstructions ?? null,
     variation_selections: item.variationSelections ?? null,
     addons: item.addons ?? null,
+    variation: item.variation ?? null,
+    is_upsell_item: item.isUpsellItem === true,
+    is_bundle_item: item.isBundleItem === true,
+    bundle_id: item.bundleId ?? null,
+    bundle_name: item.bundleName ?? null,
+    slot_name: item.slotName ?? null,
   };
 }
 
@@ -219,9 +270,20 @@ export function buildRevisionRows(
 
   const revisionNumber = previous.revisionNumber + 1;
 
+  const deliveryFee = args.deliveryFee ?? 0;
+
   return {
     orderPatch: {
       total,
+      delivery_fee: deliveryFee > 0 ? round2(deliveryFee) : null,
+      // Spread, so the key is ABSENT when the caller sent nothing — the same
+      // rule discount_data follows below, and for the same reason.
+      ...(args.serviceCharge !== undefined
+        ? {
+            service_charge_amount:
+              args.serviceCharge > 0 ? round2(args.serviceCharge) : null,
+          }
+        : {}),
       item_count: itemRows.reduce((sum, row) => sum + row.quantity, 0),
       revision_number: revisionNumber,
       edited_at: args.editedAt ?? null,

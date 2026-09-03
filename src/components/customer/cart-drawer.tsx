@@ -1,5 +1,7 @@
 'use client'
 
+import { usePresellCartCaps } from '@/hooks/use-presell-cart-caps'
+import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ShoppingCart, Minus, Plus, Trash2, Pencil, Package, ArrowLeft } from 'lucide-react'
@@ -69,6 +71,7 @@ export function CartDrawer({
   const palette = getCartPalette(tenant ?? null, branding)
   const accent = palette.accent
   const { items, total, updateQuantity, removeItem, updateItemConfiguration, bundleItems, updateBundleQuantity, removeBundleFromCart } = useCart()
+  const { canIncreaseItem, presellHintFor } = usePresellCartCaps(tenant?.id, items)
   const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
   const [itemToEdit, setItemToEdit] = useState<CartItem | null>(null)
   const [bundleToRemove, setBundleToRemove] = useState<CartBundleItem | null>(null)
@@ -146,10 +149,15 @@ export function CartDrawer({
       quantity: number,
       specialInstructions?: string
     ) => {
-      updateItemConfiguration(cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions)
+      const presellDate = items.find((line) => line.id === cartItemId)?.presell_date
+      updateItemConfiguration(
+        cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions,
+        // Appended only for a presell line so ordinary edits keep their exact arity.
+        ...(presellDate ? [presellDate] : []),
+      )
       setItemToEdit(null)
     },
-    [updateItemConfiguration]
+    [updateItemConfiguration, items]
   )
 
   const handleDecreaseBundleQuantity = (bundle: CartBundleItem) => {
@@ -288,6 +296,12 @@ export function CartDrawer({
                           </div>
                         </div>
 
+                        {item.presell_date && (
+                          <p className="text-xs mb-1" style={{ color: accent }}>
+                            <span className="font-medium">Pre-order for:</span> {formatPresellDateLabel(item.presell_date)}
+                            {presellHintFor(item) && <span className="ml-2 text-gray-500">{presellHintFor(item)}</span>}
+                          </p>
+                        )}
                         {(item.selected_addons.length > 0 || item.special_instructions) && (
                           <div className="text-xs text-gray-500 mb-2 space-y-0.5">
                             {item.selected_addons.length > 0 && (
@@ -321,6 +335,7 @@ export function CartDrawer({
                               size="icon"
                               className="h-9 w-9 rounded-full hover:bg-orange-50 border-gray-200 touch-manipulation"
                               onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                              disabled={!canIncreaseItem(item)}
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
