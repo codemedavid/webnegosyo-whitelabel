@@ -15,6 +15,7 @@ import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint"
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { useBranchLanding } from "../../lib/use-branch-landing";
+import { WhatsNewPopup } from "../../components/WhatsNewPopup";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -92,6 +93,8 @@ export default function MainLayout() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: colors.tabBar,
+      {/* Greets a signed-in merchant with the newest unread platform post. */}
+      <WhatsNewPopup />
           borderTopColor: colors.tabBarBorder,
           borderTopWidth: 0.5,
           height: 85,
@@ -305,3 +308,12 @@ export default function MainLayout() {
     </>
   );
 }
+      {/* Platform "What's New" inbox + post — reached from Account or a push, never a tab. */}
+      <Tabs.Screen
+        name="whats-new/index"
+        options={{ href: null, title: "What's New" }}
+      />
+      <Tabs.Screen
+        name="whats-new/[announcementId]"
+        options={{ href: null, title: "Update" }}
+      />

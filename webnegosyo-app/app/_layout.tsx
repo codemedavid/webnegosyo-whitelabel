@@ -22,7 +22,11 @@ import {
 import { usePrinterStore } from "../stores/printer-store";
 import { useRegisterSettingsStore } from "../stores/register-settings-store";
 import { supabase } from "../lib/supabase";
+import * as Notifications from "expo-notifications";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
+import { platformDeviceRegistration } from "../lib/platform-device-token";
+import { upsertPlatformDeviceToken } from "../lib/announcements/service";
+import { announcementRouteFromPushData } from "../lib/announcements/popup";
 import {
   shouldRegisterPushToken,
   pushRegistrationOutletId,
@@ -261,12 +265,21 @@ function usePushNotifications() {
       }).catch(() => {});
     }
 
-    if (!shouldRegisterPushToken(session) || !userId) return;
+    // Platform messages (What's New posts, on-command notices) are filed in
+    // ONE table for every signed-in device, whatever the store's order
+    // backend — see lib/platform-device-token.ts.
+    const deviceTarget = platformDeviceRegistration({
+      ...session,
+      isDemo: useAuthStore.getState().isDemo,
+      tenantId: useAuthStore.getState().tenantId,
+    });
+    const wantsOrderPush = shouldRegisterPushToken(session) && !!userId;
+    if (!deviceTarget && !wantsOrderPush) return;
     // A platform-backend store files the token in the shared `push_tokens`
     // table, where the orders trigger fans pushes out; everyone else keeps
     // registering with their Convex deployment.
-    const platformTarget = platformPushRegistration(session);
-    if (!platformTarget && !convexUrl) return;
+    const platformTarget = wantsOrderPush ? platformPushRegistration(session) : null;
+    if (!deviceTarget && !platformTarget && !convexUrl) return;
 
     // registerForPushNotifications() presents a native OS permission prompt
     // (UIAlertController on iOS). Firing it in the same tick as the
@@ -280,6 +293,12 @@ function usePushNotifications() {
     const task = InteractionManager.runAfterInteractions(() => {
       registerForPushNotifications().then(async (token) => {
         if (!token) return;
+        if (deviceTarget) {
+          upsertPlatformDeviceToken({ token, ...deviceTarget }).catch((e) => {
+            console.warn("Failed to register platform device token:", e);
+          });
+        }
+        if (!wantsOrderPush) return;
         if (platformTarget) {
           const { error } = await supabase.from("push_tokens").upsert(
             {
@@ -327,11 +346,29 @@ function usePushNotifications() {
   }, [isAuthenticated, convexUrl, orderBackend, isSuperadmin, impersonatedTenantId]);
 }
 
+/**
+ * Opens the screen an announcement push points at when the merchant taps it —
+ * both for a tap that wakes a running app and for the tap that launched it.
+ * Order pushes carry no announcementId and are left to the order screens.
+ */
+function useAnnouncementPushRouting() {
+  useEffect(() => {
+    const open = (response: Notifications.NotificationResponse | null) => {
+      const route = announcementRouteFromPushData(response?.notification.request.content.data);
+      if (route) router.push(route as never);
+    };
+    Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
+    const sub = Notifications.addNotificationResponseReceivedListener(open);
+    return () => sub.remove();
+  }, []);
+}
+
 export default function RootLayout() {
   useGlobalErrorHandler();
   useAuthInit();
   useAuthRedirect();
   usePushNotifications();
+  useAnnouncementPushRouting();
 
   // Load saved device settings (printer config, register prefs) on app start
   useEffect(() => {
