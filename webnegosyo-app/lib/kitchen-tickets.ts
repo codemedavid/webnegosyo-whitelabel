@@ -23,6 +23,8 @@ export interface KitchenOrderLike {
   prepMinutes?: number;
   /** Absolute instant promised (ISO). Absent = no promise made yet. */
   promisedReadyAt?: string;
+  /** Raw checkout payload; carries `table_number` for a seated order. */
+  customerData?: Record<string, unknown> | null;
 }
 
 export interface KitchenItemLike {

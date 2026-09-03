@@ -41,6 +41,7 @@ import { OrderStatusManagement } from '@/components/admin/order-status-managemen
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { getOrderOutletLabel } from '@/lib/outlets/order-outlet-display'
 import type { OrderWithItems } from '@/lib/orders-service'
+import { displayCustomerName } from '@/lib/order-display-name'
 
 // Lazy-load LalamoveDeliveryPanel since it's only shown conditionally
 const LalamoveDeliveryPanel = dynamic(
@@ -330,15 +331,13 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                   <div className="grid md:grid-cols-2 gap-6">
                     {/* Basic Info */}
                     <div className="space-y-4">
-                      {order.customer_name && (
-                        <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
-                          <User className="h-5 w-5 text-muted-foreground mt-0.5" />
-                          <div>
-                            <div className="text-sm text-muted-foreground mb-1">Name</div>
-                            <div className="font-medium">{order.customer_name}</div>
-                          </div>
+                      <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
+                        <User className="h-5 w-5 text-muted-foreground mt-0.5" />
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1">Name</div>
+                          <div className="font-medium">{displayCustomerName(order.customer_name)}</div>
                         </div>
-                      )}
+                      </div>
 
                       {order.customer_contact && (
                         <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">

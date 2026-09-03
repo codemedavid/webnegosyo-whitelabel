@@ -4,6 +4,7 @@ import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
 import { lalamoveStatusLabel } from "../lib/lalamove-status";
 import {
+  displayCustomerName,
   getInitials,
   getAvatarColor,
   getScheduleAwareUrgency,
@@ -14,6 +15,7 @@ import {
 } from "../lib/order-visuals";
 import { getScheduledISO, getScheduledLabel } from "../lib/scheduled-orders";
 import { getPresellDate, formatPresellDate } from "../lib/presell-orders";
+import { getOrderTableNumber } from "../lib/order-table-number";
 
 export interface OrderCardOrder {
   _id: string;
@@ -65,6 +67,8 @@ export function OrderCard({
   compact = false,
 }: OrderCardProps) {
   const status = getStatusMeta(order.status);
+  const customerName = displayCustomerName(order.customerName);
+  const tableNumber = getOrderTableNumber(order.customerData);
   const typeMeta = getOrderTypeMeta(order.orderType);
   const isActive = order.status !== "delivered" && order.status !== "cancelled";
   const scheduledISO = getScheduledISO(order);
@@ -86,15 +90,15 @@ export function OrderCard({
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`Order for ${order.customerName}, ${status.label}, ${formatPeso(order.total)}`}
+      accessibilityLabel={`Order for ${customerName}, ${status.label}, ${formatPeso(order.total)}`}
     >
       <View style={styles.topRow}>
-        <View style={[styles.avatar, { backgroundColor: getAvatarColor(order.customerName) }]}>
-          <Text style={styles.avatarText}>{getInitials(order.customerName)}</Text>
+        <View style={[styles.avatar, { backgroundColor: getAvatarColor(customerName) }]}>
+          <Text style={styles.avatarText}>{getInitials(customerName)}</Text>
         </View>
         <View style={styles.identity}>
           <Text style={styles.name} numberOfLines={1}>
-            {order.customerName}
+            {customerName}
           </Text>
           {order.customerContact ? (
             <Text style={styles.contact} numberOfLines={1}>
@@ -121,6 +125,11 @@ export function OrderCard({
         {order.source ? <Text style={styles.meta}>{order.source}</Text> : null}
         <Text style={styles.metaDot}>·</Text>
         <Text style={styles.meta}>{formatTimeAgo(order._creationTime)}</Text>
+        {tableNumber ? (
+          <View style={styles.tableChip}>
+            <Text style={styles.tableText}>Table {tableNumber}</Text>
+          </View>
+        ) : null}
         {scheduledLabel ? (
           <View style={styles.scheduledChip}>
             <Text style={styles.scheduledText}>Scheduled · {scheduledLabel}</Text>
@@ -175,7 +184,7 @@ export function OrderCard({
               onPress={onCancel}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel={`Cancel order for ${order.customerName}`}
+              accessibilityLabel={`Cancel order for ${customerName}`}
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -243,6 +252,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warningLight,
   },
   scheduledText: { ...typography.small, color: colors.warning, fontWeight: "700" },
+  tableChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  tableText: { ...typography.small, color: colors.primary, fontWeight: "700" },
   presellChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,

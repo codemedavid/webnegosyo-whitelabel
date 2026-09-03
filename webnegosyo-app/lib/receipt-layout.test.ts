@@ -428,3 +428,83 @@ describe("service charge on the printed receipt", () => {
     );
   });
 });
+
+describe("table number on the receipt", () => {
+  const seated = {
+    ...baseOrder,
+    customerName: "Maria",
+    orderType: "Dine-in",
+    customerData: { table_number: "12" },
+  };
+
+  it("prints the table as its own block, honoring a custom label", () => {
+    const receipt = renderReceipt(seated, config, {
+      version: 1,
+      blocks: [{ kind: "tableNumber" }, { kind: "tableNumber", label: "Mesa" }],
+    });
+    expect(linesOf(receipt)).toEqual(["Table: 12", "Mesa: 12"]);
+  });
+
+  it("stays silent when the order has no table", () => {
+    const receipt = renderReceipt(baseOrder, config, {
+      version: 1,
+      blocks: [{ kind: "tableNumber" }, { kind: "text", text: "after" }],
+    });
+    expect(linesOf(receipt)).toEqual(["after"]);
+  });
+
+  it("reads the snake_case blob a Supabase row carries", () => {
+    const receipt = renderReceipt(
+      { ...baseOrder, customer_data: { table_number: "B4" } },
+      config,
+      { version: 1, blocks: [{ kind: "tableNumber" }] },
+    );
+    expect(linesOf(receipt)).toEqual(["Table: B4"]);
+  });
+
+  it("adds the table to the all-details block only when one was captured", () => {
+    const withTable = linesOf(
+      renderReceipt(seated, config, { version: 1, blocks: [{ kind: "orderMeta" }] }),
+    );
+    expect(withTable).toContain("Table: 12");
+    expect(withTable[withTable.length - 1]).toBe("Table: 12");
+
+    const without = linesOf(
+      renderReceipt({ ...seated, customerData: {} }, config, {
+        version: 1,
+        blocks: [{ kind: "orderMeta" }],
+      }),
+    );
+    expect(without.some((l) => l.startsWith("Table:"))).toBe(false);
+  });
+
+  it("stacked granular blocks still reproduce orderMeta when a table is set", () => {
+    const granular = renderReceipt(seated, config, {
+      version: 1,
+      blocks: [
+        { kind: "orderNumber" },
+        { kind: "orderDate" },
+        { kind: "customerName" },
+        { kind: "orderType" },
+        { kind: "tableNumber" },
+      ],
+    });
+    const composite = renderReceipt(seated, config, {
+      version: 1,
+      blocks: [{ kind: "orderMeta" }],
+    });
+    expect(granular).toBe(composite);
+  });
+
+  it("parses the tableNumber kind from a saved layout, with or without a label", () => {
+    expect(
+      parseReceiptLayout({ version: 1, blocks: [{ kind: "tableNumber" }] }),
+    ).toEqual({ version: 1, blocks: [{ kind: "tableNumber" }] });
+    expect(
+      parseReceiptLayout({ version: 1, blocks: [{ kind: "tableNumber", label: "Mesa" }] }),
+    ).toEqual({ version: 1, blocks: [{ kind: "tableNumber", label: "Mesa" }] });
+    expect(
+      parseReceiptLayout({ version: 1, blocks: [{ kind: "tableNumber", label: "" }] }),
+    ).toBeNull();
+  });
+});

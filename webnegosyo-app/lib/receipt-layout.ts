@@ -1,5 +1,6 @@
 import { readOrderDiscount } from "./order-discount";
 import { orderSummaryRows, type OrderSummaryRowKind } from "./order-summary-rows";
+import { getOrderTableNumber } from "./order-table-number";
 
 /**
  * Block-based receipt rendering.
@@ -89,6 +90,7 @@ export type ReceiptBlock =
   | { kind: "orderDate"; label?: string }
   | { kind: "customerName"; label?: string }
   | { kind: "orderType"; label?: string }
+  | { kind: "tableNumber"; label?: string }
   | { kind: "fillIn"; label: string }
   | { kind: "items" }
   | { kind: "itemsSummary" }
@@ -303,6 +305,15 @@ function orderTypeLines(order: ReceiptOrder, label: string, w: number): string[]
   return order.orderType ? [truncate(`${label}: ${order.orderType}`, w)] : [];
 }
 
+/**
+ * Empty when no table was captured. Reads whichever blob the order carries —
+ * camelCase from Convex, snake_case from a Postgres row.
+ */
+function tableNumberLines(order: ReceiptOrder, label: string, w: number): string[] {
+  const table = getOrderTableNumber(order.customerData ?? order.customer_data);
+  return table ? [truncate(`${label}: ${table}`, w)] : [];
+}
+
 /** "Label: ______" — a rule the customer writes on, out to the paper edge. */
 function fillInLine(label: string, w: number): string {
   const prefix = truncate(`${label}: `, w);
@@ -315,6 +326,7 @@ function renderOrderMeta(order: ReceiptOrder, w: number): string[] {
     orderDateLine(order, "Date"),
     customerNameLine(order, "Customer", w),
     ...orderTypeLines(order, "Type", w),
+    ...tableNumberLines(order, "Table", w),
   ];
 }
 
@@ -486,6 +498,9 @@ export function renderReceiptSegments(
       case "orderType":
         lines.push(...orderTypeLines(order, block.label ?? "Type", w));
         break;
+      case "tableNumber":
+        lines.push(...tableNumberLines(order, block.label ?? "Table", w));
+        break;
       case "fillIn":
         lines.push(fillInLine(block.label, w));
         break;
@@ -565,7 +580,13 @@ const SIMPLE_BLOCK_KINDS: readonly ReceiptBlockKind[] = [
 ];
 
 /** Detail blocks whose printed label the merchant may rename. */
-const LABELED_DETAIL_KINDS = ["orderNumber", "orderDate", "customerName", "orderType"] as const;
+const LABELED_DETAIL_KINDS = [
+  "orderNumber",
+  "orderDate",
+  "customerName",
+  "orderType",
+  "tableNumber",
+] as const;
 const MAX_LABEL_LENGTH = 32;
 
 function isValidLabel(value: unknown): value is string {

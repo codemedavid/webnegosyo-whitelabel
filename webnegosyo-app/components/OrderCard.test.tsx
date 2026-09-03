@@ -75,3 +75,35 @@ describe("OrderCard pre-order chip", () => {
     expect(screen.queryByText(/Pre-order ·/)).toBeNull();
   });
 });
+
+describe("OrderCard guest fallback", () => {
+  it("names a nameless order Guest instead of rendering a blank identity", () => {
+    render(<OrderCard order={{ ...baseOrder, customerName: "" }} onPress={jest.fn()} />);
+    expect(screen.getByText("Guest")).toBeTruthy();
+    expect(screen.getByText("GU")).toBeTruthy();
+    expect(screen.getByLabelText(/^Order for Guest,/)).toBeTruthy();
+  });
+
+  it("keeps a captured name untouched", () => {
+    render(<OrderCard order={baseOrder} onPress={jest.fn()} />);
+    expect(screen.getByText("Maria Cruz")).toBeTruthy();
+    expect(screen.queryByText("Guest")).toBeNull();
+  });
+});
+
+describe("OrderCard table chip", () => {
+  it("shows the table the customer typed at checkout", () => {
+    render(
+      <OrderCard
+        order={{ ...baseOrder, customerData: { table_number: "12" } }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Table 12")).toBeTruthy();
+  });
+
+  it("shows no table chip when none was captured", () => {
+    render(<OrderCard order={{ ...baseOrder, customerData: { table_number: "" } }} onPress={jest.fn()} />);
+    expect(screen.queryByText(/^Table /)).toBeNull();
+  });
+});

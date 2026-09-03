@@ -32,6 +32,7 @@ import {
 } from '@/lib/outlets/order-outlet-display'
 import { OrderDetailDialog } from '@/components/admin/order-detail-dialog'
 import type { OrderWithItems } from '@/lib/orders-service'
+import { displayCustomerName } from '@/lib/order-display-name'
 
 interface OrdersListProps {
   orders: OrderWithItems[]
@@ -200,12 +201,10 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {order.customer_name && (
-                    <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Customer:</span>
-                      <span className="font-medium">{order.customer_name}</span>
+                      <span className="font-medium">{displayCustomerName(order.customer_name)}</span>
                     </div>
-                  )}
                   {order.customer_contact && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Contact:</span>

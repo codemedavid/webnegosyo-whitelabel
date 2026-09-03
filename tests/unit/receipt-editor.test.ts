@@ -124,3 +124,15 @@ describe('sanitizeLayoutForSave', () => {
     expect(sanitizeLayoutForSave(42)).toBeNull()
   })
 })
+
+describe('table number block in the studio', () => {
+  it('is offered under Order details', () => {
+    const entry = BLOCK_PALETTE.find((e) => e.kind === 'tableNumber')
+    expect(entry?.group).toBe('Order details')
+    expect(entry?.label).toMatch(/table/i)
+  })
+
+  it('seeds as a plain block a merchant can relabel', () => {
+    expect(addBlock([], 'tableNumber')).toEqual([{ kind: 'tableNumber' }])
+  })
+})

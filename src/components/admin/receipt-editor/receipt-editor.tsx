@@ -88,6 +88,8 @@ const SAMPLE_ORDER = {
   customerName: 'Maria',
   customerContact: '09171234567',
   orderType: 'Dine-in',
+  // A seated sample so the Table block previews with a value, not silence.
+  customerData: { table_number: '12' },
   // Both fees are on the sample deliberately. A merchant arranging their
   // totals block has to SEE where a service charge and a delivery fee land;
   // without them the preview jumped from the items straight to TOTAL and the

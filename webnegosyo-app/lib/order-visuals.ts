@@ -21,6 +21,21 @@ const MS_PER_MINUTE = 60_000;
 const MS_PER_HOUR = 3_600_000;
 const MS_PER_DAY = 86_400_000;
 
+/** What an order with no captured customer name is called on every screen. */
+export const GUEST_CUSTOMER_NAME = "Guest";
+
+/**
+ * The name a merchant sees for an order. A checkout that left the name field
+ * empty stores NULL, which the adapters project as "". Rendering that blank
+ * left the card with no identity and a "?" avatar, so every blank becomes
+ * "Guest" here — at display time, never at write time, so customer capture
+ * and follow-ups keep seeing the honest empty value.
+ */
+export function displayCustomerName(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  return trimmed.length > 0 ? trimmed : GUEST_CUSTOMER_NAME;
+}
+
 /** Two-letter avatar initials from a customer/product name. */
 export function getInitials(name: string): string {
   const words = (name ?? "").trim().split(/\s+/).filter(Boolean);

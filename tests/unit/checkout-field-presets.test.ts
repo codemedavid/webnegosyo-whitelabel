@@ -14,10 +14,14 @@ import {
   CHECKOUT_FIELD_PRESETS,
   DELIVERY_ADDRESS_FIELD_NAME,
   DELIVERY_ADDRESS_PRESET_ID,
+  TABLE_NUMBER_FIELD_NAME,
+  TABLE_NUMBER_PRESET_ID,
   buildFieldFromPreset,
   getCheckoutFieldPreset,
   getFieldBadgeLabel,
+  getAvailableFieldPresets,
   isDeliveryAddressField,
+  isTableNumberField,
   resolvePresetIdForField,
 } from '@/lib/checkout-field-presets'
 
@@ -74,5 +78,41 @@ describe('checkout field presets', () => {
     expect(getFieldBadgeLabel({ field_name: 'delivery_address', field_type: 'textarea' }))
       .toMatch(/delivery address/i)
     expect(getFieldBadgeLabel({ field_name: 'notes', field_type: 'textarea' })).toBe('Textarea')
+  })
+})
+
+describe('table number preset', () => {
+  // Dine-in receipts, cards, and kitchen tickets key on `table_number`, the
+  // same way the address widget keys on `delivery_address`. Merchants used to
+  // have to guess that string; now it is a picker choice.
+  it('offers a Table Number preset that locks in the reserved field name', () => {
+    const preset = getCheckoutFieldPreset(TABLE_NUMBER_PRESET_ID)
+    expect(preset?.label).toMatch(/table number/i)
+    expect(preset?.reservedFieldName).toBe(TABLE_NUMBER_FIELD_NAME)
+    expect(preset?.fieldType).toBe('text')
+    expect(TABLE_NUMBER_FIELD_NAME).toBe('table_number')
+  })
+
+  it('seeds a picked table preset with the reserved name and a merchant-facing label', () => {
+    const field = buildFieldFromPreset(TABLE_NUMBER_PRESET_ID)
+    expect(field.field_name).toBe('table_number')
+    expect(field.field_label).toBe('Table Number')
+    expect(field.field_type).toBe('text')
+    expect(field.placeholder.length).toBeGreaterThan(0)
+  })
+
+  it('recognizes a saved table_number field regardless of its stored type', () => {
+    expect(isTableNumberField({ field_name: 'table_number' })).toBe(true)
+    expect(isTableNumberField({ field_name: 'table' })).toBe(false)
+    expect(resolvePresetIdForField({ field_name: 'table_number', field_type: 'number' })).toBe(
+      TABLE_NUMBER_PRESET_ID
+    )
+    expect(getFieldBadgeLabel({ field_name: 'table_number', field_type: 'text' })).toBe('Table Number')
+  })
+
+  it('drops the table preset from the picker once the order type has one', () => {
+    const remaining = getAvailableFieldPresets([{ field_name: 'table_number' }]).map((p) => p.id)
+    expect(remaining).not.toContain(TABLE_NUMBER_PRESET_ID)
+    expect(remaining).toContain('text')
   })
 })

@@ -229,3 +229,14 @@ describe("prep time", () => {
     expect(screen.queryByText("15")).toBeNull();
   });
 });
+
+describe("TicketCard table number", () => {
+  it("names the table so the runner knows where the plate goes", () => {
+    renderCard({
+      ticket: ticket({
+        order: { ...ticket().order, customerData: { table_number: "Table 7" } },
+      }),
+    });
+    expect(screen.getByText("Table 7")).toBeTruthy();
+  });
+});

@@ -36,6 +36,7 @@ export const BLOCK_PALETTE: BlockPaletteEntry[] = [
   { kind: 'orderDate', label: 'Date & time', description: 'When the order was placed — label is editable', group: 'Order details' },
   { kind: 'customerName', label: 'Customer name', description: 'Who ordered — label is editable', group: 'Order details' },
   { kind: 'orderType', label: 'Order type', description: 'Dine-in / pickup / delivery, when set', group: 'Order details' },
+  { kind: 'tableNumber', label: 'Table number', description: 'The table a dine-in customer entered, when set — label is editable', group: 'Order details' },
   { kind: 'contact', label: 'Customer contact', description: 'Phone/handle when the order has one', group: 'Order details' },
   { kind: 'fillIn', label: 'Fill-in line', description: 'A label with a blank line to write on', group: 'Order details' },
   { kind: 'items', label: 'Items', description: 'Full item list with prices', group: 'Items & totals' },

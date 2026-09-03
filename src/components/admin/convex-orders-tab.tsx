@@ -10,6 +10,7 @@ import { ConvexOrderSheet } from "@/components/admin/convex-order-sheet";
 import { getOrderScheduledLabel } from "@/lib/advance-order-utils";
 import { getOrderOutletLabel } from "@/lib/outlets/order-outlet-display";
 import { cn } from "@/lib/utils";
+import { displayCustomerName } from '@/lib/order-display-name'
 
 const STATUS_FILTERS = [
   "all",
@@ -125,7 +126,7 @@ export function ConvexOrdersTab({ tenantId, scope }: ConvexOrdersTabProps) {
           {orders.map((order: Record<string, unknown>) => {
             const orderId = order._id as string;
             const creationTime = order._creationTime as number;
-            const customerName = (order.customerName as string) || "Unknown";
+            const customerName = displayCustomerName(order.customerName as string | undefined);
             const customerContact = (order.customerContact as string) || "";
             const total = (order.total as number) || 0;
             const itemCount = (order.itemCount as number) || 0;

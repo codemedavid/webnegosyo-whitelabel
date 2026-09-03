@@ -1,4 +1,6 @@
 import {
+  displayCustomerName,
+  GUEST_CUSTOMER_NAME,
   getInitials,
   getAvatarColor,
   getUrgency,
@@ -152,5 +154,23 @@ describe("formatTimeAgo", () => {
     expect(formatTimeAgo(now - 5 * 60_000, now)).toBe("5m ago");
     expect(formatTimeAgo(now - 3 * 3_600_000, now)).toBe("3h ago");
     expect(formatTimeAgo(now - 2 * 86_400_000, now)).toBe("2d ago");
+  });
+});
+
+describe("displayCustomerName", () => {
+  // A web checkout whose name field was left empty writes `customer_name =
+  // NULL`; the platform adapter turns that into "" and the card rendered a
+  // blank identity row with a "?" avatar. Merchants need a word to call the
+  // order by, so every blank resolves to "Guest".
+  it("returns the trimmed name when one was captured", () => {
+    expect(displayCustomerName("  Maria Cruz ")).toBe("Maria Cruz");
+  });
+
+  it("falls back to Guest for null, undefined, empty, and whitespace", () => {
+    expect(displayCustomerName(null)).toBe(GUEST_CUSTOMER_NAME);
+    expect(displayCustomerName(undefined)).toBe(GUEST_CUSTOMER_NAME);
+    expect(displayCustomerName("")).toBe(GUEST_CUSTOMER_NAME);
+    expect(displayCustomerName("   ")).toBe(GUEST_CUSTOMER_NAME);
+    expect(GUEST_CUSTOMER_NAME).toBe("Guest");
   });
 });

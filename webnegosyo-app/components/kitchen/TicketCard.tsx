@@ -5,7 +5,8 @@ import {
   kitchenItemLabel,
   type KitchenTicket,
 } from "../../lib/kitchen-tickets";
-import { getUrgency, getOrderTypeMeta, type Urgency } from "../../lib/order-visuals";
+import { displayCustomerName, getUrgency, getOrderTypeMeta, type Urgency } from "../../lib/order-visuals";
+import { getOrderTableNumber } from "../../lib/order-table-number";
 import {
   PREP_MINUTE_PRESETS,
   PREP_MINUTE_EXTENDED,
@@ -81,6 +82,7 @@ export function TicketCard({
   const urgency = getUrgency(order._creationTime, nowMs);
   const accent = URGENCY_COLOR[urgency];
   const typeLabel = order.orderType ? getOrderTypeMeta(order.orderType).label : null;
+  const tableNumber = getOrderTableNumber(order.customerData);
 
   const promisedMs = order.promisedReadyAt ? Date.parse(order.promisedReadyAt) : null;
   const promise = prepPromiseState(
@@ -112,9 +114,10 @@ export function TicketCard({
         </Text>
       </View>
       <Text style={styles.customer} numberOfLines={1}>
-        {order.customerName}
+        {displayCustomerName(order.customerName)}
         {order.status === "preparing" ? "  ·  PREPARING" : ""}
       </Text>
+      {tableNumber ? <Text style={styles.table}>Table {tableNumber}</Text> : null}
 
       <View style={styles.items}>
         {items.length === 0 ? (
@@ -279,6 +282,13 @@ const styles = StyleSheet.create({
     color: kds.inkSoft,
     fontSize: 13,
     fontWeight: "600",
+    marginTop: 2,
+  },
+  // The table is what the runner reads, so it gets the ink, not the soft grey.
+  table: {
+    color: kds.ink,
+    fontSize: 15,
+    fontWeight: "800",
     marginTop: 2,
   },
   items: {

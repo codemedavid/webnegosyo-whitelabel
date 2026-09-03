@@ -13,9 +13,12 @@
  */
 
 import type { CustomerFormField } from '@/types/database'
+import { TABLE_NUMBER_FIELD_NAME } from '@/lib/order-table-number'
 
 export const DELIVERY_ADDRESS_FIELD_NAME = 'delivery_address'
 export const DELIVERY_ADDRESS_PRESET_ID = 'delivery_address'
+export { TABLE_NUMBER_FIELD_NAME }
+export const TABLE_NUMBER_PRESET_ID = 'table_number'
 
 type FieldType = CustomerFormField['field_type']
 
@@ -62,6 +65,16 @@ export const CHECKOUT_FIELD_PRESETS: readonly CheckoutFieldPreset[] = [
     defaultLabel: 'Delivery Address',
     defaultPlaceholder: 'Enter your complete delivery address',
   },
+  {
+    id: TABLE_NUMBER_PRESET_ID,
+    label: 'Table Number',
+    description:
+      'Where a dine-in customer is seated. Shows on the order card, the kitchen ticket, and the receipt.',
+    fieldType: 'text',
+    reservedFieldName: TABLE_NUMBER_FIELD_NAME,
+    defaultLabel: 'Table Number',
+    defaultPlaceholder: 'e.g. 12',
+  },
 ]
 
 export function getCheckoutFieldPreset(presetId: string): CheckoutFieldPreset | undefined {
@@ -73,11 +86,17 @@ export function isDeliveryAddressField(field: Pick<CustomerFormField, 'field_nam
   return field.field_name === DELIVERY_ADDRESS_FIELD_NAME
 }
 
+/** True when this field is the table the receipt, card, and kitchen ticket print. */
+export function isTableNumberField(field: Pick<CustomerFormField, 'field_name'>): boolean {
+  return field.field_name === TABLE_NUMBER_FIELD_NAME
+}
+
 /** The preset an already-saved field came from (or behaves as). */
 export function resolvePresetIdForField(
   field: Pick<CustomerFormField, 'field_name' | 'field_type'>
 ): string {
   if (isDeliveryAddressField(field)) return DELIVERY_ADDRESS_PRESET_ID
+  if (isTableNumberField(field)) return TABLE_NUMBER_PRESET_ID
   return field.field_type
 }
 
