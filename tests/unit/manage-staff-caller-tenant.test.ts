@@ -115,6 +115,6 @@ describe('manage-staff entrypoint wiring', () => {
   })
 
   it('passes the body tenantId into the resolver', () => {
-    expect(source).toMatch(/resolveStaffCaller\([^)]*tenantId/s)
+    expect(source).toMatch(/resolveStaffCaller\([\s\S]{0,200}?tenantId/)
   })
 })

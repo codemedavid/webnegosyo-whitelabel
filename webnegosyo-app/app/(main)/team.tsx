@@ -23,6 +23,7 @@ import {
   updateStaffBranch,
   updateStaffDefaultScreen,
   updateStaffPermissions,
+  withTenantScope,
   type ManageStaffInvoke,
   type StaffMember,
 } from "../../lib/staff-service";
@@ -41,7 +42,7 @@ import { Card } from "../../components/Card";
 // holds the service-role key, and the server re-derives the caller's tenant
 // and authority from the JWT, so this screen is presentation only.
 
-const invokeManageStaff: ManageStaffInvoke = (body) =>
+const invokeManageStaffRaw: ManageStaffInvoke = (body) =>
   supabase.functions.invoke("manage-staff", { method: "POST", body });
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -81,6 +82,14 @@ export default function TeamScreen() {
   const myOutletId = useAuthStore((s) => s.outletId);
   const isDemo = useAuthStore((s) => s.isDemo);
   const myUserId = useAuthStore((s) => s.userId);
+  const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
+
+  // A superadmin viewing a store has no store of its own, so the viewed one
+  // has to travel with each request or the function has no tenant to act on.
+  const invokeManageStaff = useMemo(
+    () => withTenantScope(invokeManageStaffRaw, impersonatedTenantId),
+    [impersonatedTenantId]
+  );
 
   const allowed = canOpenTeam({
     role,
@@ -120,7 +129,7 @@ export default function TeamScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [invokeManageStaff]);
 
   useEffect(() => {
     if (!allowed) {

@@ -9,18 +9,44 @@
 //   const invoke: ManageStaffInvoke = (body) =>
 //     supabase.functions.invoke("manage-staff", { method: "POST", body });
 
-export type ManageStaffRequest =
-  | { action: "list" }
-  | { action: "create"; input: CreateStaffInput }
-  | { action: "update_permissions"; userId: string; permissions: string[] }
-  | { action: "update_branch"; userId: string; outletId: string | null }
-  | { action: "update_default_screen"; userId: string; defaultTab: string | null }
-  | { action: "reset_password"; userId: string; newPassword: string }
-  | { action: "remove"; userId: string };
+/**
+ * The store to act on, sent only by a superadmin viewing a store — every other
+ * caller's store comes from their own access row and this field is ignored.
+ */
+export interface TenantScoped {
+  tenantId?: string | null;
+}
+
+export type ManageStaffRequest = TenantScoped &
+  (
+    | { action: "list" }
+    | { action: "create"; input: CreateStaffInput }
+    | { action: "update_permissions"; userId: string; permissions: string[] }
+    | { action: "update_branch"; userId: string; outletId: string | null }
+    | { action: "update_default_screen"; userId: string; defaultTab: string | null }
+    | { action: "reset_password"; userId: string; newPassword: string }
+    | { action: "remove"; userId: string }
+  );
 
 export type ManageStaffInvoke = (
   body: ManageStaffRequest
 ) => Promise<{ data: unknown; error: unknown }>;
+
+/**
+ * Scope a transport to the store currently being viewed.
+ *
+ * The function derives the store from the caller's own access row, which is
+ * right for an owner or a branch admin. A superadmin viewing a store ("open as
+ * merchant") has no store of its own, so the viewed one has to travel with the
+ * request; pass null off impersonation and the request goes out untouched.
+ */
+export function withTenantScope(
+  invoke: ManageStaffInvoke,
+  tenantId: string | null
+): ManageStaffInvoke {
+  if (!tenantId) return invoke;
+  return (body) => invoke({ ...body, tenantId });
+}
 
 export interface CreateStaffInput {
   email: string;

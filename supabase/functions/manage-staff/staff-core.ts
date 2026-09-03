@@ -44,6 +44,53 @@ export interface StaffCaller {
   permissions: string[] | null
 }
 
+/** The `app_users` row as read for the caller: the tenant may be absent. */
+export interface StaffCallerRow extends Omit<StaffCaller, 'tenant_id'> {
+  tenant_id: string | null
+}
+
+export type ResolvedStaffCaller =
+  | { ok: true; caller: StaffCaller }
+  | { ok: false; status: number; error: string }
+
+const NO_STORE_ACCESS = 'No store access for this account.'
+
+/**
+ * Which store does this call act on?
+ *
+ * For an owner or a branch admin the answer is their own row, and a tenant in
+ * the request body is ignored outright — that is what keeps one store's admin
+ * out of another's roster. The platform superadmin is the single exception:
+ * its row carries no tenant at all, so the store it is viewing has to travel
+ * with the request. Postgres RLS already grants that account cross-tenant
+ * reach, so naming a store here widens nothing.
+ */
+export function resolveStaffCaller(
+  row: StaffCallerRow | null,
+  requestedTenantId: string | null | undefined
+): ResolvedStaffCaller {
+  if (!row) {
+    return { ok: false, status: 403, error: NO_STORE_ACCESS }
+  }
+
+  if (row.role === 'superadmin') {
+    const tenantId = trimmed(requestedTenantId)
+    if (tenantId === '') {
+      return {
+        ok: false,
+        status: 403,
+        error: 'Open a store first to manage its team.',
+      }
+    }
+    return { ok: true, caller: { ...row, tenant_id: tenantId } }
+  }
+
+  if (!row.tenant_id) {
+    return { ok: false, status: 403, error: NO_STORE_ACCESS }
+  }
+  return { ok: true, caller: { ...row, tenant_id: row.tenant_id } }
+}
+
 function hasPermission(caller: StaffCaller, key: StaffPermissionKey): boolean {
   if (caller.role === 'superadmin' || caller.is_owner) return true
   if (caller.permissions == null) return true

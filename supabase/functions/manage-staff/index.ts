@@ -2,9 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   handleStaffAction,
+  resolveStaffCaller,
   type StaffActionContext,
   type StaffActionRequest,
-  type StaffCaller,
+  type StaffCallerRow,
   type StaffCoreStore,
   type StaffRecord,
 } from "./staff-core.ts";
@@ -15,9 +16,9 @@ import {
 // whom, within which branch, under what seat allowance — is made by the pure
 // core in staff-core.ts, which the web Jest suite pins to the web originals.
 // This file only wires it up: identify the caller from their JWT, load THEIR
-// app_users row (the tenant always comes from that row, never from the request
-// body), gather branches and the plan allowance, and run the requested action
-// with the service-role client.
+// app_users row (which is where the tenant comes from for every account except
+// the platform superadmin — see resolveStaffCaller), gather branches and the
+// plan allowance, and run the requested action with the service-role client.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -139,7 +140,17 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // The caller's own access row is the sole source of tenant and authority.
+    const request = (await req.json().catch(() => null)) as
+      | (StaffActionRequest & { tenantId?: string | null })
+      | null;
+    if (!request || typeof request !== "object" || !("action" in request)) {
+      return json({ success: false, error: "A JSON body with an action is required." }, 400);
+    }
+
+    // The caller's own access row carries their authority. It also carries the
+    // tenant for every account except the platform superadmin, whose row has
+    // none — resolveStaffCaller decides, and it is the only place a tenant
+    // from the request body is ever honoured.
     const { data: callerRow, error: callerErr } = await admin
       .from("app_users")
       .select("user_id, tenant_id, role, is_owner, outlet_id, permissions")
@@ -148,10 +159,14 @@ Deno.serve(async (req) => {
     if (callerErr) {
       return json({ success: false, error: callerErr.message }, 500);
     }
-    if (!callerRow || !callerRow.tenant_id) {
-      return json({ success: false, error: "No store access for this account." }, 403);
+    const resolved = resolveStaffCaller(
+      (callerRow as unknown as StaffCallerRow | null) ?? null,
+      request.tenantId ?? null,
+    );
+    if (!resolved.ok) {
+      return json({ success: false, error: resolved.error }, resolved.status);
     }
-    const caller = callerRow as unknown as StaffCaller;
+    const caller = resolved.caller;
 
     // Branches for assignment validation, and the seat allowance from the
     // tenant's plan. The allowance must come from the row — it is the
@@ -174,13 +189,6 @@ Deno.serve(async (req) => {
         (tenantRes.data as { max_staff_per_branch?: number | null } | null)
           ?.max_staff_per_branch ?? undefined,
     };
-
-    const request = (await req.json().catch(() => null)) as
-      | StaffActionRequest
-      | null;
-    if (!request || typeof request !== "object" || !("action" in request)) {
-      return json({ success: false, error: "A JSON body with an action is required." }, 400);
-    }
 
     const result = await handleStaffAction(
       makeSupabaseStore(admin),
