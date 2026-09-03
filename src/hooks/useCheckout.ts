@@ -35,6 +35,7 @@ import {
 import { findCartPresellDate } from '@/lib/presell/availability'
 import { presellAdvanceConfig, presellScheduleDates } from '@/lib/presell/checkout-schedule'
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
+import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { computeOrderTotals } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
@@ -1195,6 +1196,24 @@ export function useCheckout(tenantSlug: string) {
         const verdict = await preflightPresellAction(
           tenant.id,
           items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity, presellDate: item.presell_date })),
+        )
+        if (!verdict.ok) {
+          toast.error(verdict.message)
+          setIsProcessing(false)
+          return
+        }
+      }
+
+      // ── Producible-quantity preflight ──
+      // Same reason as above, for the guard that asks whether the kitchen can
+      // make the number in this cart. Without it an uncoverable cart showed
+      // "Order Placed!" and wrote nothing. The guard inside createOrderAction
+      // stays authoritative; this only moves its sentence somewhere visible.
+      {
+        const verdict = await preflightCheckoutStockAction(
+          tenant.id,
+          items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity })),
+          outlet.selectedOutletId ?? null,
         )
         if (!verdict.ok) {
           toast.error(verdict.message)
