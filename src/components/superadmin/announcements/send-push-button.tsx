@@ -22,6 +22,8 @@ import type { AnnouncementRecord } from '@/lib/announcements/service'
 interface Props {
   announcement: Pick<AnnouncementRecord, 'id' | 'title' | 'status' | 'audienceTenantIds' | 'pushSentAt'>
   onSent: (recipientCount: number) => void
+  /** `md` matches the editor header buttons; `sm` (default) fits list rows. */
+  size?: 'sm' | 'md'
 }
 
 /**
@@ -30,7 +32,7 @@ interface Props {
  * ringing every merchant's phone, and the number that tells them whether the
  * app build that registers devices has rolled out yet.
  */
-export function SendPushButton({ announcement, onSent }: Props) {
+export function SendPushButton({ announcement, onSent, size = 'sm' }: Props) {
   const [open, setOpen] = useState(false)
   const [recipientCount, setRecipientCount] = useState<number | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -70,9 +72,13 @@ export function SendPushButton({ announcement, onSent }: Props) {
         onClick={openDialog}
         disabled={!isPublished || isPending}
         title={isPublished ? undefined : 'Publish first'}
-        className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-white/90 disabled:opacity-40"
+        className={
+          size === 'md'
+            ? 'inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-emerald-300 disabled:opacity-40'
+            : 'inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-white/90 disabled:opacity-40'
+        }
       >
-        <Send className="h-3.5 w-3.5" />
+        <Send className={size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5'} />
         {announcement.pushSentAt ? 'Send again' : 'Send notification'}
       </button>
 
