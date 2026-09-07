@@ -65,7 +65,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
   const {
     tenant, completedOrderData, redirectCountdown, trackingOrderId, trackingToken,
     messageExpanded, setMessageExpanded, router, tenantSlug, messengerEnabled,
-    isKiosk, kioskCountdown,
+    isKiosk, kioskCountdown, orderSaveFailed,
   } = checkout
 
   if (!tenant || !completedOrderData) return null
@@ -233,6 +233,22 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
               </div>
             ) : completedOrderData.messengerUrl ? (
               <div className="space-y-4">
+                {/* The optimistic confirmation above has already claimed the
+                    order succeeded. When the save actually failed, say so and
+                    name the one action that still delivers it. */}
+                {orderSaveFailed && (
+                  <div
+                    role="alert"
+                    className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-left"
+                  >
+                    <p className="text-sm font-semibold text-amber-900">
+                      We could not confirm your order with the store.
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      Please send the Messenger message below so they receive it.
+                    </p>
+                  </div>
+                )}
                 {/* Countdown redirect indicator */}
                 <div className="text-center space-y-2">
                   {redirectCountdown !== null && redirectCountdown > 0 ? (

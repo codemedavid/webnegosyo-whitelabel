@@ -19,6 +19,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
+import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-order-save'
+import { awaitSaveBeforeRedirect } from '@/lib/checkout/messenger-redirect-gate'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
@@ -94,6 +96,9 @@ export interface CompletedOrderData {
   formFields: { field_name: string; field_label: string }[]
 }
 
+/** Seconds the confirmation screen counts down before it opens Messenger. */
+const COUNTDOWN_SECONDS = 3
+
 export function useCheckout(tenantSlug: string) {
   const router = useRouter()
   const { items, bundleItems, total, clearCart, orderType, setOrderType, messengerPsid } = useCart()
@@ -130,6 +135,18 @@ export function useCheckout(tenantSlug: string) {
    * order starts from a fresh mount and so a fresh id.
    */
   const clientOrderIdRef = useRef<string | null>(null)
+
+  /**
+   * The in-flight order save, so the Messenger redirect can wait for it.
+   *
+   * Opening an m.me deep link on a phone hands the browser to the Messenger
+   * app and freezes this tab, abandoning any request still in flight. That is
+   * how an order reached the merchant in Messenger and never reached the
+   * database. Null when there is nothing to wait for.
+   */
+  const orderSavePromiseRef = useRef<Promise<unknown> | null>(null)
+  /** Set when every retry of the order save has failed. Surfaced to the customer. */
+  const [orderSaveFailed, setOrderSaveFailed] = useState(false)
   const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null)
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null)
   const [trackingToken, setTrackingToken] = useState<string | null>(null)
@@ -564,19 +581,40 @@ export function useCheckout(tenantSlug: string) {
       return
     }
     // Start 3-second countdown
-    setRedirectCountdown(3)
+    const messengerUrl = completedOrderData.messengerUrl
+    let isCancelled = false
+
+    setRedirectCountdown(COUNTDOWN_SECONDS)
     const interval = setInterval(() => {
       setRedirectCountdown(prev => {
         if (prev === null || prev <= 1) {
           clearInterval(interval)
-          // Open Messenger in new tab when countdown reaches 0
-          window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')
           return 0
         }
         return prev - 1
       })
     }, 1000)
-    return () => clearInterval(interval)
+
+    // The countdown is what the customer sees; the save is what the merchant
+    // needs. Both have to finish before this tab is handed to the Messenger
+    // app, because the deep link freezes it and abandons the request midway.
+    // `awaitSaveBeforeRedirect` gives up at its own ceiling, so a hung save
+    // delays the redirect but never blocks it.
+    const openMessengerWhenSafe = async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, COUNTDOWN_SECONDS * 1000))
+      // A failed save still opens Messenger: that message is the merchant's
+      // only remaining copy of the order, so withholding it would lose the
+      // order on both channels.
+      await awaitSaveBeforeRedirect(orderSavePromiseRef.current)
+      if (isCancelled) return
+      window.open(messengerUrl, '_blank', 'noopener,noreferrer')
+    }
+    void openMessengerWhenSafe()
+
+    return () => {
+      isCancelled = true
+      clearInterval(interval)
+    }
   }, [checkoutComplete, completedOrderData?.messengerUrl, messengerRedirectEnabled])
 
   // Fetch the delivery fee when a delivery address is entered.
@@ -1343,38 +1381,62 @@ export function useCheckout(tenantSlug: string) {
         }
         const clientOrderId = clientOrderIdRef.current
 
-        // Fire-and-forget: save order + send proactive webhook
-        createOrderAction(
-          tenant.id, orderItems, customerInfo, orderType,
-          withSmsConsent(
-            {
-              ...snapshotCustomerData,
-              ...(messengerPsid ? { messenger_psid: messengerPsid } : {}),
-              ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
-            },
-            isSmsOptedIn,
-            new Date().toISOString()
-          ),
-          validDeliveryFeeForOrder, validQuotationId,
-          selectedPaymentMethod || undefined,
-          selectedPayment?.name || undefined,
-          selectedPayment?.details || undefined,
-          selectedPayment?.qr_code_url || undefined,
-          serviceChargeAmount || undefined,
-          scheduledForISO || undefined,
-          (paymentProofUrl || paymentProofReference)
-            ? {
-                url: paymentProofUrl || null,
-                publicId: paymentProofPublicId || null,
-                reference: paymentProofReference || null,
-              }
-            : undefined,
-          selectedOutletId,
-          // Codes, not amounts. The server recomputes the discount from these.
-          [...voucherState.codes],
-          clientOrderId
-        ).then(result => {
-          if (result.success) {
+        // The confirmation screen is already on screen, so this save is the
+        // only thing standing between the customer's "Order Placed!" and the
+        // merchant hearing about it. It is retried where retrying is proven
+        // safe, and the Messenger redirect waits on the promise below.
+        setOrderSaveFailed(false)
+
+        // Captured from inside the retry so the success handling below still
+        // sees the server's full reply (order id, tokens) rather than just the
+        // ok/failed verdict the retry helper reports.
+        let saveResult: Awaited<ReturnType<typeof createOrderAction>> | null = null
+
+        const savePromise = saveOrderDurably(
+          async () => {
+            const attemptResult = await createOrderAction(
+              tenant.id, orderItems, customerInfo, orderType,
+              withSmsConsent(
+                {
+                  ...snapshotCustomerData,
+                  ...(messengerPsid ? { messenger_psid: messengerPsid } : {}),
+                  ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
+                },
+                isSmsOptedIn,
+                new Date().toISOString()
+              ),
+              validDeliveryFeeForOrder, validQuotationId,
+              selectedPaymentMethod || undefined,
+              selectedPayment?.name || undefined,
+              selectedPayment?.details || undefined,
+              selectedPayment?.qr_code_url || undefined,
+              serviceChargeAmount || undefined,
+              scheduledForISO || undefined,
+              (paymentProofUrl || paymentProofReference)
+                ? {
+                    url: paymentProofUrl || null,
+                    publicId: paymentProofPublicId || null,
+                    reference: paymentProofReference || null,
+                  }
+                : undefined,
+              selectedOutletId,
+              // Codes, not amounts. The server recomputes the discount from these.
+              [...voucherState.codes],
+              clientOrderId
+            )
+            saveResult = attemptResult
+            return { success: attemptResult.success, error: attemptResult.error }
+          },
+          { attempts: isOrderSaveRetrySafe(tenant) ? undefined : 1 }
+        )
+
+        // What the Messenger redirect waits on. Resolves either way — the
+        // failure is reported through `orderSaveFailed`, not by rejecting.
+        orderSavePromiseRef.current = savePromise
+
+        savePromise.then(save => {
+          const result = saveResult
+          if (save.ok && result?.success) {
             // Track upsell conversions
             const upsellItems = snapshotItems.filter(i => i.upsellSource)
             if (upsellItems.length > 0) {
@@ -1424,10 +1486,26 @@ export function useCheckout(tenantSlug: string) {
               } catch { /* ignore localStorage errors */ }
             }
           } else {
-            console.warn('[Checkout] Background order save failed:', result.error)
+            // The customer was told the order was placed and the cart is gone,
+            // so a silent console.warn here is how an order disappears without
+            // anyone noticing. Say it out loud, and keep the Messenger message
+            // on screen: it is the merchant's remaining copy of this order.
+            console.error('[Checkout] Order save failed after retries:', save.error ?? result?.error)
+            setOrderSaveFailed(true)
+            setMessageExpanded(true)
+            toast.error(
+              'We could not confirm your order with the store. Please send the Messenger message so they receive it.',
+              { duration: 12000 }
+            )
           }
         }).catch(error => {
-          console.warn('[Checkout] Background order save error:', error)
+          console.error('[Checkout] Order save error:', error)
+          setOrderSaveFailed(true)
+          setMessageExpanded(true)
+          toast.error(
+            'We could not confirm your order with the store. Please send the Messenger message so they receive it.',
+            { duration: 12000 }
+          )
         })
       }
     } catch (error) {
@@ -1535,6 +1613,9 @@ export function useCheckout(tenantSlug: string) {
     trackingOrderId,
     trackingToken,
     messageExpanded,
+    // True when every retry of the order save failed. The confirmation
+    // screen turns this into a persistent notice; the toast alone fades.
+    orderSaveFailed,
     setMessageExpanded,
     // handlers
     handleProceedToPayment,

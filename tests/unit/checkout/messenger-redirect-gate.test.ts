@@ -17,51 +17,9 @@
  */
 
 import {
-  shouldOpenMessenger,
   awaitSaveBeforeRedirect,
   REDIRECT_WAIT_CEILING_MS,
 } from '@/lib/checkout/messenger-redirect-gate'
-
-describe('shouldOpenMessenger', () => {
-  it('waits while the order row is still being written', () => {
-    // The defect, stated directly.
-    expect(
-      shouldOpenMessenger({ saveState: 'saving', hasUrl: true, ceilingReached: false })
-    ).toBe(false)
-  })
-
-  it('opens Messenger once the order is saved', () => {
-    expect(
-      shouldOpenMessenger({ saveState: 'saved', hasUrl: true, ceilingReached: false })
-    ).toBe(true)
-  })
-
-  it('opens Messenger when the save failed, because that message is the merchant’s fallback', () => {
-    // Withholding the redirect here would lose the order on BOTH channels.
-    expect(
-      shouldOpenMessenger({ saveState: 'failed', hasUrl: true, ceilingReached: false })
-    ).toBe(true)
-  })
-
-  it('stops waiting once the ceiling is reached, so a slow save cannot strand the customer', () => {
-    expect(
-      shouldOpenMessenger({ saveState: 'saving', hasUrl: true, ceilingReached: true })
-    ).toBe(true)
-  })
-
-  it('opens immediately when there is no order row to wait for', () => {
-    // Tenants with order management off never call createOrderAction.
-    expect(
-      shouldOpenMessenger({ saveState: 'untracked', hasUrl: true, ceilingReached: false })
-    ).toBe(true)
-  })
-
-  it('never opens without a Messenger URL', () => {
-    expect(
-      shouldOpenMessenger({ saveState: 'saved', hasUrl: false, ceilingReached: true })
-    ).toBe(false)
-  })
-})
 
 describe('awaitSaveBeforeRedirect', () => {
   it('resolves as soon as the save settles', async () => {
