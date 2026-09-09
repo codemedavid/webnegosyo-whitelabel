@@ -62,14 +62,16 @@ export interface MobileDownload {
  * The APK is hosted off-repo: at ~111 MB it exceeds GitHub's 100 MB *file*
  * limit, so it cannot be committed to `public/downloads/`.
  *
- * `href` currently points at the EAS build artifact for the 1.0.5 APK build
- * (`production-apk`, versionCode 30). Note the trade-off: EAS artifact URLs
- * expire after ~30 days on the free tier, and when one lapses the button 404s
- * silently. Mirroring the same file to a GitHub Release asset (as 1.0.4 did)
- * gives a link that outlives the build — do that if this page must survive
- * unattended past the artifact's expiry.
+ * `href` points at a **GitHub Release asset**, not an EAS artifact URL. EAS
+ * artifacts expire after ~30 days on the free tier and the button then 404s
+ * silently, with nothing on the page to say so — 1.0.5 shipped that way and
+ * was three weeks from breaking unattended. Release assets never expire and
+ * are exempt from the 100 MB file limit on a public repo, which is why 1.0.4
+ * used one and why every release since 1.0.7 does.
  *
- * Re-point `href` on every Android release. The version below is pinned to
+ * To ship an Android release: build `production-apk`, download the artifact,
+ * then `gh release create merchant-app-v<version> <file> --target main` and
+ * point `href` at the asset's download URL. The version below is pinned to
  * `webnegosyo-app/app.config.ts` by `tests/unit/downloads.test.ts`, so letting
  * it drift behind the app fails the suite instead of misleading merchants.
  */
@@ -87,9 +89,9 @@ export const mobileDownloads: MobileDownload[] = [
     label: "WebNegosyo for Android",
     store: "Direct download",
     kind: "apk",
-    href: "https://expo.dev/artifacts/eas/Z1JMu6G4EkX03DkpIZ1HnVFuOB95zgBMqZDu_UmQFfo.apk",
+    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.7/WebNegosyo-1.0.7.apk",
     available: true,
-    version: "1.0.5",
+    version: "1.0.7",
     size: "111 MB",
   },
 ];

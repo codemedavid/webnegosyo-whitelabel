@@ -79,6 +79,17 @@ describe("mobileDownloads config", () => {
     expect(android?.version).toBe(readMerchantAppVersion());
   });
 
+  test("the APK link outlives the build that produced it", () => {
+    // EAS artifact URLs expire after ~30 days on the free tier and the button
+    // then 404s silently — 1.0.5 shipped pointing at one. A GitHub Release
+    // asset never expires, so that is what the page is allowed to link.
+    const android = mobileDownloads.find((app) => app.platform === "android");
+
+    expect(android?.href).toContain("github.com");
+    expect(android?.href).toContain("/releases/download/");
+    expect(android?.href).not.toContain("expo.dev/artifacts");
+  });
+
   test("iOS ships through the App Store, not as a sideloaded file", () => {
     const ios = mobileDownloads.find((app) => app.platform === "ios");
 
