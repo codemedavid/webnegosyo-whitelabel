@@ -201,9 +201,37 @@ describe("computeSalesAnalytics", () => {
       cancelledRevenue: 50,
       cancellationRate: 1 / 3,
       ordersBySource: { web: 1, mobile: 1 },
+      ordersByChannel: [
+        { source: "web", count: 1, revenue: 100 },
+        { source: "mobile", count: 1, revenue: 200 },
+        { source: "pos", count: 1, revenue: 0 },
+      ],
       ordersByStatus: { completed: 1, ready: 1, cancelled: 1 },
       revenueGrowth: 1,
     });
+  });
+
+  it("counts counter sales as their own channel instead of losing them", () => {
+    const current = [
+      order({ id: "a", source: "web" }),
+      order({ id: "b", source: "pos" }),
+      order({ id: "c", source: "pos" }),
+      order({ id: "d", source: "qr_handoff" }),
+    ];
+
+    expect(computeSalesAnalytics(current, []).ordersByChannel).toEqual([
+      { source: "pos", count: 2, revenue: 200 },
+      { source: "web", count: 1, revenue: 100 },
+      { source: "qr_handoff", count: 1, revenue: 100 },
+    ]);
+  });
+
+  it("files an order that recorded no channel under an empty key", () => {
+    const current = [order({ id: "a", source: undefined })];
+
+    expect(computeSalesAnalytics(current, []).ordersByChannel).toEqual([
+      { source: "", count: 1, revenue: 100 },
+    ]);
   });
 
   it("reports zero growth when there is no prior revenue to grow from", () => {

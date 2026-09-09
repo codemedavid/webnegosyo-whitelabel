@@ -20,6 +20,10 @@ function fullInput(): AnalyticsReportInput {
       cancelledRevenue: 500,
       cancellationRate: 0.0476,
       ordersBySource: { web: 30, mobile: 12 },
+      ordersByChannel: [
+        { source: "web", count: 30, revenue: 9000 },
+        { source: "pos", count: 12, revenue: 3500 },
+      ],
       ordersByStatus: { pending: 1, delivered: 40, cancelled: 2 },
       revenueGrowth: 0.15,
     },
@@ -83,6 +87,7 @@ describe("buildAnalyticsReportCsv", () => {
       "REVENUE BY PAYMENT METHOD",
       "PAYMENT METHOD DETAIL",
       "ORDERS BY STATUS",
+      "ORDERS BY CHANNEL",
       "PEAK HOURS",
       "CUSTOMERS",
       "TOP CUSTOMERS",
@@ -103,6 +108,23 @@ describe("buildAnalyticsReportCsv", () => {
     expect(csv).toContain("Cancelled orders,2");
     expect(csv).toContain("Web orders,30");
     expect(csv).toContain("Mobile orders,12");
+  });
+
+  it("breaks the orders out by channel so counter sales are accounted for", () => {
+    const csv = buildAnalyticsReportCsv(fullInput());
+
+    expect(csv).toContain("Channel,Orders,Share (%),Revenue");
+    expect(csv).toContain("Counter,12,28.6,3500");
+  });
+
+  it("omits the channel section for a store whose backend does not report it", () => {
+    const input = fullInput();
+    const csv = buildAnalyticsReportCsv({
+      ...input,
+      sales: { ...input.sales!, ordersByChannel: undefined },
+    });
+
+    expect(csv).not.toContain("ORDERS BY CHANNEL");
   });
 
   it("exports rates as human percentages, not raw decimals", () => {
