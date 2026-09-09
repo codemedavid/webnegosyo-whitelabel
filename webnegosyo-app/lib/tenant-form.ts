@@ -71,6 +71,9 @@ export interface TenantEditorRow {
   order_backend?: OrderBackend | null;
   /** Saved receipt layout, carried into impersonation so reprints match. */
   receipt_layout?: unknown;
+  convex_schema_version?: number | null;
+  customer_hub_enabled?: boolean | null;
+  loyalty_enabled?: boolean | null;
   admin_email: string | null;
   email_notifications_enabled: boolean;
 }

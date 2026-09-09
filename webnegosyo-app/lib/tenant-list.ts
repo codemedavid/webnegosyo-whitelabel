@@ -24,6 +24,10 @@ export interface TenantListRow {
   receipt_layout?: unknown;
   /** Optional: absent on rows selected before the logo column was added. */
   logo_url?: string | null;
+  /** Carried into impersonation so the viewed store's deploy arguments are right. */
+  convex_schema_version?: number | null;
+  customer_hub_enabled?: boolean | null;
+  loyalty_enabled?: boolean | null;
   menu_engineering_enabled: boolean;
   bundles_enabled: boolean;
   app_enabled: boolean;

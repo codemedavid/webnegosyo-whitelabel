@@ -35,7 +35,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 1.0.4 (builds 37-39) went READY_FOR_SALE on 2026-08-28, closing that train
   // in turn. Re-verified against /v1/apps/6761642956/appStoreVersions on
   // 2026-09-04 before bumping. Hence 1.0.5.
-  version: "1.0.5",
+  //
+  // 1.0.5 (build 40) went READY_FOR_SALE, closing that train. Re-verified
+  // against /v1/apps/6761642956/appStoreVersions on 2026-09-09 before bumping.
+  // Hence 1.0.6 (carries the native iOS thermal-printer raster patch).
+  version: "1.0.6",
   orientation: "portrait",
   icon: "./assets/icon.png",
   splash: {

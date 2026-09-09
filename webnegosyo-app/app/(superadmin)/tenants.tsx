@@ -31,7 +31,7 @@ import { Pill } from "../../components/superadmin/Pill";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const TENANT_COLUMNS =
-  "id, slug, name, is_active, logo_url, convex_deployment_url, order_backend, receipt_layout, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
+  "id, slug, name, is_active, logo_url, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, customer_hub_enabled, loyalty_enabled, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
 
 const STATUS_FILTERS: readonly { key: TenantStatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -90,16 +90,9 @@ export default function TenantsScreen() {
 
   const handleOpenAsMerchant = (tenant: TenantListRow) => {
     const state = useAuthStore.getState();
-    useAuthStore.getState().setAuth(
-      enterTenant(state, {
-        id: tenant.id,
-        slug: tenant.slug,
-        name: tenant.name,
-        convex_deployment_url: tenant.convex_deployment_url,
-        order_backend: tenant.order_backend,
-        receipt_layout: tenant.receipt_layout,
-      })
-    );
+    // Hand over the whole row: a rebuilt literal here once dropped logo_url
+    // and the impersonated reprint lost its logo block silently.
+    useAuthStore.getState().setAuth(enterTenant(state, tenant));
     router.replace("/(main)/dashboard");
   };
 
