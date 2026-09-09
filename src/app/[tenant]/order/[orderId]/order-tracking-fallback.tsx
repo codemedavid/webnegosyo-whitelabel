@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, XCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { OrderTrackingClient } from './order-tracking-client'
+import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { getStorageKey } from '@/hooks/use-order-tracking'
 import type { ActiveOrder } from '@/hooks/use-order-tracking'
 import type { TrackingData } from '@/lib/order-tracking-service'
@@ -13,9 +13,10 @@ interface OrderTrackingFallbackProps {
   orderId: string
   tenantSlug: string
   tenantId: string
+  brand: OrderTrackingBrand
 }
 
-export function OrderTrackingFallback({ orderId, tenantSlug, tenantId }: OrderTrackingFallbackProps) {
+export function OrderTrackingFallback({ orderId, tenantSlug, tenantId, brand }: OrderTrackingFallbackProps) {
   const router = useRouter()
   const [trackingData, setTrackingData] = useState<TrackingData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -72,10 +73,13 @@ export function OrderTrackingFallback({ orderId, tenantSlug, tenantId }: OrderTr
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50/30 to-white flex items-center justify-center">
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ ...brand.theme, backgroundColor: 'var(--trk-bg)', color: 'var(--trk-text)' }}
+      >
         <div className="text-center">
-          <Loader2 className="h-12 w-12 text-blue-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Checking your order...</p>
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" style={{ color: 'var(--trk-accent)' }} />
+          <p style={{ color: 'var(--trk-text-muted)' }}>Checking your order...</p>
         </div>
       </div>
     )
@@ -83,11 +87,14 @@ export function OrderTrackingFallback({ orderId, tenantSlug, tenantId }: OrderTr
 
   if (error || !trackingData) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center p-4">
+      <div
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{ ...brand.theme, backgroundColor: 'var(--trk-bg)', color: 'var(--trk-text)' }}
+      >
         <div className="text-center max-w-sm">
-          <XCircle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Order Not Found</h1>
-          <p className="text-gray-500 mb-6">{error || 'Could not load order data.'}</p>
+          <XCircle className="h-16 w-16 mx-auto mb-4" style={{ color: 'var(--trk-text-faint)' }} />
+          <h1 className="text-xl font-bold mb-2">Order Not Found</h1>
+          <p className="mb-6" style={{ color: 'var(--trk-text-muted)' }}>{error || 'Could not load order data.'}</p>
           <Button
             onClick={() => router.push(`/${tenantSlug}/menu`)}
             className="rounded-full"
@@ -108,6 +115,7 @@ export function OrderTrackingFallback({ orderId, tenantSlug, tenantId }: OrderTr
       tenantId={tenantId}
       trackingToken={trackingTokenRef.current!}
       initialData={trackingData}
+      brand={brand}
     />
   )
 }

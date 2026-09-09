@@ -72,6 +72,8 @@ export interface LoyaltyProgramOutcome {
   applied: boolean
   isDuplicate: boolean
   entitlementsIssued: number
+  /** Stamps/points toward the next reward after this write; absent when the ledger did not say. */
+  balance?: number
 }
 
 export interface LoyaltyEarningOutcome {
@@ -97,6 +99,7 @@ function toOutcome(
     applied: result.applied,
     isDuplicate: !result.applied && result.reason === 'duplicate',
     entitlementsIssued: result.entitlementsIssued ?? 0,
+    ...(typeof result.balance === 'number' ? { balance: result.balance } : {}),
   }
 }
 

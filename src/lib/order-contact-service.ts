@@ -3,6 +3,7 @@ import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { decideContactWrite, type ContactSubmission } from '@/lib/order-contact'
+import { summarizeContactEarning, type ContactEarningSummary } from '@/lib/loyalty/contact-earning'
 
 /**
  * Attach a contact to an order after the fact (receipt-QR capture).
@@ -20,7 +21,12 @@ export type ContactUpdateError =
   | 'already_set'
   | 'unavailable'
 
-export type ContactUpdateResult = { ok: true } | { ok: false; error: ContactUpdateError }
+export type ContactUpdateResult =
+  | { ok: true; loyalty: ContactEarningSummary }
+  | { ok: false; error: ContactUpdateError }
+
+/** The number is on the order; no stamp claim is made. */
+const ATTACHED_ONLY: ContactEarningSummary = { state: 'attached' }
 
 export async function updateOrderContact(
   submission: ContactSubmission,
@@ -84,7 +90,12 @@ async function updateInConvex(
       contact: decision.contact,
       ...(decision.name ? { name: decision.name } : {}),
     })
-    return { ok: true }
+    // The Convex order's customer ledger row was projected at order create,
+    // before this number existed, and the capture route that re-projects it
+    // needs a merchant session. Earning for a late-attached number on a Convex
+    // store therefore waits for the next lifecycle sync — so no stamp is
+    // claimed here.
+    return { ok: true, loyalty: ATTACHED_ONLY }
   } catch (err) {
     // Deployments that predate the mutation reject it — the capture is simply
     // unavailable for that store until its Convex bundle is redeployed.
@@ -127,5 +138,30 @@ async function updateInSupabase(
     .eq('tenant_id', submission.tenantId)
 
   if (error) return { ok: false, error: 'unavailable' }
-  return { ok: true }
+
+  // A counter sale is usually already settled when the customer scans the
+  // receipt, so the completion event ran with no phone and earned nothing.
+  // This is the first moment the order can earn; the write is idempotent, so
+  // an order that already earned costs one query and never a second stamp.
+  const loyalty = await runLoyaltyAfterAttach(supabase, submission)
+  return { ok: true, loyalty }
+}
+
+async function runLoyaltyAfterAttach(
+  supabase: ReturnType<typeof createAdminClient>,
+  submission: ContactSubmission,
+): Promise<ContactEarningSummary> {
+  try {
+    const { runLoyaltyForOrder } = await import('@/lib/loyalty/lifecycle')
+    const result = await runLoyaltyForOrder(supabase, {
+      tenantId: submission.tenantId,
+      backend: 'platform_supabase',
+      externalOrderId: submission.orderId,
+    })
+    return summarizeContactEarning(result)
+  } catch (err) {
+    // The number is saved either way; the stamp is retried by the next event.
+    console.error('[Order Contact] Loyalty after attach failed:', err instanceof Error ? err.message : err)
+    return ATTACHED_ONLY
+  }
 }

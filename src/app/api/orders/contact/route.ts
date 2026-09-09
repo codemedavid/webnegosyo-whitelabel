@@ -25,7 +25,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const result = await updateOrderContact(submission)
-  if (result.ok) return NextResponse.json({ success: true })
+  if (result.ok) {
+    return NextResponse.json({ success: true, loyalty: result.loyalty })
+  }
 
   const status =
     result.error === 'invalid_token' ? 401
