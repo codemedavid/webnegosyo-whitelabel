@@ -99,6 +99,10 @@ describe("buildOrderChannelRows", () => {
       ]);
     });
 
+    it("shows nothing at all when the backend reports neither shape", () => {
+      expect(buildOrderChannelRows({ totalOrders: 9 })).toEqual([]);
+    });
+
     it("reports no revenue rather than inventing zero for it", () => {
       expect(buildOrderChannelRows(stale).every((r: OrderChannelRow) => r.revenue === null)).toBe(
         true
