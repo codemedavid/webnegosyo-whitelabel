@@ -28,13 +28,17 @@ import { saveReceiptLayoutAction } from '@/app/actions/receipt'
 import { BLOCK_GROUPS, BLOCK_PALETTE, addBlock } from '@/lib/receipt-editor'
 import {
   CLASSIC_RECEIPT_LAYOUT,
+  MODERN_RECEIPT_LAYOUT,
+  RECEIPT_THEMES,
   COMPACT_RECEIPT_LAYOUT,
   DETAILED_RECEIPT_LAYOUT,
   renderReceiptSegments,
   resolveReceiptLayout,
+  resolveReceiptTheme,
   type ReceiptBlock,
   type ReceiptLayout,
   type ReceiptPresetName,
+  type ReceiptTheme,
 } from '@/lib/receipt-layout'
 import { BlockRow } from './block-row'
 import { PaperPreview } from './paper-preview'
@@ -62,9 +66,15 @@ const PRESETS: Array<{
   layout: ReceiptLayout
 }> = [
   {
+    name: 'modern',
+    label: 'Modern',
+    description: 'Bold name, headline order number, tracking QR — the default',
+    layout: MODERN_RECEIPT_LAYOUT,
+  },
+  {
     name: 'classic',
     label: 'Classic',
-    description: 'The standard slip every store starts with',
+    description: 'The flat 32-column slip stores printed before styles',
     layout: CLASSIC_RECEIPT_LAYOUT,
   },
   {
@@ -109,13 +119,16 @@ const SAMPLE_ORDER = {
 const SAMPLE_TRACKING_URL = 'https://your.store/order/sample?t=…'
 
 function initialMode(saved: unknown): EditorMode {
-  if (saved === null || saved === undefined) return 'classic'
+  if (saved === null || saved === undefined) return 'modern'
   if (typeof saved === 'string') {
-    return (['classic', 'compact', 'detailed'] as const).includes(saved as ReceiptPresetName)
-      ? (saved as ReceiptPresetName)
-      : 'classic'
+    return PRESETS.some((p) => p.name === saved) ? (saved as ReceiptPresetName) : 'modern'
   }
   return 'custom'
+}
+
+const THEME_LABELS: Record<ReceiptTheme, { label: string; description: string }> = {
+  modern: { label: 'Modern', description: 'Bold, tall and centred text' },
+  classic: { label: 'Classic', description: 'Flat, label-and-colon rows' },
 }
 
 /** Stable fingerprint of what Publish would save — drives the dirty state. */
@@ -134,16 +147,19 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initia
   const [drafts, setDrafts] = useState<DraftBlock[]>(() =>
     toDrafts(resolveReceiptLayout(initialLayout).blocks),
   )
+  const [theme, setTheme] = useState<ReceiptTheme>(() =>
+    resolveReceiptTheme(resolveReceiptLayout(initialLayout)),
+  )
   const [isPublishing, setIsPublishing] = useState(false)
   const [showPublishedToast, setShowPublishedToast] = useState(false)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const activeLayout: ReceiptLayout = useMemo(() => {
     if (mode !== 'custom') {
-      return PRESETS.find((p) => p.name === mode)?.layout ?? CLASSIC_RECEIPT_LAYOUT
+      return PRESETS.find((p) => p.name === mode)?.layout ?? MODERN_RECEIPT_LAYOUT
     }
-    return { version: 1, blocks: drafts.map((d) => d.block) }
-  }, [mode, drafts])
+    return { version: 1, theme, blocks: drafts.map((d) => d.block) }
+  }, [mode, drafts, theme])
 
   const [savedKey, setSavedKey] = useState(() =>
     publishKey(
@@ -163,7 +179,7 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initia
           trackingUrl: SAMPLE_TRACKING_URL,
           ...(logoUrl ? { logoUrl } : {}),
         },
-        activeLayout.blocks.length > 0 ? activeLayout : CLASSIC_RECEIPT_LAYOUT,
+        activeLayout.blocks.length > 0 ? activeLayout : MODERN_RECEIPT_LAYOUT,
       ),
     [storeName, logoUrl, activeLayout],
   )
@@ -174,7 +190,9 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initia
   const handlePresetSelect = (preset: ReceiptPresetName) => {
     setMode(preset)
     // Seed the custom stack from the preset so "start from Compact" works.
-    setDrafts(toDrafts(PRESETS.find((p) => p.name === preset)!.layout.blocks))
+    const layout = PRESETS.find((p) => p.name === preset)!.layout
+    setDrafts(toDrafts(layout.blocks))
+    setTheme(resolveReceiptTheme(layout))
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -303,6 +321,38 @@ export function ReceiptEditor({ tenantId, tenantSlug, storeName, logoUrl, initia
 
             {mode === 'custom' && (
               <>
+                {/* Style: how the blocks print, not what they say */}
+                <div className="border-b border-[#E5E0D6] px-[18px] pb-4 pt-4">
+                  <div className="mb-2.5 text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">
+                    Style
+                  </div>
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Receipt style">
+                    {RECEIPT_THEMES.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        role="radio"
+                        aria-checked={theme === option}
+                        onClick={() => setTheme(option)}
+                        className={`rounded-[10px] border px-3 py-2 text-left transition-colors ${
+                          theme === option
+                            ? 'border-[#1D1815] bg-[#1D1815] text-white'
+                            : 'border-[#D8D2C6] hover:border-[#1D1815]'
+                        }`}
+                      >
+                        <div className="text-[12.5px] font-bold">{THEME_LABELS[option].label}</div>
+                        <div
+                          className={`mt-px text-[11px] ${
+                            theme === option ? 'text-white/70' : 'text-[#8B857B]'
+                          }`}
+                        >
+                          {THEME_LABELS[option].description}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Block stack */}
                 <div className="border-b border-[#E5E0D6] px-[18px] pb-4 pt-4">
                   <div className="mb-2.5 text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">

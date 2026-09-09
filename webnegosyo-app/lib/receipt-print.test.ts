@@ -1,6 +1,7 @@
 import { enterTenant, exitTenant, type ImpersonationState } from "./impersonation";
 import { formatReceipt } from "./receipt-formatter";
 import { buildReceiptSegments, buildReceiptText } from "./receipt-print";
+import { MODERN_RECEIPT_LAYOUT, renderReceipt } from "./receipt-layout";
 import { resolveSession, type AppUserRow, type TenantRow } from "./session-resolve";
 
 /**
@@ -22,15 +23,18 @@ const order = {
 };
 
 describe("buildReceiptText — what the printer receives", () => {
-  it("prints Classic when the tenant saved nothing", () => {
+  it("prints Modern when the tenant saved nothing, and Classic only when chosen", () => {
     expect(buildReceiptText(order, "Kape Co", null)).toBe(
+      renderReceipt(order, { storeName: "Kape Co" }, MODERN_RECEIPT_LAYOUT),
+    );
+    expect(buildReceiptText(order, "Kape Co", "classic")).toBe(
       formatReceipt(order, { storeName: "Kape Co" }),
     );
   });
 
-  it("prints Classic when the saved layout is garbage", () => {
+  it("prints Modern when the saved layout is garbage", () => {
     expect(buildReceiptText(order, "Kape Co", { version: 99 })).toBe(
-      formatReceipt(order, { storeName: "Kape Co" }),
+      renderReceipt(order, { storeName: "Kape Co" }, MODERN_RECEIPT_LAYOUT),
     );
   });
 
@@ -47,7 +51,7 @@ describe("buildReceiptText — what the printer receives", () => {
       blocks: [{ kind: "businessName" }, { kind: "totals" }],
     });
     expect(text).toContain("KAPE CO");
-    expect(text).toContain("TOTAL:");
+    expect(text).toContain("TOTAL");
     expect(text).not.toContain("Latte");
   });
 });

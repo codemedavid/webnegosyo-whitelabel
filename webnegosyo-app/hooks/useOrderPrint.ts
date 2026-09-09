@@ -2,7 +2,8 @@ import { useState, useCallback } from "react";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
 import { printForRole } from "../lib/printer";
-import { printersForRole } from "../lib/printer-registry";
+import { printersForRole, DEFAULT_PAPER_WIDTH } from "../lib/printer-registry";
+import { charsForPaperWidth } from "../lib/receipt-escpos";
 import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
 import { fetchTrackingUrl } from "../lib/receipt-tracking";
 import { supabase } from "../lib/supabase";
@@ -33,7 +34,10 @@ export function useOrderPrint() {
   const printers = usePrinterStore((s) => s.printers);
   // The receipt is the cashier's paper; a device whose printers are all
   // kitchen-role has nothing to print it on.
-  const hasCashierPrinter = printersForRole(printers, "cashier").length > 0;
+  const cashierPrinter = printersForRole(printers, "cashier")[0];
+  const hasCashierPrinter = cashierPrinter !== undefined;
+  // The receipt goes to the first cashier printer, so its paper sets the columns.
+  const paperColumns = charsForPaperWidth(cashierPrinter?.paperWidth ?? DEFAULT_PAPER_WIDTH);
   const [isPrinting, setIsPrinting] = useState(false);
 
   const printOrder = useCallback(
@@ -60,6 +64,7 @@ export function useOrderPrint() {
           receiptLayout,
           trackingUrl,
           receiptLogoUrl,
+          paperColumns,
         );
         const outcome = await printForRole("cashier", segments);
         if (!outcome.anySuccess) {
@@ -74,7 +79,7 @@ export function useOrderPrint() {
         setIsPrinting(false);
       }
     },
-    [hasCashierPrinter, tenantName, tenantId, receiptLayout, receiptLogoUrl]
+    [hasCashierPrinter, paperColumns, tenantName, tenantId, receiptLayout, receiptLogoUrl]
   );
 
   /**

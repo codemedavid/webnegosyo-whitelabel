@@ -69,3 +69,18 @@ describe("migrateAutoPrint", () => {
     expect(migrateAutoPrint(undefined)).toBe<PrintTrigger>("confirmation");
   });
 });
+
+describe("shouldPrintAt — the counter sale", () => {
+  // A POS sale is created confirmed AND paid in one swipe, so it is both
+  // moments at once. It printed nothing under the default "confirmation"
+  // trigger because the register only ever asked about "billout".
+  it("prints a counter sale under every trigger except off", () => {
+    expect(shouldPrintAt("counterSale", "confirmation")).toBe(true);
+    expect(shouldPrintAt("counterSale", "billout")).toBe(true);
+    expect(shouldPrintAt("counterSale", "both")).toBe(true);
+  });
+
+  it("never prints a counter sale when printing is off", () => {
+    expect(shouldPrintAt("counterSale", "off")).toBe(false);
+  });
+});

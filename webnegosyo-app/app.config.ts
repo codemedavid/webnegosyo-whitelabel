@@ -39,7 +39,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 1.0.5 (build 40) went READY_FOR_SALE, closing that train. Re-verified
   // against /v1/apps/6761642956/appStoreVersions on 2026-09-09 before bumping.
   // Hence 1.0.6 (carries the native iOS thermal-printer raster patch).
-  version: "1.0.6",
+  //
+  // 1.0.6 (build 41) was still WAITING_FOR_REVIEW on 2026-09-10 when the
+  // Modern receipt theme + per-printer paper width shipped; a new binary under
+  // a version that may be approved any minute would strand it, so 1.0.7.
+  version: "1.0.7",
   orientation: "portrait",
   icon: "./assets/icon.png",
   splash: {

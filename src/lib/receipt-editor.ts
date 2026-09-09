@@ -10,7 +10,7 @@ import {
  * Receipt Studio state helpers — all immutable, all pure. The editor holds a
  * draft block stack in React state; everything that reaches the tenants row
  * goes through `sanitizeLayoutForSave` so the column can never hold a layout
- * the printer would refuse (it falls back to Classic on anything invalid, so
+ * the printer would refuse (it falls back to Modern on anything invalid, so
  * a bad save would silently discard the merchant's design).
  */
 
@@ -78,7 +78,7 @@ export function updateBlock(
   return blocks.map((existing, i) => (i === index ? block : existing))
 }
 
-const PRESET_NAMES: readonly ReceiptPresetName[] = ['classic', 'compact', 'detailed']
+const PRESET_NAMES: readonly ReceiptPresetName[] = ['modern', 'classic', 'compact', 'detailed']
 
 /**
  * What the save action is allowed to write: a known preset name or a layout

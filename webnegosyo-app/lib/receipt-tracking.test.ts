@@ -97,8 +97,9 @@ describe("fetchTrackingUrl", () => {
 });
 
 describe("layoutWantsQr", () => {
-  it("is false for tenants on Classic (no saved layout)", () => {
-    expect(layoutWantsQr(null)).toBe(false);
+  it("is true for tenants with nothing saved — the Modern default carries the QR", () => {
+    expect(layoutWantsQr(null)).toBe(true);
+    expect(layoutWantsQr("classic")).toBe(false);
   });
 
   it("is true for the detailed preset and any custom layout with a qr block", () => {

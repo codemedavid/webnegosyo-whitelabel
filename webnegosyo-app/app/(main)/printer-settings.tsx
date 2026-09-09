@@ -12,6 +12,9 @@ import {
   printersForRole,
   suggestedRoles,
   PRINTER_ROLES,
+  PAPER_WIDTHS,
+  DEFAULT_PAPER_WIDTH,
+  type PaperWidth,
   type PrinterRole,
   type RegisteredPrinter,
 } from "../../lib/printer-registry";
@@ -44,6 +47,15 @@ const PRINT_TRIGGER_OPTIONS: { value: PrintTrigger; label: string; hint: string 
   { value: "both", label: "Both", hint: "On confirm and again on payment" },
   { value: "off", label: "Never", hint: "Only print when you tap Reprint Receipt" },
 ];
+
+/**
+ * Wrong here means a QR that prints and never scans: the driver rasterizes
+ * into a strip as wide as the paper it is told about.
+ */
+const PAPER_LABELS: Record<PaperWidth, string> = {
+  58: "58mm",
+  80: "80mm",
+};
 
 const ROLE_LABELS: Record<PrinterRole, string> = {
   cashier: "Cashier",
@@ -138,7 +150,7 @@ export default function PrinterSettingsScreen() {
     address: string,
   ) => {
     const roles = suggestedRoles(printers);
-    await addPrinter({ type, name, address, roles });
+    await addPrinter({ type, name, address, roles, paperWidth: DEFAULT_PAPER_WIDTH });
     const roleText = roles.map((r) => ROLE_LABELS[r]).join(" + ");
     Alert.alert(
       "Printer Added",
@@ -270,6 +282,26 @@ export default function PrinterSettingsScreen() {
                       >
                         <Text style={[styles.roleChipText, isActive && styles.roleChipTextActive]}>
                           {isActive ? "✓ " : ""}{ROLE_LABELS[role]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={styles.roleRow}>
+                  <Text style={styles.paperLabel}>Paper</Text>
+                  {PAPER_WIDTHS.map((width) => {
+                    const isActive = (printer.paperWidth ?? DEFAULT_PAPER_WIDTH) === width;
+                    return (
+                      <TouchableOpacity
+                        key={width}
+                        style={[styles.roleChip, isActive && styles.roleChipActive]}
+                        onPress={() => void updatePrinter(printer.id, { paperWidth: width })}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: isActive }}
+                        accessibilityLabel={`${width}mm paper`}
+                      >
+                        <Text style={[styles.roleChipText, isActive && styles.roleChipTextActive]}>
+                          {isActive ? "✓ " : ""}{PAPER_LABELS[width]}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -444,6 +476,7 @@ const styles = StyleSheet.create({
   },
   printerInfo: { flex: 1 },
   roleRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  paperLabel: { ...typography.caption, color: colors.textSecondary, alignSelf: "center", marginRight: spacing.xs },
   roleChip: {
     borderWidth: 1,
     borderColor: colors.separator,

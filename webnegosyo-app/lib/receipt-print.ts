@@ -31,6 +31,8 @@ export function buildReceiptSegments(
   savedLayout: unknown,
   trackingUrl: string | null,
   logoUrl: string | null = null,
+  /** Text columns of the paper — 32 on 58mm, 48 on 80mm. A layout's own width wins. */
+  width?: number,
 ): ReceiptSegment[] {
   return renderReceiptSegments(
     order,
@@ -38,6 +40,7 @@ export function buildReceiptSegments(
       storeName,
       ...(trackingUrl ? { trackingUrl } : {}),
       ...(logoUrl ? { logoUrl } : {}),
+      ...(width !== undefined ? { width } : {}),
     },
     resolveReceiptLayout(savedLayout),
   );

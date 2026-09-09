@@ -111,7 +111,11 @@ describe("migrateLegacyPrinter", () => {
 describe("parsePrinterList", () => {
   it("round-trips a valid list", () => {
     const list = [bt(), bt({ id: "p2", address: "1.2.3.4:9100", type: "network", roles: ["kitchen"] })];
-    expect(parsePrinterList(JSON.stringify(list))).toEqual(list);
+    // Entries saved before paper widths existed come back as 58mm, so a
+    // printer that has only ever printed 58mm keeps printing 58mm.
+    expect(parsePrinterList(JSON.stringify(list))).toEqual(
+      list.map((p) => ({ ...p, paperWidth: 58 })),
+    );
   });
 
   it("drops invalid entries and survives corrupt storage", () => {
@@ -136,5 +140,37 @@ describe("suggestedRoles", () => {
 
   it("defaults to cashier when both roles are already covered", () => {
     expect(suggestedRoles([bt({ roles: ["cashier", "kitchen"] })])).toEqual(["cashier"]);
+  });
+});
+
+describe("paper width", () => {
+  // The driver rasterizes a QR into a strip as wide as the print head it is
+  // told about, and defaults to 80mm. A 58mm printer given a 576-dot strip
+  // clips the right third of the code — it prints, and never scans.
+  it("reads a saved 80mm width", () => {
+    const parsed = parsePrinterList(
+      JSON.stringify([{ ...bt(), paperWidth: 80 }]),
+    );
+    expect(parsed[0]?.paperWidth).toBe(80);
+  });
+
+  it("treats an absent or unknown width as 58mm — the common counter printer", () => {
+    const parsed = parsePrinterList(
+      JSON.stringify([bt(), { ...bt({ address: "DD:EE:FF" }), paperWidth: 72 }]),
+    );
+    expect(parsed[0]?.paperWidth).toBe(58);
+    expect(parsed[1]?.paperWidth).toBe(58);
+  });
+
+  it("migrates the legacy single printer as 58mm", () => {
+    const [printer] = migrateLegacyPrinter(
+      JSON.stringify({ type: "bluetooth", name: "T58", address: "AA:BB:CC" }),
+    );
+    expect(printer?.paperWidth).toBe(58);
+  });
+
+  it("lets a printer be re-labelled 80mm in place", () => {
+    const list = updatePrinter([bt()], "p1", { paperWidth: 80 });
+    expect(list[0]?.paperWidth).toBe(80);
   });
 });

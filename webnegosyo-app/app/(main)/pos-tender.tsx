@@ -469,6 +469,16 @@ export default function PosTenderScreen() {
       goTo(router, "/(main)/pos-sales");
 
       void settleSaleInBackground(async () => {
+      // The receipt starts NOW, alongside the bookkeeping rather than after
+      // it: the customer is standing at the counter, and the four platform
+      // round-trips below each carry their own deadline. A counter sale is
+      // created confirmed and paid in one swipe, so it prints under every
+      // trigger except "never" — it used to ask only about bill-out, and the
+      // default setting is confirmation, so the register printed nothing.
+      const receiptPrinted = shouldPrint("counterSale")
+        ? printOrder(posReceiptOrder(String(orderId), args, tender))
+        : Promise.resolve(false);
+
       // Everything the sale owes the platform, reported TOGETHER rather than
       // one after another. None of them can throw and none depends on
       // another's answer.
@@ -523,16 +533,12 @@ export default function PosTenderScreen() {
         ]);
       }
 
-      // A settled counter sale IS the bill-out moment, so it obeys the same
-      // setting as every other receipt rather than printing unconditionally.
       // The print queue serialises against the kitchen chit, and a dead
-      // printer only logs — the sale is already in the drawer.
-      if (shouldPrint("billout")) {
-        // Built from the arguments the sale was written with, so the paper
-        // carries every figure the order does — delivery fee, service charge
-        // and discount included. See `lib/pos-receipt.ts`.
-        await printOrder(posReceiptOrder(String(orderId), args, tender));
-      }
+      // printer only logs — the sale is already in the drawer. Built from the
+      // arguments the sale was written with, so the paper carries every
+      // figure the order does — delivery fee, service charge and discount
+      // included. See `lib/pos-receipt.ts`.
+      await receiptPrinted;
       });
     } catch (err) {
       // A store several bundles behind rejects `source: "pos"` outright — its

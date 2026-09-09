@@ -5,9 +5,11 @@
  * tear edges, rendered from the exact segments the merchant app prints —
  * text as monospace lines, the logo as a grayscale raster, the QR (which
  * prints as a scannable code) degraded to its URL like the flat renderer.
+ * Styled lines carry the printer's inline markup; the paper cannot show
+ * bold or tall text, so they are flattened the same way browser printing is.
  */
 
-import type { ReceiptSegment } from '@/lib/receipt-layout'
+import { flattenReceiptMarkup, type ReceiptSegment } from '@/lib/receipt-layout'
 
 const SAWTOOTH_SIZE = 10
 const PAPER_WIDTH_CHARS = 32
@@ -63,7 +65,10 @@ export function PaperPreview({ segments }: PaperPreviewProps) {
               />
             )
           }
-          const text = segment.type === 'text' ? segment.text : wrapToPaper(segment.data)
+          const text =
+            segment.type === 'text'
+              ? flattenReceiptMarkup(segment.text, PAPER_WIDTH_CHARS)
+              : wrapToPaper(segment.data)
           return (
             <pre key={index} className="font-mono text-[11px] leading-[1.4] text-neutral-800">
               {text}

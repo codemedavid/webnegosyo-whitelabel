@@ -1,5 +1,6 @@
 import {
   CLASSIC_RECEIPT_LAYOUT,
+  MODERN_RECEIPT_LAYOUT,
   COMPACT_RECEIPT_LAYOUT,
   DETAILED_RECEIPT_LAYOUT,
   parseReceiptLayout,
@@ -75,6 +76,7 @@ describe('custom layouts (web mirror)', () => {
   it('renders blocks in layout order with aligned text', () => {
     const receipt = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [
         { kind: 'text', text: 'Salamat po!', align: 'center' },
         { kind: 'businessName' },
@@ -106,6 +108,7 @@ describe('order detail blocks (web mirror)', () => {
   it('prints each order detail as its own block with default labels', () => {
     const receipt = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [
         { kind: 'orderNumber' },
         { kind: 'orderDate' },
@@ -123,6 +126,7 @@ describe('order detail blocks (web mirror)', () => {
   it('prints merchant-authored labels instead of the defaults', () => {
     const receipt = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [
         { kind: 'orderNumber', label: 'Ref' },
         { kind: 'customerName', label: 'Guest' },
@@ -136,6 +140,7 @@ describe('order detail blocks (web mirror)', () => {
   it('stays silent for orderType when the order has none', () => {
     const receipt = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'orderType' }, { kind: 'text', text: 'after' }],
     })
     expect(linesOf(receipt)).toEqual(['Type: Dine-in', 'after'])
@@ -149,6 +154,7 @@ describe('order detail blocks (web mirror)', () => {
   it('stacked in the classic order, the granular blocks match orderMeta line-for-line', () => {
     const granular = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [
         { kind: 'orderNumber' },
         { kind: 'orderDate' },
@@ -158,6 +164,7 @@ describe('order detail blocks (web mirror)', () => {
     })
     const composite = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'orderMeta' }],
     })
     expect(granular).toBe(composite)
@@ -166,6 +173,7 @@ describe('order detail blocks (web mirror)', () => {
   it('renders a fill-in line as a label plus a writable rule to the paper edge', () => {
     const receipt = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'fillIn', label: 'Received by' }],
     })
     const [line] = linesOf(receipt)
@@ -177,6 +185,7 @@ describe('order detail blocks (web mirror)', () => {
   it('clips an over-long fill-in label to the paper width', () => {
     const receipt = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'fillIn', label: 'X'.repeat(40) }],
     })
     expect(linesOf(receipt)[0]).toHaveLength(32)
@@ -223,6 +232,7 @@ describe('logo block (web mirror)', () => {
   it('prints nothing when the store has no logo configured', () => {
     const receipt = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'logo' }, { kind: 'text', text: 'after' }],
     })
     expect(linesOf(receipt)).toEqual(['after'])
@@ -250,11 +260,31 @@ describe('layout validation (web mirror)', () => {
     expect(parseReceiptLayout({ version: 1, blocks: [{ kind: 'nope' }] })).toBeNull()
   })
 
-  it('resolves preset names and falls back to Classic', () => {
+  it('resolves preset names and falls back to Modern', () => {
     expect(resolveReceiptLayout('compact')).toBe(COMPACT_RECEIPT_LAYOUT)
     expect(resolveReceiptLayout('detailed')).toBe(DETAILED_RECEIPT_LAYOUT)
-    expect(resolveReceiptLayout(undefined)).toBe(CLASSIC_RECEIPT_LAYOUT)
-    expect(resolveReceiptLayout({ bad: true })).toBe(CLASSIC_RECEIPT_LAYOUT)
+    expect(resolveReceiptLayout('classic')).toBe(CLASSIC_RECEIPT_LAYOUT)
+    expect(resolveReceiptLayout(undefined)).toBe(MODERN_RECEIPT_LAYOUT)
+    expect(resolveReceiptLayout({ bad: true })).toBe(MODERN_RECEIPT_LAYOUT)
+  })
+
+  it('keeps a saved theme and reads a theme-less layout as modern', () => {
+    expect(parseReceiptLayout({ version: 1, theme: 'classic', blocks: [{ kind: 'items' }] })?.theme).toBe('classic')
+    expect(parseReceiptLayout({ version: 1, theme: 'neon', blocks: [{ kind: 'items' }] })).toBeNull()
+  })
+})
+
+describe('modern styling on flat surfaces (web mirror)', () => {
+  it('previews and browser-prints without markup tags, keeping the centred shape', () => {
+    const segments = renderReceiptSegments(baseOrder, config, MODERN_RECEIPT_LAYOUT)
+    const styled = segments.find((s) => s.type === 'text')
+    expect(styled?.type === 'text' && styled.text).toMatch(/<[CBHW]>/)
+
+    const flat = renderReceipt(baseOrder, config, MODERN_RECEIPT_LAYOUT)
+    expect(flat).not.toMatch(/<\/?[CRBHW]>/)
+    const nameLine = linesOf(flat).find((l) => l.includes('KAPE CO'))!
+    expect(nameLine.startsWith(' ')).toBe(true)
+    expect(nameLine.length).toBeLessThanOrEqual(32)
   })
 })
 
@@ -299,6 +329,7 @@ describe('table number on the receipt', () => {
   it('prints the table as its own block, honoring a custom label', () => {
     const receipt = renderReceipt(seated, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'tableNumber' }, { kind: 'tableNumber', label: 'Mesa' }],
     })
     expect(linesOf(receipt)).toEqual(['Table: 12', 'Mesa: 12'])
@@ -307,6 +338,7 @@ describe('table number on the receipt', () => {
   it('stays silent when the order has no table', () => {
     const receipt = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'tableNumber' }, { kind: 'text', text: 'after' }],
     })
     expect(linesOf(receipt)).toEqual(['after'])
@@ -315,6 +347,7 @@ describe('table number on the receipt', () => {
   it('reads the snake_case blob a Supabase row carries', () => {
     const receipt = renderReceipt({ ...baseOrder, customer_data: { table_number: 'B4' } }, config, {
       version: 1,
+      theme: 'classic',
       blocks: [{ kind: 'tableNumber' }],
     })
     expect(linesOf(receipt)).toEqual(['Table: B4'])
@@ -322,7 +355,7 @@ describe('table number on the receipt', () => {
 
   it('adds the table to the all-details block only when one was captured', () => {
     const withTable = linesOf(
-      renderReceipt(seated, config, { version: 1, blocks: [{ kind: 'orderMeta' }] })
+      renderReceipt(seated, config, { version: 1, theme: 'classic', blocks: [{ kind: 'orderMeta' }] })
     )
     expect(withTable[withTable.length - 1]).toBe('Table: 12')
     const without = linesOf(

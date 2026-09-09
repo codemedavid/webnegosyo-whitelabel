@@ -232,3 +232,36 @@ describe("printReceiptSegments compat", () => {
     expect(result.error).toMatch(/no printer/i);
   });
 });
+
+describe("what reaches the head", () => {
+  const QR_SEGMENTS = [
+    { type: "text" as const, text: "<C><B>Scan</B></C>" },
+    { type: "qr" as const, data: "https://www.webnegosyo.com/x/order/1?t=abc" },
+  ];
+
+  it("tells the driver the paper is 58mm by default, so the QR raster is not padded to 80mm", async () => {
+    await run(printToPrinter(CASHIER, QR_SEGMENTS));
+
+    expect(mockBLEPrinter.printImageBase64).toHaveBeenCalledTimes(1);
+    const [, options] = mockBLEPrinter.printImageBase64.mock.calls[0]!;
+    expect(options.printerWidthType).toBe("58");
+    expect(options.imageWidth).toBeLessThanOrEqual(384);
+  });
+
+  it("names 80mm paper when the printer is saved as such", async () => {
+    await run(printToPrinter({ ...CASHIER, paperWidth: 80 }, QR_SEGMENTS));
+
+    const [, options] = mockBLEPrinter.printImageBase64.mock.calls[0]!;
+    expect(options.printerWidthType).toBe("80");
+  });
+
+  it("hands the driver control bytes, never the layout's markup tags", async () => {
+    await run(printToPrinter(CASHIER, QR_SEGMENTS));
+
+    const [text] = mockBLEPrinter.printBill.mock.calls[0]!;
+    expect(text).not.toMatch(/<\/?[CB]>/);
+    expect(text.startsWith("\x1Ba\x00")).toBe(true);
+    expect(text).toContain("\x1Ba\x01");
+    expect(text).toContain("\x1BE\x01Scan");
+  });
+});

@@ -10,7 +10,7 @@ import { getOrderTableNumber } from "./order-table-number";
  * tenant without a saved layout prints exactly what they always have. Layouts
  * arrive as untrusted JSON from the `tenants.receipt_layout` column, so
  * everything goes through `parseReceiptLayout` / `resolveReceiptLayout` and an
- * invalid layout falls back to Classic rather than printing a broken receipt.
+ * invalid layout falls back to Modern rather than printing a broken receipt.
  *
  * Mirror (deliberate duplication, like `qr-order-codec.ts`) of
  * `webnegosyo-app/lib/receipt-layout.ts` — the app is the printing side, this
@@ -102,21 +102,92 @@ export type ReceiptBlock =
 
 export type ReceiptBlockKind = ReceiptBlock["kind"];
 
+/**
+ * How the blocks are styled. `classic` is the flat 32-column slip every store
+ * printed before themes existed; `modern` uses the printer's bold, tall, wide
+ * and centred text. A layout that names no theme is modern.
+ */
+export type ReceiptTheme = "classic" | "modern";
+
+export const RECEIPT_THEMES: readonly ReceiptTheme[] = ["classic", "modern"];
+
 export interface ReceiptLayout {
   version: 1;
   width?: number;
+  theme?: ReceiptTheme;
   blocks: ReceiptBlock[];
 }
 
-export type ReceiptPresetName = "classic" | "compact" | "detailed";
+export type ReceiptPresetName = "modern" | "classic" | "compact" | "detailed";
+
+// ---------------------------------------------------------------------------
+// Inline markup
+//
+// Styled lines carry `<C>` (centre), `<R>` (right), `<B>` (bold), `<H>`
+// (double height) and `<W>` (double width and height). The printer path turns
+// them into control bytes (webnegosyo-app/lib/receipt-escpos.ts); flat
+// surfaces flatten them with `flattenReceiptMarkup`. Classic emits none.
+// ---------------------------------------------------------------------------
+
+const MARKUP_TAG = /<\/?[CRBHW]>/g;
+
+export function stripReceiptMarkup(text: string): string {
+  return text.replace(MARKUP_TAG, "");
+}
+
+/**
+ * Markup → plain text for previews and browser printing: tags are removed and
+ * a line that opened centred or right-aligned is padded with spaces instead,
+ * so the flat rendering keeps the shape of the paper.
+ */
+export function flattenReceiptMarkup(text: string, width: number): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      const plain = stripReceiptMarkup(line);
+      if (line.startsWith("<C>")) return center(plain, width);
+      if (line.startsWith("<R>")) return rightAlign(plain, width);
+      return plain;
+    })
+    .join("\n");
+}
 
 // ---------------------------------------------------------------------------
 // Presets
 // ---------------------------------------------------------------------------
 
+/**
+ * The default: logo and name up top, a headline order number, clean item
+ * rows, a tall bold total, and the tracking QR. Every store without a saved
+ * layout prints this.
+ */
+export const MODERN_RECEIPT_LAYOUT: ReceiptLayout = {
+  version: 1,
+  theme: "modern",
+  blocks: [
+    { kind: "logo" },
+    { kind: "businessName" },
+    { kind: "storeAddress" },
+    { kind: "feed" },
+    { kind: "orderNumber" },
+    { kind: "orderDate" },
+    { kind: "orderType" },
+    { kind: "customerName" },
+    { kind: "divider", char: "-" },
+    { kind: "items" },
+    { kind: "totals" },
+    { kind: "feed" },
+    { kind: "qr" },
+    { kind: "feed" },
+    { kind: "text", text: "Thank you! Please come again.", align: "center" },
+    { kind: "feed" },
+  ],
+};
+
 /** Byte-for-byte the historic `formatReceipt` output. */
 export const CLASSIC_RECEIPT_LAYOUT: ReceiptLayout = {
   version: 1,
+  theme: "classic",
   blocks: [
     { kind: "divider", char: "=" },
     { kind: "businessName" },
@@ -165,6 +236,7 @@ export const DETAILED_RECEIPT_LAYOUT: ReceiptLayout = {
 };
 
 const PRESETS: Record<ReceiptPresetName, ReceiptLayout> = {
+  modern: MODERN_RECEIPT_LAYOUT,
   classic: CLASSIC_RECEIPT_LAYOUT,
   compact: COMPACT_RECEIPT_LAYOUT,
   detailed: DETAILED_RECEIPT_LAYOUT,
@@ -435,6 +507,154 @@ function renderText(block: { text: string; align?: ReceiptTextAlign }, w: number
 }
 
 // ---------------------------------------------------------------------------
+// Modern theme renderers
+// ---------------------------------------------------------------------------
+
+/** The widest a double-width line can be: half the columns. */
+function heroLine(text: string, w: number): string {
+  if (text.length <= Math.floor(w / 2)) return `<C><W><B>${text}</B></W></C>`;
+  return `<C><H><B>${truncate(text, w)}</B></H></C>`;
+}
+
+function headline(text: string, w: number): string {
+  return `<C><H><B>${truncate(text, w)}</B></H></C>`;
+}
+
+function centered(text: string, w: number): string {
+  return `<C>${truncate(text, w)}</C>`;
+}
+
+/** "Order #A1B2C3D4" — a label ending in "#" hugs the number. */
+function modernOrderNumberText(order: ReceiptOrder, label: string): string {
+  const id = order._id.slice(-8).toUpperCase();
+  return label.endsWith("#") ? `${label}${id}` : `${label} #${id}`;
+}
+
+function modernDateText(order: ReceiptOrder): string {
+  const date = new Date(order._creationTime);
+  const dateStr = date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+  const timeStr = date.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
+  return `${dateStr}  ${timeStr}`;
+}
+
+/** A merchant-renamed label is kept; the default one gives way to the value. */
+function labelled(label: string | undefined, value: string): string {
+  return label === undefined ? value : `${label}: ${value}`;
+}
+
+/** "Dine-in  ·  Table 4" — whichever halves the order carries. */
+function modernTypeAndTable(order: ReceiptOrder, typeLabel?: string, tableLabel?: string): string[] {
+  const table = getOrderTableNumber(order.customerData ?? order.customer_data);
+  const parts = [
+    ...(order.orderType ? [labelled(typeLabel, order.orderType)] : []),
+    ...(table ? [labelled(tableLabel, `Table ${table}`)] : []),
+  ];
+  return parts.length > 0 ? [parts.join("  ·  ")] : [];
+}
+
+function renderModernOrderMeta(order: ReceiptOrder, w: number): string[] {
+  return [
+    headline(modernOrderNumberText(order, "Order #"), w),
+    centered(modernDateText(order), w),
+    ...modernTypeAndTable(order).map((line) => centered(line, w)),
+    centered(`Customer: ${order.customerName}`, w),
+  ];
+}
+
+const MODERN_INDENT = "    ";
+
+function modernItemLines(item: ReceiptOrderItem, w: number, slotPrefix = ""): string[] {
+  const qtyStr = `${item.quantity}x`.padEnd(3);
+  const priceStr = `P${item.subtotal.toFixed(2)}`;
+  const fullName = `${slotPrefix}${item.menuItemName}`;
+  const nameMaxLen = Math.max(0, w - qtyStr.length - priceStr.length - 2);
+  const name =
+    fullName.length > nameMaxLen
+      ? nameMaxLen > 1
+        ? fullName.slice(0, nameMaxLen - 1) + "."
+        : fullName.slice(0, nameMaxLen)
+      : fullName;
+
+  const lines = [leftRight(`${qtyStr} ${name}`, priceStr, w)];
+  if (item.variationSelections && item.variationSelections.length > 0) {
+    for (const sel of item.variationSelections) lines.push(`${MODERN_INDENT}${sel.optionName}`);
+  } else if (item.variation) {
+    lines.push(`${MODERN_INDENT}${item.variation}`);
+  }
+  for (const addon of item.addons ?? []) lines.push(`${MODERN_INDENT}+ ${addon.name}`);
+  if (item.specialInstructions) lines.push(`${MODERN_INDENT}Note: ${item.specialInstructions}`);
+  return lines;
+}
+
+function renderModernItems(ctx: RenderContext, w: number): string[] {
+  const lines: string[] = [];
+  for (const item of ctx.regularItems) lines.push(...modernItemLines(item, w));
+  for (const [, bundle] of ctx.bundles) {
+    lines.push("");
+    lines.push(`<B>${truncate(`Bundle: ${bundle.name}`, w)}</B>`);
+    for (const item of bundle.items) {
+      lines.push(...modernItemLines(item, w, item.slotName ? `[${item.slotName}] ` : ""));
+    }
+    lines.push(leftRight(`${MODERN_INDENT}Bundle total`, `P${bundle.total.toFixed(2)}`, w));
+  }
+  return lines;
+}
+
+const MODERN_LABELS: Record<OrderSummaryRowKind, string> = {
+  subtotal: "Subtotal",
+  discount: "Discount",
+  service: "Service charge",
+  delivery: "Delivery fee",
+  total: "TOTAL",
+};
+
+function renderModernTotals(order: ReceiptOrder, ctx: RenderContext, w: number): string[] {
+  const lines: string[] = [rule("-", w)];
+  const summaryRows = orderSummaryRows({
+    subtotal: ctx.subtotal,
+    deliveryFee: order.deliveryFee,
+    serviceCharge: order.serviceCharge,
+    discount: ctx.discount,
+    total: order.total,
+  });
+  for (const row of summaryRows.filter((r) => r.kind !== "total")) {
+    if (row.kind === "discount") {
+      const amount = `-P${row.amount.toFixed(2)}`;
+      lines.push(leftRight(truncate(row.label, Math.max(0, w - amount.length - 1)), amount, w));
+      continue;
+    }
+    lines.push(leftRight(MODERN_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w));
+  }
+  lines.push(rule("-", w));
+  // Straight from `order.total`, the backend's figure — never a recomputed sum.
+  lines.push(`<H><B>${leftRight("TOTAL", `P${order.total.toFixed(2)}`, w)}</B></H>`);
+
+  if (order.paymentMethod) {
+    lines.push(leftRight("Payment", truncate(order.paymentMethod, Math.max(0, w - 8)), w));
+  }
+  if (order.cashTendered !== undefined && order.changeDue !== undefined) {
+    lines.push(leftRight("Cash", `P${order.cashTendered.toFixed(2)}`, w));
+    lines.push(leftRight("Change", `P${order.changeDue.toFixed(2)}`, w));
+  }
+  if (order.paymentReference) lines.push(truncate(`Ref: ${order.paymentReference}`, w));
+  return lines;
+}
+
+function renderModernText(block: { text: string; align?: ReceiptTextAlign }, w: number): string[] {
+  const text = truncate(block.text, w);
+  if (block.align === "center") return [`<C>${text}</C>`];
+  if (block.align === "right") return [`<R>${text}</R>`];
+  return [text];
+}
+
+/** What a layout prints with: absent means modern. */
+export function resolveReceiptTheme(
+  layout: ReceiptLayout | Pick<ReceiptLayout, "theme">,
+): ReceiptTheme {
+  return layout.theme ?? "modern";
+}
+
+// ---------------------------------------------------------------------------
 // The renderer
 // ---------------------------------------------------------------------------
 
@@ -454,6 +674,7 @@ export function renderReceiptSegments(
   layout: ReceiptLayout,
 ): ReceiptSegment[] {
   const w = layout.width ?? config.width ?? 32;
+  const isModern = resolveReceiptTheme(layout) === "modern";
   const ctx = buildContext(order);
   const segments: ReceiptSegment[] = [];
   let lines: string[] = [];
@@ -470,10 +691,18 @@ export function renderReceiptSegments(
         lines.push(rule(block.char ?? "=", w));
         break;
       case "businessName":
-        lines.push(center(truncate(config.storeName.toUpperCase(), w), w));
+        lines.push(
+          isModern
+            ? heroLine(config.storeName.toUpperCase(), w)
+            : center(truncate(config.storeName.toUpperCase(), w), w),
+        );
         break;
       case "storeAddress":
-        if (config.storeAddress) lines.push(center(truncate(config.storeAddress, w), w));
+        if (config.storeAddress) {
+          lines.push(
+            isModern ? centered(config.storeAddress, w) : center(truncate(config.storeAddress, w), w),
+          );
+        }
         break;
       case "logo":
         if (config.logoUrl) {
@@ -482,31 +711,56 @@ export function renderReceiptSegments(
         }
         break;
       case "text":
-        lines.push(...renderText(block, w));
+        lines.push(...(isModern ? renderModernText(block, w) : renderText(block, w)));
         break;
       case "orderMeta":
-        lines.push(...renderOrderMeta(order, w));
+        lines.push(...(isModern ? renderModernOrderMeta(order, w) : renderOrderMeta(order, w)));
         break;
       case "orderNumber":
-        lines.push(orderNumberLine(order, block.label ?? "Order #"));
+        lines.push(
+          isModern
+            ? headline(modernOrderNumberText(order, block.label ?? "Order #"), w)
+            : orderNumberLine(order, block.label ?? "Order #"),
+        );
         break;
       case "orderDate":
-        lines.push(orderDateLine(order, block.label ?? "Date"));
+        lines.push(
+          isModern
+            ? centered(labelled(block.label, modernDateText(order)), w)
+            : orderDateLine(order, block.label ?? "Date"),
+        );
         break;
       case "customerName":
-        lines.push(customerNameLine(order, block.label ?? "Customer", w));
+        lines.push(
+          isModern
+            ? centered(`${block.label ?? "Customer"}: ${order.customerName}`, w)
+            : customerNameLine(order, block.label ?? "Customer", w),
+        );
         break;
       case "orderType":
-        lines.push(...orderTypeLines(order, block.label ?? "Type", w));
+        if (isModern) {
+          // The type and the table share one centred line when both are set;
+          // a following tableNumber block then has nothing left to print.
+          lines.push(...modernTypeAndTable(order, block.label).map((line) => centered(line, w)));
+        } else {
+          lines.push(...orderTypeLines(order, block.label ?? "Type", w));
+        }
         break;
       case "tableNumber":
-        lines.push(...tableNumberLines(order, block.label ?? "Table", w));
+        if (isModern) {
+          if (!layout.blocks.some((b) => b.kind === "orderType" || b.kind === "orderMeta")) {
+            const table = getOrderTableNumber(order.customerData ?? order.customer_data);
+            if (table) lines.push(centered(labelled(block.label, `Table ${table}`), w));
+          }
+        } else {
+          lines.push(...tableNumberLines(order, block.label ?? "Table", w));
+        }
         break;
       case "fillIn":
         lines.push(fillInLine(block.label, w));
         break;
       case "items":
-        lines.push(...renderItems(ctx, w));
+        lines.push(...(isModern ? renderModernItems(ctx, w) : renderItems(ctx, w)));
         break;
       case "itemsSummary": {
         const count = (order.items ?? []).reduce((sum, item) => sum + item.quantity, 0);
@@ -514,14 +768,18 @@ export function renderReceiptSegments(
         break;
       }
       case "totals":
-        lines.push(...renderTotals(order, ctx, w));
+        lines.push(...(isModern ? renderModernTotals(order, ctx, w) : renderTotals(order, ctx, w)));
         break;
       case "contact":
         lines.push(...renderContact(order, w));
         break;
       case "qr":
         if (config.trackingUrl) {
-          lines.push(truncate(center("Scan to track your order", w), w));
+          lines.push(
+            isModern
+              ? "<C><B>Scan to track your order</B></C>"
+              : truncate(center("Scan to track your order", w), w),
+          );
           flushText();
           segments.push({ type: "qr", data: config.trackingUrl });
         }
@@ -551,7 +809,7 @@ export function renderReceipt(
     // surfaces (previews, browser print) simply skip it.
     .filter((segment) => segment.type !== "image")
     .map((segment) => {
-      if (segment.type === "text") return segment.text;
+      if (segment.type === "text") return flattenReceiptMarkup(segment.text, w);
       // Wrap rather than truncate: a clipped URL cannot be typed into a phone.
       const wrapped: string[] = [];
       for (let i = 0; i < segment.data.length; i += w) {
@@ -654,6 +912,9 @@ export function parseReceiptLayout(value: unknown): ReceiptLayout | null {
   if (raw.width !== undefined && (typeof raw.width !== "number" || raw.width < 20 || raw.width > 64)) {
     return null;
   }
+  if (raw.theme !== undefined && !RECEIPT_THEMES.includes(raw.theme as ReceiptTheme)) {
+    return null;
+  }
 
   const blocks: ReceiptBlock[] = [];
   for (const entry of raw.blocks) {
@@ -666,17 +927,22 @@ export function parseReceiptLayout(value: unknown): ReceiptLayout | null {
     version: 1,
     blocks,
     ...(raw.width !== undefined ? { width: raw.width as number } : {}),
+    ...(raw.theme !== undefined ? { theme: raw.theme as ReceiptTheme } : {}),
   };
 }
 
 /**
  * Resolve whatever a tenant row carries (nothing, a preset name, or a custom
  * layout object) into a printable layout. Never throws; never returns an
- * unprintable layout.
+ * unprintable layout. Nothing saved means Modern; a layout that cannot be
+ * parsed falls back to Classic, the one output every printer has proven.
  */
 export function resolveReceiptLayout(value: unknown): ReceiptLayout {
+  if (value === null || value === undefined) return MODERN_RECEIPT_LAYOUT;
   if (typeof value === "string") {
-    return PRESETS[value as ReceiptPresetName] ?? CLASSIC_RECEIPT_LAYOUT;
+    return PRESETS[value as ReceiptPresetName] ?? MODERN_RECEIPT_LAYOUT;
   }
-  return parseReceiptLayout(value) ?? CLASSIC_RECEIPT_LAYOUT;
+  // A corrupt column prints the same slip as an empty one: nobody chose
+  // Classic by saving something unreadable.
+  return parseReceiptLayout(value) ?? MODERN_RECEIPT_LAYOUT;
 }

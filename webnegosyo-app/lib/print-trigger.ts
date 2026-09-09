@@ -9,8 +9,12 @@
  * disagreeing.
  */
 
-/** The two moments in an order's life where paper can come out. */
-export type PrintMoment = "confirmation" | "billout";
+/**
+ * The moments in an order's life where paper can come out. `counterSale` is
+ * the register's swipe-to-complete: the order is created confirmed AND paid in
+ * that one gesture, so it is both of the other moments at once.
+ */
+export type PrintMoment = "confirmation" | "billout" | "counterSale";
 
 /**
  * What the merchant chose.
@@ -33,9 +37,9 @@ export const PRINT_TRIGGERS: readonly PrintTrigger[] = [
 /** Which moments each trigger fires at. */
 const MOMENTS: Record<PrintTrigger, readonly PrintMoment[]> = {
   off: [],
-  confirmation: ["confirmation"],
-  billout: ["billout"],
-  both: ["confirmation", "billout"],
+  confirmation: ["confirmation", "counterSale"],
+  billout: ["billout", "counterSale"],
+  both: ["confirmation", "billout", "counterSale"],
 };
 
 /**

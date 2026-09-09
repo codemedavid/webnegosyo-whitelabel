@@ -3,6 +3,7 @@ import {
   CLASSIC_RECEIPT_LAYOUT,
   COMPACT_RECEIPT_LAYOUT,
   DETAILED_RECEIPT_LAYOUT,
+  MODERN_RECEIPT_LAYOUT,
   parseReceiptLayout,
   renderReceipt,
   renderReceiptSegments,
@@ -113,6 +114,7 @@ describe("renderReceipt — custom block arrangements", () => {
     const lines = linesOf(
       renderReceipt(baseOrder, config, {
         version: 1,
+        theme: "classic",
         blocks: [
           { kind: "text", text: "Thanks for coming!", align: "center" },
           { kind: "businessName" },
@@ -128,6 +130,7 @@ describe("renderReceipt — custom block arrangements", () => {
   it("aligns text blocks left, center, and right", () => {
     const receipt = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [
         { kind: "text", text: "left", align: "left" },
         { kind: "text", text: "mid", align: "center" },
@@ -143,6 +146,7 @@ describe("renderReceipt — custom block arrangements", () => {
   it("summarizes items as a count when the layout asks for itemsSummary", () => {
     const receipt = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "itemsSummary" }],
     });
     expect(receipt).toContain("Items: 3"); // 2 lattes + 1 croissant
@@ -159,6 +163,7 @@ describe("renderReceipt — custom block arrangements", () => {
 
     const placeholder = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "contact" }],
     });
     expect(placeholder).not.toContain("Contact:");
@@ -167,6 +172,7 @@ describe("renderReceipt — custom block arrangements", () => {
   it("prints a tracking link for a qr block when the config carries one", () => {
     const receipt = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "qr" }],
     });
     expect(receipt).toBe(""); // no tracking URL configured → block is silent
@@ -217,7 +223,7 @@ describe("built-in presets", () => {
     );
     expect(receipt).toContain("KAPE CO");
     expect(receipt).toContain("Contact: 09171234567");
-    expect(receipt).toContain("TOTAL:");
+    expect(receipt).toContain("TOTAL");
   });
 });
 
@@ -227,6 +233,7 @@ describe("order detail blocks — granular meta + fill-in lines", () => {
   it("prints each order detail as its own block, honoring custom labels", () => {
     const receipt = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [
         { kind: "orderNumber" },
         { kind: "orderDate" },
@@ -244,6 +251,7 @@ describe("order detail blocks — granular meta + fill-in lines", () => {
   it("stacked in the classic order, the granular blocks match orderMeta exactly", () => {
     const granular = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [
         { kind: "orderNumber" },
         { kind: "orderDate" },
@@ -253,6 +261,7 @@ describe("order detail blocks — granular meta + fill-in lines", () => {
     });
     const composite = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "orderMeta" }],
     });
     expect(granular).toBe(composite);
@@ -261,6 +270,7 @@ describe("order detail blocks — granular meta + fill-in lines", () => {
   it("renders a fill-in line as a label plus a writable rule to the paper edge", () => {
     const receipt = renderReceipt(detailOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "fillIn", label: "Received by" }],
     });
     const [line] = linesOf(receipt);
@@ -350,13 +360,13 @@ describe("parseReceiptLayout — untrusted tenant JSON", () => {
 });
 
 describe("resolveReceiptLayout — what the printer actually uses", () => {
-  it("falls back to Classic when the tenant has no saved layout", () => {
-    expect(resolveReceiptLayout(null)).toBe(CLASSIC_RECEIPT_LAYOUT);
-    expect(resolveReceiptLayout(undefined)).toBe(CLASSIC_RECEIPT_LAYOUT);
+  it("prints Modern when the tenant has no saved layout", () => {
+    expect(resolveReceiptLayout(null)).toBe(MODERN_RECEIPT_LAYOUT);
+    expect(resolveReceiptLayout(undefined)).toBe(MODERN_RECEIPT_LAYOUT);
   });
 
-  it("falls back to Classic when the saved layout is invalid", () => {
-    expect(resolveReceiptLayout({ version: 99 })).toBe(CLASSIC_RECEIPT_LAYOUT);
+  it("falls back to Modern when the saved layout is invalid", () => {
+    expect(resolveReceiptLayout({ version: 99 })).toBe(MODERN_RECEIPT_LAYOUT);
   });
 
   it("resolves preset names so a tenant row can store just a string", () => {
@@ -440,6 +450,7 @@ describe("table number on the receipt", () => {
   it("prints the table as its own block, honoring a custom label", () => {
     const receipt = renderReceipt(seated, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "tableNumber" }, { kind: "tableNumber", label: "Mesa" }],
     });
     expect(linesOf(receipt)).toEqual(["Table: 12", "Mesa: 12"]);
@@ -448,6 +459,7 @@ describe("table number on the receipt", () => {
   it("stays silent when the order has no table", () => {
     const receipt = renderReceipt(baseOrder, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "tableNumber" }, { kind: "text", text: "after" }],
     });
     expect(linesOf(receipt)).toEqual(["after"]);
@@ -457,14 +469,14 @@ describe("table number on the receipt", () => {
     const receipt = renderReceipt(
       { ...baseOrder, customer_data: { table_number: "B4" } },
       config,
-      { version: 1, blocks: [{ kind: "tableNumber" }] },
+      { version: 1, theme: "classic", blocks: [{ kind: "tableNumber" }] },
     );
     expect(linesOf(receipt)).toEqual(["Table: B4"]);
   });
 
   it("adds the table to the all-details block only when one was captured", () => {
     const withTable = linesOf(
-      renderReceipt(seated, config, { version: 1, blocks: [{ kind: "orderMeta" }] }),
+      renderReceipt(seated, config, { version: 1, theme: "classic", blocks: [{ kind: "orderMeta" }] }),
     );
     expect(withTable).toContain("Table: 12");
     expect(withTable[withTable.length - 1]).toBe("Table: 12");
@@ -481,6 +493,7 @@ describe("table number on the receipt", () => {
   it("stacked granular blocks still reproduce orderMeta when a table is set", () => {
     const granular = renderReceipt(seated, config, {
       version: 1,
+      theme: "classic",
       blocks: [
         { kind: "orderNumber" },
         { kind: "orderDate" },
@@ -491,6 +504,7 @@ describe("table number on the receipt", () => {
     });
     const composite = renderReceipt(seated, config, {
       version: 1,
+      theme: "classic",
       blocks: [{ kind: "orderMeta" }],
     });
     expect(granular).toBe(composite);

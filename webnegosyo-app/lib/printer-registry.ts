@@ -8,6 +8,19 @@ export type PrinterRole = "cashier" | "kitchen";
 
 export const PRINTER_ROLES: readonly PrinterRole[] = ["cashier", "kitchen"];
 
+/**
+ * Paper roll width in millimetres. The driver rasterizes images (the QR, the
+ * logo) into a strip as wide as the head it is told about, and pads to 80mm
+ * when told nothing — which clips the right third of a QR on a 58mm printer.
+ * Text columns follow it too: 32 on 58mm, 48 on 80mm.
+ */
+export type PaperWidth = 58 | 80;
+
+export const PAPER_WIDTHS: readonly PaperWidth[] = [58, 80];
+
+/** The common counter printer; every saved printer without a width is one. */
+export const DEFAULT_PAPER_WIDTH: PaperWidth = 58;
+
 export interface RegisteredPrinter {
   id: string;
   type: "bluetooth" | "network";
@@ -16,6 +29,8 @@ export interface RegisteredPrinter {
   address: string;
   /** Non-empty — a printer no role can reach is unreachable by definition. */
   roles: readonly PrinterRole[];
+  /** Absent on entries saved before paper widths existed — read as 58mm. */
+  paperWidth?: PaperWidth;
 }
 
 /** Deterministic id from caller-supplied time and randomness (testable). */
@@ -72,6 +87,12 @@ function isPrinterRole(value: unknown): value is PrinterRole {
   return (PRINTER_ROLES as readonly unknown[]).includes(value);
 }
 
+function toPaperWidth(value: unknown): PaperWidth {
+  return (PAPER_WIDTHS as readonly unknown[]).includes(value)
+    ? (value as PaperWidth)
+    : DEFAULT_PAPER_WIDTH;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toRegisteredPrinter(raw: any): RegisteredPrinter | null {
   if (!raw || typeof raw !== "object") return null;
@@ -85,6 +106,7 @@ function toRegisteredPrinter(raw: any): RegisteredPrinter | null {
     name: typeof raw.name === "string" && raw.name.length > 0 ? raw.name : "Printer",
     address: raw.address,
     roles,
+    paperWidth: toPaperWidth(raw.paperWidth),
   };
 }
 

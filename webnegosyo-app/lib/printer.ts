@@ -3,7 +3,14 @@ import Constants from "expo-constants";
 import { usePrinterStore } from "../stores/printer-store";
 import { buildQrBmpBase64 } from "./receipt-qr";
 import { fetchLogoBase64 } from "./receipt-logo";
-import { printersForRole, type PrinterRole, type RegisteredPrinter } from "./printer-registry";
+import {
+  printersForRole,
+  DEFAULT_PAPER_WIDTH,
+  type PaperWidth,
+  type PrinterRole,
+  type RegisteredPrinter,
+} from "./printer-registry";
+import { receiptMarkupToEscPos, printerWidthType } from "./receipt-escpos";
 import { planPrintJobs, jobsForRole } from "./print-queue";
 
 // ESC/POS commands for text formatting.
@@ -395,15 +402,22 @@ async function runSegmentsOnInstance(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   instance: any,
   segments: PrintSegment[],
+  paperWidth: PaperWidth = DEFAULT_PAPER_WIDTH,
 ): Promise<void> {
   const lastIndex = segments.length - 1;
   let hasCut = false;
+  // Told nothing, the iOS driver rasterizes into an 80mm-wide strip and
+  // centres the image in it — a 58mm head then clips the right third of the
+  // QR, which prints and never scans.
+  const imageOptions = { printerWidthType: printerWidthType(paperWidth) };
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i]!;
     if (segment.type === "text") {
       const isFinal = i === lastIndex;
-      await printBillAsync(instance, segment.text, { cut: isFinal });
+      // Markup → control bytes here, never earlier: the tags are what the
+      // Studio preview reads, the bytes are what the head reads.
+      await printBillAsync(instance, receiptMarkupToEscPos(segment.text), { cut: isFinal });
       hasCut = isFinal;
       continue;
     }
@@ -412,14 +426,14 @@ async function runSegmentsOnInstance(
       // The store logo, downloaded as-is (PNG/JPEG decode on-device).
       const logo = await fetchLogoBase64(segment.url);
       if (!logo) continue; // unfetchable logo — the text receipt still prints
-      instance.printImageBase64(logo, { imageWidth: LOGO_PRINT_WIDTH });
+      instance.printImageBase64(logo, { imageWidth: LOGO_PRINT_WIDTH, ...imageOptions });
       await new Promise((resolve) => setTimeout(resolve, IMAGE_SETTLE_MS));
       continue;
     }
 
     const qr = buildQrBmpBase64(segment.data);
     if (!qr) continue; // unbuildable payload — the text receipt still prints
-    instance.printImageBase64(qr.base64, { imageWidth: qr.widthPx });
+    instance.printImageBase64(qr.base64, { imageWidth: qr.widthPx, ...imageOptions });
     await new Promise((resolve) => setTimeout(resolve, IMAGE_SETTLE_MS));
   }
 
@@ -471,7 +485,7 @@ export function printToPrinter(
     }
 
     try {
-      await runSegmentsOnInstance(instance, segments);
+      await runSegmentsOnInstance(instance, segments, printer.paperWidth);
       return { success: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -481,7 +495,7 @@ export function printToPrinter(
       const reconnected = await connectPrinter(printer.type, printer.address);
       if (!reconnected.success) return { success: false, error: message || "Print failed" };
       try {
-        await runSegmentsOnInstance(instance, segments);
+        await runSegmentsOnInstance(instance, segments, printer.paperWidth);
         return { success: true };
       } catch (retryErr: unknown) {
         const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);

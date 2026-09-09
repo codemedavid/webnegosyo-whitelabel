@@ -101,9 +101,19 @@ describe('BLOCK_PALETTE', () => {
 
 describe('sanitizeLayoutForSave', () => {
   it('passes preset names straight through', () => {
+    expect(sanitizeLayoutForSave('modern')).toBe('modern')
     expect(sanitizeLayoutForSave('classic')).toBe('classic')
     expect(sanitizeLayoutForSave('compact')).toBe('compact')
     expect(sanitizeLayoutForSave('detailed')).toBe('detailed')
+  })
+
+  it('keeps the style a custom layout was designed with', () => {
+    const saved = sanitizeLayoutForSave({
+      version: 1,
+      theme: 'classic',
+      blocks: [{ kind: 'businessName' }, { kind: 'totals' }],
+    })
+    expect(typeof saved === 'object' && saved?.theme).toBe('classic')
   })
 
   it('accepts a valid custom layout and returns it normalized', () => {

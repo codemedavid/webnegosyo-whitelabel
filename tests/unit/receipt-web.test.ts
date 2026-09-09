@@ -66,8 +66,15 @@ describe('mapSupabaseOrderToReceipt', () => {
 })
 
 describe('buildAdminReceiptText', () => {
-  it('renders a printable Classic receipt from an admin order', () => {
+  it('renders a printable Modern receipt when the store saved nothing', () => {
     const text = buildAdminReceiptText(order, 'Kape Co', null)
+    expect(text).toContain('KAPE CO')
+    expect(text).toContain('Order #')
+    expect(text).not.toMatch(/<\/?[CRBHW]>/)
+  })
+
+  it('renders a printable Classic receipt from an admin order', () => {
+    const text = buildAdminReceiptText(order, 'Kape Co', 'classic')
     expect(text).toContain('KAPE CO')
     expect(text).toContain('Latte')
     expect(text).toContain('- Large')
@@ -118,7 +125,7 @@ describe('mapSupabaseOrderToReceipt — the service charge column', () => {
     const text = buildAdminReceiptText(
       { ...(order as object), total: 274, service_charge_amount: 24 } as never,
       'Kape Co',
-      null,
+      'classic',
     )
 
     expect(text).toContain('Service Charge:')
