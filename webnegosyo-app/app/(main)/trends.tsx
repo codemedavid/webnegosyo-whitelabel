@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { formatPeso, formatPesoCompact, formatCount } from "../../lib/format";
 import { formatPercent, buildTrendSeries, type TrendPoint } from "../../lib/analytics-utils";
+import { buildOrderChannelRows } from "../../lib/order-channels";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { StatCard } from "../../components/StatCard";
@@ -36,6 +37,9 @@ interface SalesAnalytics {
   cancelledRevenue: number;
   cancellationRate: number;
   ordersBySource: { web: number; mobile: number };
+  // Absent on a store whose backend predates the split; the helper then falls
+  // back to the two channels above.
+  ordersByChannel?: { source: string; count: number; revenue: number }[];
   ordersByStatus: Record<string, number>;
   revenueGrowth: number;
 }
@@ -178,6 +182,20 @@ export default function TrendsScreen() {
   const anyMissing = trendsMissing || salesMissing || paymentMissing;
 
   const [refreshing, setRefreshing] = useState(false);
+
+  // One bar per channel the store actually took orders through, so a register
+  // sale is visible here rather than only inside the total.
+  const channelRows = useMemo(
+    () =>
+      salesAnalytics
+        ? buildOrderChannelRows({
+            totalOrders: salesAnalytics.totalOrders,
+            ordersByChannel: salesAnalytics.ordersByChannel,
+            ordersBySource: salesAnalytics.ordersBySource,
+          })
+        : [],
+    [salesAnalytics]
+  );
   // Pull-to-refresh re-reads every query this screen holds.
   const onRefresh = useCallback(
     () => refreshWithMinSpinner([refetchTrends, refetchSales, refetchPayments], setRefreshing),
@@ -251,26 +269,18 @@ export default function TrendsScreen() {
           <Text style={styles.eyebrow}>Order Sources</Text>
           <Card title="Orders by Source" style={styles.chartCard}>
             <View style={sourceStyles.container}>
-              <View style={sourceStyles.barRow}>
-                <Text style={sourceStyles.label}>Web</Text>
-                <View style={sourceStyles.barTrack}>
-                  <View style={[sourceStyles.barFill, {
-                    width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.web / salesAnalytics.totalOrders) * 100 : 0}%`,
-                    backgroundColor: colors.primary,
-                  }]} />
+              {channelRows.map((row, i) => (
+                <View key={row.source || "other"} style={sourceStyles.barRow}>
+                  <Text style={sourceStyles.label} numberOfLines={1}>{row.label}</Text>
+                  <View style={sourceStyles.barTrack}>
+                    <View style={[sourceStyles.barFill, {
+                      width: `${row.share * 100}%`,
+                      backgroundColor: SOURCE_BAR_COLORS[i % SOURCE_BAR_COLORS.length],
+                    }]} />
+                  </View>
+                  <Text style={sourceStyles.value}>{row.count}</Text>
                 </View>
-                <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.web}</Text>
-              </View>
-              <View style={sourceStyles.barRow}>
-                <Text style={sourceStyles.label}>App</Text>
-                <View style={sourceStyles.barTrack}>
-                  <View style={[sourceStyles.barFill, {
-                    width: `${salesAnalytics.totalOrders > 0 ? (salesAnalytics.ordersBySource.mobile / salesAnalytics.totalOrders) * 100 : 0}%`,
-                    backgroundColor: colors.accent,
-                  }]} />
-                </View>
-                <Text style={sourceStyles.value}>{salesAnalytics.ordersBySource.mobile}</Text>
-              </View>
+              ))}
             </View>
           </Card>
         </>
@@ -349,10 +359,20 @@ const bannerStyles = StyleSheet.create({
   text: { ...typography.caption, color: colors.statusPending.text },
 });
 
+// One colour per channel bar, cycling if a store ever reports more than six.
+const SOURCE_BAR_COLORS = [
+  colors.primary,
+  colors.accent,
+  colors.warning,
+  colors.info,
+  colors.textSecondary,
+  colors.textTertiary,
+];
+
 const sourceStyles = StyleSheet.create({
   container: { gap: spacing.md },
   barRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  label: { ...typography.caption, color: colors.textSecondary, fontWeight: "500", width: 32 },
+  label: { ...typography.caption, color: colors.textSecondary, fontWeight: "500", width: 56 },
   barTrack: { flex: 1, height: 20, backgroundColor: colors.surfaceSubtle, borderRadius: 4 },
   barFill: { height: 20, borderRadius: 4 },
   value: { ...typography.body, color: colors.textPrimary, fontWeight: "600", width: 36, textAlign: "right" },

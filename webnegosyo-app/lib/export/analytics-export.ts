@@ -12,6 +12,7 @@
  */
 
 import { describePeakHour } from "../analytics-utils";
+import { buildOrderChannelRows } from "../order-channels";
 import { csvCell, CSV_BOM, type CsvValue } from "./csv";
 import { formatExportDateTime } from "./dates";
 
@@ -24,6 +25,7 @@ export interface AnalyticsSales {
   cancelledRevenue: number;
   cancellationRate: number;
   ordersBySource: { web: number; mobile: number };
+  ordersByChannel?: readonly { source: string; count: number; revenue: number }[];
   ordersByStatus: Record<string, number>;
   revenueGrowth: number;
 }
@@ -154,12 +156,24 @@ function salesSections(sales: AnalyticsSales | null | undefined): string[] {
     ["Web orders", sales.ordersBySource.web],
     ["Mobile orders", sales.ordersBySource.mobile],
   ]);
+  // Omitted rather than faked when the store's backend does not report it —
+  // a channel table that silently excluded the register is what this fixes.
+  const byChannel = sales.ordersByChannel
+    ? section(
+        "ORDERS BY CHANNEL",
+        ["Channel", "Orders", "Share (%)", "Revenue"],
+        buildOrderChannelRows({
+          totalOrders: sales.totalOrders,
+          ordersByChannel: sales.ordersByChannel,
+        }).map((row) => [row.label, row.count, asPercent(row.share), row.revenue ?? ""])
+      )
+    : [];
   const byStatus = section(
     "ORDERS BY STATUS",
     ["Status", "Orders"],
     Object.entries(sales.ordersByStatus).map(([status, count]) => [status, count])
   );
-  return [...overview, ...byStatus];
+  return [...overview, ...byChannel, ...byStatus];
 }
 
 function breakdownSections(

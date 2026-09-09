@@ -171,6 +171,28 @@ export function computeRevenueBreakdown(orders: readonly AnalyticsOrder[]) {
   };
 }
 
+/**
+ * Orders grouped by the place they were taken. Counts include cancelled orders
+ * so they sum to `totalOrders`; revenue excludes them so it matches
+ * `totalRevenue`. Busiest first, ties in first-seen order.
+ */
+function summarizeOrderChannels(
+  orders: readonly AnalyticsOrder[]
+): { source: string; count: number; revenue: number }[] {
+  const channels = new Map<string, { count: number; revenue: number }>();
+  for (const order of orders) {
+    const source = order.source ?? "";
+    const existing = channels.get(source) ?? { count: 0, revenue: 0 };
+    channels.set(source, {
+      count: existing.count + 1,
+      revenue: existing.revenue + (isCancelled(order) ? 0 : order.total),
+    });
+  }
+  return Array.from(channels.entries())
+    .map(([source, data]) => ({ source, ...data }))
+    .sort((a, b) => b.count - a.count);
+}
+
 export function computeSalesAnalytics(
   current: readonly AnalyticsOrder[],
   previous: readonly AnalyticsOrder[]
@@ -200,6 +222,9 @@ export function computeSalesAnalytics(
       web: current.filter((o) => o.source === "web").length,
       mobile: current.filter((o) => o.source === "mobile").length,
     },
+    // The full split — counter, QR handoff and anything else `source` holds.
+    // `ordersBySource` stays because the web admin still reads those two.
+    ordersByChannel: summarizeOrderChannels(current),
     ordersByStatus,
     revenueGrowth: prevRevenue > 0 ? (totalRevenue - prevRevenue) / prevRevenue : 0,
   };

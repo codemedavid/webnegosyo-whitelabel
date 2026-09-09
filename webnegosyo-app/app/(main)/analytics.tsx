@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
@@ -12,6 +12,7 @@ import {
   describePeakHour,
   type GrowthBadge,
 } from "../../lib/analytics-utils";
+import { buildOrderChannelRows, type OrderChannelRow } from "../../lib/order-channels";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
@@ -58,6 +59,9 @@ interface SalesAnalytics {
   cancelledRevenue: number;
   cancellationRate: number;
   ordersBySource: { web: number; mobile: number };
+  // Absent on a store whose backend predates the split; buildOrderChannelRows
+  // falls back to the two channels above rather than showing nothing.
+  ordersByChannel?: { source: string; count: number; revenue: number }[];
   ordersByStatus: Record<string, number>;
   revenueGrowth: number;
 }
@@ -105,6 +109,20 @@ export default function AnalyticsScreen() {
   const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
   const { data: heatmapData, error: heatmapError, isMissingFunction: heatmapMissing, refetch: refetchHeatmap } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { daysBack });
   const { data: customerInsights, error: customerError, isMissingFunction: customerMissing, refetch: refetchCustomers } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
+
+  // Every channel the store took orders through — the register included, which
+  // the old web/mobile pair left out of a merchant's own order count.
+  const channelRows = useMemo(
+    () =>
+      salesAnalytics
+        ? buildOrderChannelRows({
+            totalOrders: salesAnalytics.totalOrders,
+            ordersByChannel: salesAnalytics.ordersByChannel,
+            ordersBySource: salesAnalytics.ordersBySource,
+          })
+        : [],
+    [salesAnalytics]
+  );
 
   // Pull-to-refresh re-reads every query this screen holds.
   const onRefresh = useCallback(
@@ -253,18 +271,12 @@ export default function AnalyticsScreen() {
                   accentValue={salesAnalytics.cancellationRate > 0}
                 />
               </View>
-              <Card style={styles.subCard}>
-                <View style={styles.sourceRow}>
-                  <View style={styles.sourceItem}>
-                    <Text style={styles.sourceValue}>{salesAnalytics.ordersBySource.web}</Text>
-                    <Text style={styles.sourceLabel}>Web orders</Text>
-                  </View>
-                  <View style={styles.sourceDivider} />
-                  <View style={styles.sourceItem}>
-                    <Text style={styles.sourceValue}>{salesAnalytics.ordersBySource.mobile}</Text>
-                    <Text style={styles.sourceLabel}>Mobile orders</Text>
-                  </View>
-                </View>
+              <Card title="Where Orders Came From" style={styles.subCard}>
+                {channelRows.length === 0 ? (
+                  <EmptyState message="No channels recorded for this period" />
+                ) : (
+                  <ChannelBars rows={channelRows} />
+                )}
               </Card>
             </>
           )}
@@ -716,6 +728,41 @@ const funnelStyles = StyleSheet.create({
 });
 
 // Horizontal breakdown bars — rows sorted with % shares via withShares.
+/**
+ * Order counts by channel. Counts lead rather than revenue: the merchant's
+ * question is how many sales the till rang up against the website, and a
+ * channel that took many small orders should not sink below one big one.
+ */
+function ChannelBars({ rows }: { rows: OrderChannelRow[] }) {
+  const maxCount = rows[0]?.count || 1;
+
+  return (
+    <View style={barStyles.container}>
+      {rows.map((row, i) => {
+        const widthPct = Math.max((row.count / maxCount) * 100, 8);
+        const color = BAR_COLORS[i % BAR_COLORS.length];
+        return (
+          <View key={row.source || "other"} style={barStyles.row}>
+            <View style={barStyles.header}>
+              <View style={[barStyles.dot, { backgroundColor: color }]} />
+              <Text style={barStyles.label} numberOfLines={1}>{row.label}</Text>
+              <Text style={barStyles.value}>
+                {row.count} ({formatPercent(row.share * 100)})
+              </Text>
+            </View>
+            <View style={barStyles.track}>
+              <View style={[barStyles.fill, { width: `${widthPct}%`, backgroundColor: color }]} />
+            </View>
+            {row.revenue !== null && (
+              <Text style={barStyles.meta}>{formatPeso(row.revenue, 0)}</Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function BreakdownBars({ items }: { items: { label: string; value: number; count: number }[] }) {
   const countByLabel = new Map(items.map((item) => [item.label, item.count]));
   const rows = withShares(items.map(({ label, value }) => ({ label, value })));
@@ -813,11 +860,6 @@ const styles = StyleSheet.create({
   topBarTrack: { height: 4, backgroundColor: colors.surfaceSubtle, borderRadius: 2, marginTop: spacing.xs },
   topBarFill: { height: 4, backgroundColor: colors.accent, borderRadius: 2 },
   topItemMeta: { ...typography.small, color: colors.textSecondary, marginTop: 2 },
-  sourceRow: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
-  sourceItem: { flex: 1, alignItems: "center" },
-  sourceValue: { fontSize: 20, fontWeight: "800", color: colors.textPrimary },
-  sourceLabel: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  sourceDivider: { width: 1, height: 32, backgroundColor: colors.separator },
   paymentRow: { marginBottom: spacing.md },
   paymentHeader: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 4 },
   paymentDot: { width: 8, height: 8, borderRadius: 4 },

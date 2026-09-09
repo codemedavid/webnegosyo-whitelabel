@@ -11,6 +11,7 @@ import {
   productDateKey,
   type ProductMetric,
 } from "./product-daily-analytics";
+import { ORDER_SOURCE_LABELS } from "./order-channels";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -59,12 +60,11 @@ export const METRIC_OPTIONS: readonly Option<ProductMetric>[] = [
   { label: "Orders", value: "orders" },
 ];
 
-export const SOURCE_OPTIONS: readonly Option<string>[] = [
-  { label: "Online", value: "web" },
-  { label: "App", value: "mobile" },
-  { label: "Counter", value: "pos" },
-  { label: "QR", value: "qr_handoff" },
-];
+// The four channels a merchant can filter by, named from the one map the
+// analytics screen also reads so a channel never has two names in one app.
+export const SOURCE_OPTIONS: readonly Option<string>[] = (
+  ["web", "mobile", "pos", "qr_handoff"] as const
+).map((value) => ({ label: ORDER_SOURCE_LABELS[value], value }));
 
 /** Epoch ms of 00:00 local time for the local day containing `atMs`. */
 function localDayStartMs(atMs: number, offsetMs: number): number {

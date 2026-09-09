@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { summarizeOrderChannels } from "./analyticsChannels";
 import { mutation, query } from "./_generated/server";
 import { localDayStartMs, localDateKey, localDayOfWeek, localHour } from "./time";
 import { resolveAnalyticsContact } from "./customerIdentity";
@@ -349,6 +350,9 @@ export const getSalesAnalytics = query({
       cancelledRevenue,
       cancellationRate: currentOrders.length > 0 ? cancelled.length / currentOrders.length : 0,
       ordersBySource: { web: webOrders, mobile: mobileOrders },
+      // The full split. `ordersBySource` stays for the web admin, which still
+      // reads those two fields directly.
+      ordersByChannel: summarizeOrderChannels(currentOrders),
       ordersByStatus: statusCounts,
       revenueGrowth: prevRevenue > 0 ? (totalRevenue - prevRevenue) / prevRevenue : 0,
     };
