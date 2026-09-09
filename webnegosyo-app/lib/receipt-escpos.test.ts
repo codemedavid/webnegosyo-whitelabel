@@ -9,7 +9,7 @@
  * styled line print the same on both.
  */
 
-import { receiptMarkupToEscPos, charsForPaperWidth, printerWidthType } from "./receipt-escpos";
+import { receiptMarkupToEscPos, charsForPaperWidth, printerWidthType, escPosQrCode, QR_NATIVE_MAX_BYTES, QR_NATIVE_MODULE_SIZE } from "./receipt-escpos";
 
 const ESC = "\x1B";
 
@@ -62,5 +62,28 @@ describe("paper width helpers", () => {
   it("names the width the way the iOS driver expects", () => {
     expect(printerWidthType(58)).toBe("58");
     expect(printerWidthType(80)).toBe("80");
+  });
+});
+
+describe("escPosQrCode — the printer draws the tracking code", () => {
+  const url = "https://www.webnegosyo.com/seacook/order/jh77d616dta0dzva90pfwm5ypd8dxt7h?t=1266c59676e67244a3a8";
+
+  it("emits an ASCII-clean GS ( k sequence: model, size, correction, store, print", () => {
+    const bytes = escPosQrCode(url)!;
+    expect(bytes).not.toBeNull();
+    for (let i = 0; i < bytes.length; i++) expect(bytes.charCodeAt(i)).toBeLessThan(0x80);
+    expect(bytes.startsWith("\x1Ba\x01")).toBe(true); // centred
+    expect(bytes).toContain("\x1D(k\x04\x001A\x32\x00");
+    expect(bytes).toContain(`\x1D(k\x03\x001C${String.fromCharCode(QR_NATIVE_MODULE_SIZE)}`);
+    expect(bytes).toContain("\x1D(k\x03\x001E\x31");
+    expect(bytes).toContain(`\x1D(k${String.fromCharCode(url.length + 3)}\x001P0${url}`);
+    expect(bytes.endsWith("\x1D(k\x03\x001Q0\n\x1Ba\x00")).toBe(true);
+  });
+
+  it("refuses a payload the one-byte length cannot carry cleanly, so the raster takes over", () => {
+    expect(escPosQrCode("x".repeat(QR_NATIVE_MAX_BYTES))).not.toBeNull();
+    expect(escPosQrCode("x".repeat(QR_NATIVE_MAX_BYTES + 1))).toBeNull();
+    expect(escPosQrCode("https://x.ph/₱")).toBeNull();
+    expect(escPosQrCode("")).toBeNull();
   });
 });

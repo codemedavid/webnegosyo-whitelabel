@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-import { generateTrackingToken } from '@/lib/tracking-token'
+import { generateShortTrackingToken } from '@/lib/tracking-token'
 
 /**
  * POST /api/orders/tracking-url
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
   }
 
-  const token = generateTrackingToken(orderId)
+  const token = generateShortTrackingToken(orderId)
   const url = `${request.nextUrl.origin}/${tenant.slug}/order/${encodeURIComponent(orderId)}?t=${token}`
 
   return NextResponse.json({ url })

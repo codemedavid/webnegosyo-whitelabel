@@ -23,7 +23,16 @@ export interface TrackingUrlOptions {
   fetchImpl?: typeof fetch;
   /** The caller's Supabase access token; null (demo session) mints nothing. */
   accessToken: string | null;
+  /** How long the mint may take before the receipt prints without a QR. */
+  timeoutMs?: number;
 }
+
+/**
+ * Longer than a healthy round-trip, shorter than a cashier's patience: this
+ * runs between "Confirm" and the first line of paper, and it used to have no
+ * deadline at all.
+ */
+export const TRACKING_URL_TIMEOUT_MS = 6_000;
 
 export async function fetchTrackingUrl(
   ref: TrackingUrlRef,
@@ -35,27 +44,37 @@ export async function fetchTrackingUrl(
   if (!base) return null;
 
   const doFetch = options.fetchImpl ?? fetch;
-  let response: Response;
-  try {
-    response = await doFetch(`${base}/api/orders/tracking-url`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.accessToken}`,
-      },
-      body: JSON.stringify({ orderId: ref.orderId, tenantId: ref.tenantId }),
-    });
-  } catch {
-    return null;
-  }
-
-  if (!response.ok) return null;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Aborted AND raced (see authorized-post.ts): the abort frees the socket,
+  // the race is what guarantees the receipt prints anyway.
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("timeout"));
+    }, options.timeoutMs ?? TRACKING_URL_TIMEOUT_MS);
+  });
 
   let body: unknown;
   try {
-    body = await response.json();
+    const response = await Promise.race([
+      doFetch(`${base}/api/orders/tracking-url`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.accessToken}`,
+        },
+        body: JSON.stringify({ orderId: ref.orderId, tenantId: ref.tenantId }),
+      }),
+      expiry,
+    ]);
+    if (!response.ok) return null;
+    body = await Promise.race([response.json(), expiry]);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 
   const url = (body as Record<string, unknown> | null)?.url;

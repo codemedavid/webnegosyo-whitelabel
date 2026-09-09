@@ -39,7 +39,10 @@ jest.mock("@haroldtran/react-native-thermal-printer", () => ({
 jest.mock("../stores/printer-store", () => {
   const state = {
     printers: [
-      { id: "p1", type: "bluetooth", name: "T58", address: "AA:BB", roles: ["cashier"] },
+      // Image mode on purpose: this suite pins the RASTER path, which is now
+      // the fallback for a head whose firmware cannot draw a QR itself. The
+      // native path is pinned in printer-multi.test.ts.
+      { id: "p1", type: "bluetooth", name: "T58", address: "AA:BB", roles: ["cashier"], qrMode: "image" },
     ] as unknown[],
     connectedAddress: "AA:BB" as string | null,
     isConnected: true,

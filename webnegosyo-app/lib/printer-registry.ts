@@ -21,6 +21,17 @@ export const PAPER_WIDTHS: readonly PaperWidth[] = [58, 80];
 /** The common counter printer; every saved printer without a width is one. */
 export const DEFAULT_PAPER_WIDTH: PaperWidth = 58;
 
+/**
+ * How the tracking QR reaches the paper. `native` hands the printer a GS ( k
+ * command and lets its firmware draw the code; `image` sends a raster, for
+ * the rare head whose firmware does not know the command.
+ */
+export type QrMode = "native" | "image";
+
+export const QR_MODES: readonly QrMode[] = ["native", "image"];
+
+export const DEFAULT_QR_MODE: QrMode = "native";
+
 export interface RegisteredPrinter {
   id: string;
   type: "bluetooth" | "network";
@@ -31,6 +42,8 @@ export interface RegisteredPrinter {
   roles: readonly PrinterRole[];
   /** Absent on entries saved before paper widths existed — read as 58mm. */
   paperWidth?: PaperWidth;
+  /** Absent on entries saved before the setting existed — read as native. */
+  qrMode?: QrMode;
 }
 
 /** Deterministic id from caller-supplied time and randomness (testable). */
@@ -93,6 +106,10 @@ function toPaperWidth(value: unknown): PaperWidth {
     : DEFAULT_PAPER_WIDTH;
 }
 
+function toQrMode(value: unknown): QrMode {
+  return (QR_MODES as readonly unknown[]).includes(value) ? (value as QrMode) : DEFAULT_QR_MODE;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toRegisteredPrinter(raw: any): RegisteredPrinter | null {
   if (!raw || typeof raw !== "object") return null;
@@ -107,6 +124,7 @@ function toRegisteredPrinter(raw: any): RegisteredPrinter | null {
     address: raw.address,
     roles,
     paperWidth: toPaperWidth(raw.paperWidth),
+    qrMode: toQrMode(raw.qrMode),
   };
 }
 

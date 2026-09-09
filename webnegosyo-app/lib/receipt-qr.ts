@@ -24,7 +24,13 @@ export interface QrBmpResult {
   widthPx: number;
 }
 
-const DEFAULT_MODULE_SIZE = 6;
+/**
+ * 4 dots (0.5mm) per module: a 41-module tracking code lands at ~25mm and a
+ * 49-module one at ~29mm. 6 filled the whole 58mm head — 15 KB of raster
+ * trickling over Bluetooth, a QR too big for the slip, and modules that only
+ * scanned when every packet arrived in time.
+ */
+const DEFAULT_MODULE_SIZE = 4;
 const DEFAULT_QUIET_ZONE = 4;
 /**
  * Narrowest print head we support, in dots (58mm paper; 80mm is 576). A raster

@@ -87,11 +87,11 @@ describe("buildQrBmpBase64", () => {
  * clipped QR does not scan. The module size has to give way, not the width.
  */
 describe("print head width ceiling", () => {
-  it("keeps a normal tracking URL at the full 6px module size", () => {
+  it("keeps a normal tracking URL at the full 4px module size", () => {
     const result = buildQrBmpBase64(URL);
 
     expect(result!.widthPx).toBeLessThanOrEqual(384);
-    expect(result!.widthPx % 6).toBe(0); // untouched module size
+    expect(result!.widthPx % 4).toBe(0); // untouched module size
   });
 
   it("shrinks the module size so a long payload still fits the head", () => {

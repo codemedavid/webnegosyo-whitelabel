@@ -239,8 +239,9 @@ describe("what reaches the head", () => {
     { type: "qr" as const, data: "https://www.webnegosyo.com/x/order/1?t=abc" },
   ];
 
+  // Image mode: these two pin the RASTER fallback's width handling.
   it("tells the driver the paper is 58mm by default, so the QR raster is not padded to 80mm", async () => {
-    await run(printToPrinter(CASHIER, QR_SEGMENTS));
+    await run(printToPrinter({ ...CASHIER, qrMode: "image" }, QR_SEGMENTS));
 
     expect(mockBLEPrinter.printImageBase64).toHaveBeenCalledTimes(1);
     const [, options] = mockBLEPrinter.printImageBase64.mock.calls[0]!;
@@ -249,7 +250,7 @@ describe("what reaches the head", () => {
   });
 
   it("names 80mm paper when the printer is saved as such", async () => {
-    await run(printToPrinter({ ...CASHIER, paperWidth: 80 }, QR_SEGMENTS));
+    await run(printToPrinter({ ...CASHIER, paperWidth: 80, qrMode: "image" }, QR_SEGMENTS));
 
     const [, options] = mockBLEPrinter.printImageBase64.mock.calls[0]!;
     expect(options.printerWidthType).toBe("80");
@@ -263,5 +264,51 @@ describe("what reaches the head", () => {
     expect(text.startsWith("\x1Ba\x00")).toBe(true);
     expect(text).toContain("\x1Ba\x01");
     expect(text).toContain("\x1BE\x01Scan");
+  });
+});
+
+describe("the tracking QR on paper", () => {
+  const SHORT_URL =
+    "https://www.webnegosyo.com/seacook/order/jh77d616dta0dzva90pfwm5ypd8dxt7h?t=1266c59676e67244a3a8";
+  const LONG_URL = SHORT_URL + "f28569b7ac754b2d9e7981242ed1150ec4927af23a42";
+  const RECEIPT = (url: string) => [
+    { type: "text" as const, text: "<C><B>Scan to track your order</B></C>" },
+    { type: "qr" as const, data: url },
+    { type: "text" as const, text: "<C>Thank you!</C>" },
+  ];
+
+  it("is drawn by the printer from ONE text call — no raster, no pause between pieces", async () => {
+    await run(printToPrinter(CASHIER, RECEIPT(SHORT_URL)));
+
+    expect(mockBLEPrinter.printImageBase64).not.toHaveBeenCalled();
+    expect(mockBLEPrinter.printBill).toHaveBeenCalledTimes(1);
+    const [text, options] = mockBLEPrinter.printBill.mock.calls[0]!;
+    expect(text).toContain("Scan to track your order");
+    expect(text).toContain(`\x1D(k`);
+    expect(text).toContain(SHORT_URL);
+    expect(text).toContain("Thank you!");
+    expect(options.cut).toBe(true);
+  });
+
+  it("falls back to the raster when the printer is set to image mode", async () => {
+    await run(printToPrinter({ ...CASHIER, qrMode: "image" }, RECEIPT(SHORT_URL)));
+
+    expect(mockBLEPrinter.printImageBase64).toHaveBeenCalledTimes(1);
+    expect(mockBLEPrinter.printBill).toHaveBeenCalledTimes(2);
+    // The caption before the QR must not feed paper; only the final piece cuts.
+    const [, before] = mockBLEPrinter.printBill.mock.calls[0]!;
+    const [, after] = mockBLEPrinter.printBill.mock.calls[1]!;
+    expect(before.cut).toBe(false);
+    expect(before.tailingLine).toBe(false);
+    expect(after.cut).toBe(true);
+  });
+
+  it("falls back to the raster for a URL too long for one clean command", async () => {
+    await run(printToPrinter(CASHIER, RECEIPT(LONG_URL)));
+
+    expect(mockBLEPrinter.printImageBase64).toHaveBeenCalledTimes(1);
+    const [, options] = mockBLEPrinter.printImageBase64.mock.calls[0]!;
+    // 4 dots per module keeps a 49-module code under 30mm on a 58mm head.
+    expect(options.imageWidth).toBeLessThanOrEqual(232);
   });
 });

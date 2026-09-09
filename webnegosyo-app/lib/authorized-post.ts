@@ -42,6 +42,26 @@ export interface AuthorizedPostOptions {
 }
 
 /**
+ * The cashier's access token, or null once `timeoutMs` passes — never a hang.
+ * Same reasoning as above: a stalled refresh holds the auth lock, and every
+ * plain `getSession()` in the process then waits on it forever.
+ */
+export async function getAccessTokenBounded(timeoutMs: number): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+  });
+  try {
+    const { data } = await Promise.race([supabase.auth.getSession(), expiry]);
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * POST `body` to a web app route as the signed-in cashier.
  *
  * Returns whether the route accepted it. Callers behind a completed sale ignore

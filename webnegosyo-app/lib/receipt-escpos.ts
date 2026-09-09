@@ -76,6 +76,56 @@ export function receiptMarkupToEscPos(text: string): string {
   return out + text.slice(last);
 }
 
+const GS = "\x1D";
+
+/**
+ * Everything the driver is handed travels as a JS string that is UTF-8
+ * encoded on the way to the head, so a byte above 0x7F would be turned into
+ * two. GS ( k carries the payload length in one byte, and a payload of at
+ * most this many bytes keeps that byte, and every other byte in the command,
+ * below 0x80. Longer payloads take the raster path instead.
+ */
+export const QR_NATIVE_MAX_BYTES = 124;
+
+/** Dots per module. 5 puts a 41-module tracking code at about 26mm. */
+export const QR_NATIVE_MODULE_SIZE = 5;
+
+export interface EscPosQrOptions {
+  moduleSize?: number;
+}
+
+/**
+ * GS ( k — ask the printer to draw the QR itself.
+ *
+ * A raster QR is ~15 KB of image data trickling over Bluetooth, a visible
+ * pause on paper while the head waits for bytes, and modules that only scan
+ * when every packet arrived. This is ~130 bytes: the printer's firmware lays
+ * the modules down itself, at full speed, with no image scaling in between.
+ * Centred, followed by one line feed, alignment restored after.
+ *
+ * Null when the payload cannot travel in one ASCII-clean command — the caller
+ * falls back to the raster.
+ */
+export function escPosQrCode(data: string, options: EscPosQrOptions = {}): string | null {
+  if (data.length === 0 || data.length > QR_NATIVE_MAX_BYTES) return null;
+  for (let i = 0; i < data.length; i++) {
+    const code = data.charCodeAt(i);
+    if (code < 0x20 || code > 0x7e) return null;
+  }
+  const moduleSize = Math.min(16, Math.max(1, options.moduleSize ?? QR_NATIVE_MODULE_SIZE));
+  const storeLength = data.length + 3;
+  return (
+    ALIGN.center +
+    `${GS}(k\x04\x001A\x32\x00` + // model 2
+    `${GS}(k\x03\x001C${String.fromCharCode(moduleSize)}` + // module size
+    `${GS}(k\x03\x001E\x31` + // error correction M
+    `${GS}(k${String.fromCharCode(storeLength)}\x001P0${data}` + // store data
+    `${GS}(k\x03\x001Q0` + // print it
+    "\n" +
+    ALIGN.left
+  );
+}
+
 /** Text columns at font A (12 dots per character). */
 export function charsForPaperWidth(paperWidth: PaperWidth): number {
   return paperWidth === 80 ? 48 : 32;

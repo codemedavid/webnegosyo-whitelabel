@@ -139,3 +139,17 @@ describe("buildReceiptSegments", () => {
     expect(segments).toEqual([{ type: "text", text: expect.stringContaining("KAPE CO") }]);
   });
 });
+
+describe("fetchTrackingUrl — never holds the receipt hostage", () => {
+  it("gives up on a mint that never answers and prints without a QR", async () => {
+    jest.useFakeTimers();
+    const hang: typeof fetch = () => new Promise(() => undefined);
+    const pending = fetchTrackingUrl(
+      { orderId: "o1", tenantId: "t1" },
+      { accessToken: "tok", webAppUrl: "https://www.webnegosyo.com", fetchImpl: hang, timeoutMs: 1000 },
+    );
+    await jest.advanceTimersByTimeAsync(1001);
+    await expect(pending).resolves.toBeNull();
+    jest.useRealTimers();
+  });
+});

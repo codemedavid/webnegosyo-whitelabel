@@ -2,13 +2,16 @@ import { useState, useCallback } from "react";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
 import { printForRole } from "../lib/printer";
+import { getAccessTokenBounded } from "../lib/authorized-post";
 import { printersForRole, DEFAULT_PAPER_WIDTH } from "../lib/printer-registry";
 import { charsForPaperWidth } from "../lib/receipt-escpos";
 import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
 import { fetchTrackingUrl } from "../lib/receipt-tracking";
-import { supabase } from "../lib/supabase";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 import type { ReceiptOrder } from "../lib/receipt-layout";
+
+/** A session read that takes longer than this is a stalled refresh, not a slow one. */
+const SESSION_READ_TIMEOUT_MS = 3_000;
 
 /**
  * Whatever the receipt renderer can print — no narrower.
@@ -51,10 +54,13 @@ export function useOrderPrint() {
         // mint prints a QR-less receipt rather than no receipt.
         let trackingUrl: string | null = null;
         if (tenantId && layoutWantsQr(receiptLayout)) {
-          const { data } = await supabase.auth.getSession();
+          // Bounded on purpose: this sits between "Confirm" and the first
+          // line of paper, and an unbounded session read here is the same
+          // freeze the tender screen already had (see authorized-post.ts).
+          const accessToken = await getAccessTokenBounded(SESSION_READ_TIMEOUT_MS);
           trackingUrl = await fetchTrackingUrl(
             { orderId: order._id, tenantId },
-            { accessToken: data.session?.access_token ?? null },
+            { accessToken },
           );
         }
 

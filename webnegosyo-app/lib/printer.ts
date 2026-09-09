@@ -6,11 +6,13 @@ import { fetchLogoBase64 } from "./receipt-logo";
 import {
   printersForRole,
   DEFAULT_PAPER_WIDTH,
+  DEFAULT_QR_MODE,
   type PaperWidth,
   type PrinterRole,
+  type QrMode,
   type RegisteredPrinter,
 } from "./printer-registry";
-import { receiptMarkupToEscPos, printerWidthType } from "./receipt-escpos";
+import { receiptMarkupToEscPos, printerWidthType, escPosQrCode } from "./receipt-escpos";
 import { planPrintJobs, jobsForRole } from "./print-queue";
 
 // ESC/POS commands for text formatting.
@@ -335,6 +337,15 @@ export async function disconnectPrinter(): Promise<void> {
  * the onError callback — without this wrapper, failures are silent and
  * `await` resolves immediately on success/failure alike.
  */
+/**
+ * How long a piece of a receipt is given to report a failure before the next
+ * piece is sent. The final piece keeps the full window so the print's result
+ * reflects a late error; an earlier piece only needs long enough for a dead
+ * connection to say so, and every extra second here is a pause on paper.
+ */
+const FINAL_PIECE_ERROR_WINDOW_MS = 1500;
+const INNER_PIECE_ERROR_WINDOW_MS = 500;
+
 function printBillAsync(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   printerInstance: any,
@@ -347,7 +358,10 @@ function printBillAsync(
       printerInstance.printBill(text, {
         beep: false,
         cut: options.cut,
-        tailingLine: true,
+        // The Android driver feeds five blank lines after every call with
+        // this on. Only the last piece of a receipt is allowed to: the
+        // others used to open a hand's width of paper above the QR.
+        tailingLine: options.cut,
         encoding: "UTF8",
         onError: (err: Error) => {
           if (settled) return;
@@ -367,7 +381,7 @@ function printBillAsync(
       if (settled) return;
       settled = true;
       resolve();
-    }, 1500);
+    }, options.cut ? FINAL_PIECE_ERROR_WINDOW_MS : INNER_PIECE_ERROR_WINDOW_MS);
   });
 }
 
@@ -398,26 +412,63 @@ const IMAGE_SETTLE_MS = 700;
  * ignores rasters) skips the image; the paper receipt itself always comes
  * first. Throws on print errors — the callers translate to PrinterResult.
  */
+/**
+ * What actually goes to the head: text pieces carry control bytes and are
+ * merged when adjacent, so a receipt whose QR the printer draws itself is ONE
+ * call — no per-piece error window, no image settle, no gap on the paper.
+ */
+type PrintPiece =
+  | { type: "text"; bytes: string }
+  | { type: "image"; url: string }
+  | { type: "qrImage"; data: string };
+
+export function planPrintPieces(segments: PrintSegment[], qrMode: QrMode): PrintPiece[] {
+  const pieces: PrintPiece[] = [];
+  const pushText = (bytes: string) => {
+    const last = pieces[pieces.length - 1];
+    if (last && last.type === "text") {
+      pieces[pieces.length - 1] = { type: "text", bytes: last.bytes + "\n" + bytes };
+    } else {
+      pieces.push({ type: "text", bytes });
+    }
+  };
+
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      // Markup → control bytes here, never earlier: the tags are what the
+      // Studio preview reads, the bytes are what the head reads.
+      pushText(receiptMarkupToEscPos(segment.text));
+    } else if (segment.type === "image") {
+      pieces.push({ type: "image", url: segment.url });
+    } else {
+      const native = qrMode === "native" ? escPosQrCode(segment.data) : null;
+      if (native) pushText(native);
+      else pieces.push({ type: "qrImage", data: segment.data });
+    }
+  }
+  return pieces;
+}
+
 async function runSegmentsOnInstance(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   instance: any,
   segments: PrintSegment[],
   paperWidth: PaperWidth = DEFAULT_PAPER_WIDTH,
+  qrMode: QrMode = DEFAULT_QR_MODE,
 ): Promise<void> {
-  const lastIndex = segments.length - 1;
+  const pieces = planPrintPieces(segments, qrMode);
+  const lastIndex = pieces.length - 1;
   let hasCut = false;
   // Told nothing, the iOS driver rasterizes into an 80mm-wide strip and
   // centres the image in it — a 58mm head then clips the right third of the
   // QR, which prints and never scans.
   const imageOptions = { printerWidthType: printerWidthType(paperWidth) };
 
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i]!;
+  for (let i = 0; i < pieces.length; i++) {
+    const segment = pieces[i]!;
     if (segment.type === "text") {
       const isFinal = i === lastIndex;
-      // Markup → control bytes here, never earlier: the tags are what the
-      // Studio preview reads, the bytes are what the head reads.
-      await printBillAsync(instance, receiptMarkupToEscPos(segment.text), { cut: isFinal });
+      await printBillAsync(instance, segment.bytes, { cut: isFinal });
       hasCut = isFinal;
       continue;
     }
@@ -485,7 +536,7 @@ export function printToPrinter(
     }
 
     try {
-      await runSegmentsOnInstance(instance, segments, printer.paperWidth);
+      await runSegmentsOnInstance(instance, segments, printer.paperWidth, printer.qrMode);
       return { success: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -495,7 +546,7 @@ export function printToPrinter(
       const reconnected = await connectPrinter(printer.type, printer.address);
       if (!reconnected.success) return { success: false, error: message || "Print failed" };
       try {
-        await runSegmentsOnInstance(instance, segments, printer.paperWidth);
+        await runSegmentsOnInstance(instance, segments, printer.paperWidth, printer.qrMode);
         return { success: true };
       } catch (retryErr: unknown) {
         const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);

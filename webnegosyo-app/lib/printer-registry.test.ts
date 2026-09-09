@@ -114,7 +114,7 @@ describe("parsePrinterList", () => {
     // Entries saved before paper widths existed come back as 58mm, so a
     // printer that has only ever printed 58mm keeps printing 58mm.
     expect(parsePrinterList(JSON.stringify(list))).toEqual(
-      list.map((p) => ({ ...p, paperWidth: 58 })),
+      list.map((p) => ({ ...p, paperWidth: 58, qrMode: "native" })),
     );
   });
 
@@ -172,5 +172,20 @@ describe("paper width", () => {
   it("lets a printer be re-labelled 80mm in place", () => {
     const list = updatePrinter([bt()], "p1", { paperWidth: 80 });
     expect(list[0]?.paperWidth).toBe(80);
+  });
+});
+
+describe("qrMode", () => {
+  it("reads printers saved before the setting existed as native, and keeps an explicit image choice", () => {
+    const [legacy, image] = parsePrinterList(
+      JSON.stringify([bt(), bt({ id: "p2", address: "1.2.3.4:9100", qrMode: "image" })]),
+    );
+    expect(legacy?.qrMode).toBe("native");
+    expect(image?.qrMode).toBe("image");
+  });
+
+  it("drops an unknown mode back to native rather than refusing the printer", () => {
+    const [p] = parsePrinterList(JSON.stringify([bt({ qrMode: "laser" as never })]));
+    expect(p?.qrMode).toBe("native");
   });
 });

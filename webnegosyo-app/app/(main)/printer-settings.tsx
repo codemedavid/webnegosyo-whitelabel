@@ -14,7 +14,10 @@ import {
   PRINTER_ROLES,
   PAPER_WIDTHS,
   DEFAULT_PAPER_WIDTH,
+  QR_MODES,
+  DEFAULT_QR_MODE,
   type PaperWidth,
+  type QrMode,
   type PrinterRole,
   type RegisteredPrinter,
 } from "../../lib/printer-registry";
@@ -55,6 +58,16 @@ const PRINT_TRIGGER_OPTIONS: { value: PrintTrigger; label: string; hint: string 
 const PAPER_LABELS: Record<PaperWidth, string> = {
   58: "58mm",
   80: "80mm",
+};
+
+/**
+ * Native lets the printer's firmware draw the tracking QR from a short
+ * command — fast, crisp, and what nearly every head supports. Image is the
+ * escape hatch for a firmware that prints the command as gibberish.
+ */
+const QR_MODE_LABELS: Record<QrMode, string> = {
+  native: "Printer draws it",
+  image: "Send as image",
 };
 
 const ROLE_LABELS: Record<PrinterRole, string> = {
@@ -302,6 +315,26 @@ export default function PrinterSettingsScreen() {
                       >
                         <Text style={[styles.roleChipText, isActive && styles.roleChipTextActive]}>
                           {isActive ? "✓ " : ""}{PAPER_LABELS[width]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={styles.roleRow}>
+                  <Text style={styles.paperLabel}>QR</Text>
+                  {QR_MODES.map((mode) => {
+                    const isActive = (printer.qrMode ?? DEFAULT_QR_MODE) === mode;
+                    return (
+                      <TouchableOpacity
+                        key={mode}
+                        style={[styles.roleChip, isActive && styles.roleChipActive]}
+                        onPress={() => void updatePrinter(printer.id, { qrMode: mode })}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: isActive }}
+                        accessibilityLabel={`QR: ${QR_MODE_LABELS[mode]}`}
+                      >
+                        <Text style={[styles.roleChipText, isActive && styles.roleChipTextActive]}>
+                          {isActive ? "✓ " : ""}{QR_MODE_LABELS[mode]}
                         </Text>
                       </TouchableOpacity>
                     );
