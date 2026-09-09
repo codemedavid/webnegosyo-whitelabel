@@ -164,6 +164,22 @@ describe("toOrderDto", () => {
     expect(dto.lalamoveTrackingUrl).toBe("https://share.lalamove.com/lala-1");
   });
 
+  it("reads the delivery address from the customer_data blob on a platform row", () => {
+    // Arrange: the platform `orders` table has NO delivery_address column —
+    // web checkout keeps the address inside customer_data. Reading only the
+    // column left every platform delivery order without an address on the
+    // order screen, and left the Lalamove card with nothing to quote.
+    const row = orderRow({
+      customer_data: { delivery_address: "Enverga Blvd, Lucena", delivery_lat: "13.94" },
+    });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.deliveryAddress).toBe("Enverga Blvd, Lucena");
+  });
+
   it("leaves the Lalamove fields undefined on an order that was never quoted", () => {
     // Arrange: a counter sale. The card keys off these being absent to hide
     // itself, so an empty string here would show a Lalamove panel on a walk-in.
@@ -619,16 +635,13 @@ describe("buildCreateOrderRows — delivery details", () => {
     expect(buildCreateOrderRows("tenant-1", args).order.delivery_fee).toBe(50);
   });
 
-  it("promotes the blob address into the delivery_address column", () => {
-    // Same rule as outlet_id: the register can only write the blob, but the
-    // platform reads the column — an address left in the blob alone would be
-    // invisible to every column-based reader.
-    expect(buildCreateOrderRows("tenant-1", args).order.delivery_address).toBe("12 Mabini St");
-  });
-
-  it("leaves the column null for a sale with no address", () => {
-    const bare = { ...args, customerData: {} };
-    expect(buildCreateOrderRows("tenant-1", bare).order.delivery_address).toBeNull();
+  it("never writes a delivery_address column — the platform table has none", () => {
+    // PostgREST refuses an insert naming a column the table does not have
+    // (PGRST204), which would fail the whole register sale. The address
+    // lives in customer_data, which is where every platform reader looks.
+    const { order } = buildCreateOrderRows("tenant-1", args);
+    expect("delivery_address" in order).toBe(false);
+    expect(order.customer_data).toMatchObject({ delivery_address: "12 Mabini St" });
   });
 });
 

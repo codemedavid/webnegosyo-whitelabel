@@ -406,7 +406,13 @@ export function toOrderDto(
       row.service_charge_amount === null || row.service_charge_amount === undefined
         ? undefined
         : toNumber(row.service_charge_amount),
-    deliveryAddress: optional(row.delivery_address),
+    // The platform table has no delivery_address column: web checkout keeps
+    // the address in customer_data. Read the blob, so a platform delivery
+    // order shows its address and the Lalamove card has something to quote.
+    deliveryAddress:
+      optional(row.delivery_address) ??
+      textFromCustomerData(row.customer_data ?? undefined, "delivery_address") ??
+      undefined,
     lalamoveQuotationId: optional(row.lalamove_quotation_id),
     lalamoveOrderId: optional(row.lalamove_order_id),
     lalamoveStatus: optional(row.lalamove_status),
@@ -582,7 +588,6 @@ export interface OrderInsert {
   payment_method_details: string | null;
   delivery_fee: number | null;
   service_charge_amount: number | null;
-  delivery_address: string | null;
   scheduled_for: string | null;
   client_order_id: string | null;
   has_upsell_items: boolean;
@@ -673,7 +678,9 @@ export function buildCreateOrderRows(
     // NULL, not 0, for an unserviced sale — matching delivery_fee and what the
     // web checkout path already writes.
     service_charge_amount: args.serviceCharge ? args.serviceCharge : null,
-    delivery_address: textFromCustomerData(args.customerData, "delivery_address"),
+    // No delivery_address here: the platform table has no such column and
+    // PostgREST refuses an insert that names one. The address stays in
+    // customer_data, where web checkout puts it and every reader looks.
     scheduled_for: args.scheduledFor ?? null,
     client_order_id: args.clientOrderId ?? null,
     has_upsell_items: args.items.some((item) => item.isUpsellItem === true),
