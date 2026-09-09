@@ -650,6 +650,25 @@ describe("runPlatformQuery — orders:getAllOrderItems", () => {
     expect(opsOf(calls, "eq")).toContainEqual(["orders.tenant_id", TENANT]);
   });
 
+  /**
+   * PostgREST can only ORDER BY an embedded column the embed actually selects.
+   * With `orders!inner(tenant_id)` alone, `order=orders(created_at).desc` was
+   * refused with `column order_items_orders_1.created_at does not exist` — 198
+   * times in one day, emptying every platform store's kitchen board and
+   * product analytics. The sort column must ride in the projection.
+   */
+  it("selects orders.created_at in the embed so the newest-first sort is valid", async () => {
+    const { client, calls } = fakeClient({ order_items: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {});
+
+    const select = String(opsOf(calls, "select")[0][0]);
+    const embed = select.match(/orders!inner\(([^)]*)\)/)?.[1] ?? "";
+    expect(embed.split(",").map((s) => s.trim())).toEqual(
+      expect.arrayContaining(["tenant_id", "created_at"])
+    );
+  });
+
   it("returns item DTOs carrying the parent order id", async () => {
     // Arrange
     const { client } = fakeClient({

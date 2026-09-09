@@ -1,17 +1,21 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { usePrinterStore } from "../stores/printer-store";
 import { useAuthStore } from "../stores/auth-store";
-import { printForRole } from "../lib/printer";
+import { printForRole, type PrintSegment } from "../lib/printer";
 import { getAccessTokenBounded } from "../lib/authorized-post";
 import { printersForRole, DEFAULT_PAPER_WIDTH } from "../lib/printer-registry";
 import { charsForPaperWidth } from "../lib/receipt-escpos";
 import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
-import { fetchTrackingUrl } from "../lib/receipt-tracking";
+import { fetchTrackingUrl, getCachedTrackingUrl } from "../lib/receipt-tracking";
+import { prefetchLogo } from "../lib/receipt-logo";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 import type { ReceiptOrder } from "../lib/receipt-layout";
 
 /** A session read that takes longer than this is a stalled refresh, not a slow one. */
 const SESSION_READ_TIMEOUT_MS = 3_000;
+
+/** How long "Printed" stays on the button before it reads "Reprint" again. */
+export const PRINTED_FEEDBACK_MS = 2_500;
 
 /**
  * Whatever the receipt renderer can print — no narrower.
@@ -24,9 +28,20 @@ const SESSION_READ_TIMEOUT_MS = 3_000;
 type PrintableOrder = ReceiptOrder;
 
 /**
+ * What the last tap did, for the button that was tapped. `printing` is the
+ * window in which a second tap must be ignored — the cashier used to have no
+ * way to tell whether the first one had registered, so they tapped again and
+ * got two receipts.
+ */
+export interface PrintFeedback {
+  orderId: string;
+  status: "printing" | "printed" | "failed";
+}
+
+/**
  * Shared hook for printing order receipts.
- * Used by both the order detail screen and the orders list to avoid duplicating
- * print logic (formatReceipt + printReceipt + store access).
+ * Used by the order detail screen, the orders list, the register and the
+ * confirmation watcher, so every surface prints through one path.
  */
 export function useOrderPrint() {
   const tenantName = useAuthStore((s) => s.tenantName);
@@ -41,51 +56,102 @@ export function useOrderPrint() {
   const hasCashierPrinter = cashierPrinter !== undefined;
   // The receipt goes to the first cashier printer, so its paper sets the columns.
   const paperColumns = charsForPaperWidth(cashierPrinter?.paperWidth ?? DEFAULT_PAPER_WIDTH);
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [feedback, setFeedback] = useState<PrintFeedback | null>(null);
+  // One print per order at a time: a double tap joins the print in flight
+  // instead of queueing a second receipt behind it.
+  const inFlightRef = useRef(new Map<string, Promise<boolean>>());
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The logo is the one network hop the receipt cannot avoid — pay it the
+  // moment the tenant is known, not while the customer is waiting.
+  useEffect(() => {
+    if (hasCashierPrinter) prefetchLogo(receiptLogoUrl);
+  }, [receiptLogoUrl, hasCashierPrinter]);
+
+  useEffect(
+    () => () => {
+      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    },
+    [],
+  );
+
+  /**
+   * The signed tracking URL, from memory when this order has printed before.
+   * Best-effort otherwise: a failed mint prints a QR-less receipt, never no
+   * receipt.
+   */
+  const resolveTrackingUrl = useCallback(
+    async (orderId: string): Promise<string | null> => {
+      if (!tenantId || !layoutWantsQr(receiptLayout)) return null;
+      const ref = { orderId, tenantId };
+      const cached = getCachedTrackingUrl(ref);
+      if (cached) return cached;
+      // Bounded on purpose: this sits between the tap and the first line of
+      // paper, and an unbounded session read here is the same freeze the
+      // tender screen already had (see authorized-post.ts).
+      const accessToken = await getAccessTokenBounded(SESSION_READ_TIMEOUT_MS);
+      return fetchTrackingUrl(ref, { accessToken });
+    },
+    [tenantId, receiptLayout],
+  );
+
+  const buildSegments = useCallback(
+    async (order: PrintableOrder): Promise<PrintSegment[]> => {
+      const trackingUrl = await resolveTrackingUrl(order._id);
+      return buildReceiptSegments(
+        order,
+        tenantName ?? "Store",
+        receiptLayout,
+        trackingUrl,
+        receiptLogoUrl,
+        paperColumns,
+      );
+    },
+    [resolveTrackingUrl, tenantName, receiptLayout, receiptLogoUrl, paperColumns],
+  );
+
+  const showFeedback = useCallback((next: PrintFeedback) => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setFeedback(next);
+    if (next.status === "printing") return;
+    feedbackTimerRef.current = setTimeout(() => {
+      setFeedback((current) => (current?.orderId === next.orderId ? null : current));
+    }, PRINTED_FEEDBACK_MS);
+  }, []);
 
   const printOrder = useCallback(
     async (order: PrintableOrder): Promise<boolean> => {
       if (!hasCashierPrinter) return false;
 
-      setIsPrinting(true);
-      try {
-        // The QR needs a server-minted signed URL; skipped entirely for
-        // layouts without a qr block, and best-effort otherwise — a failed
-        // mint prints a QR-less receipt rather than no receipt.
-        let trackingUrl: string | null = null;
-        if (tenantId && layoutWantsQr(receiptLayout)) {
-          // Bounded on purpose: this sits between "Confirm" and the first
-          // line of paper, and an unbounded session read here is the same
-          // freeze the tender screen already had (see authorized-post.ts).
-          const accessToken = await getAccessTokenBounded(SESSION_READ_TIMEOUT_MS);
-          trackingUrl = await fetchTrackingUrl(
-            { orderId: order._id, tenantId },
-            { accessToken },
-          );
-        }
+      const inFlight = inFlightRef.current.get(order._id);
+      if (inFlight) return inFlight;
 
-        const segments = buildReceiptSegments(
-          order,
-          tenantName ?? "Store",
-          receiptLayout,
-          trackingUrl,
-          receiptLogoUrl,
-          paperColumns,
-        );
-        const outcome = await printForRole("cashier", segments);
-        if (!outcome.anySuccess) {
-          const firstError = outcome.results[0]?.result.error;
-          console.warn("[useOrderPrint] Print failed:", firstError ?? "no cashier printer");
+      const job = (async () => {
+        showFeedback({ orderId: order._id, status: "printing" });
+        try {
+          // The logo download runs alongside the tracking mint and the
+          // Bluetooth handshake; the queue connects first and only then
+          // waits for the receipt to finish building.
+          prefetchLogo(receiptLogoUrl);
+          const outcome = await printForRole("cashier", buildSegments(order));
+          if (!outcome.anySuccess) {
+            const firstError = outcome.results[0]?.result.error;
+            console.warn("[useOrderPrint] Print failed:", firstError ?? "no cashier printer");
+          }
+          showFeedback({ orderId: order._id, status: outcome.anySuccess ? "printed" : "failed" });
+          return outcome.anySuccess;
+        } catch (err: unknown) {
+          console.warn("[useOrderPrint] Print failed:", err instanceof Error ? err.message : err);
+          showFeedback({ orderId: order._id, status: "failed" });
+          return false;
+        } finally {
+          inFlightRef.current.delete(order._id);
         }
-        return outcome.anySuccess;
-      } catch (err: unknown) {
-        console.warn("[useOrderPrint] Print failed:", err instanceof Error ? err.message : err);
-        return false;
-      } finally {
-        setIsPrinting(false);
-      }
+      })();
+      inFlightRef.current.set(order._id, job);
+      return job;
     },
-    [hasCashierPrinter, paperColumns, tenantName, tenantId, receiptLayout, receiptLogoUrl]
+    [hasCashierPrinter, receiptLogoUrl, buildSegments, showFeedback],
   );
 
   /**
@@ -113,7 +179,9 @@ export function useOrderPrint() {
     printOrder,
     printAt,
     shouldPrint,
-    isPrinting,
+    /** The last tap's outcome, keyed by order — drive the button off this. */
+    feedback,
+    isPrinting: feedback?.status === "printing",
     printTrigger,
     hasPrinter: hasCashierPrinter,
   };

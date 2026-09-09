@@ -57,8 +57,8 @@ describe("GlobalReceiptAutoPrint logic reuse", () => {
   it("decides and dedups through the shared modules", () => {
     const src = component();
     expect(src).toMatch(/selectOrdersToAutoPrint/);
-    expect(src).toMatch(/recordPrinted/);
-    expect(src).toMatch(/parsePrintedList/);
+    expect(src).toMatch(/claimPrinted\(/);
+    expect(src).toMatch(/usePrintedLedger\(/);
   });
 
   it("prints through the same receipt hook the Reprint button uses", () => {

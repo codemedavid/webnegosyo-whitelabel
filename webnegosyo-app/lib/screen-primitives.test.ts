@@ -52,7 +52,6 @@ const NOT_YET_CONVERTED: Readonly<Record<string, readonly string[]>> = {
     "order/[orderId].tsx",
     "payment/[methodId].tsx",
     "pos.tsx",
-    "printer-settings.tsx",
     "product/[productId].tsx",
     "scan.tsx",
     "team.tsx",
@@ -62,14 +61,12 @@ const NOT_YET_CONVERTED: Readonly<Record<string, readonly string[]>> = {
     "campaign/[campaignId].tsx",
     "order/[orderId].tsx",
     "payment/[methodId].tsx",
-    "pos-sales.tsx",
-    "printer-settings.tsx",
     "product/[productId].tsx",
     "product/recipe/[productId].tsx",
     "scan.tsx",
     "team.tsx",
   ],
-  eyebrow: ["analytics.tsx", "daily-report.tsx", "dashboard.tsx", "pos-sales.tsx", "pos-tender.tsx"],
+  eyebrow: ["analytics.tsx", "daily-report.tsx", "dashboard.tsx", "pos-tender.tsx"],
 };
 
 describe.each(SCREENS)("%s", (name, path) => {

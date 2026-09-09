@@ -55,8 +55,8 @@ describe("GlobalKitchenAutoPrint logic reuse", () => {
   it("decides and dedups through the shared auto-print module", () => {
     const src = component();
     expect(src).toMatch(/selectTicketsToAutoPrint/);
-    expect(src).toMatch(/recordPrinted/);
-    expect(src).toMatch(/parsePrintedList/);
+    expect(src).toMatch(/claimPrinted\(/);
+    expect(src).toMatch(/usePrintedLedger\(/);
   });
 
   it("prints the shared chit on kitchen-role printers", () => {

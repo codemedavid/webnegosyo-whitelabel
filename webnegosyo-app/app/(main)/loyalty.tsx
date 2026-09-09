@@ -30,6 +30,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { LoyaltySmsDeviceCard } from "../../components/LoyaltySmsDeviceCard";
 
 /**
  * Rewards: the merchant's loyalty programs.
@@ -169,6 +170,7 @@ export default function LoyaltyScreen() {
       >
         {earningNote ? <Text style={styles.notice}>{earningNote}</Text> : null}
         {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+        <LoyaltySmsDeviceCard />
 
         {programs.length === 0 && !isComposing ? (
           <EmptyState

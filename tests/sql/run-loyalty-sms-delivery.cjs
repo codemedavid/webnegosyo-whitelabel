@@ -6,7 +6,7 @@ const assert = require('node:assert/strict')
 async function main() {
   const db = new PGlite()
   const tenant=randomUUID(), actor=randomUUID(), device=randomUUID(), device2=randomUUID(), hash='a'.repeat(64)
-  const denied={ok:false,error:'request_denied'}
+  const denied={ok:false,error:'request_denied'}, deviceDenied={ok:false,error:'device_denied'}
   const auth=[tenant,actor,device,hash]
   const rpc=async(name,args)=>(await db.query(`select ${name}(${args.map((_,i)=>`$${i+1}`).join(',')}) as result`,args)).rows[0].result
   const claim=(credentials=auth)=>rpc('claim_loyalty_sms_job',credentials)
@@ -24,7 +24,8 @@ async function main() {
       '20260906150000_loyalty_reversal_accounting.sql','20260906160000_loyalty_access.sql',
       '20260906170000_loyalty_pos_settlement.sql','20260907120000_loyalty_quote_immutability.sql',
       '20260908120000_loyalty_verified_claims.sql','20260908130000_loyalty_challenge_issuance.sql',
-      '20260909120000_loyalty_sms_delivery.sql']) {
+      '20260909120000_loyalty_sms_delivery.sql','20260909130000_loyalty_sms_device_management.sql',
+      '20260910140000_loyalty_sms_ack_authorization.sql']) {
       const file=path.resolve(__dirname,'../../supabase/migrations',name)
       if(existsSync(file)) await db.exec(readFileSync(file,'utf8'))
     }
@@ -57,7 +58,7 @@ async function main() {
       [tenant,actor,randomUUID(),hash],[tenant,actor,device,'b'.repeat(64)],[tenant,actor,device,null]]) {
       assert.deepEqual(await claim(a),denied)
       assert.deepEqual(await authorize(lease,a),denied)
-      assert.deepEqual(await finish(lease,'sent',a),denied)
+      assert.deepEqual(await finish(lease,'sent',a),deviceDenied)
     }
     for(const change of ["update app_users set permissions='{}'","update app_users set role='customer'",
       'update loyalty_sms_devices set enabled=false','update tenants set loyalty_shadow=true','update tenants set loyalty_enabled=false',
@@ -65,7 +66,7 @@ async function main() {
       await db.exec(change)
       assert.deepEqual(await claim(),denied,change)
       assert.deepEqual(await authorize(),denied,change)
-      assert.deepEqual(await finish(),denied,change)
+      assert.deepEqual(await finish(),deviceDenied,change)
       await db.query("update app_users set role='admin',permissions=array['loyalty_manage'],tenant_id=$1",[tenant])
       await db.exec('update loyalty_sms_devices set enabled=true; update tenants set loyalty_enabled=true,loyalty_shadow=false')
     }

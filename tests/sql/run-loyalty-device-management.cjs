@@ -5,7 +5,7 @@ const path = require('node:path')
 const assert = require('node:assert/strict')
 async function main() {
   const db=new PGlite(), tenant=randomUUID(), actor=randomUUID(), device=randomUUID(), hash='a'.repeat(64)
-  const denied={ok:false,error:'request_denied'}, ok={ok:true}
+  const denied={ok:false,error:'request_denied'}, deviceDenied={ok:false,error:'device_denied'}, ok={ok:true}
   const rpc=async(name,args)=>(await db.query(`select ${name}(${args.map((_,i)=>`$${i+1}`).join(',')}) as result`,args)).rows[0].result
   const enroll=(d=device,a=actor,t=tenant,h=hash)=>rpc('enroll_loyalty_sms_device',[t,a,d,h])
   try {
@@ -22,7 +22,8 @@ async function main() {
       '20260906150000_loyalty_reversal_accounting.sql','20260906160000_loyalty_access.sql',
       '20260906170000_loyalty_pos_settlement.sql','20260907120000_loyalty_quote_immutability.sql',
       '20260908120000_loyalty_verified_claims.sql','20260908130000_loyalty_challenge_issuance.sql',
-      '20260909120000_loyalty_sms_delivery.sql','20260909130000_loyalty_sms_device_management.sql']) {
+      '20260909120000_loyalty_sms_delivery.sql','20260909130000_loyalty_sms_device_management.sql',
+      '20260910140000_loyalty_sms_ack_authorization.sql']) {
       const file=path.resolve(__dirname,'../../supabase/migrations',name)
       if(existsSync(file)) await db.exec(readFileSync(file,'utf8'))
     }
@@ -122,7 +123,7 @@ async function main() {
     await db.query('update tenants set loyalty_enabled=true,loyalty_shadow=false where id=$1',[tenant])
     await db.exec('set role service_role')
     assert.deepEqual(await authorize(sent),denied)
-    assert.deepEqual(await rpc('finish_loyalty_sms_job',[...auth,sent.jobId,sent.leaseToken,'sent']),denied)
+    assert.deepEqual(await rpc('finish_loyalty_sms_job',[...auth,sent.jobId,sent.leaseToken,'sent']),deviceDenied)
     // A failed audit insert must roll back its associated mutation atomically.
     await db.exec(`reset role;
       create function fail_device_audit() returns trigger language plpgsql as $$ begin raise exception 'forced audit failure'; end $$;
@@ -235,7 +236,7 @@ async function main() {
     assert.deepEqual(await recover(abandonedRecovery,'sent'),denied)
     for(const a of [[tenant,actor,recoveryDevice,'b'.repeat(64)],[tenant,actor,device,hash],
       [tenant2,actor,recoveryDevice,hash],[tenant,randomUUID(),recoveryDevice,hash]]) {
-      assert.deepEqual(await recover(oldLease,'failed',a),denied,'Authorization precedes stale-token ACK')
+      assert.deepEqual(await recover(oldLease,'failed',a),deviceDenied,'Authorization precedes stale-token ACK')
     }
     assert.deepEqual(await recover({...oldLease,jobId:randomUUID()}),denied)
     assert.deepEqual(await recover({...oldLease,leaseToken:null}),denied)
@@ -243,12 +244,12 @@ async function main() {
     await db.exec('reset role')
     await db.query('update tenants set loyalty_enabled=false where id=$1',[tenant])
     await db.exec('set role service_role')
-    assert.deepEqual(await recover(oldLease),denied,'Disabled tenant requires manual intervention')
+    assert.deepEqual(await recover(oldLease),deviceDenied,'Disabled tenant requires manual intervention')
     await db.exec('reset role')
     await db.query('update tenants set loyalty_enabled=true where id=$1',[tenant])
     await db.query("update app_users set is_owner=false,permissions='{}' where user_id=$1",[actor])
     await db.exec('set role service_role')
-    assert.deepEqual(await recover(oldLease),denied,'Current delivery permission required')
+    assert.deepEqual(await recover(oldLease),deviceDenied,'Current delivery permission required')
     await db.exec('reset role')
     await db.query('update app_users set is_owner=true where user_id=$1',[actor])
     for(const role of ['anon','authenticated']) {
@@ -257,7 +258,7 @@ async function main() {
       await db.exec('reset role')
     }
     await db.exec('begin isolation level repeatable read; set local role service_role')
-    assert.deepEqual(await recover(oldLease),denied)
+    assert.deepEqual(await recover(oldLease),deviceDenied)
     await db.exec('rollback')
     // Registry cascade must not erase the permanent retirement of a device ID.
     await db.exec('reset role')

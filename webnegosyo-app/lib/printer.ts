@@ -343,7 +343,7 @@ export async function disconnectPrinter(): Promise<void> {
  * reflects a late error; an earlier piece only needs long enough for a dead
  * connection to say so, and every extra second here is a pause on paper.
  */
-const FINAL_PIECE_ERROR_WINDOW_MS = 1500;
+const FINAL_PIECE_ERROR_WINDOW_MS = 1000;
 const INNER_PIECE_ERROR_WINDOW_MS = 500;
 
 function printBillAsync(
@@ -507,6 +507,56 @@ function enqueuePrintJob<T>(job: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Segments, or a promise of them. A receipt that still needs a network hop
+ * (the tracking URL, the logo) hands the promise in, and the queue brings the
+ * connection up WHILE that hop is in flight instead of after it.
+ */
+export type SegmentSource = PrintSegment[] | Promise<PrintSegment[]>;
+
+/**
+ * Bring the connection to `printer` up if it is not the live one. Shared by
+ * the print path and the launch-time warm-up.
+ */
+async function ensureConnected(printer: RegisteredPrinter): Promise<PrinterResult> {
+  const [step] = planPrintJobs(
+    [{ targetId: printer.id, segments: [] }],
+    [printer],
+    usePrinterStore.getState().connectedAddress,
+  );
+  if (!step?.needsConnect) return { success: true };
+  // Let the previous printer's fire-and-forget transfer drain before the
+  // connection moves to a different device.
+  if (step.settleBeforeConnectMs > 0) await delay(step.settleBeforeConnectMs);
+  return connectPrinter(printer.type, printer.address);
+}
+
+/**
+ * Open the connection ahead of the first print. The native side forgets its
+ * connection on every app launch, so without this the first receipt of the
+ * day paid the whole Bluetooth handshake — on iOS, a rescan too — between the
+ * tap and the paper. Runs through the queue like any job, so it can never
+ * race a real print; a printer that is off simply fails quietly.
+ */
+export function warmUpPrinter(printer: RegisteredPrinter): Promise<PrinterResult> {
+  return enqueuePrintJob(async () => {
+    const mod = getPrinterModule();
+    if (!mod) return { success: false, error: NOT_AVAILABLE_MSG };
+    return ensureConnected(printer);
+  });
+}
+
+/**
+ * The one printer worth keeping warm: the native lib holds a single live
+ * connection, and the cashier receipt is the paper a customer stands waiting
+ * for. Falls back to the first saved printer on a kitchen-only device.
+ */
+export function pickWarmUpTarget(
+  printers: readonly RegisteredPrinter[],
+): RegisteredPrinter | undefined {
+  return printersForRole(printers, "cashier")[0] ?? printers[0];
+}
+
+/**
  * Print segments on one specific saved printer, through the device-wide print
  * queue. Connects (or switches the connection) only when the target differs
  * from the currently connected printer; a failed print drops the connection
@@ -514,7 +564,7 @@ function enqueuePrintJob<T>(job: () => Promise<T>): Promise<T> {
  */
 export function printToPrinter(
   printer: RegisteredPrinter,
-  segments: PrintSegment[],
+  source: SegmentSource,
 ): Promise<PrinterResult> {
   return enqueuePrintJob(async () => {
     const mod = getPrinterModule();
@@ -522,17 +572,22 @@ export function printToPrinter(
 
     const instance = printer.type === "bluetooth" ? mod.BLEPrinter : mod.NetPrinter;
 
-    const [step] = planPrintJobs(
-      [{ targetId: printer.id, segments }],
-      [printer],
-      usePrinterStore.getState().connectedAddress,
-    );
-    if (step?.needsConnect) {
-      // Let the previous printer's fire-and-forget transfer drain before the
-      // connection moves to a different device.
-      if (step.settleBeforeConnectMs > 0) await delay(step.settleBeforeConnectMs);
-      const connected = await connectPrinter(printer.type, printer.address);
-      if (!connected.success) return connected;
+    // The receipt keeps building even if the connection fails below; its
+    // rejection must land somewhere, or it surfaces as an unhandled error.
+    const building = Promise.resolve(source);
+    building.catch(() => undefined);
+
+    // Connect first, THEN wait for the receipt: the handshake and the
+    // receipt's own network hops overlap instead of queueing behind each other.
+    const connected = await ensureConnected(printer);
+    if (!connected.success) return connected;
+
+    let segments: PrintSegment[];
+    try {
+      segments = await building;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message || "Could not build the receipt" };
     }
 
     try {
@@ -571,17 +626,18 @@ export interface RolePrintResult {
  */
 export async function printForRole(
   role: PrinterRole,
-  segments: PrintSegment[],
+  source: SegmentSource,
 ): Promise<RolePrintResult> {
   const { printers } = usePrinterStore.getState();
-  const jobs = jobsForRole(printers, role, segments);
+  // The planner only routes; every job shares the one source.
+  const jobs = jobsForRole(printers, role, []);
   const byId = new Map(printers.map((p) => [p.id, p]));
 
   const results: RolePrintResult["results"] = [];
   for (const job of jobs) {
     const printer = byId.get(job.targetId);
     if (!printer) continue;
-    const result = await printToPrinter(printer, job.segments);
+    const result = await printToPrinter(printer, source);
     results.push({ printerId: printer.id, printerName: printer.name, result });
   }
 
@@ -594,10 +650,10 @@ export async function printForRole(
  * kitchen-only device can still test-print and reprint.
  */
 export async function printReceiptSegments(
-  segments: PrintSegment[]
+  segments: SegmentSource
 ): Promise<PrinterResult> {
   const { printers } = usePrinterStore.getState();
-  const target = printersForRole(printers, "cashier")[0] ?? printers[0];
+  const target = pickWarmUpTarget(printers);
   if (!target) return { success: false, error: "No printer configured." };
   return printToPrinter(target, segments);
 }

@@ -15,6 +15,8 @@ import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
+import { PrinterWarmUp } from "../../components/PrinterWarmUp";
+import { GlobalLoyaltySmsDelivery } from "../../components/GlobalLoyaltySmsDelivery";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
@@ -99,6 +101,9 @@ export default function MainLayout() {
       <GlobalKitchenAutoPrint />
       {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
       <GlobalReceiptAutoPrint />
+      <PrinterWarmUp />
+      {/* Delivers loyalty OTPs from an enrolled Android handset; gated, Android-only. */}
+      <GlobalLoyaltySmsDelivery />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}

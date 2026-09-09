@@ -34,10 +34,45 @@ export interface TrackingUrlOptions {
  */
 export const TRACKING_URL_TIMEOUT_MS = 6_000;
 
+/**
+ * Minted URLs, keyed per tenant and order. A tracking URL is a signed link to
+ * one order and never changes, so a reprint — the second tap on the same
+ * order — has no reason to pay the mint again. Bounded FIFO: a long shift
+ * does not grow it without limit.
+ */
+const TRACKING_URL_CACHE_CAP = 300;
+const trackingUrlCache = new Map<string, string>();
+
+function cacheKey(ref: TrackingUrlRef): string {
+  return `${ref.tenantId}:${ref.orderId}`;
+}
+
+function rememberTrackingUrl(ref: TrackingUrlRef, url: string): void {
+  const key = cacheKey(ref);
+  trackingUrlCache.delete(key);
+  trackingUrlCache.set(key, url);
+  if (trackingUrlCache.size > TRACKING_URL_CACHE_CAP) {
+    const oldest = trackingUrlCache.keys().next().value;
+    if (oldest !== undefined) trackingUrlCache.delete(oldest);
+  }
+}
+
+/** The already-minted URL for this order, if a print has fetched it before. */
+export function getCachedTrackingUrl(ref: TrackingUrlRef): string | null {
+  return trackingUrlCache.get(cacheKey(ref)) ?? null;
+}
+
+/** Test seam. */
+export function clearTrackingUrlCache(): void {
+  trackingUrlCache.clear();
+}
+
 export async function fetchTrackingUrl(
   ref: TrackingUrlRef,
   options: TrackingUrlOptions,
 ): Promise<string | null> {
+  const cached = getCachedTrackingUrl(ref);
+  if (cached) return cached;
   if (!options.accessToken) return null;
 
   const base = (options.webAppUrl ?? getWebAppUrl()).replace(/\/+$/, "");
@@ -78,5 +113,7 @@ export async function fetchTrackingUrl(
   }
 
   const url = (body as Record<string, unknown> | null)?.url;
-  return typeof url === "string" && url.startsWith("http") ? url : null;
+  if (typeof url !== "string" || !url.startsWith("http")) return null;
+  rememberTrackingUrl(ref, url);
+  return url;
 }

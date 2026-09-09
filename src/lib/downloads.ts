@@ -89,7 +89,7 @@ export const mobileDownloads: MobileDownload[] = [
     label: "WebNegosyo for Android",
     store: "Direct download",
     kind: "apk",
-    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.7/WebNegosyo-1.0.7.apk",
+    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.7/WebNegosyo-1.0.7-build34.apk",
     available: true,
     version: "1.0.7",
     size: "111 MB",

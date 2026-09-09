@@ -41,7 +41,8 @@ export async function getActivePageByPageId(
     .select('tenant_id, page_access_token')
     .eq('page_id', pageId)
     .eq('is_active', true)
-    .single()
+    // A webhook for a page nobody has linked is a normal miss, not a 406.
+    .maybeSingle()
 
   return (data as PageOwnerToken | null) ?? null
 }

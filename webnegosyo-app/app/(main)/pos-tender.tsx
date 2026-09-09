@@ -50,6 +50,7 @@ import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
+import { printPosKitchenChit, readPosKitchenPrintDeps } from "../../lib/pos-kitchen-print";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updatePaymentStatusRef =
@@ -448,6 +449,25 @@ export default function PosTenderScreen() {
       // whether this particular deployment can be told about it.
       const { serviceCharge: builtCharge, ...rest } = args;
       const orderId = await createOrder({ ...rest, ...serviceChargeArg(builtCharge) });
+      const createdAt = Date.now();
+
+      // Paper starts NOW — before the paid-status write, the bookkeeping and
+      // the navigation. The customer is standing at the counter, and every
+      // round trip this used to wait behind was a second of them waiting. A
+      // counter sale is created confirmed and paid in one swipe, so it prints
+      // under every trigger except "never".
+      const receiptPrinted = shouldPrint("counterSale")
+        ? printOrder(posReceiptOrder(String(orderId), args, tender, createdAt))
+        : Promise.resolve(false);
+      // The kitchen chit too, from the lines this register already holds,
+      // instead of waiting for the auto-print watcher to hear about the sale
+      // from the server.
+      void printPosKitchenChit(
+        String(orderId),
+        args,
+        createdAt,
+        readPosKitchenPrintDeps(useAuthStore.getState().isDemo),
+      );
 
       // Counter sales are settled at the drawer, so they are paid on creation.
       // A failure here must not lose the sale — the order already exists.
@@ -469,16 +489,6 @@ export default function PosTenderScreen() {
       goTo(router, "/(main)/pos-sales");
 
       void settleSaleInBackground(async () => {
-      // The receipt starts NOW, alongside the bookkeeping rather than after
-      // it: the customer is standing at the counter, and the four platform
-      // round-trips below each carry their own deadline. A counter sale is
-      // created confirmed and paid in one swipe, so it prints under every
-      // trigger except "never" — it used to ask only about bill-out, and the
-      // default setting is confirmation, so the register printed nothing.
-      const receiptPrinted = shouldPrint("counterSale")
-        ? printOrder(posReceiptOrder(String(orderId), args, tender))
-        : Promise.resolve(false);
-
       // Everything the sale owes the platform, reported TOGETHER rather than
       // one after another. None of them can throw and none depends on
       // another's answer.

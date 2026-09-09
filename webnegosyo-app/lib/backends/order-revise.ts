@@ -18,6 +18,7 @@
 import { revisedOrderTotal } from "../pos-cart";
 import type { OrderDiscountPayload } from "../order-discount";
 import type { OrderAddon, OrderVariationSelection } from "./supabase-orders";
+import { toAddonColumn } from "./addon-columns";
 
 /** An item as the edit screen submits it. */
 export interface ReviseOrderItem {
@@ -150,7 +151,8 @@ export interface OrderItemRow {
   subtotal: number;
   special_instructions: string | null;
   variation_selections: OrderVariationSelection[] | null;
-  addons: OrderAddon[] | null;
+  /** Addon NAMES — the platform column is `text[] NOT NULL`. See `addon-columns.ts`. */
+  addons: string[];
   variation: string | null;
   is_upsell_item: boolean;
   is_bundle_item: boolean;
@@ -212,7 +214,7 @@ function toItemRow(item: ReviseOrderItem): OrderItemRow {
     subtotal: round2(price * item.quantity),
     special_instructions: item.specialInstructions ?? null,
     variation_selections: item.variationSelections ?? null,
-    addons: item.addons ?? null,
+    addons: toAddonColumn(item.addons),
     variation: item.variation ?? null,
     is_upsell_item: item.isUpsellItem === true,
     is_bundle_item: item.isBundleItem === true,

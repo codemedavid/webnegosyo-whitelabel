@@ -64,7 +64,13 @@ jest.mock("../stores/printer-store", () => ({
   usePrinterStore: { getState: () => mockState },
 }));
 
-import { printToPrinter, printForRole, printReceiptSegments } from "./printer";
+import {
+  printToPrinter,
+  printForRole,
+  printReceiptSegments,
+  warmUpPrinter,
+  pickWarmUpTarget,
+} from "./printer";
 import type { RegisteredPrinter } from "./printer-registry";
 
 const CASHIER: RegisteredPrinter = {
@@ -310,5 +316,84 @@ describe("the tracking QR on paper", () => {
     const [, options] = mockBLEPrinter.printImageBase64.mock.calls[0]!;
     // 4 dots per module keeps a 49-module code under 30mm on a 58mm head.
     expect(options.imageWidth).toBeLessThanOrEqual(232);
+  });
+});
+
+describe("connect-while-building", () => {
+  it("opens the connection BEFORE the receipt has finished building", async () => {
+    const events: string[] = [];
+    mockBLEPrinter.connectPrinter.mockImplementation(async () => {
+      events.push("connect");
+    });
+    mockBLEPrinter.printBill.mockImplementation(() => events.push("print"));
+    let release: (segments: typeof SEGMENTS) => void = () => {};
+    const building = new Promise<typeof SEGMENTS>((resolve) => {
+      release = resolve;
+    });
+
+    const pending = printToPrinter(CASHIER, building);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(events).toEqual(["connect"]);
+
+    release(SEGMENTS);
+    const result = await run(pending);
+    expect(result.success).toBe(true);
+    expect(events).toEqual(["connect", "print"]);
+  });
+
+  it("swallows a receipt that fails to build AFTER the connection failed — no unhandled rejection", async () => {
+    mockBLEPrinter.connectPrinter.mockRejectedValue(new Error("printer off"));
+    mockBLEPrinter.getDeviceList.mockResolvedValue([]);
+    const unhandled = jest.fn();
+    process.on("unhandledRejection", unhandled);
+    let fail: (err: Error) => void = () => {};
+    const building = new Promise<typeof SEGMENTS>((_, reject) => {
+      fail = reject;
+    });
+    const result = await run(printToPrinter(CASHIER, building));
+    expect(result.success).toBe(false);
+    fail(new Error("layout gone"));
+    // Fake timers own setImmediate; a few microtask turns are all a rejection needs to surface.
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  it("reports a receipt that could not be built without touching the printer", async () => {
+    const result = await run(printToPrinter(CASHIER, Promise.reject(new Error("no layout"))));
+    expect(result).toEqual({ success: false, error: "no layout" });
+    expect(mockBLEPrinter.printBill).not.toHaveBeenCalled();
+  });
+});
+
+describe("warmUpPrinter", () => {
+  it("connects without printing so the first receipt skips the handshake", async () => {
+    const result = await run(warmUpPrinter(CASHIER));
+    expect(result.success).toBe(true);
+    expect(mockBLEPrinter.connectPrinter).toHaveBeenCalledWith("AA:BB");
+    expect(mockBLEPrinter.printBill).not.toHaveBeenCalled();
+    expect(mockState.connectedAddress).toBe("AA:BB");
+
+    await run(printToPrinter(CASHIER, SEGMENTS));
+    expect(mockBLEPrinter.connectPrinter).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op when that printer is already the live connection", async () => {
+    mockState.connectedAddress = "AA:BB";
+    await run(warmUpPrinter(CASHIER));
+    expect(mockBLEPrinter.connectPrinter).not.toHaveBeenCalled();
+  });
+
+  it("fails quietly when the printer is off — a warm-up never throws", async () => {
+    mockBLEPrinter.connectPrinter.mockRejectedValue(new Error("printer off"));
+    mockBLEPrinter.getDeviceList.mockResolvedValue([]);
+    const result = await run(warmUpPrinter(CASHIER));
+    expect(result.success).toBe(false);
+  });
+
+  it("targets the cashier printer, falling back to the first saved one", () => {
+    expect(pickWarmUpTarget([KITCHEN_1, CASHIER])?.id).toBe("cash");
+    expect(pickWarmUpTarget([KITCHEN_1, KITCHEN_2])?.id).toBe("kit1");
+    expect(pickWarmUpTarget([])).toBeUndefined();
   });
 });

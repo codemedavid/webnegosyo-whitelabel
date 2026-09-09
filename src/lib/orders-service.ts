@@ -638,8 +638,20 @@ export async function createOrder(
     }
   }
 
-  // Create order
-  const { data: order, error: orderError } = await supabase
+  // Create order.
+  //
+  // Written through the SERVICE ROLE, not the visitor's cookie session. Every
+  // value above is server-validated (tenant, prices, order type, payment
+  // method, hours), so RLS adds nothing here — but it did subtract: the
+  // `orders_insert_customer` policy is granted to `anon` only, so a visitor
+  // who also held a merchant/superadmin login in the same browser (a store
+  // owner testing their own shop, a branch-scoped cashier, a superadmin
+  // reviewing a storefront) inserted as `authenticated` and was refused with
+  // "new row violates row-level security policy" at the last step of checkout.
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const orderWriter = createAdminClient()
+
+  const { data: order, error: orderError } = await orderWriter
     .from('orders')
     .insert({
       tenant_id: tenantId,
@@ -677,8 +689,7 @@ export async function createOrder(
     // wrote instead of failing (or worse, double-charging). Read through the
     // service role — checkout runs anonymous and RLS hides order rows from it.
     if (isDuplicateClientOrderId(orderError, parityOptions?.clientOrderId)) {
-      const { createAdminClient } = await import('@/lib/supabase/admin')
-      const { data: existing } = await createAdminClient()
+      const { data: existing } = await orderWriter
         .from('orders')
         .select()
         .eq('tenant_id', tenantId)
@@ -719,7 +730,7 @@ export async function createOrder(
     ...buildOrderItemParityColumns(item),
   }))
 
-  const { error: itemsError } = await supabase
+  const { error: itemsError } = await orderWriter
     .from('order_items')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .insert(orderItems as any)

@@ -60,8 +60,27 @@ export interface RankedCustomerItem {
 }
 
 const POS_SETTLED = new Set(['paid', 'verified', 'settled'])
-const ONLINE_FULFILLED = new Set(['delivered', 'collected', 'completed', 'complete'])
-const REVERSED = new Set(['cancelled', 'canceled', 'refunded', 'voided'])
+/**
+ * The statuses that mean an online order was handed over. Exported because the
+ * loyalty claim window closes on exactly this set — one list, so an order can
+ * never stop being claimable at a different moment than it starts counting as
+ * a visit.
+ */
+export const ONLINE_FULFILLED_STATUSES: ReadonlySet<string> = new Set([
+  'delivered',
+  'collected',
+  'completed',
+  'complete',
+])
+/** The statuses that undo a visit. Same reasoning as above. */
+export const REVERSED_STATUSES: ReadonlySet<string> = new Set([
+  'cancelled',
+  'canceled',
+  'refunded',
+  'voided',
+])
+const ONLINE_FULFILLED = ONLINE_FULFILLED_STATUSES
+const REVERSED = REVERSED_STATUSES
 const DAY_MS = 24 * 60 * 60 * 1000
 
 function finiteNumber(value: unknown): number {

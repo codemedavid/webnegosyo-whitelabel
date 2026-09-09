@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isClaimWindowOpen } from '@/lib/loyalty/claim-window'
 
 /**
  * Receipt-QR contact capture.
@@ -41,19 +42,29 @@ export function parseContactSubmission(body: unknown): ContactSubmission | null 
 
 export type ContactWriteDecision =
   | { ok: true; contact: string; name: string | undefined }
-  | { ok: false; error: 'already_set' }
+  | { ok: false; error: 'already_set' | 'claim_closed' }
 
 /**
  * Decide what (if anything) the submission may write, given what the order
  * already carries. The name only fills in when the existing one is a
  * placeholder — a token holder must not be able to rename a known customer.
+ *
+ * A finished order refuses the write outright: the receipt that authorizes it
+ * outlives the meal, and a stamp must be claimed while the customer is still
+ * waiting for their order (see `loyalty/claim-window`). "Already set" is
+ * reported first, because a customer re-scanning their own claimed receipt
+ * should read that their number is safe, not that they were too late.
  */
 export function decideContactWrite(
-  existing: { contact?: unknown; name?: unknown },
+  existing: { contact?: unknown; name?: unknown; status?: string | null },
   input: { contact: string; name?: string },
 ): ContactWriteDecision {
   if (isRealContact(existing.contact)) {
     return { ok: false, error: 'already_set' }
+  }
+
+  if (!isClaimWindowOpen(existing.status)) {
+    return { ok: false, error: 'claim_closed' }
   }
 
   const existingName = typeof existing.name === 'string' ? existing.name.trim() : ''

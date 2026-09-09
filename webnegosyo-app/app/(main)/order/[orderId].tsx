@@ -11,6 +11,7 @@ import { BackHeader } from "../../../components/BackHeader";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
+import { ReprintButton } from "../../../components/order/ReprintButton";
 import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { displayCustomerName, getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
@@ -357,7 +358,7 @@ export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
-  const { printOrder, printAt, hasPrinter } = useOrderPrint();
+  const { printOrder, printAt, hasPrinter, feedback: printFeedback } = useOrderPrint();
 
   // The settlement ledger. A backend that cannot serve these refs reports an
   // error rather than an empty list — which is the point: an empty ledger and
@@ -936,18 +937,15 @@ export default function OrderDetailScreen() {
             </TouchableOpacity>
           )}
           {order.status !== "pending" && order.status !== "cancelled" && hasPrinter && (
-            <TouchableOpacity
-              style={styles.reprintButton}
+            <ReprintButton
+              status={printFeedback?.orderId === order._id ? printFeedback.status : null}
               onPress={async () => {
                 const printed = await printOrder(order);
                 if (!printed) {
                   Alert.alert("Print Failed", "Could not print receipt.");
                 }
               }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.reprintText}>Reprint Receipt</Text>
-            </TouchableOpacity>
+            />
           )}
           {order.status !== "delivered" && order.status !== "cancelled" && (
             <TouchableOpacity
@@ -1027,17 +1025,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   remedyButtonText: { color: colors.textPrimary, ...typography.body, fontWeight: "700" },
-  reprintButton: {
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.full,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  reprintText: {
-    color: colors.primary,
-    ...typography.heading,
-  },
   detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -63,8 +63,15 @@ const ORDER_WITH_ITEMS_COLUMNS = "*, order_items(*)";
  * `order_items` has no `tenant_id` of its own, so it is scoped through an inner
  * join on its parent order. Without the join a superadmin's RLS grant would
  * expose every merchant's line items.
+ *
+ * `created_at` MUST stay in the embedded projection: `getAllOrderItems` sorts
+ * by `orders(created_at)`, and PostgREST can only order by an embedded column
+ * that the embed actually selects. With `orders!inner(tenant_id)` alone the
+ * whole read failed with `column order_items_orders_1.created_at does not
+ * exist` — every platform store's kitchen board and product analytics were
+ * empty (198 refusals in one day).
  */
-const ORDER_ITEM_COLUMNS = "*, orders!inner(tenant_id)";
+const ORDER_ITEM_COLUMNS = "*, orders!inner(tenant_id, created_at)";
 
 /** Matches the Convex `getOrders` default page size. */
 const DEFAULT_ORDER_LIMIT = 50;

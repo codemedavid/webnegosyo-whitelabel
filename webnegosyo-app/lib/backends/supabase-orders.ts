@@ -19,6 +19,7 @@
  */
 
 import { ORDER_OUTLET_ID_KEY } from "../order-outlet";
+import { toAddonColumn } from "./addon-columns";
 
 /** Statuses an order can hold, in pipeline order. */
 export const ORDER_STATUSES = [
@@ -603,7 +604,8 @@ export interface OrderItemInsert {
   special_instructions: string | null;
   variation: string | null;
   variation_selections: OrderVariationSelection[] | null;
-  addons: OrderAddon[] | null;
+  /** Addon NAMES — the platform column is `text[] NOT NULL`. See `addon-columns.ts`. */
+  addons: string[];
   is_upsell_item: boolean;
   is_bundle_item: boolean;
   bundle_id: string | null;
@@ -696,7 +698,7 @@ export function buildCreateOrderRows(
     special_instructions: item.specialInstructions ?? null,
     variation: item.variation ?? null,
     variation_selections: item.variationSelections ?? null,
-    addons: item.addons ?? null,
+    addons: toAddonColumn(item.addons),
     is_upsell_item: item.isUpsellItem === true,
     is_bundle_item: item.isBundleItem === true,
     bundle_id: item.bundleId ?? null,

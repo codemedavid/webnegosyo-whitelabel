@@ -509,6 +509,22 @@ describe("buildCreateOrderRows", () => {
     expect(items[0].subtotal).toBe(240);
   });
 
+  /**
+   * `order_items.addons` on the platform is `text[] NOT NULL`. A `null` here
+   * meant the order row landed and the items insert was refused — a POS sale
+   * that showed up with no line items. Objects are refused by a text[] too.
+   */
+  it("writes addons as a non-null array of names for the text[] column", () => {
+    const bare = buildCreateOrderRows("tenant-1", args);
+    expect(bare.items[0].addons).toEqual([]);
+
+    const withAddons = buildCreateOrderRows("tenant-1", {
+      ...args,
+      items: [{ ...args.items[0], addons: [{ name: "Extra shot", price: 20 }] }],
+    });
+    expect(withAddons.items[0].addons).toEqual(["Extra shot"]);
+  });
+
   it("carries the scheduled time onto the real column for advance orders", () => {
     // Act
     const { order } = buildCreateOrderRows("tenant-1", {

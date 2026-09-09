@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useMemo, useRef } from "react";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../lib/hooks";
 import { useAuthStore } from "../stores/auth-store";
@@ -17,21 +16,14 @@ import {
   type KitchenTicket,
 } from "../lib/kitchen-tickets";
 import { buildKitchenChitSegments } from "../lib/kitchen-chit";
-import {
-  selectTicketsToAutoPrint,
-  recordPrinted,
-  parsePrintedList,
-  serializePrintedList,
-} from "../lib/kitchen-autoprint";
+import { selectTicketsToAutoPrint } from "../lib/kitchen-autoprint";
+import { claimPrinted, usePrintedLedger } from "../lib/printed-ledger";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
 
 /** Same bounded recent-orders page the kitchen board reads. */
 const ORDERS_FETCH_LIMIT = 200;
-
-/** Order ids this device already auto-printed, so a remount never reprints. */
-const PRINTED_STORAGE_KEY = "kitchen_printed_orders";
 
 /**
  * App-wide kitchen auto-print host. Mounted once in the (main) tab layout —
@@ -71,23 +63,11 @@ function KitchenAutoPrintWatcher() {
   const { data: allItems } = useSafeQuery<KitchenItemLike[]>(getAllOrderItemsRef, {});
   const scope = useBranchScope();
 
-  // The persisted printed-list guards the remount gap: unmounting resets the
-  // in-memory seen-set, and without the list every live ticket would count as
-  // "new" again on the next mount and print twice.
-  const [printedList, setPrintedList] = useState<readonly string[] | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    AsyncStorage.getItem(PRINTED_STORAGE_KEY)
-      .then((raw) => {
-        if (!cancelled) setPrintedList(parsePrintedList(raw));
-      })
-      .catch(() => {
-        if (!cancelled) setPrintedList([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // The shared printed ledger guards two gaps: the remount gap (unmounting
+  // resets the in-memory seen-set, so every live ticket would count as "new"
+  // again) and the register gap (a counter sale's chit is printed by the
+  // register itself the moment the sale is written — see pos-kitchen-print).
+  const printedList = usePrintedLedger("kitchen");
 
   const seenRef = useRef<ReadonlySet<string> | null>(null);
   // New ids observed before the printed-list hydrated; checked once it has.
@@ -121,29 +101,26 @@ function KitchenAutoPrintWatcher() {
     }
     pendingRef.current = [];
 
-    const toPrint = selectTicketsToAutoPrint({
+    const candidates = selectTicketsToAutoPrint({
       newIds: observed,
       printedList,
       enabled: true, // the outer gate already checked the toggle
       hasKitchenPrinter: true, // and the kitchen-role printer
       isDemo: false, // and demo mode
     });
-    if (toPrint.length === 0) return;
-
-    // Record BEFORE printing: a chit that jams reprints from the ticket's
-    // manual button; a crash loop reprinting every new order is worse.
-    const nextPrinted = recordPrinted(printedList, toPrint);
-    setPrintedList(nextPrinted);
-    AsyncStorage.setItem(PRINTED_STORAGE_KEY, serializePrintedList(nextPrinted)).catch(() => {
-      // A failed persist only risks one duplicate chit after a remount.
-    });
+    if (candidates.length === 0) return;
 
     const ticketsById = new Map(tickets.map((t) => [t.order._id, t]));
-    void printTicketsSequentially(
-      toPrint
-        .map((id) => ticketsById.get(id))
-        .filter((t): t is KitchenTicket => t !== undefined),
-      isPrintingRef,
+    // Claim BEFORE printing: a chit that jams reprints from the ticket's
+    // manual button; a crash loop reprinting every new order is worse. The
+    // claim also loses, correctly, to a register that already printed it.
+    void claimPrinted("kitchen", candidates).then((toPrint) =>
+      printTicketsSequentially(
+        toPrint
+          .map((id) => ticketsById.get(id))
+          .filter((t): t is KitchenTicket => t !== undefined),
+        isPrintingRef,
+      ),
     );
   }, [tickets, printedList]);
 

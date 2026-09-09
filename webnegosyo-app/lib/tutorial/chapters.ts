@@ -264,19 +264,19 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
         id: "summary",
         title: "Expected in drawer",
         body:
-          "The Drawer shows the cash that should be in the till after change was handed out, beside Sales, Gross, and Non-cash for the day.",
-        prompt: "Turn on Count Smart Menu orders",
+          "One number leads: the cash that should be in the till right now. Under it sit the figures that explain it — what was sold, what never touched the till, and what was handed back out.",
+        prompt: "Tap + Smart Menu",
         result:
-          "Online orders confirmed on this device are now counted, using what has actually been paid. This is a per-device setting.",
+          "Online orders confirmed on this device are now counted too, using what has actually been paid. The switch at the top governs every number below it, and it is a per-device setting.",
         scene: { kind: "drawer", phase: "summary" },
         coach: "bottom",
       },
       {
         id: "incoming",
-        title: "Confirm incoming orders here too",
+        title: "Accept incoming orders here too",
         body:
-          "Online orders waiting for confirmation are listed above the drawer, so a cashier can accept them without leaving the POS.",
-        prompt: "Tap Confirm",
+          "Orders that arrived from anywhere but this till are listed under the takings, so a cashier can accept them without leaving the POS.",
+        prompt: "Tap Accept",
         result: "The order moves to Confirmed and shows up on the Kitchen board like any other.",
         scene: { kind: "drawer", phase: "incoming" },
         coach: "bottom",

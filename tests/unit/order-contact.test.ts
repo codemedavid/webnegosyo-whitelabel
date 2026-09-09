@@ -90,6 +90,41 @@ describe('decideContactWrite — once-only', () => {
   })
 })
 
+describe('decideContactWrite — the claim window', () => {
+  const input = { contact: '09171234567', name: 'Juan' }
+
+  it('accepts the write right up to the moment the order is ready', () => {
+    for (const status of ['pending', 'confirmed', 'preparing', 'ready']) {
+      expect(decideContactWrite({ contact: null, status }, input).ok).toBe(true)
+    }
+  })
+
+  it('refuses once the order is handed over — a found receipt claims nothing', () => {
+    expect(decideContactWrite({ contact: null, status: 'delivered' }, input)).toEqual({
+      ok: false,
+      error: 'claim_closed',
+    })
+  })
+
+  it('refuses a cancelled order', () => {
+    expect(decideContactWrite({ contact: null, status: 'cancelled' }, input)).toEqual({
+      ok: false,
+      error: 'claim_closed',
+    })
+  })
+
+  it('still reports an already-claimed order as already set, even after delivery', () => {
+    expect(decideContactWrite({ contact: '09998887777', status: 'delivered' }, input)).toEqual({
+      ok: false,
+      error: 'already_set',
+    })
+  })
+
+  it('accepts a write when the caller reported no status at all', () => {
+    expect(decideContactWrite({ contact: null }, input).ok).toBe(true)
+  })
+})
+
 describe('shouldRingForTransition', () => {
   it('rings exactly when the order becomes ready', () => {
     expect(shouldRingForTransition('preparing', 'ready')).toBe(true)

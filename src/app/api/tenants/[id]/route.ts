@@ -78,9 +78,10 @@ export async function DELETE(
         .eq('tenant_id', tenantId)
     }
 
-    // Delete related data in order (respecting FK constraints)
-    // Order items depend on orders, menu items depend on categories
-    await adminClient.from('order_items').delete().eq('tenant_id' as never, tenantId)
+    // Delete related data in order (respecting FK constraints).
+    // `order_items` has no tenant_id column — it cascades from `orders`
+    // (order_items_order_id_fkey ON DELETE CASCADE), so deleting orders is
+    // enough. Menu items depend on categories.
     await adminClient.from('orders').delete().eq('tenant_id', tenantId)
     await adminClient.from('menu_items').delete().eq('tenant_id', tenantId)
     await adminClient.from('categories').delete().eq('tenant_id', tenantId)

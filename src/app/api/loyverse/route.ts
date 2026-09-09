@@ -6,6 +6,7 @@ import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { pushOrderToLoyverseBestEffort } from '@/lib/loyverse/push-service'
 import { buildLoyverseOrderItemsFromConvexOrder } from '@/lib/loyverse/convex-order-lines'
 import type { OrderItem } from '@/types/database'
+import { isUuid } from '@/lib/uuid'
 
 /** Nothing was pushed, and that is not an error the merchant can act on. */
 function skipped(reason: string): NextResponse {
@@ -136,12 +137,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // (the orders list, the register drawer) still pushes.
   if (typeof orderId === 'string') {
     const admin = createAdminClient()
-    const { data: orderRow } = await admin
-      .from('orders')
-      .select('id')
-      .eq('id', orderId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle()
+    // A Convex id is not a uuid; asking Postgres for it is a 400, not a miss.
+    const { data: orderRow } = isUuid(orderId)
+      ? await admin
+          .from('orders')
+          .select('id')
+          .eq('id', orderId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle()
+      : { data: null }
     if (orderRow) {
       // Platform order: the push service reads order_items and records the
       // outcome on the row; caller-sent items are ignored in favour of the

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isUuid } from '@/lib/uuid'
 import { createClient } from '@supabase/supabase-js'
 
 /**
@@ -166,12 +167,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? appUser.outlet_id
       : null
 
-  const { data: orderRow } = await supabase
-    .from('orders')
-    .select('outlet_id')
-    .eq('id', orderId)
-    .eq('tenant_id', tenantId)
-    .maybeSingle()
+  // Only a platform order has a row here. A Convex id is not a uuid and
+  // PostgREST rejects the whole request on it, so the read is skipped rather
+  // than attempted — the account fallback below is the answer either way.
+  const { data: orderRow } = isUuid(orderId)
+    ? await supabase
+        .from('orders')
+        .select('outlet_id')
+        .eq('id', orderId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+    : { data: null }
 
   const orderOutletId =
     typeof orderRow?.outlet_id === 'string' && orderRow.outlet_id.trim() !== ''

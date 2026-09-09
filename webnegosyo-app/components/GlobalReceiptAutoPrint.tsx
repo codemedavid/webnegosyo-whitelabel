@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useRef } from "react";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../lib/hooks";
 import { useAuthStore } from "../stores/auth-store";
@@ -10,11 +9,7 @@ import { filterOrdersToScope } from "../lib/branch-scope";
 import { useBranchScope } from "../lib/use-branch-scope";
 import { shouldPrintAt } from "../lib/print-trigger";
 import { scanNewTickets } from "../lib/kitchen-tickets";
-import {
-  recordPrinted,
-  parsePrintedList,
-  serializePrintedList,
-} from "../lib/kitchen-autoprint";
+import { claimPrinted, usePrintedLedger } from "../lib/printed-ledger";
 import { selectConfirmedOrderIds, selectOrdersToAutoPrint } from "../lib/receipt-autoprint";
 import { useOrderPrint } from "../hooks/useOrderPrint";
 
@@ -23,9 +18,6 @@ const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionRefe
 
 /** Same bounded recent-orders page the kitchen watcher and board read. */
 const ORDERS_FETCH_LIMIT = 200;
-
-/** Order ids this device already printed a confirmation receipt for. */
-const PRINTED_STORAGE_KEY = "receipt_printed_orders";
 
 interface ReceiptOrder {
   _id: string;
@@ -92,22 +84,9 @@ function ReceiptAutoPrintWatcher() {
   const scope = useBranchScope();
   const { printOrder } = useOrderPrint();
 
-  // Persisted so a remount (tab layout re-created, printer store reloaded)
-  // does not re-adopt live confirmed orders as "new" and print them again.
-  const [printedList, setPrintedList] = useState<readonly string[] | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    AsyncStorage.getItem(PRINTED_STORAGE_KEY)
-      .then((raw) => {
-        if (!cancelled) setPrintedList(parsePrintedList(raw));
-      })
-      .catch(() => {
-        if (!cancelled) setPrintedList([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // The shared printed ledger, so a remount (tab layout re-created, printer
+  // store reloaded) does not re-adopt live confirmed orders as "new".
+  const printedList = usePrintedLedger("receipt");
 
   const seenRef = useRef<ReadonlySet<string> | null>(null);
   // Transitions observed before the printed-list hydrated; replayed once it has.
@@ -130,34 +109,30 @@ function ReceiptAutoPrintWatcher() {
     }
     pendingRef.current = [];
 
-    const toPrint = selectOrdersToAutoPrint({
+    const candidates = selectOrdersToAutoPrint({
       newIds: observed,
       printedList,
       printsOnConfirmation: true, // the outer gate already checked the trigger
       hasCashierPrinter: true, // and the cashier-role printer
       isDemo: false, // and demo mode
     });
-    if (toPrint.length === 0) return;
-
-    // Record BEFORE printing: a jammed receipt reprints from the order
-    // screen's button; a crash loop reprinting every confirmation is worse.
-    const nextPrinted = recordPrinted(printedList, toPrint);
-    setPrintedList(nextPrinted);
-    AsyncStorage.setItem(PRINTED_STORAGE_KEY, serializePrintedList(nextPrinted)).catch(() => {
-      // A failed persist only risks one duplicate receipt after a remount.
-    });
+    if (candidates.length === 0) return;
 
     const ordersById = new Map(scopedOrders.map((order) => [order._id, order]));
     const itemsByOrder = new Map<string, ReceiptItem[]>();
     for (const item of allItems ?? []) {
       itemsByOrder.set(item.orderId, [...(itemsByOrder.get(item.orderId) ?? []), item]);
     }
-    void printReceiptsSequentially(
-      toPrint
-        .map((id) => ordersById.get(id))
-        .filter((order): order is ReceiptOrder => order !== undefined)
-        .map((order) => ({ ...order, items: itemsByOrder.get(order._id) ?? [] })),
-      printOrderRef.current,
+    // Claim BEFORE printing: a jammed receipt reprints from the order
+    // screen's button; a crash loop reprinting every confirmation is worse.
+    void claimPrinted("receipt", candidates).then((toPrint) =>
+      printReceiptsSequentially(
+        toPrint
+          .map((id) => ordersById.get(id))
+          .filter((order): order is ReceiptOrder => order !== undefined)
+          .map((order) => ({ ...order, items: itemsByOrder.get(order._id) ?? [] })),
+        printOrderRef.current,
+      ),
     );
   }, [orders, allItems, scope, printedList]);
 

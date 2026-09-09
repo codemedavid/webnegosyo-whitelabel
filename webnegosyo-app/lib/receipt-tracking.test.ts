@@ -8,7 +8,7 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
-import { fetchTrackingUrl } from "./receipt-tracking";
+import { fetchTrackingUrl, getCachedTrackingUrl, clearTrackingUrlCache } from "./receipt-tracking";
 import { buildReceiptSegments, layoutWantsQr } from "./receipt-print";
 
 /**
@@ -26,6 +26,31 @@ function okResponse(body: unknown): Response {
 }
 
 describe("fetchTrackingUrl", () => {
+  afterEach(() => clearTrackingUrlCache());
+
+  it("serves a reprint from memory — the mint happens once per order", async () => {
+    const fetchImpl = jest.fn(async () => okResponse({ url: "https://web.example.com/t/x" }));
+    await fetchTrackingUrl(REF, { ...OPTS, fetchImpl });
+    const again = await fetchTrackingUrl(REF, { ...OPTS, fetchImpl });
+    expect(again).toBe("https://web.example.com/t/x");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(getCachedTrackingUrl(REF)).toBe("https://web.example.com/t/x");
+  });
+
+  it("does not cache a failed mint — the next print tries again", async () => {
+    const fetchImpl = jest.fn(async () => ({ ok: false, status: 500 }) as unknown as Response);
+    await fetchTrackingUrl(REF, { ...OPTS, fetchImpl });
+    await fetchTrackingUrl(REF, { ...OPTS, fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(getCachedTrackingUrl(REF)).toBeNull();
+  });
+
+  it("keys the cache per tenant, never handing one store another's link", async () => {
+    const fetchImpl = jest.fn(async () => okResponse({ url: "https://web.example.com/t/x" }));
+    await fetchTrackingUrl(REF, { ...OPTS, fetchImpl });
+    expect(getCachedTrackingUrl({ orderId: "order-1", tenantId: "t2" })).toBeNull();
+  });
+
   it("POSTs the order ref with the caller's bearer token and returns the URL", async () => {
     const fetchImpl = jest.fn(async () =>
       okResponse({ url: "https://web.example.com/kape/order/order-1?t=beef" }),

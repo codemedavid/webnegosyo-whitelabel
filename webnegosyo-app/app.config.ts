@@ -84,6 +84,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // canonical host in one place. Defaulting here would shadow it and put the
     // redirecting apex domain back in front of every server call.
     webAppUrl: process.env.EXPO_PUBLIC_WEB_APP_URL ?? "",
+    // Handset half of the loyalty OTP delivery pilot gate; the web routes are
+    // gated separately. Off unless a build sets it to exactly "true".
+    loyaltySmsDeliveryEnabled: process.env.EXPO_PUBLIC_LOYALTY_SMS_DELIVERY_ENABLED === "true",
     consultationUrl:
       process.env.EXPO_PUBLIC_CONSULTATION_MESSENGER_URL ??
       "https://m.me/webnegosyoofficial",
