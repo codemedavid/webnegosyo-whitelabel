@@ -9,19 +9,24 @@ import {
   type ErrorBoundaryProps,
 } from "expo-router";
 import { ConvexAuthProvider } from "../lib/convex-provider";
+import { QueryProvider } from "../lib/query/QueryProvider";
 import { useAuthStore } from "../stores/auth-store";
 import {
   MERCHANT_LANDING_HREF,
   SUPERADMIN_LANDING_HREF,
   needsTenantLookup,
   needsOutletLookup,
+  type AppUserRow,
   type OutletRow,
   resolveSession,
   type TenantRow,
+  TENANT_SESSION_SELECT,
 } from "../lib/session-resolve";
 import { usePrinterStore } from "../stores/printer-store";
 import { useRegisterSettingsStore } from "../stores/register-settings-store";
 import { supabase } from "../lib/supabase";
+import { classifyLookup, outcomeForThrown } from "../lib/session-bootstrap";
+import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
@@ -105,68 +110,77 @@ function useGlobalErrorHandler() {
 
 function useAuthInit() {
   const setAuth = useAuthStore((s) => s.setAuth);
+  const bootstrapAttempt = useAuthStore((s) => s.bootstrapAttempt);
 
   useEffect(() => {
+    const signedOut = () => setAuth({ isLoading: false, bootstrapError: null });
+    // The stored session stays put: the merchant is asked to try again, not
+    // to sign in again (lib/session-bootstrap.ts).
+    const unreachable = (message: string) => setAuth({ isLoading: false, bootstrapError: message });
+
     supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
       if (sessionError || !data.session?.user) {
-        setAuth({ isLoading: false });
+        signedOut();
         return;
       }
 
       try {
-        const { data: appUser } = await supabase
-          .from("app_users")
-          .select("tenant_id, role, is_owner, permissions, outlet_id, default_tab")
-          .eq("user_id", data.session.user.id)
-          .in("role", ["admin", "superadmin"])
-          .single();
-
-        if (!appUser) {
-          setAuth({ isLoading: false });
-          return;
-        }
+        const appUserLookup = classifyLookup<AppUserRow>(
+          await supabase
+            .from("app_users")
+            .select("tenant_id, role, is_owner, permissions, outlet_id, default_tab")
+            .eq("user_id", data.session.user.id)
+            .in("role", ["admin", "superadmin"])
+            .single()
+        );
+        if (appUserLookup.kind === "unreachable") return unreachable(appUserLookup.message);
+        if (appUserLookup.kind === "missing") return signedOut();
+        const appUser = appUserLookup.row;
 
         // A superadmin owns no tenant (tenant_id is NULL), so skip the lookup —
         // querying by a null id would miss and read as a failed sign-in.
         let tenant: TenantRow | null = null;
         if (needsTenantLookup(appUser)) {
-          const { data: tenantRow } = await supabase
-            .from("tenants")
-            .select("id, slug, name, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, logo_url")
-            .eq("id", appUser.tenant_id)
-            .single();
-          tenant = (tenantRow as TenantRow | null) ?? null;
+          const tenantLookup = classifyLookup<TenantRow>(
+            await supabase
+              .from("tenants")
+              .select(TENANT_SESSION_SELECT)
+              .eq("id", appUser.tenant_id)
+              .single()
+          );
+          if (tenantLookup.kind === "unreachable") return unreachable(tenantLookup.message);
+          tenant = tenantLookup.kind === "row" ? tenantLookup.row : null;
         }
 
         // Branch-confined accounts carry their branch onto the session; the
         // name is snapshotted onto counter sales, so it is read here once.
         let outlet: OutletRow | null = null;
-        if (appUser && needsOutletLookup(appUser)) {
-          const { data: outletRow } = await supabase
-            .from("outlets")
-            .select("id, name")
-            .eq("id", appUser.outlet_id)
-            .single();
-          outlet = (outletRow as OutletRow | null) ?? null;
+        if (needsOutletLookup(appUser)) {
+          const outletLookup = classifyLookup<OutletRow>(
+            await supabase.from("outlets").select("id, name").eq("id", appUser.outlet_id).single()
+          );
+          if (outletLookup.kind === "unreachable") return unreachable(outletLookup.message);
+          outlet = outletLookup.kind === "row" ? outletLookup.row : null;
         }
         const session = resolveSession(data.session.user.id, appUser, tenant, outlet);
 
         if (session.mode === "denied" || !session.auth) {
-          setAuth({ isLoading: false });
+          signedOut();
           return;
         }
 
-        setAuth(session.auth);
-      } catch {
-        setAuth({ isLoading: false });
+        setAuth({ ...session.auth, bootstrapError: null });
+      } catch (e: unknown) {
+        unreachable(outcomeForThrown(e).message);
       }
     });
-  }, [setAuth]);
+  }, [setAuth, bootstrapAttempt]);
 }
 
 function useAuthRedirect() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const bootstrapError = useAuthStore((s) => s.bootstrapError);
   const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
   const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
 
@@ -183,6 +197,8 @@ function useAuthRedirect() {
 
   useEffect(() => {
     if (isLoading || !navigatorReady) return;
+    // The lookup failed, not the sign-in: app/index.tsx shows a retry.
+    if (bootstrapError !== null && !isAuthenticated) return;
 
     if (isAuthenticated) {
       // A superadmin belongs on the platform surface — unless they have opened
@@ -200,6 +216,7 @@ function useAuthRedirect() {
     if (group !== "(auth)") router.replace("/(auth)/login");
   }, [
     isLoading,
+    bootstrapError,
     isAuthenticated,
     navigatorReady,
     group,
@@ -254,7 +271,7 @@ function usePushNotifications() {
 
     const stale = pushTokenCleanup(session);
     if (stale) {
-      fetch(`${stale.convexUrl}/api/mutation`, {
+      fetchWithTimeout(`${stale.convexUrl}/api/mutation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -318,7 +335,7 @@ function usePushNotifications() {
         }
         if (!convexUrl) return;
         try {
-          await fetch(`${convexUrl}/api/mutation`, {
+          await fetchWithTimeout(`${convexUrl}/api/mutation`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -376,14 +393,18 @@ export default function RootLayout() {
     useRegisterSettingsStore.getState().loadSaved();
   }, []);
 
+  // The query cache sits OUTSIDE the Convex provider so the element wrapping
+  // the navigation tree is exactly what it was (see lib/convex-provider.tsx).
   return (
-    <ConvexAuthProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(main)" />
-        <Stack.Screen name="(superadmin)" />
-      </Stack>
-    </ConvexAuthProvider>
+    <QueryProvider>
+      <ConvexAuthProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(main)" />
+          <Stack.Screen name="(superadmin)" />
+        </Stack>
+      </ConvexAuthProvider>
+    </QueryProvider>
   );
 }

@@ -57,8 +57,10 @@ const components = {
   roots: ["<rootDir>/components", "<rootDir>/lib"],
   testMatch: ["**/*.test.tsx"],
   setupFilesAfterEnv: ["<rootDir>/jest.components.setup.js"],
+  // `@react-navigation` ships untranspiled ESM (lib/module); the focus hook
+  // reads its NavigationContext, so it must be transformed like the RN source.
   transformIgnorePatterns: [
-    "/node_modules/(?!(react-native|@react-native|@react-native-community|expo|expo-modules-core|expo-.*|@expo|@testing-library)/)",
+    "/node_modules/(?!(react-native|@react-native|@react-native-community|@react-navigation|expo|expo-modules-core|expo-.*|@expo|@testing-library)/)",
   ],
 };
 

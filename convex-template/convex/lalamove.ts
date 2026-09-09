@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { isE164Phone, normalizeLalamovePhone, resolveLalamoveRecipient } from "./lalamoveContact";
 import { action } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 
@@ -60,25 +61,6 @@ const MARKET_LANGUAGES: Record<string, string> = {
   MY: "ms_MY",
   VN: "vi_VN",
 };
-
-/**
- * Normalize a phone to E.164. PH is the primary market; other markets fall
- * back to a generic "+digits" form. Mirrors src/lib/lalamove-phone.ts.
- */
-function normalizePhone(phone: string | undefined, market: string): string {
-  if (!phone) return "";
-  const trimmed = phone.trim();
-  if (trimmed.startsWith("+")) return trimmed;
-  const digits = trimmed.replace(/\D/g, "");
-  if (!digits) return "";
-  if (market.toUpperCase() === "PH") {
-    if (digits.startsWith("63")) return `+${digits}`;
-    if (digits.startsWith("0")) return `+63${digits.slice(1)}`;
-    if (digits.length === 10 && digits.startsWith("9")) return `+63${digits}`;
-    return `+63${digits}`;
-  }
-  return `+${digits}`;
-}
 
 function toHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))
@@ -151,9 +133,12 @@ async function callLalamove(
     const json = text ? JSON.parse(text) : {};
 
     if (!response.ok) {
+      // Lalamove's `message` is a code ("ERR_INVALID_FIELD"); `detail` is the
+      // sentence a merchant can act on ("'' is not valid 'phone'…").
+      const first = json?.errors?.[0];
       const message =
+        [first?.message, first?.detail].filter(Boolean).join(": ") ||
         json?.message ||
-        json?.errors?.[0]?.message ||
         `Lalamove API error (${response.status})`;
       return { ok: false, status: response.status, data: json, error: message };
     }
@@ -191,7 +176,7 @@ async function loadConfig(
     serviceType: (map.get("lalamove_service_type") as string) ?? "MOTORCYCLE",
     isSandbox: map.get("lalamove_sandbox") === "true",
     senderName: (map.get("restaurant_name") as string) ?? "Restaurant",
-    senderPhone: normalizePhone(map.get("lalamove_sender_phone") as string, market),
+    senderPhone: normalizeLalamovePhone(map.get("lalamove_sender_phone") as string | undefined, market),
     pickupAddress: (map.get("restaurant_address") as string) ?? "",
     pickupLatitude: (map.get("restaurant_latitude") as string) ?? "",
     pickupLongitude: (map.get("restaurant_longitude") as string) ?? "",
@@ -212,13 +197,34 @@ function isUsableCoordinate(value: string): boolean {
  */
 export const bookLalamove = action({
   args: { orderId: v.id("orders") },
-  handler: async (ctx, args): Promise<{ success: boolean; error?: string; lalamoveOrderId?: string }> => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    lalamoveOrderId?: string;
+    /** "store" when the rider will call the store because the customer left
+     * no phone — the app tells the merchant so. */
+    recipientPhoneSource?: "customer" | "store";
+  }> => {
     const order = await ctx.runQuery(api.orders.getOrderById, {
       orderId: args.orderId,
     });
 
-    if (!order || !order.lalamoveQuotationId || !order.deliveryAddress) {
-      return { success: false, error: "Order missing delivery details" };
+    if (!order) {
+      return { success: false, error: "Order not found" };
+    }
+    // Distinct reasons: the app offers "Get New Quote" on a quotation
+    // problem, and a missing address is something only the customer can fix.
+    if (!order.lalamoveQuotationId || String(order.lalamoveQuotationId).trim() === "") {
+      return {
+        success: false,
+        error: "This order has no Lalamove quotation yet — get a new quote first",
+      };
+    }
+    if (!order.deliveryAddress) {
+      return { success: false, error: "This order has no delivery address" };
     }
 
     if (order.lalamoveOrderId && String(order.lalamoveOrderId).trim() !== "") {
@@ -236,6 +242,31 @@ export const bookLalamove = action({
         error: "Store pickup phone is not set. Add it in delivery settings.",
       };
     }
+    // Lalamove refuses anything but bare E.164, naming no number when it
+    // does. Say which one here, before a rider is even asked for.
+    if (!isE164Phone(config.senderPhone)) {
+      return {
+        success: false,
+        error: `Your store pickup phone (${config.senderPhone}) is not a valid mobile number. Fix it in delivery settings.`,
+      };
+    }
+
+    // The customer's phone wherever the checkout form put it; failing that
+    // the store's own, so an order from a form with no phone field is still
+    // bookable. customerContact used to be forwarded verbatim — '' on such a
+    // form — and Lalamove refused it ("'' is not valid 'phone'").
+    const recipient = resolveLalamoveRecipient(
+      order.customerContact,
+      order.customerData,
+      config.market,
+      config.senderPhone
+    );
+    if (!recipient.phone) {
+      return {
+        success: false,
+        error: "No phone number to give the rider. Add a store pickup phone in delivery settings.",
+      };
+    }
 
     // Retrieve the quotation to obtain the real stop IDs (sender + recipient).
     const quotation = await callLalamove(
@@ -244,7 +275,12 @@ export const bookLalamove = action({
       `/v3/quotations/${order.lalamoveQuotationId}`
     );
     if (!quotation.ok) {
-      return { success: false, error: quotation.error ?? "Quotation expired" };
+      // Quotations die ~5 minutes after checkout. Whatever Lalamove said, the
+      // merchant's next move is the same — and the app's alert offers it.
+      return {
+        success: false,
+        error: `Quotation expired or no longer valid (${quotation.error ?? quotation.status}) — get a new quote`,
+      };
     }
 
     const stops = quotation.data?.stops ?? [];
@@ -263,7 +299,7 @@ export const bookLalamove = action({
         {
           stopId: stops[stops.length - 1].stopId,
           name: order.customerName,
-          phone: normalizePhone(order.customerContact, config.market),
+          phone: recipient.phone,
           remarks: order.deliveryAddress,
         },
       ],
@@ -282,7 +318,11 @@ export const bookLalamove = action({
       lalamoveTrackingUrl: placed.data.shareLink ?? "",
     });
 
-    return { success: true, lalamoveOrderId: placed.data.orderId };
+    return {
+      success: true,
+      lalamoveOrderId: placed.data.orderId,
+      recipientPhoneSource: recipient.source === "store" ? "store" : "customer",
+    };
   },
 });
 

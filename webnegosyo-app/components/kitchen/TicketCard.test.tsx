@@ -46,6 +46,16 @@ function ticket(overrides: Partial<KitchenTicket> = {}): KitchenTicket {
   };
 }
 
+// The card reads its clock from the shared ticker, falling back to the wall
+// clock when rendered standalone as it is here. Pin that clock so the timer
+// and the prep promise render against a fixed "now".
+beforeEach(() => {
+  jest.spyOn(Date, "now").mockReturnValue(NOW);
+});
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 function renderCard(props: Partial<React.ComponentProps<typeof TicketCard>> = {}) {
   const onBump = jest.fn();
   const onPrint = jest.fn();
@@ -53,7 +63,6 @@ function renderCard(props: Partial<React.ComponentProps<typeof TicketCard>> = {}
   render(
     <TicketCard
       ticket={ticket()}
-      nowMs={NOW}
       isNew={false}
       onBump={onBump}
       onPrint={onPrint}

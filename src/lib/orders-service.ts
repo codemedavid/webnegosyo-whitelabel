@@ -236,6 +236,17 @@ async function releasePresellForCancelledOrder(
   await releasePresellForOrder(createAdminClient(), tenantId, claim.claimId, claim.lines)
 }
 
+/** Platform-backed tenants earn straight off their own orders table. */
+async function runLoyaltyForPlatformOrder(orderId: string, tenantId: string): Promise<void> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const { runLoyaltyForOrder } = await import('@/lib/loyalty/lifecycle')
+  await runLoyaltyForOrder(createAdminClient(), {
+    tenantId,
+    backend: 'platform_supabase',
+    externalOrderId: orderId,
+  })
+}
+
 export async function updateOrderStatus(
   orderId: string,
   tenantId: string,
@@ -285,6 +296,11 @@ export async function updateOrderStatus(
   if (previousStatus === 'cancelled' && status !== 'cancelled') {
     await redepleteStockForUncancelledOrder(orderId, tenantId)
   }
+
+  // The loyalty ledger follows the order: a delivery earns, a cancellation
+  // reverses. Best-effort and idempotent at the database, so a repeated tap
+  // cannot stamp a card twice.
+  await runLoyaltyForPlatformOrder(orderId, tenantId)
 
   // If order is being confirmed and has Lalamove quotation but no Lalamove order yet,
   // trigger Lalamove order creation (async, don't wait)

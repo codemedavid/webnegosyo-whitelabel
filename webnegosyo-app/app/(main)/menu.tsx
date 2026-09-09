@@ -12,6 +12,9 @@ import { reachableTabsOf } from "../../lib/tab-visibility";
 import { WORKSPACE_ICONS, tabPresentation } from "../../lib/workspace-presentation";
 import { canOpenTeam } from "../../lib/staff-service";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
+import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
+import { useTutorialChapters, useTutorialProgress } from "../../lib/tutorial/use-tutorial";
+import { progressSummary } from "../../lib/tutorial/progress";
 import type { WorkspaceKey } from "../../lib/workspaces";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ListRow } from "../../components/ListRow";
@@ -34,7 +37,8 @@ export default function MenuScreen() {
   const isOwner = useAuthStore((s) => s.isOwner);
   const permissions = useAuthStore((s) => s.permissions);
   const outletId = useAuthStore((s) => s.outletId);
-  const { isConnected, loadSaved } = usePrinterStore();
+  const isConnected = usePrinterStore((s) => s.isConnected);
+  const loadSaved = usePrinterStore((s) => s.loadSaved);
   const storedWorkspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
   const audience = usePortfolioAudience();
@@ -45,6 +49,9 @@ export default function MenuScreen() {
   const current = activeWorkspace(storedWorkspace, caller, audience);
   const ctx = { caller, audience, takesAdvanceOrders };
   const showTeam = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
+  const chapters = useTutorialChapters();
+  const { progress: tutorialProgress } = useTutorialProgress();
+  const tour = progressSummary(tutorialProgress, chapters.map((c) => c.id));
 
   useEffect(() => {
     void loadSaved();
@@ -152,6 +159,20 @@ export default function MenuScreen() {
             </View>
           </View>
           <View style={styles.group}>
+            <ListRow
+              icon="info"
+              tone="accent"
+              title="Learn the app"
+              subtitle={
+                tour.isComplete
+                  ? "Tour complete — replay any chapter"
+                  : tour.completed === 0
+                    ? `Guided tour, ${chapters.length} short chapters`
+                    : `${tour.completed} of ${tour.total} chapters done`
+              }
+              onPress={() => router.push(TUTORIAL_HUB_ROUTE)}
+              grouped
+            />
             <ListRow
               icon="qr"
               title="Scan QR"

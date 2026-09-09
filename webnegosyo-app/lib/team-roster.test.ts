@@ -34,10 +34,10 @@ describe("PINNABLE_SCREENS", () => {
 describe("describePermissions", () => {
   it("summarises full access, a few grants, and many grants", () => {
     expect(describePermissions(null)).toBe("Full access");
-    expect(describePermissions(["orders", "pos"])).toBe("Orders, Register");
+    expect(describePermissions(["orders", "pos"])).toBe("Orders, POS");
     expect(
       describePermissions(["orders", "pos", "menu", "analytics", "customers"])
-    ).toBe("Orders, Register, Menu +2 more");
+    ).toBe("Orders, POS, Menu +2 more");
   });
 
   it("ignores keys it does not know rather than rendering blanks", () => {

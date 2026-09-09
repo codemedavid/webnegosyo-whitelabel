@@ -40,7 +40,7 @@ export const WORKSPACES: readonly Workspace[] = [
   },
   {
     key: "register",
-    label: "Register",
+    label: "POS",
     description: "Ring up counter sales and reconcile the drawer",
     tabs: ["pos", "pos-sales"],
     defaultTab: "pos",
@@ -53,7 +53,14 @@ export const WORKSPACES: readonly Workspace[] = [
     // an audience to grow, not a thing on the shelf, and the follow-up
     // campaigns launched from it are the acquisition lever the Growth tab
     // spends its time telling the merchant to pull.
-    tabs: ["analytics", "growth", "customers", "trends"],
+    //
+    // Only three of these six reach the tab bar — Analytics, Growth and the
+    // Customers overview. Trends, the guest list and Rewards are sub-screens of
+    // the two they sit under (SUBSCREEN_TABS in lib/tab-visibility.ts, entry
+    // points in lib/subscreen-links.ts). The order below is the order the Menu
+    // hub lists them in, so each sub-screen follows its own parent: Analytics →
+    // Trends, then Growth, then Customers → Guest list → Rewards.
+    tabs: ["analytics", "trends", "growth", "customer-hub", "customers", "loyalty"],
     defaultTab: "analytics",
   },
   {

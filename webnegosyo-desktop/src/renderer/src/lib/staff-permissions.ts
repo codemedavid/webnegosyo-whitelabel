@@ -24,7 +24,14 @@ export const STAFF_PERMISSION_KEYS = [
   // it is not handed to everyone who can rename a dish.
   'vouchers',
   // The kitchen display — sees every active ticket and bumps orders to ready.
-  'kitchen'
+  'kitchen',
+  // Loyalty programs: creating one, changing its rules, pausing it, and
+  // correcting a customer's balance. Its own key rather than 'customers'
+  // because a balance correction moves value, and 'vouchers' because a staffer
+  // who may retire a promo code should not be able to rewrite every regular's
+  // stamp card. Attaching a customer at the register needs no grant.
+  'loyalty_manage',
+  'loyalty_redeem'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]

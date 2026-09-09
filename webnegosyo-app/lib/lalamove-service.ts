@@ -32,6 +32,9 @@ export interface LalamoveOpInput {
 export interface LalamoveOpResult {
   success: boolean;
   error?: string;
+  /** On a booking: "store" when the rider will call the store because the
+   * customer left no phone number. The card tells the merchant so. */
+  recipientPhoneSource?: "customer" | "store";
 }
 
 /**
@@ -120,5 +123,9 @@ export async function runPlatformLalamoveOp(
     return { success: false, error: body?.error ?? `Request failed (${response.status})` };
   }
 
-  return { success: body?.success === true, error: body?.error };
+  return {
+    success: body?.success === true,
+    error: body?.error,
+    ...(body?.recipientPhoneSource ? { recipientPhoneSource: body.recipientPhoneSource } : {}),
+  };
 }

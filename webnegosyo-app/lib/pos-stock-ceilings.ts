@@ -43,3 +43,22 @@ export async function fetchPosStockCeilings(
     return NO_CEILINGS;
   }
 }
+
+/** The part of a cart line the ceiling read cares about. */
+export interface StockCeilingLineLike {
+  menuItemId: string;
+  quantity: number;
+}
+
+/**
+ * A value key for WHICH dishes are in the sale.
+ *
+ * The ceiling is what the kitchen can make, so it moves when a sale is rung
+ * up — not when the cashier taps "+" on a line. Keying the read on the set of
+ * dish ids (sorted, de-duplicated) means a quantity change re-reads nothing
+ * and a line removed and re-added lands on the same key.
+ */
+export function lineIdSetKey(lines: readonly StockCeilingLineLike[]): string {
+  const ids = Array.from(new Set(lines.map((line) => line.menuItemId)));
+  return ids.sort().join(",");
+}

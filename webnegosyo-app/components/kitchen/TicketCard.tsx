@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { memo, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import {
   formatTicketTimer,
@@ -14,6 +14,7 @@ import {
   formatClock,
   prepPromiseState,
 } from "../../lib/prep-time";
+import { useTickerNow } from "../TickerProvider";
 
 /**
  * One ticket on the kitchen board. Presentation only: the card renders what
@@ -46,8 +47,6 @@ const URGENCY_COLOR: Record<Urgency, string> = {
 
 interface TicketCardProps {
   ticket: KitchenTicket;
-  /** Re-renders the timer; the screen ticks it so every card agrees on "now". */
-  nowMs: number;
   isNew: boolean;
   onBump: (orderId: string) => void;
   onPrint: (ticket: KitchenTicket) => void;
@@ -61,9 +60,14 @@ interface TicketCardProps {
   onSetPrepTime: (orderId: string, minutes: number) => void;
 }
 
-export function TicketCard({
+/**
+ * Memoised on its ticket and the board's stable callbacks: a poll that leaves
+ * this ticket unchanged (structurally shared rows) redraws nothing here. The
+ * clock comes from the shared ticker, so the timer still moves — every card
+ * agrees on "now" and only the cards re-render on a tick.
+ */
+export const TicketCard = memo(function TicketCard({
   ticket,
-  nowMs,
   isNew,
   onBump,
   onPrint,
@@ -71,6 +75,7 @@ export function TicketCard({
   canSetPrepTime,
   onSetPrepTime,
 }: TicketCardProps) {
+  const nowMs = useTickerNow();
   // The longer preset row, revealed on demand. Local to the card: which ticket
   // needed an unusual time is not worth remembering past this render.
   const [showMoreMinutes, setShowMoreMinutes] = useState(false);
@@ -229,7 +234,7 @@ export function TicketCard({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

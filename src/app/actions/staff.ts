@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { upsertTenantSecrets } from '@/lib/tenant-secrets'
 import { createClient } from '@/lib/supabase/server'
 import { verifyStaffManager, verifyTenantOwner } from '@/lib/admin-service'
 import {
@@ -307,15 +308,10 @@ export async function updateLalamoveKeysAction(
       throw new Error('Both the API key and secret key are required')
     }
 
-    const admin = createAdminClient()
-    const { error } = await admin
-      .from('tenants')
-      .update({
-        lalamove_api_key: apiKey,
-        lalamove_secret_key: secretKey,
-      } as unknown as never)
-      .eq('id', tenantId)
-    if (error) throw new Error(error.message)
+    await upsertTenantSecrets(createAdminClient(), tenantId, {
+      lalamove_api_key: apiKey,
+      lalamove_secret_key: secretKey,
+    })
 
     revalidatePath(`/${tenantSlug}/admin/settings`)
     return { success: true as const }

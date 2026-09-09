@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Tabs, router, type ErrorBoundaryProps } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing } from "../../theme/colors";
@@ -13,9 +14,11 @@ import { usePortfolioAudience } from "../../lib/use-portfolio-audience";
 import { supabase } from "../../lib/supabase";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
+import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
+import { TutorialWelcomePopup } from "../../components/tutorial/TutorialWelcomePopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
 
 /**
@@ -60,7 +63,9 @@ export default function MainLayout() {
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
   const permissions = useAuthStore((s) => s.permissions);
-  const caller = { role, isOwner, permissions };
+  // Memoised: these objects feed every `show()` below and are the identity
+  // the tab tree's options are compared on.
+  const caller = useMemo(() => ({ role, isOwner, permissions }), [role, isOwner, permissions]);
   const audience = usePortfolioAudience();
   // The stored view can outlive the right to see it, so it is resolved against
   // what this account may actually see — otherwise a persisted "business"
@@ -76,7 +81,10 @@ export default function MainLayout() {
   // pre-orders. A registered tab is reachable even when the switcher never
   // named its view, so every rule has to be asked here, not just in the
   // switcher. The Menu hub itself is always on the bar.
-  const ctx = { caller, audience, takesAdvanceOrders };
+  const ctx = useMemo(
+    () => ({ caller, audience, takesAdvanceOrders }),
+    [caller, audience, takesAdvanceOrders],
+  );
   const show = (tab: string) => (isTabOnBar(tab, workspace, ctx) ? undefined : null);
   // The bar sits on the home-indicator inset rather than a fixed 85pt guess
   // that was too tall on Android and too short on some iPhones.
@@ -89,12 +97,16 @@ export default function MainLayout() {
       <GlobalOrderAlerts />
       {/* Auto-prints kitchen chits on new orders, whichever tab is open. */}
       <GlobalKitchenAutoPrint />
+      {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
+      <GlobalReceiptAutoPrint />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}
       <BranchContextBar />
       {/* Greets a signed-in merchant with the newest unread platform post. */}
       <WhatsNewPopup />
+      {/* Offers a first-time merchant the guided tour, once per account. */}
+      <TutorialWelcomePopup />
       <Tabs
       screenOptions={{
         headerShown: false,
@@ -177,6 +189,24 @@ export default function MainLayout() {
           href: show("growth"),
           tabBarLabel: tabLabel("growth"),
           tabBarIcon: ({ color }) => <TabIcon name="growth" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="customer-hub"
+        options={{
+          href: show("customer-hub"),
+          title: "Customers",
+          tabBarLabel: tabLabel("customer-hub"),
+          tabBarIcon: ({ color }) => <TabIcon name="customers" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="loyalty"
+        options={{
+          href: show("loyalty"),
+          title: "Rewards",
+          tabBarLabel: tabLabel("loyalty"),
+          tabBarIcon: ({ color }) => <TabIcon name="check" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -328,6 +358,16 @@ export default function MainLayout() {
       <Tabs.Screen
         name="whats-new/[announcementId]"
         options={{ href: null, title: "Update" }}
+      />
+      {/* Guided tour: the chapter list and one chapter — reached from the greeter, Menu, or Account. */}
+      <Tabs.Screen
+        name="tutorial/index"
+        options={{ href: null, title: "Learn the app" }}
+      />
+      {/* The chapter draws its own bar inside the simulation, so the real one hides. */}
+      <Tabs.Screen
+        name="tutorial/[chapterId]"
+        options={{ href: null, title: "Chapter", tabBarStyle: { display: "none" } }}
       />
       </Tabs>
     </>

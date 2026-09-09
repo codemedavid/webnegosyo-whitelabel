@@ -6,6 +6,8 @@ import { TenantStats } from '@/components/superadmin/tenant-stats'
 import { TenantUsersList } from '@/components/superadmin/tenant-users-list'
 import { BulkMenuImport } from '@/components/superadmin/bulk-menu-import'
 import { getTenant } from '@/lib/queries/tenants-server'
+import { createClient } from '@/lib/supabase/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { getTenantUsers } from '@/actions/users'
 
 // Force dynamic rendering to avoid Cloudinary prerendering issues
@@ -52,9 +54,19 @@ async function TenantData({ id }: { id: string }) {
     notFound()
   }
 
+  // TenantFormWrapper is a client component, so anything passed to it is
+  // serialised into the page. The integration tabs therefore get only WHETHER
+  // a credential is stored (tenant_secrets, readable by the superadmin's own
+  // session), never the credential; blank on save means keep.
+  const secrets = await getTenantSecrets(await createClient(), id)
+
   return (
     <TenantFormWrapper
       tenant={tenant}
+      storedSecrets={{
+        hasLoyverseToken: Boolean(secrets?.loyverse_access_token),
+        hasConvexDeployKey: Boolean(secrets?.convex_deploy_key),
+      }}
       statsSlot={
         <Suspense fallback={<StatsSkeleton />}>
           <TenantStats tenant={tenant} />

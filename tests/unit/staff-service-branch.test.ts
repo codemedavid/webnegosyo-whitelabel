@@ -341,9 +341,22 @@ describe('managing an existing account across branches', () => {
   it('lets a branch admin change permissions for its own branch', async () => {
     const { store, read } = makeFakeStore(northStaff())
 
-    await updateStaffPermissions(store, 'tenant-1', 'a', ['orders', 'menu'], context)
+    // Only permissions the branch admin itself holds — see the grant-scope
+    // suite: a branch admin cannot hand out what it does not have.
+    await updateStaffPermissions(store, 'tenant-1', 'a', ['orders', 'branch_staff'], context)
 
-    expect(read()[0].permissions).toEqual(['orders', 'menu'])
+    expect(read()[0].permissions).toEqual(['orders', 'branch_staff'])
+  })
+
+  it('refuses a branch admin granting a permission it does not hold, even at its own branch', async () => {
+    const { store, read } = makeFakeStore(northStaff())
+    const before = read()[0].permissions
+
+    await expect(
+      updateStaffPermissions(store, 'tenant-1', 'a', ['orders', 'menu'], context)
+    ).rejects.toThrow(/only grant permissions you hold/i)
+
+    expect(read()[0].permissions).toEqual(before)
   })
 
   it("refuses a branch admin changing another branch's permissions", async () => {

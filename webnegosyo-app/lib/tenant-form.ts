@@ -53,8 +53,6 @@ export interface TenantEditorRow {
   restaurant_latitude: number | null;
   restaurant_longitude: number | null;
   lalamove_enabled: boolean;
-  lalamove_api_key: string | null;
-  lalamove_secret_key: string | null;
   lalamove_market: string | null;
   lalamove_service_type: string | null;
   lalamove_sandbox: boolean;
@@ -64,7 +62,6 @@ export interface TenantEditorRow {
   delivery_min_fee: number | null;
   delivery_radius_km: number | null;
   convex_deployment_url: string | null;
-  convex_deploy_key: string | null;
   /**
    * Which database serves this tenant's orders; drives impersonation routing.
    * `resolveOrderBackend` defensively ignores any value it does not recognize,
@@ -100,8 +97,6 @@ export interface TenantFormValues {
   restaurant_latitude: string;
   restaurant_longitude: string;
   lalamove_enabled: boolean;
-  lalamove_api_key: string;
-  lalamove_secret_key: string;
   lalamove_market: string;
   lalamove_service_type: string;
   lalamove_sandbox: boolean;
@@ -111,7 +106,6 @@ export interface TenantFormValues {
   delivery_min_fee: string;
   delivery_radius_km: string;
   convex_deployment_url: string;
-  convex_deploy_key: string;
   admin_email: string;
   email_notifications_enabled: boolean;
 }
@@ -227,8 +221,6 @@ export function toFormValues(tenant: TenantEditorRow): TenantFormValues {
     restaurant_latitude: numberToInput(tenant.restaurant_latitude),
     restaurant_longitude: numberToInput(tenant.restaurant_longitude),
     lalamove_enabled: tenant.lalamove_enabled,
-    lalamove_api_key: tenant.lalamove_api_key ?? "",
-    lalamove_secret_key: tenant.lalamove_secret_key ?? "",
     lalamove_market: tenant.lalamove_market ?? "PH",
     lalamove_service_type: tenant.lalamove_service_type ?? "MOTORCYCLE",
     lalamove_sandbox: tenant.lalamove_sandbox,
@@ -238,7 +230,6 @@ export function toFormValues(tenant: TenantEditorRow): TenantFormValues {
     delivery_min_fee: numberToInput(tenant.delivery_min_fee),
     delivery_radius_km: numberToInput(tenant.delivery_radius_km),
     convex_deployment_url: tenant.convex_deployment_url ?? "",
-    convex_deploy_key: tenant.convex_deploy_key ?? "",
     admin_email: tenant.admin_email ?? "",
     email_notifications_enabled: tenant.email_notifications_enabled,
   };
@@ -281,8 +272,6 @@ export function toUpdatePayload(
     restaurant_latitude: inputToNumber(values.restaurant_latitude),
     restaurant_longitude: inputToNumber(values.restaurant_longitude),
     lalamove_enabled: values.lalamove_enabled,
-    lalamove_api_key: textToColumn(values.lalamove_api_key),
-    lalamove_secret_key: textToColumn(values.lalamove_secret_key),
     lalamove_market: textToColumn(values.lalamove_market),
     lalamove_service_type: textToColumn(values.lalamove_service_type),
     lalamove_sandbox: values.lalamove_sandbox,
@@ -292,7 +281,6 @@ export function toUpdatePayload(
     delivery_min_fee: inputToNumber(values.delivery_min_fee),
     delivery_radius_km: inputToNumber(values.delivery_radius_km),
     convex_deployment_url: textToColumn(values.convex_deployment_url),
-    convex_deploy_key: textToColumn(values.convex_deploy_key),
     admin_email: textToColumn(values.admin_email),
     email_notifications_enabled: values.email_notifications_enabled,
   };
@@ -341,15 +329,6 @@ export function validateTenantForm(
     errors.slug = `"${slug}" is a reserved subdomain`;
   } else if (!SLUG_PATTERN.test(slug)) {
     errors.slug = "Use lowercase letters, numbers and inner dashes only";
-  }
-
-  if (values.lalamove_enabled) {
-    if (values.lalamove_api_key.trim() === "") {
-      errors.lalamove_api_key = "API key is required when Lalamove is on";
-    }
-    if (values.lalamove_secret_key.trim() === "") {
-      errors.lalamove_secret_key = "Secret key is required when Lalamove is on";
-    }
   }
 
   if (values.distance_delivery_enabled) {

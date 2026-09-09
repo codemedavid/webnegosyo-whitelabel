@@ -129,7 +129,7 @@ export function validateProductInput(input: ProductInput): ValidationResult {
     errors.description = "Description must be at least 10 characters";
   }
 
-  if (!(input.price > 0)) {
+  if (!Number.isFinite(input.price) || input.price <= 0) {
     errors.price = "Price must be positive";
   }
 
@@ -137,12 +137,12 @@ export function validateProductInput(input: ProductInput): ValidationResult {
     errors.category_id = "Must select a category";
   }
 
-  if (
-    input.discounted_price !== null &&
-    input.discounted_price !== undefined &&
-    input.discounted_price >= input.price
-  ) {
-    errors.discounted_price = "Discounted price must be lower than the price";
+  if (input.discounted_price !== null && input.discounted_price !== undefined) {
+    if (!Number.isFinite(input.discounted_price)) {
+      errors.discounted_price = "Discounted price must be a number";
+    } else if (input.discounted_price >= input.price) {
+      errors.discounted_price = "Discounted price must be lower than the price";
+    }
   }
 
   return { valid: Object.keys(errors).length === 0, errors };

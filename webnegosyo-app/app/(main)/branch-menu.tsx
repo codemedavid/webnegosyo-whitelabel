@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -17,18 +17,18 @@ import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { notifyMenuRevalidate } from "../../lib/menu-revalidate";
 import { productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
-import { listProducts, listCategories, type Category, type Product } from "../../lib/products";
+import type { Product } from "../../lib/products";
 import { useOutlets } from "../../lib/use-outlets";
-import {
-  listBranchMenuOverrides,
-  setBranchListing,
-} from "../../lib/branch-menu-service";
+import { setBranchListing } from "../../lib/branch-menu-service";
+import { useMenuCatalog, useMenuCatalogCache } from "../../lib/query/use-products";
+import { PLATFORM_STALE_MS } from "../../lib/query/query-client";
+import { shouldRefetchOnFocus } from "../../lib/query/use-screen-focus";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import {
   buildBranchProductRows,
   buildOutletMenuIndex,
   filterBranchProducts,
   type BranchProductRow,
-  type OutletMenuOverrideRow,
 } from "../../lib/branch-menu";
 import { formatPeso } from "../../lib/format";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
@@ -43,6 +43,8 @@ import { Icon } from "../../components/Icon";
 
 const ALL_BRANCHES = "all";
 const ALL_CATEGORIES = "all";
+
+const LOAD_ERROR = "Could not load your branch menus. Pull down to try again.";
 
 /**
  * Which branches carry which dish — the owner's cross-branch menu.
@@ -62,13 +64,21 @@ export default function BranchMenuScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const tenantSlug = useAuthStore((s) => s.tenantSlug);
 
-  const { outlets, isLoading: outletsLoading, error: outletsError, reload } = useOutlets();
+  const {
+    outlets,
+    isLoading: outletsLoading,
+    error: outletsError,
+    reload,
+    refetch: refetchOutlets,
+  } = useOutlets();
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [overrides, setOverrides] = useState<OutletMenuOverrideRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // The shared, cached copies of `listProducts`, `listCategories` and
+  // `listBranchMenuOverrides`: one read per store however many screens ask,
+  // and the editor's saves invalidate them so this list is never behind.
+  const catalog = useMenuCatalog(tenantId);
+  const { products, categories, overrides } = catalog;
+  const { patchBranchListing, invalidate: invalidateCatalog } = useMenuCatalogCache();
+
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState<string>(ALL_BRANCHES);
@@ -76,46 +86,31 @@ export default function BranchMenuScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!tenantId) return;
-    try {
-      setError(null);
-      const [productsResult, categoriesResult, overridesResult] = await Promise.all([
-        listProducts(tenantId),
-        listCategories(tenantId),
-        listBranchMenuOverrides(tenantId),
-      ]);
-      setProducts(productsResult);
-      setCategories(categoriesResult);
-      setOverrides(overridesResult);
-    } catch {
-      // Never an empty list: "no branch differences" is a claim, and making it
-      // after a failed read invites switching a dish back on that was never off.
-      setError("Could not load your branch menus. Pull down to try again.");
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
-    }
-  }, [tenantId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Never an empty list: "no branch differences" is a claim, and making it
+  // after a failed read invites switching a dish back on that was never off.
+  const error = catalog.error ? LOAD_ERROR : null;
 
   // The editor is a separate screen, so a product added or renamed there comes
   // back to a list that would otherwise still show the old menu — and an owner
-  // who cannot see the dish they just added adds it a second time.
+  // who cannot see the dish they just added adds it a second time. The tab
+  // never unmounts, so focus stands in for mount; only when the cache is stale.
+  const { refetch: refetchCatalog, dataUpdatedAt, isLoading, isRefetching } = catalog;
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      if (!tenantId || isLoading || isRefetching) return;
+      if (!shouldRefetchOnFocus({ dataUpdatedAt, staleMs: PLATFORM_STALE_MS, nowMs: Date.now() })) {
+        return;
+      }
+      void refetchCatalog();
+      // Read at focus time; re-subscribing on every landed read is not needed.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tenantId, refetchCatalog]),
   );
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    reload();
-    load();
-  };
+  const onRefresh = useCallback(
+    () => refreshWithMinSpinner([refetchOutlets, refetchCatalog], setRefreshing),
+    [refetchOutlets, refetchCatalog],
+  );
 
   const branches = useMemo(
     () =>
@@ -131,35 +126,6 @@ export default function BranchMenuScreen() {
     return buildBranchProductRows(visible, branches, buildOutletMenuIndex(overrides));
   }, [products, branches, overrides, search, categoryFilter]);
 
-  const applyOverride = (
-    outletId: string,
-    menuItemId: string,
-    isListed: boolean,
-  ): OutletMenuOverrideRow[] => {
-    const existing = overrides.find(
-      (row) => row.outlet_id === outletId && row.menu_item_id === menuItemId,
-    );
-
-    if (existing) {
-      return overrides.map((row) =>
-        row === existing ? { ...row, is_listed: isListed } : row,
-      );
-    }
-
-    return [
-      ...overrides,
-      {
-        outlet_id: outletId,
-        menu_item_id: menuItemId,
-        is_listed: isListed,
-        is_available: true,
-        price: null,
-        discounted_price: null,
-        discount_cleared: false,
-      },
-    ];
-  };
-
   const handleToggle = async (
     row: BranchProductRow<Product>,
     outletId: string,
@@ -172,18 +138,20 @@ export default function BranchMenuScreen() {
     if (!tenantId) return;
 
     const key = `${outletId}:${row.product.id}`;
-    const previous = overrides;
 
     setSavingKey(key);
-    setOverrides(applyOverride(outletId, row.product.id, nextListed));
+    const rollback = patchBranchListing(tenantId, outletId, row.product.id, nextListed);
 
     try {
       await setBranchListing(tenantId, outletId, row.product.id, nextListed);
       if (tenantSlug) void notifyMenuRevalidate(tenantId, tenantSlug);
+      // The register and the product list read the same rows; they learn of
+      // the switch here rather than on their next cold start.
+      void invalidateCatalog(tenantId);
     } catch {
       // Optimistic and silent is the worst pair here: the owner walks away
       // believing a branch stopped selling a dish it is still selling.
-      setOverrides(previous);
+      rollback();
       Alert.alert("Error", "Could not update this branch. Please try again.");
     } finally {
       setSavingKey(null);
@@ -328,7 +296,7 @@ export default function BranchMenuScreen() {
         {isLoading || outletsLoading ? (
           <LoadingState message="Loading branch menus..." />
         ) : error ? (
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetchCatalog} />
         ) : outlets.length === 0 ? (
           <EmptyState message="No branches yet. Add one to choose what it sells." />
         ) : rows.length === 0 ? (

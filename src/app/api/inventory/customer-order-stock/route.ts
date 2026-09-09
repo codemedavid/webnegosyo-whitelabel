@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import {
   buildDepletionItemsFromConvexOrderItems,
   buildDepletionItemsFromOrderRows,
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // inventory on must never accumulate a ledger they did not ask for.
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('inventory_enabled, convex_deployment_url, convex_deploy_key')
+      .select('inventory_enabled, convex_deployment_url')
       .eq('id', tenantId)
       .single()
 
@@ -177,8 +178,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Same discriminator the checkout itself uses: a deployment URL means the
     // order lives in the tenant's Convex, not the platform table.
     if (tenant.convex_deployment_url) {
+      const secrets = await getTenantSecrets(supabase, tenantId)
       return await depleteConvexOrder(
-        tenant as TenantStockConfig,
+        {
+          inventory_enabled: tenant.inventory_enabled,
+          convex_deployment_url: tenant.convex_deployment_url,
+          convex_deploy_key: secrets?.convex_deploy_key ?? null,
+        },
         tenantId,
         orderId,
       )

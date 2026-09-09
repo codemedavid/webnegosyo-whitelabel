@@ -11,6 +11,7 @@ import { buildKpiPeriod, PERIOD_CHOICES } from "../../lib/branch-period";
 import { useAccountBranchScope } from "../../lib/use-branch-scope";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useOutlets } from "../../lib/use-outlets";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
@@ -56,10 +57,17 @@ export default function PortfolioScreen() {
   const scope = useAccountBranchScope();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { outlets, isLoading: outletsLoading, error: outletsError, reload } = useOutlets();
-  const { data: orders, error: ordersError } = useSafeQuery<KpiOrderLike[]>(getOrdersRef, {
-    limit: ORDER_WINDOW,
-  });
+  const {
+    outlets,
+    isLoading: outletsLoading,
+    error: outletsError,
+    refetch: refetchOutlets,
+  } = useOutlets();
+  const {
+    data: orders,
+    error: ordersError,
+    refetch: refetchOrders,
+  } = useSafeQuery<KpiOrderLike[]>(getOrdersRef, { limit: ORDER_WINDOW });
 
   const selectBranch = useBranchContextStore((s) => s.selectBranch);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
@@ -75,11 +83,10 @@ export default function PortfolioScreen() {
     };
   }, [scope, orders, outlets]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    reload();
-    setTimeout(() => setRefreshing(false), 600);
-  }, [reload]);
+  const onRefresh = useCallback(
+    () => refreshWithMinSpinner([refetchOutlets, refetchOrders], setRefreshing),
+    [refetchOutlets, refetchOrders],
+  );
 
   const openBranch = useCallback(
     (outletId: string, outletName: string) => {

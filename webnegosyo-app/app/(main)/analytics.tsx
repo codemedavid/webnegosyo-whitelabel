@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { formatPeso } from "../../lib/format";
 import {
   formatPercent,
@@ -23,6 +24,7 @@ import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
 import { ExportSheet } from "../../components/ExportSheet";
+import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { runAnalyticsExport } from "../../lib/export/run-export";
 
 const getUpsellAnalyticsRef = "analytics:getUpsellAnalytics" as unknown as FunctionReference<"query">;
@@ -94,20 +96,45 @@ export default function AnalyticsScreen() {
   const [isExporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
+  const { data: upsellStats, error: upsellError, refetch: refetchUpsell } = useSafeQuery<UpsellStats>(getUpsellAnalyticsRef, { daysBack });
+  const { data: bundleStats, error: bundleError, refetch: refetchBundles } = useSafeQuery<BundleStats>(getBundleAnalyticsRef, { daysBack });
+  const { data: topItems, error: topItemsError, refetch: refetchTopItems } = useSafeQuery<TopItem[]>(getTopItemsRef, { daysBack, limit: 10 });
+  const { data: revenueBreakdown, error: revenueError, refetch: refetchRevenue } = useSafeQuery<RevenueBreakdown>(getRevenueBreakdownRef, { daysBack });
+  const { data: upsellTrends, error: trendsError, refetch: refetchUpsellTrends } = useSafeQuery<UpsellTrends>(getUpsellTrendsRef, { daysBack });
+  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
+  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
+  const { data: heatmapData, error: heatmapError, isMissingFunction: heatmapMissing, refetch: refetchHeatmap } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { daysBack });
+  const { data: customerInsights, error: customerError, isMissingFunction: customerMissing, refetch: refetchCustomers } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
 
-  const { data: upsellStats, error: upsellError } = useSafeQuery<UpsellStats>(getUpsellAnalyticsRef, { daysBack });
-  const { data: bundleStats, error: bundleError } = useSafeQuery<BundleStats>(getBundleAnalyticsRef, { daysBack });
-  const { data: topItems, error: topItemsError } = useSafeQuery<TopItem[]>(getTopItemsRef, { daysBack, limit: 10 });
-  const { data: revenueBreakdown, error: revenueError } = useSafeQuery<RevenueBreakdown>(getRevenueBreakdownRef, { daysBack });
-  const { data: upsellTrends, error: trendsError } = useSafeQuery<UpsellTrends>(getUpsellTrendsRef, { daysBack });
-  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
-  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
-  const { data: heatmapData, error: heatmapError, isMissingFunction: heatmapMissing } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { daysBack });
-  const { data: customerInsights, error: customerError, isMissingFunction: customerMissing } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
+  // Pull-to-refresh re-reads every query this screen holds.
+  const onRefresh = useCallback(
+    () =>
+      refreshWithMinSpinner(
+        [
+          refetchUpsell,
+          refetchBundles,
+          refetchTopItems,
+          refetchRevenue,
+          refetchUpsellTrends,
+          refetchSales,
+          refetchPayments,
+          refetchHeatmap,
+          refetchCustomers,
+        ],
+        setRefreshing
+      ),
+    [
+      refetchUpsell,
+      refetchBundles,
+      refetchTopItems,
+      refetchRevenue,
+      refetchUpsellTrends,
+      refetchSales,
+      refetchPayments,
+      refetchHeatmap,
+      refetchCustomers,
+    ]
+  );
 
   // Only include existing query errors in the global error banner.
   // New analytics queries degrade gracefully (sections hide when not deployed).
@@ -205,7 +232,7 @@ export default function AnalyticsScreen() {
         <View style={styles.section}>
           <Eyebrow label="Sales Overview" />
           {!salesAnalytics ? (
-            <Card><LoadingState /></Card>
+            <Card><LoadingState surface="card" /></Card>
           ) : salesAnalytics.totalOrders === 0 ? (
             <Card><EmptyState message="No sales in this period yet" /></Card>
           ) : (
@@ -504,6 +531,10 @@ export default function AnalyticsScreen() {
           )}
         </Card>
       </View>
+
+      {/* Trends is the same sales plotted over days; it hangs under this
+          screen rather than costing a slot on the Insights bar. */}
+      <SubScreenLinks parent="analytics" title="Go deeper" />
     </ScrollView>
     </View>
   );

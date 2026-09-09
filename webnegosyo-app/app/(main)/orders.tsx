@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
-import { View, StyleSheet, ScrollView, Alert, RefreshControl } from "react-native";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { View, StyleSheet, FlatList, Alert, RefreshControl, type ListRenderItem } from "react-native";
 import { FunctionReference } from "convex/server";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
@@ -9,9 +9,9 @@ import { colors, spacing } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-import { OrderCard, type OrderCardOrder } from "../../components/OrderCard";
+import { OrderListRow, type OrderListRowOrder } from "../../components/OrderListRow";
 import { OrderFilterBar, type SortOrder, type StatusFilterOption } from "../../components/OrderFilterBar";
-import { useOrderPrint } from "../../hooks/useOrderPrint";
+import { TickerProvider } from "../../components/TickerProvider";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
@@ -27,6 +27,9 @@ import { runOrdersExport } from "../../lib/export/run-export";
 import { formatExportDay } from "../../lib/export/dates";
 import type { ExportOrderItemInput } from "../../lib/export/orders-export";
 import type { DateRangePreset } from "../../lib/product-analytics-filters";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
+import { useOptimisticOrderCache } from "../../lib/query/optimistic-order-status";
+import { claimOrderBusy, releaseOrderBusy, resolveExportSource } from "../../lib/orders-list-actions";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
@@ -55,7 +58,7 @@ const STATUS_FILTERS: FilterKey[] = [
   "cancelled",
 ];
 
-interface ConvexOrder extends OrderCardOrder {
+interface ConvexOrder extends OrderListRowOrder {
   customerContact: string;
   status: OrderStatus;
 }
@@ -63,6 +66,8 @@ interface ConvexOrder extends OrderCardOrder {
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
+
+const keyExtractor = (order: ConvexOrder) => order._id;
 
 export default function OrdersScreen() {
   const params = useLocalSearchParams<{ status?: string }>();
@@ -83,7 +88,8 @@ export default function OrdersScreen() {
 
   // Fetch the full recent queue once, then filter/search/sort on the client so
   // every status pill can show a live count without extra round-trips.
-  const { data: orders, isLoading, error } = useSafeQuery<ConvexOrder[]>(getOrdersRef, {});
+  const { data: orders, isLoading, error, refetch: refetchOrders } =
+    useSafeQuery<ConvexOrder[]>(getOrdersRef, {});
   const scope = useBranchScope();
 
   // Export state. The deeper reads (a 2000-order page plus every line item)
@@ -92,21 +98,24 @@ export default function OrdersScreen() {
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const { data: exportOrders } = useSafeQuery<ConvexOrder[]>(
+  const { data: exportOrders, refetch: refetchExportOrders } = useSafeQuery<ConvexOrder[]>(
     getOrdersRef,
     isExportOpen ? { limit: EXPORT_FETCH_LIMIT } : "skip"
   );
-  const { data: exportItems } = useSafeQuery<ExportOrderItemInput[]>(
+  const { data: exportItems, refetch: refetchExportItems } = useSafeQuery<ExportOrderItemInput[]>(
     getAllOrderItemsRef,
     isExportOpen ? {} : "skip"
   );
   const updateStatus = useSafeMutation(updateOrderStatusRef);
-  const { shouldPrint } = useOrderPrint();
+  const { patchOrderStatus } = useOptimisticOrderCache();
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
+  // Pull-to-refresh re-reads every query this screen holds (the export reads
+  // are no-ops while the sheet is closed).
+  const onRefresh = useCallback(
+    () =>
+      refreshWithMinSpinner([refetchOrders, refetchExportOrders, refetchExportItems], setRefreshing),
+    [refetchOrders, refetchExportOrders, refetchExportItems]
+  );
 
   // A branch account sees only its own branch's orders. Filtering here — before
   // the counts, search and sort are computed — keeps the status pill counts
@@ -124,11 +133,15 @@ export default function OrdersScreen() {
     return map;
   }, [allOrders]);
 
-  const filterOptions: StatusFilterOption[] = STATUS_FILTERS.map((key) => ({
-    key,
-    label: key === "all" ? "All" : capitalize(key),
-    count: counts[key] ?? 0,
-  }));
+  const filterOptions = useMemo<StatusFilterOption[]>(
+    () =>
+      STATUS_FILTERS.map((key) => ({
+        key,
+        label: key === "all" ? "All" : capitalize(key),
+        count: counts[key] ?? 0,
+      })),
+    [counts],
+  );
 
   const visibleOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -145,46 +158,61 @@ export default function OrdersScreen() {
     );
   }, [allOrders, filter, search, sort]);
 
-  const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
-    if (useAuthStore.getState().isDemo) {
-      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-      return;
-    }
-    try {
-      await updateStatus({ orderId, status: newStatus });
-      // Put the ingredients back on a cancel — the same shared side-effect the
-      // detail screen runs. Never throws, so a stock write cannot make an
-      // order un-cancellable from the queue.
-      await restoreStockForStatusChange(newStatus, String(orderId));
+  // Orders with a status change in flight. The ref is the gate — two taps in
+  // one frame both read the same rendered state — and the state is what the
+  // rows render from.
+  const busyRef = useRef<ReadonlySet<string>>(new Set());
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(busyRef.current);
+  const setBusy = useCallback((next: ReadonlySet<string>) => {
+    busyRef.current = next;
+    setBusyIds(next);
+  }, []);
 
-      // Push the confirmed order into Loyverse — the same shared side-effect
-      // the detail screen runs. Only the id travels: this list holds no line
-      // items, so the server reads them back out of the order backend.
-      if (newStatus === "confirmed") {
-        await pushConfirmedOrderToLoyverse(String(orderId));
+  const handleUpdateStatus = useCallback(
+    async (orderId: string, newStatus: OrderStatus) => {
+      if (useAuthStore.getState().isDemo) {
+        Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+        return;
       }
+      const claim = claimOrderBusy(busyRef.current, orderId);
+      if (!claim.isClaimed) return;
+      setBusy(claim.busy);
 
-      // Printing needs those same missing line items — a receipt emitted here
-      // would have nothing on it. Point at the screen that has them, but only
-      // when the merchant actually expects paper.
-      if (newStatus === "confirmed" && shouldPrint("confirmation")) {
-        Alert.alert("Order Confirmed", "Open the order to print its receipt.", [
-          { text: "Later", style: "cancel" },
-          {
-            text: "Open & print",
-            onPress: () => router.push(`/(main)/order/${orderId}`),
-          },
-        ]);
+      // The row moves at once; a failed write puts it back.
+      const rollback = patchOrderStatus(orderId, newStatus);
+      try {
+        await updateStatus({ orderId, status: newStatus });
+        // Put the ingredients back on a cancel — the same shared side-effect
+        // the detail screen runs. Never throws, so a stock write cannot make an
+        // order un-cancellable from the queue.
+        await restoreStockForStatusChange(newStatus, String(orderId));
+
+        // Push the confirmed order into Loyverse — the same shared side-effect
+        // the detail screen runs. Only the id travels: this list holds no line
+        // items, so the server reads them back out of the order backend.
+        if (newStatus === "confirmed") {
+          await pushConfirmedOrderToLoyverse(String(orderId));
+        }
+
+        // The confirmation receipt prints from GlobalReceiptAutoPrint, which
+        // watches the status transition and holds the line items this list
+        // does not — no more "open the order to print it" detour.
+      } catch {
+        rollback();
+        Alert.alert("Error", "Failed to update order status");
+      } finally {
+        setBusy(releaseOrderBusy(busyRef.current, orderId));
       }
-    } catch {
-      Alert.alert("Error", "Failed to update order status");
-    }
-  };
+    },
+    [patchOrderStatus, setBusy, updateStatus],
+  );
 
   const handleExport = async (preset: DateRangePreset) => {
     // Prefer the deep export page; fall back to the queue's own page so the
-    // button still works while the bigger read is in flight.
-    const fetched = filterOrdersToScope(scope, exportOrders ?? orders ?? []) as ConvexOrder[];
+    // button still works while the bigger read is in flight — reporting the
+    // fallback's coverage against the rows it really holds.
+    const source = resolveExportSource(exportOrders, orders, EXPORT_FETCH_LIMIT);
+    const fetched = filterOrdersToScope(scope, source.orders) as ConvexOrder[];
     setExporting(true);
     setExportError(null);
     try {
@@ -194,7 +222,7 @@ export default function OrdersScreen() {
         preset,
         status: filter === "all" ? undefined : filter,
         nowMs: Date.now(),
-        fetchLimit: EXPORT_FETCH_LIMIT,
+        fetchLimit: source.fetchLimit,
       });
       setExportOpen(false);
       if (!coverage.isComplete) {
@@ -210,20 +238,63 @@ export default function OrdersScreen() {
     }
   };
 
-  const confirmCancel = (order: ConvexOrder) => {
-    Alert.alert(
-      "Cancel this order?",
-      "It will be removed from the active queue and excluded from revenue.",
-      [
-        { text: "Keep Order", style: "cancel" },
-        {
-          text: "Cancel Order",
-          onPress: () => handleUpdateStatus(order._id, "cancelled"),
-          style: "destructive",
-        },
-      ]
-    );
-  };
+  const handleOpen = useCallback((orderId: string) => {
+    router.push(`/(main)/order/${orderId}`);
+  }, []);
+
+  // The next status is read from the order's current one, so the row never
+  // has to hold the transition table.
+  const handleAdvance = useCallback(
+    (orderId: string) => {
+      const order = allOrders.find((candidate) => candidate._id === orderId);
+      const nextStatus = order ? NEXT_STATUS[order.status] : undefined;
+      if (nextStatus) void handleUpdateStatus(orderId, nextStatus);
+    },
+    [allOrders, handleUpdateStatus],
+  );
+
+  const confirmCancel = useCallback(
+    (order: ConvexOrder) => {
+      Alert.alert(
+        "Cancel this order?",
+        "It will be removed from the active queue and excluded from revenue.",
+        [
+          { text: "Keep Order", style: "cancel" },
+          {
+            text: "Cancel Order",
+            onPress: () => handleUpdateStatus(order._id, "cancelled"),
+            style: "destructive",
+          },
+        ]
+      );
+    },
+    [handleUpdateStatus],
+  );
+
+  const renderItem = useCallback<ListRenderItem<ConvexOrder>>(
+    ({ item: order }) => {
+      const nextStatus = NEXT_STATUS[order.status];
+      return (
+        <OrderListRow
+          order={order}
+          nextStatusLabel={nextStatus ? capitalize(nextStatus) : undefined}
+          isBusy={busyIds.has(order._id)}
+          onOpen={handleOpen}
+          onAdvance={handleAdvance}
+          onCancel={confirmCancel}
+        />
+      );
+    },
+    [busyIds, handleOpen, handleAdvance, confirmCancel],
+  );
+
+  const listEmpty = error ? (
+    <ErrorState message={error} onRetry={() => void refetchOrders()} />
+  ) : isLoading ? (
+    <LoadingState message="Loading orders..." />
+  ) : (
+    <EmptyState message={search ? "No orders match your search" : "No orders found"} />
+  );
 
   return (
     <View style={styles.screen}>
@@ -261,37 +332,22 @@ export default function OrdersScreen() {
         onSearchChange={setSearch}
       />
 
-      <ScrollView
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-        }
-      >
-        {error ? (
-          <ErrorState message={error} onRetry={() => setFilter("all")} />
-        ) : isLoading ? (
-          <LoadingState message="Loading orders..." />
-        ) : visibleOrders.length === 0 ? (
-          <EmptyState message={search ? "No orders match your search" : "No orders found"} />
-        ) : (
-          visibleOrders.map((order) => {
-            const nextStatus = NEXT_STATUS[order.status];
-            const canCancel = order.status !== "delivered" && order.status !== "cancelled";
-            return (
-              <OrderCard
-                key={order._id}
-                order={order}
-                onPress={() => router.push(`/(main)/order/${order._id}`)}
-                nextStatusLabel={nextStatus ? capitalize(nextStatus) : undefined}
-                onAdvance={nextStatus ? () => handleUpdateStatus(order._id, nextStatus) : undefined}
-                onCancel={canCancel ? () => confirmCancel(order) : undefined}
-              />
-            );
-          })
-        )}
-      </ScrollView>
+      {/* One clock for every card's age and urgency accent, so a tick redraws
+          the cards and not the list. */}
+      <TickerProvider>
+        <FlatList
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          data={error || isLoading ? [] : visibleOrders}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          ListEmptyComponent={listEmpty}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+        />
+      </TickerProvider>
 
       <ExportSheet
         visible={isExportOpen}

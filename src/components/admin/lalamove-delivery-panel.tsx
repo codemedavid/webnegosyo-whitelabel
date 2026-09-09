@@ -13,6 +13,8 @@ import {
   addPriorityFeeAction,
   requoteLalamoveAction
 } from '@/app/actions/lalamove'
+import { STORE_PHONE_RECIPIENT_NOTICE } from '@/lib/lalamove-recipient'
+import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { toast } from 'sonner'
 import {
   isActiveLalamoveDelivery,
@@ -157,13 +159,10 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
     setCreatingLalamove(true)
 
     const customerName = order.customer_name || 'Customer'
+    // May be '' on a checkout form with no phone field. The action recovers
+    // the customer's phone from customer_data, or books with the store's own
+    // number and says so — refusing here left such orders unbookable.
     const customerContact = order.customer_contact || ''
-    
-    if (!customerContact) {
-      toast.error('Customer contact information is required')
-      setCreatingLalamove(false)
-      return
-    }
 
     // Sender (pickup) name/phone are resolved server-side from the tenant
     // record; we pass blanks so the customer's contact is never used as the
@@ -181,6 +180,9 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
 
     if (result.success) {
       toast.success('Lalamove order created successfully!')
+      if (result.recipientPhoneSource === 'store') {
+        toast.info(STORE_PHONE_RECIPIENT_NOTICE)
+      }
       router.refresh()
     } else {
       toast.error(result.error || 'Failed to create Lalamove order')
@@ -189,9 +191,16 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
     setCreatingLalamove(false)
   }
 
-  if (!order.lalamove_quotation_id && !order.delivery_fee && !order.lalamove_order_id) {
+  const isVisible = shouldShowLalamoveControls({
+    orderType: order.order_type,
+    deliveryFee: order.delivery_fee,
+    lalamoveQuotationId: order.lalamove_quotation_id,
+    lalamoveOrderId: order.lalamove_order_id,
+  })
+  if (!isVisible) {
     return null
   }
+  const hasQuotation = Boolean(order.lalamove_quotation_id && String(order.lalamove_quotation_id).trim() !== '')
 
   return (
     <div className="md:col-span-1 lg:col-span-1">
@@ -348,13 +357,16 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
           ) : (
             <div className="space-y-2 sm:space-y-3 pt-1 sm:pt-2">
               <div className="text-xs sm:text-sm text-muted-foreground">
-                Lalamove order has not been created yet. You can create it manually or it will be created automatically when the order status is changed to &quot;confirmed&quot;.
+                {hasQuotation
+                  ? 'Lalamove order has not been created yet. You can create it manually or it will be created automatically when the order status is changed to "confirmed".'
+                  : 'This delivery has no Lalamove quotation yet. Get a quote first, then book the rider.'}
               </div>
+              {hasQuotation && (
               <Button
                 size="sm"
                 variant="default"
                 onClick={handleCreateLalamoveOrder}
-                disabled={creatingLalamove || !order.customer_contact}
+                disabled={creatingLalamove}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-8 sm:h-9"
               >
                 {creatingLalamove ? (
@@ -371,12 +383,10 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                   </>
                 )}
               </Button>
-              {!order.customer_contact && (
-                <p className="text-[10px] sm:text-xs text-red-600">Customer contact information is required</p>
               )}
               <Button
                 size="sm"
-                variant="outline"
+                variant={hasQuotation ? 'outline' : 'default'}
                 onClick={handleRequote}
                 disabled={requoting}
                 className="w-full text-xs sm:text-sm h-8 sm:h-9"
@@ -387,7 +397,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                     <span>Getting new quote…</span>
                   </>
                 ) : (
-                  <span>Get New Quote</span>
+                  <span>{hasQuotation ? 'Get New Quote' : 'Get Lalamove Quote'}</span>
                 )}
               </Button>
               <p className="text-[10px] sm:text-xs text-muted-foreground">

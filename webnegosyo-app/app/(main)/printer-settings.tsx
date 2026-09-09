@@ -65,17 +65,15 @@ const TEST_PAGE_TEXT = [
 ].join("\n");
 
 export default function PrinterSettingsScreen() {
-  const {
-    printers,
-    connectedAddress,
-    printTrigger,
-    kitchenAutoPrint,
-    addPrinter,
-    removePrinter,
-    updatePrinter,
-    setPrintTrigger,
-    setKitchenAutoPrint,
-  } = usePrinterStore();
+  const printers = usePrinterStore((s) => s.printers);
+  const connectedAddress = usePrinterStore((s) => s.connectedAddress);
+  const printTrigger = usePrinterStore((s) => s.printTrigger);
+  const kitchenAutoPrint = usePrinterStore((s) => s.kitchenAutoPrint);
+  const addPrinter = usePrinterStore((s) => s.addPrinter);
+  const removePrinter = usePrinterStore((s) => s.removePrinter);
+  const updatePrinter = usePrinterStore((s) => s.updatePrinter);
+  const setPrintTrigger = usePrinterStore((s) => s.setPrintTrigger);
+  const setKitchenAutoPrint = usePrinterStore((s) => s.setKitchenAutoPrint);
   const [tab, setTab] = useState<"bluetooth" | "network">("bluetooth");
   const [scanning, setScanning] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredPrinter[]>([]);

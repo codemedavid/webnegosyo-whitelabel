@@ -4144,6 +4144,44 @@ export type Database = {
           },
         ]
       }
+      tenant_secrets: {
+        Row: {
+          convex_deploy_key: string | null
+          lalamove_api_key: string | null
+          lalamove_secret_key: string | null
+          loyverse_access_token: string | null
+          messenger_page_access_token: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          convex_deploy_key?: string | null
+          lalamove_api_key?: string | null
+          lalamove_secret_key?: string | null
+          loyverse_access_token?: string | null
+          messenger_page_access_token?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          convex_deploy_key?: string | null
+          lalamove_api_key?: string | null
+          lalamove_secret_key?: string | null
+          loyverse_access_token?: string | null
+          messenger_page_access_token?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_secrets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_subscriptions: {
         Row: {
           billing_anchor_date: string | null
@@ -4407,6 +4445,9 @@ export type Database = {
           page_layout: string | null
           pairing_rules_enabled: boolean | null
           pickup_scan_enabled: boolean
+          customer_hub_enabled: boolean
+          loyalty_enabled: boolean
+          loyalty_shadow: boolean
           presell_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
@@ -4675,6 +4716,9 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
+          customer_hub_enabled?: boolean
+          loyalty_enabled?: boolean
+          loyalty_shadow?: boolean
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -4943,6 +4987,9 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
+          customer_hub_enabled?: boolean
+          loyalty_enabled?: boolean
+          loyalty_shadow?: boolean
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null

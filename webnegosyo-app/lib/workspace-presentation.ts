@@ -31,11 +31,16 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   orders: { label: "Orders", icon: "orders", hint: "Every order — filter, advance, cancel" },
   kitchen: { label: "Kitchen", icon: "kitchen", hint: "Tickets for the pass" },
   scheduled: { label: "Scheduled", icon: "calendar", hint: "Pre-orders by requested time" },
-  pos: { label: "Register", icon: "register", hint: "Ring up a counter sale" },
-  "pos-sales": { label: "Drawer", icon: "drawer", hint: "What the register took today" },
+  pos: { label: "POS", icon: "register", hint: "Ring up a counter sale" },
+  "pos-sales": { label: "Drawer", icon: "drawer", hint: "What the POS took today" },
   analytics: { label: "Analytics", icon: "analytics", hint: "Sales by type and payment method" },
   growth: { label: "Growth", icon: "growth", hint: "A growth plan built from your numbers" },
-  customers: { label: "Customers", icon: "customers", hint: "Your guest list and follow-ups" },
+  // The overview IS the Customers tab now: the guest list and Rewards moved
+  // under it (SUBSCREEN_TABS), so nothing else on the bar claims the word and
+  // the tab no longer has to go by "Regulars" to avoid a clash.
+  "customer-hub": { label: "Customers", icon: "customers", hint: "Who comes back, and what they order" },
+  customers: { label: "Guest list", icon: "customers", hint: "Your guest list and follow-ups" },
+  loyalty: { label: "Rewards", icon: "check", hint: "Stamp cards and points for regulars" },
   trends: { label: "Trends", icon: "trends", hint: "Daily revenue and order trends" },
   "product-analytics": { label: "Performance", icon: "performance", hint: "What sells, and what doesn't" },
   "product-management": { label: "Manage", icon: "manage", hint: "Products, prices, availability" },

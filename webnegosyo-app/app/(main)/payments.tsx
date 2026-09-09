@@ -212,7 +212,9 @@ export default function PaymentMethodsScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`Move ${method.name} up`}
                   >
-                    <Icon name="chevron-down" size={16} color={colors.textPrimary} style={styles.flip} />
+                    <View style={styles.flip}>
+                      <Icon name="chevron-down" size={16} color={colors.textPrimary} />
+                    </View>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[

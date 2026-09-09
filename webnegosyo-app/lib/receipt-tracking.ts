@@ -1,4 +1,4 @@
-import Constants from "expo-constants";
+import { getWebAppUrl } from "./web-app-url";
 
 /**
  * Fetch the customer-facing tracking URL for an order from the web server.
@@ -25,18 +25,13 @@ export interface TrackingUrlOptions {
   accessToken: string | null;
 }
 
-/** Same source pickup/verify.ts uses, so one setting covers both. */
-function defaultWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
-
 export async function fetchTrackingUrl(
   ref: TrackingUrlRef,
   options: TrackingUrlOptions,
 ): Promise<string | null> {
   if (!options.accessToken) return null;
 
-  const base = (options.webAppUrl ?? defaultWebAppUrl()).replace(/\/+$/, "");
+  const base = (options.webAppUrl ?? getWebAppUrl()).replace(/\/+$/, "");
   if (!base) return null;
 
   const doFetch = options.fetchImpl ?? fetch;

@@ -1,23 +1,28 @@
 import React from "react";
-import { View, ActivityIndicator, Text, StyleSheet } from "react-native";
-import { colors, typography } from "../theme/colors";
+import { MascotLoader, type MascotSurface } from "./MascotLoader";
 
 interface LoadingStateProps {
   message?: string;
   fullScreen?: boolean;
+  /** Pass `card` when the loader sits on a white card or footer. */
+  surface?: MascotSurface;
 }
 
-export function LoadingState({ message = "Loading...", fullScreen = false }: LoadingStateProps) {
+/**
+ * Every wait is the mascot with its progress bar: full size on a screen of
+ * its own, compact when it sits inside a screen that is otherwise drawn.
+ */
+export function LoadingState({
+  message = "Loading...",
+  fullScreen = false,
+  surface = "background",
+}: LoadingStateProps) {
   return (
-    <View style={[styles.container, fullScreen && styles.fullScreen]}>
-      <ActivityIndicator size="small" color={colors.primary} />
-      <Text style={styles.text}>{message}</Text>
-    </View>
+    <MascotLoader
+      fullScreen={fullScreen}
+      size={fullScreen ? "full" : "compact"}
+      surface={surface}
+      message={message}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { alignItems: "center", justifyContent: "center", paddingVertical: 32, gap: 12 },
-  fullScreen: { flex: 1, backgroundColor: colors.background },
-  text: { ...typography.caption, color: colors.textSecondary },
-});

@@ -43,6 +43,16 @@ describe("Team screen gates", () => {
     expect(src).not.toMatch(/from\(["']app_users["']\)/);
   });
 
+  it("reaches the edge function through the bounded transport, never functions.invoke", () => {
+    // `supabase.functions.invoke` awaits the session with no deadline and
+    // collapses every failure into "Failed to send a request to the Edge
+    // Function" — the alert merchants saw with no matching edge log, because
+    // the request never left the phone. See lib/manage-staff-transport.ts.
+    const src = screen();
+    expect(src).toMatch(/createManageStaffInvoke/);
+    expect(src).not.toMatch(/functions\.invoke/);
+  });
+
   it("offers the shared permission and screen registries, not private lists", () => {
     const src = screen();
     expect(src).toMatch(/PERMISSION_OPTIONS/);

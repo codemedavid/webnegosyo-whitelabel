@@ -114,7 +114,7 @@ describe('transferOwnership', () => {
     }
 
     await expect(transferOwnership(brokenStore, 'tenant-1', 'admin_1')).rejects.toThrow(
-      /promote failed.*rollback failed/is
+      /promote failed[\s\S]*rollback failed/i
     )
   })
 })

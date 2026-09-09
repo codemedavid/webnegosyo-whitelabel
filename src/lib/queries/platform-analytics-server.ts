@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { listTenantSecrets, type TenantSecrets } from '@/lib/tenant-secrets'
 import {
   rangeToWindows,
   rowsToTenantAggregates,
@@ -59,7 +60,23 @@ interface TenantDirRow {
   slug: string | null
   is_active: boolean | null
   convex_deployment_url: string | null
-  convex_deploy_key: string | null
+}
+
+/**
+ * Deploy keys for the page of tenants just read. A failure here degrades to
+ * "no Convex targets on this page" — the same outcome as a tenant with no
+ * key — and is logged, mirroring how the tenant read itself fails.
+ */
+async function loadDeployKeys(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantIds: string[],
+): Promise<Map<string, TenantSecrets>> {
+  try {
+    return await listTenantSecrets(admin, tenantIds)
+  } catch (error) {
+    console.error('[platform-analytics] tenant secrets error:', error instanceof Error ? error.message : error)
+    return new Map()
+  }
 }
 
 export const loadTenantDirectory = cache(async (): Promise<TenantDirectory> => {
@@ -71,13 +88,17 @@ export const loadTenantDirectory = cache(async (): Promise<TenantDirectory> => {
   for (let from = 0; from < MAX_ROWS; from += PAGE) {
     const { data, error } = await admin
       .from('tenants')
-      .select('id, name, slug, is_active, convex_deployment_url, convex_deploy_key')
+      .select('id, name, slug, is_active, convex_deployment_url')
       .range(from, from + PAGE - 1)
     if (error) {
       console.error('[platform-analytics] tenant directory error:', error.message)
       break
     }
     const rows = (data as unknown as TenantDirRow[]) ?? []
+    const secretsByTenant = await loadDeployKeys(
+      admin,
+      rows.filter((r) => r.convex_deployment_url?.trim()).map((r) => r.id),
+    )
     for (const r of rows) {
       meta[r.id] = {
         name: r.name ?? 'Unknown',
@@ -85,7 +106,7 @@ export const loadTenantDirectory = cache(async (): Promise<TenantDirectory> => {
         isActive: r.is_active ?? false,
       }
       const url = r.convex_deployment_url?.trim()
-      const key = r.convex_deploy_key?.trim()
+      const key = secretsByTenant.get(r.id)?.convex_deploy_key?.trim()
       if (url && key) {
         convexTargets.push({ tenantId: r.id, url, key })
         convexIds.add(r.id)

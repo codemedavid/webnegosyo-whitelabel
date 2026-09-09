@@ -14,6 +14,10 @@ interface AuthState {
    * to pick the Convex client or the platform-Supabase adapter.
    */
   orderBackend: OrderBackend | null;
+  /** Pilot switch for the Customer Hub. Unknown reads as OFF, never as on. */
+  customerHubEnabled: boolean;
+  /** Loyalty earning is on for this store. Unknown reads as OFF. */
+  loyaltyEnabled: boolean;
   /**
    * The tenant's saved receipt layout (preset name or custom block stack),
    * passed through unvalidated; `lib/receipt-print.ts` shape-checks at print.
@@ -22,6 +26,14 @@ interface AuthState {
   /** Store logo URL for receipt printing; null when the tenant has none. */
   receiptLogoUrl: string | null;
   isLoading: boolean;
+  /**
+   * Set when the cold-start session lookup could not reach the server. The
+   * stored session is kept; app/index.tsx offers a retry. Null otherwise —
+   * a genuine "no account" never sets this (see lib/session-bootstrap.ts).
+   */
+  bootstrapError: string | null;
+  /** Bumped by "Try again" so `useAuthInit` runs the lookup once more. */
+  bootstrapAttempt: number;
   isAuthenticated: boolean;
   /**
    * True when the user entered via "Explore Demo" on the login screen instead
@@ -67,9 +79,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   convexUrl: null,
   convexSchemaVersion: null,
   orderBackend: null,
+  customerHubEnabled: false,
+  loyaltyEnabled: false,
   receiptLayout: null,
   receiptLogoUrl: null,
   isLoading: true,
+  bootstrapError: null,
+  bootstrapAttempt: 0,
   isAuthenticated: false,
   isDemo: false,
   isSuperadmin: false,
@@ -88,11 +104,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       tenantSlug: null,
       tenantName: null,
       convexUrl: null,
-  convexSchemaVersion: null,
+      convexSchemaVersion: null,
       orderBackend: null,
+      customerHubEnabled: false,
+      loyaltyEnabled: false,
       receiptLayout: null,
       receiptLogoUrl: null,
       isLoading: false,
+      bootstrapError: null,
       isAuthenticated: false,
       isDemo: false,
       isSuperadmin: false,

@@ -9,6 +9,7 @@ import {
   orderBackendForSave,
   type OrderBackendPreference,
 } from '@/lib/order-backend'
+import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -31,10 +32,24 @@ type OutletTimingColumns = {
 // Same lag for the Loyverse integration migration (20260821120000).
 type LoyverseColumns = {
   loyverse_enabled?: boolean
-  loyverse_access_token?: string | null
   loyverse_store_id?: string | null
   loyverse_payment_type_id?: string | null
   loyverse_push_mode?: string
+}
+
+/**
+ * The credential fields of a tenant input. They are never written to the
+ * `tenants` row; they are upserted into `tenant_secrets` once the row exists.
+ * Missing = leave the stored value alone (the upsert skips undefined keys);
+ * an explicit empty string still clears it, as the old column write did.
+ */
+function secretsPatchFromInput(parsed: TenantInput): TenantSecretsPatch {
+  return {
+    lalamove_api_key: parsed.lalamove_api_key ?? undefined,
+    lalamove_secret_key: parsed.lalamove_secret_key ?? undefined,
+    loyverse_access_token: parsed.loyverse_access_token ?? undefined,
+    convex_deploy_key: parsed.convex_deploy_key ?? undefined,
+  }
 }
 
 // Domain validation: must be a valid domain format (not necessarily a URL)
@@ -345,21 +360,17 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     delivery_radius_km: parsed.delivery_radius_km ?? undefined,
     // Lalamove configuration
     lalamove_enabled: parsed.lalamove_enabled,
-    lalamove_api_key: parsed.lalamove_api_key ?? undefined,
-    lalamove_secret_key: parsed.lalamove_secret_key ?? undefined,
     lalamove_market: parsed.lalamove_market ?? undefined,
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
     lalamove_sender_phone: parsed.lalamove_sender_phone ?? undefined,
     // Loyverse configuration
     loyverse_enabled: parsed.loyverse_enabled,
-    loyverse_access_token: parsed.loyverse_access_token ?? undefined,
     loyverse_store_id: parsed.loyverse_store_id ?? undefined,
     loyverse_payment_type_id: parsed.loyverse_payment_type_id ?? undefined,
     loyverse_push_mode: parsed.loyverse_push_mode,
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
-    convex_deploy_key: parsed.convex_deploy_key ?? undefined,
     order_backend: orderBackendForSave(parsed.order_backend, {
       convex_deployment_url: parsed.convex_deployment_url ?? null,
       convex_deploy_key: parsed.convex_deploy_key ?? null,
@@ -373,7 +384,9 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     .maybeSingle()
   if (error) throw error
   if (!data) throw new Error('Failed to create tenant')
-  return data as unknown as TenantRow
+  const created = data as unknown as TenantRow
+  await upsertTenantSecrets(supabase, created.id, secretsPatchFromInput(parsed))
+  return created
 }
 
 export async function updateTenantSupabase(id: string, input: TenantInput, ctx?: ProvisioningCtx): Promise<TenantRow> {
@@ -486,21 +499,17 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     delivery_radius_km: parsed.delivery_radius_km ?? undefined,
     // Lalamove configuration
     lalamove_enabled: parsed.lalamove_enabled,
-    lalamove_api_key: parsed.lalamove_api_key ?? undefined,
-    lalamove_secret_key: parsed.lalamove_secret_key ?? undefined,
     lalamove_market: parsed.lalamove_market ?? undefined,
     lalamove_service_type: parsed.lalamove_service_type ?? undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
     lalamove_sender_phone: parsed.lalamove_sender_phone ?? undefined,
     // Loyverse configuration
     loyverse_enabled: parsed.loyverse_enabled,
-    loyverse_access_token: parsed.loyverse_access_token ?? undefined,
     loyverse_store_id: parsed.loyverse_store_id ?? undefined,
     loyverse_payment_type_id: parsed.loyverse_payment_type_id ?? undefined,
     loyverse_push_mode: parsed.loyverse_push_mode,
     // Convex integration
     convex_deployment_url: parsed.convex_deployment_url ?? undefined,
-    convex_deploy_key: parsed.convex_deploy_key ?? undefined,
     order_backend: orderBackendForSave(parsed.order_backend, {
       order_backend: oldTenant?.order_backend,
       convex_deployment_url: parsed.convex_deployment_url ?? null,
@@ -515,6 +524,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     .maybeSingle()
   if (error) throw error
   if (!data) throw new Error('Failed to update tenant')
+  await upsertTenantSecrets(supabase, id, secretsPatchFromInput(parsed))
 
   // Clear new domain from cache (will be refreshed on next request)
   if (parsed.domain) {

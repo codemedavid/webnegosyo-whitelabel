@@ -125,8 +125,11 @@ export interface Tenant {
   enable_order_management: boolean;
   // Lalamove delivery configuration
   lalamove_enabled?: boolean;
-  lalamove_api_key?: string;
-  lalamove_secret_key?: string;
+  // Credentials are NOT columns on `tenants`: they live in `tenant_secrets`
+  // (src/lib/tenant-secrets.ts) and are only present on a row that a server
+  // reader merged them onto. A plain `select('*')` leaves them undefined.
+  lalamove_api_key?: string | null;
+  lalamove_secret_key?: string | null;
   lalamove_market?: string;
   lalamove_service_type?: string;
   lalamove_sandbox?: boolean;
@@ -317,6 +320,14 @@ export interface Tenant {
   // Tenant-admin switch for scan-to-collect pickup. Column defaults to true, so
   // undefined/null must read as enabled. See src/lib/pickup-qr-gating.ts.
   pickup_scan_enabled?: boolean | null;
+  // Pilot switch for the merchant Customer Hub. Column defaults to FALSE, so
+  // undefined/null must read as DISABLED — the opposite of pickup_scan_enabled
+  // above, because the Hub is new and has no prior behaviour to preserve.
+  customer_hub_enabled?: boolean | null;
+  // Loyalty earning. Unknown reads as DISABLED; loyalty_shadow unknown reads
+  // as SHADOW (rows recorded, no balances or rewards) — never as live.
+  loyalty_enabled?: boolean | null;
+  loyalty_shadow?: boolean | null;
   // Thermal receipt layout: a preset name (JSON string) or a custom
   // {version:1,blocks:[...]} stack. NULL = Classic preset. Shape-checked by
   // the receipt renderer; invalid values fall back to Classic.

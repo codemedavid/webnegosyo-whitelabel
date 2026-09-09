@@ -37,6 +37,29 @@ function json(body: unknown, status: number) {
 const STAFF_COLUMNS =
   "user_id, tenant_id, role, is_owner, outlet_id, permissions, display_name, email, default_tab, created_at";
 
+// Backend failures (Postgres, GoTrue) are logged here with their original
+// text and answered with a stable, generic message. The raw message names
+// tables, columns, constraints and auth internals — none of which the phone
+// needs, and all of which a caller probing the function would enjoy.
+const STORE_ERROR_MESSAGES = {
+  list: "Could not load the team right now.",
+  createAuthUser: "Could not create the staff login.",
+  insertStaffRow: "Could not save the staff account.",
+  updateStaffRow: "Could not update the staff account.",
+  deleteAuthUser: "Could not remove the staff account.",
+  updateAuthPassword: "Could not reset the password.",
+  callerRow: "Could not read your account.",
+  outlets: "Could not load the store's branches.",
+  unexpected: "Unexpected server error.",
+} as const;
+
+type StoreErrorContext = keyof typeof STORE_ERROR_MESSAGES;
+
+function storeFailure(context: StoreErrorContext, cause: unknown): Error {
+  console.error(`[manage-staff] ${context} failed:`, cause);
+  return new Error(STORE_ERROR_MESSAGES[context]);
+}
+
 function makeSupabaseStore(admin: SupabaseClient): StaffCoreStore {
   return {
     listStaff: async (tenantId) => {
@@ -46,7 +69,7 @@ function makeSupabaseStore(admin: SupabaseClient): StaffCoreStore {
         .eq("tenant_id", tenantId)
         .eq("role", "admin")
         .order("created_at", { ascending: true });
-      if (error) throw new Error(error.message);
+      if (error) throw storeFailure("list", error);
       return (data ?? []) as unknown as StaffRecord[];
     },
     createAuthUser: async ({ email, password }) => {
@@ -56,7 +79,7 @@ function makeSupabaseStore(admin: SupabaseClient): StaffCoreStore {
         email_confirm: true,
       });
       if (error || !data.user) {
-        throw new Error(error?.message ?? "Failed to create the staff account");
+        throw storeFailure("createAuthUser", error ?? "no user returned");
       }
       return { userId: data.user.id };
     },
@@ -75,7 +98,7 @@ function makeSupabaseStore(admin: SupabaseClient): StaffCoreStore {
       if (error) {
         // Don't leave an orphaned auth user behind if the row insert fails.
         await admin.auth.admin.deleteUser(row.user_id).catch(() => undefined);
-        throw new Error(error.message);
+        throw storeFailure("insertStaffRow", error);
       }
     },
     updateStaffRow: async (userId, patch) => {
@@ -83,18 +106,18 @@ function makeSupabaseStore(admin: SupabaseClient): StaffCoreStore {
         .from("app_users")
         .update(patch)
         .eq("user_id", userId);
-      if (error) throw new Error(error.message);
+      if (error) throw storeFailure("updateStaffRow", error);
     },
     deleteAuthUser: async (userId) => {
       // FK on app_users.user_id cascades, removing the staff row too.
       const { error } = await admin.auth.admin.deleteUser(userId);
-      if (error) throw new Error(error.message);
+      if (error) throw storeFailure("deleteAuthUser", error);
     },
     updateAuthPassword: async (userId, password) => {
       const { error } = await admin.auth.admin.updateUserById(userId, {
         password,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw storeFailure("updateAuthPassword", error);
     },
   };
 }
@@ -157,7 +180,10 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
     if (callerErr) {
-      return json({ success: false, error: callerErr.message }, 500);
+      return json(
+        { success: false, error: storeFailure("callerRow", callerErr).message },
+        500,
+      );
     }
     const resolved = resolveStaffCaller(
       (callerRow as unknown as StaffCallerRow | null) ?? null,
@@ -181,7 +207,10 @@ Deno.serve(async (req) => {
         .maybeSingle(),
     ]);
     if (outletsRes.error) {
-      return json({ success: false, error: outletsRes.error.message }, 500);
+      return json(
+        { success: false, error: storeFailure("outlets", outletsRes.error).message },
+        500,
+      );
     }
     const context: StaffActionContext = {
       outlets: (outletsRes.data ?? []) as { id: string }[],
@@ -199,7 +228,7 @@ Deno.serve(async (req) => {
     return json(result.body, result.status);
   } catch (e) {
     return json(
-      { success: false, error: e instanceof Error ? e.message : "Unexpected server error." },
+      { success: false, error: storeFailure("unexpected", e).message },
       500,
     );
   }

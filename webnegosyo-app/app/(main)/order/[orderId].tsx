@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from "react-native";
+import { openExternalUrl } from "../../../lib/safe-url";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
@@ -356,7 +357,7 @@ export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
-  const { printOrder, printAt, shouldPrint, hasPrinter } = useOrderPrint();
+  const { printOrder, printAt, hasPrinter } = useOrderPrint();
 
   // The settlement ledger. A backend that cannot serve these refs reports an
   // error rather than an empty list — which is the point: an empty ledger and
@@ -606,15 +607,9 @@ export default function OrderDetailScreen() {
       return;
     }
     try {
-      // When the merchant prints on confirmation, attempt it BEFORE updating
-      // status so a paper jam is noticed while the order is still in hand.
-      if (newStatus === "confirmed" && shouldPrint("confirmation")) {
-        const printed = await printOrder(order);
-        if (!printed) {
-          Alert.alert("Print Warning", "Receipt could not be printed. Order will still be confirmed.");
-        }
-      }
-
+      // Confirmation receipts print from GlobalReceiptAutoPrint, which reacts
+      // to the status transition itself — so a confirm from this screen, the
+      // list, the Drawer or the web admin all print exactly once.
       await updateStatus({ orderId: order._id, status: newStatus });
 
       // Push the confirmed order into Loyverse as a sales receipt. Fires once
@@ -832,7 +827,7 @@ export default function OrderDetailScreen() {
               </View>
             )}
             {paymentProofUrl != null && String(paymentProofUrl).trim() !== "" && (
-              <TouchableOpacity onPress={() => Linking.openURL(String(paymentProofUrl))}>
+              <TouchableOpacity onPress={() => void openExternalUrl(String(paymentProofUrl))}>
                 <Text style={styles.proofLink}>View payment proof</Text>
               </TouchableOpacity>
             )}

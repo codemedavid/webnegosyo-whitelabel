@@ -64,13 +64,21 @@ describe('fetchUpsellPerformance', () => {
 describe('fetchUpsellPerformanceForTenantId', () => {
   it('resolves the tenant, then reads its deployment', async () => {
     const convexQuery = jest.fn().mockResolvedValue(FUNNEL)
+    // The deploy key is read from tenant_secrets, not off the tenants row.
+    const { convex_deploy_key, ...tenantRow } = CONVEX_TENANT
     const client = {
-      from: () => {
+      from: (table: string) => {
         const b: Record<string, unknown> = {}
         Object.assign(b, {
           select: () => b,
           eq: () => b,
-          single: () => Promise.resolve({ data: { ...CONVEX_TENANT }, error: null }),
+          single: () => Promise.resolve({ data: { ...tenantRow }, error: null }),
+          maybeSingle: () =>
+            Promise.resolve(
+              table === 'tenant_secrets'
+                ? { data: { convex_deploy_key }, error: null }
+                : { data: null, error: null },
+            ),
         })
         return b
       },

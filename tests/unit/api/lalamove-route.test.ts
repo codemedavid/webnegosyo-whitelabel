@@ -301,6 +301,66 @@ describe('POST /api/lalamove', () => {
     expect(service.createLalamoveOrder).not.toHaveBeenCalled()
   })
 
+  test('books with the store phone as recipient when the customer left none', async () => {
+    // The seacook case: a checkout form with no phone field stores
+    // customer_contact ''. Forwarding that verbatim made Lalamove refuse the
+    // order ("'' is not valid 'phone'"), so the merchant could never book.
+    orderRow = { ...ORDER, customer_contact: '', customer_data: { ...ORDER.customer_data } }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; recipientPhoneSource?: string }
+    expect(body.success).toBe(true)
+    expect(body.recipientPhoneSource).toBe('store')
+
+    const service = await import('@/lib/lalamove-service')
+    const call = (service.createLalamoveOrder as unknown as jest.Mock).mock.calls[0] as unknown[]
+    // sender phone (4th arg) and recipient phone (6th arg) are both the store's
+    expect(call[3]).toBe('+639170000000')
+    expect(call[5]).toBe('+639170000000')
+  })
+
+  test('recovers the customer phone from customer_data when the contact is blank', async () => {
+    orderRow = {
+      ...ORDER,
+      customer_contact: '',
+      customer_data: { ...ORDER.customer_data, contact_number: '0917 555 1234' },
+    }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; recipientPhoneSource?: string }
+    expect(body.success).toBe(true)
+    expect(body.recipientPhoneSource).toBe('customer')
+
+    const service = await import('@/lib/lalamove-service')
+    const call = (service.createLalamoveOrder as unknown as jest.Mock).mock.calls[0] as unknown[]
+    expect(call[5]).toBe('+639175551234')
+  })
+
+  test('refuses to book when the store pickup phone is not a usable number', async () => {
+    // Lalamove would reject it anyway — but with a message naming no number.
+    tenantRow = { ...TENANT, lalamove_sender_phone: 'call us' }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; error?: string }
+    expect(body.success).toBe(false)
+    expect(body.error).toMatch(/pickup phone/i)
+
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+  })
+
   test('refuses to book an order that was never quoted', async () => {
     orderRow = { ...ORDER, lalamove_quotation_id: null }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../lib/hooks";
@@ -94,11 +94,17 @@ function KitchenAutoPrintWatcher() {
   const pendingRef = useRef<readonly string[]>([]);
   const isPrintingRef = useRef(false);
 
-  useEffect(() => {
-    if (orders === undefined) return;
-
+  // Joined once per change of the underlying rows. The cache keeps row
+  // identity across unchanged polls, so a quiet 15 s poll neither re-runs the
+  // 10k-row join nor re-runs the scan below.
+  const tickets = useMemo(() => {
+    if (orders === undefined) return undefined;
     const scopedOrders = filterOrdersToScope(scope, orders) as KitchenOrderLike[];
-    const tickets = selectKitchenTickets(scopedOrders, allItems);
+    return selectKitchenTickets(scopedOrders, allItems);
+  }, [orders, allItems, scope]);
+
+  useEffect(() => {
+    if (tickets === undefined) return;
 
     const scan = scanNewTickets(
       seenRef.current,
@@ -139,7 +145,7 @@ function KitchenAutoPrintWatcher() {
         .filter((t): t is KitchenTicket => t !== undefined),
       isPrintingRef,
     );
-  }, [orders, allItems, scope, printedList]);
+  }, [tickets, printedList]);
 
   return null;
 }

@@ -26,6 +26,12 @@ export interface QrBmpResult {
 
 const DEFAULT_MODULE_SIZE = 6;
 const DEFAULT_QUIET_ZONE = 4;
+/**
+ * Narrowest print head we support, in dots (58mm paper; 80mm is 576). A raster
+ * wider than the head is truncated by the printer rather than scaled, and a
+ * clipped QR does not scan — so the module size gives way instead.
+ */
+const MAX_PRINT_WIDTH_PX = 384;
 /** Error correction M: survives thermal smudging without bloating the code. */
 const ERROR_CORRECTION = "M";
 
@@ -85,7 +91,15 @@ export function buildQrBmpBase64(
     return null;
   }
 
-  const widthPx = (moduleCount + quietZone * 2) * moduleSize;
+  // Shrink the module size until the square fits the head. A long payload
+  // needs a higher QR version (more modules), which at the default 6 dots per
+  // module rasterizes well past the paper.
+  const spanModules = moduleCount + quietZone * 2;
+  const fittedModuleSize = Math.max(
+    1,
+    Math.min(moduleSize, Math.floor(MAX_PRINT_WIDTH_PX / spanModules)),
+  );
+  const widthPx = spanModules * fittedModuleSize;
   const rowBytes = Math.ceil((widthPx * 3) / 4) * 4; // rows pad to 4 bytes
   const fileSize = BMP_HEADER_BYTES + rowBytes * widthPx;
   const bytes = new Uint8Array(fileSize).fill(0xff); // white by default
@@ -114,12 +128,12 @@ export function buildQrBmpBase64(
   for (let row = 0; row < moduleCount; row++) {
     for (let col = 0; col < moduleCount; col++) {
       if (!isDark(row, col)) continue;
-      const x0 = (quietZone + col) * moduleSize;
-      const y0 = (quietZone + row) * moduleSize;
-      for (let dy = 0; dy < moduleSize; dy++) {
+      const x0 = (quietZone + col) * fittedModuleSize;
+      const y0 = (quietZone + row) * fittedModuleSize;
+      for (let dy = 0; dy < fittedModuleSize; dy++) {
         const bmpRow = widthPx - 1 - (y0 + dy);
         const rowOffset = BMP_HEADER_BYTES + bmpRow * rowBytes;
-        for (let dx = 0; dx < moduleSize; dx++) {
+        for (let dx = 0; dx < fittedModuleSize; dx++) {
           const px = rowOffset + (x0 + dx) * 3;
           bytes[px] = 0x00;
           bytes[px + 1] = 0x00;

@@ -38,6 +38,19 @@ export interface OutletRow {
   name: string;
 }
 
+/**
+ * The one `tenants` projection this app reads at sign-in.
+ *
+ * A constant, not two literals, because it was written out twice — in
+ * `app/_layout.tsx` and in `app/(auth)/login.tsx` — and a column added to one
+ * copy silently resolves to `undefined` in the other. That failure is invisible:
+ * the feature simply never appears for anyone who signed in through the other
+ * path, with no error anywhere. `lib/session-tenant-select.test.ts` pins both
+ * call sites to this constant.
+ */
+export const TENANT_SESSION_SELECT =
+  "id, slug, name, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, logo_url, customer_hub_enabled, loyalty_enabled";
+
 /** Shape of the `tenants` row the app selects. */
 export interface TenantRow {
   id: string;
@@ -51,6 +64,9 @@ export interface TenantRow {
   receipt_layout?: unknown;
   /** Store logo image URL — printed by the receipt's logo block. */
   logo_url?: string | null;
+  /** Pilot switch for the Customer Hub; absent or null reads as OFF. */
+  customer_hub_enabled?: boolean | null;
+  loyalty_enabled?: boolean | null;
 }
 
 export type SessionMode = "superadmin" | "merchant" | "denied";
@@ -83,6 +99,17 @@ export interface SessionAuthPatch {
   receiptLayout: unknown;
   /** Store logo URL for the receipt's logo block; null when the tenant has none. */
   receiptLogoUrl: string | null;
+  /**
+   * Whether this store may see the Customer Hub.
+   *
+   * Defaults to FALSE on anything unknown — unlike most flags in this codebase,
+   * whose absence means "on" to preserve existing behaviour. The Hub is new, so
+   * there is no behaviour to preserve, and a half-filled customer ledger would
+   * render a confident repeat rate that is simply wrong.
+   */
+  customerHubEnabled: boolean;
+  /** Loyalty earning is on for this store. Unknown reads as OFF. */
+  loyaltyEnabled: boolean;
   isLoading: false;
   isAuthenticated: true;
   isSuperadmin: boolean;
@@ -177,6 +204,10 @@ export function resolveSession(
         orderBackend: null,
         receiptLayout: null,
         receiptLogoUrl: null,
+        // A superadmin holds no store, so no store's Hub switch. Impersonating
+        // one fills this in from that tenant's row.
+        customerHubEnabled: false,
+        loyaltyEnabled: false,
         isLoading: false,
         isAuthenticated: true,
         isSuperadmin: true,
@@ -215,6 +246,8 @@ export function resolveSession(
       orderBackend: resolveOrderBackend(tenant),
       receiptLayout: tenant.receipt_layout ?? null,
       receiptLogoUrl: tenant.logo_url ?? null,
+      customerHubEnabled: tenant.customer_hub_enabled === true,
+      loyaltyEnabled: tenant.loyalty_enabled === true,
       isLoading: false,
       isAuthenticated: true,
       isSuperadmin: false,

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
@@ -29,6 +28,7 @@ import {
 } from "../../lib/pos-payment-methods";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
+import { posReceiptOrder } from "../../lib/pos-receipt";
 import { staleBackendMessage } from "../../lib/stale-backend";
 import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
 import { posOutletContext } from "../../lib/order-outlet";
@@ -48,6 +48,7 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
 import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
 import { EmptyState } from "../../components/EmptyState";
+import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
@@ -55,6 +56,19 @@ const updatePaymentStatusRef =
   "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
 const reviseOrderRef = "orders:reviseOrder" as unknown as FunctionReference<"mutation">;
 const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
+
+/**
+ * Post-sale bookkeeping (stock, Loyverse, vouchers, guest capture, receipt)
+ * runs after the cashier has the till back. None of it can fail the sale —
+ * the order is already saved and paid — so a failure is logged, never shown.
+ */
+async function settleSaleInBackground(settle: () => Promise<void>): Promise<void> {
+  try {
+    await settle();
+  } catch (err) {
+    console.warn("[pos] Post-sale bookkeeping failed:", err);
+  }
+}
 
 export default function PosTenderScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
@@ -443,11 +457,21 @@ export default function PosTenderScreen() {
         console.warn("[pos] Could not mark the sale paid:", err);
       }
 
+      // The sale is saved and paid: hand the till back NOW. Everything below
+      // is bookkeeping the cashier never needs to watch. It used to run before
+      // the spinner cleared — four platform round-trips and then a Bluetooth
+      // print, each with its own deadline — so a swipe at a busy counter sat
+      // on "completing" for many seconds and read as the POS hanging.
+      reset();
+      // navigate, not replace: replacing into a sibling tab renames the tab
+      // navigator's state key and remounts it mid-transition, which crashes with
+      // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
+      goTo(router, "/(main)/pos-sales");
+
+      void settleSaleInBackground(async () => {
       // Everything the sale owes the platform, reported TOGETHER rather than
       // one after another. None of them can throw and none depends on
-      // another's answer, so run in sequence they only add up their deadlines —
-      // and a cashier watching four of those in a row reads the spinner as the
-      // register having hung again.
+      // another's answer.
       if (tenantId) {
         await Promise.all([
           // Spend the sale's ingredients. The order lives in Convex, so it
@@ -501,36 +525,15 @@ export default function PosTenderScreen() {
 
       // A settled counter sale IS the bill-out moment, so it obeys the same
       // setting as every other receipt rather than printing unconditionally.
+      // The print queue serialises against the kitchen chit, and a dead
+      // printer only logs — the sale is already in the drawer.
       if (shouldPrint("billout")) {
-        await printOrder({
-          _id: String(orderId),
-          _creationTime: Date.now(),
-          customerName: args.customerName,
-          customerContact: args.customerContact,
-          orderType: args.orderType,
-          total: args.total,
-          paymentMethod: args.paymentMethod,
-          cashTendered: tender.cashTendered,
-          changeDue: tender.changeDue,
-          paymentReference: tender.reference,
-          items: lines.map((line) => ({
-            menuItemName: line.name,
-            quantity: line.quantity,
-            subtotal: line.subtotal,
-            variationSelections: line.selections.map((s) => ({
-              typeName: s.groupName,
-              optionName: s.optionName,
-            })),
-            specialInstructions: line.note,
-          })),
-        });
+        // Built from the arguments the sale was written with, so the paper
+        // carries every figure the order does — delivery fee, service charge
+        // and discount included. See `lib/pos-receipt.ts`.
+        await printOrder(posReceiptOrder(String(orderId), args, tender));
       }
-
-      reset();
-      // navigate, not replace: replacing into a sibling tab renames the tab
-      // navigator's state key and remounts it mid-transition, which crashes with
-      // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
-      goTo(router, "/(main)/pos-sales");
+      });
     } catch (err) {
       // A store several bundles behind rejects `source: "pos"` outright — its
       // validator predates counter sales. That is a deployment to update, not
@@ -590,11 +593,7 @@ export default function PosTenderScreen() {
   }
 
   if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
+    return <LoadingState fullScreen message="Loading sale..." />;
   }
 
   return (
@@ -767,7 +766,7 @@ export default function PosTenderScreen() {
 
       <View style={styles.footer}>
         {isCompleting ? (
-          <ActivityIndicator color={colors.accent} />
+          <LoadingState surface="card" message="Completing sale..." />
         ) : (
           <SwipeToComplete
             label={

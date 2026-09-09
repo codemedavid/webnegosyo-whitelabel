@@ -254,8 +254,6 @@ export async function createTenantUser(input: {
  */
 export async function removeTenantUser(userId: string, tenantId: string) {
   try {
-    const supabase = await createClient()
-
     const auth = await requireSuperadmin()
     if (!auth.currentUser) {
       return { error: auth.error }
@@ -270,8 +268,14 @@ export async function removeTenantUser(userId: string, tenantId: string) {
     // able to manage staff, and no in-product way to fix it.
     assertNotLastOwner(await makeOwnershipStore().listTenantUsers(tenantId), userId)
 
+    // The only RLS policy on app_users is "read your own row", so this write
+    // has to go through the service role — the superadmin gate above is what
+    // authorises it. Sent on the request-scoped client it matched nothing and
+    // reported the account as missing while leaving it in place.
+    const adminClient = createAdminClient()
+
     // Delete from app_users
-    const { data: deletedRows, error } = await supabase
+    const { data: deletedRows, error } = await adminClient
       .from('app_users')
       .delete()
       .eq('user_id', userId)
@@ -287,7 +291,6 @@ export async function removeTenantUser(userId: string, tenantId: string) {
     }
 
     // Also delete the auth user using admin client
-    const adminClient = createAdminClient()
     await adminClient.auth.admin.deleteUser(userId)
 
     // Revalidate pages
@@ -310,8 +313,6 @@ export async function updateTenantUser(input: {
   tenant_id: string | null
 }) {
   try {
-    const supabase = await createClient()
-
     // Validate input
     const parsed = updateUserSchema.parse(input)
 
@@ -325,8 +326,12 @@ export async function updateTenantUser(input: {
       return { error: 'Cannot modify your own role' }
     }
 
+    // Service role for the same reason removeTenantUser needs it: no RLS
+    // policy on app_users admits a write from the signed-in superadmin.
+    const adminClient = createAdminClient()
+
     // Update app_users entry
-    const { data, error } = await supabase
+    const { data, error } = await adminClient
       .from('app_users')
       .update({
         role: parsed.role,

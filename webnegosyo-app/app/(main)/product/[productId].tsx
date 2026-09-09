@@ -35,6 +35,7 @@ import { ModifierGroupsEditor } from "../../../components/ModifierGroupsEditor";
 import { supabase } from "../../../lib/supabase";
 import { uploadProductImage } from "../../../lib/product-image-upload";
 import { notifyMenuRevalidate } from "../../../lib/menu-revalidate";
+import { useMenuCatalogCache } from "../../../lib/query/use-products";
 import { productHref, recipeHref } from "../../../lib/navigation";
 import { goTo } from "../../../lib/tab-navigation";
 import { pickProductImage } from "../../../lib/image-picker";
@@ -85,6 +86,10 @@ export default function ProductEditorScreen() {
     isNew ? "skip" : { menuItemId: productId }
   );
   const setCost = useSafeMutation(setCostRef);
+  // Every write here is read by the product list, the branch menu, the
+  // register and the analytics screen from the shared cache; one invalidation
+  // after each is what shows them the change without a manual reload.
+  const { invalidate: invalidateMenuCatalog } = useMenuCatalogCache();
 
   // The editor is a persistent tab screen that never unmounts, so it is reused
   // when the user goes Edit(A) → back → Add. Always derive state from
@@ -201,6 +206,7 @@ export default function ProductEditorScreen() {
       } else {
         await updateProduct(productId, tenantId, candidate);
       }
+      void invalidateMenuCatalog(tenantId);
       if (tenantSlug) void notifyMenuRevalidate(tenantId, tenantSlug);
       Alert.alert("Saved", "Product saved successfully.");
       if (!isNew) router.back();
@@ -225,6 +231,7 @@ export default function ProductEditorScreen() {
           if (!tenantId) return;
           try {
             await deleteProduct(productId, tenantId);
+            void invalidateMenuCatalog(tenantId);
             if (tenantSlug) void notifyMenuRevalidate(tenantId, tenantSlug);
             router.back();
           } catch {
@@ -241,13 +248,14 @@ export default function ProductEditorScreen() {
       return;
     }
     const cost = parseFloat(costText);
-    if (isNaN(cost) || cost < 0) {
+    if (!Number.isFinite(cost) || cost < 0) {
       Alert.alert("Invalid cost", "Enter a valid cost price (a number ≥ 0).");
       return;
     }
     setIsSavingCost(true);
     try {
       await setCost({ menuItemId: productId, costPrice: cost });
+      if (tenantId) void invalidateMenuCatalog(tenantId);
       Alert.alert("Saved", "Cost price saved.");
     } catch {
       Alert.alert("Error", "Could not save the cost price.");

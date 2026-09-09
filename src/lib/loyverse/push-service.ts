@@ -11,6 +11,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import type { ModifierGroup, OrderItem, Tenant } from '@/types/database'
 import { resolveLoyverseConfig, type LoyversePushMode } from '@/lib/loyverse/config'
 import {
@@ -162,7 +163,9 @@ export async function pushOrderToLoyverseBestEffort(
         .select('*')
         .eq('id', request.tenantId)
         .maybeSingle()
-      tenant = (data as unknown as Tenant) ?? null
+      const row = (data as unknown as Tenant) ?? null
+      // The access token lives in tenant_secrets, not on the row.
+      tenant = row ? mergeTenantSecrets(row, await getTenantSecrets(admin, request.tenantId)) : null
     }
     if (!tenant) return skippedOutcome('Tenant not found')
 

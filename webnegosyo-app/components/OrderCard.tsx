@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { formatPeso } from "../lib/format";
@@ -16,6 +16,7 @@ import {
 import { getScheduledISO, getScheduledLabel } from "../lib/scheduled-orders";
 import { getPresellDate, formatPresellDate } from "../lib/presell-orders";
 import { getOrderTableNumber } from "../lib/order-table-number";
+import { useTickerNow } from "./TickerProvider";
 
 export interface OrderCardOrder {
   _id: string;
@@ -57,7 +58,14 @@ interface OrderCardProps {
 
 const MAX_THUMBNAILS = 4;
 
-export function OrderCard({
+/**
+ * Memoised: on a 200-row queue the list re-renders on every poll and every
+ * keystroke in the search box, and a card whose order row (structurally
+ * shared across unchanged polls) and callbacks are the same has nothing new
+ * to draw. The age and urgency accent still move — they read the shared
+ * ticker rather than the render's own `Date.now()`.
+ */
+export const OrderCard = memo(function OrderCard({
   order,
   onPress,
   thumbnails,
@@ -75,9 +83,11 @@ export function OrderCard({
   const scheduledLabel = getScheduledLabel(order);
   const presellDate = getPresellDate(order);
   const scheduledAtMs = scheduledISO ? new Date(scheduledISO).getTime() : null;
+  const nowMs = useTickerNow();
   const urgencyColor = getUrgencyColor(
-    getScheduleAwareUrgency(order._creationTime, scheduledAtMs),
+    getScheduleAwareUrgency(order._creationTime, scheduledAtMs, nowMs),
   );
+  const timeAgo = formatTimeAgo(order._creationTime, nowMs);
   const accentColor = isActive ? urgencyColor : colors.separator;
   const isUnpaid = order.paymentStatus != null && order.paymentStatus !== "paid";
 
@@ -124,7 +134,7 @@ export function OrderCard({
         {order.source ? <Text style={styles.metaDot}>·</Text> : null}
         {order.source ? <Text style={styles.meta}>{order.source}</Text> : null}
         <Text style={styles.metaDot}>·</Text>
-        <Text style={styles.meta}>{formatTimeAgo(order._creationTime)}</Text>
+        <Text style={styles.meta}>{timeAgo}</Text>
         {tableNumber ? (
           <View style={styles.tableChip}>
             <Text style={styles.tableText}>Table {tableNumber}</Text>
@@ -193,7 +203,7 @@ export function OrderCard({
       )}
     </TouchableOpacity>
   );
-}
+});
 
 const AVATAR_SIZE = 40;
 const THUMB_SIZE = 40;

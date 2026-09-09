@@ -11,6 +11,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import {
   testLoyverseConnection,
   type LoyverseConnectionTest,
@@ -87,7 +88,11 @@ export async function syncLoyverseCatalogAction(tenantId: string): Promise<Loyve
     }
   }
 
-  const tenantRow = tenant as unknown as Tenant
+  // The access token lives in tenant_secrets, not on the row just read.
+  const tenantRow: Tenant = mergeTenantSecrets(
+    tenant as unknown as Tenant,
+    await getTenantSecrets(admin, tenantId)
+  )
 
   // Webhooks are registered BEFORE the import: the import can outrun the
   // function timeout on a big catalog, and registration dying with it is how

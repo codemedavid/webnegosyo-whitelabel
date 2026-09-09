@@ -22,9 +22,17 @@ interface ConvexOrdersWrapperProps {
   tenantId?: string;
   /** The branch this admin may see, resolved on the server. */
   scope?: BranchScope;
+  /** The tenant's `lalamove_enabled` flag, read on the server. */
+  lalamoveEnabled?: boolean;
 }
 
-function ConvexOrdersContent({ tenantId, scope }: { tenantId?: string; scope?: BranchScope }) {
+interface ConvexOrdersContentProps {
+  tenantId?: string;
+  scope?: BranchScope;
+  lalamoveEnabled?: boolean;
+}
+
+function ConvexOrdersContent({ tenantId, scope, lalamoveEnabled }: ConvexOrdersContentProps) {
   const [sheetOrderId, setSheetOrderId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -56,7 +64,7 @@ function ConvexOrdersContent({ tenantId, scope }: { tenantId?: string; scope?: B
         </TabsList>
 
         <TabsContent value="orders" className="mt-4">
-          <ConvexOrdersTab tenantId={tenantId} scope={scope} />
+          <ConvexOrdersTab tenantId={tenantId} scope={scope} lalamoveEnabled={lalamoveEnabled} />
         </TabsContent>
 
         <TabsContent value="dashboard" className="mt-4">
@@ -78,12 +86,18 @@ function ConvexOrdersContent({ tenantId, scope }: { tenantId?: string; scope?: B
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         tenantId={tenantId}
+        lalamoveEnabled={lalamoveEnabled}
       />
     </>
   );
 }
 
-export function ConvexOrdersWrapper({ convexUrl, tenantId, scope }: ConvexOrdersWrapperProps) {
+export function ConvexOrdersWrapper({
+  convexUrl,
+  tenantId,
+  scope,
+  lalamoveEnabled,
+}: ConvexOrdersWrapperProps) {
   return (
     <SafeConvexProvider
       url={convexUrl}
@@ -93,7 +107,7 @@ export function ConvexOrdersWrapper({ convexUrl, tenantId, scope }: ConvexOrders
         </div>
       }
     >
-      <ConvexOrdersContent tenantId={tenantId} scope={scope} />
+      <ConvexOrdersContent tenantId={tenantId} scope={scope} lalamoveEnabled={lalamoveEnabled} />
     </SafeConvexProvider>
   );
 }

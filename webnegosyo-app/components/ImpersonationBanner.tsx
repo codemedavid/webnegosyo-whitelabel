@@ -2,11 +2,13 @@ import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useShallow } from "zustand/react/shallow";
 import { useAuthStore } from "../stores/auth-store";
 import {
   exitTenant,
   impersonatedTenantName,
   isImpersonating,
+  type ImpersonationState,
 } from "../lib/impersonation";
 import { SUPERADMIN_LANDING_HREF } from "../lib/session-resolve";
 import { colors, typography, radius, spacing } from "../theme/colors";
@@ -19,8 +21,26 @@ import { colors, typography, radius, spacing } from "../theme/colors";
  * Renders nothing for an ordinary merchant admin: they own their tenant rather
  * than borrowing it.
  */
+/** The slice the banner reads, so a store write elsewhere (a poll's outlet
+ * list, a permissions refresh) does not re-render the whole tab tree above it. */
+function selectImpersonation(s: ImpersonationState): ImpersonationState {
+  return {
+    userId: s.userId,
+    tenantId: s.tenantId,
+    tenantSlug: s.tenantSlug,
+    tenantName: s.tenantName,
+    convexUrl: s.convexUrl,
+    orderBackend: s.orderBackend,
+    isSuperadmin: s.isSuperadmin,
+    isOwner: s.isOwner,
+    permissions: s.permissions,
+    role: s.role,
+    impersonatedTenantId: s.impersonatedTenantId,
+  };
+}
+
 export function ImpersonationBanner() {
-  const state = useAuthStore();
+  const state = useAuthStore(useShallow(selectImpersonation));
   const insets = useSafeAreaInsets();
 
   if (!isImpersonating(state)) return null;

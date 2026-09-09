@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { isRealContact } from '@/lib/order-contact'
@@ -89,24 +90,27 @@ export async function fetchOrderTrackingData(
     // Check if tenant uses Convex
     const { data: tenantConfig } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key')
+      .select('convex_deployment_url')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const config = tenantConfig as Record<string, any> | null
+    const config = tenantConfig as { convex_deployment_url?: string | null } | null
 
     if (!config) {
       return { data: null, error: 'Restaurant not found' }
     }
 
+    const deployKey = config.convex_deployment_url
+      ? (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
+      : null
+
     let result: TrackingData
 
-    if (config.convex_deployment_url && config.convex_deploy_key) {
+    if (config.convex_deployment_url && deployKey) {
       result = await fetchFromConvex(
         config.convex_deployment_url,
-        config.convex_deploy_key,
+        deployKey,
         orderId,
         supabaseAdmin,
         tenantId

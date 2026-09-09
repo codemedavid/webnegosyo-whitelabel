@@ -169,12 +169,14 @@ describe('fetchMenuPerformanceForTenantId', () => {
   function clientReturning(tenantRow: unknown, orderRows: unknown[] = []) {
     return {
       from: (table: string) => {
-        if (table === 'tenants') {
+        if (table === 'tenants' || table === 'tenant_secrets') {
           const b: Record<string, unknown> = {}
           Object.assign(b, {
             select: () => b,
             eq: () => b,
             single: () => Promise.resolve({ data: tenantRow, error: null }),
+            // A platform tenant has no secrets row; the read must still succeed.
+            maybeSingle: () => Promise.resolve({ data: null, error: null }),
           })
           return b
         }

@@ -51,7 +51,7 @@ function makeClient(rowsByTable: Record<string, unknown[]>, rpcResult?: { data?:
 
       return builder
     },
-    rpc: jest.fn(async () => rpcResult ?? { data: 'redemption-1', error: null }),
+    rpc: jest.fn(async (..._args: unknown[]) => rpcResult ?? { data: 'redemption-1', error: null }),
   }
 
   return { client, calls }

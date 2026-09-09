@@ -19,6 +19,10 @@ const eslintConfig = [
       "build/**",
       "next-env.d.ts",
       "scripts/**",
+      // Node CJS SQL harnesses, run with `node`, not bundled — same class as scripts/**
+      "tests/sql/**",
+      ".worktrees/**",
+      "webnegosyo-desktop/out/**",
     ],
   },
 ];

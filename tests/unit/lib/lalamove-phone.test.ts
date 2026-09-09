@@ -1,4 +1,4 @@
-import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { normalizeLalamovePhone, isE164Phone } from '@/lib/lalamove-phone'
 
 describe('normalizeLalamovePhone', () => {
   describe('empty / invalid input', () => {
@@ -48,5 +48,29 @@ describe('normalizeLalamovePhone', () => {
     test('treats missing market as non-PH', () => {
       expect(normalizeLalamovePhone('85256847123', undefined)).toBe('+85256847123')
     })
+  })
+})
+
+describe('normalizeLalamovePhone — already-prefixed numbers with formatting', () => {
+  test('strips spaces and dashes inside a + number instead of passing them through', () => {
+    // A merchant typed "+63 917 123 4567" into the pickup phone; Lalamove
+    // rejects anything but bare E.164.
+    expect(normalizeLalamovePhone('+63 917-123 4567', 'PH')).toBe('+639171234567')
+    expect(normalizeLalamovePhone('+639081760718 ', 'PH')).toBe('+639081760718')
+  })
+})
+
+describe('isE164Phone', () => {
+  test('accepts a bare E.164 number', () => {
+    expect(isE164Phone('+639171234567')).toBe(true)
+    expect(isE164Phone('+85256847123')).toBe(true)
+  })
+
+  test('rejects blanks, local formats and email addresses', () => {
+    expect(isE164Phone('')).toBe(false)
+    expect(isE164Phone(undefined)).toBe(false)
+    expect(isE164Phone('09171234567')).toBe(false)
+    expect(isE164Phone('ana@example.com')).toBe(false)
+    expect(isE164Phone('+0917')).toBe(false)
   })
 })

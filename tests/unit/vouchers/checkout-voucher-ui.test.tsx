@@ -107,6 +107,16 @@ jest.mock('@/app/actions/orders', () => ({
   },
 }))
 
+// The two submit-time preflights are server actions too. Left real, they open
+// an admin Supabase client against whatever .env.test names and never answer,
+// so the click below would never reach createOrderAction.
+jest.mock('@/app/actions/checkout-stock', () => ({
+  preflightCheckoutStockAction: jest.fn(async () => ({ ok: true })),
+}))
+jest.mock('@/app/actions/presell-checkout', () => ({
+  preflightPresellAction: jest.fn(async () => ({ ok: true })),
+}))
+
 jest.mock('@/app/actions/analytics', () => ({
   trackAnalyticsEventAction: jest.fn(async () => undefined),
 }))

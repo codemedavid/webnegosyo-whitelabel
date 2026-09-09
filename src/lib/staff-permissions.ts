@@ -19,6 +19,13 @@ export const STAFF_PERMISSION_KEYS = [
   // Its own key (not 'orders') so a cook's tablet can show the board without
   // also granting the full order queue, payments, and cancellations.
   'kitchen',
+  // Loyalty programs: creating one, changing its rules, pausing it, and
+  // correcting a customer's balance. Its own key rather than 'customers'
+  // because a balance correction moves value, and 'vouchers' because a staffer
+  // who may retire a promo code should not be able to rewrite every regular's
+  // stamp card. Attaching a customer at the register needs no grant.
+  'loyalty_manage',
+  'loyalty_redeem',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -74,6 +81,14 @@ export const STAFF_PERMISSION_LABELS: Record<
   kitchen: {
     label: 'Kitchen Display',
     description: 'See active tickets on the kitchen display and mark them ready',
+  },
+  loyalty_manage: {
+    label: 'Loyalty Programs',
+    description: 'Create and change loyalty programs and correct balances — grant sparingly',
+  },
+  loyalty_redeem: {
+    label: 'Redeem Loyalty Rewards',
+    description: 'Apply verified customer rewards at POS without access to customer history',
   },
 }
 

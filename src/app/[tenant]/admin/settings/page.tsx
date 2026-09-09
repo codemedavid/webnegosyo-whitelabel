@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
@@ -19,6 +20,20 @@ import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
 import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { listStaffAction } from '@/app/actions/staff'
 import type { StaffRecord } from '@/lib/staff-service'
+
+async function hasStoredLalamoveKeys(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+): Promise<boolean> {
+  try {
+    const secrets = await getTenantSecrets(supabase, tenantId)
+    return Boolean(secrets?.lalamove_api_key && secrets?.lalamove_secret_key)
+  } catch (error) {
+    // The card still renders; it just offers to set keys rather than replace them.
+    console.error('[settings] could not read Lalamove keys:', error instanceof Error ? error.message : error)
+    return false
+  }
+}
 
 export default async function SettingsPage({
   params,
@@ -45,6 +60,12 @@ export default async function SettingsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  // Only a "has keys" boolean ever reaches the page; the keys themselves stay
+  // in tenant_secrets, which RLS grants this store's own admins.
+  const hasLalamoveKeys = isOwner && tenant.lalamove_enabled
+    ? await hasStoredLalamoveKeys(supabase, tenant.id)
+    : false
 
   let staff: StaffRecord[] = []
   let outlets: { id: string; name: string }[] = []
@@ -124,7 +145,7 @@ export default async function SettingsPage({
         <LalamoveKeysCard
           tenantId={tenant.id}
           tenantSlug={tenantSlug}
-          hasExistingKeys={Boolean(tenant.lalamove_api_key && tenant.lalamove_secret_key)}
+          hasExistingKeys={hasLalamoveKeys}
         />
       )}
 

@@ -12,6 +12,8 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+import { TENANT_SESSION_SELECT } from "./session-resolve";
+
 const ROOT = join(__dirname, "..");
 
 function read(...segments: string[]): string {
@@ -52,7 +54,13 @@ describe("interactive login tenant read", () => {
     // app/_layout.tsx selects it; when login omits it the session lands with
     // convexSchemaVersion = null and branch-scoped daily-report revenue is
     // withheld until the next cold start.
-    expect(login).toMatch(/convex_schema_version/);
+    //
+    // Both paths now project through one shared constant, which is a stronger
+    // guarantee than each spelling the column out: the two literals could drift,
+    // the constant cannot. Asserted at its source in
+    // `lib/session-tenant-select.test.ts`.
+    expect(login).toMatch(/\.select\(TENANT_SESSION_SELECT\)/);
+    expect(TENANT_SESSION_SELECT).toMatch(/convex_schema_version/);
   });
 });
 

@@ -17,7 +17,7 @@ import { AddonEditor } from '@/components/admin/addon-editor'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
 import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
 import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
-import { PresellStockPanel } from '@/components/admin/presell-stock-panel'
+import { MenuItemPresellSection, SettingSwitch } from '@/components/admin/menu-item-presell-section'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { serializeGroups, splitGroupsToLegacyColumns } from '@/lib/modifier-groups-form'
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
@@ -571,63 +571,38 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             )}
           </div>
 
-          <div className="flex flex-wrap gap-4">
-            <label
-              className="flex items-center gap-2"
-              title="Unchecked, this dish stays on your menu marked unavailable — it is not removed"
-            >
-              <input
-                type="checkbox"
-                checked={formData.is_available}
-                onChange={(e) => setFormData({ ...formData, is_available: e.target.checked })}
-                className="h-4 w-4"
-              />
-              <span className="text-sm font-medium">In stock</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={formData.is_featured}
-                onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
-                className="h-4 w-4"
-              />
-              <span className="text-sm font-medium">Featured</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer" title="Show this item in the checkout upsell interstitial">
-              <input
-                type="checkbox"
-                checked={formData.show_in_checkout_upsell}
-                onChange={(e) => setFormData({ ...formData, show_in_checkout_upsell: e.target.checked })}
-                className="h-4 w-4"
-              />
-              <span className="text-sm font-medium">Show in Checkout Upsell</span>
-            </label>
+          <div className="divide-y rounded-xl border">
+            <SettingSwitch
+              id="is_available"
+              label="In stock"
+              description="Off, the dish stays on your menu marked out of stock — it is not removed."
+              checked={formData.is_available}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_available: checked })}
+            />
+            <SettingSwitch
+              id="is_featured"
+              label="Featured"
+              description="Highlight this dish on the storefront."
+              checked={formData.is_featured}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_featured: checked })}
+            />
+            <SettingSwitch
+              id="show_in_checkout_upsell"
+              label="Show in checkout upsell"
+              description="Offer it on the “Before you go” screen at checkout."
+              checked={formData.show_in_checkout_upsell}
+              onCheckedChange={(checked) => setFormData({ ...formData, show_in_checkout_upsell: checked })}
+            />
           </div>
 
           {presellEnabled && (
-            <div className="border-t pt-4 mt-2 space-y-3">
-              <label
-                className="flex items-center gap-2 cursor-pointer"
-                title="Customers must pick one of the dates below when ordering this item"
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.presell_enabled}
-                  onChange={(e) => setFormData({ ...formData, presell_enabled: e.target.checked })}
-                  className="h-4 w-4"
-                />
-                <span className="text-sm font-medium">Pre-order (limited stock per date)</span>
-              </label>
-              {formData.presell_enabled && (
-                item ? (
-                  <PresellStockPanel tenantId={tenantId} tenantSlug={tenantSlug} menuItemId={item.id} />
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Save the item first, then come back to set stock per date.
-                  </p>
-                )
-              )}
-            </div>
+            <MenuItemPresellSection
+              isEnabled={formData.presell_enabled}
+              onToggle={(checked) => setFormData({ ...formData, presell_enabled: checked })}
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              menuItemId={item?.id ?? null}
+            />
           )}
 
           {menuEngineeringEnabled && (

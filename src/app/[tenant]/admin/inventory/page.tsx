@@ -27,10 +27,27 @@ import {
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import type { CountSessionProgress } from '@/lib/inventory/count-session'
 import { getDailyRevenue } from '@/lib/inventory/daily-revenue-read'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { resolveReportScope } from '@/lib/inventory/report-scope'
 import { resolveReportDay } from '@/lib/inventory/business-day'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { Tenant } from '@/types/database'
+
+/**
+ * The cached tenant row carries no credentials (they live in tenant_secrets),
+ * but the revenue read needs the Convex deploy key to reach a Convex-backed
+ * store. Read failures degrade to "no key": `getDailyRevenue` then reports the
+ * takings as unreadable, which is what the panel is built to say.
+ */
+async function withOrderCredentials(tenant: Tenant): Promise<Tenant> {
+  try {
+    return mergeTenantSecrets(tenant, await getTenantSecrets(createAdminClient(), tenant.id))
+  } catch (error) {
+    console.error('[inventory] could not read tenant secrets:', error instanceof Error ? error.message : error)
+    return tenant
+  }
+}
 
 export default async function AdminInventoryPage({
   params,
@@ -173,7 +190,7 @@ export default async function AdminInventoryPage({
   const dailyRevenue = !dailyReport
     ? null
     : reportScope.isRevenueBranchScoped
-      ? await getDailyRevenue(tenant, dayKey, {}, reportScope.outletId)
+      ? await getDailyRevenue(await withOrderCredentials(tenant), dayKey, {}, reportScope.outletId)
       : undefined
 
   // The count running on this shelf, if one is. Wrapped because a failure here

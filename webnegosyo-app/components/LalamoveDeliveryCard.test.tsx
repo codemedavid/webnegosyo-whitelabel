@@ -247,6 +247,41 @@ describe("what the merchant can see", () => {
     expect(screen.queryByText(/Lalamove/i)).toBeNull();
   });
 
+  it("offers a quote on a delivery that has an address but no quotation", async () => {
+    // Arrange: the checkout-time quote failed, so the order has an address
+    // and nothing else. The card used to vanish — "no quotation" with no
+    // way to get one from the phone.
+    render(<LalamoveDeliveryCard order={{ _id: "o1", deliveryAddress: "12 Mabini St" }} />);
+    expect(screen.queryByText(/Book Lalamove Delivery/i)).toBeNull();
+
+    // Act
+    fireEvent.press(screen.getByText("Get Lalamove Quote"));
+
+    // Assert
+    await waitFor(() =>
+      expect(mockRunPlatformLalamoveOp).toHaveBeenCalledWith(
+        expect.objectContaining({ op: "requote", orderId: "o1" }),
+      ),
+    );
+  });
+
+  it("tells the merchant when the rider will be calling the store", async () => {
+    // Arrange: the customer left no phone, so the server booked with the
+    // store's number. A merchant who does not know that will wait for a
+    // call that goes to the counter.
+    mockRunPlatformLalamoveOp.mockResolvedValue({ success: true, recipientPhoneSource: "store" });
+    render(<LalamoveDeliveryCard order={QUOTED} />);
+
+    // Act
+    fireEvent.press(screen.getByText("Book Lalamove Delivery"));
+    pressAlertButton(/^Book$/);
+
+    // Assert
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith("Success", expect.stringMatching(/call the store/i)),
+    );
+  });
+
   it("explains itself rather than offering a button that cannot work", () => {
     // Arrange: a per-tenant Supabase project — the app ships no adapter, so
     // there is no transport. Silently showing Book would fail every tap.

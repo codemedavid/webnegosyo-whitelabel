@@ -18,6 +18,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import {
   resolveOrderBackend,
@@ -181,7 +182,7 @@ export async function fetchMenuPerformance(
 
 /** Tenant columns needed to decide where the orders are and how to reach them. */
 const TENANT_ROUTING_SELECT =
-  'id, order_backend, convex_deployment_url, convex_deploy_key, ' +
+  'id, order_backend, convex_deployment_url, ' +
   'supabase_order_url, supabase_order_anon_key, supabase_order_service_key'
 
 /**
@@ -207,7 +208,9 @@ export async function fetchMenuPerformanceForTenantId(
     throw new Error(`Tenant ${tenantId} could not be loaded: ${error?.message ?? 'not found'}`)
   }
 
-  return fetchMenuPerformance({ ...(data as unknown as MenuPerformanceTenant), id: tenantId }, {
+  const secrets = await getTenantSecrets(ctx.client, tenantId)
+
+  return fetchMenuPerformance(mergeTenantSecrets({ ...(data as unknown as MenuPerformanceTenant), id: tenantId }, secrets), {
     windowDays,
     platformClient: ctx.client as unknown as SupabaseClient,
   })

@@ -29,8 +29,6 @@ const TENANT_ROW = {
   restaurant_latitude: 14.5995,
   restaurant_longitude: 120.9842,
   lalamove_enabled: false,
-  lalamove_api_key: null,
-  lalamove_secret_key: null,
   lalamove_market: "PH",
   lalamove_service_type: "MOTORCYCLE",
   lalamove_sandbox: true,
@@ -40,7 +38,6 @@ const TENANT_ROW = {
   delivery_min_fee: null,
   delivery_radius_km: null,
   convex_deployment_url: "https://coffee.convex.cloud",
-  convex_deploy_key: "key-abc",
   admin_email: "owner@example.com",
   email_notifications_enabled: true,
 };
@@ -93,7 +90,7 @@ describe("toFormValues", () => {
   });
 
   it("renders a null string column as an empty string", () => {
-    expect(baseValues().lalamove_api_key).toBe("");
+    expect(baseValues().lalamove_sender_phone).toBe("");
   });
 
   it("carries booleans across unchanged", () => {
@@ -123,7 +120,6 @@ describe("toFormValues — a freshly created tenant", () => {
     delivery_min_fee: null,
     delivery_radius_km: null,
     convex_deployment_url: null,
-    convex_deploy_key: null,
     admin_email: null,
   };
 
@@ -151,7 +147,7 @@ describe("toFormValues — a freshly created tenant", () => {
 
     expect(payload.messenger_page_id).toBeNull();
     expect(payload.restaurant_latitude).toBeNull();
-    expect(payload.convex_deploy_key).toBeNull();
+    expect(payload.convex_deployment_url).toBeNull();
   });
 });
 
@@ -269,20 +265,20 @@ describe("validateTenantForm — identity", () => {
 });
 
 describe("validateTenantForm — delivery", () => {
-  it("requires Lalamove credentials once Lalamove is enabled", () => {
-    const errors = validateTenantForm({
-      ...baseValues(),
-      lalamove_enabled: true,
-      lalamove_api_key: "",
-      lalamove_secret_key: "",
-    });
-
-    expect(errors.lalamove_api_key).toMatch(/required/i);
-    expect(errors.lalamove_secret_key).toMatch(/required/i);
+  it("never carries Lalamove or Convex credentials — they live in tenant_secrets, edited on the web console only", () => {
+    // The anon key used to be able to read these straight off `tenants`; the
+    // app must neither select nor write them (see 20260904120000_tenant_secrets).
+    const values = baseValues() as unknown as Record<string, unknown>;
+    const payload = toUpdatePayload(baseValues()) as unknown as Record<string, unknown>;
+    for (const secret of ["lalamove_api_key", "lalamove_secret_key", "convex_deploy_key"]) {
+      expect(values).not.toHaveProperty(secret);
+      expect(payload).not.toHaveProperty(secret);
+    }
   });
 
-  it("ignores blank Lalamove credentials while Lalamove is off", () => {
-    expect(validateTenantForm(baseValues()).lalamove_api_key).toBeUndefined();
+  it("does not demand credentials when Lalamove is enabled — the console owns them", () => {
+    const errors = validateTenantForm({ ...baseValues(), lalamove_enabled: true });
+    expect(Object.keys(errors)).toHaveLength(0);
   });
 
   it("requires the fee inputs once distance delivery is enabled", () => {

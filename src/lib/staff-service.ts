@@ -159,6 +159,50 @@ function assertBranchHasRoom(
   )
 }
 
+const GRANT_OUTSIDE_SCOPE = 'You can only grant permissions you hold'
+
+/**
+ * May this caller hand out exactly these permissions? An owner or superadmin
+ * (or a pre-staff-management admin, `permissions: null`) may grant anything.
+ * Everyone else may grant only what they hold — a branch admin holding one
+ * permission must not be able to mint a full-access account (H3). `null` as
+ * the requested set means "full access", which only a full-access caller has.
+ *
+ * Same rule as `canGrantPermissions` in
+ * supabase/functions/manage-staff/staff-core.ts; change both together.
+ */
+export function canGrantPermissions(
+  caller: BranchStaffActor,
+  requested: readonly string[] | null
+): boolean {
+  if (caller.role === 'superadmin' || caller.is_owner) return true
+  if (caller.permissions == null) return true
+  if (requested === null) return false
+  const held = new Set(caller.permissions)
+  return requested.every((key) => held.has(key))
+}
+
+/**
+ * Refuses — never trims — a grant outside the caller's own scope. Skipped
+ * with no actor, like every other authority check here: a single-location
+ * caller that has not been taught about actors behaves exactly as before.
+ */
+function assertCanGrant(context: StaffBranchContext, requested: readonly string[]): void {
+  if (!context.actor) return
+  if (canGrantPermissions(context.actor, requested)) return
+  throw new Error(GRANT_OUTSIDE_SCOPE)
+}
+
+/**
+ * Taking over an account (a password reset) is bounded the same way as a
+ * grant: a caller may only reset accounts it could have created itself.
+ */
+function assertCanTakeOver(context: StaffBranchContext, target: StaffRecord): void {
+  if (!context.actor) return
+  if (canGrantPermissions(context.actor, target.permissions)) return
+  throw new Error(GRANT_OUTSIDE_SCOPE)
+}
+
 function assertNotOwner(record: StaffRecord): void {
   if (record.is_owner) {
     throw new Error('The tenant owner account cannot be modified here')
@@ -195,6 +239,7 @@ export async function createStaff(
     throw new Error('Enter a display name')
   }
   const permissions: StaffPermissionKey[] = validatePermissionKeys(input.permissions)
+  assertCanGrant(context, permissions)
 
   // Validated before the auth user is created, so a rejected branch cannot
   // leave a login behind with no account attached to it.
@@ -235,6 +280,7 @@ export async function updateStaffPermissions(
   assertNotOwner(record)
   assertCanManage(record, context)
   const validated = validatePermissionKeys(permissions)
+  assertCanGrant(context, validated)
 
   // A pinned screen can outlive the grant that opened it — unticking Analytics
   // from someone pinned to the Analytics screen is an ordinary edit. The app
@@ -314,6 +360,7 @@ export async function resetStaffPassword(
   const record = await findTenantStaff(store, tenantId, userId)
   assertNotOwner(record)
   assertCanManage(record, context)
+  assertCanTakeOver(context, record)
   await store.updateAuthPassword(userId, newPassword)
 }
 

@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import { openExternalUrl } from "../lib/safe-url";
 import { FunctionReference } from "convex/server";
 import { useSafeAction } from "../lib/hooks";
 import { useAuthStore } from "../stores/auth-store";
@@ -31,6 +32,9 @@ const AUTO_SYNC_INTERVAL_MS = 45_000;
 
 interface LalamoveOrderFields {
   _id: string;
+  /** Present on a delivery order. With no quotation, it is what makes the
+   * order quotable from here. */
+  deliveryAddress?: string;
   lalamoveQuotationId?: string;
   lalamoveOrderId?: string;
   lalamoveStatus?: string;
@@ -43,7 +47,15 @@ interface LalamoveDeliveryCardProps {
   order: LalamoveOrderFields;
 }
 
-type ActionResult = { success: boolean; error?: string };
+type ActionResult = {
+  success: boolean;
+  error?: string;
+  recipientPhoneSource?: "customer" | "store";
+};
+
+/** Shown after a booking that had to give the rider the store's number. */
+export const STORE_PHONE_RECIPIENT_NOTICE =
+  "The customer left no phone number, so the rider will call the store instead.";
 
 export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const bookLalamove = useSafeAction(bookLalamoveRef);
@@ -61,7 +73,10 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     null,
   );
 
-  const hasQuotation = !!order.lalamoveQuotationId;
+  const hasQuotation = !!order.lalamoveQuotationId && String(order.lalamoveQuotationId).trim() !== "";
+  // A delivery that was never quoted (the quote call failed at checkout, or
+  // the order came in by phone) can still be quoted from here.
+  const isQuotable = !!order.deliveryAddress && String(order.deliveryAddress).trim() !== "";
   const hasOrder = !!order.lalamoveOrderId && String(order.lalamoveOrderId).trim() !== "";
   const status = order.lalamoveStatus ?? "";
   const isFinal = isLalamoveFinal(status);
@@ -154,7 +169,12 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     try {
       const result = await dispatch("book");
       if (result?.success) {
-        Alert.alert("Success", "Delivery booked. Searching for a driver…");
+        Alert.alert(
+          "Success",
+          result.recipientPhoneSource === "store"
+            ? `Delivery booked. Searching for a driver… ${STORE_PHONE_RECIPIENT_NOTICE}`
+            : "Delivery booked. Searching for a driver…",
+        );
       } else if (result?.error && /expired|quotation/i.test(result.error)) {
         Alert.alert("Lalamove", result.error, [
           { text: "Close", style: "cancel" },
@@ -212,11 +232,13 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   };
 
   const handleTrack = () => {
-    if (order.lalamoveTrackingUrl) Linking.openURL(order.lalamoveTrackingUrl);
+    void openExternalUrl(order.lalamoveTrackingUrl);
   };
 
-  // Nothing to show if this order never had a Lalamove quotation.
-  if (!hasQuotation && !hasOrder) return null;
+  // Nothing to show on an order Lalamove could never serve — a counter sale,
+  // a pickup. A delivery with an address but no quotation stays visible so
+  // the merchant can quote it from here instead of finding no card at all.
+  if (!hasQuotation && !hasOrder && !isQuotable) return null;
 
   // No backend the app can reach — a per-tenant Supabase project, for which it
   // ships no adapter. Show what is known and say where the merchant CAN act,
@@ -264,7 +286,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
           {order.lalamoveDriverPhone && (
             <TouchableOpacity
               style={styles.row}
-              onPress={() => Linking.openURL(`tel:${order.lalamoveDriverPhone}`)}
+              onPress={() => void openExternalUrl(`tel:${order.lalamoveDriverPhone}`)}
             >
               <Text style={styles.label}>Phone</Text>
               <Text style={styles.link}>{order.lalamoveDriverPhone}</Text>
@@ -292,7 +314,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
             )}
           </View>
         </>
-      ) : (
+      ) : hasQuotation ? (
         <>
           <Text style={styles.muted}>
             This order has a delivery quote. Book the driver when you&apos;re ready.
@@ -319,6 +341,19 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
             Quotes expire after ~5 minutes. If booking fails with an expired quotation, get a
             new quote first.
           </Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.muted}>
+            This delivery has no Lalamove quote yet. Get one to book a rider.
+          </Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleRequote} disabled={!!busy} activeOpacity={0.8}>
+            {busy === "requote" ? (
+              <ActivityIndicator color={colors.textOnDark} />
+            ) : (
+              <Text style={styles.primaryText}>Get Lalamove Quote</Text>
+            )}
+          </TouchableOpacity>
         </>
       )}
     </Card>

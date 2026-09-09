@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { format, formatDistance } from 'date-fns'
 import { orderSummaryRows } from '@/lib/order-summary-rows'
+import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { readOrderDiscount } from '@/lib/order-discount'
 import {
   Package,
@@ -130,6 +131,15 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
   }
 
   const orderTypeConfig = getOrderTypeConfig(order.order_type)
+  // Keyed on the order TYPE, not on "has a quotation": a delivery whose
+  // quotation was never stored or has been cleared still needs the tab, or
+  // there is no way to get a new quote for it.
+  const hasDeliveryTab = shouldShowLalamoveControls({
+    orderType: order.order_type,
+    deliveryFee: order.delivery_fee,
+    lalamoveQuotationId: order.lalamove_quotation_id,
+    lalamoveOrderId: order.lalamove_order_id,
+  })
   const currentStatus = statusConfig[order.status]
   const StatusIcon = currentStatus.icon
   const scheduledLabel = getOrderScheduledLabel(order)
@@ -248,7 +258,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                   <User className="h-4 w-4" />
                   <span className="hidden sm:inline">Customer</span>
                 </TabsTrigger>
-                {(order.lalamove_quotation_id || order.delivery_fee) && (
+                {hasDeliveryTab && (
                   <TabsTrigger value="delivery" className="flex items-center gap-2">
                     <Truck className="h-4 w-4" />
                     <span className="hidden sm:inline">Delivery</span>
@@ -392,7 +402,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
               </TabsContent>
 
               {/* Delivery Tab */}
-              {(order.lalamove_quotation_id || order.delivery_fee) && (
+              {hasDeliveryTab && (
                 <TabsContent value="delivery" className="mt-0">
                   <LalamoveDeliveryPanel order={order} tenantId={tenantId} />
                 </TabsContent>

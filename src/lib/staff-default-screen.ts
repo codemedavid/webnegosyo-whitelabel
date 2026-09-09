@@ -88,6 +88,13 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     permission: 'analytics',
   },
   {
+    tab: 'trends',
+    label: 'Trends',
+    description: 'Revenue over time',
+    workspace: 'insights',
+    permission: 'analytics',
+  },
+  {
     tab: 'growth',
     label: 'Growth',
     description: 'The growth coach and its suggested actions',
@@ -95,18 +102,27 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     permission: 'analytics',
   },
   {
+    tab: 'customer-hub',
+    label: 'Regulars',
+    description: 'Who comes back, and what they keep ordering',
+    workspace: 'insights',
+    // The same records the guest list protects, aggregated. Summarising PII
+    // does not declassify it, so it rides the same key.
+    permission: 'customers',
+  },
+  {
     tab: 'customers',
-    label: 'Customers',
+    label: 'Guest list',
     description: 'The guest list and follow-up campaigns',
     workspace: 'insights',
     permission: 'customers',
   },
   {
-    tab: 'trends',
-    label: 'Trends',
-    description: 'Revenue over time',
+    tab: 'loyalty',
+    label: 'Rewards',
+    description: 'Loyalty programs: stamps, points and rewards',
     workspace: 'insights',
-    permission: 'analytics',
+    permission: 'loyalty_manage',
   },
   {
     tab: 'product-analytics',

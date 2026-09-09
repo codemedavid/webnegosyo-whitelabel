@@ -32,6 +32,17 @@ jest.mock('@/lib/loyverse/push-service', () => ({
   pushOrderToLoyverseBestEffort: jest.fn(() => Promise.resolve()),
 }))
 
+// Loyalty follows every status change through the same writer. Mocked so the
+// test never reaches for a real service-role client, and asserted below so the
+// hook cannot be dropped silently.
+const runLoyaltyForOrder = jest.fn(() => Promise.resolve(null))
+jest.mock('@/lib/loyalty/lifecycle', () => ({
+  runLoyaltyForOrder: (...args: unknown[]) => runLoyaltyForOrder(...args),
+}))
+jest.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({}),
+}))
+
 const from = jest.fn()
 jest.mock('@/lib/supabase/server', () => ({
   createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a) }),
@@ -113,6 +124,18 @@ describe('updateOrderStatus stock movement on status changes', () => {
 
     expect(redepleteOrderStockBestEffort).not.toHaveBeenCalled()
     expect(reverseOrderStockBestEffort).not.toHaveBeenCalled()
+  })
+
+  it('lets loyalty see every status change, keyed as a platform order', async () => {
+    from.mockImplementation(stubOrders('ready', 'delivered'))
+
+    await updateOrderStatus('o1', 't1', 'delivered')
+
+    expect(runLoyaltyForOrder).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: 't1',
+      backend: 'platform_supabase',
+      externalOrderId: 'o1',
+    })
   })
 
   it('still restores stock when an active order is cancelled', async () => {

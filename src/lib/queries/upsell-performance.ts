@@ -11,6 +11,7 @@
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 
 const DEFAULT_WINDOW_DAYS = 30
 const CONVEX_UPSELL_PATH = 'analytics:getUpsellAnalytics'
@@ -109,7 +110,7 @@ export async function fetchUpsellPerformanceForTenantId(
 ): Promise<UpsellPerformance> {
   const { data, error } = await ctx.client
     .from('tenants')
-    .select('id, convex_deployment_url, convex_deploy_key')
+    .select('id, convex_deployment_url')
     .eq('id', tenantId)
     .single()
 
@@ -117,7 +118,9 @@ export async function fetchUpsellPerformanceForTenantId(
     throw new Error(`Tenant ${tenantId} could not be loaded: ${error?.message ?? 'not found'}`)
   }
 
-  return fetchUpsellPerformance({ ...(data as unknown as UpsellPerformanceTenant), id: tenantId }, {
+  const secrets = await getTenantSecrets(ctx.client, tenantId)
+
+  return fetchUpsellPerformance(mergeTenantSecrets({ ...(data as unknown as UpsellPerformanceTenant), id: tenantId }, secrets), {
     windowDays,
     ...options,
   })

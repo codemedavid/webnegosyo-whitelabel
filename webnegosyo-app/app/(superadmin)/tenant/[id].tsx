@@ -42,7 +42,7 @@ import {
 } from "../../../theme/colors";
 
 const EDITOR_COLUMNS =
-  "id, name, slug, is_active, logo_url, messenger_page_id, messenger_username, messenger_redirect_mode, mapbox_enabled, enable_order_management, menu_engineering_enabled, checkout_upsell_enabled, hide_currency_symbol, flash_screen_feature_enabled, bundles_enabled, pairing_rules_enabled, qr_handoff_enabled, app_enabled, restaurant_address, restaurant_latitude, restaurant_longitude, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, convex_deployment_url, convex_deploy_key, order_backend, receipt_layout, admin_email, email_notifications_enabled";
+  "id, name, slug, is_active, logo_url, messenger_page_id, messenger_username, messenger_redirect_mode, mapbox_enabled, enable_order_management, menu_engineering_enabled, checkout_upsell_enabled, hide_currency_symbol, flash_screen_feature_enabled, bundles_enabled, pairing_rules_enabled, qr_handoff_enabled, app_enabled, restaurant_address, restaurant_latitude, restaurant_longitude, lalamove_enabled, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, convex_deployment_url, order_backend, receipt_layout, admin_email, email_notifications_enabled";
 
 interface StaffRow {
   user_id: string;
@@ -429,13 +429,6 @@ export default function TenantEditorScreen() {
             placeholder="https://….convex.cloud"
           />
           <Field
-            label="Convex deploy key"
-            value={values.convex_deploy_key}
-            onChange={(v) => setField("convex_deploy_key", v)}
-            autoCapitalize="none"
-            secureTextEntry
-          />
-          <Field
             label="Admin email"
             value={values.admin_email}
             onChange={(v) => setField("admin_email", v)}
@@ -467,22 +460,6 @@ export default function TenantEditorScreen() {
           />
           {values.lalamove_enabled ? (
             <>
-              <Field
-                label="Lalamove API key"
-                value={values.lalamove_api_key}
-                onChange={(v) => setField("lalamove_api_key", v)}
-                error={errors.lalamove_api_key}
-                autoCapitalize="none"
-                secureTextEntry
-              />
-              <Field
-                label="Lalamove secret key"
-                value={values.lalamove_secret_key}
-                onChange={(v) => setField("lalamove_secret_key", v)}
-                error={errors.lalamove_secret_key}
-                autoCapitalize="none"
-                secureTextEntry
-              />
               <Field
                 label="Market"
                 value={values.lalamove_market}

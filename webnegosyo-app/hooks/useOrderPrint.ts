@@ -7,30 +7,17 @@ import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
 import { fetchTrackingUrl } from "../lib/receipt-tracking";
 import { supabase } from "../lib/supabase";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
+import type { ReceiptOrder } from "../lib/receipt-layout";
 
-interface PrintableOrder {
-  _id: string;
-  _creationTime: number;
-  customerName: string;
-  customerContact: string;
-  orderType?: string;
-  total: number;
-  deliveryFee?: number;
-  paymentMethod?: string;
-  // POS counter sales — printed as the receipt's CASH/CHANGE block.
-  cashTendered?: number;
-  changeDue?: number;
-  paymentReference?: string;
-  items?: {
-    menuItemName: string;
-    quantity: number;
-    subtotal: number;
-    variation?: string;
-    variationSelections?: { typeName: string; optionName: string }[];
-    addons?: { name: string; price: number }[];
-    specialInstructions?: string;
-  }[];
-}
+/**
+ * Whatever the receipt renderer can print — no narrower.
+ *
+ * This was once a hand-copied subset, and every field it forgot (the service
+ * charge, the discount blob) was silently dropped from the paper by the
+ * excess-property check at each call site. Aliasing the renderer's own type
+ * means a field added there reaches the printer without a second edit.
+ */
+type PrintableOrder = ReceiptOrder;
 
 /**
  * Shared hook for printing order receipts.
@@ -42,7 +29,8 @@ export function useOrderPrint() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const receiptLayout = useAuthStore((s) => s.receiptLayout);
   const receiptLogoUrl = useAuthStore((s) => s.receiptLogoUrl);
-  const { printTrigger, printers } = usePrinterStore();
+  const printTrigger = usePrinterStore((s) => s.printTrigger);
+  const printers = usePrinterStore((s) => s.printers);
   // The receipt is the cashier's paper; a device whose printers are all
   // kitchen-role has nothing to print it on.
   const hasCashierPrinter = printersForRole(printers, "cashier").length > 0;

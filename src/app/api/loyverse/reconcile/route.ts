@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { listTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { importLoyverseCatalog } from '@/lib/loyverse/catalog-import'
 import { ensureLoyverseWebhooks } from '@/lib/loyverse/webhooks'
 import { runLoyverseSync } from '@/lib/loyverse/sync-orchestrator'
@@ -52,7 +53,15 @@ export async function GET(request: NextRequest) {
     error?: string
   }> = []
 
-  for (const row of (tenants ?? []) as unknown as Tenant[]) {
+  const tenantRows = (tenants ?? []) as unknown as Tenant[]
+  // Access tokens live in tenant_secrets; one read covers every tenant here.
+  const secretsByTenant = await listTenantSecrets(
+    admin,
+    tenantRows.map((row) => row.id)
+  )
+
+  for (const tenantRow of tenantRows) {
+    const row: Tenant = mergeTenantSecrets(tenantRow, secretsByTenant.get(tenantRow.id) ?? null)
     try {
       // Webhooks first: registration is cheap and idempotent, and must not be
       // hostage to a catalog import that can time out on large menus.

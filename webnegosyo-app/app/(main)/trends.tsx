@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { formatPeso, formatPesoCompact, formatCount } from "../../lib/format";
 import { formatPercent, buildTrendSeries, type TrendPoint } from "../../lib/analytics-utils";
 import { colors, typography, spacing, radius } from "../../theme/colors";
@@ -170,17 +171,18 @@ const stackStyles = StyleSheet.create({
 
 export default function TrendsScreen() {
   const [daysBack, setDaysBack] = useState(14);
-  const { data: trends, isLoading, error, isMissingFunction: trendsMissing } = useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
-  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
-  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
+  const { data: trends, isLoading, error, isMissingFunction: trendsMissing, refetch: refetchTrends } = useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
+  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
+  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
 
   const anyMissing = trendsMissing || salesMissing || paymentMissing;
 
   const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
+  // Pull-to-refresh re-reads every query this screen holds.
+  const onRefresh = useCallback(
+    () => refreshWithMinSpinner([refetchTrends, refetchSales, refetchPayments], setRefreshing),
+    [refetchTrends, refetchSales, refetchPayments]
+  );
 
   const revenueSeries = buildTrendSeries(trends, "totalRevenue");
   const ordersSeries = buildTrendSeries(trends, "totalOrders");

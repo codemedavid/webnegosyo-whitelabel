@@ -18,6 +18,12 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }))
 
+// The signing keys live in tenant_secrets, which anon is never granted, so the
+// actions read them through the service-role client.
+jest.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: jest.fn(),
+}))
+
 jest.mock('@/lib/admin-service', () => ({
   verifyTenantPermission: jest.fn(async () => undefined),
 }))
@@ -39,8 +45,6 @@ const TENANT = {
   id: 't1',
   name: 'Retiro',
   lalamove_enabled: true,
-  lalamove_api_key: 'key',
-  lalamove_secret_key: 'secret',
   lalamove_market: 'PH',
   lalamove_sandbox: false,
   lalamove_sender_phone: '09170000000',
@@ -49,11 +53,14 @@ const TENANT = {
   restaurant_longitude: 121.0,
 }
 
+const SECRETS = { lalamove_api_key: 'key', lalamove_secret_key: 'secret' }
+
 describe('lalamove server actions', () => {
   let tenantRow: Record<string, unknown> | null
   let orderRow: Record<string, unknown> | null
   let updateMock: jest.Mock
   let selectMock: jest.Mock
+  let secretsSelectMock: jest.Mock
 
   beforeEach(async () => {
     jest.resetModules()
@@ -63,6 +70,24 @@ describe('lalamove server actions', () => {
     orderRow = { id: 'order-1', lalamove_order_id: 'lala-1', lalamove_status: null }
     updateMock = jest.fn()
     selectMock = jest.fn()
+    secretsSelectMock = jest.fn()
+
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    ;(createAdminClient as unknown as jest.Mock).mockReturnValue({
+      from: jest.fn((table: string) => {
+        const builder: Record<string, unknown> = {}
+        builder.select = jest.fn((columns?: string) => {
+          secretsSelectMock(table, columns)
+          return builder
+        })
+        builder.eq = jest.fn(() => builder)
+        builder.maybeSingle = jest.fn(async () => ({
+          data: table === 'tenant_secrets' ? { ...SECRETS } : null,
+          error: null,
+        }))
+        return builder
+      }),
+    })
 
     const { createClient } = await import('@/lib/supabase/server')
     ;(createClient as unknown as jest.Mock).mockResolvedValue({
@@ -259,6 +284,53 @@ describe('lalamove server actions', () => {
       const columns = (tenantSelect as [string, string | undefined])[1]
       expect(columns).toBeDefined()
       expect(columns).not.toBe('*')
+      // The keys are not on the tenants row at all any more: they come from
+      // tenant_secrets, through the service-role client, never the anon one.
+      expect(columns).not.toMatch(/lalamove_api_key|lalamove_secret_key/)
+      const secretsSelect = secretsSelectMock.mock.calls.find(([table]) => table === 'tenant_secrets')
+      expect(secretsSelect).toBeDefined()
+      expect(selectMock.mock.calls.find(([table]) => table === 'tenant_secrets')).toBeUndefined()
+    })
+  })
+
+  describe('createLalamoveOrderAction', () => {
+    test('books with the store phone as recipient when the order carries no customer phone', async () => {
+      // The panel forwards order.customer_contact verbatim; when the checkout
+      // form had no phone field that is ''. Lalamove refuses '' as a phone.
+      tenantRow = { ...TENANT, lalamove_sandbox: true }
+      orderRow = {
+        id: 'order-1',
+        lalamove_order_id: null,
+        customer_contact: '',
+        customer_data: { delivery_address: '12 Mabini St' },
+      }
+      const service = await import('@/lib/lalamove-service')
+      ;(service.createLalamoveOrder as unknown as jest.Mock).mockResolvedValue({
+        orderId: 'lala-new',
+        status: 'ASSIGNING_DRIVER',
+        shareLink: 'https://share.lalamove.com/lala-new',
+      })
+
+      const { createLalamoveOrderAction } = await import('@/app/actions/lalamove')
+      const result = await createLalamoveOrderAction('t1', 'order-1', 'quote-1', '', '', 'Ana', '')
+
+      expect(result).toMatchObject({ success: true, recipientPhoneSource: 'store' })
+      const call = (service.createLalamoveOrder as unknown as jest.Mock).mock.calls[0] as unknown[]
+      expect(call[3]).toBe('+639170000000')
+      expect(call[5]).toBe('+639170000000')
+    })
+
+    test('refuses to book when the store pickup phone is not a usable number', async () => {
+      tenantRow = { ...TENANT, lalamove_sandbox: true, lalamove_sender_phone: 'call us' }
+      orderRow = { id: 'order-1', lalamove_order_id: null, customer_contact: '09171234567' }
+
+      const { createLalamoveOrderAction } = await import('@/app/actions/lalamove')
+      const result = await createLalamoveOrderAction('t1', 'order-1', 'quote-1', '', '', 'Ana', '09171234567')
+
+      expect(result.success).toBe(false)
+      expect(result.error).toMatch(/pickup phone/i)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.createLalamoveOrder).not.toHaveBeenCalled()
     })
   })
 })
