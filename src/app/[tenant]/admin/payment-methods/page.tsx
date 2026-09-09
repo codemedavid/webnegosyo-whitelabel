@@ -1,9 +1,23 @@
 import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
+import { createClient } from '@/lib/supabase/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { PaymentMethodsManagement } from './payment-methods-management'
 
 interface PaymentMethodsPageProps {
   params: Promise<{ tenant: string }>
+}
+
+/** Only the boolean reaches the client; the token itself stays server-side. */
+async function hasLoyverseToken(tenantId: string): Promise<boolean> {
+  try {
+    const supabase = await createClient()
+    const secrets = await getTenantSecrets(supabase, tenantId)
+    return Boolean(secrets?.loyverse_access_token)
+  } catch (error) {
+    console.error('[payment-methods] could not read Loyverse token:', error instanceof Error ? error.message : error)
+    return false
+  }
 }
 
 export default async function PaymentMethodsPage({ params }: PaymentMethodsPageProps) {
@@ -13,6 +27,10 @@ export default async function PaymentMethodsPage({ params }: PaymentMethodsPageP
   if (!tenant) {
     return <div>Tenant not found</div>
   }
+
+  const isLoyverseConnected = tenant.loyverse_enabled
+    ? await hasLoyverseToken(tenant.id)
+    : false
 
   return (
     <div className="space-y-6">
@@ -33,7 +51,7 @@ export default async function PaymentMethodsPage({ params }: PaymentMethodsPageP
         <PaymentMethodsManagement
           tenantId={tenant.id}
           tenantSlug={tenantSlug}
-          isLoyverseConnected={Boolean(tenant.loyverse_enabled && tenant.loyverse_access_token)}
+          isLoyverseConnected={isLoyverseConnected}
         />
       </Suspense>
     </div>

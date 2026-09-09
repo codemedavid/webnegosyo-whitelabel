@@ -11,7 +11,7 @@
  * network.
  */
 
-import Constants from "expo-constants";
+import { getWebAppUrl } from "../web-app-url";
 
 /** The subset of the tracking payload staff need to see before confirming. */
 export interface VerifiedPickupOrder {
@@ -58,16 +58,11 @@ interface VerifyOptions {
   fetchImpl?: typeof fetch;
 }
 
-/** Same source the customer-capture call uses, so one setting covers both. */
-function defaultWebAppUrl(): string {
-  return Constants.expoConfig?.extra?.webAppUrl ?? "https://webnegosyo.com";
-}
-
 export async function verifyPickupTicket(
   ticket: PickupTicketRef,
   options: VerifyOptions = {}
 ): Promise<PickupVerifyResult> {
-  const base = (options.webAppUrl ?? defaultWebAppUrl()).replace(/\/+$/, "");
+  const base = (options.webAppUrl ?? getWebAppUrl()).replace(/\/+$/, "");
   if (!base) return { ok: false, error: "not_configured" };
 
   const doFetch = options.fetchImpl ?? fetch;

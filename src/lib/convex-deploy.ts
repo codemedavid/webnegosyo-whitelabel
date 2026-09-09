@@ -96,7 +96,13 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // orderItems) — the per-date presell pickup date. Below 25 the validator
 // rejects the field, so the web omits it (convexPresellItemFields) and readers
 // fall back to customerData.presell_date.
-const CURRENT_SCHEMA_VERSION = 25;
+// v26 fixes lalamove:bookLalamove sending '' as the recipient phone when the
+// checkout form had no phone field (Lalamove refused every such booking with
+// "'' is not valid 'phone'"): the recipient is now recovered from customerData
+// or falls back to the store phone (reported as recipientPhoneSource), and
+// "Order missing delivery details" is split into a no-quotation reason the
+// app can recover from with a requote and a no-address reason it cannot.
+const CURRENT_SCHEMA_VERSION = 26;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

@@ -104,17 +104,27 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function matchesOrder(
-  order: DailyOrderInput,
-  options: ProductAnalyticsOptions
-): boolean {
+/** The order-level filters that do not depend on the window: status and channel. */
+function matchesOrderFilters(order: DailyOrderInput, options: ProductAnalyticsOptions): boolean {
   if (order.status === EXCLUDED_STATUS) return false;
-  if (options.startMs !== undefined && order.createdAtMs < options.startMs) return false;
-  if (options.endMs !== undefined && order.createdAtMs >= options.endMs) return false;
   if (options.sources && options.sources.length > 0) {
     if (!order.source || !options.sources.includes(order.source)) return false;
   }
   return true;
+}
+
+/** Inclusive lower bound, exclusive upper bound; an absent bound is open. */
+function isInWindow(atMs: number, startMs: number | undefined, endMs: number | undefined): boolean {
+  if (startMs !== undefined && atMs < startMs) return false;
+  if (endMs !== undefined && atMs >= endMs) return false;
+  return true;
+}
+
+function matchesOrder(order: DailyOrderInput, options: ProductAnalyticsOptions): boolean {
+  return (
+    matchesOrderFilters(order, options) &&
+    isInWindow(order.createdAtMs, options.startMs, options.endMs)
+  );
 }
 
 /**
@@ -203,6 +213,58 @@ function toTotals(bucket: Map<string, ProductAccumulator>): ProductTotals[] {
   }));
 }
 
+/** Everything one window collects while the items are walked. */
+interface WindowAccumulators {
+  byDay: Map<string, Map<string, ProductAccumulator>>;
+  totals: Map<string, ProductAccumulator>;
+  orderIdsByDay: Map<string, Set<string>>;
+}
+
+function emptyWindow(): WindowAccumulators {
+  return { byDay: new Map(), totals: new Map(), orderIdsByDay: new Map() };
+}
+
+function accumulateInWindow(
+  window: WindowAccumulators,
+  item: DailyOrderItemInput,
+  date: string
+): void {
+  const dayBucket = window.byDay.get(date) ?? new Map<string, ProductAccumulator>();
+  accumulate(dayBucket, item, item.orderId);
+  window.byDay.set(date, dayBucket);
+
+  accumulate(window.totals, item, item.orderId);
+
+  const dayOrders = window.orderIdsByDay.get(date) ?? new Set<string>();
+  dayOrders.add(item.orderId);
+  window.orderIdsByDay.set(date, dayOrders);
+}
+
+function finalizeWindow(
+  window: WindowAccumulators,
+  metric: ProductMetric,
+  topN: number | undefined
+): ProductAnalyticsResult {
+  const days: ProductDayGroup[] = [...window.byDay.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, bucket]) => {
+      const ranked = toTotals(bucket).sort((a, b) => compareByMetric(a, b, metric));
+      const rows = topN === undefined ? ranked : ranked.slice(0, topN);
+      return {
+        date,
+        rows,
+        totalUnits: ranked.reduce((sum, row) => sum + row.units, 0),
+        totalSales: ranked.reduce((sum, row) => sum + row.sales, 0),
+        totalOrders: window.orderIdsByDay.get(date)?.size ?? 0,
+        truncatedCount: ranked.length - rows.length,
+      };
+    });
+
+  const totals = toTotals(window.totals).sort((a, b) => compareByMetric(a, b, metric));
+
+  return { days, totals };
+}
+
 /**
  * Build the daily breakdown and the window-wide totals in one pass over the
  * items, applying every order-level and product-level filter.
@@ -222,57 +284,106 @@ export function buildProductAnalytics(
     dateByOrderId.set(order.id, productDateKey(order.createdAtMs, offsetMs));
   }
 
-  const byDay = new Map<string, Map<string, ProductAccumulator>>();
-  const windowTotals = new Map<string, ProductAccumulator>();
-  const orderIdsByDay = new Map<string, Set<string>>();
-
+  const window = emptyWindow();
   const matcher = resolveMatcher(options);
 
   for (const item of items) {
     const date = dateByOrderId.get(item.orderId);
     if (date === undefined) continue;
     if (!matchesProduct(item, matcher)) continue;
-
-    const dayBucket = byDay.get(date) ?? new Map<string, ProductAccumulator>();
-    accumulate(dayBucket, item, item.orderId);
-    byDay.set(date, dayBucket);
-
-    accumulate(windowTotals, item, item.orderId);
-
-    const dayOrders = orderIdsByDay.get(date) ?? new Set<string>();
-    dayOrders.add(item.orderId);
-    orderIdsByDay.set(date, dayOrders);
+    accumulateInWindow(window, item, date);
   }
 
-  const days: ProductDayGroup[] = [...byDay.entries()]
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, bucket]) => {
-      const ranked = toTotals(bucket).sort((a, b) =>
-        compareByMetric(a, b, options.metric)
-      );
-      const rows = options.topN === undefined ? ranked : ranked.slice(0, options.topN);
-      return {
-        date,
-        rows,
-        totalUnits: ranked.reduce((sum, row) => sum + row.units, 0),
-        totalSales: ranked.reduce((sum, row) => sum + row.sales, 0),
-        totalOrders: orderIdsByDay.get(date)?.size ?? 0,
-        truncatedCount: ranked.length - rows.length,
-      };
+  return finalizeWindow(window, options.metric, options.topN);
+}
+
+export interface ProductAnalyticsComparison {
+  /** The window asked for, capped by `topN` like `buildProductAnalytics`. */
+  current: ProductAnalyticsResult;
+  /**
+   * The equal-length window before it, never capped: only its totals feed the
+   * deltas, and a capped baseline would read a product hidden by `topN` as
+   * "new". Empty when the current window is unbounded.
+   */
+  previous: ProductAnalyticsResult;
+}
+
+export interface TimeWindow {
+  startMs: number;
+  endMs: number;
+}
+
+/** The previous equal-length window, or null when the current one is unbounded. */
+function defaultComparisonWindow(options: ProductAnalyticsOptions): TimeWindow | null {
+  if (options.startMs === undefined || options.endMs === undefined) return null;
+  return previousWindow(options.startMs, options.endMs);
+}
+
+/** Which of the two windows an order falls in, with its local day. */
+interface OrderPlacement {
+  window: "current" | "previous";
+  date: string;
+}
+
+/**
+ * The current window and the one before it from ONE walk over the items.
+ *
+ * The screen compares every window against its predecessor, and a store's
+ * line items are the largest thing it holds; walking them twice per keystroke
+ * is what made the search box stutter. Each order is placed once, each item is
+ * routed once, and the answer is exactly what two separate builds would give.
+ */
+export function buildProductAnalyticsComparison(
+  orders: readonly DailyOrderInput[],
+  items: readonly DailyOrderItemInput[],
+  options: ProductAnalyticsOptions,
+  /** Defaults to the equal-length window before the current one. */
+  comparisonWindow?: TimeWindow
+): ProductAnalyticsComparison {
+  const before = comparisonWindow ?? defaultComparisonWindow(options);
+  if (before === null) {
+    return {
+      current: buildProductAnalytics(orders, items, options),
+      previous: { days: [], totals: [] },
+    };
+  }
+
+  const { startMs, endMs } = options;
+  const offsetMs = options.offsetMs ?? DEFAULT_TZ_OFFSET_MS;
+
+  const placementByOrderId = new Map<string, OrderPlacement>();
+  for (const order of orders) {
+    if (!matchesOrderFilters(order, options)) continue;
+    const window = isInWindow(order.createdAtMs, startMs, endMs)
+      ? "current"
+      : isInWindow(order.createdAtMs, before.startMs, before.endMs)
+        ? "previous"
+        : null;
+    if (window === null) continue;
+    placementByOrderId.set(order.id, {
+      window,
+      date: productDateKey(order.createdAtMs, offsetMs),
     });
+  }
 
-  const totals = toTotals(windowTotals).sort((a, b) =>
-    compareByMetric(a, b, options.metric)
-  );
+  const windows = { current: emptyWindow(), previous: emptyWindow() };
+  const matcher = resolveMatcher(options);
 
-  return { days, totals };
+  for (const item of items) {
+    const placement = placementByOrderId.get(item.orderId);
+    if (placement === undefined) continue;
+    if (!matchesProduct(item, matcher)) continue;
+    accumulateInWindow(windows[placement.window], item, placement.date);
+  }
+
+  return {
+    current: finalizeWindow(windows.current, options.metric, options.topN),
+    previous: finalizeWindow(windows.previous, options.metric, undefined),
+  };
 }
 
 /** The equal-length window immediately preceding [startMs, endMs). */
-export function previousWindow(
-  startMs: number,
-  endMs: number
-): { startMs: number; endMs: number } {
+export function previousWindow(startMs: number, endMs: number): TimeWindow {
   const length = endMs - startMs;
   return { startMs: startMs - length, endMs: startMs };
 }

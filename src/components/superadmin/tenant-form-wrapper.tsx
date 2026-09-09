@@ -43,8 +43,19 @@ interface PrefillData {
   email: string
 }
 
+/**
+ * Which secrets already exist for this tenant. The values themselves never
+ * reach this client component — only whether one is stored, so the UI can
+ * say "saved, leave blank to keep" and let a stored key drive a deploy.
+ */
+export interface StoredSecretPresence {
+  hasLoyverseToken: boolean
+  hasConvexDeployKey: boolean
+}
+
 interface TenantFormWrapperProps {
   tenant?: Tenant
+  storedSecrets?: StoredSecretPresence
   prefill?: PrefillData
   usersSlot?: ReactNode
   importSlot?: ReactNode
@@ -1377,13 +1388,15 @@ function LoyverseSection({
   setFormData,
   isPending,
   tenantId,
-  webhookStatusFields
+  webhookStatusFields,
+  hasStoredToken = false,
 }: {
   formData: TenantFormData
   setFormData: SetFormData
   isPending: boolean
   tenantId?: string
   webhookStatusFields?: LoyverseWebhookStatusFields
+  hasStoredToken?: boolean
 }) {
   const [isTesting, setIsTesting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -1468,7 +1481,7 @@ function LoyverseSection({
                     type="password"
                     value={formData.loyverse_access_token}
                     onChange={(e) => setFormData({ ...formData, loyverse_access_token: e.target.value })}
-                    placeholder="Loyverse personal access token"
+                    placeholder={hasStoredToken ? 'Saved — leave blank to keep the current token' : 'Loyverse personal access token'}
                     disabled={isPending}
                   />
                   <Button
@@ -1789,11 +1802,13 @@ function ConvexMobileAppSection({
   setFormData,
   isPending,
   tenant,
+  hasStoredDeployKey = false,
 }: {
   formData: TenantFormData
   setFormData: SetFormData
   isPending: boolean
   tenant?: Tenant
+  hasStoredDeployKey?: boolean
 }) {
   const [isDeploying, setIsDeploying] = useState(false)
   const [deployStatus, setDeployStatus] = useState<string | null>(null)
@@ -1843,7 +1858,7 @@ function ConvexMobileAppSection({
             type="password"
             value={formData.convex_deploy_key}
             onChange={(e) => setFormData({ ...formData, convex_deploy_key: e.target.value })}
-            placeholder="prod:your-deployment|key..."
+            placeholder={hasStoredDeployKey ? 'Saved — leave blank to keep the current key' : 'prod:your-deployment|key...'}
             disabled={isPending}
           />
         </div>
@@ -1867,7 +1882,7 @@ function ConvexMobileAppSection({
                 isDeploying ||
                 isPending ||
                 !formData.convex_deployment_url ||
-                !formData.convex_deploy_key
+                !(formData.convex_deploy_key || hasStoredDeployKey)
               }
             >
               {isDeploying ? 'Deploying...' : 'Deploy Schema to Convex'}
@@ -1903,6 +1918,7 @@ function ConvexMobileAppSection({
 
 export function TenantFormWrapper({
   tenant,
+  storedSecrets,
   prefill,
   usersSlot,
   importSlot,
@@ -1983,7 +1999,9 @@ export function TenantFormWrapper({
     lalamove_sender_phone: tenant?.lalamove_sender_phone || '',
     // Loyverse POS integration
     loyverse_enabled: tenant?.loyverse_enabled ?? false,
-    loyverse_access_token: tenant?.loyverse_access_token || '',
+    // Never prefilled, for the same reason as the Lalamove keys above: this is
+    // a client component, so a prefilled value ships in the page payload.
+    loyverse_access_token: '',
     loyverse_store_id: tenant?.loyverse_store_id || '',
     loyverse_payment_type_id: tenant?.loyverse_payment_type_id || '',
     loyverse_push_mode: tenant?.loyverse_push_mode === 'on_create' ? 'on_create' : 'on_confirm',
@@ -1994,7 +2012,8 @@ export function TenantFormWrapper({
     delivery_radius_km: tenant?.delivery_radius_km?.toString() || '',
     // Convex / Mobile App
     convex_deployment_url: tenant?.convex_deployment_url || '',
-    convex_deploy_key: tenant?.convex_deploy_key || '',
+    // Blank for the same reason as loyverse_access_token; blank means keep.
+    convex_deploy_key: '',
     order_backend: orderBackendPreferenceOf(tenant ?? {}),
     // Email notifications
     admin_email: tenant?.admin_email || prefill?.email || '',
@@ -2305,6 +2324,7 @@ export function TenantFormWrapper({
             setFormData={setFormData}
             isPending={isPending}
             tenant={tenant}
+            hasStoredDeployKey={storedSecrets?.hasConvexDeployKey ?? false}
           />
           <LoyverseSection
             formData={formData}
@@ -2312,6 +2332,7 @@ export function TenantFormWrapper({
             isPending={isPending}
             tenantId={tenant?.id}
             webhookStatusFields={tenant}
+            hasStoredToken={storedSecrets?.hasLoyverseToken ?? false}
           />
         </TabsContent>
 

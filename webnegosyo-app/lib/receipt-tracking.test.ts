@@ -1,6 +1,11 @@
+const mockConstants: { expoConfig: { extra: Record<string, unknown> } | null } = {
+  expoConfig: { extra: {} },
+};
 jest.mock("expo-constants", () => ({
   __esModule: true, // without this the mock is inert (see expo-constants-mock incident)
-  default: { expoConfig: { extra: { webAppUrl: "https://webnegosyo.com" } } },
+  get default() {
+    return mockConstants;
+  },
 }));
 
 import { fetchTrackingUrl } from "./receipt-tracking";
@@ -53,6 +58,33 @@ describe("fetchTrackingUrl", () => {
   it("returns null on a malformed body", async () => {
     const fetchImpl = jest.fn(async () => okResponse({ nope: true }));
     await expect(fetchTrackingUrl(REF, { ...OPTS, fetchImpl })).resolves.toBeNull();
+  });
+
+  it("uses the canonical www host when the build configured no web app url", async () => {
+    // Every shipped build lands here: app.config.ts leaves `extra.webAppUrl`
+    // empty on purpose so lib/web-app-url.ts owns the host. A copy of the
+    // default that only guards against null therefore reads "" as configured
+    // and mints nothing — the QR block goes silent on every receipt.
+    mockConstants.expoConfig = { extra: { webAppUrl: "" } };
+    const fetchImpl = jest.fn(async () =>
+      okResponse({ url: "https://www.webnegosyo.com/kape/order/order-1?t=beef" }),
+    );
+
+    const url = await fetchTrackingUrl(REF, { accessToken: "jwt-abc", fetchImpl });
+
+    expect(url).toBe("https://www.webnegosyo.com/kape/order/order-1?t=beef");
+    const [calledUrl] = fetchImpl.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(calledUrl).toBe("https://www.webnegosyo.com/api/orders/tracking-url");
+  });
+
+  it("never posts to the apex host, which 307-redirects and drops the bearer token", async () => {
+    mockConstants.expoConfig = { extra: {} };
+    const fetchImpl = jest.fn(async () => okResponse({ url: "https://www.webnegosyo.com/x" }));
+
+    await fetchTrackingUrl(REF, { accessToken: "jwt-abc", fetchImpl });
+
+    const [calledUrl] = fetchImpl.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(calledUrl).not.toBe("https://webnegosyo.com/api/orders/tracking-url");
   });
 
   it("returns null without a token — a demo session mints nothing", async () => {

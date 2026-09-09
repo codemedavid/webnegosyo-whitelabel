@@ -24,6 +24,7 @@ import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
 import { goTo } from "../../lib/tab-navigation";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -125,26 +126,19 @@ export default function DashboardScreen() {
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const isDemo = useAuthStore((s) => s.isDemo);
   const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
-  const { isConnected, loadSaved } = usePrinterStore();
+  const isConnected = usePrinterStore((s) => s.isConnected);
+  const loadSaved = usePrinterStore((s) => s.loadSaved);
 
   const [period, setPeriod] = useState("today");
   const dateRange = useMemo(() => getDateRange(period), [period]);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Convex queries are reactive (they update on their own), but merchants expect
-  // pull-to-refresh to do *something* — show a brief spinner so the gesture is
-  // acknowledged. The green "Live" dot communicates that data updates automatically.
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
-
-  const { data: stats, isLoading, error: statsError } = useSafeQuery<DashboardStats>(getDashboardStatsRef);
-  const { data: periodStats, isLoading: periodLoading } = useSafeQuery<DashboardStats>(
-    getDashboardStatsByPeriodRef,
-    period !== "today" ? dateRange : "skip"
-  );
-  const { data: rawQueue, error: queueError } = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+  const { data: stats, isLoading, error: statsError, refetch: refetchStats } =
+    useSafeQuery<DashboardStats>(getDashboardStatsRef);
+  const { data: periodStats, isLoading: periodLoading, refetch: refetchPeriodStats } =
+    useSafeQuery<DashboardStats>(getDashboardStatsByPeriodRef, period !== "today" ? dateRange : "skip");
+  const { data: rawQueue, error: queueError, refetch: refetchQueue } =
+    useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
 
   const scope = useBranchScope();
   const isBranchScoped = scope.kind === "branch";
@@ -154,9 +148,22 @@ export default function DashboardScreen() {
   // own order list. Pull the raw orders instead and re-derive the tiles here so
   // the two always describe the same set. Store-wide accounts skip this query
   // entirely and keep using the cheaper server-side aggregate.
-  const { data: scopedOrders, isLoading: scopedOrdersLoading } = useSafeQuery<BranchStatOrder[]>(
-    getOrdersRef,
-    isBranchScoped ? { limit: BRANCH_STATS_ORDER_WINDOW } : "skip"
+  const { data: scopedOrders, isLoading: scopedOrdersLoading, refetch: refetchScopedOrders } =
+    useSafeQuery<BranchStatOrder[]>(
+      getOrdersRef,
+      isBranchScoped ? { limit: BRANCH_STATS_ORDER_WINDOW } : "skip"
+    );
+
+  // Pull-to-refresh re-reads every query this screen holds. On a Convex tenant
+  // the reads are live subscriptions and the refetches resolve at once; the
+  // spinner still shows for a beat so the gesture is acknowledged.
+  const onRefresh = useCallback(
+    () =>
+      refreshWithMinSpinner(
+        [refetchStats, refetchPeriodStats, refetchQueue, refetchScopedOrders],
+        setRefreshing
+      ),
+    [refetchStats, refetchPeriodStats, refetchQueue, refetchScopedOrders]
   );
 
   const queue = useMemo(() => filterQueueToScope(scope, rawQueue), [scope, rawQueue]);

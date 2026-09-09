@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 
 // QR-handoff order tracking.
 //
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data: tenantConfig, error } = await supabase
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key')
+      .select('id, convex_deployment_url')
       .eq('slug', tenantSlug)
       .maybeSingle()
 
@@ -36,18 +37,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ found: false })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const config = tenantConfig as Record<string, any>
+    const config = tenantConfig as { id: string; convex_deployment_url: string | null }
+    const deployKey = (await getTenantSecrets(supabase, config.id))?.convex_deploy_key
 
     // Tenant has no Convex backend — order can never be tracked here.
-    if (!config.convex_deployment_url || !config.convex_deploy_key) {
+    if (!config.convex_deployment_url || !deployKey) {
       return NextResponse.json({ found: false })
     }
 
-    const convex = createConvexServerClient(
-      config.convex_deployment_url,
-      config.convex_deploy_key
-    )
+    const convex = createConvexServerClient(config.convex_deployment_url, deployKey)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const order = await convex.query<any>('orders:getOrderByClientId', {

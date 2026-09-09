@@ -44,6 +44,12 @@ export type ImpersonationPatch = {
   /** The viewed tenant's saved receipt layout; cleared on exit like the rest. */
   receiptLayout: unknown;
   receiptLogoUrl?: string | null;
+  /**
+   * The VIEWED store's Customer Hub switch — a superadmin sees what that
+   * merchant sees, and it is cleared on exit like every other tenant field.
+   */
+  customerHubEnabled: boolean;
+  loyaltyEnabled: boolean;
 } & Pick<
   ImpersonationState,
   | "userId"
@@ -91,6 +97,8 @@ export function enterTenant(
     orderBackend: resolveOrderBackend(tenant),
     receiptLayout: tenant.receipt_layout ?? null,
     receiptLogoUrl: tenant.logo_url ?? null,
+    customerHubEnabled: tenant.customer_hub_enabled === true,
+    loyaltyEnabled: tenant.loyalty_enabled === true,
     impersonatedTenantId: tenant.id,
   };
 }
@@ -114,6 +122,8 @@ export function exitTenant(state: ImpersonationState): ImpersonationPatch {
     orderBackend: null,
     receiptLayout: null,
     receiptLogoUrl: null,
+    customerHubEnabled: false,
+    loyaltyEnabled: false,
     impersonatedTenantId: null,
   };
 }

@@ -169,6 +169,7 @@ export default async function OrdersPage({ params, searchParams }: OrdersPagePro
           convexUrl={tenant.convex_deployment_url!}
           tenantId={tenant.id}
           scope={convexScope}
+          lalamoveEnabled={tenant.lalamove_enabled === true}
         />
       )}
 

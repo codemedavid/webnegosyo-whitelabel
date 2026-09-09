@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { useAuthStore } from "../stores/auth-store";
 import { DEMO_STORE } from "./demo";
@@ -54,6 +54,18 @@ export function ConvexAuthProvider({ children }: ConvexAuthProviderProps) {
       return null;
     }
   }, [convexUrl]);
+
+  // A replaced client (impersonation switch, sign-out) used to be dropped with
+  // its socket open. Close it once it is no longer the active one. The
+  // placeholder is never `client`, so it is never closed here.
+  useEffect(() => {
+    if (!client) return;
+    return () => {
+      client.close().catch((e: unknown) => {
+        console.warn("Failed to close Convex client:", e);
+      });
+    };
+  }, [client]);
 
   // Always render a ConvexProvider so the tree shape never changes (see note).
   const activeClient = client ?? getPlaceholderClient();

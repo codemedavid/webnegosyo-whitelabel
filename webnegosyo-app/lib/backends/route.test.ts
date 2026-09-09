@@ -52,13 +52,29 @@ describe("resolveRefRoute", () => {
   });
 
   it("reports a platform ref the adapter cannot serve as unsupported", () => {
-    // Arrange: analytics has no platform implementation yet. Reporting it as
-    // unsupported makes the screen show its "needs a backend update"
-    // placeholder instead of an empty chart that looks like real zero data.
-    const route = resolveRefRoute(input({ ref: "analytics:getUpsellAnalytics" }));
+    // Arrange: Lalamove actions dispatch through their own transport and have
+    // no adapter entry. Reporting the ref as unsupported makes the screen show
+    // its "needs a backend update" placeholder instead of an empty result
+    // that looks like real zero data.
+    const route = resolveRefRoute(input({ ref: "lalamove:bookLalamove" }));
 
     // Assert
     expect(route).toBe("unsupported");
+  });
+
+  it("routes a platform tenant's analytics and product refs to the adapter", () => {
+    // Arrange: these used to report unsupported, which the Analytics screen
+    // rendered as "public function not found" for every platform store.
+    for (const ref of [
+      "analytics:getSalesAnalytics",
+      "analytics:getTrends",
+      "productAnalytics:getAll",
+      "productCosts:getAllCosts",
+      "productCosts:setCost",
+      "productAnalyticsAggregator:refreshAnalytics",
+    ]) {
+      expect(resolveRefRoute(input({ ref }))).toBe("platform");
+    }
   });
 
   it("does not query without a tenant, even on the platform backend", () => {

@@ -1,6 +1,5 @@
 'use client'
 
-import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 
 /**
  * Branding-aware checkout building blocks.
@@ -19,14 +18,13 @@ import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import { useId } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  UtensilsCrossed, Package, Truck, Check, Clock, Zap, CalendarClock, CalendarDays, QrCode, Copy, CreditCard,
+  UtensilsCrossed, Package, Truck, Check, CalendarClock, QrCode, Copy, CreditCard,
 } from 'lucide-react'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
 import { isPaymentProofRequired } from '@/lib/payment-proof'
 import { formatOrderMinimumMessage } from '@/lib/order-minimum'
-import { formatLeadTime } from '@/lib/advance-order-utils'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { VoucherField } from './voucher-field'
@@ -295,144 +293,7 @@ export function OrderTypeSelector({ checkout, compact = false }: { checkout: Use
   )
 }
 
-/** Advance-order "When would you like it?" scheduler (branded). */
-export function AdvanceOrderScheduler({ checkout }: { checkout: UseCheckoutReturn }) {
-  const {
-    advanceConfig, scheduleMode, setScheduleMode, scheduleDate, scheduleTime, setScheduleTime,
-    scheduleDates, timeSlots, scheduledForLabel, selectedOrderTypeData, handleScheduleDateChange,
-    cartPresellDate,
-  } = checkout
-  const { accent, accentText, accentSoft } = useAccent(checkout)
-
-  if (!advanceConfig.enabled) return null
-
-  const modeButton = (mode: 'asap' | 'scheduled', icon: React.ReactNode, title: string, subtitle: string) => {
-    const active = scheduleMode === mode
-    return (
-      <button
-        type="button"
-        onClick={() => setScheduleMode(mode)}
-        aria-pressed={active}
-        className="flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition-all"
-        style={{ borderColor: active ? accent : '#e5e7eb', backgroundColor: active ? accentSoft : '#ffffff' }}
-      >
-        <span
-          className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-          style={active ? { backgroundColor: accent, color: accentText } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}
-        >
-          {icon}
-        </span>
-        <span className="min-w-0">
-          <span className="block font-semibold text-sm text-gray-900">{title}</span>
-          <span className="block text-xs text-gray-500 mt-0.5">{subtitle}</span>
-        </span>
-      </button>
-    )
-  }
-
-  return (
-    <div data-advance-order style={{ ['--checkout-accent' as string]: accent }}>
-      <div className="flex items-center gap-2 mb-3">
-        <Clock className="h-5 w-5" style={{ color: accent }} />
-        <h3 className="text-base sm:text-lg font-bold text-gray-900">When would you like it?</h3>
-      </div>
-
-      {cartPresellDate ? (
-        <p className="rounded-xl border p-3 text-sm text-gray-700" style={{ borderColor: setAlpha(accent, 0.25), backgroundColor: setAlpha(accent, 0.04) }}>
-          Your cart has a pre-order for <span className="font-semibold">{formatPresellDateLabel(cartPresellDate)}</span>. Pick a pickup time below.
-        </p>
-      ) : (
-        <div className={`grid gap-2.5 sm:gap-3 ${advanceConfig.allowAsap ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {advanceConfig.allowAsap && modeButton('asap', <Zap className="h-5 w-5" />, 'As soon as possible', 'Prepare my order now')}
-          {modeButton('scheduled', <CalendarClock className="h-5 w-5" />, 'Schedule for later', advanceConfig.allowAsap ? 'Pick a date & time' : 'Advance order required')}
-        </div>
-      )}
-
-      {scheduleMode === 'scheduled' && (
-        <div className="mt-4 rounded-xl border p-3.5 sm:p-4" style={{ borderColor: setAlpha(accent, 0.25), backgroundColor: setAlpha(accent, 0.04) }}>
-          {scheduleDates.length === 0 ? (
-            <p className="text-sm text-gray-600">
-              No advance times are available right now — please check back later or contact us.
-            </p>
-          ) : (
-          <div className="space-y-3">
-            <div>
-              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
-                <CalendarDays className="h-3.5 w-3.5" /> Date
-              </label>
-              <div className="-mx-1 flex gap-2 overflow-x-auto whitespace-nowrap px-1 pb-1">
-                {scheduleDates.map((d) => {
-                  const selected = d.value === scheduleDate
-                  return (
-                    <button
-                      key={d.value}
-                      type="button"
-                      onClick={() => handleScheduleDateChange(d.value)}
-                      aria-pressed={selected}
-                      className="shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[color:var(--checkout-accent)]"
-                      style={selected
-                        ? { backgroundColor: accent, color: accentText, borderColor: accent }
-                        : { backgroundColor: '#ffffff', color: '#374151', borderColor: '#d1d5db' }}
-                    >
-                      {d.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-            <div>
-              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
-                <Clock className="h-3.5 w-3.5" /> Time
-              </label>
-              {timeSlots.length === 0 ? (
-                <p className="text-xs text-gray-500">
-                  No more times available for this day — please pick another date.
-                </p>
-              ) : (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {timeSlots.map((s) => {
-                    const selected = s.value === scheduleTime
-                    return (
-                      <button
-                        key={s.value}
-                        type="button"
-                        onClick={() => setScheduleTime(s.value)}
-                        aria-pressed={selected}
-                        className="rounded-lg border px-2 py-2 text-center text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[color:var(--checkout-accent)]"
-                        style={selected
-                          ? { backgroundColor: accent, color: accentText, borderColor: accent }
-                          : { backgroundColor: '#ffffff', color: '#374151', borderColor: '#d1d5db' }}
-                      >
-                        {s.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          )}
-
-          {timeSlots.length > 0 && scheduledForLabel ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg bg-white border px-3 py-2.5" style={{ borderColor: setAlpha(accent, 0.3) }}>
-              <CalendarClock className="h-4 w-4 shrink-0" style={{ color: accent }} />
-              <p className="text-sm text-gray-700">
-                {selectedOrderTypeData?.type === 'delivery' ? 'Arriving' : 'Ready'}{' '}
-                <span className="font-semibold text-gray-900">{scheduledForLabel}</span>
-              </p>
-            </div>
-          ) : null}
-
-          {advanceConfig.leadTimeMinutes > 0 && (
-            <p className="mt-2 text-[11px] text-gray-400">
-              Orders need at least {formatLeadTime(advanceConfig.leadTimeMinutes)} of advance notice.
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
+export { AdvanceOrderScheduler } from './advance-order-scheduler'
 
 /** Order summary line items + totals (branded). */
 export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn }) {

@@ -5,7 +5,7 @@ import { Card } from "../Card";
 import { Icon } from "../Icon";
 import { getInitials, getAvatarColor } from "../../lib/order-visuals";
 import { orderSummaryRows } from "../../lib/order-summary-rows";
-import type { OrderDiscountLike } from "../../lib/order-discount";
+import type { SummarisableDiscount } from "../../lib/order-summary-rows";
 
 export interface OrderLineItem {
   menuItemId?: string;
@@ -164,7 +164,7 @@ interface OrderItemsCardProps {
   images: Map<string, string>;
   deliveryFee?: number;
   serviceCharge?: number;
-  discount: OrderDiscountLike | null;
+  discount: SummarisableDiscount | null;
   total: number;
 }
 

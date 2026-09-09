@@ -31,6 +31,11 @@ interface ScreenHeaderProps {
   actions?: React.ReactNode;
   /** Hidden on the Menu hub, which has nothing to switch away from. */
   showSwitcher?: boolean;
+  /**
+   * Replaces the switcher on the left of the bar. The guided tour uses it to
+   * draw a view chip that looks identical but never navigates.
+   */
+  leading?: React.ReactNode;
   /** Search fields and filter controls that belong to the header. */
   children?: React.ReactNode;
   /** Set when a full-bleed banner above the header already cleared the notch. */
@@ -48,6 +53,7 @@ export function ScreenHeader({
   subtitle,
   actions,
   showSwitcher = true,
+  leading,
   children,
   ignoreTopInset,
   tone = "light",
@@ -59,7 +65,7 @@ export function ScreenHeader({
   return (
     <View style={[styles.wrap, { paddingTop }, style]}>
       <View style={styles.bar}>
-        {showSwitcher ? <WorkspaceSwitcher /> : <View />}
+        {leading ?? (showSwitcher ? <WorkspaceSwitcher /> : <View />)}
         {actions ? <View style={styles.actions}>{actions}</View> : null}
       </View>
       <Text

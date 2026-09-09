@@ -83,6 +83,29 @@ describe("selectKitchenTickets", () => {
   it("returns an empty list when orders are still loading (undefined)", () => {
     expect(selectKitchenTickets(undefined, undefined)).toEqual([]);
   });
+
+  it("keeps each order's items in arrival order when orders interleave", () => {
+    // Pins the join's output so the O(n) single-pass grouping cannot drift
+    // from the copy-per-item version it replaced (10k rows × 200 orders).
+    const orders = [order({ _id: "o1" }), order({ _id: "o2", _creationTime: 2_000_000 })];
+    const items = [
+      item({ orderId: "o1", menuItemName: "Burger" }),
+      item({ orderId: "o2", menuItemName: "Coke" }),
+      item({ orderId: "o1", menuItemName: "Fries" }),
+      item({ orderId: "o2", menuItemName: "Pie" }),
+      item({ orderId: "o1", menuItemName: "Shake" }),
+    ];
+
+    const tickets = selectKitchenTickets(orders, items);
+
+    expect(tickets.map((t) => t.items.map((i) => i.menuItemName))).toEqual([
+      ["Burger", "Fries", "Shake"],
+      ["Coke", "Pie"],
+    ]);
+    // Fresh arrays: the board's per-ticket state must never alias the query rows.
+    expect(tickets[0].items).not.toBe(items);
+    expect(items).toHaveLength(5);
+  });
 });
 
 describe("bump and recall transitions", () => {

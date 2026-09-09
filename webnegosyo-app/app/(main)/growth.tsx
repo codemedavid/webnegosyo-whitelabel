@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { formatPeso, formatPesoCompact, formatCount } from "../../lib/format";
 import { formatPercent } from "../../lib/analytics-utils";
 import {
@@ -169,18 +170,19 @@ export default function GrowthScreen() {
   const [daysBack, setDaysBack] = useState<number>(30);
   const [multiplier, setMultiplier] = useState<number>(2);
 
-  const { data: trends, isLoading, error, isMissingFunction: trendsMissing } =
+  const { data: trends, isLoading, error, isMissingFunction: trendsMissing, refetch: refetchTrends } =
     useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
-  const { data: customers, isMissingFunction: customersMissing } =
+  const { data: customers, isMissingFunction: customersMissing, refetch: refetchCustomers } =
     useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
-  const { data: productRows } =
+  const { data: productRows, refetch: refetchProducts } =
     useSafeQuery<ProductAnalyticsRow[]>(getProductAnalyticsRef, { period: "30d" });
 
   const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
+  // Pull-to-refresh re-reads every query this screen holds.
+  const onRefresh = useCallback(
+    () => refreshWithMinSpinner([refetchTrends, refetchCustomers, refetchProducts], setRefreshing),
+    [refetchTrends, refetchCustomers, refetchProducts]
+  );
 
   const summary = computeGrowthSummary(trends ?? [], { periodDays: daysBack });
   const marginPercent = weightedMarginPercent(productRows);

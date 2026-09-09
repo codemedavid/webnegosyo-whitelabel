@@ -21,6 +21,11 @@ const SUPERADMIN_STATE = {
   // on exit so the next store's reprints don't come out styled like the last's.
   receiptLayout: null,
   receiptLogoUrl: null,
+  // The Customer Hub switch belongs to the viewed store, so it is tenant state
+  // too: entering a store adopts its setting and exiting must clear it, or a
+  // superadmin would carry one merchant's pilot access into the next.
+  customerHubEnabled: false,
+  loyaltyEnabled: false,
   isSuperadmin: true,
   isOwner: false,
   permissions: null,

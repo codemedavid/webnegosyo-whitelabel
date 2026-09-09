@@ -30,6 +30,8 @@ export const STAFF_PERMISSION_KEYS = [
   'order_refund',
   'vouchers',
   'kitchen',
+  'loyalty_manage',
+  'loyalty_redeem',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -42,6 +44,53 @@ export interface StaffCaller {
   outlet_id?: string | null
   /** null = full access (owners and admins created before staff management). */
   permissions: string[] | null
+}
+
+/** The `app_users` row as read for the caller: the tenant may be absent. */
+export interface StaffCallerRow extends Omit<StaffCaller, 'tenant_id'> {
+  tenant_id: string | null
+}
+
+export type ResolvedStaffCaller =
+  | { ok: true; caller: StaffCaller }
+  | { ok: false; status: number; error: string }
+
+const NO_STORE_ACCESS = 'No store access for this account.'
+
+/**
+ * Which store does this call act on?
+ *
+ * For an owner or a branch admin the answer is their own row, and a tenant in
+ * the request body is ignored outright — that is what keeps one store's admin
+ * out of another's roster. The platform superadmin is the single exception:
+ * its row carries no tenant at all, so the store it is viewing has to travel
+ * with the request. Postgres RLS already grants that account cross-tenant
+ * reach, so naming a store here widens nothing.
+ */
+export function resolveStaffCaller(
+  row: StaffCallerRow | null,
+  requestedTenantId: string | null | undefined
+): ResolvedStaffCaller {
+  if (!row) {
+    return { ok: false, status: 403, error: NO_STORE_ACCESS }
+  }
+
+  if (row.role === 'superadmin') {
+    const tenantId = trimmed(requestedTenantId)
+    if (tenantId === '') {
+      return {
+        ok: false,
+        status: 403,
+        error: 'Open a store first to manage its team.',
+      }
+    }
+    return { ok: true, caller: { ...row, tenant_id: tenantId } }
+  }
+
+  if (!row.tenant_id) {
+    return { ok: false, status: 403, error: NO_STORE_ACCESS }
+  }
+  return { ok: true, caller: { ...row, tenant_id: row.tenant_id } }
 }
 
 function hasPermission(caller: StaffCaller, key: StaffPermissionKey): boolean {
@@ -84,6 +133,7 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   'pos-sales': 'pos',
   analytics: 'analytics',
   growth: 'analytics',
+  'customer-hub': 'customers',
   customers: 'customers',
   trends: 'analytics',
   'product-analytics': 'analytics',
@@ -94,6 +144,7 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   portfolio: 'analytics',
   branches: 'analytics',
   'branch-menu': 'menu',
+  loyalty: 'loyalty_manage',
 }
 
 function holdsPermission(
@@ -249,6 +300,56 @@ function assertCanManage(target: StaffRecord, caller: StaffCaller): void {
   throw new Error('You cannot manage staff for that branch')
 }
 
+// ============================================
+// Grant scope
+// ============================================
+
+const GRANT_OUTSIDE_SCOPE = 'You can only grant permissions you hold'
+const FORBIDDEN_ERROR_NAME = 'StaffForbiddenError'
+
+/** An authorization refusal: the dispatcher answers 403, not 400. */
+function forbidden(message: string): Error {
+  const error = new Error(message)
+  error.name = FORBIDDEN_ERROR_NAME
+  return error
+}
+
+function isForbidden(error: unknown): error is Error {
+  return error instanceof Error && error.name === FORBIDDEN_ERROR_NAME
+}
+
+/**
+ * May this caller hand out exactly these permissions? An owner or superadmin
+ * (or a pre-staff-management admin, `permissions: null`) may grant anything.
+ * Everyone else may grant only what they hold — a branch admin holding one
+ * permission must not be able to mint a full-access account (H3). `null` as
+ * the requested set means "full access", which only a full-access caller has.
+ */
+export function canGrantPermissions(
+  caller: StaffCaller,
+  requested: readonly string[] | null
+): boolean {
+  if (caller.role === 'superadmin' || caller.is_owner) return true
+  if (caller.permissions === null) return true
+  if (requested === null) return false
+  const held = new Set(caller.permissions)
+  return requested.every((key) => held.has(key))
+}
+
+function assertCanGrant(caller: StaffCaller, requested: readonly string[]): void {
+  if (canGrantPermissions(caller, requested)) return
+  throw forbidden(GRANT_OUTSIDE_SCOPE)
+}
+
+/**
+ * Taking over an account (a password reset) is bounded the same way as a
+ * grant: a caller may only reset accounts it could have created itself.
+ */
+function assertCanTakeOver(caller: StaffCaller, target: StaffRecord): void {
+  if (canGrantPermissions(caller, target.permissions)) return
+  throw forbidden(GRANT_OUTSIDE_SCOPE)
+}
+
 function resolveTargetBranch(
   requested: string | null | undefined,
   caller: StaffCaller,
@@ -332,6 +433,7 @@ async function createStaff(
     throw new Error('Enter a display name')
   }
   const permissions = validatePermissionKeys(input.permissions)
+  assertCanGrant(caller, permissions)
 
   // Validated before the auth user is created, so a rejected branch cannot
   // leave a login behind with no account attached to it.
@@ -367,6 +469,7 @@ async function updateStaffPermissions(
   assertNotOwner(target)
   assertCanManage(target, caller)
   const validated = validatePermissionKeys(permissions)
+  assertCanGrant(caller, validated)
 
   // A pinned screen can outlive the grant that opened it; leaving the stale
   // value behind means the dialog reports a setting that no longer works.
@@ -427,6 +530,7 @@ async function resetStaffPassword(
   const target = await findTenantStaff(store, caller.tenant_id, userId)
   assertNotOwner(target)
   assertCanManage(target, caller)
+  assertCanTakeOver(caller, target)
   await store.updateAuthPassword(userId, newPassword)
 }
 
@@ -513,6 +617,10 @@ export async function handleStaffAction(
         return fail(400, 'Unknown action')
     }
   } catch (error) {
+    if (isForbidden(error)) return fail(403, error.message)
+    // Every message here is authored in this file or by the store adapter in
+    // index.ts, which replaces backend (Postgres / GoTrue) text with a stable
+    // one before it reaches the core — nothing raw is echoed to the phone.
     return fail(400, error instanceof Error ? error.message : 'The request failed')
   }
 }

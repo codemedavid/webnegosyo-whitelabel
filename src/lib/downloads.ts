@@ -59,18 +59,19 @@ export interface MobileDownload {
 /**
  * Android is not on Google Play yet, so it ships as a sideloaded APK.
  *
- * The APK is served from a GitHub Release asset rather than `public/downloads/`:
- * at 108 MB it exceeds GitHub's 100 MB *file* limit, so it cannot be committed,
- * but release assets are exempt from that limit and are public on a public repo.
+ * The APK is hosted off-repo: at ~111 MB it exceeds GitHub's 100 MB *file*
+ * limit, so it cannot be committed to `public/downloads/`.
  *
- * This used to point at the EAS build artifact URL, which expires after ~30 days
- * on the free tier — when it lapsed the button would 404 silently, exactly as
- * `public/downloads/*.dmg` does today after being gitignored for size. A release
- * asset does not expire, so the link outlives the build that produced it.
+ * `href` currently points at the EAS build artifact for the 1.0.5 APK build
+ * (`production-apk`, versionCode 30). Note the trade-off: EAS artifact URLs
+ * expire after ~30 days on the free tier, and when one lapses the button 404s
+ * silently. Mirroring the same file to a GitHub Release asset (as 1.0.4 did)
+ * gives a link that outlives the build — do that if this page must survive
+ * unattended past the artifact's expiry.
  *
- * Cut a new release and re-point `href` on every Android release. The version
- * below is pinned to `webnegosyo-app/app.config.ts` by `tests/unit/downloads.test.ts`,
- * so letting it drift behind the app fails the suite instead of misleading merchants.
+ * Re-point `href` on every Android release. The version below is pinned to
+ * `webnegosyo-app/app.config.ts` by `tests/unit/downloads.test.ts`, so letting
+ * it drift behind the app fails the suite instead of misleading merchants.
  */
 export const mobileDownloads: MobileDownload[] = [
   {
@@ -86,9 +87,9 @@ export const mobileDownloads: MobileDownload[] = [
     label: "WebNegosyo for Android",
     store: "Direct download",
     kind: "apk",
-    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.4/SmartMenu-1.0.4.apk",
+    href: "https://expo.dev/artifacts/eas/Z1JMu6G4EkX03DkpIZ1HnVFuOB95zgBMqZDu_UmQFfo.apk",
     available: true,
-    version: "1.0.4",
-    size: "108 MB",
+    version: "1.0.5",
+    size: "111 MB",
   },
 ];

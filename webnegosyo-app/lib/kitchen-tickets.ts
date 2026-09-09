@@ -56,10 +56,17 @@ export function selectKitchenTickets<O extends KitchenOrderLike, I extends Kitch
 ): KitchenTicket<O, I>[] {
   if (!orders) return [];
 
+  // One pass, pushing into per-order arrays this function owns. The previous
+  // `[...existing, item]` copied the order's array on every line — quadratic
+  // in lines per order, on a 10k-row read that re-runs on every poll.
   const itemsByOrder = new Map<string, I[]>();
   for (const item of items ?? []) {
-    const existing = itemsByOrder.get(item.orderId) ?? [];
-    itemsByOrder.set(item.orderId, [...existing, item]);
+    const grouped = itemsByOrder.get(item.orderId);
+    if (grouped) {
+      grouped.push(item);
+    } else {
+      itemsByOrder.set(item.orderId, [item]);
+    }
   }
 
   return orders

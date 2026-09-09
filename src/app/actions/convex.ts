@@ -8,6 +8,7 @@ import {
 } from "@/lib/convex-deploy";
 import { tenantsNeedingDeploy } from "@/lib/convex-deploy-selection";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getTenantSecrets, listTenantSecrets, mergeTenantSecrets } from "@/lib/tenant-secrets";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -48,13 +49,15 @@ export async function deployConvexToTenantAction(tenantId: string) {
   const { data, error } = await supabase
     .from("tenants")
     .select(
-      "name, convex_deployment_url, convex_deploy_key, lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, footer_phone, footer_whatsapp, restaurant_address, restaurant_latitude, restaurant_longitude"
+      "name, convex_deployment_url, lalamove_enabled, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, footer_phone, footer_whatsapp, restaurant_address, restaurant_latitude, restaurant_longitude"
     )
     .eq("id", tenantId)
     .single();
 
+  // The deploy key and Lalamove credentials live in tenant_secrets.
+  const secrets = error || !data ? null : await getTenantSecrets(supabase, tenantId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tenant = data as Record<string, any> | null;
+  const tenant = data ? (mergeTenantSecrets(data, secrets) as Record<string, any>) : null;
 
   if (error || !tenant?.convex_deployment_url || !tenant?.convex_deploy_key) {
     return { success: false, error: "Missing Convex credentials" };
@@ -98,10 +101,13 @@ export async function deployConvexToTenantAction(tenantId: string) {
     configs.lalamove_sandbox = String(tenant.lalamove_sandbox ?? true);
     // Sender (pickup) contact the driver calls — store number, never the
     // customer's. Falls back through footer phone fields.
+    // `||`, not `??`: a merchant who cleared the field leaves '' behind, and
+    // '' must fall through to the footer numbers rather than be synced as the
+    // pickup phone.
     configs.lalamove_sender_phone =
-      tenant.lalamove_sender_phone ??
-      tenant.footer_phone ??
-      tenant.footer_whatsapp ??
+      tenant.lalamove_sender_phone ||
+      tenant.footer_phone ||
+      tenant.footer_whatsapp ||
       "";
   }
 
@@ -156,18 +162,25 @@ export async function bulkDeployConvexAction() {
 
   const { data } = await supabase
     .from("tenants")
-    .select(
-      "id, convex_deployment_url, convex_deploy_key, convex_schema_version"
-    )
+    .select("id, convex_deployment_url, convex_schema_version")
     // Require BOTH credentials to be present and non-empty. Filtering only on
     // `IS NULL` lets a half-configured tenant (e.g. a deploy key saved but the
     // deployment URL left blank) slip through, where it would then fail the
     // truthiness guard in deployConvexToTenantAction and surface as a
     // "Missing Convex credentials" error rather than being quietly skipped.
+    // The URL is filtered here; the deploy key lives in tenant_secrets, so it
+    // is checked against that table next.
     .not("convex_deployment_url", "is", null)
-    .not("convex_deploy_key", "is", null)
-    .neq("convex_deployment_url", "")
-    .neq("convex_deploy_key", "");
+    .neq("convex_deployment_url", "");
+
+  const urlRows = (data ?? []) as Array<{ id: string; convex_schema_version?: string | null }>;
+  const secretsByTenant = await listTenantSecrets(
+    supabase,
+    urlRows.map((row) => row.id)
+  );
+  const configured = urlRows.filter((row) =>
+    Boolean(secretsByTenant.get(row.id)?.convex_deploy_key?.trim())
+  );
 
   // Which of those are behind is decided here, not by the database. The column
   // is TEXT, so `convex_schema_version.lt.18` compared lexically — and "5" and
@@ -175,10 +188,7 @@ export async function bulkDeployConvexAction() {
   // dropped out of this query the moment head passed 10, and stayed out: the
   // button said "0 updated" and the oldest deployments were never re-pushed.
   // That is how tenants ended up stuck on v5 rejecting `source: "pos"`.
-  const tenants = tenantsNeedingDeploy(
-    (data ?? []) as Array<{ id: string; convex_schema_version?: string | null }>,
-    CURRENT_SCHEMA_VERSION
-  );
+  const tenants = tenantsNeedingDeploy(configured, CURRENT_SCHEMA_VERSION);
 
   if (!tenants.length) {
     return { success: true, updated: 0, errors: [] as string[] };

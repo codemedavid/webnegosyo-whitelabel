@@ -36,36 +36,25 @@ import {
   type ReviseOrderArgs,
 } from "./order-revise";
 import type { BranchScope } from "../branch-scope";
+import {
+  STATS_LIMIT,
+  STORE_WIDE,
+  asRecord,
+  requireTenant,
+  scopeToBranch,
+  unwrap,
+  type PlatformClient,
+} from "./platform-client";
+import { isPlatformAnalyticsRef, runPlatformAnalyticsQuery } from "./supabase-analytics";
+import {
+  isPlatformProductCostRef,
+  runPlatformProductCostMutation,
+  runPlatformProductCostQuery,
+} from "./supabase-product-costs";
 
-/**
- * The slice of supabase-js this adapter uses. Narrow on purpose: it keeps the
- * query shapes assertable against a recording fake, and documents exactly what
- * the adapter is allowed to do.
- */
-export interface PlatformClient {
-  from(table: string): PlatformQueryBuilder;
-}
-
-export interface PlatformQueryBuilder {
-  select(columns?: string): PlatformQueryBuilder;
-  eq(column: string, value: unknown): PlatformQueryBuilder;
-  in(column: string, values: readonly unknown[]): PlatformQueryBuilder;
-  gte(column: string, value: unknown): PlatformQueryBuilder;
-  lte(column: string, value: unknown): PlatformQueryBuilder;
-  order(column: string, options: { ascending: boolean }): PlatformQueryBuilder;
-  limit(count: number): PlatformQueryBuilder;
-  insert(values: unknown): PlatformQueryBuilder;
-  update(values: unknown): PlatformQueryBuilder;
-  // Only ever used to replace an edited order's items, and always narrowed by
-  // order_id. Widening this interface widens what the adapter can destroy.
-  delete(): PlatformQueryBuilder;
-  maybeSingle(): PlatformQueryBuilder;
-  single(): PlatformQueryBuilder;
-  then<TResult>(
-    onfulfilled: (value: { data: unknown; error: { message: string } | null }) => TResult,
-    onrejected?: (reason: unknown) => TResult
-  ): Promise<TResult>;
-}
+// The narrow client contract lives in `platform-client.ts`; re-exported so the
+// existing importers (hooks, tests) keep their entry point.
+export type { PlatformClient, PlatformQueryBuilder } from "./platform-client";
 
 const ORDER_COLUMNS = "*";
 const ORDER_WITH_ITEMS_COLUMNS = "*, order_items(*)";
@@ -86,9 +75,6 @@ const DEFAULT_ORDER_LIMIT = 50;
  * unbounded scan on a busy store.
  */
 const QUEUE_LIMIT = 200;
-
-/** Safety cap for stats reads, mirroring Convex's QUERY_LIMIT. */
-const STATS_LIMIT = 10000;
 
 const OPEN_STATUSES = ["pending", "confirmed", "preparing", "ready"];
 
@@ -113,6 +99,9 @@ const SUPPORTED_MUTATION_REFS = [
   "orders:setPrepTime",
 ] as const;
 
+/** Action refs the platform backend answers (see `runPlatformAction`). */
+const SUPPORTED_ACTION_REFS = ["productAnalyticsAggregator:refreshAnalytics"] as const;
+
 const SUPPORTED_REFS: readonly string[] = [
   ...SUPPORTED_QUERY_REFS,
   ...SUPPORTED_MUTATION_REFS,
@@ -125,53 +114,12 @@ const SUPPORTED_REFS: readonly string[] = [
  * an empty array reads as "you have no orders".
  */
 export function isPlatformRefSupported(ref: string): boolean {
-  return SUPPORTED_REFS.includes(ref);
-}
-
-interface QueryResult<T> {
-  data: T;
-  error: { message: string } | null;
-}
-
-/** Unwrap a PostgREST result, turning an error into a throw. */
-async function unwrap<T>(builder: PlatformQueryBuilder): Promise<T> {
-  const { data, error } = (await builder) as unknown as QueryResult<T>;
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-function requireTenant(tenantId: string): string {
-  if (!tenantId || !tenantId.trim()) {
-    throw new Error("No tenant is selected — refusing to query orders.");
-  }
-  return tenantId;
-}
-
-function asRecord(args: unknown): Record<string, unknown> {
-  return args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-}
-
-/** A store-wide account, and the default for every caller that passes no scope. */
-const STORE_WIDE: BranchScope = { kind: "all" };
-
-/**
- * Narrow a query to one branch, when the account is confined to one.
- *
- * Layered ON TOP of the tenant filter, never instead of it: outlet ids are
- * unique today, but relying on that would put a cross-tenant leak one schema
- * change away. A store-wide account adds no clause at all, so the query 121
- * live platform tenants run stays exactly what it is today.
- *
- * `column` is a parameter because `order_items` has no branch of its own and is
- * scoped through the join on its parent order — the same way its tenant is.
- */
-function scopeToBranch(
-  builder: PlatformQueryBuilder,
-  scope: BranchScope,
-  column = "outlet_id"
-): PlatformQueryBuilder {
-  if (scope.kind === "all") return builder;
-  return builder.eq(column, scope.outletId);
+  return (
+    SUPPORTED_REFS.includes(ref) ||
+    (SUPPORTED_ACTION_REFS as readonly string[]).includes(ref) ||
+    isPlatformAnalyticsRef(ref) ||
+    isPlatformProductCostRef(ref)
+  );
 }
 
 // --- queries --------------------------------------------------------------
@@ -255,6 +203,14 @@ async function getAllOrderItems(
 }
 
 /**
+ * Per-order reads are bounded like every other read a phone makes. One order
+ * never legitimately carries this many settlements or edits; the ceilings
+ * exist so a runaway writer cannot turn opening an order into a table scan.
+ */
+export const ORDER_LEDGER_LIMIT = 200;
+export const ORDER_REVISIONS_LIMIT = 100;
+
+/**
  * An order's settlement ledger, oldest first — the order the money actually
  * moved in, which is what a merchant reading the history expects.
  *
@@ -276,6 +232,7 @@ async function getOrderPayments(
       .eq("tenant_id", tenantId)
       .eq("order_id", String(args.orderId))
       .order("created_at", { ascending: true })
+      .limit(ORDER_LEDGER_LIMIT)
   );
 
   return (rows ?? []).map(toOrderPaymentDto);
@@ -294,6 +251,7 @@ async function getOrderRevisions(
       .eq("tenant_id", tenantId)
       .eq("order_id", String(args.orderId))
       .order("revision_number", { ascending: false })
+      .limit(ORDER_REVISIONS_LIMIT)
   );
 
   return (rows ?? []).map(toOrderRevisionDto);
@@ -570,6 +528,12 @@ export async function runPlatformQuery(
       return getStatsBetween(client, tenant, scope, startMs, endMs);
     }
     default:
+      if (isPlatformAnalyticsRef(ref)) {
+        return runPlatformAnalyticsQuery(client, tenant, ref, params, scope);
+      }
+      if (isPlatformProductCostRef(ref)) {
+        return runPlatformProductCostQuery(client, tenant, ref, params);
+      }
       throw new Error(`Query "${ref}" is not supported by the platform backend.`);
   }
 }
@@ -623,6 +587,33 @@ export async function runPlatformMutation(
     case "orders:recordPayment":
       return recordPayment(client, tenant, params);
     default:
+      if (isPlatformProductCostRef(ref)) {
+        return runPlatformProductCostMutation(client, tenant, ref, params);
+      }
       throw new Error(`Mutation "${ref}" is not supported by the platform backend.`);
+  }
+}
+
+/**
+ * Convex actions with a platform equivalent.
+ *
+ * `refreshAnalytics` re-runs the Convex aggregator and stores its rows; on the
+ * platform the product matrix is computed live on every read, so there is
+ * nothing to write and the gesture resolves immediately. Anything else is
+ * refused loudly so a screen shows its "needs a backend update" placeholder
+ * rather than believing an action ran.
+ */
+export async function runPlatformAction(
+  _client: PlatformClient,
+  tenantId: string,
+  ref: string,
+  _args: unknown
+): Promise<unknown> {
+  requireTenant(tenantId);
+  switch (ref) {
+    case "productAnalyticsAggregator:refreshAnalytics":
+      return null;
+    default:
+      throw new Error(`Action "${ref}" is not supported by the platform backend.`);
   }
 }

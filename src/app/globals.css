@@ -159,6 +159,18 @@
   color-scheme: dark;
 }
 
+/* Chrome/Safari paint autofilled fields with an opaque light background and
+   dark text, which is unreadable on the pure-black superadmin surfaces.
+   `background-clip: text` is the only way to suppress the UA background. */
+.superadmin-shell input:-webkit-autofill,
+.superadmin-shell input:-webkit-autofill:hover,
+.superadmin-shell input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  caret-color: #fff;
+  background-clip: text;
+  transition: background-color 100000s ease-in-out 0s;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

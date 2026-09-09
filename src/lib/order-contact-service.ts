@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { decideContactWrite, type ContactSubmission } from '@/lib/order-contact'
 
@@ -35,24 +36,21 @@ export async function updateOrderContact(
 
     const { data: tenantConfig } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url, convex_deploy_key')
+      .select('convex_deployment_url')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
 
-    const config = tenantConfig as {
-      convex_deployment_url?: string | null
-      convex_deploy_key?: string | null
-    } | null
+    const config = tenantConfig as { convex_deployment_url?: string | null } | null
 
     if (!config) return { ok: false, error: 'not_found' }
 
-    if (config.convex_deployment_url && config.convex_deploy_key) {
-      return updateInConvex(
-        config.convex_deployment_url,
-        config.convex_deploy_key,
-        submission,
-      )
+    const deployKey = config.convex_deployment_url
+      ? (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
+      : null
+
+    if (config.convex_deployment_url && deployKey) {
+      return updateInConvex(config.convex_deployment_url, deployKey, submission)
     }
     return updateInSupabase(supabaseAdmin, submission)
   } catch (err) {

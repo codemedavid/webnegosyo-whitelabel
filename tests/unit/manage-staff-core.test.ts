@@ -7,6 +7,9 @@
  * pin the port to the web originals (parity blocks) and prove the dispatcher
  * enforces the same authorization the web server actions do.
  */
+import { readFileSync } from 'fs'
+import { join } from 'path'
+
 import {
   STAFF_PERMISSION_KEYS as CORE_PERMISSION_KEYS,
   DEFAULT_SCREEN_PERMISSIONS,
@@ -505,5 +508,168 @@ describe('remove', () => {
     })
     expect(result.status).toBe(400)
     expect(state.staff).toHaveLength(1)
+  })
+})
+
+// ============================================
+// Grant scope: a non-owner may only hand out what it holds (H3)
+// ============================================
+
+const SUPERADMIN: StaffCaller = {
+  user_id: 'super-1',
+  tenant_id: TENANT,
+  role: 'superadmin',
+  is_owner: false,
+  outlet_id: null,
+  permissions: null,
+}
+
+const GRANT_ERROR = 'You can only grant permissions you hold'
+
+describe('grant scope for a branch admin', () => {
+  it('create refuses permissions the caller does not hold, with 403 and no auth user', async () => {
+    // Arrange
+    const { store, state } = makeFakeStore()
+
+    // Act
+    const result = await handleStaffAction(store, BRANCH_ADMIN, CONTEXT, {
+      action: 'create',
+      input: { ...CREATE_INPUT, outletId: BRANCH_A, permissions: ['orders', 'pos'] },
+    })
+
+    // Assert — rejected outright, never trimmed to the overlap
+    expect(result.status).toBe(403)
+    expect(result.body).toEqual({ success: false, error: GRANT_ERROR })
+    expect(state.staff).toHaveLength(0)
+    expect(state.authUsers.size).toBe(0)
+  })
+
+  it('create allows a subset of the caller’s own permissions', async () => {
+    const { store, state } = makeFakeStore()
+    const result = await handleStaffAction(store, BRANCH_ADMIN, CONTEXT, {
+      action: 'create',
+      input: { ...CREATE_INPUT, outletId: BRANCH_A, permissions: ['orders', 'branch_staff'] },
+    })
+    expect(result.status).toBe(200)
+    expect(state.staff[0].permissions).toEqual(['orders', 'branch_staff'])
+  })
+
+  it('update_permissions refuses a grant outside the caller’s own set and leaves the row alone', async () => {
+    const { store, state } = makeFakeStore([
+      record({ user_id: 's1', outlet_id: BRANCH_A, permissions: ['orders'] }),
+    ])
+    const result = await handleStaffAction(store, BRANCH_ADMIN, CONTEXT, {
+      action: 'update_permissions',
+      userId: 's1',
+      permissions: ['orders', 'menu'],
+    })
+    expect(result.status).toBe(403)
+    expect(result.body.error).toBe(GRANT_ERROR)
+    expect(state.staff[0].permissions).toEqual(['orders'])
+  })
+
+  it('update_permissions allows a grant within the caller’s own set', async () => {
+    const { store, state } = makeFakeStore([
+      record({ user_id: 's1', outlet_id: BRANCH_A, permissions: ['orders'] }),
+    ])
+    const result = await handleStaffAction(store, BRANCH_ADMIN, CONTEXT, {
+      action: 'update_permissions',
+      userId: 's1',
+      permissions: ['branch_staff'],
+    })
+    expect(result.status).toBe(200)
+    expect(state.staff[0].permissions).toEqual(['branch_staff'])
+  })
+
+  it('owner and superadmin may grant anything', async () => {
+    for (const caller of [OWNER, SUPERADMIN]) {
+      const { store } = makeFakeStore()
+      const result = await handleStaffAction(store, caller, CONTEXT, {
+        action: 'create',
+        input: { ...CREATE_INPUT, permissions: [...CORE_PERMISSION_KEYS] },
+      })
+      expect(result.status).toBe(200)
+    }
+  })
+})
+
+describe('reset_password scope for a branch admin', () => {
+  it('refuses an account holding permissions the caller does not', async () => {
+    const { store, state } = makeFakeStore([
+      record({ user_id: 's1', outlet_id: BRANCH_A, permissions: ['orders', 'pos'] }),
+    ])
+    const result = await handleStaffAction(store, BRANCH_ADMIN, CONTEXT, {
+      action: 'reset_password',
+      userId: 's1',
+      newPassword: 'newpassword1',
+    })
+    expect(result.status).toBe(403)
+    expect(result.body.error).toBe(GRANT_ERROR)
+    expect(state.passwords.size).toBe(0)
+  })
+
+  it('refuses a full-access (null permissions) account in its own branch', async () => {
+    const { store, state } = makeFakeStore([
+      record({ user_id: 's1', outlet_id: BRANCH_A, permissions: null }),
+    ])
+    const result = await handleStaffAction(store, BRANCH_ADMIN, CONTEXT, {
+      action: 'reset_password',
+      userId: 's1',
+      newPassword: 'newpassword1',
+    })
+    expect(result.status).toBe(403)
+    expect(state.passwords.size).toBe(0)
+  })
+
+  it('allows an account whose permissions are a subset of the caller’s', async () => {
+    const { store, state } = makeFakeStore([
+      record({ user_id: 's1', outlet_id: BRANCH_A, permissions: ['orders'] }),
+    ])
+    const result = await handleStaffAction(store, BRANCH_ADMIN, CONTEXT, {
+      action: 'reset_password',
+      userId: 's1',
+      newPassword: 'newpassword1',
+    })
+    expect(result.status).toBe(200)
+    expect(state.passwords.get('s1')).toBe('newpassword1')
+  })
+
+  it('owner still resets a full-access account', async () => {
+    const { store, state } = makeFakeStore([record({ user_id: 's1', permissions: null })])
+    const result = await handleStaffAction(store, OWNER, CONTEXT, {
+      action: 'reset_password',
+      userId: 's1',
+      newPassword: 'newpassword1',
+    })
+    expect(result.status).toBe(200)
+    expect(state.passwords.get('s1')).toBe('newpassword1')
+  })
+})
+
+// ============================================
+// Backend error messages never reach the phone (M4)
+// ============================================
+
+describe('index.ts backend error sanitization', () => {
+  const source = readFileSync(
+    join(__dirname, '../../supabase/functions/manage-staff/index.ts'),
+    'utf8'
+  )
+
+  it('never returns a Postgres or GoTrue message in a response body', () => {
+    // Every `json({ ... error: X })` must be a literal string or a core-
+    // authored `resolved.error` / `result.body` — never a backend `.message`.
+    expect(source).not.toMatch(/error:\s*callerErr\.message/)
+    expect(source).not.toMatch(/error:\s*outletsRes\.error\.message/)
+    expect(source).not.toMatch(/e instanceof Error \? e\.message/)
+  })
+
+  it('never re-throws a backend message into the core from the store adapter', () => {
+    expect(source).not.toMatch(/throw new Error\(error\.message\)/)
+    expect(source).not.toMatch(/throw new Error\(error\?\.message/)
+  })
+
+  it('logs the original failure server-side', () => {
+    expect(source).toMatch(/console\.error\(/)
   })
 })

@@ -173,12 +173,14 @@ describe('fetchSalesSummaryForTenantId', () => {
   it('resolves the tenant, then reads through that tenant\'s own backend', async () => {
     const client = {
       from: (table: string) => {
-        if (table === 'tenants') {
+        if (table === 'tenants' || table === 'tenant_secrets') {
           const b: Record<string, unknown> = {}
           Object.assign(b, {
             select: () => b,
             eq: () => b,
             single: () => Promise.resolve({ data: { ...PLATFORM_TENANT }, error: null }),
+            // A platform tenant has no secrets row; the read must still succeed.
+            maybeSingle: () => Promise.resolve({ data: null, error: null }),
           })
           return b
         }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { importLoyverseCatalog } from '@/lib/loyverse/catalog-import'
 import type { Tenant } from '@/types/database'
 
@@ -55,7 +56,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ignored: true, reason: 'tenant not found' })
   }
 
-  const tenantRow = tenant as unknown as Tenant
+  const tenantRow: Tenant = mergeTenantSecrets(
+    tenant as unknown as Tenant,
+    await getTenantSecrets(admin, tenantId)
+  )
   if (!tenantRow.loyverse_enabled) {
     return NextResponse.json({ ignored: true, reason: 'loyverse disabled' })
   }

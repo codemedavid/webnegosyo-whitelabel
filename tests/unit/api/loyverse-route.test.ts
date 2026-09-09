@@ -74,16 +74,32 @@ function stubAdmin(options: {
         }),
       }
     }
+    // The deployment URL sits on the tenants row; the deploy key lives in
+    // tenant_secrets and is read separately.
+    const tenant =
+      'tenant' in options
+        ? options.tenant
+        : { convex_deployment_url: 'https://t.convex.cloud', convex_deploy_key: 'key' }
     if (table === 'tenants') {
       return {
         select: () => ({
           eq: () => ({
             maybeSingle: () =>
               Promise.resolve({
-                data:
-                  'tenant' in options
-                    ? options.tenant
-                    : { convex_deployment_url: 'https://t.convex.cloud', convex_deploy_key: 'key' },
+                data: tenant ? { convex_deployment_url: tenant.convex_deployment_url } : null,
+                error: null,
+              }),
+          }),
+        }),
+      }
+    }
+    if (table === 'tenant_secrets') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: tenant ? { convex_deploy_key: tenant.convex_deploy_key ?? null } : null,
                 error: null,
               }),
           }),

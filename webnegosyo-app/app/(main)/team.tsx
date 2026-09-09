@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 
-import { supabase } from "../../lib/supabase";
+import { supabase, supabaseAnonKey, supabaseUrl } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
 import { useOutlets } from "../../lib/use-outlets";
 import {
@@ -23,10 +23,17 @@ import {
   updateStaffBranch,
   updateStaffDefaultScreen,
   updateStaffPermissions,
+  withTenantScope,
   type ManageStaffInvoke,
   type StaffMember,
 } from "../../lib/staff-service";
+import { createManageStaffInvoke } from "../../lib/manage-staff-transport";
 import { isTabAllowed } from "../../lib/staff-permissions";
+import {
+  effectivePermissions,
+  toggleEffectivePermission,
+  togglePermission,
+} from "../../lib/team-permissions";
 import { BackHeader } from "../../components/BackHeader";
 import {
   PERMISSION_OPTIONS,
@@ -41,8 +48,16 @@ import { Card } from "../../components/Card";
 // holds the service-role key, and the server re-derives the caller's tenant
 // and authority from the JWT, so this screen is presentation only.
 
-const invokeManageStaff: ManageStaffInvoke = (body) =>
-  supabase.functions.invoke("manage-staff", { method: "POST", body });
+// Deliberately NOT the supabase-js functions client: its fetch wrapper awaits
+// the session with no deadline and reports every failure — hung session read,
+// dropped socket, dead network — as the same "Failed to send a request to the
+// Edge Function". See lib/manage-staff-transport.ts.
+const invokeManageStaffRaw: ManageStaffInvoke = createManageStaffInvoke({
+  functionsUrl: `${supabaseUrl.replace(/\/$/, "")}/functions/v1`,
+  anonKey: supabaseAnonKey,
+  getSession: () => supabase.auth.getSession(),
+  fetchImpl: fetch,
+});
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -64,10 +79,6 @@ const EMPTY_FORM: NewStaffForm = {
   defaultTab: null,
 };
 
-function togglePermission(list: string[], key: string): string[] {
-  return list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
-}
-
 /** Screens the picker should offer for this grant list. */
 function pinnableFor(permissions: string[] | null) {
   const holder = { role: "admin", isOwner: false, permissions };
@@ -81,6 +92,14 @@ export default function TeamScreen() {
   const myOutletId = useAuthStore((s) => s.outletId);
   const isDemo = useAuthStore((s) => s.isDemo);
   const myUserId = useAuthStore((s) => s.userId);
+  const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
+
+  // A superadmin viewing a store has no store of its own, so the viewed one
+  // has to travel with each request or the function has no tenant to act on.
+  const invokeManageStaff = useMemo(
+    () => withTenantScope(invokeManageStaffRaw, impersonatedTenantId),
+    [impersonatedTenantId]
+  );
 
   const allowed = canOpenTeam({
     role,
@@ -120,7 +139,7 @@ export default function TeamScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [invokeManageStaff]);
 
   useEffect(() => {
     if (!allowed) {
@@ -385,7 +404,9 @@ export default function TeamScreen() {
                 <View style={styles.manageBlock}>
                   <Text style={styles.groupLabel}>Permissions</Text>
                   {PERMISSION_OPTIONS.map((option) => {
-                    const held = member.permissions?.includes(option.key) ?? true;
+                    // null = full access: every switch is on, and a flip must
+                    // send the whole list minus this key, not just this key.
+                    const held = effectivePermissions(member.permissions).includes(option.key);
                     return (
                       <View key={option.key} style={styles.toggleRow}>
                         <View style={styles.toggleCopy}>
@@ -395,8 +416,10 @@ export default function TeamScreen() {
                           value={held}
                           disabled={busy}
                           onValueChange={() => {
-                            const current = member.permissions ?? [];
-                            const next = togglePermission(current, option.key);
+                            const next = toggleEffectivePermission(
+                              member.permissions,
+                              option.key
+                            );
                             if (next.length === 0) {
                               Alert.alert(
                                 "Keep one permission",

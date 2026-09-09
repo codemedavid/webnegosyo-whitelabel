@@ -1,21 +1,24 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   RefreshControl,
   Modal,
   TextInput,
   Alert,
+  type ListRenderItem,
 } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
-import { supabase } from "../../lib/supabase";
+import { useCategories, useMenuCatalogCache, useProducts } from "../../lib/query/use-products";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { formatPeso, formatCount } from "../../lib/format";
 import { LoadingState } from "../../components/LoadingState";
@@ -31,10 +34,15 @@ import { FilterChipsRow } from "../../components/FilterChipsRow";
 import { ProductFilterSheet } from "../../components/ProductFilterSheet";
 import { DailyProductBreakdown } from "../../components/DailyProductBreakdown";
 import { ExportSheet } from "../../components/ExportSheet";
+import {
+  BCG_PRESENTATION,
+  ProductLifetimeRow,
+  type ProductLifetimeItem,
+} from "../../components/ProductLifetimeRow";
 import { runSalesExport } from "../../lib/export/run-export";
 import { formatExportDay } from "../../lib/export/dates";
 import {
-  buildProductAnalytics,
+  buildProductAnalyticsComparison,
   computeProductDeltas,
   previousWindow,
   productDateKey,
@@ -96,14 +104,8 @@ interface BackendOrderItem {
   subtotal: number;
 }
 
-interface AnalyticsRow {
-  menuItemId: string;
-  menuItemName?: string;
-  totalUnitsSold: number;
-  totalRevenue: number;
-  marginPercent?: number;
+interface AnalyticsRow extends ProductLifetimeItem {
   avgDailyUnits: number;
-  bcgClassification: string;
   recommendation: string;
   hasData?: boolean;
 }
@@ -138,13 +140,11 @@ const PERIODS = [
   { label: "All Time", value: "all" },
 ];
 
-const BCG: Record<string, { label: string; color: string; bg: string }> = {
-  star: { label: "Star", color: colors.statusPending.text, bg: colors.warningLight },
-  plowhorse: { label: "Plowhorse", color: colors.info, bg: colors.infoLight },
-  puzzle: { label: "Puzzle", color: colors.accent, bg: colors.accentLight },
-  dog: { label: "Dog", color: colors.danger, bg: colors.dangerLight },
-  unclassified: { label: "No data", color: colors.textSecondary, bg: colors.surfaceSubtle },
-};
+const BCG_CHIP_CLASSES = ["star", "plowhorse", "puzzle", "dog"] as const;
+
+const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
+
+const keyOfRow = (item: AnalyticsRow) => item.menuItemId;
 
 export default function ProductAnalyticsScreen() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
@@ -154,8 +154,6 @@ export default function ProductAnalyticsScreen() {
 
   const [period, setPeriod] = useState("30d");
   const [refreshing, setRefreshing] = useState(false);
-  const [menuItems, setMenuItems] = useState<MenuRow[]>([]);
-  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [editing, setEditing] = useState<AnalyticsRow | null>(null);
   const [costInput, setCostInput] = useState("");
   const [savingCost, setSavingCost] = useState(false);
@@ -222,52 +220,44 @@ export default function ProductAnalyticsScreen() {
    */
   const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const { data: rows, isLoading } = useSafeQuery<AnalyticsRow[]>(getAllRef, { period });
-  const { data: portfolio } = useSafeQuery<Portfolio>(getPortfolioRef, { period });
-  const { data: backendOrders, isLoading: ordersLoading } = useSafeQuery<BackendOrder[]>(
-    getOrdersRef,
-    { limit: ORDER_FETCH_LIMIT }
+  const { data: rows, isLoading, refetch: refetchRows } = useSafeQuery<AnalyticsRow[]>(
+    getAllRef,
+    { period }
   );
-  const { data: backendItems, isMissingFunction: itemsMissing } =
-    useSafeQuery<BackendOrderItem[]>(getAllOrderItemsRef, {});
+  const { data: portfolio, refetch: refetchPortfolio } = useSafeQuery<Portfolio>(getPortfolioRef, {
+    period,
+  });
+  const {
+    data: backendOrders,
+    isLoading: ordersLoading,
+    refetch: refetchOrders,
+  } = useSafeQuery<BackendOrder[]>(getOrdersRef, { limit: ORDER_FETCH_LIMIT });
+  const {
+    data: backendItems,
+    isMissingFunction: itemsMissing,
+    refetch: refetchItems,
+  } = useSafeQuery<BackendOrderItem[]>(getAllOrderItemsRef, {});
   const setCost = useSafeMutation(setCostRef);
   const refreshAnalytics = useSafeAction(refreshRef);
 
-  // Load the full menu so every available product shows, even with no sales.
-  useEffect(() => {
-    let cancelled = false;
-    if (!tenantId) return;
-    (async () => {
-      const [items, cats] = await Promise.all([
-        supabase
-          .from("menu_items")
-          .select("id, name, category_id")
-          .eq("tenant_id", tenantId)
-          .order("name", { ascending: true }),
-        supabase
-          .from("categories")
-          .select("id, name")
-          .eq("tenant_id", tenantId)
-          .order("name", { ascending: true }),
-      ]);
-      if (cancelled) return;
-      if (items.data) {
-        setMenuItems(
-          items.data.map((m) => ({
-            id: m.id as string,
-            name: m.name as string,
-            categoryId: (m.category_id as string | null) ?? null,
-          }))
-        );
-      }
-      if (cats.data) {
-        setCategories(cats.data.map((c) => ({ id: c.id as string, name: c.name as string })));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId]);
+  // The full menu, from the shared catalog cache, so every product shows even
+  // with no sales — and a product added on another screen shows here too.
+  const productsResource = useProducts(tenantId);
+  const categoriesResource = useCategories(tenantId);
+  const { invalidate: invalidateMenuCatalog } = useMenuCatalogCache();
+
+  const menuItems: MenuRow[] = useMemo(
+    () =>
+      (productsResource.data ?? [])
+        .map((m) => ({ id: m.id, name: m.name, categoryId: m.category_id ?? null }))
+        .sort(byName),
+    [productsResource.data]
+  );
+
+  const categories: CategoryRow[] = useMemo(
+    () => (categoriesResource.data ?? []).map((c) => ({ id: c.id, name: c.name })).sort(byName),
+    [categoriesResource.data]
+  );
 
   // --- daily view -----------------------------------------------------------
 
@@ -319,18 +309,25 @@ export default function ProductAnalyticsScreen() {
     [selectedDay, preset, nowMs]
   );
 
+  // One walk over the line items serves both the window on screen and the
+  // window it is compared against; `topN` caps only what is shown.
   const daily = useMemo(
     () =>
-      buildProductAnalytics(orderInputs, itemInputs, {
-        metric,
-        topN,
-        search: debouncedSearch,
-        categoryId: categoryId ?? undefined,
-        categoryByItemId,
-        sources,
-        startMs: dateWindow.startMs,
-        endMs: dateWindow.endMs,
-      }),
+      buildProductAnalyticsComparison(
+        orderInputs,
+        itemInputs,
+        {
+          metric,
+          topN,
+          search: debouncedSearch,
+          categoryId: categoryId ?? undefined,
+          categoryByItemId,
+          sources,
+          startMs: dateWindow.startMs,
+          endMs: dateWindow.endMs,
+        },
+        previousWindow(dateWindow.startMs, dateWindow.endMs)
+      ),
     [
       orderInputs,
       itemInputs,
@@ -344,33 +341,14 @@ export default function ProductAnalyticsScreen() {
     ]
   );
 
-  const deltas = useMemo(() => {
-    const before = previousWindow(dateWindow.startMs, dateWindow.endMs);
-    const previous = buildProductAnalytics(orderInputs, itemInputs, {
-      metric,
-      search: debouncedSearch,
-      categoryId: categoryId ?? undefined,
-      categoryByItemId,
-      sources,
-      startMs: before.startMs,
-      endMs: before.endMs,
-    });
-    return computeProductDeltas(daily.totals, previous.totals);
-  }, [
-    daily,
-    orderInputs,
-    itemInputs,
-    metric,
-    debouncedSearch,
-    categoryId,
-    categoryByItemId,
-    sources,
-    dateWindow,
-  ]);
+  const deltas = useMemo(
+    () => computeProductDeltas(daily.current.totals, daily.previous.totals),
+    [daily]
+  );
 
   const windowTotals = useMemo(
     () =>
-      daily.days.reduce(
+      daily.current.days.reduce(
         (acc, day) => ({
           units: acc.units + day.totalUnits,
           sales: acc.sales + day.totalSales,
@@ -438,31 +416,65 @@ export default function ProductAnalyticsScreen() {
     return out.sort((x, y) => y.totalRevenue - x.totalRevenue);
   }, [rows, menuItems]);
 
+  const refetchMenu = productsResource.refetch;
+  const refetchCategories = categoriesResource.refetch;
   const onRefresh = useCallback(async () => {
+    // "Now" moves with the pull so the window follows the merchant into a new
+    // day, and every read behind the numbers is re-read rather than re-derived.
+    setNowMs(Date.now());
     // Demo sessions are read-only. refreshAnalytics is an unauthenticated Convex
     // action that writes aggregated rows to the real sample store, so block the
-    // write for demo guests and just acknowledge the pull gesture.
-    if (useAuthStore.getState().isDemo) {
-      setRefreshing(true);
-      setNowMs(Date.now());
-      setTimeout(() => setRefreshing(false), 400);
-      return;
-    }
-    setRefreshing(true);
-    setNowMs(Date.now());
-    try {
-      await refreshAnalytics();
-    } catch {
-      // Action may be unavailable on an older deployment — ignore.
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshAnalytics]);
+    // write for demo guests and only re-read.
+    const recompute = async () => {
+      if (useAuthStore.getState().isDemo) return;
+      try {
+        await refreshAnalytics();
+      } catch {
+        // Action may be unavailable on an older deployment — ignore.
+      }
+    };
+    await refreshWithMinSpinner(
+      [
+        async () => {
+          await recompute();
+          await Promise.all([refetchRows(), refetchPortfolio()]);
+        },
+        refetchOrders,
+        refetchItems,
+        refetchMenu,
+        refetchCategories,
+      ],
+      setRefreshing
+    );
+  }, [
+    refreshAnalytics,
+    refetchRows,
+    refetchPortfolio,
+    refetchOrders,
+    refetchItems,
+    refetchMenu,
+    refetchCategories,
+  ]);
 
-  const openCostEditor = (row: AnalyticsRow) => {
-    setEditing(row);
+  const openCostEditor = useCallback((row: ProductLifetimeItem) => {
+    setEditing(row as AnalyticsRow);
     setCostInput("");
-  };
+  }, []);
+
+  // Hoisted out of the row: the leader's revenue sets every bar's scale.
+  const maxRevenue = merged[0]?.totalRevenue || 1;
+
+  const renderLifetimeRow: ListRenderItem<AnalyticsRow> = useCallback(
+    ({ item, index }) => (
+      <ProductLifetimeRow
+        item={item}
+        rank={index + 1}
+        maxRevenue={maxRevenue}
+        onPress={openCostEditor}
+      />
+    ),
+    [maxRevenue, openCostEditor]
+  );
 
   const handleSaveCost = async () => {
     if (!editing) return;
@@ -470,14 +482,16 @@ export default function ProductAnalyticsScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
+    if (!tenantId) return;
     const cost = parseFloat(costInput);
-    if (isNaN(cost) || cost < 0) {
+    if (!Number.isFinite(cost) || cost < 0) {
       Alert.alert("Invalid cost", "Enter a valid cost price (a number ≥ 0).");
       return;
     }
     setSavingCost(true);
     try {
       await setCost({ menuItemId: editing.menuItemId, costPrice: cost });
+      void invalidateMenuCatalog(tenantId);
       setEditing(null);
       setCostInput("");
       Alert.alert("Saved", "Cost saved. Pull down to refresh and recompute margins.");
@@ -497,28 +511,71 @@ export default function ProductAnalyticsScreen() {
     );
   }
 
+  const refreshControl = (
+    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+  );
+
+  const modeBlock = (
+    <View style={styles.modeBlock}>
+      <SegmentedControl
+        options={VIEW_MODES}
+        value={viewMode}
+        onChange={setViewMode}
+        accessibilityPrefix="Show"
+      />
+    </View>
+  );
+
+  const isMenuPending = isLoading && menuItems.length === 0;
+
+  const lifetimeHeader = (
+    <>
+      {modeBlock}
+      <PeriodSelector periods={PERIODS} selected={period} onSelect={setPeriod} />
+
+      {portfolio && portfolio.totalProducts > 0 && (
+        <View style={styles.chipsRow}>
+          {BCG_CHIP_CLASSES.map((cls) => (
+            <View key={cls} style={[styles.chip, { backgroundColor: BCG_PRESENTATION[cls].bg }]}>
+              <Text style={[styles.chipCount, { color: BCG_PRESENTATION[cls].color }]}>
+                {portfolio.counts[cls]}
+              </Text>
+              <Text style={[styles.chipLabel, { color: BCG_PRESENTATION[cls].color }]}>
+                {BCG_PRESENTATION[cls].label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
+
   return (
     <View style={styles.screen}>
       {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader title="Performance" subtitle="What sells, and what doesn't" />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-        }
-      >
-        <View style={styles.modeBlock}>
-          <SegmentedControl
-            options={VIEW_MODES}
-            value={viewMode}
-            onChange={setViewMode}
-            accessibilityPrefix="Show"
-          />
-        </View>
-
-        {viewMode === "daily" ? (
-          <>
+      {viewMode === "lifetime" ? (
+        // The whole menu is one list; a virtualised list keeps a long menu
+        // from mounting every row at once.
+        <FlatList
+          data={isMenuPending ? [] : merged}
+          keyExtractor={keyOfRow}
+          renderItem={renderLifetimeRow}
+          ListHeaderComponent={lifetimeHeader}
+          ListEmptyComponent={
+            isMenuPending ? (
+              <LoadingState message="Loading products..." />
+            ) : (
+              <EmptyState message="No products on the menu yet." />
+            )
+          }
+          contentContainerStyle={styles.content}
+          refreshControl={refreshControl}
+        />
+      ) : (
+        <ScrollView contentContainerStyle={styles.content} refreshControl={refreshControl}>
+          {modeBlock}
             {/*
               The period is the only filter that stays on the screen: it is the
               one a merchant changes every session. Everything else opens from
@@ -628,7 +685,7 @@ export default function ProductAnalyticsScreen() {
               <ErrorState message="This store's backend needs an update before day-by-day product sales can be shown." />
             ) : ordersLoading && orderInputs.length === 0 ? (
               <LoadingState message="Loading daily sales..." />
-            ) : daily.days.length === 0 ? (
+            ) : daily.current.days.length === 0 ? (
               <EmptyState
                 message={
                   activeFilterCount > 0 || search.length > 0
@@ -646,76 +703,14 @@ export default function ProductAnalyticsScreen() {
               />
             ) : (
               <DailyProductBreakdown
-                days={daily.days}
+                days={daily.current.days}
                 deltas={deltas}
                 metric={metric}
                 todayKey={todayKey}
               />
             )}
-          </>
-        ) : (
-          <>
-        <PeriodSelector periods={PERIODS} selected={period} onSelect={setPeriod} />
-
-        {portfolio && portfolio.totalProducts > 0 && (
-          <View style={styles.chipsRow}>
-            {(["star", "plowhorse", "puzzle", "dog"] as const).map((cls) => (
-              <View key={cls} style={[styles.chip, { backgroundColor: BCG[cls].bg }]}>
-                <Text style={[styles.chipCount, { color: BCG[cls].color }]}>
-                  {portfolio.counts[cls]}
-                </Text>
-                <Text style={[styles.chipLabel, { color: BCG[cls].color }]}>{BCG[cls].label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {isLoading && menuItems.length === 0 ? (
-          <LoadingState message="Loading products..." />
-        ) : merged.length === 0 ? (
-          <EmptyState message="No products on the menu yet." />
-        ) : (
-          merged.map((item, index) => {
-            const bcg = BCG[item.bcgClassification] ?? BCG.unclassified;
-            const maxRevenue = merged[0]?.totalRevenue || 1;
-            const barPct = Math.max((item.totalRevenue / maxRevenue) * 100, item.totalRevenue > 0 ? 4 : 0);
-            return (
-              <TouchableOpacity
-                key={item.menuItemId}
-                style={styles.row}
-                activeOpacity={0.7}
-                onPress={() => openCostEditor(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`${item.menuItemName}, ${formatPeso(item.totalRevenue)} revenue, set cost price`}
-              >
-                <View style={styles.rowHeader}>
-                  <Text style={styles.rank}>#{index + 1}</Text>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {item.menuItemName}
-                  </Text>
-                  <View style={[styles.bcgBadge, { backgroundColor: bcg.bg }]}>
-                    <Text style={[styles.bcgText, { color: bcg.color }]}>{bcg.label}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { width: `${barPct}%` }]} />
-                </View>
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaStrong}>{formatPeso(item.totalRevenue)}</Text>
-                  <Text style={styles.metaText}>
-                    {formatCount(item.totalUnitsSold)} sold
-                    {item.marginPercent !== undefined ? ` · ${item.marginPercent.toFixed(0)}% margin` : " · tap to add cost"}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-          </>
-        )}
-      </ScrollView>
+        </ScrollView>
+      )}
 
       <ExportSheet
         visible={isExportOpen}
@@ -868,17 +863,6 @@ const styles = StyleSheet.create({
   chip: { flex: 1, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: "center" },
   chipCount: { fontSize: 20, fontWeight: "800" },
   chipLabel: { fontSize: 10, fontWeight: "700", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.5 },
-  row: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.sm, ...shadow.sm },
-  rowHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  rank: { ...typography.caption, color: colors.textTertiary, fontWeight: "700", width: 28 },
-  name: { ...typography.body, color: colors.textPrimary, fontWeight: "600", flex: 1 },
-  bcgBadge: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  bcgText: { fontSize: 10, fontWeight: "700" },
-  barTrack: { height: 5, backgroundColor: colors.surfaceSubtle, borderRadius: 3, marginTop: spacing.sm },
-  barFill: { height: 5, backgroundColor: colors.accent, borderRadius: 3 },
-  metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm },
-  metaStrong: { ...typography.body, color: colors.textPrimary, fontWeight: "700" },
-  metaText: { ...typography.caption, color: colors.textSecondary },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(29,24,21,0.45)", justifyContent: "center", padding: spacing.xl },
   modalCard: { backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.xl },
   modalTitle: { ...typography.heading, color: colors.textPrimary },

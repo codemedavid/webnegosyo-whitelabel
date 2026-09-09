@@ -1,5 +1,6 @@
 import React from "react";
-import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { openExternalUrl } from "../lib/safe-url";
 import { colors, radius, spacing, typography } from "../theme/colors";
 import { resolveVideoEmbed, type AnnouncementBlock } from "../lib/announcements/blocks";
 import { Icon } from "./Icon";
@@ -60,9 +61,9 @@ function Block({ block }: { block: AnnouncementBlock }) {
 }
 
 function openExternal(url: string): void {
-  Linking.openURL(url).catch(() => {
-    // The OS had nothing to open it with; the caption already says what it was.
-  });
+  // False means the OS had nothing to open it with, or the link was not a web
+  // page; the caption already says what it was.
+  void openExternalUrl(url);
 }
 
 function Figure({ caption, children }: { caption?: string; children: React.ReactNode }) {

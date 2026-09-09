@@ -1,19 +1,27 @@
-import { View, ActivityIndicator, StyleSheet } from "react-native";
-import { colors } from "../theme/colors";
+import { ErrorState } from "../components/ErrorState";
+import { MascotLoader } from "../components/MascotLoader";
+import { useAuthStore } from "../stores/auth-store";
 
+/**
+ * The first screen after the native splash: shown while the session, tenant
+ * and outlet resolve in the root layout, which then redirects.
+ *
+ * When that lookup cannot reach the server the stored session is kept and the
+ * merchant is offered a retry here — never the login screen, which would read
+ * as "you were signed out" (lib/session-bootstrap.ts).
+ */
 export default function IndexScreen() {
-  return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color={colors.primary} />
-    </View>
-  );
-}
+  const bootstrapError = useAuthStore((s) => s.bootstrapError);
+  const setAuth = useAuthStore((s) => s.setAuth);
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.background,
-  },
-});
+  if (bootstrapError === null) return <MascotLoader fullScreen />;
+
+  const retry = () =>
+    setAuth({
+      bootstrapError: null,
+      isLoading: true,
+      bootstrapAttempt: useAuthStore.getState().bootstrapAttempt + 1,
+    });
+
+  return <ErrorState message={bootstrapError} onRetry={retry} />;
+}

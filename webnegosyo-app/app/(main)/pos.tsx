@@ -394,7 +394,7 @@ export default function PosScreen() {
       {/* The banner already clears the notch, so the header must not re-pad it.
           <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader
-        title="Register"
+        title="POS"
         subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}
         ignoreTopInset={!!edit}
         style={styles.header}

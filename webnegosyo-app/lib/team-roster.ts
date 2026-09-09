@@ -39,7 +39,7 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
     description: "Store settings on the web admin",
   },
   pos: {
-    label: "Register",
+    label: "POS",
     description: "Ring up counter sales and reconcile the drawer",
   },
   branch_staff: {
@@ -57,6 +57,14 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
   vouchers: {
     label: "Vouchers",
     description: "Create and manage discount vouchers",
+  },
+  loyalty_manage: {
+    label: "Loyalty Programs",
+    description: "Create and change reward programs and correct balances — grant sparingly",
+  },
+  loyalty_redeem: {
+    label: "Redeem Rewards",
+    description: "Apply a verified customer reward at the register, without seeing customer history",
   },
   kitchen: {
     label: "Kitchen Display",
@@ -79,7 +87,7 @@ const SCREEN_LABELS: Record<string, string> = {
   orders: "Orders",
   kitchen: "Kitchen Display",
   scheduled: "Scheduled Orders",
-  pos: "Register",
+  pos: "POS",
   "pos-sales": "Drawer",
   analytics: "Analytics",
   growth: "Growth",

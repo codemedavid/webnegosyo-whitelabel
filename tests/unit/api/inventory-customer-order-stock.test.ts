@@ -48,6 +48,14 @@ function stubTables(options: {
   lines?: Array<{ menu_item_id: string | null; quantity: number }>
 }) {
   from.mockImplementation((table: string) => {
+    // The route reads the flag + deployment URL off tenants and the deploy key
+    // off tenant_secrets; the fixture keeps them in one object for the tests.
+    const tenant = {
+      inventory_enabled: options.inventoryEnabled ?? true,
+      convex_deployment_url: null,
+      convex_deploy_key: null,
+      ...(options.tenant ?? {}),
+    }
     if (table === 'tenants') {
       return {
         select: () => ({
@@ -55,11 +63,22 @@ function stubTables(options: {
             single: () =>
               Promise.resolve({
                 data: {
-                  inventory_enabled: options.inventoryEnabled ?? true,
-                  convex_deployment_url: null,
-                  convex_deploy_key: null,
-                  ...(options.tenant ?? {}),
+                  inventory_enabled: tenant.inventory_enabled,
+                  convex_deployment_url: tenant.convex_deployment_url,
                 },
+                error: null,
+              }),
+          }),
+        }),
+      }
+    }
+    if (table === 'tenant_secrets') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: { convex_deploy_key: tenant.convex_deploy_key },
                 error: null,
               }),
           }),

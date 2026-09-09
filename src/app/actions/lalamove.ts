@@ -5,13 +5,16 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import {
   createLalamoveQuotation,
   createLalamoveOrder,
   cancelLalamoveOrder,
   retrieveLalamoveQuotation,
 } from '@/lib/lalamove-service'
-import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { isE164Phone, normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { resolveLalamoveRecipient } from '@/lib/lalamove-recipient'
 import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
@@ -26,8 +29,20 @@ import type { Database, Tenant } from '@/types/database'
  */
 const LALAMOVE_TENANT_COLUMNS =
   'id, name, footer_business_name, footer_phone, footer_whatsapp, ' +
-  'lalamove_enabled, lalamove_api_key, lalamove_secret_key, lalamove_market, ' +
+  'lalamove_enabled, lalamove_market, ' +
   'lalamove_service_type, lalamove_sandbox, lalamove_sender_phone'
+
+/**
+ * The signing keys live in `tenant_secrets`, which anon is never granted —
+ * and quoting is an anonymous action — so they are read with the service
+ * role, and only for a store that has Lalamove switched on. The keys never
+ * leave this server module: the SDK consumes them and the action returns
+ * quotation data only.
+ */
+async function withLalamoveKeys(tenant: Tenant): Promise<Tenant> {
+  if (!tenant.lalamove_enabled) return tenant
+  return mergeTenantSecrets(tenant, await getTenantSecrets(createAdminClient(), tenant.id))
+}
 
 /**
  * Quotations are billable calls against the tenant's own Lalamove account and
@@ -72,7 +87,7 @@ export async function createQuotationAction(
     }
 
     // Check if Lalamove is enabled
-    const tenantTyped = tenant as unknown as Tenant
+    const tenantTyped = await withLalamoveKeys(tenant as unknown as Tenant)
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled for this restaurant' }
     }
@@ -121,7 +136,10 @@ export async function checkQuotationValidity(
       return { valid: false, error: 'Lalamove not enabled' }
     }
 
-    const quotation = await retrieveLalamoveQuotation(tenant as unknown as Tenant, quotationId)
+    const quotation = await retrieveLalamoveQuotation(
+      await withLalamoveKeys(tenant as unknown as Tenant),
+      quotationId
+    )
     const expiresAt = new Date(quotation.expiresAt)
     const now = new Date()
     const valid = expiresAt > now
@@ -191,15 +209,19 @@ export async function createLalamoveOrderAction(
       return { success: false, error: 'Tenant not found' }
     }
 
-    const tenantTyped = tenant as unknown as Tenant
+    const tenantTyped = await withLalamoveKeys(tenant as unknown as Tenant)
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
 
     // Check if order already has a Lalamove order ID to prevent double booking
+    // customer_contact + customer_data ride along so the recipient phone can
+    // be recovered from whichever form field held it — the caller's
+    // `recipientPhone` is `order.customer_contact` verbatim, which is '' on a
+    // checkout form with no phone field.
     const { data: existingOrder } = await supabase
       .from('orders')
-      .select('lalamove_order_id')
+      .select('lalamove_order_id, customer_contact, customer_data')
       .eq('id', orderId)
       .eq('tenant_id', tenantId)
       .single()
@@ -240,16 +262,53 @@ export async function createLalamoveOrderAction(
     // authoritative tenant record to prevent the historical "driver calls
     // customer for pickup" bug.
     const sender = resolveLalamoveSender(tenantTyped)
-    const normalizedRecipientPhone = normalizeLalamovePhone(recipientPhone, tenantTyped.lalamove_market)
+    const resolvedSenderPhone =
+      sender.phone || normalizeLalamovePhone(senderPhone, tenantTyped.lalamove_market)
+    if (!resolvedSenderPhone) {
+      return {
+        success: false,
+        error: 'Your store pickup phone is not set. Add it in delivery settings.',
+      }
+    }
+    // Lalamove refuses anything but bare E.164, naming no number when it
+    // does. Say which one here, before a rider is even asked for.
+    if (!isE164Phone(resolvedSenderPhone)) {
+      return {
+        success: false,
+        error: `Your store pickup phone (${resolvedSenderPhone}) is not a valid mobile number. Fix it in delivery settings.`,
+      }
+    }
+
+    // The customer's phone wherever the checkout form put it; failing that the
+    // store's own, so an order from a form with no phone field is still
+    // bookable. '' used to be forwarded here, and Lalamove refused it.
+    const orderContact = (existingOrder ?? {}) as {
+      customer_contact?: string | null
+      customer_data?: Record<string, unknown> | null
+    }
+    const recipient = resolveLalamoveRecipient(
+      {
+        customer_contact: recipientPhone || orderContact.customer_contact,
+        customer_data: orderContact.customer_data,
+      },
+      tenantTyped.lalamove_market,
+      resolvedSenderPhone
+    )
+    if (!recipient.phone) {
+      return {
+        success: false,
+        error: 'No phone number to give the rider. Add a store pickup phone in delivery settings.',
+      }
+    }
 
     // Create Lalamove order
     const lalamoveOrder = await createLalamoveOrder(
       tenantTyped,
       quotationId,
       sender.name || senderName,
-      sender.phone || normalizeLalamovePhone(senderPhone, tenantTyped.lalamove_market) || senderPhone,
+      resolvedSenderPhone,
       recipientName,
-      normalizedRecipientPhone || recipientPhone,
+      recipient.phone,
       {
         ...metadata,
         orderId,
@@ -277,6 +336,7 @@ export async function createLalamoveOrderAction(
     return {
       success: true,
       data: lalamoveOrder,
+      recipientPhoneSource: recipient.source,
     }
   } catch (error) {
     console.error('Lalamove order creation error:', error)
@@ -313,7 +373,7 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
     if (!tenant) {
       return { success: false, error: 'Tenant not found' }
     }
-    const tenantTyped = tenant as unknown as Tenant
+    const tenantTyped = await withLalamoveKeys(tenant as unknown as Tenant)
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
@@ -420,7 +480,7 @@ export async function syncLalamoveOrderAction(
       return { success: false, error: 'Tenant not found' }
     }
 
-    const tenantTyped = tenant as unknown as Tenant
+    const tenantTyped = await withLalamoveKeys(tenant as unknown as Tenant)
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
@@ -521,7 +581,7 @@ export async function addPriorityFeeAction(
       return { success: false, error: 'Tenant not found' }
     }
 
-    const tenantTyped = tenant as unknown as Tenant
+    const tenantTyped = await withLalamoveKeys(tenant as unknown as Tenant)
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
@@ -564,7 +624,7 @@ export async function cancelLalamoveOrderAction(
       return { success: false, error: 'Tenant not found' }
     }
 
-    const tenantTyped = tenant as unknown as Tenant
+    const tenantTyped = await withLalamoveKeys(tenant as unknown as Tenant)
     if (!tenantTyped.lalamove_enabled) {
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }

@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { openExternalUrl } from "../../lib/safe-url";
 import { Card } from "../Card";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import {
@@ -64,7 +65,7 @@ export function SettlementCard({
               ) : null}
               {line.note ? <Text style={styles.rowSub}>{line.note}</Text> : null}
               {line.proofUrl ? (
-                <TouchableOpacity onPress={() => Linking.openURL(line.proofUrl!)}>
+                <TouchableOpacity onPress={() => void openExternalUrl(line.proofUrl)}>
                   <Text style={styles.link}>View proof</Text>
                 </TouchableOpacity>
               ) : null}

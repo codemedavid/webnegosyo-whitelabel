@@ -309,3 +309,51 @@ export function convexScheduledForArg(
   if ((convexSchemaVersion ?? 0) < CONVEX_SCHEDULED_FOR_MIN_VERSION) return {}
   return { scheduledFor: scheduledForISO }
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Scheduler presentation
+// ──────────────────────────────────────────────────────────────────────────
+
+export type DayPeriodKey = 'morning' | 'afternoon' | 'evening'
+
+export interface TimeSlotGroup {
+  key: DayPeriodKey
+  label: string
+  slots: TimeSlotOption[]
+}
+
+const AFTERNOON_START_MINUTES = 12 * 60
+const EVENING_START_MINUTES = 17 * 60
+
+const DAY_PERIODS: readonly { key: DayPeriodKey; label: string; from: number; until: number }[] = [
+  { key: 'morning', label: 'Morning', from: 0, until: AFTERNOON_START_MINUTES },
+  { key: 'afternoon', label: 'Afternoon', from: AFTERNOON_START_MINUTES, until: EVENING_START_MINUTES },
+  { key: 'evening', label: 'Evening', from: EVENING_START_MINUTES, until: 24 * 60 + 1 },
+]
+
+/** Slots bucketed into morning / afternoon / evening; empty buckets are dropped. */
+export function groupTimeSlotsByPeriod(slots: readonly TimeSlotOption[]): TimeSlotGroup[] {
+  return DAY_PERIODS.map(({ key, label, from, until }) => ({
+    key,
+    label,
+    slots: slots.filter((s) => s.minutes >= from && s.minutes < until),
+  })).filter((group) => group.slots.length > 0)
+}
+
+export interface ScheduleDateCard {
+  /** "Today", "Tomorrow", or the weekday. */
+  headline: string
+  day: string
+  month: string
+}
+
+/** The three lines a date card shows, derived from the option's stable value. */
+export function describeScheduleDate(option: ScheduleDateOption): ScheduleDateCard {
+  const date = combineDateAndTime(option.value, '00:00')
+  const isRelative = option.label === 'Today' || option.label === 'Tomorrow'
+  return {
+    headline: isRelative ? option.label : WEEKDAYS[date.getDay()],
+    day: String(date.getDate()),
+    month: MONTHS[date.getMonth()],
+  }
+}

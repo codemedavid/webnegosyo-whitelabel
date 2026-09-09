@@ -9,6 +9,7 @@ import { BackHeader } from "../../components/BackHeader";
 import { ListRow } from "../../components/ListRow";
 import { Button } from "../../components/Button";
 import { SectionHeader } from "../../components/SectionHeader";
+import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
 
 const SUPPORT_EMAIL = "support@webnegosyo.com";
 
@@ -125,6 +126,14 @@ export default function AccountScreen() {
       </View>
 
       <View style={styles.group}>
+        <ListRow
+          icon="info"
+          tone="accent"
+          title="Learn the app"
+          subtitle="Guided tour of every screen, with examples you can tap"
+          onPress={() => router.push(TUTORIAL_HUB_ROUTE)}
+          grouped
+        />
         <ListRow
           icon="info"
           title="What's New"

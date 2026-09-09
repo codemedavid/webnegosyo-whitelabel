@@ -1,5 +1,8 @@
 import {
+  ORDER_LEDGER_LIMIT,
+  ORDER_REVISIONS_LIMIT,
   isPlatformRefSupported,
+  runPlatformAction,
   runPlatformQuery,
   runPlatformMutation,
   type PlatformClient,
@@ -121,6 +124,15 @@ describe("isPlatformRefSupported", () => {
     expect(isPlatformRefSupported("orders:updateOrderStatus")).toBe(true);
   });
 
+  it("claims the analytics, product cost and product analytics refs", () => {
+    // Off this list a platform store's Analytics, Trends, Growth and product
+    // screens all showed "public function not found".
+    expect(isPlatformRefSupported("analytics:getSalesAnalytics")).toBe(true);
+    expect(isPlatformRefSupported("productAnalytics:getPortfolioSummary")).toBe(true);
+    expect(isPlatformRefSupported("productCosts:setCost")).toBe(true);
+    expect(isPlatformRefSupported("productAnalyticsAggregator:refreshAnalytics")).toBe(true);
+  });
+
   it("claims the order-edit refs", () => {
     // Without these in the allowlist the edit screen silently no-ops on the
     // platform backend — the mutation is dispatched and nothing is written.
@@ -143,7 +155,7 @@ describe("isPlatformRefSupported", () => {
   it("does not claim refs it cannot serve yet", () => {
     // Analytics still lives only on Convex. Claiming it would make the screen
     // render an empty chart instead of its "needs a backend update" placeholder.
-    expect(isPlatformRefSupported("analytics:getUpsellAnalytics")).toBe(false);
+    expect(isPlatformRefSupported("lalamove:bookLalamove")).toBe(false);
   });
 });
 
@@ -198,6 +210,21 @@ describe("runPlatformQuery — the settlement ledger", () => {
     // Assert
     expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
     expect(opsOf(calls, "eq")).toContainEqual(["order_id", "order-1"]);
+  });
+
+  it("bounds the ledger and the revision history so a phone never pulls an unbounded table", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({
+      order_payments: [{ data: [], error: null }],
+      order_revisions: [{ data: [], error: null }],
+    });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: "order-1" });
+    await runPlatformQuery(client, TENANT, "orders:getOrderRevisions", { orderId: "order-1" });
+
+    // Assert
+    expect(opsOf(calls, "limit")).toEqual([[ORDER_LEDGER_LIMIT], [ORDER_REVISIONS_LIMIT]]);
   });
 
   it("surfaces a ledger error instead of reporting an order as unpaid", async () => {
@@ -944,5 +971,24 @@ describe("runPlatformQuery — period stats input validation", () => {
         endDate: 2,
       })
     ).rejects.toThrow(/date range/i);
+  });
+});
+
+describe("runPlatformAction", () => {
+  it("treats the product analytics refresh as a no-op — platform figures are computed live", async () => {
+    const { client, calls } = fakeClient({});
+
+    await expect(
+      runPlatformAction(client, TENANT, "productAnalyticsAggregator:refreshAnalytics", {})
+    ).resolves.toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an action it does not serve", async () => {
+    const { client } = fakeClient({});
+
+    await expect(
+      runPlatformAction(client, TENANT, "lalamove:bookLalamove", {})
+    ).rejects.toThrow(/not supported/);
   });
 });

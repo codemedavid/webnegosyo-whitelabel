@@ -48,6 +48,8 @@ function formatTimeAgo(timestamp: number): string {
 interface ConvexOrdersTabProps {
   /** Passed down so cancelling an order can restore its stock. */
   tenantId?: string;
+  /** Whether the store has Lalamove, so the order sheet can offer a rider. */
+  lalamoveEnabled?: boolean;
   /**
    * The branch this admin may see. Convex has no index on the branch — it
    * lives in the `customerData` blob — so the rows are narrowed here after the
@@ -57,7 +59,7 @@ interface ConvexOrdersTabProps {
   scope?: BranchScope;
 }
 
-export function ConvexOrdersTab({ tenantId, scope }: ConvexOrdersTabProps) {
+export function ConvexOrdersTab({ tenantId, scope, lalamoveEnabled }: ConvexOrdersTabProps) {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -229,6 +231,7 @@ export function ConvexOrdersTab({ tenantId, scope }: ConvexOrdersTabProps) {
         open={sheetOpen}
         onOpenChange={handleSheetOpenChange}
         tenantId={tenantId}
+        lalamoveEnabled={lalamoveEnabled}
       />
     </div>
   );

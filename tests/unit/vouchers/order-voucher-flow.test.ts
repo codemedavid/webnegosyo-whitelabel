@@ -24,7 +24,7 @@ import { burnRedemptions, loadCategoryMap } from '@/lib/vouchers/order-voucher-f
 function makeClient(rpcResults: Array<{ data?: unknown; error: unknown }>) {
   let call = 0
   return {
-    rpc: jest.fn(async () => rpcResults[call++] ?? { data: 'redemption-1', error: null }),
+    rpc: jest.fn(async (..._args: unknown[]) => rpcResults[call++] ?? { data: 'redemption-1', error: null }),
   }
 }
 

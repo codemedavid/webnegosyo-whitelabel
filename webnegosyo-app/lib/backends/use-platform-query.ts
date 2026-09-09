@@ -2,25 +2,37 @@
  * The React half of the platform-Supabase read path.
  *
  * Extracted from `lib/hooks.ts` so it is a LEAF module — its only imports are
- * React, the supabase client, and the pure backend modules — and can therefore
- * be exercised with `renderHook` without dragging `convex/react` and the auth
- * store into the test. `lib/hooks.ts` remains the only dispatch point; screens
- * never import this file directly.
+ * React, the query cache, the supabase client, and the pure backend modules —
+ * and can therefore be exercised with `renderHook` without dragging
+ * `convex/react` and the auth store into the test. `lib/hooks.ts` remains the
+ * only dispatch point; screens never import this file directly.
+ *
+ * Every instance asking the same question (ref, args, tenant, scope) shares
+ * one cache entry, one in-flight fetch and one poll timer; every instance on
+ * the same tenant shares one realtime channel (`realtime-hub.ts`). A payload
+ * on that channel invalidates the affected keys through `query-invalidation`,
+ * where `isOrderChangeInScope` re-checks the branch PER KEY — Realtime allows
+ * one filter clause per binding and it is spent on the tenant, so the branch
+ * check has nowhere else to happen, and per key is what lets a store-wide
+ * alerts watcher and a branch-scoped board share a channel correctly.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { supabase } from "../supabase";
 import { withPlatformTimeout } from "./platform-call";
 import { runPlatformQuery, type PlatformClient } from "./supabase-adapter";
+import { isRefRealtimeBacked, resolvePollMs, type RealtimeStatus } from "./supabase-realtime";
 import {
-  buildOrderSubscription,
-  isOrderChangeInScope,
-  isRefRealtimeBacked,
-  resolvePollMs,
-  resolveRealtimeStatus,
-  type OrderChangePayload,
-  type RealtimeStatus,
-} from "./supabase-realtime";
+  SKIPPED_PLATFORM_KEY,
+  branchScopeKey,
+  parseBranchScopeKey,
+  platformQueryKey,
+} from "./query-keys";
+import { realtimeHub } from "./realtime-hub-singleton";
+import { bindRealtimeToQueryClient } from "../query/realtime-bridge";
+import { resolveStaleMs } from "../query/query-client";
+import { useRefetchOnScreenFocus } from "../query/use-screen-focus";
 import type { BranchScope } from "../branch-scope";
 
 export interface SafeQueryResult<T> {
@@ -34,16 +46,34 @@ export interface SafeQueryResult<T> {
    * backend update" placeholder instead of silently hiding the section.
    */
   isMissingFunction: boolean;
+  /** Re-read now; resolves when the read has landed. A no-op for a skipped query. */
+  refetch: () => Promise<void>;
+  /** A re-read is in flight while data is already showing. */
+  isRefetching: boolean;
 }
 
 export const platformClient = supabase as unknown as PlatformClient;
 
-/**
- * Distinguishes concurrent subscribers on the same tenant so their realtime
- * channels do not collide. Module-scoped counter rather than a random id so it
- * stays deterministic and readable in the Supabase dashboard.
- */
-let channelInstanceCounter = 0;
+const DISCONNECTED: RealtimeStatus = "disconnected";
+
+/** The tenant's channel status, as an external store the cache can poll by. */
+function useRealtimeStatus(tenantId: string | null): RealtimeStatus {
+  return useSyncExternalStore(realtimeHub.subscribeStatus, () =>
+    tenantId ? realtimeHub.getStatus(tenantId) : DISCONNECTED
+  );
+}
+
+/** Hold the tenant's channel open, and bind the cache to it, while mounted. */
+function useRealtimeSubscription(tenantId: string | null, isActive: boolean): void {
+  const queryClient = useQueryClient();
+
+  useEffect(() => bindRealtimeToQueryClient(realtimeHub, queryClient), [queryClient]);
+
+  useEffect(() => {
+    if (!isActive || !tenantId) return;
+    return realtimeHub.acquire(tenantId);
+  }, [tenantId, isActive]);
+}
 
 /**
  * Fetch a function ref from the platform Supabase adapter.
@@ -58,136 +88,95 @@ export function usePlatformQuery<T>(
   tenantId: string | null,
   scope: BranchScope
 ): SafeQueryResult<T> {
-  const [data, setData] = useState<T | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("disconnected");
-
   // Screens pass fresh object literals every render, so the object identity
-  // changes constantly. Key the effect on the serialized args instead, or the
-  // fetch loops forever.
+  // changes constantly. Key everything on the serialized args instead.
   const argsKey = JSON.stringify(args ?? {});
   const isSkipped = args === "skip" || !tenantId;
 
-  // The branch is part of what the query asked for. Left out of the effect's
-  // dependencies, a session that resolves its branch after the first fetch would
-  // keep showing the unscoped result until the next poll.
-  const scopeKey = scope.kind === "all" ? "all" : `branch:${scope.outletId}`;
+  // The branch is part of what the query asked for: it is in the key, so a
+  // session that resolves its branch after the first fetch asks again.
+  const scopeKey = branchScopeKey(scope);
 
-  // What the query is ABOUT. When this changes the previous data answers a
-  // different question, so `isLoading` must re-arm — without it, switching
-  // store or period silently presents the old tenant/period's numbers until
-  // the new fetch lands. Deliberately excludes `realtimeStatus`, whose changes
-  // restart the poll timer but do not change the question.
-  const identityKey = `${refName}|${argsKey}|${tenantId ?? ""}|${scopeKey}`;
-  const lastIdentityRef = useRef(identityKey);
+  // A new key means the previous data answers a different question — the cache
+  // then reports `pending` with no data, so switching store or period never
+  // presents the old numbers as the new ones. The same key on remount is
+  // served from cache instantly and refreshed in the background.
+  const queryKey = useMemo(
+    () =>
+      isSkipped || !tenantId
+        ? SKIPPED_PLATFORM_KEY
+        : platformQueryKey(refName, JSON.parse(argsKey), tenantId, parseBranchScopeKey(scopeKey)),
+    [refName, argsKey, tenantId, isSkipped, scopeKey]
+  );
 
-  // Lets the realtime subscription trigger a re-read without depending on the
-  // fetch effect's identity, so an incoming order does not resubscribe.
-  const reloadRef = useRef<() => void>(() => {});
+  const isRealtimeBacked = isRefRealtimeBacked(refName);
+  useRealtimeSubscription(tenantId, !isSkipped && isRealtimeBacked);
+  const realtimeStatus = useRealtimeStatus(tenantId);
 
-  // Stable for the lifetime of this hook instance.
-  const instanceKeyRef = useRef<string>("");
-  if (!instanceKeyRef.current) {
-    channelInstanceCounter += 1;
-    instanceKeyRef.current = String(channelInstanceCounter);
+  const query = useQuery({
+    queryKey,
+    enabled: !isSkipped,
+    // `tenantId` is non-null whenever this can run: the query is disabled and
+    // `refetch` is guarded while skipped.
+    queryFn: () => readPlatformRef<T>(refName, JSON.parse(argsKey), tenantId ?? "", scope),
+    staleTime: resolveStaleMs(refName),
+    // Realtime is the primary path once connected; the poll drops to a slow
+    // safety net then, and speeds back up if the socket goes away. Changing the
+    // interval re-arms the timer without a fetch.
+    refetchInterval: isSkipped ? false : resolvePollMs(realtimeStatus),
+    refetchIntervalInBackground: false,
+    // Keeps array identity across unchanged polls, so watchers keyed on data
+    // identity do not re-run their joins every 15 s.
+    structuralSharing: true,
+  });
+
+  const { refetch: queryRefetch } = query;
+  const refetch = useCallback(async () => {
+    if (isSkipped) return;
+    await queryRefetch();
+  }, [isSkipped, queryRefetch]);
+
+  useRefetchOnScreenFocus({
+    enabled: !isSkipped,
+    staleMs: resolveStaleMs(refName),
+    dataUpdatedAt: query.dataUpdatedAt,
+    isFetching: query.isFetching,
+    refetch,
+  });
+
+  return toSafeQueryResult(query, isSkipped, refetch);
+}
+
+/** One bounded read of a platform ref; failures are logged and rethrown for the cache. */
+async function readPlatformRef<T>(
+  refName: string,
+  args: Record<string, unknown>,
+  tenantId: string,
+  scope: BranchScope
+): Promise<T> {
+  try {
+    return (await withPlatformTimeout(
+      runPlatformQuery(platformClient, tenantId, refName, args, scope),
+      refName
+    )) as T;
+  } catch (e: unknown) {
+    console.error("[usePlatformQuery] " + refName + ":", e instanceof Error ? e.message : String(e));
+    throw e;
   }
+}
 
-  useEffect(() => {
-    if (isSkipped) {
-      setIsLoading(false);
-      return;
-    }
-
-    if (lastIdentityRef.current !== identityKey) {
-      lastIdentityRef.current = identityKey;
-      setIsLoading(true);
-    }
-
-    let isCurrent = true;
-
-    const load = async () => {
-      try {
-        const result = await withPlatformTimeout(
-          runPlatformQuery(
-            platformClient,
-            tenantId,
-            refName,
-            JSON.parse(argsKey),
-            scope
-          ),
-          refName
-        );
-        if (!isCurrent) return;
-        setData(result as T);
-        setError(null);
-      } catch (e: unknown) {
-        if (!isCurrent) return;
-        const message = e instanceof Error ? e.message : String(e);
-        console.error("[usePlatformQuery] " + refName + ":", message);
-        setError(message);
-      } finally {
-        if (isCurrent) setIsLoading(false);
-      }
-    };
-
-    reloadRef.current = () => {
-      void load();
-    };
-
-    load();
-    // Realtime is the primary path once connected; this interval drops to a
-    // slow safety net then, and speeds back up if the socket goes away.
-    const timer = setInterval(load, resolvePollMs(realtimeStatus));
-
-    return () => {
-      isCurrent = false;
-      clearInterval(timer);
-    };
-    // `scopeKey` rather than `scope` alone: the hook memoises the object, but a
-    // value-identity key means a re-resolved-but-equal scope cannot restart the
-    // poll timer.
-  }, [refName, argsKey, tenantId, isSkipped, realtimeStatus, scopeKey, scope, identityKey]);
-
-  // Subscribe to this tenant's order changes so a new order lands immediately
-  // instead of on the next poll. Deliberately does NOT depend on `argsKey` —
-  // the channel is per tenant, so changing a filter must not resubscribe.
-  useEffect(() => {
-    if (isSkipped || !tenantId || !isRefRealtimeBacked(refName)) return;
-
-    const { channelName, binding } = buildOrderSubscription(
-      tenantId,
-      instanceKeyRef.current
-    );
-
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        "postgres_changes" as any,
-        binding,
-        (payload: OrderChangePayload) => {
-          // The server-side filter should already have excluded other tenants;
-          // this is the second line of defence before we act on the row. Only
-          // one filter clause per binding is allowed and it is spent on the
-          // tenant, so the BRANCH check has nowhere else to happen — without it
-          // a manager's queue refetches, and the chime fires, for a sale at
-          // another branch.
-          if (!isOrderChangeInScope(payload, tenantId, scope)) return;
-          reloadRef.current();
-        }
-      )
-      .subscribe((status: string) => {
-        setRealtimeStatus(resolveRealtimeStatus(status));
-      });
-
-    return () => {
-      // Back to the fast poll while unsubscribed, so a tenant switch or sign-out
-      // never leaves a screen on the slow interval with no live channel.
-      setRealtimeStatus("disconnected");
-      void supabase.removeChannel(channel);
-    };
-  }, [refName, tenantId, isSkipped, scopeKey, scope]);
-
-  return { data, isLoading: isSkipped ? false : isLoading, error, isMissingFunction: false };
+function toSafeQueryResult<T>(
+  query: UseQueryResult<T>,
+  isSkipped: boolean,
+  refetch: () => Promise<void>
+): SafeQueryResult<T> {
+  const error = query.error ? (query.error instanceof Error ? query.error.message : String(query.error)) : null;
+  return {
+    data: query.data,
+    isLoading: isSkipped ? false : query.isPending,
+    error,
+    isMissingFunction: false,
+    refetch,
+    isRefetching: query.isFetching && !query.isPending,
+  };
 }

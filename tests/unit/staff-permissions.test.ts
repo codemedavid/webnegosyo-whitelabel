@@ -39,6 +39,8 @@ describe('staff permission registry', () => {
       // Kitchen display: see active tickets and bump them, without the full
       // order queue that 'orders' grants.
       'kitchen',
+      'loyalty_manage',
+      'loyalty_redeem',
     ])
   })
 
@@ -48,6 +50,13 @@ describe('staff permission registry', () => {
 })
 
 describe('hasPermission', () => {
+  it('allows reward redemption without exposing customer history or program management', () => {
+    const cashier = { role: 'admin', permissions: validatePermissionKeys(['pos', 'loyalty_redeem']) }
+    expect(hasPermission(cashier, 'loyalty_redeem')).toBe(true)
+    expect(hasPermission(cashier, 'customers')).toBe(false)
+    expect(hasPermission(cashier, 'loyalty_manage')).toBe(false)
+    expect(hasPermission({ role: 'admin', permissions: ['pos'] }, 'loyalty_redeem')).toBe(false)
+  })
   it('grants everything to the tenant owner', () => {
     expect(hasPermission(owner, 'analytics')).toBe(true)
     expect(hasPermission(owner, 'pos')).toBe(true)

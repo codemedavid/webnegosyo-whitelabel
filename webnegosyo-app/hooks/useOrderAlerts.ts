@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Alert } from "react-native";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import * as Notifications from "expo-notifications";
@@ -32,6 +32,11 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
       playerRef.current = null;
     };
   }, []);
+
+  // The alert keys on WHICH orders are present, never on the array's identity:
+  // a poll that returns the same ids in a fresh array must not re-run the
+  // scan, and one that returns a new id must — whatever the array's identity.
+  const idsKey = useMemo(() => (orders ? orders.map((o) => o._id).join("\u0000") : null), [orders]);
 
   useEffect(() => {
     if (!enabled || !orders) return;
@@ -85,7 +90,9 @@ export function useOrderAlerts({ orders, enabled = true }: OrderAlertOptions) {
     }
 
     prevIdsRef.current = currentIds;
-  }, [orders, enabled]);
+    // `orders` is read for the alert body; the ids are what decide a re-run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, enabled]);
 }
 
 /**

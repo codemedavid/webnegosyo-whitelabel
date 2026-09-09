@@ -1,11 +1,13 @@
 import {
   buildProductAnalytics,
+  buildProductAnalyticsComparison,
   computeProductDeltas,
   previousWindow,
   productDateKey,
   DEFAULT_TZ_OFFSET_MS,
   type DailyOrderInput,
   type DailyOrderItemInput,
+  type ProductAnalyticsOptions,
 } from "./product-daily-analytics";
 
 // 2026-07-28T02:00:00Z === 2026-07-28 10:00 Manila
@@ -458,5 +460,96 @@ describe("computeProductDeltas", () => {
       [{ menuItemId: "x", menuItemName: "X", units: 1, orders: 1, sales: 300 }]
     );
     expect(deltas[0].salesChangePercent).toBe(-66.7);
+  });
+});
+
+describe("buildProductAnalyticsComparison", () => {
+  // The screen needs the window on screen AND the window before it. Walking
+  // every line item twice made typing stutter; the comparison shares one pass
+  // and must say exactly what two separate builds would have said.
+  const WINDOW_START = JUL_28_MORNING - 12 * 60 * 60 * 1000;
+  const WINDOW_END = JUL_28_MORNING + 12 * 60 * 60 * 1000;
+  const orders = [
+    order({ id: "now-1" }),
+    order({ id: "now-2", source: "pos" }),
+    order({ id: "now-cancelled", status: "cancelled" }),
+    order({ id: "before-1", createdAtMs: JUL_27_MORNING }),
+    order({ id: "before-2", createdAtMs: JUL_27_MORNING, source: "pos" }),
+    order({ id: "ancient", createdAtMs: JUL_27_MORNING - 3 * DAY_MS }),
+  ];
+  const items = [
+    item({ orderId: "now-1", menuItemId: "latte", quantity: 2, subtotal: 200 }),
+    item({ orderId: "now-1", menuItemId: "latte", quantity: 1, subtotal: 100 }),
+    item({ orderId: "now-2", menuItemId: "mocha", menuItemName: "Mocha", subtotal: 150 }),
+    item({ orderId: "now-cancelled", menuItemId: "latte", subtotal: 999 }),
+    item({ orderId: "before-1", menuItemId: "latte", quantity: 5, subtotal: 500 }),
+    item({ orderId: "before-2", menuItemId: "scone", menuItemName: "Scone", subtotal: 80 }),
+    item({ orderId: "ancient", menuItemId: "latte", subtotal: 1000 }),
+    item({ orderId: "orphan", menuItemId: "latte", subtotal: 1000 }),
+  ];
+
+  const baseOptions: ProductAnalyticsOptions & { startMs: number; endMs: number } = {
+    metric: "sales",
+    startMs: WINDOW_START,
+    endMs: WINDOW_END,
+    topN: 1,
+  };
+
+  function expectMatchesTwoBuilds(options: typeof baseOptions) {
+    const before = previousWindow(options.startMs, options.endMs);
+    const expectedCurrent = buildProductAnalytics(orders, items, options);
+    const expectedPrevious = buildProductAnalytics(orders, items, {
+      ...options,
+      topN: undefined,
+      startMs: before.startMs,
+      endMs: before.endMs,
+    });
+
+    const result = buildProductAnalyticsComparison(orders, items, options);
+
+    expect(result.current).toEqual(expectedCurrent);
+    expect(result.previous).toEqual(expectedPrevious);
+    return result;
+  }
+
+  it("matches two separate builds for the window and the one before it", () => {
+    const result = expectMatchesTwoBuilds(baseOptions);
+    expect(result.current.totals.map((t) => t.menuItemId)).toEqual(["latte", "mocha"]);
+    expect(result.previous.totals.map((t) => t.menuItemId)).toEqual(["latte", "scone"]);
+    // topN caps the days on screen but never the comparison totals.
+    expect(result.current.days[0].rows).toHaveLength(1);
+    expect(result.previous.totals).toHaveLength(2);
+  });
+
+  it("applies the source, search and category filters to both windows", () => {
+    expectMatchesTwoBuilds({ ...baseOptions, sources: ["pos"] });
+    expectMatchesTwoBuilds({ ...baseOptions, search: "latte" });
+    expectMatchesTwoBuilds({
+      ...baseOptions,
+      categoryId: "coffee",
+      categoryByItemId: { latte: "coffee", mocha: "coffee", scone: "bakery" },
+    });
+  });
+
+  it("ranks both windows by the chosen metric", () => {
+    expectMatchesTwoBuilds({ ...baseOptions, metric: "units" });
+    expectMatchesTwoBuilds({ ...baseOptions, metric: "orders" });
+  });
+
+  it("accepts the comparison window explicitly", () => {
+    const before = previousWindow(baseOptions.startMs, baseOptions.endMs);
+    const explicit = buildProductAnalyticsComparison(orders, items, baseOptions, before);
+    expect(explicit).toEqual(buildProductAnalyticsComparison(orders, items, baseOptions));
+
+    // A comparison the screen chose itself, against an unbounded current window.
+    const unbounded = buildProductAnalyticsComparison(orders, items, { metric: "sales" }, before);
+    expect(unbounded.current).toEqual(buildProductAnalytics(orders, items, { metric: "sales" }));
+    expect(unbounded.previous).toEqual({ days: [], totals: [] });
+  });
+
+  it("has an empty previous window when the current window is unbounded", () => {
+    const result = buildProductAnalyticsComparison(orders, items, { metric: "sales" });
+    expect(result.current).toEqual(buildProductAnalytics(orders, items, { metric: "sales" }));
+    expect(result.previous).toEqual({ days: [], totals: [] });
   });
 });

@@ -80,3 +80,39 @@ describe("buildQrBmpBase64", () => {
     expect(u32le(bytes, 2)).toBe(bytes.length);
   });
 });
+
+/**
+ * The print head is a fixed number of dots wide (384 on 58mm paper, 576 on
+ * 80mm). A raster wider than the head is truncated by the printer, and a
+ * clipped QR does not scan. The module size has to give way, not the width.
+ */
+describe("print head width ceiling", () => {
+  it("keeps a normal tracking URL at the full 6px module size", () => {
+    const result = buildQrBmpBase64(URL);
+
+    expect(result!.widthPx).toBeLessThanOrEqual(384);
+    expect(result!.widthPx % 6).toBe(0); // untouched module size
+  });
+
+  it("shrinks the module size so a long payload still fits the head", () => {
+    // A URL long enough to need a high QR version, which at 6px/module would
+    // rasterize well past 384 dots.
+    const longUrl = `https://very-long-tenant-slug.example.com/order/${"a".repeat(300)}`;
+
+    const result = buildQrBmpBase64(longUrl);
+
+    expect(result).not.toBeNull();
+    expect(result!.widthPx).toBeLessThanOrEqual(384);
+  });
+
+  it("never returns a module size below 1 physical dot", () => {
+    // At the QR spec's ceiling (version 40, 177 modules + 8 quiet = 185),
+    // one dot per module is 185px — still inside the head.
+    const maximal = buildQrBmpBase64("x".repeat(1600));
+
+    if (maximal) {
+      expect(maximal.widthPx).toBeGreaterThan(0);
+      expect(maximal.widthPx).toBeLessThanOrEqual(384);
+    }
+  });
+});

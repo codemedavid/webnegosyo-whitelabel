@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { pushOrderToLoyverseBestEffort } from '@/lib/loyverse/push-service'
 import { buildLoyverseOrderItemsFromConvexOrder } from '@/lib/loyverse/convex-order-lines'
 import type { OrderItem } from '@/types/database'
@@ -36,21 +37,18 @@ async function loadConvexOrderItems(
   const admin = createAdminClient()
   const { data: tenant } = await admin
     .from('tenants')
-    .select('convex_deployment_url, convex_deploy_key')
+    .select('convex_deployment_url')
     .eq('id', tenantId)
     .maybeSingle()
 
-  const config = tenant as {
-    convex_deployment_url?: string | null
-    convex_deploy_key?: string | null
-  } | null
-  if (!config?.convex_deployment_url || !config?.convex_deploy_key) return null
+  const config = tenant as { convex_deployment_url?: string | null } | null
+  if (!config?.convex_deployment_url) return null
 
   try {
-    const convex = createConvexServerClient(
-      config.convex_deployment_url,
-      config.convex_deploy_key,
-    )
+    const deployKey = (await getTenantSecrets(admin, tenantId))?.convex_deploy_key
+    if (!deployKey) return null
+
+    const convex = createConvexServerClient(config.convex_deployment_url, deployKey)
     const order = await convex.query<{ items?: unknown[] } | null>(
       'orders:getOrderById',
       { orderId },

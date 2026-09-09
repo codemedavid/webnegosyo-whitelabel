@@ -48,3 +48,30 @@ describe('labels', () => {
     expect(formatPresellDateLabel('2026-12-24')).toBe('Dec 24, 2026')
   })
 })
+
+describe('date range and labels', () => {
+  const { listDateKeys, formatPresellWeekday, formatPresellDateLong } = jest.requireActual('@/lib/presell/month-grid')
+
+  it('lists every day of an inclusive range, crossing a month boundary', () => {
+    expect(listDateKeys('2026-12-30', '2027-01-02')).toEqual([
+      '2026-12-30', '2026-12-31', '2027-01-01', '2027-01-02',
+    ])
+  })
+
+  it('returns just the start when the range is a single day', () => {
+    expect(listDateKeys('2026-12-24', '2026-12-24')).toEqual(['2026-12-24'])
+  })
+
+  it('returns nothing when the end is before the start', () => {
+    expect(listDateKeys('2026-12-24', '2026-12-20')).toEqual([])
+  })
+
+  it('caps a runaway range at the maximum', () => {
+    expect(listDateKeys('2026-01-01', '2027-12-31')).toHaveLength(62)
+  })
+
+  it('formats weekday and long labels by hand', () => {
+    expect(formatPresellWeekday('2026-12-24')).toBe('Thu')
+    expect(formatPresellDateLong('2026-12-24')).toBe('Thu, Dec 24')
+  })
+})

@@ -4,6 +4,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import {
   loyverseListAll,
@@ -354,15 +355,24 @@ export async function syncPaymentMethodsFromLoyverse(
   const admin = createAdminClient()
   const { data: tenant, error: tenantError } = await admin
     .from('tenants')
-    .select('loyverse_enabled, loyverse_access_token')
+    .select('loyverse_enabled')
     .eq('id', tenantId)
     .maybeSingle()
 
   if (tenantError || !tenant) return syncFailure('Tenant not found')
 
-  const tenantRow = tenant as { loyverse_enabled: boolean | null; loyverse_access_token: string | null }
-  const accessToken = tenantRow.loyverse_access_token?.trim()
-  if (!tenantRow.loyverse_enabled || !accessToken) {
+  const tenantRow = tenant as { loyverse_enabled: boolean | null }
+  if (!tenantRow.loyverse_enabled) {
+    return syncFailure('Loyverse is not connected for this store')
+  }
+
+  let accessToken: string | undefined
+  try {
+    accessToken = (await getTenantSecrets(admin, tenantId))?.loyverse_access_token?.trim()
+  } catch (error: unknown) {
+    return syncFailure(error instanceof Error ? error.message : 'Could not read the Loyverse token')
+  }
+  if (!accessToken) {
     return syncFailure('Loyverse is not connected for this store')
   }
 

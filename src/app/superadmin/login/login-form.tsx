@@ -6,8 +6,14 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { toast } from 'sonner'
-import { Shield, Loader2, AlertCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Shield, Loader2, AlertCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react'
+
+/** Dark-on-dark safe field styling — the base Input inherits the light palette. */
+const FIELD_CLASS =
+  'h-11 rounded-xl border-white/10 bg-white/[0.04] pl-10 text-white placeholder:text-white/30 ' +
+  'transition-colors hover:border-white/20 focus-visible:border-white/30 focus-visible:ring-white/20 ' +
+  'aria-[invalid=true]:border-red-400/40'
 
 export default function LoginForm() {
   const router = useRouter()
@@ -23,22 +29,33 @@ export default function LoginForm() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [hasCapsLock, setHasCapsLock] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // The banner is the query-string refusal until the user's first attempt.
+  const alertMessage =
+    errorMessage ?? (unauthorized ? 'You are not authorized to access that page.' : null)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMessage(null)
     const supabase = createClient()
 
     startTransition(async () => {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
-        toast.error(error.message)
+        setErrorMessage(error.message)
         return
       }
 
       // Check role
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        setErrorMessage('Could not start your session. Please try again.')
+        return
+      }
 
       interface AppUserRoleRow { role: 'superadmin' | 'admin' }
       const { data: roleRow, error: roleErr } = await supabase
@@ -48,12 +65,11 @@ export default function LoginForm() {
         .maybeSingle<AppUserRoleRow>()
 
       if (roleErr || !roleRow || roleRow.role !== 'superadmin') {
-        toast.error('You are not authorized as superadmin')
+        setErrorMessage('This account is not authorized for platform administration.')
         await supabase.auth.signOut()
         return
       }
 
-      toast.success('Welcome back!')
       // Full navigation (not router.replace) so an external return path like the
       // OAuth /authorize route handler runs on the server with fresh cookies.
       if (redirectTo === '/superadmin') {
@@ -65,7 +81,7 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="superadmin-shell relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4">
+    <div className="superadmin-shell relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-10 text-foreground">
       {/* Faint top glow */}
       <div
         aria-hidden
@@ -78,7 +94,7 @@ export default function LoginForm() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-[0_0_30px_-8px_rgba(255,255,255,0.5)]">
             <Shield className="h-6 w-6 text-black" />
           </div>
-          <div className="flex flex-col items-center space-y-1">
+          <div className="flex flex-col items-center space-y-2">
             <h1 className="text-xl font-bold tracking-tight text-white">WebNegosyo</h1>
             <span className="inline-flex items-center rounded-full border border-white/15 px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-white/60">
               Platform Administration
@@ -86,7 +102,7 @@ export default function LoginForm() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 shadow-2xl shadow-black/40">
           <div className="space-y-1 pb-5">
             <h2 className="text-lg font-semibold text-white">Sign in</h2>
             <p className="text-sm text-white/55">
@@ -94,39 +110,71 @@ export default function LoginForm() {
             </p>
           </div>
 
-          {unauthorized && (
-            <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-400">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>You are not authorized to access that page.</span>
-            </div>
-          )}
-          <form className="space-y-4" onSubmit={onSubmit}>
+          <div aria-live="polite">
+            {alertMessage && (
+              <div
+                role="alert"
+                className="mb-4 flex items-start gap-2 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-300"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{alertMessage}</span>
+              </div>
+            )}
+          </div>
+
+          <form className="space-y-4" onSubmit={onSubmit} noValidate>
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-white/60">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@webnegosyo.com"
-                required
-                autoFocus
-                autoComplete="email"
-              />
+              <Label htmlFor="email" className="text-white/70">Email</Label>
+              <div className="relative">
+                <Mail aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@webnegosyo.com"
+                  required
+                  autoFocus
+                  autoComplete="email"
+                  aria-invalid={errorMessage ? true : undefined}
+                  className={FIELD_CLASS}
+                />
+              </div>
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-white/60">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-                autoComplete="current-password"
-              />
+              <Label htmlFor="password" className="text-white/70">Password</Label>
+              <div className="relative">
+                <Lock aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyUp={(e) => setHasCapsLock(e.getModifierState?.('CapsLock') ?? false)}
+                  onBlur={() => setHasCapsLock(false)}
+                  placeholder="Enter your password"
+                  required
+                  autoComplete="current-password"
+                  aria-invalid={errorMessage ? true : undefined}
+                  className={cn(FIELD_CLASS, 'pr-11')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {hasCapsLock && (
+                <p className="text-xs text-amber-300/80">Caps Lock is on.</p>
+              )}
             </div>
-            <Button className="w-full" type="submit" disabled={isPending}>
+
+            <Button className="h-11 w-full rounded-xl font-semibold" type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

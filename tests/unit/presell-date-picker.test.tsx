@@ -68,3 +68,23 @@ describe('PresellDatePicker', () => {
     expect(screen.getByText(/no dates available/i)).toBeInTheDocument()
   })
 })
+
+describe('PresellDatePicker navigation and legend', () => {
+  it('cannot page back before the current month', () => {
+    render(<PresellDatePicker {...baseProps} />)
+    expect(screen.getByRole('button', { name: /previous month/i })).toBeDisabled()
+  })
+
+  it('explains the cell states in a legend', () => {
+    render(<PresellDatePicker {...baseProps} />)
+    expect(screen.getByText(/^available$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^sold out$/i)).toBeInTheDocument()
+  })
+
+  it('offers a jump when the visible month has nothing to sell', () => {
+    render(<PresellDatePicker {...baseProps} />)
+    fireEvent.click(screen.getByRole('button', { name: /next month/i }))
+    fireEvent.click(screen.getByRole('button', { name: /next available/i }))
+    expect(screen.getByText('December 2026')).toBeInTheDocument()
+  })
+})

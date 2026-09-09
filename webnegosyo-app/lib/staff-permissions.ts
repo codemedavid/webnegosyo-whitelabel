@@ -36,6 +36,13 @@ export const STAFF_PERMISSION_KEYS = [
   // Its own key (not "orders") so a cook's tablet can show the board without
   // also granting the full order queue, payments, and cancellations.
   "kitchen",
+  // Loyalty programs: creating one, changing its rules, pausing it, and
+  // correcting a customer's balance. Its own key rather than 'customers'
+  // because a balance correction moves value, and 'vouchers' because a staffer
+  // who may retire a promo code should not be able to rewrite every regular's
+  // stamp card. Attaching a customer at the register needs no grant.
+  "loyalty_manage",
+  "loyalty_redeem",
 ] as const;
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];
@@ -80,6 +87,11 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // can text all of them. An unmapped tab defaults to ALLOWED, which would
   // hand the store's contact database to whoever can ring up a sale.
   customers: "customers",
+  // The Customer Hub is the same rows as the guest list, aggregated — repeat
+  // rate, spend and favourites are derived from exactly the customer records
+  // the `customers` key protects. Summarising PII does not declassify it, and
+  // an unmapped tab defaults to ALLOWED.
+  "customer-hub": "customers",
   "product-management": "menu",
   // Deciding which branches carry a dish is a menu decision, so it rides the
   // menu key. An unmapped tab defaults to ALLOWED, which would let anyone with
@@ -104,6 +116,9 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // rides the orders grant. Mapped explicitly because an unmapped tab defaults
   // to ALLOWED, which would show every pre-order to a pos-only cashier.
   scheduled: "orders",
+  // Program rules and balance corrections move value. Mapped explicitly
+  // because an unmapped tab defaults to ALLOWED.
+  loyalty: "loyalty_manage",
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {

@@ -1,5 +1,5 @@
 diff --git a/node_modules/@haroldtran/react-native-thermal-printer/ios/RNBLEPrinter.m b/node_modules/@haroldtran/react-native-thermal-printer/ios/RNBLEPrinter.m
-index 2c59b5e..4a6c1cc 100644
+index 2c59b5e..c21aef5 100644
 --- a/node_modules/@haroldtran/react-native-thermal-printer/ios/RNBLEPrinter.m
 +++ b/node_modules/@haroldtran/react-native-thermal-printer/ios/RNBLEPrinter.m
 @@ -31,20 +31,59 @@ - (void)handleNetPrinterConnectedNotification:(NSNotification*)notification
@@ -70,6 +70,188 @@ index 2c59b5e..4a6c1cc 100644
      } @catch (NSException *exception) {
          errorCallback(@[exception.reason]);
      }
+@@ -129,7 +168,7 @@ - (void)handleNetPrinterConnectedNotification:(NSNotification*)notification
+ 
+         if(imageData != nil){
+             UIImage* image = [UIImage imageWithData:imageData];
+-            UIImage* printImage = [self getPrintImage:image printerOptions:options];
++            UIImage* printImage = [self getPrintImage:image printerOptions:options printerWidth:printerWidth];
+ 
+             [[PrinterSDK defaultPrinterSDK] setPrintWidth:printerWidth];
+             [[PrinterSDK defaultPrinterSDK] printImage:printImage ];
+@@ -147,9 +186,15 @@ - (void)handleNetPrinterConnectedNotification:(NSNotification*)notification
+ 
+         !m_printer ? [NSException raise:@"Invalid connection" format:@"Can't connect to printer"] : nil;
+         if(![base64Qr  isEqual: @""]){
+-            NSString *result = [@"data:image/png;base64," stringByAppendingString:base64Qr];
+-            NSURL *url = [NSURL URLWithString:result];
+-            NSData *imageData = [NSData dataWithContentsOfURL:url];
++            // Decode the base64 raster directly. The original built a
++            // `data:image/png;base64,...` string and fed it to
++            // NSURL URLWithString: — which both mislabels our BMP as PNG and
++            // hands NSURL a ~500 KB string. URLWithString returns nil on a
++            // payload that large, dataWithContentsOfURL then yields nil, and
++            // the QR silently never printed.
++            NSData *imageData = [[NSData alloc]
++                initWithBase64EncodedString:base64Qr
++                                    options:NSDataBase64DecodingIgnoreUnknownCharacters];
+             NSString* printerWidthType = [options valueForKey:@"printerWidthType"];
+ 
+             NSInteger printerWidth = 576;
+@@ -160,7 +205,7 @@ - (void)handleNetPrinterConnectedNotification:(NSNotification*)notification
+ 
+             if(imageData != nil){
+                 UIImage* image = [UIImage imageWithData:imageData];
+-                UIImage* printImage = [self getPrintImage:image printerOptions:options];
++                UIImage* printImage = [self getPrintImage:image printerOptions:options printerWidth:printerWidth];
+ 
+                 [[PrinterSDK defaultPrinterSDK] setPrintWidth:printerWidth];
+                 [[PrinterSDK defaultPrinterSDK] printImage:printImage ];
+@@ -172,7 +217,8 @@ - (void)handleNetPrinterConnectedNotification:(NSNotification*)notification
+ }
+ 
+ -(UIImage *)getPrintImage:(UIImage *)image
+-           printerOptions:(NSDictionary *)options {
++           printerOptions:(NSDictionary *)options
++             printerWidth:(NSInteger)printerWidth {
+    NSNumber* nWidth = [options valueForKey:@"imageWidth"];
+    NSNumber* nHeight = [options valueForKey:@"imageHeight"];
+    NSNumber* nPaddingX = [options valueForKey:@"paddingX"];
+@@ -187,14 +233,29 @@ -(UIImage *)getPrintImage:(UIImage *)image
+        newHeight = [nHeight floatValue];
+    }
+ 
+-   CGFloat paddingX = 250;
++   // Never wider than the print head. The printer truncates the overflow
++   // instead of scaling it, and a clipped QR does not scan. Height follows the
++   // same ratio, or the code skews and dies too.
++   if(newWidth > printerWidth) {
++       newHeight = newHeight * ((CGFloat)printerWidth / newWidth);
++       newWidth = printerWidth;
++   }
++
++   // Padding is ADDED to the image width, so the old flat default of 250 turned
++   // a 342-dot QR into a 592-dot raster on a 576-dot head. Deriving it from the
++   // head width centres the image and can never overflow.
++   CGFloat paddingX = MAX(0, printerWidth - newWidth);
+    if(nPaddingX != nil) {
+        paddingX = [nPaddingX floatValue];
+    }
+ 
+    CGFloat _newHeight = newHeight;
+    CGSize newSize = CGSizeMake(newWidth, _newHeight);
+-   UIGraphicsBeginImageContextWithOptions(newSize, false, 0.0);
++   // Scale 1.0, not 0.0. Zero means "device scale", so on a 2x iPad every
++   // requested dot became two and the raster overran the head — a blank or
++   // garbled strip instead of a QR. A thermal raster is measured in dots, so
++   // points must map to pixels 1:1.
++   UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+    CGImageRef immageRef = image.CGImage;
+@@ -216,7 +277,8 @@ -(UIImage *)addImagePadding:(UIImage * )image
+     CGFloat width = image.size.width + paddingX;
+     CGFloat height = image.size.height + paddingY;
+ 
+-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), true, 0.0);
++    // Scale 1.0 for the same reason as getPrintImage: dots, not points.
++    UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), true, 1.0);
+     CGContextRef context = UIGraphicsGetCurrentContext();
+     CGContextSetFillColorWithColor(context, [UIColor whiteColor].CGColor);
+     CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+diff --git a/node_modules/@haroldtran/react-native-thermal-printer/ios/RNNetPrinter.m b/node_modules/@haroldtran/react-native-thermal-printer/ios/RNNetPrinter.m
+index 0d36411..c01226c 100644
+--- a/node_modules/@haroldtran/react-native-thermal-printer/ios/RNNetPrinter.m
++++ b/node_modules/@haroldtran/react-native-thermal-printer/ios/RNNetPrinter.m
+@@ -189,7 +189,7 @@ - (void)handleBLEPrinterConnectedNotification:(NSNotification*)notification
+ 
+         if(imageData != nil){
+             UIImage* image = [UIImage imageWithData:imageData];
+-            UIImage* printImage = [self getPrintImage:image printerOptions:options];
++            UIImage* printImage = [self getPrintImage:image printerOptions:options printerWidth:printerWidth];
+ 
+             [[PrinterSDK defaultPrinterSDK] setPrintWidth:printerWidth];
+             [[PrinterSDK defaultPrinterSDK] printImage:printImage ];
+@@ -207,9 +207,15 @@ - (void)handleBLEPrinterConnectedNotification:(NSNotification*)notification
+ 
+         !connected_ip ? [NSException raise:@"Invalid connection" format:@"Can't connect to printer"] : nil;
+         if(![base64Qr  isEqual: @""]){
+-            NSString *result = [@"data:image/png;base64," stringByAppendingString:base64Qr];
+-            NSURL *url = [NSURL URLWithString:result];
+-            NSData *imageData = [NSData dataWithContentsOfURL:url];
++            // Decode the base64 raster directly. The original built a
++            // `data:image/png;base64,...` string and fed it to
++            // NSURL URLWithString: — which both mislabels our BMP as PNG and
++            // hands NSURL a ~500 KB string. URLWithString returns nil on a
++            // payload that large, dataWithContentsOfURL then yields nil, and
++            // the QR silently never printed.
++            NSData *imageData = [[NSData alloc]
++                initWithBase64EncodedString:base64Qr
++                                    options:NSDataBase64DecodingIgnoreUnknownCharacters];
+             NSString* printerWidthType = [options valueForKey:@"printerWidthType"];
+ 
+             NSInteger printerWidth = 576;
+@@ -220,7 +226,7 @@ - (void)handleBLEPrinterConnectedNotification:(NSNotification*)notification
+ 
+             if(imageData != nil){
+                 UIImage* image = [UIImage imageWithData:imageData];
+-                UIImage* printImage = [self getPrintImage:image printerOptions:options];
++                UIImage* printImage = [self getPrintImage:image printerOptions:options printerWidth:printerWidth];
+ 
+                 [[PrinterSDK defaultPrinterSDK] setPrintWidth:printerWidth];
+                 [[PrinterSDK defaultPrinterSDK] printImage:printImage ];
+@@ -232,7 +238,8 @@ - (void)handleBLEPrinterConnectedNotification:(NSNotification*)notification
+ }
+ 
+ -(UIImage *)getPrintImage:(UIImage *)image
+-           printerOptions:(NSDictionary *)options {
++           printerOptions:(NSDictionary *)options
++             printerWidth:(NSInteger)printerWidth {
+ 
+    NSNumber* nWidth = [options valueForKey:@"imageWidth"];
+    NSNumber* nHeight = [options valueForKey:@"imageHeight"];
+@@ -248,14 +255,29 @@ -(UIImage *)getPrintImage:(UIImage *)image
+        newHeight = [nHeight floatValue];
+    }
+ 
+-   CGFloat paddingX = 250;
++   // Never wider than the print head. The printer truncates the overflow
++   // instead of scaling it, and a clipped QR does not scan. Height follows the
++   // same ratio, or the code skews and dies too.
++   if(newWidth > printerWidth) {
++       newHeight = newHeight * ((CGFloat)printerWidth / newWidth);
++       newWidth = printerWidth;
++   }
++
++   // Padding is ADDED to the image width, so the old flat default of 250 turned
++   // a 342-dot QR into a 592-dot raster on a 576-dot head. Deriving it from the
++   // head width centres the image and can never overflow.
++   CGFloat paddingX = MAX(0, printerWidth - newWidth);
+    if(nPaddingX != nil) {
+        paddingX = [nPaddingX floatValue];
+    }
+ 
+    CGFloat _newHeight = newHeight;
+    CGSize newSize = CGSizeMake(newWidth, _newHeight);
+-   UIGraphicsBeginImageContextWithOptions(newSize, false, 0.0);
++   // Scale 1.0, not 0.0. Zero means "device scale", so on a 2x iPad every
++   // requested dot became two and the raster overran the head — a blank or
++   // garbled strip instead of a QR. A thermal raster is measured in dots, so
++   // points must map to pixels 1:1.
++   UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+    CGImageRef immageRef = image.CGImage;
+@@ -278,7 +300,8 @@ -(UIImage *)addImagePadding:(UIImage * )image
+     CGFloat width = image.size.width + paddingX;
+     CGFloat height = image.size.height + paddingY;
+ 
+-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), true, 0.0);
++    // Scale 1.0 for the same reason as getPrintImage: dots, not points.
++    UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), true, 1.0);
+     CGContextRef context = UIGraphicsGetCurrentContext();
+     CGContextSetFillColorWithColor(context, [UIColor whiteColor].CGColor);
+     CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
 diff --git a/node_modules/@haroldtran/react-native-thermal-printer/src/index.tsx b/node_modules/@haroldtran/react-native-thermal-printer/src/index.tsx
 index 17e01d3..18e03dc 100644
 --- a/node_modules/@haroldtran/react-native-thermal-printer/src/index.tsx

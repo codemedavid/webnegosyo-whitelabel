@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 
 import { supabase } from "./supabase";
 import { useAuthStore } from "../stores/auth-store";
 import { useBranchContextStore } from "../stores/branch-context-store";
+import { resourceKey } from "./backends/query-keys";
+import { useResource } from "./query/use-resource";
 import type { PortfolioOutlet } from "./portfolio-rows";
+
+/** Cache name shared by every `useOutlets` caller; see `invalidateResource`. */
+export const OUTLETS_RESOURCE = "outlets";
+
+/** Branches change rarely; a tab switch within this window reads the cache. */
+const OUTLETS_STALE_MS = 60_000;
+
+const NO_OUTLETS: PortfolioOutlet[] = [];
 
 /**
  * The store's own branches.
@@ -16,6 +26,8 @@ import type { PortfolioOutlet } from "./portfolio-rows";
  * what lets `resolveEffectiveScope` reject a selection this store does not
  * have — a branch deleted while it was being viewed, or an id left behind by
  * another account on a shared device.
+ *
+ * Six screens call this at once; the shared cache makes that one read.
  */
 export interface OutletsResult {
   outlets: PortfolioOutlet[];
@@ -24,18 +36,25 @@ export interface OutletsResult {
   /** A message fit to show a merchant, or null. */
   error: string | null;
   reload: () => void;
+  /** `reload`, awaitable — for pull-to-refresh. */
+  refetch: () => Promise<void>;
+}
+
+export async function fetchOutlets(tenantId: string): Promise<PortfolioOutlet[]> {
+  const { data, error } = await supabase
+    .from("outlets")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("name");
+
+  if (error) throw new Error("Could not load your branches");
+  return (data ?? []) as PortfolioOutlet[];
 }
 
 export function useOutlets(): OutletsResult {
   const tenantId = useAuthStore((s) => s.tenantId);
   const setKnownOutlets = useBranchContextStore((s) => s.setKnownOutlets);
-
-  const [outlets, setOutlets] = useState<PortfolioOutlet[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
-
-  const reload = useCallback(() => setReloadToken((token) => token + 1), []);
 
   // A branch belongs to one store, so the branch being viewed cannot outlive
   // the tenant it belongs to: signing out (tenantId → null) or a superadmin
@@ -45,45 +64,31 @@ export function useOutlets(): OutletsResult {
     useBranchContextStore.getState().clear();
   }, [tenantId]);
 
+  const fetcher = useCallback(() => fetchOutlets(tenantId as string), [tenantId]);
+  const resource = useResource<PortfolioOutlet[]>(
+    tenantId ? resourceKey(OUTLETS_RESOURCE, tenantId) : null,
+    fetcher,
+    { staleTime: OUTLETS_STALE_MS }
+  );
+
+  const outlets = resource.data ?? NO_OUTLETS;
+
+  // Published from the cached rows, so a screen mounting into an already
+  // loaded cache still registers the ids (the fetcher may never run for it).
   useEffect(() => {
-    if (!tenantId) {
-      setOutlets([]);
-      setIsLoading(false);
-      return;
-    }
+    if (resource.data) setKnownOutlets(resource.data);
+  }, [resource.data, setKnownOutlets]);
 
-    // Guards a response that arrives after the tenant changed — an owner
-    // signing out and a superadmin opening a different store both do that.
-    let isCurrent = true;
-    setIsLoading(true);
+  const { refetch } = resource;
+  const reload = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
-    void (async () => {
-      const { data, error: queryError } = await supabase
-        .from("outlets")
-        .select("id, name")
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true)
-        .order("name");
-
-      if (!isCurrent) return;
-
-      if (queryError) {
-        setError("Could not load your branches");
-        setIsLoading(false);
-        return;
-      }
-
-      const rows = (data ?? []) as PortfolioOutlet[];
-      setOutlets(rows);
-      setKnownOutlets(rows);
-      setError(null);
-      setIsLoading(false);
-    })();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [tenantId, reloadToken, setKnownOutlets]);
-
-  return { outlets, isLoading, error, reload };
+  return {
+    outlets,
+    isLoading: resource.isLoading,
+    error: resource.error,
+    reload,
+    refetch,
+  };
 }

@@ -26,6 +26,26 @@ export const MENU_TAB = "menu";
  */
 export const SETUP_TABS: readonly string[] = ["payments"];
 
+/**
+ * Screens that belong UNDER another screen rather than beside it.
+ *
+ * Insights had grown to six tabs and, with the always-on Menu hub, a
+ * seven-item bar: every label truncated ("Analyti…", "Guest l…") and the
+ * merchant had to read three tabs to answer one question. Three of those six
+ * are not peers of the screen they sit next to — Trends plots the same sales
+ * Analytics slices, and the guest list and the reward scheme are both things
+ * you look at *after* the Customers overview tells you regulars are or are not
+ * coming back. So they are entered from their parent (see
+ * `lib/subscreen-links.ts`) instead of costing a slot on the bar.
+ *
+ * They stay registered tabs: permissions, the Menu hub and deep links are all
+ * unchanged, exactly as for the setup screens above.
+ */
+export const SUBSCREEN_TABS: readonly string[] = ["trends", "customers", "loyalty"];
+
+/** Every reachable-but-not-a-tab screen, whatever the reason it is off the bar. */
+export const OFF_BAR_TABS: readonly string[] = [...SETUP_TABS, ...SUBSCREEN_TABS];
+
 /** The Scheduled agenda only exists for a store that takes pre-orders. */
 const ADVANCE_ORDER_TABS: readonly string[] = ["scheduled"];
 
@@ -49,11 +69,11 @@ export function isTabOnBar(
   ctx: TabVisibilityContext,
 ): boolean {
   if (tab === MENU_TAB) return true;
-  if (SETUP_TABS.includes(tab)) return false;
+  if (OFF_BAR_TABS.includes(tab)) return false;
   return isTabInWorkspace(tab, workspace) && isTabReachable(tab, ctx);
 }
 
-/** A view's reachable tabs, in registry order. Includes setup screens. */
+/** A view's reachable tabs, in registry order. Includes off-bar screens. */
 export function reachableTabsOf(
   workspace: WorkspaceKey,
   ctx: TabVisibilityContext,

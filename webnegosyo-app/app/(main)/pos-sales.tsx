@@ -125,7 +125,7 @@ export default function PosSalesScreen() {
   return (
     <View style={styles.screen}>
       {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
-      <ScreenHeader title="Drawer" subtitle="Today at the register" />
+      <ScreenHeader title="Drawer" subtitle="Today at the POS" />
     <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
 
       {incoming.length > 0 && (

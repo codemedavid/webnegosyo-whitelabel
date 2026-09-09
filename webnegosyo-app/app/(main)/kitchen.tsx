@@ -7,9 +7,10 @@ import {
   TouchableOpacity,
   Alert,
   useWindowDimensions,
+  type ListRenderItem,
 } from "react-native";
 import { FunctionReference } from "convex/server";
-import { useKeepAwake } from "expo-keep-awake";
+import { useKeepAwakeWhileFocused } from "../../hooks/useKeepAwakeWhileFocused";
 import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useBranchScope } from "../../lib/use-branch-scope";
@@ -44,6 +45,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { TicketCard, kds } from "../../components/kitchen/TicketCard";
+import { TickerProvider } from "../../components/TickerProvider";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
@@ -56,6 +58,11 @@ const ORDERS_FETCH_LIMIT = 200;
 /** Timers redraw twice a minute; a chit clock does not need seconds. */
 const TIMER_TICK_MS = 30_000;
 
+/** The wake lock's name, so the board's lock is distinct from any other. */
+const KEEP_AWAKE_TAG = "kitchen-board";
+
+const keyExtractor = (ticket: KitchenTicket) => ticket.order._id;
+
 /** Tablet landscape fits three tickets across; portrait tablets two. */
 const THREE_COLUMN_MIN_WIDTH = 900;
 const TWO_COLUMN_MIN_WIDTH = 600;
@@ -65,15 +72,16 @@ interface KitchenOrder extends KitchenOrderLike {
 }
 
 export default function KitchenScreen() {
-  // A kitchen display that dims mid-rush is a broken kitchen display.
-  useKeepAwake();
+  // A kitchen display that dims mid-rush is a broken kitchen display — but the
+  // tab never unmounts, so the lock is held only while the board is in view.
+  useKeepAwakeWhileFocused(KEEP_AWAKE_TAG);
 
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
   const outletName = useAuthStore((s) => s.outletName);
   const hasBackend = hasLiveOrderBackend({ convexUrl, orderBackend });
-  const { printers } = usePrinterStore();
+  const printers = usePrinterStore((s) => s.printers);
   const hasKitchenPrinter = printersForRole(printers, "kitchen").length > 0;
 
   const { width } = useWindowDimensions();
@@ -90,12 +98,6 @@ export default function KitchenScreen() {
   const canSetPrepTime = isPrepTimeSupported({ orderBackend, convexSchemaVersion });
   const scope = useBranchScope();
 
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), TIMER_TICK_MS);
-    return () => clearInterval(id);
-  }, []);
-
   const [isAllDayOpen, setAllDayOpen] = useState(false);
   const [lastBumped, setLastBumped] = useState<{ orderId: string; ref: string } | null>(null);
 
@@ -108,6 +110,14 @@ export default function KitchenScreen() {
     [scopedOrders, allItems],
   );
   const allDay = useMemo(() => aggregateAllDay(tickets), [tickets]);
+
+  // The bump and prep-time handlers take an id and look the ticket up here,
+  // so they stay stable across board updates instead of closing over
+  // `tickets` and handing every card new props on every poll.
+  const ticketsByIdRef = useRef<ReadonlyMap<string, KitchenTicket>>(new Map());
+  useEffect(() => {
+    ticketsByIdRef.current = new Map(tickets.map((ticket) => [ticket.order._id, ticket]));
+  }, [tickets]);
 
   // Flash genuinely new tickets. The global order alert already rings the
   // chime app-wide; the board only needs the visual.
@@ -132,7 +142,7 @@ export default function KitchenScreen() {
         Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
         return;
       }
-      const ticket = tickets.find((t) => t.order._id === orderId);
+      const ticket = ticketsByIdRef.current.get(orderId);
       try {
         await updateStatus({ orderId, status: bumpTargetStatus(ticket?.order.status ?? "") });
         setLastBumped({ orderId, ref: orderId.slice(-4).toUpperCase() });
@@ -140,7 +150,7 @@ export default function KitchenScreen() {
         Alert.alert("Error", "Failed to bump the order. Check your connection and try again.");
       }
     },
-    [tickets, updateStatus],
+    [updateStatus],
   );
 
   const handleSetPrepTime = useCallback(
@@ -154,7 +164,7 @@ export default function KitchenScreen() {
         Alert.alert("Prep time", "Enter a whole number of minutes, up to 4 hours.");
         return;
       }
-      const ticket = tickets.find((t) => t.order._id === orderId);
+      const ticket = ticketsByIdRef.current.get(orderId);
       try {
         await setPrepTime({
           orderId,
@@ -168,7 +178,7 @@ export default function KitchenScreen() {
         Alert.alert("Error", "Could not save the prep time. Check your connection and try again.");
       }
     },
-    [tickets, setPrepTime],
+    [setPrepTime],
   );
 
   const handleRecall = useCallback(async () => {
@@ -195,6 +205,21 @@ export default function KitchenScreen() {
       Alert.alert("Print failed", firstError ?? "Could not reach the kitchen printer.");
     }
   }, []);
+
+  const renderItem = useCallback<ListRenderItem<KitchenTicket>>(
+    ({ item: ticket }) => (
+      <TicketCard
+        ticket={ticket}
+        isNew={newIds.has(ticket.order._id)}
+        onBump={handleBump}
+        onPrint={handlePrint}
+        canPrint={hasKitchenPrinter}
+        canSetPrepTime={canSetPrepTime}
+        onSetPrepTime={handleSetPrepTime}
+      />
+    ),
+    [newIds, handleBump, handlePrint, hasKitchenPrinter, canSetPrepTime, handleSetPrepTime],
+  );
 
   if (!hasBackend || error) {
     return (
@@ -251,26 +276,20 @@ export default function KitchenScreen() {
           <Text style={styles.emptyBody}>Confirmed orders appear here the moment they land.</Text>
         </View>
       ) : (
-        <FlatList
-          key={numColumns}
-          data={tickets}
-          numColumns={numColumns}
-          keyExtractor={(ticket) => ticket.order._id}
-          contentContainerStyle={styles.board}
-          columnWrapperStyle={numColumns > 1 ? styles.boardRow : undefined}
-          renderItem={({ item: ticket }) => (
-            <TicketCard
-              ticket={ticket}
-              nowMs={nowMs}
-              isNew={newIds.has(ticket.order._id)}
-              onBump={handleBump}
-              onPrint={handlePrint}
-              canPrint={hasKitchenPrinter}
-              canSetPrepTime={canSetPrepTime}
-              onSetPrepTime={handleSetPrepTime}
-            />
-          )}
-        />
+        // The cards read the clock from the ticker, so a tick redraws the
+        // timers without re-rendering the board. `key={numColumns}` stays:
+        // FlatList throws on a live numColumns change and asks for exactly this.
+        <TickerProvider intervalMs={TIMER_TICK_MS}>
+          <FlatList
+            key={numColumns}
+            data={tickets}
+            numColumns={numColumns}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={styles.board}
+            columnWrapperStyle={numColumns > 1 ? styles.boardRow : undefined}
+            renderItem={renderItem}
+          />
+        </TickerProvider>
       )}
 
       {lastBumped ? (

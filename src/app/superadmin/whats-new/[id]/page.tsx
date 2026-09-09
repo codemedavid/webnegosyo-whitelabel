@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation'
-import { PageHeader } from '@/components/superadmin/ui/primitives'
 import { AnnouncementEditor } from '@/components/superadmin/announcements/announcement-editor'
 import { getAnnouncementAction, listAudienceTenantsAction } from '@/app/actions/announcements'
 
@@ -17,18 +16,5 @@ export default async function EditAnnouncementPage({
   ])
   if (!announcement) notFound()
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="What's New"
-        title={announcement.title}
-        subtitle={
-          announcement.status === 'published'
-            ? 'Published. Edits go live as soon as you save.'
-            : 'Draft. Merchants cannot see this yet.'
-        }
-      />
-      <AnnouncementEditor initial={announcement} tenants={tenants} />
-    </div>
-  )
+  return <AnnouncementEditor initial={announcement} tenants={tenants} />
 }

@@ -18,6 +18,10 @@ const HOOKS = () => readFileSync(join(__dirname, "hooks.ts"), "utf8");
 const PLATFORM_QUERY = () =>
   readFileSync(join(__dirname, "backends", "use-platform-query.ts"), "utf8");
 
+// Where a realtime payload is turned into per-key refetches.
+const QUERY_INVALIDATION = () =>
+  readFileSync(join(__dirname, "backends", "query-invalidation.ts"), "utf8");
+
 describe("platform read scoping", () => {
   it("resolves the account's branch scope in the dispatch hook", () => {
     // The account scope — not the branch an owner has drilled into. See below.
@@ -45,7 +49,13 @@ describe("platform read scoping", () => {
     // One filter clause per binding is all Realtime allows, and it is spent on
     // the tenant. Without this check a manager's screen refetches — and the
     // new-order chime fires — for a sale at another branch.
+    //
+    // With one channel per tenant, the check moved from the channel callback
+    // to the per-key invalidation predicate; the hook documents where.
     expect(PLATFORM_QUERY()).toMatch(/isOrderChangeInScope/);
+    expect(QUERY_INVALIDATION()).toMatch(
+      /isQueryAffectedByOrderChange[\s\S]*isOrderChangeInScope\(payload, tenantId, platformKeyScope\(key\)\)/
+    );
   });
 
   it("re-reads when the account's branch changes", () => {

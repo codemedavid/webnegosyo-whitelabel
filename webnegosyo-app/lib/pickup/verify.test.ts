@@ -8,11 +8,17 @@
  * turn each HTTP outcome into something staff can act on.
  */
 
-// Native module: not transformable under jest, and every test below injects
-// its own webAppUrl anyway. Mirrors lib/customers/capture.test.ts.
+// Native module: not transformable under jest. Most tests below inject their
+// own webAppUrl; the unconfigured case exercises the shared default, which is
+// what every shipped build actually uses. Mirrors lib/customers/capture.test.ts.
+const mockConstants: { expoConfig: { extra: Record<string, unknown> } | null } = {
+  expoConfig: { extra: {} },
+};
 jest.mock("expo-constants", () => ({
   __esModule: true,
-  default: { expoConfig: { extra: { webAppUrl: "https://webnegosyo.com" } } },
+  get default() {
+    return mockConstants;
+  },
 }));
 
 import { verifyPickupTicket } from "./verify";
@@ -32,6 +38,21 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 describe("verifyPickupTicket", () => {
+  it("falls back to the canonical www host when the build configured no url", async () => {
+    // app.config.ts ships `extra.webAppUrl` empty on purpose, so a private
+    // default guarding only against null reads "" as configured and refuses
+    // every scan as not_configured. The shared helper owns the address.
+    mockConstants.expoConfig = { extra: { webAppUrl: "" } };
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { status: "ready" }));
+
+    const result = await verifyPickupTicket(ticket, { fetchImpl });
+
+    expect(result.ok).toBe(true);
+    expect(String(fetchImpl.mock.calls[0]![0])).toContain(
+      "https://www.webnegosyo.com/api/orders/track",
+    );
+  });
+
   it("returns the order when the token verifies", async () => {
     const fetchImpl = jest.fn().mockResolvedValue(
       jsonResponse(200, {

@@ -13,6 +13,7 @@ import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-ho
 import { convertToTenant } from '@/lib/leads/leads-service'
 import { invalidateTenantCache } from '@/lib/cache'
 import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-backend'
+import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -37,10 +38,25 @@ type DeliveryFeeColumns = {
 // Same lag for the Loyverse integration migration (20260821120000).
 type LoyverseColumns = {
   loyverse_enabled?: boolean
-  loyverse_access_token?: string | null
   loyverse_store_id?: string | null
   loyverse_payment_type_id?: string | null
   loyverse_push_mode?: string
+}
+
+/**
+ * The credential fields the superadmin form carries. They never touch the
+ * `tenants` row: they are upserted into `tenant_secrets` after it is saved.
+ * A blank field is `undefined` here, which the upsert skips — so leaving a
+ * secret empty on edit keeps the stored value, exactly as the old
+ * `|| undefined` column writes did.
+ */
+function secretsPatchFromForm(parsed: TenantInput): TenantSecretsPatch {
+  return {
+    lalamove_api_key: parsed.lalamove_api_key || undefined,
+    lalamove_secret_key: parsed.lalamove_secret_key || undefined,
+    loyverse_access_token: parsed.loyverse_access_token || undefined,
+    convex_deploy_key: parsed.convex_deploy_key || undefined,
+  }
 }
 
 /**
@@ -173,17 +189,14 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       restaurant_address: parsed.restaurant_address || undefined,
       restaurant_latitude: parsed.restaurant_latitude || undefined,
       restaurant_longitude: parsed.restaurant_longitude || undefined,
-      // Lalamove configuration
+      // Lalamove configuration (credentials go to tenant_secrets below)
       lalamove_enabled: parsed.lalamove_enabled,
-      lalamove_api_key: parsed.lalamove_api_key || undefined,
-      lalamove_secret_key: parsed.lalamove_secret_key || undefined,
       lalamove_market: parsed.lalamove_market || undefined,
       lalamove_service_type: parsed.lalamove_service_type || undefined,
       lalamove_sandbox: parsed.lalamove_sandbox,
       lalamove_sender_phone: parsed.lalamove_sender_phone || undefined,
-      // Loyverse POS integration
+      // Loyverse POS integration (access token goes to tenant_secrets below)
       loyverse_enabled: parsed.loyverse_enabled,
-      loyverse_access_token: parsed.loyverse_access_token || undefined,
       loyverse_store_id: parsed.loyverse_store_id || undefined,
       loyverse_payment_type_id: parsed.loyverse_payment_type_id || undefined,
       loyverse_push_mode: parsed.loyverse_push_mode,
@@ -192,9 +205,8 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
       delivery_min_fee: parsed.delivery_min_fee ?? undefined,
       delivery_radius_km: parsed.delivery_radius_km ?? undefined,
-      // Convex / Mobile App
+      // Convex / Mobile App (deploy key goes to tenant_secrets below)
       convex_deployment_url: parsed.convex_deployment_url || undefined,
-      convex_deploy_key: parsed.convex_deploy_key || undefined,
       // Keep the routing column in step with the credentials being saved, so a
       // Convex tenant never lands on the column default and reads the wrong DB.
       order_backend: orderBackendForSave(parsed.order_backend, {
@@ -223,12 +235,21 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       return { error: 'Failed to create tenant: No data returned' }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenant = data as any
+
+    // The row exists now, so its credentials can be attached to it.
+    try {
+      await upsertTenantSecrets(supabase, tenant.id, secretsPatchFromForm(parsed))
+    } catch (secretsError) {
+      return {
+        error: secretsError instanceof Error ? secretsError.message : 'Failed to save tenant secrets',
+      }
+    }
+
     // Revalidate cached data
     revalidatePath('/superadmin')
     revalidatePath('/superadmin/tenants')
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tenant = data as any
 
     // If this creation came from a lead conversion, mark the lead as converted
     if (leadId) {
@@ -354,17 +375,14 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     restaurant_address: parsed.restaurant_address || undefined,
     restaurant_latitude: parsed.restaurant_latitude || undefined,
     restaurant_longitude: parsed.restaurant_longitude || undefined,
-    // Lalamove configuration
+    // Lalamove configuration (credentials go to tenant_secrets below)
     lalamove_enabled: parsed.lalamove_enabled,
-    lalamove_api_key: parsed.lalamove_api_key || undefined,
-    lalamove_secret_key: parsed.lalamove_secret_key || undefined,
     lalamove_market: parsed.lalamove_market || undefined,
     lalamove_service_type: parsed.lalamove_service_type || undefined,
     lalamove_sandbox: parsed.lalamove_sandbox,
     lalamove_sender_phone: parsed.lalamove_sender_phone || undefined,
-    // Loyverse POS integration
+    // Loyverse POS integration (access token goes to tenant_secrets below)
     loyverse_enabled: parsed.loyverse_enabled,
-    loyverse_access_token: parsed.loyverse_access_token || undefined,
     loyverse_store_id: parsed.loyverse_store_id || undefined,
     loyverse_payment_type_id: parsed.loyverse_payment_type_id || undefined,
     loyverse_push_mode: parsed.loyverse_push_mode,
@@ -373,9 +391,8 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     delivery_price_per_km: parsed.delivery_price_per_km ?? undefined,
     delivery_min_fee: parsed.delivery_min_fee ?? undefined,
     delivery_radius_km: parsed.delivery_radius_km ?? undefined,
-    // Convex / Mobile App
+    // Convex / Mobile App (deploy key goes to tenant_secrets below)
     convex_deployment_url: parsed.convex_deployment_url || undefined,
-    convex_deploy_key: parsed.convex_deploy_key || undefined,
     order_backend: orderBackendForSave(parsed.order_backend, {
       order_backend: (currentBackendRow as { order_backend?: OrderBackendPreference } | null)
         ?.order_backend,
@@ -398,6 +415,14 @@ export async function updateTenantAction(id: string, input: TenantInput) {
 
   if (error) {
     return { error: error.message }
+  }
+
+  try {
+    await upsertTenantSecrets(supabase, id, secretsPatchFromForm(parsed))
+  } catch (secretsError) {
+    return {
+      error: secretsError instanceof Error ? secretsError.message : 'Failed to save tenant secrets',
+    }
   }
 
   // Revalidate cached data

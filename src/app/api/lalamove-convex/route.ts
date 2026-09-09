@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getTenantSecrets } from "@/lib/tenant-secrets";
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,14 +49,16 @@ export async function POST(request: NextRequest) {
     const supabase = createAdminClient();
     const { data: tenantData, error } = await supabase
       .from("tenants")
-      .select("convex_deployment_url, convex_deploy_key")
+      .select("convex_deployment_url")
       .eq("id", tenantId)
       .single();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tenant = tenantData as Record<string, any> | null;
+    const deployKey = error ? null : (await getTenantSecrets(supabase, tenantId))?.convex_deploy_key;
+    const tenant = tenantData
+      ? { ...(tenantData as { convex_deployment_url: string | null }), convex_deploy_key: deployKey ?? null }
+      : null;
 
-    if (error || !tenant?.convex_deployment_url || !tenant?.convex_deploy_key) {
+    if (error || !tenant?.convex_deployment_url || !tenant.convex_deploy_key) {
       return NextResponse.json(
         { error: "Tenant not found or Convex not configured" },
         { status: 404 }

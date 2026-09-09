@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../lib/hooks";
 import { useAuthStore } from "../stores/auth-store";
@@ -45,25 +45,40 @@ export function GlobalOrderAlerts() {
 
   const isAlertable = shouldAlertOnNewOrders({ convexUrl, orderBackend, isDemo });
 
-  useEffect(() => {
-    if (!isAlertable || !queue) return;
-    // A branch account only reminds for its own branch, same as the ringtone.
-    const active = QUEUE_STATUSES.flatMap((status) => [
-      ...filterOrdersToScope(scope, queue[status]),
-    ]) as ReminderOrderLike[];
-    void syncScheduledOrderReminders(active);
-  }, [isAlertable, queue, scope]);
-
-  if (!isAlertable) return null;
+  // Both derivations are keyed on the queue's identity, which the cache keeps
+  // stable across unchanged polls — so a quiet poll neither reschedules every
+  // reminder nor hands the ringtone a fresh array to diff.
+  //
+  // A branch account only reminds for its own branch, same as the ringtone.
+  const active = useMemo(
+    () =>
+      queue
+        ? (QUEUE_STATUSES.flatMap((status) => [
+            ...filterOrdersToScope(scope, queue[status]),
+          ]) as ReminderOrderLike[])
+        : undefined,
+    [queue, scope],
+  );
 
   // Still pending-only — an order the kitchen has already confirmed is not news.
   // Routed through the shared selector so a sale rung up at the register can
   // never ring the register that rang it.
   // A branch account is only on the hook for its own branch: another branch
   // taking an order must not ring this device.
-  const pending = selectIncomingOrders({
-    pending: [...filterOrdersToScope(scope, queue?.pending)],
-  } as RealtimeQueue);
+  const pending = useMemo(
+    () =>
+      selectIncomingOrders({
+        pending: [...filterOrdersToScope(scope, queue?.pending)],
+      } as RealtimeQueue),
+    [queue, scope],
+  );
+
+  useEffect(() => {
+    if (!isAlertable || !active) return;
+    void syncScheduledOrderReminders(active);
+  }, [isAlertable, active]);
+
+  if (!isAlertable) return null;
 
   return <OrderAlerts orders={pending} />;
 }

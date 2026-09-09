@@ -48,10 +48,13 @@ import {
   useUpdateConvexPaymentStatus,
 } from "@/hooks/use-convex-orders";
 import { restoreOrderStockAction } from "@/app/actions/inventory";
+import { visibleCustomerFields } from "@/lib/admin/order-customer-fields";
 import { releasePresellForCancelledConvexOrderAction } from "@/app/actions/presell";
 import { orderSummaryRows } from "@/lib/order-summary-rows";
 import { readOrderDiscount } from "@/lib/order-discount";
 import { displayCustomerName } from '@/lib/order-display-name'
+import { ConvexLalamovePanel } from "@/components/admin/convex-lalamove-panel";
+import { shouldShowLalamoveControls } from "@/lib/lalamove-order-visibility";
 
 interface ConvexOrderSheetProps {
   orderId: string | null;
@@ -63,6 +66,12 @@ interface ConvexOrderSheetProps {
    * restore rather than fail to open.
    */
   tenantId?: string;
+  /**
+   * The tenant's `lalamove_enabled` flag. Convex orders carried their
+   * Lalamove status read-only here; the booking controls need to know the
+   * store actually has Lalamove before offering a rider.
+   */
+  lalamoveEnabled?: boolean;
 }
 
 const STATUS_FLOW: Record<string, string> = {
@@ -103,7 +112,13 @@ function formatDate(timestamp: number): string {
   });
 }
 
-export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: ConvexOrderSheetProps) {
+export function ConvexOrderSheet({
+  orderId,
+  open,
+  onOpenChange,
+  tenantId,
+  lalamoveEnabled = false,
+}: ConvexOrderSheetProps) {
   const order = useConvexOrderById(orderId ?? "");
   const updateStatus = useUpdateConvexOrderStatus();
   const updatePaymentStatus = useUpdateConvexPaymentStatus();
@@ -380,31 +395,23 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
                     {order.customerContact}
                   </a>
                 )}
-                {order.customerData && typeof order.customerData === "object" && (
+                {visibleCustomerFields(order.customerData).length > 0 && (
                   <div className="mt-2 space-y-1 rounded-md bg-muted/50 p-2">
-                    {Object.entries(order.customerData as Record<string, unknown>)
-                      .filter(([key, value]) =>
-                        // The branch has its own banner above; these are the raw carrier keys behind it.
-                        !["scheduled_for", "scheduled_for_label", "delivery_lat", "delivery_lng", "messenger_psid", "outlet_id", "outlet_name"].includes(key) &&
-                        value !== "" && value != null
-                      )
-                      .map(
-                      ([key, value]) => (
-                        <div key={key} className="flex justify-between text-xs">
-                          <span className="text-muted-foreground capitalize">
-                            {key.replace(/_/g, " ")}
-                          </span>
-                          <span>{String(value)}</span>
-                        </div>
-                      )
-                    )}
+                    {visibleCustomerFields(order.customerData).map((field) => (
+                      <div key={field.key} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground capitalize">
+                          {field.label}
+                        </span>
+                        <span>{field.value}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
             </Card>
 
             {/* Delivery Section (Conditional) */}
-            {order.deliveryAddress && (
+            {(order.deliveryAddress || shouldShowLalamoveControls(order)) && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-sm">
@@ -413,48 +420,13 @@ export function ConvexOrderSheet({ orderId, open, onOpenChange, tenantId }: Conv
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <div className="flex items-start gap-2 text-sm">
-                    <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    <span>{order.deliveryAddress}</span>
-                  </div>
-                  {order.lalamoveStatus && (
-                    <div className="space-y-1.5 rounded-md bg-muted/50 p-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Status</span>
-                        <Badge variant="outline" className="text-[10px]">
-                          {order.lalamoveStatus}
-                        </Badge>
-                      </div>
-                      {order.lalamoveDriverName && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Driver</span>
-                          <span>{order.lalamoveDriverName}</span>
-                        </div>
-                      )}
-                      {order.lalamoveDriverPhone && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Driver Phone</span>
-                          <a
-                            href={`tel:${order.lalamoveDriverPhone}`}
-                            className="text-blue-600 hover:underline"
-                          >
-                            {order.lalamoveDriverPhone}
-                          </a>
-                        </div>
-                      )}
-                      {order.lalamoveTrackingUrl && (
-                        <a
-                          href={order.lalamoveTrackingUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                        >
-                          <Globe className="size-3" />
-                          Track Delivery
-                        </a>
-                      )}
+                  {order.deliveryAddress && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      <span>{order.deliveryAddress}</span>
                     </div>
                   )}
+                  <ConvexLalamovePanel order={order} lalamoveEnabled={lalamoveEnabled} />
                 </CardContent>
               </Card>
             )}

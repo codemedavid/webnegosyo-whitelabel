@@ -1,17 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { FunctionReference } from "convex/server";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../stores/auth-store";
 import { isStaleBundleError } from "./stale-backend";
 import { resolveRefRoute } from "./backends/route";
-import { runPlatformMutation } from "./backends/supabase-adapter";
+import { runPlatformAction, runPlatformMutation } from "./backends/supabase-adapter";
 import { withPlatformTimeout } from "./backends/platform-call";
+import { invalidatePlatformQueries } from "./backends/query-invalidation";
 import {
   platformClient,
   usePlatformQuery,
   type SafeQueryResult,
 } from "./backends/use-platform-query";
 import { useAccountBranchScope } from "./use-branch-scope";
+import { planLifecycleSync } from "./customers/lifecycle-plan";
+import { notifyLifecycleSync } from "./customers/lifecycle";
+import type { OrderBackend } from "./order-backend";
 import { convexOrderQueryArgs } from "./convex-order-scope";
 
 // A tenant's Convex deployment can lag the app (older bundle). Besides a flat-out
@@ -22,6 +27,13 @@ import { convexOrderQueryArgs } from "./convex-order-scope";
 const MISSING_FN_MARKER = "Could not find public function";
 
 const LOADING_TIMEOUT_MS = 15000; // 15 seconds
+
+/**
+ * Convex is a live subscription: there is nothing to re-read, so every
+ * non-platform branch reports a resolved no-op refetch and is never refetching.
+ */
+const NOOP_REFETCH = async (): Promise<void> => {};
+const LIVE_SUBSCRIPTION = { refetch: NOOP_REFETCH, isRefetching: false } as const;
 
 /** The tenant in scope — the impersonated store when a superadmin is inside one. */
 function useScopedTenantId(): string | null {
@@ -117,7 +129,7 @@ export function useSafeQuery<T>(
   if (route === "idle") {
     // No tenant in scope yet — keep the screen in its loading state rather than
     // claiming an empty result.
-    return { data: undefined, isLoading: true, error: null, isMissingFunction: false };
+    return { data: undefined, isLoading: true, error: null, isMissingFunction: false, ...LIVE_SUBSCRIPTION };
   }
 
   if (route === "unsupported") {
@@ -129,11 +141,18 @@ export function useSafeQuery<T>(
       isLoading: false,
       error: MISSING_FN_MARKER,
       isMissingFunction: true,
+      ...LIVE_SUBSCRIPTION,
     };
   }
 
   if (!convexUrl) {
-    return { data: undefined, isLoading: false, error: "Convex not configured", isMissingFunction: false };
+    return {
+      data: undefined,
+      isLoading: false,
+      error: "Convex not configured",
+      isMissingFunction: false,
+      ...LIVE_SUBSCRIPTION,
+    };
   }
 
   if (hookError) {
@@ -142,6 +161,7 @@ export function useSafeQuery<T>(
       isLoading: false,
       error: hookError,
       isMissingFunction: isStaleBundleError(hookError),
+      ...LIVE_SUBSCRIPTION,
     };
   }
 
@@ -151,6 +171,7 @@ export function useSafeQuery<T>(
       isLoading: false,
       error: "Query timed out. Check that Convex is deployed and functions exist.",
       isMissingFunction: false,
+      ...LIVE_SUBSCRIPTION,
     };
   }
 
@@ -159,6 +180,7 @@ export function useSafeQuery<T>(
     isLoading: result === undefined,
     error: error,
     isMissingFunction: false,
+    ...LIVE_SUBSCRIPTION,
   };
 }
 
@@ -167,6 +189,29 @@ export function useSafeQuery<T>(
  * so the parameter stays open here and is validated by whichever backend runs.
  */
 type SafeMutation = (args?: unknown) => Promise<unknown>;
+
+/**
+ * Report an order's lifecycle change to the platform customer ledger.
+ *
+ * Wired here rather than in the five screens that move orders (orders list,
+ * order detail, kitchen board, POS sales, scanner) because this hook is the one
+ * chokepoint they all pass through — five copies would drift, and a screen
+ * added later would silently miss it. The planner stays quiet for platform-
+ * backed tenants and for mutations that are not lifecycle changes, so this
+ * costs nothing on the mutations it does not care about.
+ *
+ * Never awaited and never throws: the ticket has already moved.
+ */
+function reportLifecycle(input: {
+  tenantId: string | null;
+  orderBackend: OrderBackend | null;
+  refName: string;
+  args: unknown;
+}): void {
+  const plan = planLifecycleSync(input);
+  if (!plan) return;
+  void notifyLifecycleSync(plan);
+}
 
 export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutation {
   const convexUrl = useAuthStore((s) => s.convexUrl);
@@ -180,6 +225,7 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
 
   const refName = String(ref);
   const route = resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
+  const queryClient = useQueryClient();
 
   // Called unconditionally to keep the hook order stable across backends.
   const platformMutate = useCallback<SafeMutation>(
@@ -187,12 +233,20 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
       if (!tenantId) throw new Error("No store selected");
       // Bounded like every other auth-adjacent call: a mutation that awaits a
       // stalled GoTrue refresh forever is a frozen register mid-tender.
-      return withPlatformTimeout(
+      const result = await withPlatformTimeout(
         runPlatformMutation(platformClient, tenantId, refName, args ?? {}, accountScope),
         refName
       );
+      // The write landed: re-read this tenant's platform queries so the screen
+      // updates deterministically even if the realtime socket is down. Not
+      // awaited — the caller's own flow must not wait on a background read.
+      invalidatePlatformQueries(queryClient, tenantId).catch((e: unknown) => {
+        console.warn("[useSafeMutation] refetch after " + refName + " failed:", e);
+      });
+      reportLifecycle({ tenantId, orderBackend, refName, args });
+      return result;
     },
-    [refName, tenantId, accountScope]
+    [refName, tenantId, accountScope, queryClient, orderBackend]
   );
 
   let convexMutate: SafeMutation | null = null;
@@ -205,7 +259,14 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
 
   if (route === "platform") return platformMutate;
 
-  if (convexMutate) return convexMutate;
+  if (convexMutate) {
+    const mutate = convexMutate;
+    return async (args) => {
+      const result = await mutate(args);
+      reportLifecycle({ tenantId, orderBackend, refName, args });
+      return result;
+    };
+  }
 
   if (!convexUrl) {
     return async () => {
@@ -233,11 +294,21 @@ export function useSafeAction(ref: FunctionReference<"action">) {
 
   if (route === "convex" && convexAction) return convexAction;
 
-  // The platform adapter ships no action runner: the only action with a
-  // platform equivalent (Lalamove) dispatches through its own transport before
-  // reaching this hook. Reporting the marker keeps callers on their existing
-  // "needs a backend update" handling instead of misdiagnosing a healthy
-  // platform tenant as a Convex outage.
+  // Platform actions run through the adapter, bounded like every other call.
+  // Lalamove never reaches here — it dispatches through its own transport.
+  if (route === "platform") {
+    return async (args?: unknown) => {
+      if (!tenantId) throw new Error("No store selected");
+      return withPlatformTimeout(
+        runPlatformAction(platformClient, tenantId, refName, args ?? {}),
+        refName
+      );
+    };
+  }
+
+  // Reporting the marker keeps callers on their existing "needs a backend
+  // update" handling instead of misdiagnosing a healthy platform tenant as a
+  // Convex outage.
   return async () => {
     throw new Error(MISSING_FN_MARKER);
   };

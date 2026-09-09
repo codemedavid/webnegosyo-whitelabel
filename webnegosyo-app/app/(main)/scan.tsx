@@ -47,6 +47,10 @@ import {
   type PickupBlockReason,
   type PickupWarning,
 } from "../../lib/pickup/guards";
+import {
+  evaluateCartHandoff,
+  type HandoffBlockReason,
+} from "../../lib/scan-handoff-validate";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updateOrderStatusRef =
@@ -107,6 +111,22 @@ const WARNING_MESSAGE: Record<PickupWarning, string> = {
     "This order is not marked ready yet. Confirm only if it is actually packed and on the counter.",
 };
 
+/** Reasons a cart handoff is refused: the pure verdicts, plus a failed catalog read. */
+type HandoffRefusal = HandoffBlockReason | "catalog_unavailable";
+
+const HANDOFF_BLOCK_MESSAGE: Record<HandoffRefusal, string> = {
+  wrong_tenant: "This code belongs to a different store.",
+  no_items: "This code carries an empty cart. Ask the customer to add items and try again.",
+  unknown_item:
+    "This code includes an item that is not on this store's menu. Ask the customer to rebuild their cart and try again.",
+  bad_quantity:
+    "This code has an invalid item quantity. Ask the customer to rebuild their cart and try again.",
+  bad_price:
+    "This code has an invalid price. Ask the customer to rebuild their cart and try again.",
+  catalog_unavailable:
+    "Could not check this cart against the menu. Check your connection and scan again.",
+};
+
 const DECODE_ERROR_MESSAGE: Record<DecodeError, string> = {
   empty: "Nothing was scanned. Try again.",
   corrupt: "This QR code could not be read. Ask the customer to refresh and try again.",
@@ -118,6 +138,7 @@ type ScreenState =
   | { mode: "scanning" }
   | { mode: "error"; error: DecodeError }
   | { mode: "validating"; payload: QrOrderPayloadV1 }
+  | { mode: "handoff-blocked"; message: string }
   | {
       mode: "preview";
       payload: QrOrderPayloadV1;
@@ -137,8 +158,20 @@ type ScreenState =
 
 const SCAN_DEBOUNCE_MS = 1500;
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+/** Base price per menu item id from this store's catalog. Throws on a failed read. */
+async function loadCatalogPrices(
+  tenantId: string,
+  menuItemIds: readonly string[]
+): Promise<Map<string, number>> {
+  if (menuItemIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("menu_items")
+    .select("id, price")
+    .eq("tenant_id", tenantId)
+    .in("id", menuItemIds);
+  if (error) throw error;
+  const rows = (data ?? []) as { id: string; price: number }[];
+  return new Map(rows.map((row) => [String(row.id), row.price]));
 }
 
 export default function ScanScreen() {
@@ -156,50 +189,47 @@ export default function ScanScreen() {
   const [isAccepting, setIsAccepting] = useState(false);
   const lastScanRef = useRef(0);
 
-  // Re-validate base prices against the Supabase catalog and recompute totals
-  // using catalog prices where they differ. Light-touch: only the per-item base
-  // price is compared; variation/addon adjustments are preserved from the QR.
+  // The QR is customer-authored, so only the catalog is trusted: every item
+  // must exist in this store's menu, and base prices are re-read from it
+  // (variation/addon deltas are preserved from the QR). The verdict itself is
+  // pure — lib/scan-handoff-validate.ts — this only fetches its input.
   const validateAndPreview = useCallback(
     async (payload: QrOrderPayloadV1) => {
       setState({ mode: "validating", payload });
 
+      // Store check first, before this store's catalog is even consulted —
+      // the same order as the pickup path.
       const ids = [...new Set(payload.items.map((i) => i.menuItemId))];
-      const priceMap = new Map<string, number>();
-
+      let catalogPrices: Map<string, number>;
       try {
-        const { data } = await supabase
-          .from("menu_items")
-          .select("id, price")
-          .eq("tenant_id", tenantId ?? payload.tenantId)
-          .in("id", ids);
-        for (const row of (data ?? []) as { id: string; price: number }[]) {
-          priceMap.set(String(row.id), row.price);
-        }
-      } catch {
-        // If catalog lookup fails, fall back to the QR-supplied prices.
+        catalogPrices =
+          tenantId === payload.tenantId ? await loadCatalogPrices(tenantId, ids) : new Map();
+      } catch (e) {
+        console.warn("[scan] catalog lookup failed:", e);
+        setState({
+          mode: "handoff-blocked",
+          message: HANDOFF_BLOCK_MESSAGE.catalog_unavailable,
+        });
+        return;
       }
 
-      let pricesUpdated = false;
-      const items: QrOrderItemV1[] = payload.items.map((item) => {
-        const catalogPrice = priceMap.get(item.menuItemId);
-        if (catalogPrice === undefined || Math.abs(catalogPrice - item.price) < 0.01) {
-          return item;
-        }
-        // Catalog base price differs: apply it and recompute the subtotal while
-        // preserving the per-unit variation/addon delta from the QR payload.
-        pricesUpdated = true;
-        const perUnitDelta = round2(item.subtotal / item.quantity - item.price);
-        const newUnit = round2(catalogPrice + perUnitDelta);
-        return {
-          ...item,
-          price: catalogPrice,
-          subtotal: round2(newUnit * item.quantity),
-        };
+      const verdict = evaluateCartHandoff({
+        payload,
+        sessionTenantId: tenantId,
+        catalogPrices,
       });
+      if (!verdict.ok) {
+        setState({ mode: "handoff-blocked", message: HANDOFF_BLOCK_MESSAGE[verdict.reason] });
+        return;
+      }
 
-      const total = round2(items.reduce((sum, i) => sum + i.subtotal, 0));
-
-      setState({ mode: "preview", payload, items, total, pricesUpdated });
+      setState({
+        mode: "preview",
+        payload,
+        items: verdict.items,
+        total: verdict.total,
+        pricesUpdated: verdict.pricesUpdated,
+      });
     },
     [tenantId]
   );
@@ -494,6 +524,23 @@ export default function ScanScreen() {
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.validatingText}>Checking prices…</Text>
+        </View>
+      )}
+
+      {state.mode === "handoff-blocked" && (
+        <View style={styles.center}>
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorIcon}>⛔</Text>
+            <Text style={styles.errorTitle}>Can&apos;t accept this order</Text>
+            <Text style={styles.errorText}>{state.message}</Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={resetToScanning}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryButtonText}>Rescan</Text>
+            </TouchableOpacity>
+          </Card>
         </View>
       )}
 

@@ -10,6 +10,7 @@ import {
   createOrderConvex,
 } from '@/lib/orders-service'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
 import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backend'
@@ -236,16 +237,24 @@ export async function createOrderAction(
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, convex_deploy_key, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude, multi_branch_enabled')
+      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude, multi_branch_enabled')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tenantConfig = tenantConfigData as Record<string, any> | null
-
-    if (!tenantConfig) {
+    if (!tenantConfigData) {
       return { success: false, error: 'Restaurant not found or is currently inactive' }
+    }
+
+    // Credentials live in tenant_secrets, never on the anon-readable tenants
+    // row. Read once here: the Convex deploy key routes the order and the
+    // Loyverse token backs the live stock check below.
+    const tenantSecrets = await getTenantSecrets(supabaseAdmin, tenantId)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tenantConfig: Record<string, any> = {
+      ...(tenantConfigData as Record<string, unknown>),
+      convex_deploy_key: tenantSecrets?.convex_deploy_key ?? null,
     }
 
     // ── Minimum-order enforcement (authoritative; covers EVERY order backend) ──
@@ -287,21 +296,21 @@ export async function createOrderAction(
     {
       const { data: loyverseRow } = await supabaseAdmin
         .from('tenants')
-        .select('loyverse_enabled, loyverse_access_token, loyverse_store_id')
+        .select('loyverse_enabled, loyverse_store_id')
         .eq('id', tenantId)
         .maybeSingle()
 
       const loyverse = loyverseRow as {
         loyverse_enabled?: boolean | null
-        loyverse_access_token?: string | null
         loyverse_store_id?: string | null
       } | null
+      const loyverseToken = tenantSecrets?.loyverse_access_token ?? null
 
-      if (loyverse?.loyverse_enabled && loyverse.loyverse_access_token && loyverse.loyverse_store_id) {
+      if (loyverse?.loyverse_enabled && loyverseToken && loyverse.loyverse_store_id) {
         const { findLiveOutOfStockLines } = await import('@/lib/loyverse/stock-check')
         const blocked = await findLiveOutOfStockLines(
           tenantId,
-          loyverse.loyverse_access_token,
+          loyverseToken,
           loyverse.loyverse_store_id,
           items.map((item) => ({
             menu_item_id: item.menu_item_id,
@@ -873,6 +882,18 @@ export async function updatePaymentStatusAction(
     const { data, error } = await query
 
     if (error) throw error
+
+    // A settled POS sale is a completed visit; let loyalty see the settlement.
+    // Best-effort and idempotent at the database.
+    {
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const { runLoyaltyForOrder } = await import('@/lib/loyalty/lifecycle')
+      await runLoyaltyForOrder(createAdminClient(), {
+        tenantId,
+        backend: 'platform_supabase',
+        externalOrderId: orderId,
+      })
+    }
 
     // Storage hygiene: once payment is verified, purge the proof screenshot from
     // ImageKit and null its columns (the reference + timestamp are kept as a record).

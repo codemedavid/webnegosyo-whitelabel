@@ -78,6 +78,22 @@ describe("validateProductInput", () => {
     expect(validateProductInput({ ...validInput, price: -5 }).valid).toBe(false);
   });
 
+  it("rejects a non-finite price", () => {
+    expect(validateProductInput({ ...validInput, price: Number.POSITIVE_INFINITY }).valid).toBe(false);
+    expect(validateProductInput({ ...validInput, price: Number.NaN }).valid).toBe(false);
+    expect(validateProductInput({ ...validInput, price: Number.NaN }).errors.price).toBeDefined();
+  });
+
+  it("rejects a non-finite discounted price", () => {
+    expect(
+      validateProductInput({ ...validInput, discounted_price: Number.NaN }).errors.discounted_price,
+    ).toBeDefined();
+    expect(
+      validateProductInput({ ...validInput, discounted_price: Number.NEGATIVE_INFINITY }).errors
+        .discounted_price,
+    ).toBeDefined();
+  });
+
   it("rejects a missing category", () => {
     const result = validateProductInput({ ...validInput, category_id: "" });
     expect(result.valid).toBe(false);

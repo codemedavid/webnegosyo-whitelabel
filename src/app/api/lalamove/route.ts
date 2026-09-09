@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import {
   createLalamoveOrder,
   getLalamoveOrder,
@@ -8,7 +9,8 @@ import {
   addLalamovePriorityFee,
   createLalamoveQuotation,
 } from '@/lib/lalamove-service'
-import { normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { isE164Phone } from '@/lib/lalamove-phone'
+import { resolveLalamoveRecipient } from '@/lib/lalamove-recipient'
 import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
@@ -49,6 +51,7 @@ interface OrderRow {
     delivery_address?: string | null
     delivery_lat?: number | string | null
     delivery_lng?: number | string | null
+    [field: string]: unknown
   } | null
   lalamove_quotation_id: string | null
   lalamove_order_id: string | null
@@ -124,13 +127,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .eq('id', tenantId)
     .maybeSingle()
 
-  const tenant = tenantData as unknown as Tenant | null
-  if (!tenant) {
+  const tenantRow = tenantData as unknown as Tenant | null
+  if (!tenantRow) {
     return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
   }
-  if (!tenant.lalamove_enabled) {
+  if (!tenantRow.lalamove_enabled) {
     return fail('Lalamove delivery is not enabled for this store')
   }
+  // The signing keys live in tenant_secrets; the service key reads them here,
+  // after the caller has been authorised against app_users above.
+  const tenant: Tenant = mergeTenantSecrets(tenantRow, await getTenantSecrets(admin, tenantId))
 
   // Filtered by tenant as well as id. The service key bypasses RLS, so this
   // filter is the only thing keeping a merchant off another store's order.
@@ -170,6 +176,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!sender.phone) {
         return fail('Your store pickup phone is not set. Add it in delivery settings.')
       }
+      // Lalamove refuses anything but bare E.164 — and names no number when
+      // it does. Say which one here, before a rider is even asked for.
+      if (!isE164Phone(sender.phone)) {
+        return fail(
+          `Your store pickup phone (${sender.phone}) is not a valid mobile number. Fix it in delivery settings.`,
+        )
+      }
+
+      // The customer's phone wherever the checkout form put it; failing that
+      // the store's own, so an order from a form with no phone field is still
+      // bookable. `''` used to be forwarded here, and Lalamove refused it.
+      const recipient = resolveLalamoveRecipient(order, tenant.lalamove_market, sender.phone)
+      if (!recipient.phone) {
+        return fail('No phone number to give the rider. Add a store pickup phone in delivery settings.')
+      }
 
       const placed = await createLalamoveOrder(
         tenant,
@@ -177,9 +198,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         sender.name,
         sender.phone,
         order.customer_name || 'Customer',
-        normalizeLalamovePhone(order.customer_contact, tenant.lalamove_market) ||
-          order.customer_contact ||
-          '',
+        recipient.phone,
         { orderId, tenantId },
       )
 
@@ -197,7 +216,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .eq('tenant_id', tenantId)
         .is('lalamove_order_id', null)
 
-      return NextResponse.json({ success: true, lalamoveOrderId: placed.orderId })
+      return NextResponse.json({
+        success: true,
+        lalamoveOrderId: placed.orderId,
+        recipientPhoneSource: recipient.source,
+      })
     }
 
     if (op === 'requote') {

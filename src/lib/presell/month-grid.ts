@@ -83,3 +83,41 @@ export function formatPresellDayLabel(dateKey: string): string {
   const { month, day } = parseDateKey(dateKey)
   return `${MONTH_NAMES[month].slice(0, 3)} ${day}`
 }
+
+const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+
+/** The most days one range helper may fill at once — two months, roughly. */
+export const MAX_RANGE_DAYS = 62
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+function utcDayOf(key: string): Date {
+  const { year, month, day } = parseDateKey(key)
+  return new Date(Date.UTC(year, month, day))
+}
+
+/**
+ * Every date key from `startKey` through `endKey` inclusive, capped at
+ * MAX_RANGE_DAYS. Empty for an inverted range. UTC arithmetic, so a DST
+ * change on the merchant's machine can never drop or double a day.
+ */
+export function listDateKeys(startKey: string, endKey: string): string[] {
+  if (endKey < startKey) return []
+  const start = utcDayOf(startKey).getTime()
+  const end = utcDayOf(endKey).getTime()
+  const span = Math.min(Math.round((end - start) / MS_PER_DAY), MAX_RANGE_DAYS - 1)
+  return Array.from({ length: span + 1 }, (_, offset) => {
+    const d = new Date(start + offset * MS_PER_DAY)
+    return toDateKey(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  })
+}
+
+/** "Thu" — the weekday a date key falls on. */
+export function formatPresellWeekday(dateKey: string): string {
+  return WEEKDAY_NAMES[utcDayOf(dateKey).getUTCDay()]
+}
+
+/** "Thu, Dec 24" — for the merchant's allocation list. */
+export function formatPresellDateLong(dateKey: string): string {
+  return `${formatPresellWeekday(dateKey)}, ${formatPresellDayLabel(dateKey)}`
+}

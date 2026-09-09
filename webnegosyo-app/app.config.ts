@@ -31,7 +31,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // GET /v1/apps/6761642956/appStoreVersions rather than assuming, because a
   // train is closed by APPROVAL, not by how recently you built. Hence 1.0.4 —
   // bump this again after the next approval.
-  version: "1.0.4",
+  //
+  // 1.0.4 (builds 37-39) went READY_FOR_SALE on 2026-08-28, closing that train
+  // in turn. Re-verified against /v1/apps/6761642956/appStoreVersions on
+  // 2026-09-04 before bumping. Hence 1.0.5.
+  version: "1.0.5",
   orientation: "portrait",
   icon: "./assets/icon.png",
   splash: {
