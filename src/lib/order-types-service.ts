@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import type { OrderType, CustomerFormField } from '@/types/database'
+import { ORDER_TYPE_KINDS } from '@/lib/order-types/order-type-kinds'
+import { MARKUP_PERCENT_MAX, MARKUP_PERCENT_MIN } from '@/lib/order-types/order-type-pricing'
 import { z } from 'zod'
 
 // ============================================
@@ -13,11 +15,22 @@ import { z } from 'zod'
 // ============================================
 
 export const orderTypeSchema = z.object({
-  type: z.enum(['dine_in', 'pickup', 'delivery']),
+  type: z.enum(ORDER_TYPE_KINDS),
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
   note: z.string().optional(),
   is_enabled: z.boolean(),
+  /** When false, hidden from the web storefront and customer app. Omitted = unchanged (DB default true). */
+  available_on_web: z.boolean().optional(),
+  /** When false, hidden from the merchant register. Omitted = unchanged (DB default true). */
+  available_on_pos: z.boolean().optional(),
+  /** Register-only markup on base price and modifiers. null = store price. */
+  pos_markup_percent: z
+    .number()
+    .min(MARKUP_PERCENT_MIN)
+    .max(MARKUP_PERCENT_MAX)
+    .nullable()
+    .optional(),
   /** When false, checkout for this order type skips Messenger entirely. */
   messenger_enabled: z.boolean().optional(),
   order_index: z.number().int().min(0),
@@ -44,6 +57,15 @@ export const orderTypeSchema = z.object({
   {
     message: 'Service charge value must be > 0 (and <= 100 for percentage type)',
     path: ['service_charge_value'],
+  }
+).refine(
+  // Mirrors the DB CHECK: an order type hidden from both channels can never be
+  // used. Undefined flags are the column default (true), so only an explicit
+  // false on both sides trips this.
+  (data) => data.available_on_web !== false || data.available_on_pos !== false,
+  {
+    message: 'Keep at least one channel on (web or POS)',
+    path: ['available_on_pos'],
   }
 )
 

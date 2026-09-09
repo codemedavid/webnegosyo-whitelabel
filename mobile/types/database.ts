@@ -222,11 +222,15 @@ export interface OrderItem {
 export interface OrderType {
   id: string;
   tenant_id: string;
-  type: 'dine_in' | 'pickup' | 'delivery';
+  type: 'dine_in' | 'pickup' | 'delivery' | 'grab' | 'foodpanda' | 'other';
   name: string;
   description?: string;
   note?: string;
   is_enabled: boolean;
+  /** When false, hidden from the customer app (and web storefront). */
+  available_on_web?: boolean;
+  /** When false, hidden from the merchant register. */
+  available_on_pos?: boolean;
   // Advance order (scheduled / pre-order) configuration
   advance_order_enabled?: boolean;
   advance_order_allow_asap?: boolean;

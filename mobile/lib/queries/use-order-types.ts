@@ -11,6 +11,7 @@ export function useOrderTypes(tenantId: string | undefined) {
         .select('*')
         .eq('tenant_id', tenantId!)
         .eq('is_enabled', true)
+        .eq('available_on_web', true)
         .order('order_index')
 
       if (error) throw error

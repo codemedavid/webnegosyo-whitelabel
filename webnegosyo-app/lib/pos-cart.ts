@@ -21,6 +21,12 @@ export interface PosCartSelection {
   optionName: string;
   /** Added to the item's base price. May be negative (a discount option). */
   priceModifier: number;
+  /**
+   * The modifier's STORE price, before any order-type markup. `priceModifier`
+   * is derived from it by `pos-order-type-pricing.ts`, so switching order
+   * types re-derives rather than compounds. Absent on a hydrated edit line.
+   */
+  listPriceModifier?: number;
 }
 
 /** What a screen hands to {@link addLine}. */
@@ -46,6 +52,12 @@ export interface PosLineInput {
   menuItemId: string;
   name: string;
   basePrice: number;
+  /**
+   * The STORE price the line was rung up at (`discounted_price ?? price`),
+   * the pre-order-type source of truth `basePrice` is derived from. Absent on
+   * a line hydrated from a placed order, which is never repriced.
+   */
+  listBasePrice?: number;
   quantity: number;
   selections: PosCartSelection[];
   /** Free-text kitchen note; part of line identity so notes never merge. */
@@ -149,7 +161,8 @@ export function unitPrice(basePrice: number, selections: PosCartSelection[]): nu
   return round2(Math.max(0, withModifiers));
 }
 
-function priceLine(input: PosLineInput, quantity: number): PosCartLine {
+/** A priced line from its input. Exported for the order-type repricer. */
+export function priceLine(input: PosLineInput, quantity: number): PosCartLine {
   const price = unitPrice(input.basePrice, input.selections);
   return {
     ...input,

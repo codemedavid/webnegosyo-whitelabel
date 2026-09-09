@@ -10,7 +10,8 @@ import { formatPresellDateLabel } from '@/lib/presell/month-grid'
  */
 
 import dynamic from 'next/dynamic'
-import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode, Copy, Check, Zap, CalendarClock, CalendarDays, Clock } from 'lucide-react'
+import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode, Copy, Check, Zap, CalendarClock, CalendarDays, Clock, Bike, ShoppingBag, Store, type LucideIcon } from 'lucide-react'
+import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +25,15 @@ import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
 import { isPaymentProofRequired } from '@/lib/payment-proof'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
+
+const ORDER_TYPE_ICONS: Record<OrderTypeKind, LucideIcon> = {
+  dine_in: UtensilsCrossed,
+  pickup: Package,
+  delivery: Truck,
+  grab: Bike,
+  foodpanda: ShoppingBag,
+  other: Store,
+}
 
 const MapboxAddressAutocomplete = dynamic(
   () => import('@/components/shared/mapbox-address-autocomplete').then(mod => ({ default: mod.MapboxAddressAutocomplete })),
@@ -86,12 +96,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
               <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
                 {orderTypes.map((ot) => {
                   const isSelected = orderType === ot.id
-                  const iconMap = {
-                    dine_in: UtensilsCrossed,
-                    pickup: Package,
-                    delivery: Truck,
-                  }
-                  const Icon = iconMap[ot.type] ?? Package
+                  const Icon = ORDER_TYPE_ICONS[ot.type] ?? Package
 
                   return (
                     <button

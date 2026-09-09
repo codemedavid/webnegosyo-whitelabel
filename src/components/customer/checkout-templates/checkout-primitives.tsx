@@ -18,8 +18,10 @@
 import { useId } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  UtensilsCrossed, Package, Truck, Check, CalendarClock, QrCode, Copy, CreditCard,
+  UtensilsCrossed, Package, Truck, Check, CalendarClock, QrCode, Copy, CreditCard, Bike, ShoppingBag, Store,
+  type LucideIcon,
 } from 'lucide-react'
+import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
@@ -38,11 +40,14 @@ const MapboxAddressAutocomplete = dynamic(
   }
 )
 
-const orderTypeIconMap = {
+const orderTypeIconMap: Record<OrderTypeKind, LucideIcon> = {
   dine_in: UtensilsCrossed,
   pickup: Package,
   delivery: Truck,
-} as const
+  grab: Bike,
+  foodpanda: ShoppingBag,
+  other: Store,
+}
 
 /** Themed checkout palette derived from tenant branding (accent + explicit overrides). */
 function useAccent(checkout: UseCheckoutReturn) {

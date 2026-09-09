@@ -1,6 +1,7 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrderTypeWithFormFields } from '@/lib/order-types-service'
+import { listOrderTypeItemPrices, listPricingMenuItems } from '@/lib/order-type-pricing-service'
 import { OrderTypeDetail } from '@/components/admin/order-type-detail'
 import { notFound } from 'next/navigation'
 
@@ -17,7 +18,11 @@ export default async function OrderTypeDetailPage({
     notFound()
   }
 
-  const orderTypeWithFields = await getOrderTypeWithFormFields(orderTypeId, tenant.id)
+  const [orderTypeWithFields, initialPrices, menuItems] = await Promise.all([
+    getOrderTypeWithFormFields(orderTypeId, tenant.id),
+    listOrderTypeItemPrices(tenant.id, orderTypeId),
+    listPricingMenuItems(tenant.id),
+  ])
 
   if (!orderTypeWithFields) {
     notFound()
@@ -37,8 +42,9 @@ export default async function OrderTypeDetailPage({
         orderType={orderTypeWithFields}
         tenantSlug={tenantSlug}
         tenantId={tenant.id}
+        menuItems={menuItems}
+        initialPrices={initialPrices}
       />
     </div>
   )
 }
-

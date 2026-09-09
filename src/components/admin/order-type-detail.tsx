@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock, MessageCircle, ReceiptText } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock, MessageCircle, ReceiptText, Globe, Monitor, Percent } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,21 +46,66 @@ import {
   getFieldBadgeLabel,
   resolvePresetIdForField,
 } from '@/lib/checkout-field-presets'
-import type { OrderType, CustomerFormField } from '@/types/database'
+import { ORDER_TYPE_KIND_LABELS, type OrderTypeKind } from '@/lib/order-types/order-type-kinds'
+import {
+  applyMarkup,
+  MARKUP_PERCENT_MAX,
+  MARKUP_PERCENT_MIN,
+} from '@/lib/order-types/order-type-pricing'
+import { OrderTypePricingPanel } from '@/components/admin/order-type-pricing-panel'
+import type { PricingMenuItem } from '@/lib/order-type-pricing-service'
+import type { OrderType, CustomerFormField, OrderTypeItemPrice } from '@/types/database'
 
 interface OrderTypeDetailProps {
   orderType: OrderType & { customer_form_fields: CustomerFormField[] }
   tenantSlug: string
   tenantId: string
+  /** Lean menu for the POS pricing panel; omitted = the panel shows its empty state. */
+  menuItems?: readonly PricingMenuItem[]
+  initialPrices?: readonly OrderTypeItemPrice[]
 }
 
-const orderTypeColors = {
+const orderTypeColors: Record<OrderTypeKind, string> = {
   dine_in: 'bg-green-100 text-green-800 border-green-300',
   pickup: 'bg-blue-100 text-blue-800 border-blue-300',
   delivery: 'bg-orange-100 text-orange-800 border-orange-300',
+  grab: 'bg-teal-100 text-teal-800 border-teal-300',
+  foodpanda: 'bg-pink-100 text-pink-800 border-pink-300',
+  other: 'bg-gray-100 text-gray-800 border-gray-300',
 }
 
-export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDetailProps) {
+type AvailabilityChannel = 'available_on_web' | 'available_on_pos'
+
+const MARKUP_PREVIEW_BASE = 100
+const KEEP_ONE_CHANNEL_MESSAGE = 'Keep at least one channel on'
+
+/** Blank → null (store price). Anything unparseable is treated as blank; the range is clamped. */
+function parseMarkupPercent(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return null
+  const value = Number(trimmed)
+  if (!Number.isFinite(value)) return null
+  return Math.min(MARKUP_PERCENT_MAX, Math.max(MARKUP_PERCENT_MIN, value))
+}
+
+function formatPesoShort(amount: number): string {
+  return Number.isInteger(amount) ? `₱${amount}` : `₱${amount.toFixed(2)}`
+}
+
+function describeMarkup(raw: string): string {
+  const percent = parseMarkupPercent(raw)
+  if (percent === null) return 'Blank — the register charges the store price.'
+  const preview = applyMarkup(MARKUP_PREVIEW_BASE, percent)
+  return `${formatPesoShort(MARKUP_PREVIEW_BASE)} becomes ${formatPesoShort(preview)} on the register.`
+}
+
+export function OrderTypeDetail({
+  orderType,
+  tenantSlug,
+  tenantId,
+  menuItems = [],
+  initialPrices = [],
+}: OrderTypeDetailProps) {
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
   const [deleteFieldDialogOpen, setDeleteFieldDialogOpen] = useState(false)
@@ -75,6 +120,14 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
     description: orderType.description || '',
     note: orderType.note || '',
     is_enabled: orderType.is_enabled,
+    // Rows saved before the availability columns existed arrive undefined and mean "on".
+    available_on_web: orderType.available_on_web !== false,
+    available_on_pos: orderType.available_on_pos !== false,
+    // Kept as text so a blank field can mean "store price" (null) rather than 0.
+    pos_markup_percent:
+      orderType.pos_markup_percent === null || orderType.pos_markup_percent === undefined
+        ? ''
+        : String(orderType.pos_markup_percent),
     messenger_enabled: isMessengerEnabledForOrderType(orderType),
     service_charge_enabled: orderType.service_charge_enabled ?? false,
     service_charge_type: orderType.service_charge_type ?? 'percentage' as 'percentage' | 'fixed',
@@ -95,6 +148,19 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
     [...orderType.customer_form_fields].sort((a, b) => a.order_index - b.order_index)
   )
 
+  const handleToggleChannel = (channel: AvailabilityChannel, checked: boolean) => {
+    const other: AvailabilityChannel =
+      channel === 'available_on_web' ? 'available_on_pos' : 'available_on_web'
+    // The DB refuses a row hidden from both channels; refuse here first, in words.
+    if (!checked && !formData[other]) {
+      toast.warning(KEEP_ONE_CHANNEL_MESSAGE)
+      return
+    }
+    setFormData({ ...formData, [channel]: checked })
+  }
+
+  const markupPercent = parseMarkupPercent(formData.pos_markup_percent)
+
   const handleSave = async () => {
     setIsSaving(true)
     try {
@@ -108,6 +174,9 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           description: formData.description || undefined,
           note: formData.note || undefined,
           is_enabled: formData.is_enabled,
+          available_on_web: formData.available_on_web,
+          available_on_pos: formData.available_on_pos,
+          pos_markup_percent: markupPercent,
           messenger_enabled: formData.messenger_enabled,
           order_index: orderType.order_index,
           service_charge_enabled: formData.service_charge_enabled,
@@ -218,7 +287,7 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
               <Badge className={orderTypeColors[orderType.type]} variant="outline">
-                {orderType.type.replace('_', ' ')}
+                {ORDER_TYPE_KIND_LABELS[orderType.type]}
               </Badge>
               <span className="text-sm text-muted-foreground">Type cannot be changed</span>
             </div>
@@ -527,6 +596,105 @@ export function OrderTypeDetail({ orderType, tenantSlug, tenantId }: OrderTypeDe
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Availability */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Availability</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Where this order type is offered. At least one channel stays on.
+            </p>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="available_on_web" className="flex items-center gap-2">
+                  <Globe className="h-4 w-4" />
+                  Available on web
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {formData.available_on_web
+                    ? 'Customers can pick it on the online storefront and app'
+                    : 'Hidden from online ordering'}
+                </p>
+              </div>
+              <Switch
+                id="available_on_web"
+                checked={formData.available_on_web}
+                onCheckedChange={(checked) => handleToggleChannel('available_on_web', checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between border-t pt-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="available_on_pos" className="flex items-center gap-2">
+                  <Monitor className="h-4 w-4" />
+                  Available on POS
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {formData.available_on_pos
+                    ? 'Cashiers can ring it up on the register'
+                    : 'Hidden from the register'}
+                </p>
+              </div>
+              <Switch
+                id="available_on_pos"
+                checked={formData.available_on_pos}
+                onCheckedChange={(checked) => handleToggleChannel('available_on_pos', checked)}
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground border-t pt-4">
+              Saved together with the settings above.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* POS pricing */}
+        <Card>
+          <CardHeader>
+            <CardTitle>POS pricing</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Register-only. Web and app orders always use store prices.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="pos_markup_percent" className="flex items-center gap-2">
+                <Percent className="h-4 w-4" />
+                POS markup (%)
+              </Label>
+              <Input
+                id="pos_markup_percent"
+                type="number"
+                min={MARKUP_PERCENT_MIN}
+                max={MARKUP_PERCENT_MAX}
+                step="0.01"
+                inputMode="decimal"
+                value={formData.pos_markup_percent}
+                onChange={(e) => setFormData({ ...formData, pos_markup_percent: e.target.value })}
+                placeholder="e.g., 20"
+              />
+              <p className="text-xs text-muted-foreground">
+                {describeMarkup(formData.pos_markup_percent)} Applies to base prices and add-ons;
+                exact prices below replace the base only.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <OrderTypePricingPanel
+        tenantId={tenantId}
+        tenantSlug={tenantSlug}
+        orderTypeId={orderType.id}
+        markupPercent={markupPercent}
+        menuItems={menuItems}
+        initialPrices={initialPrices}
+      />
 
       {/* Form Fields Management */}
       <Card>

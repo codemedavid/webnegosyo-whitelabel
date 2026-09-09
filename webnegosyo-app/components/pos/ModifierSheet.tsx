@@ -11,6 +11,10 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
 import type { ModifierGroup, ModifierOption } from "../../lib/modifier-groups";
 import {
+  resolveModifierPrice,
+  type OrderTypePricing,
+} from "../../lib/order-type-pricing";
+import {
   unitPrice,
   validateSelection,
   type PosCartSelection,
@@ -19,28 +23,42 @@ import {
 interface ModifierSheetProps {
   visible: boolean;
   itemName: string;
+  /** Already priced for the channel by the caller (`displayPriceForOrderType`). */
   basePrice: number;
   groups: ModifierGroup[];
+  /**
+   * The sale's order-type pricing. Modifiers are marked up here so the "+₱x"
+   * the cashier reads is the figure the cart will charge. Null = store prices.
+   */
+  pricing?: OrderTypePricing | null;
   onCancel: () => void;
   onConfirm: (selections: PosCartSelection[], quantity: number) => void;
 }
 
-function toSelection(group: ModifierGroup, option: ModifierOption): PosCartSelection {
+function toSelection(
+  group: ModifierGroup,
+  option: ModifierOption,
+  pricing: OrderTypePricing | null,
+): PosCartSelection {
   return {
     groupId: group.id,
     groupName: group.name,
     optionId: option.id,
     optionName: option.name,
-    priceModifier: option.price_modifier,
+    priceModifier: resolveModifierPrice(option.price_modifier, pricing),
+    listPriceModifier: option.price_modifier,
   };
 }
 
 /** Options a group starts with — its defaults, clamped to the group's maximum. */
-function initialSelections(groups: ModifierGroup[]): PosCartSelection[] {
+function initialSelections(
+  groups: ModifierGroup[],
+  pricing: OrderTypePricing | null,
+): PosCartSelection[] {
   return groups.flatMap((group) => {
     const defaults = group.options.filter((o) => o.is_default);
     const limit = group.max_select ?? defaults.length;
-    return defaults.slice(0, limit).map((o) => toSelection(group, o));
+    return defaults.slice(0, limit).map((o) => toSelection(group, o, pricing));
   });
 }
 
@@ -56,11 +74,12 @@ export function ModifierSheet({
   itemName,
   basePrice,
   groups,
+  pricing = null,
   onCancel,
   onConfirm,
 }: ModifierSheetProps) {
   const [selections, setSelections] = useState<PosCartSelection[]>(() =>
-    initialSelections(groups),
+    initialSelections(groups, pricing),
   );
   const [quantity, setQuantity] = useState(1);
 
@@ -68,7 +87,7 @@ export function ModifierSheet({
   const [seededFor, setSeededFor] = useState(itemName);
   if (visible && seededFor !== itemName) {
     setSeededFor(itemName);
-    setSelections(initialSelections(groups));
+    setSelections(initialSelections(groups, pricing));
     setQuantity(1);
   }
 
@@ -92,9 +111,9 @@ export function ModifierSheet({
         return current.filter((s) => s.optionId !== option.id);
       }
 
-      if (group.max_select === 1) return [...others, toSelection(group, option)];
+      if (group.max_select === 1) return [...others, toSelection(group, option, pricing)];
       if (group.max_select !== null && inGroup.length >= group.max_select) return current;
-      return [...current, toSelection(group, option)];
+      return [...current, toSelection(group, option, pricing)];
     });
   };
 
@@ -123,6 +142,7 @@ export function ModifierSheet({
 
                 {group.options.map((option) => {
                   const chosen = isChosen(option);
+                  const modifier = resolveModifierPrice(option.price_modifier, pricing);
                   return (
                     <TouchableOpacity
                       key={option.id}
@@ -135,10 +155,10 @@ export function ModifierSheet({
                         {chosen ? "● " : "○ "}
                         {option.name}
                       </Text>
-                      {option.price_modifier !== 0 && (
+                      {modifier !== 0 && (
                         <Text style={styles.optionPrice}>
-                          {option.price_modifier > 0 ? "+" : ""}
-                          {formatPeso(option.price_modifier)}
+                          {modifier > 0 ? "+" : ""}
+                          {formatPeso(modifier)}
                         </Text>
                       )}
                     </TouchableOpacity>

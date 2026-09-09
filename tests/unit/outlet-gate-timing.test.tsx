@@ -21,7 +21,14 @@ jest.mock('@/hooks/useCart', () => ({
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     from: () => ({
-      select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }),
+      select: () => {
+        const chain = {
+          eq: () => chain,
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: [], error: null }).then(resolve),
+        }
+        return chain
+      },
     }),
   }),
 }))

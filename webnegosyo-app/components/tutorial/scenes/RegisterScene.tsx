@@ -13,8 +13,8 @@ import { TenderScene } from "./TenderScene";
 
 /** The register, drawn from the real product tiles and cart sheet. */
 const ORDER_TYPES = [
-  { id: "ot-1", type: "dine_in", name: "Dine In", serviceCharge: undefined },
-  { id: "ot-2", type: "takeout", name: "Takeout", serviceCharge: undefined },
+  { id: "ot-1", type: "dine_in", name: "Dine In", serviceCharge: undefined, markupPercent: null },
+  { id: "ot-2", type: "takeout", name: "Takeout", serviceCharge: undefined, markupPercent: null },
 ];
 const PREFILLED: readonly string[] = ["p1", "p2"];
 

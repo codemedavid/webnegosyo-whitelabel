@@ -18,6 +18,7 @@ import {
   getAllOrderTypesWithFormFields,
   initializeOrderTypesForTenant,
 } from '@/lib/order-types-service'
+import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 
 // ============================================
 // Order Types Actions
@@ -45,11 +46,14 @@ export async function createOrderTypeAction(
   tenantId: string,
   tenantSlug: string,
   input: {
-    type: 'dine_in' | 'pickup' | 'delivery'
+    type: OrderTypeKind
     name: string
     description?: string
     note?: string
     is_enabled?: boolean
+    available_on_web?: boolean
+    available_on_pos?: boolean
+    pos_markup_percent?: number | null
     messenger_enabled?: boolean
     order_index?: number
     service_charge_enabled?: boolean
@@ -82,11 +86,14 @@ export async function updateOrderTypeAction(
   tenantId: string,
   tenantSlug: string,
   input: {
-    type: 'dine_in' | 'pickup' | 'delivery'
+    type: OrderTypeKind
     name: string
     description?: string
     note?: string
     is_enabled?: boolean
+    available_on_web?: boolean
+    available_on_pos?: boolean
+    pos_markup_percent?: number | null
     messenger_enabled?: boolean
     order_index?: number
     service_charge_enabled?: boolean
@@ -186,6 +193,9 @@ export async function reorderOrderTypesAction(
         description: existing.description,
         note: existing.note,
         is_enabled: existing.is_enabled,
+        available_on_web: existing.available_on_web,
+        available_on_pos: existing.available_on_pos,
+        pos_markup_percent: existing.pos_markup_percent,
         messenger_enabled: existing.messenger_enabled,
         order_index: index,
         service_charge_enabled: existing.service_charge_enabled,

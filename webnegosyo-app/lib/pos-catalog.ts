@@ -11,6 +11,7 @@
 import { supabase } from "./supabase";
 import type { ServiceCharge } from "./pos-cart";
 import type { PosPaymentMethod } from "./pos-payment-methods";
+import type { OrderTypeItemPriceRow } from "./order-type-pricing";
 
 export interface PosOrderType {
   id: string;
@@ -19,6 +20,12 @@ export interface PosOrderType {
   /** Merchant-facing label, e.g. "Dine In". */
   name: string;
   serviceCharge: ServiceCharge | undefined;
+  /**
+   * Percent the register adds to every price on this channel (Grab, foodpanda
+   * take a commission). Null means store prices — what every tenant had before
+   * per-order-type pricing existed.
+   */
+  markupPercent: number | null;
 }
 
 interface OrderTypeRow {
@@ -28,20 +35,21 @@ interface OrderTypeRow {
   service_charge_enabled: boolean | null;
   service_charge_type: "percentage" | "fixed" | null;
   service_charge_value: number | null;
+  /** `numeric(6,2)` — PostgREST hands it over as a string. */
+  pos_markup_percent: number | string | null;
 }
 
-/** Enabled order types for the tenant, in the merchant's configured order. */
-export async function listOrderTypes(tenantId: string): Promise<PosOrderType[]> {
-  const { data, error } = await supabase
-    .from("order_types")
-    .select("id, type, name, service_charge_enabled, service_charge_type, service_charge_value")
-    .eq("tenant_id", tenantId)
-    .eq("is_enabled", true)
-    .order("order_index", { ascending: true });
+function toMarkupPercent(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-  if (error) throw error;
+const ORDER_TYPE_COLUMNS =
+  "id, type, name, service_charge_enabled, service_charge_type, service_charge_value, pos_markup_percent";
 
-  return ((data ?? []) as unknown as OrderTypeRow[]).map((row) => ({
+function toPosOrderType(row: OrderTypeRow): PosOrderType {
+  return {
     id: row.id,
     type: row.type,
     name: row.name,
@@ -51,7 +59,67 @@ export async function listOrderTypes(tenantId: string): Promise<PosOrderType[]> 
           value: Number(row.service_charge_value ?? 0),
         }
       : undefined,
-  }));
+    markupPercent: toMarkupPercent(row.pos_markup_percent),
+  };
+}
+
+/**
+ * The tenant's enabled order types, in the merchant's configured order.
+ *
+ * `posOnly` narrows to types the merchant made available on the register.
+ * The two readers below share this so they can never drift in what they
+ * select or how they map a row.
+ */
+async function readOrderTypes(tenantId: string, posOnly: boolean): Promise<PosOrderType[]> {
+  const base = supabase
+    .from("order_types")
+    .select(ORDER_TYPE_COLUMNS)
+    .eq("tenant_id", tenantId)
+    .eq("is_enabled", true);
+  const { data, error } = await (posOnly ? base.eq("available_on_pos", true) : base).order(
+    "order_index",
+    { ascending: true },
+  );
+
+  if (error) throw error;
+  return ((data ?? []) as unknown as OrderTypeRow[]).map(toPosOrderType);
+}
+
+/**
+ * EVERY enabled order type for the tenant. Read by the payment-method editor,
+ * which links methods to order types — a web-only type must still be offered
+ * there, or the merchant could not link a method to it from the app.
+ */
+export function listOrderTypes(tenantId: string): Promise<PosOrderType[]> {
+  return readOrderTypes(tenantId, false);
+}
+
+/**
+ * The order types the register may ring up: enabled AND POS-available. A type
+ * the merchant marked web-only never reaches the register's chips.
+ */
+export function listRegisterOrderTypes(tenantId: string): Promise<PosOrderType[]> {
+  return readOrderTypes(tenantId, true);
+}
+
+/**
+ * Every exact per-order-type item price the tenant has set, for
+ * `buildOrderTypePriceIndex`.
+ *
+ * Not swallowed on error, for the same reason `listProducts` refuses to on a
+ * failed override read: an empty set is the claim "this channel sells at the
+ * marked-up list price", which after a failed query rings up the wrong money.
+ */
+export async function listOrderTypeItemPrices(
+  tenantId: string,
+): Promise<OrderTypeItemPriceRow[]> {
+  const { data, error } = await supabase
+    .from("order_type_item_prices")
+    .select("order_type_id, menu_item_id, price")
+    .eq("tenant_id", tenantId);
+
+  if (error) throw error;
+  return (data ?? []) as unknown as OrderTypeItemPriceRow[];
 }
 
 /** Active payment methods the merchant allows for this order type. */

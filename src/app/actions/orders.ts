@@ -20,6 +20,10 @@ import { findCartPresellDate } from '@/lib/presell/availability'
 import { presellAdvanceConfig, withPresellCustomerData, type PresellClaimRecord } from '@/lib/presell/checkout-schedule'
 import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
+import {
+  isOrderTypeOrderableOnWeb,
+  WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE,
+} from '@/lib/order-types/order-type-availability'
 import { computeOrderTotals } from '@/lib/order-totals'
 import { priceOrderWithVouchers } from '@/lib/vouchers/order-pricing'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
@@ -265,12 +269,24 @@ export async function createOrderAction(
     if (orderTypeId) {
       const { data: minRow } = await supabaseAdmin
         .from('order_types')
-        .select('name, minimum_order_amount')
+        .select('name, minimum_order_amount, available_on_web')
         .eq('id', orderTypeId)
         .eq('tenant_id', tenantId)
         .maybeSingle()
 
-      const minOrderType = minRow as { name?: string; minimum_order_amount?: number | string | null } | null
+      const minOrderType = minRow as {
+        name?: string
+        minimum_order_amount?: number | string | null
+        available_on_web?: boolean | null
+      } | null
+
+      // A type the merchant hid from online ordering (POS-only channels such
+      // as Grab) is refused outright — the storefront never offers it, so
+      // reaching here means a stale tab or a direct call.
+      if (minRow && !isOrderTypeOrderableOnWeb(minOrderType)) {
+        return { success: false, error: WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE }
+      }
+
       const itemsSubtotal = items.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0)
       const minimumStatus = checkOrderMinimum(itemsSubtotal, minOrderType)
 

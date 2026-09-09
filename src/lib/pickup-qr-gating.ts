@@ -6,14 +6,13 @@
  * can share one answer.
  */
 
-/** The fixed fulfilment kinds on `order_types.type`. */
-export type OrderTypeKind = 'dine_in' | 'pickup' | 'delivery'
+import {
+  ORDER_TYPE_KINDS,
+  type OrderTypeKind,
+} from '@/lib/order-types/order-type-kinds'
 
-const ORDER_TYPE_KINDS: readonly OrderTypeKind[] = [
-  'dine_in',
-  'pickup',
-  'delivery',
-]
+/** The fulfilment kinds on `order_types.type`. Re-exported for callers. */
+export type { OrderTypeKind }
 
 /**
  * Statuses at which an order is finished and the QR is pointless — or worse,

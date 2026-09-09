@@ -103,6 +103,8 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
       .from('order_types')
       .select('*')
       .eq('tenant_id', tenant.id)
+      .eq('is_enabled', true)
+      .eq('available_on_web', true)
       .then(({ data, error }) => {
         // A failure here costs a convenience, not the order: checkout still
         // asks for an order type exactly as it does today.

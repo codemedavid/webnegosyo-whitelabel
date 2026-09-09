@@ -32,7 +32,12 @@ jest.mock("./supabase", () => {
   };
 });
 
-import { listOrderTypes, listPaymentMethods } from "./pos-catalog";
+import {
+  listOrderTypeItemPrices,
+  listOrderTypes,
+  listPaymentMethods,
+  listRegisterOrderTypes,
+} from "./pos-catalog";
 
 function argsFor(method: string): unknown[][] {
   return chainCalls.filter((c) => c.method === method).map((c) => c.args);
@@ -44,7 +49,7 @@ beforeEach(() => {
 });
 
 describe("listOrderTypes", () => {
-  it("reads only the tenant's enabled order types", async () => {
+  it("reads every enabled order type — the payment-method editor links web-only types too", async () => {
     await listOrderTypes("t-1");
 
     expect(argsFor("from")[0]).toEqual(["order_types"]);
@@ -52,6 +57,49 @@ describe("listOrderTypes", () => {
       ["tenant_id", "t-1"],
       ["is_enabled", true],
     ]);
+  });
+
+  it("selects the POS markup so the register can price the channel", async () => {
+    await listOrderTypes("t-1");
+    expect(String(argsFor("select")[0][0])).toContain("pos_markup_percent");
+  });
+
+  it("maps the numeric markup column onto the order type as a number", async () => {
+    queryResult = {
+      data: [
+        {
+          id: "ot-grab",
+          type: "grab",
+          name: "Grab",
+          service_charge_enabled: false,
+          service_charge_type: null,
+          service_charge_value: null,
+          pos_markup_percent: "15.00",
+        },
+      ],
+      error: null,
+    };
+
+    expect((await listOrderTypes("t-1"))[0].markupPercent).toBe(15);
+  });
+
+  it("reads a missing markup as null, never as zero-by-accident", async () => {
+    queryResult = {
+      data: [
+        {
+          id: "ot-1",
+          type: "dine_in",
+          name: "Dine In",
+          service_charge_enabled: false,
+          service_charge_type: null,
+          service_charge_value: null,
+          pos_markup_percent: null,
+        },
+      ],
+      error: null,
+    };
+
+    expect((await listOrderTypes("t-1"))[0].markupPercent).toBeNull();
   });
 
   it("maps an enabled percentage service charge onto the order type", async () => {
@@ -64,6 +112,7 @@ describe("listOrderTypes", () => {
           service_charge_enabled: true,
           service_charge_type: "percentage",
           service_charge_value: "10.00",
+          pos_markup_percent: null,
         },
       ],
       error: null,
@@ -75,6 +124,7 @@ describe("listOrderTypes", () => {
       type: "dine_in",
       name: "Dine In",
       serviceCharge: { type: "percentage", value: 10 },
+      markupPercent: null,
     });
   });
 
@@ -160,5 +210,76 @@ describe("listPaymentMethods", () => {
   it("returns an empty list when no method is enabled for the order type", async () => {
     queryResult = { data: null, error: null };
     expect(await listPaymentMethods("t-1", "ot-1")).toEqual([]);
+  });
+});
+
+describe("listRegisterOrderTypes", () => {
+  it("narrows the register's chips to enabled, POS-available order types", async () => {
+    await listRegisterOrderTypes("t-1");
+
+    expect(argsFor("from")[0]).toEqual(["order_types"]);
+    expect(argsFor("eq")).toEqual([
+      ["tenant_id", "t-1"],
+      ["is_enabled", true],
+      ["available_on_pos", true],
+    ]);
+  });
+
+  it("selects the POS markup and maps it like the shared reader", async () => {
+    queryResult = {
+      data: [
+        {
+          id: "ot-grab",
+          type: "grab",
+          name: "Grab",
+          service_charge_enabled: false,
+          service_charge_type: null,
+          service_charge_value: null,
+          pos_markup_percent: "25.50",
+        },
+      ],
+      error: null,
+    };
+
+    const [orderType] = await listRegisterOrderTypes("t-1");
+    expect(String(argsFor("select")[0][0])).toContain("pos_markup_percent");
+    expect(orderType.markupPercent).toBe(25.5);
+  });
+
+  it("keeps the merchant's configured order", async () => {
+    await listRegisterOrderTypes("t-1");
+    expect(argsFor("order")[0]).toEqual(["order_index", { ascending: true }]);
+  });
+
+  it("surfaces a query error instead of silently returning nothing", async () => {
+    queryResult = { data: null, error: new Error("permission denied") };
+    await expect(listRegisterOrderTypes("t-1")).rejects.toThrow("permission denied");
+  });
+});
+
+describe("listOrderTypeItemPrices", () => {
+  it("reads the tenant's exact per-order-type item prices", async () => {
+    await listOrderTypeItemPrices("t-1");
+
+    expect(argsFor("from")[0]).toEqual(["order_type_item_prices"]);
+    expect(String(argsFor("select")[0][0])).toBe("order_type_id, menu_item_id, price");
+    expect(argsFor("eq")).toEqual([["tenant_id", "t-1"]]);
+  });
+
+  it("hands the rows through untouched for the pure index builder", async () => {
+    const rows = [{ order_type_id: "ot-grab", menu_item_id: "m-1", price: "110.00" }];
+    queryResult = { data: rows, error: null };
+
+    expect(await listOrderTypeItemPrices("t-1")).toEqual(rows);
+  });
+
+  it("returns an empty list when the tenant has no overrides", async () => {
+    queryResult = { data: null, error: null };
+    expect(await listOrderTypeItemPrices("t-1")).toEqual([]);
+  });
+
+  it("throws on a query error — an empty set would silently charge list prices", async () => {
+    queryResult = { data: null, error: new Error("permission denied") };
+    await expect(listOrderTypeItemPrices("t-1")).rejects.toThrow("permission denied");
   });
 });

@@ -17,6 +17,7 @@ export async function getEnabledOrderTypesByTenantClient(tenantId: string) {
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('is_enabled', true)
+    .eq('available_on_web', true)
     .order('order_index', { ascending: true })
 
   if (error) throw error

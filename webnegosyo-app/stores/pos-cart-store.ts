@@ -54,6 +54,11 @@ import {
   clearedSaleDelivery,
   type PosDeliveryDetails,
 } from "../lib/pos-delivery";
+import type { OrderTypePricing } from "../lib/order-type-pricing";
+import {
+  priceLineInputForOrderType,
+  repriceLinesForOrderType,
+} from "../lib/pos-order-type-pricing";
 
 interface PosCartState {
   lines: PosCartLine[];
@@ -72,6 +77,12 @@ interface PosCartState {
   orderTypeId: string | null;
   orderTypeName: string | null;
   serviceCharge: ServiceCharge | undefined;
+  /**
+   * The chosen order type's markup and exact item prices. Null means store
+   * prices. Every line added or re-priced while it is set is derived from its
+   * list price through this, so a chip switch re-prices the whole sale.
+   */
+  orderTypePricing: OrderTypePricing | null;
   /** Optional name the cashier took for the customer. */
   customerName: string;
   /**
@@ -98,6 +109,7 @@ interface PosCartState {
     orderTypeId: string,
     orderTypeName: string,
     serviceCharge: ServiceCharge | undefined,
+    pricing?: OrderTypePricing | null,
   ) => void;
   setCustomerName: (name: string) => void;
   /** Attach a guest to this sale, or pass null to make it a walk-in again. */
@@ -184,11 +196,20 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   orderTypeId: null,
   orderTypeName: null,
   serviceCharge: undefined,
+  orderTypePricing: null,
   ...clearedSaleCustomer(),
   ...clearedSaleDelivery(),
   discount: EMPTY_POS_DISCOUNT_SESSION,
 
-  add: (input) => set((s) => ({ lines: addLine(s.lines, input) })),
+  // A placed order's lines are priced as quoted; the register never marks
+  // them up, so an edit ignores the channel pricing entirely.
+  add: (input) =>
+    set((s) => ({
+      lines: addLine(
+        s.lines,
+        priceLineInputForOrderType(input, s.editContext ? null : s.orderTypePricing),
+      ),
+    })),
   // Both of these can empty the cart — `updateQty(key, 0)` removes the line —
   // and an emptied cart is the end of a sale. `discountAfterCartChange` decides
   // whether the held discount survives, so a cashier stepping down to zero
@@ -261,8 +282,18 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       discount: EMPTY_POS_DISCOUNT_SESSION,
     }),
 
-  setOrderType: (orderTypeId, orderTypeName, serviceCharge) =>
-    set({ orderTypeId, orderTypeName, serviceCharge }),
+  // The pricing survives `reset` with the type, and for the same reason: a
+  // cashier working a queue of Grab orders should not re-pick the channel.
+  // Lines under edit are left by reference — `repriceLinesForOrderType` skips
+  // them anyway (no list price), but the edit must not depend on that.
+  setOrderType: (orderTypeId, orderTypeName, serviceCharge, pricing = null) =>
+    set((s) => ({
+      orderTypeId,
+      orderTypeName,
+      serviceCharge,
+      orderTypePricing: pricing,
+      lines: s.editContext ? s.lines : repriceLinesForOrderType(s.lines, pricing),
+    })),
 
   setCustomerName: (customerName) => set({ customerName }),
 

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Trash2, Eye, EyeOff, Settings, Users, ChevronUp, ChevronDown, CalendarClock } from 'lucide-react'
+import { Plus, Trash2, Eye, EyeOff, Settings, Users, ChevronUp, ChevronDown, CalendarClock, Globe, Monitor } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +21,7 @@ import { toggleOrderTypeEnabledAction, toggleOrderTypeAdvanceOrderAction, delete
 import { toast } from 'sonner'
 import { useEffect } from 'react'
 import type { OrderType, CustomerFormField } from '@/types/database'
+import { ORDER_TYPE_KIND_LABELS, type OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 
 interface OrderTypesListProps {
   orderTypes: (OrderType & { customer_form_fields: CustomerFormField[] })[]
@@ -28,17 +29,26 @@ interface OrderTypesListProps {
   tenantId: string
 }
 
-const orderTypeIcons = {
+const orderTypeIcons: Record<OrderTypeKind, string> = {
   dine_in: '🍽️',
   pickup: '📦',
   delivery: '🚚',
+  grab: '🛵',
+  foodpanda: '🐼',
+  other: '🏪',
 }
 
-const orderTypeColors = {
+const orderTypeColors: Record<OrderTypeKind, string> = {
   dine_in: 'bg-green-100 text-green-800 border-green-300',
   pickup: 'bg-blue-100 text-blue-800 border-blue-300',
   delivery: 'bg-orange-100 text-orange-800 border-orange-300',
+  grab: 'bg-teal-100 text-teal-800 border-teal-300',
+  foodpanda: 'bg-pink-100 text-pink-800 border-pink-300',
+  other: 'bg-gray-100 text-gray-800 border-gray-300',
 }
+
+/** Rows saved before the availability columns existed arrive undefined and mean "on". */
+const isOn = (flag: boolean | undefined) => flag !== false
 
 export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesListProps) {
   const router = useRouter()
@@ -193,8 +203,22 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
                 </div>
                 <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <Badge className={`${orderTypeColors[orderType.type]} text-[10px]`} variant="outline">
-                    {orderType.type.replace('_', ' ')}
+                    {ORDER_TYPE_KIND_LABELS[orderType.type]}
                   </Badge>
+                  <div className="flex items-center gap-1">
+                    {isOn(orderType.available_on_web) && (
+                      <Badge className="text-[10px]" variant="secondary" title="Shown on the web storefront">
+                        <Globe className="mr-0.5 h-2.5 w-2.5" />
+                        Web
+                      </Badge>
+                    )}
+                    {isOn(orderType.available_on_pos) && (
+                      <Badge className="text-[10px]" variant="secondary" title="Shown on the register">
+                        <Monitor className="mr-0.5 h-2.5 w-2.5" />
+                        POS
+                      </Badge>
+                    )}
+                  </div>
                   {orderType.advance_order_enabled && (
                     <Badge className="bg-purple-100 text-purple-800 border-purple-300 text-[10px]" variant="outline">
                       <CalendarClock className="mr-0.5 h-2.5 w-2.5" />

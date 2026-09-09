@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Save, Utensils, Package, Truck } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Utensils, Package, Truck, Bike, ShoppingBag, Store } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,46 +13,114 @@ import { Switch } from '@/components/ui/switch'
 import { createOrderTypeAction } from '@/app/actions/order-types'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import {
+    availableOrderTypeKinds,
+    ORDER_TYPE_KIND_LABELS,
+    type OrderTypeKind,
+} from '@/lib/order-types/order-type-kinds'
 
 interface OrderTypeCreateProps {
     tenantSlug: string
     tenantId: string
-    usedTypes: ('dine_in' | 'pickup' | 'delivery')[]
+    usedTypes: string[]
     existingOrderTypesCount: number
 }
 
-const orderTypeOptions = [
+interface OrderTypeOption {
+    type: OrderTypeKind
+    name: string
+    description: string
+    icon: typeof Utensils
+    /** Name suggested when the kind is picked; null means the merchant must type one. */
+    prefillName: string | null
+    defaultDescription: string
+    namePlaceholder: string
+    colorClass: string
+    selectedClass: string
+    iconColor: string
+}
+
+const DEFAULT_NAME_PLACEHOLDER = 'e.g., Dine In, Pick Up, Delivery'
+
+const orderTypeOptions: readonly OrderTypeOption[] = [
     {
-        type: 'dine_in' as const,
-        name: 'Dine In',
+        type: 'dine_in',
+        name: ORDER_TYPE_KIND_LABELS.dine_in,
         description: 'Customers eating at your restaurant',
         icon: Utensils,
+        prefillName: ORDER_TYPE_KIND_LABELS.dine_in,
         defaultDescription: 'Enjoy your meal at our restaurant',
+        namePlaceholder: DEFAULT_NAME_PLACEHOLDER,
         colorClass: 'border-green-300 bg-green-50 hover:bg-green-100',
         selectedClass: 'border-green-500 bg-green-100 ring-2 ring-green-500',
         iconColor: 'text-green-600',
     },
     {
-        type: 'pickup' as const,
-        name: 'Pick Up',
-        description: 'Order ahead and pick up',
+        type: 'pickup',
+        name: ORDER_TYPE_KIND_LABELS.pickup,
+        description: 'Order ahead and collect at the counter',
         icon: Package,
+        prefillName: ORDER_TYPE_KIND_LABELS.pickup,
         defaultDescription: 'Order ahead and pick up at our location',
+        namePlaceholder: DEFAULT_NAME_PLACEHOLDER,
         colorClass: 'border-blue-300 bg-blue-50 hover:bg-blue-100',
         selectedClass: 'border-blue-500 bg-blue-100 ring-2 ring-blue-500',
         iconColor: 'text-blue-600',
     },
     {
-        type: 'delivery' as const,
-        name: 'Delivery',
+        type: 'delivery',
+        name: ORDER_TYPE_KIND_LABELS.delivery,
         description: 'Deliver to customer',
         icon: Truck,
+        prefillName: ORDER_TYPE_KIND_LABELS.delivery,
         defaultDescription: 'Get your order delivered to your door',
+        namePlaceholder: DEFAULT_NAME_PLACEHOLDER,
         colorClass: 'border-orange-300 bg-orange-50 hover:bg-orange-100',
         selectedClass: 'border-orange-500 bg-orange-100 ring-2 ring-orange-500',
         iconColor: 'text-orange-600',
     },
+    {
+        type: 'grab',
+        name: ORDER_TYPE_KIND_LABELS.grab,
+        description: 'Orders placed through GrabFood',
+        icon: Bike,
+        prefillName: ORDER_TYPE_KIND_LABELS.grab,
+        defaultDescription: 'Ordered through GrabFood',
+        namePlaceholder: DEFAULT_NAME_PLACEHOLDER,
+        colorClass: 'border-teal-300 bg-teal-50 hover:bg-teal-100',
+        selectedClass: 'border-teal-500 bg-teal-100 ring-2 ring-teal-500',
+        iconColor: 'text-teal-600',
+    },
+    {
+        type: 'foodpanda',
+        name: ORDER_TYPE_KIND_LABELS.foodpanda,
+        description: 'Orders placed through foodpanda',
+        icon: ShoppingBag,
+        prefillName: ORDER_TYPE_KIND_LABELS.foodpanda,
+        defaultDescription: 'Ordered through foodpanda',
+        namePlaceholder: DEFAULT_NAME_PLACEHOLDER,
+        colorClass: 'border-pink-300 bg-pink-50 hover:bg-pink-100',
+        selectedClass: 'border-pink-500 bg-pink-100 ring-2 ring-pink-500',
+        iconColor: 'text-pink-600',
+    },
+    {
+        type: 'other',
+        name: ORDER_TYPE_KIND_LABELS.other,
+        description: 'Any channel with its own label, added as many times as you need',
+        icon: Store,
+        prefillName: null,
+        defaultDescription: '',
+        namePlaceholder: 'e.g. Shopee Food',
+        colorClass: 'border-gray-300 bg-gray-50 hover:bg-gray-100',
+        selectedClass: 'border-gray-500 bg-gray-100 ring-2 ring-gray-500',
+        iconColor: 'text-gray-600',
+    },
 ]
+
+/** True when the text is one an option wrote, not something the merchant typed. */
+function isSuggestedText(value: string, pick: (option: OrderTypeOption) => string | null): boolean {
+    return value === '' || orderTypeOptions.some(option => pick(option) === value)
+}
 
 export function OrderTypeCreate({
     tenantSlug,
@@ -64,25 +132,30 @@ export function OrderTypeCreate({
     const [isSaving, setIsSaving] = useState(false)
 
     const [formData, setFormData] = useState({
-        type: '' as '' | 'dine_in' | 'pickup' | 'delivery',
+        type: '' as '' | OrderTypeKind,
         name: '',
         description: '',
         is_enabled: true,
     })
 
-    // Get available types (not yet used)
-    const availableTypes = orderTypeOptions.filter(opt => !usedTypes.includes(opt.type))
+    // Singletons drop out once the store has them; Grab, foodpanda and Other
+    // repeat, so they are always offered.
+    const offeredKinds = new Set(availableOrderTypeKinds(usedTypes))
+    const availableTypes = orderTypeOptions.filter(opt => offeredKinds.has(opt.type))
+    const selectedOption = orderTypeOptions.find(opt => opt.type === formData.type)
 
-    const handleSelectType = (type: 'dine_in' | 'pickup' | 'delivery') => {
+    const handleSelectType = (type: OrderTypeKind) => {
         const option = orderTypeOptions.find(opt => opt.type === type)
-        if (option) {
-            setFormData({
-                ...formData,
-                type,
-                name: formData.name || option.name,
-                description: formData.description || option.defaultDescription,
-            })
-        }
+        if (!option) return
+        // Replace a suggested name/description, keep anything the merchant typed.
+        const keepName = !isSuggestedText(formData.name, o => o.prefillName)
+        const keepDescription = !isSuggestedText(formData.description, o => o.defaultDescription)
+        setFormData({
+            ...formData,
+            type,
+            name: keepName ? formData.name : (option.prefillName ?? ''),
+            description: keepDescription ? formData.description : option.defaultDescription,
+        })
     }
 
     const handleSave = async () => {
@@ -124,43 +197,6 @@ export function OrderTypeCreate({
         }
     }
 
-    // If all types are already used
-    if (availableTypes.length === 0) {
-        return (
-            <>
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold">Create Order Type</h1>
-                        <p className="text-muted-foreground">Add a new order type for your customers</p>
-                    </div>
-                    <Link href={`/${tenantSlug}/admin/order-types`}>
-                        <Button variant="outline">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
-                </div>
-
-                <Card>
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                        <div className="text-muted-foreground text-center">
-                            <p className="text-lg font-medium mb-2">All order types have been created</p>
-                            <p className="text-sm">
-                                You already have Dine In, Pick Up, and Delivery order types configured.
-                            </p>
-                        </div>
-                        <Link href={`/${tenantSlug}/admin/order-types`} className="mt-6">
-                            <Button>
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Back to Order Types
-                            </Button>
-                        </Link>
-                    </CardContent>
-                </Card>
-            </>
-        )
-    }
-
     return (
         <>
             <div className="flex items-center justify-between">
@@ -182,13 +218,13 @@ export function OrderTypeCreate({
                     <CardHeader>
                         <CardTitle>Select Order Type</CardTitle>
                         <CardDescription>
-                            Choose the type of ordering experience. Each type can only be created once.
+                            Choose the type of ordering experience. Dine In, Pick Up and Delivery can be
+                            created once; Grab, foodpanda and Other can be added as many times as you need.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="grid gap-4 md:grid-cols-3">
-                            {orderTypeOptions.map((option) => {
-                                const isUsed = usedTypes.includes(option.type)
+                            {availableTypes.map((option) => {
                                 const isSelected = formData.type === option.type
                                 const Icon = option.icon
 
@@ -196,20 +232,13 @@ export function OrderTypeCreate({
                                     <button
                                         key={option.type}
                                         type="button"
-                                        disabled={isUsed}
                                         onClick={() => handleSelectType(option.type)}
                                         className={cn(
                                             'relative p-4 rounded-lg border-2 text-left transition-all',
-                                            isUsed && 'opacity-50 cursor-not-allowed bg-muted',
-                                            !isUsed && !isSelected && option.colorClass,
+                                            !isSelected && option.colorClass,
                                             isSelected && option.selectedClass,
                                         )}
                                     >
-                                        {isUsed && (
-                                            <span className="absolute top-2 right-2 text-xs bg-muted-foreground/20 px-2 py-0.5 rounded">
-                                                Already exists
-                                            </span>
-                                        )}
                                         <div className="flex items-center gap-3 mb-2">
                                             <Icon className={cn('h-6 w-6', option.iconColor)} />
                                             <span className="font-semibold">{option.name}</span>
@@ -239,10 +268,12 @@ export function OrderTypeCreate({
                                         id="name"
                                         value={formData.name}
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="e.g., Dine In, Pick Up, Delivery"
+                                        placeholder={selectedOption?.namePlaceholder ?? DEFAULT_NAME_PLACEHOLDER}
                                     />
                                     <p className="text-xs text-muted-foreground">
-                                        The name customers will see during checkout
+                                        {selectedOption?.prefillName === null
+                                            ? 'Required — the channel name customers and cashiers will see'
+                                            : 'The name customers will see during checkout'}
                                     </p>
                                 </div>
 

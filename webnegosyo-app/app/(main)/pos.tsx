@@ -32,7 +32,17 @@ import {
   type Category,
   type Product,
 } from "../../lib/products";
-import { listOrderTypes, type PosOrderType } from "../../lib/pos-catalog";
+import {
+  listOrderTypeItemPrices,
+  listRegisterOrderTypes,
+  type PosOrderType,
+} from "../../lib/pos-catalog";
+import {
+  buildOrderTypePriceIndex,
+  pricingForOrderType,
+  type OrderTypePriceIndex,
+} from "../../lib/order-type-pricing";
+import { displayPriceForOrderType } from "../../lib/pos-order-type-pricing";
 import {
   normalizeModifierGroups,
   type ModifierGroup,
@@ -82,6 +92,9 @@ const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionRefe
 /** No stock read yet, or none possible. Read as "no opinion", never as empty shelves. */
 const EMPTY_CEILINGS: PosStockCeilings = new Map();
 
+/** No exact per-order-type prices loaded yet — every type prices by markup alone. */
+const EMPTY_PRICE_INDEX: OrderTypePriceIndex = {};
+
 function toRows<T>(items: T[], size: number): T[][] {
   return items.reduce<T[][]>((rows, item, index) => {
     if (index % size === 0) return [...rows, [item]];
@@ -123,6 +136,7 @@ export default function PosScreen() {
   const [items, setItems] = useState<RegisterItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [orderTypes, setOrderTypes] = useState<PosOrderType[]>([]);
+  const [priceIndex, setPriceIndex] = useState<OrderTypePriceIndex>(EMPTY_PRICE_INDEX);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -186,6 +200,20 @@ export default function PosScreen() {
   // before per-branch pricing existed.
   const registerOutletId = scope.kind === "branch" ? scope.outletId : null;
 
+  // What the chosen channel charges. Loaded with the catalog, so a chip and
+  // its pricing arrive together — a type shown before its prices would ring
+  // up at list. Null under edit: a placed order keeps the prices it was
+  // quoted, and its type cannot be switched anyway.
+  const pricingFor = useCallback(
+    (type: PosOrderType | undefined) =>
+      editContext ? null : pricingForOrderType(type, priceIndex),
+    [editContext, priceIndex],
+  );
+  const activePricing = useMemo(
+    () => pricingFor(orderTypes.find((type) => type.id === orderTypeId)),
+    [pricingFor, orderTypes, orderTypeId],
+  );
+
   // ── What the kitchen can actually make ──
   // A WARNING, never a refusal: the cashier is facing a paying customer and can
   // see the shelf, so the software says its piece and the human decides. The
@@ -215,12 +243,19 @@ export default function PosScreen() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const [products, cats, types] = await Promise.all([
+        // The price rows ride the same Promise.all as the products: a failed
+        // read surfaces as the load error rather than a register that quietly
+        // charges list prices on a marked-up channel.
+        const [products, cats, types, priceRows] = await Promise.all([
           listProducts(id, registerOutletId),
           listCategories(id),
-          listOrderTypes(id),
+          // The register reader, not the shared one: a web-only type must not
+          // be offered as a chip even though the payment editor still sees it.
+          listRegisterOrderTypes(id),
+          listOrderTypeItemPrices(id),
         ]);
         if (cancelled) return;
+        const index = buildOrderTypePriceIndex(priceRows);
 
         setItems(
           products
@@ -232,11 +267,16 @@ export default function PosScreen() {
         );
         setCategories(cats);
         setOrderTypes(types);
+        setPriceIndex(index);
 
         // Default to the first order type so the cashier can ring up
-        // immediately; they can switch before tendering.
+        // immediately; they can switch before tendering. Priced from the
+        // freshly built index, not state — that has not been applied yet.
         if (!usePosCartStore.getState().orderTypeId && types.length > 0) {
-          setOrderType(types[0].id, types[0].name, types[0].serviceCharge);
+          const pricing = usePosCartStore.getState().editContext
+            ? null
+            : pricingForOrderType(types[0], index);
+          setOrderType(types[0].id, types[0].name, types[0].serviceCharge, pricing);
         }
       } catch (err) {
         if (cancelled) return;
@@ -310,10 +350,14 @@ export default function PosScreen() {
   const rows = useMemo(() => toRows(visibleItems, COLUMNS), [visibleItems]);
 
   const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
+    // Both at the store price: the store derives `basePrice` from
+    // `listBasePrice` through the sale's channel pricing.
+    const listBasePrice = item.product.discounted_price ?? item.product.price;
     add({
       menuItemId: item.product.id,
       name: item.product.name,
-      basePrice: item.product.discounted_price ?? item.product.price,
+      listBasePrice,
+      basePrice: listBasePrice,
       quantity,
       selections,
     });
@@ -480,7 +524,7 @@ export default function PosScreen() {
               <ProductTile
                 key={item.product.id}
                 name={item.product.name?.trim() || "Unnamed item"}
-                price={item.product.discounted_price ?? item.product.price}
+                price={displayPriceForOrderType(item.product, activePricing)}
                 imageUrl={item.product.image_url}
                 quantity={inSale[item.product.id] ?? 0}
                 hasOptions={item.groups.length > 0}
@@ -568,7 +612,9 @@ export default function PosScreen() {
         orderTypeId={orderTypeId}
         isExpanded={isCartExpanded}
         onToggle={toggleCart}
-        onSelectOrderType={(type) => setOrderType(type.id, type.name, type.serviceCharge)}
+        onSelectOrderType={(type) =>
+          setOrderType(type.id, type.name, type.serviceCharge, pricingFor(type))
+        }
         onChangeQty={setQty}
         onClear={() => {
           reset();
@@ -609,8 +655,9 @@ export default function PosScreen() {
         <ModifierSheet
           visible
           itemName={sheetFor.product.name}
-          basePrice={sheetFor.product.discounted_price ?? sheetFor.product.price}
+          basePrice={displayPriceForOrderType(sheetFor.product, activePricing)}
           groups={sheetFor.groups}
+          pricing={activePricing}
           onCancel={() => setSheetFor(null)}
           onConfirm={(selections, quantity) => addToCart(sheetFor, selections, quantity)}
         />

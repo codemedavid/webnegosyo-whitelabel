@@ -2,6 +2,7 @@
 // Re-export the auto-generated Database type used by Supabase client
 import type { Database as SupabaseDatabase } from './supabase'
 import type { WelcomeBanner } from '@/lib/outlets/welcome-page'
+import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 export type { Database } from './supabase'
 export type { WelcomeBanner } from '@/lib/outlets/welcome-page'
 
@@ -788,11 +789,17 @@ export interface OrderItem {
 export interface OrderType {
   id: string;
   tenant_id: string;
-  type: 'dine_in' | 'pickup' | 'delivery';
+  type: OrderTypeKind;
   name: string;
   description?: string;
   note?: string;
   is_enabled: boolean;
+  /** When false, hidden from the web storefront and customer app; online orders against it are refused. */
+  available_on_web: boolean;
+  /** When false, hidden from the merchant register (POS). At least one of web/pos stays true (DB CHECK). */
+  available_on_pos: boolean;
+  /** Register-only markup applied to base price and modifiers. null = store price. Range -100..500. */
+  pos_markup_percent: number | null;
   /** When false, checkout for this order type skips Messenger and shows "Complete Order". */
   messenger_enabled: boolean;
   service_charge_enabled: boolean;
@@ -809,6 +816,17 @@ export interface OrderType {
   advance_order_max_days_ahead: number;
   advance_order_slot_interval_minutes: number;
   order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Exact per-item base-price override for one order type (register only). No row = markup / store price. */
+export interface OrderTypeItemPrice {
+  id: string;
+  tenant_id: string;
+  order_type_id: string;
+  menu_item_id: string;
+  price: number;
   created_at: string;
   updated_at: string;
 }

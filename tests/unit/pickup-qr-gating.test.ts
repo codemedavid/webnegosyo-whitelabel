@@ -98,6 +98,20 @@ describe('shouldShowPickupQr', () => {
     ).toBe(false)
   })
 
+  it('resolves an aggregator kind but still hands it no QR', () => {
+    // A Grab rider collects the order, not the customer — scan-to-collect
+    // stays pickup-only by design even though 'grab' is a known kind now.
+    const kind = resolveOrderTypeKind({
+      orderTypeFromRow: 'grab',
+      orderTypeSnapshot: null,
+    })
+
+    expect(kind).toBe('grab')
+    expect(
+      shouldShowPickupQr({ kind, status: 'ready', isScanEnabled: true })
+    ).toBe(false)
+  })
+
   it('hides the QR when the order type could not be resolved', () => {
     // Fail closed: showing a scannable code on a delivery order invites a
     // courier to confirm a pickup that never happened.

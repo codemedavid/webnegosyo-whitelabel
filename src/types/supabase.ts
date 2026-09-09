@@ -535,13 +535,18 @@ export type Database = {
         Row: {
           backend: string
           channel: string | null
+          completed_at: string | null
           created_at: string
           customer_id: string
           external_order_id: string
           id: string
           items: Json
           ordered_at: string
+          outlet_id: string | null
+          payment_status: string | null
           sms_consent: boolean
+          source: string
+          status: string | null
           tenant_id: string
           total: number
           updated_at: string
@@ -549,13 +554,18 @@ export type Database = {
         Insert: {
           backend: string
           channel?: string | null
+          completed_at?: string | null
           created_at?: string
           customer_id: string
           external_order_id: string
           id?: string
           items?: Json
           ordered_at: string
+          outlet_id?: string | null
+          payment_status?: string | null
           sms_consent?: boolean
+          source?: string
+          status?: string | null
           tenant_id: string
           total?: number
           updated_at?: string
@@ -563,13 +573,18 @@ export type Database = {
         Update: {
           backend?: string
           channel?: string | null
+          completed_at?: string | null
           created_at?: string
           customer_id?: string
           external_order_id?: string
           id?: string
           items?: Json
           ordered_at?: string
+          outlet_id?: string | null
+          payment_status?: string | null
           sms_consent?: boolean
+          source?: string
+          status?: string | null
           tenant_id?: string
           total?: number
           updated_at?: string
@@ -580,6 +595,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_external_orders_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
             referencedColumns: ["id"]
           },
           {
@@ -1167,6 +1189,878 @@ export type Database = {
           {
             foreignKeyName: "leads_converted_tenant_id_fkey"
             columns: ["converted_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_balances: {
+        Row: {
+          balance: number
+          created_at: string
+          customer_id: string | null
+          customer_key: string
+          id: string
+          lifetime_earned: number
+          program_id: string
+          rewards_issued: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          customer_id?: string | null
+          customer_key: string
+          id?: string
+          lifetime_earned?: number
+          program_id: string
+          rewards_issued?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          customer_id?: string | null
+          customer_key?: string
+          id?: string
+          lifetime_earned?: number
+          program_id?: string
+          rewards_issued?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_balances_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_balances_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_balances_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_entitlements: {
+        Row: {
+          consumed_at: string | null
+          consumed_order_backend: string | null
+          consumed_order_id: string | null
+          created_at: string
+          customer_key: string
+          expires_at: string | null
+          id: string
+          issued_at: string
+          program_id: string
+          source_ledger_id: string | null
+          status: string
+          tenant_id: string
+          terms: Json
+          threshold_spent: number | null
+          updated_at: string
+          version_id: string | null
+        }
+        Insert: {
+          consumed_at?: string | null
+          consumed_order_backend?: string | null
+          consumed_order_id?: string | null
+          created_at?: string
+          customer_key: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          program_id: string
+          source_ledger_id?: string | null
+          status?: string
+          tenant_id: string
+          terms: Json
+          threshold_spent?: number | null
+          updated_at?: string
+          version_id?: string | null
+        }
+        Update: {
+          consumed_at?: string | null
+          consumed_order_backend?: string | null
+          consumed_order_id?: string | null
+          created_at?: string
+          customer_key?: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          program_id?: string
+          source_ledger_id?: string | null
+          status?: string
+          tenant_id?: string
+          terms?: Json
+          threshold_spent?: number | null
+          updated_at?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_entitlements_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_entitlements_source_ledger_id_fkey"
+            columns: ["source_ledger_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_entitlements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_entitlements_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_program_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_issuance_rate_events: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          phone_hash: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          phone_hash?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_ledger: {
+        Row: {
+          actor: string | null
+          created_at: string
+          customer_key: string
+          delta: number
+          external_order_id: string | null
+          id: string
+          is_shadow: boolean
+          kind: string
+          note: string | null
+          order_backend: string | null
+          program_id: string
+          tenant_id: string
+          version_id: string | null
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          customer_key: string
+          delta: number
+          external_order_id?: string | null
+          id?: string
+          is_shadow?: boolean
+          kind: string
+          note?: string | null
+          order_backend?: string | null
+          program_id: string
+          tenant_id: string
+          version_id?: string | null
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          customer_key?: string
+          delta?: number
+          external_order_id?: string | null
+          id?: string
+          is_shadow?: boolean
+          kind?: string
+          note?: string | null
+          order_backend?: string | null
+          program_id?: string
+          tenant_id?: string
+          version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_ledger_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_ledger_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_ledger_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_program_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_otp_challenges: {
+        Row: {
+          attempts: number
+          code_hash: string
+          created_at: string
+          entitlement_id: string | null
+          expires_at: string
+          id: string
+          issuance_expires_at: string | null
+          issuance_ip_hash: string | null
+          issuance_request_hash: string | null
+          max_attempts: number
+          phone_hash: string
+          purpose: string
+          tenant_id: string
+          verified_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          created_at?: string
+          entitlement_id?: string | null
+          expires_at: string
+          id?: string
+          issuance_expires_at?: string | null
+          issuance_ip_hash?: string | null
+          issuance_request_hash?: string | null
+          max_attempts?: number
+          phone_hash: string
+          purpose?: string
+          tenant_id: string
+          verified_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          created_at?: string
+          entitlement_id?: string | null
+          expires_at?: string
+          id?: string
+          issuance_expires_at?: string | null
+          issuance_ip_hash?: string | null
+          issuance_request_hash?: string | null
+          max_attempts?: number
+          phone_hash?: string
+          purpose?: string
+          tenant_id?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_otp_challenges_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_otp_challenges_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_pos_projection_jobs: {
+        Row: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          external_order_id: string | null
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          order_backend: string
+          settlement_id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          external_order_id?: string | null
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          order_backend: string
+          settlement_id: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          completed_at?: string | null
+          created_at?: string
+          external_order_id?: string | null
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          order_backend?: string
+          settlement_id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_pos_projection_jobs_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_pos_settlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_projection_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_pos_quotes: {
+        Row: {
+          created_at: string
+          created_by: string
+          customer_key: string
+          expires_at: string
+          id: string
+          order_backend: string
+          order_snapshot: Json
+          outlet_id: string | null
+          reservation_id: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          customer_key: string
+          expires_at: string
+          id?: string
+          order_backend: string
+          order_snapshot: Json
+          outlet_id?: string | null
+          reservation_id: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          customer_key?: string
+          expires_at?: string
+          id?: string
+          order_backend?: string
+          order_snapshot?: Json
+          outlet_id?: string | null
+          reservation_id?: string
+          tenant_id?: string
+          total_centavos?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_pos_quotes_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_quotes_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_quotes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_pos_settlements: {
+        Row: {
+          cashier_id: string
+          client_order_id: string
+          id: string
+          order_snapshot: Json
+          payment: Json
+          quote_id: string
+          reservation_id: string
+          settled_at: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Insert: {
+          cashier_id: string
+          client_order_id: string
+          id?: string
+          order_snapshot: Json
+          payment: Json
+          quote_id: string
+          reservation_id: string
+          settled_at?: string
+          tenant_id: string
+          total_centavos: number
+        }
+        Update: {
+          cashier_id?: string
+          client_order_id?: string
+          id?: string
+          order_snapshot?: Json
+          payment?: Json
+          quote_id?: string
+          reservation_id?: string
+          settled_at?: string
+          tenant_id?: string
+          total_centavos?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_pos_settlements_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_pos_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_settlements_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_pos_settlements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_program_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          program_id: string
+          rules: Json
+          tenant_id: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          program_id: string
+          rules: Json
+          tenant_id: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          program_id?: string
+          rules?: Json
+          tenant_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_program_versions_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_program_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_programs: {
+        Row: {
+          activates_at: string | null
+          created_at: string
+          created_by: string | null
+          current_version_id: string | null
+          description: string | null
+          earn_mode: string
+          ends_at: string | null
+          id: string
+          name: string
+          outlet_id: string | null
+          scope: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          activates_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_version_id?: string | null
+          description?: string | null
+          earn_mode: string
+          ends_at?: string | null
+          id?: string
+          name: string
+          outlet_id?: string | null
+          scope?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          activates_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_version_id?: string | null
+          description?: string | null
+          earn_mode?: string
+          ends_at?: string | null
+          id?: string
+          name?: string
+          outlet_id?: string | null
+          scope?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_programs_current_version_fk"
+            columns: ["current_version_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_program_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_programs_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_programs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_reservations: {
+        Row: {
+          created_at: string
+          entitlement_id: string
+          expires_at: string
+          external_order_id: string | null
+          id: string
+          order_backend: string | null
+          outlet_id: string | null
+          reserved_by: string | null
+          status: string
+          tenant_id: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entitlement_id: string
+          expires_at: string
+          external_order_id?: string | null
+          id?: string
+          order_backend?: string | null
+          outlet_id?: string | null
+          reserved_by?: string | null
+          status?: string
+          tenant_id: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entitlement_id?: string
+          expires_at?: string
+          external_order_id?: string | null
+          id?: string
+          order_backend?: string | null
+          outlet_id?: string | null
+          reserved_by?: string | null
+          status?: string
+          tenant_id?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_reservations_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_reservations_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_reservations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_sms_device_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          device_id: string
+          id: string
+          job_id: string | null
+          reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          device_id: string
+          id?: string
+          job_id?: string | null
+          reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          device_id?: string
+          id?: string
+          job_id?: string | null
+          reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      loyalty_sms_devices: {
+        Row: {
+          actor_id: string
+          credential_hash: string
+          device_id: string
+          enabled: boolean
+          tenant_id: string
+        }
+        Insert: {
+          actor_id: string
+          credential_hash: string
+          device_id: string
+          enabled?: boolean
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string
+          credential_hash?: string
+          device_id?: string
+          enabled?: boolean
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_sms_devices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_sms_outbox: {
+        Row: {
+          challenge_id: string
+          claimed_at: string | null
+          claimed_by_actor: string | null
+          claimed_by_device: string | null
+          created_at: string
+          dispatch_started_at: string | null
+          error: string | null
+          id: string
+          lease_expires_at: string | null
+          lease_token: string | null
+          payload_encrypted: string
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          transport: string
+          updated_at: string
+        }
+        Insert: {
+          challenge_id: string
+          claimed_at?: string | null
+          claimed_by_actor?: string | null
+          claimed_by_device?: string | null
+          created_at?: string
+          dispatch_started_at?: string | null
+          error?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          payload_encrypted: string
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+          transport?: string
+          updated_at?: string
+        }
+        Update: {
+          challenge_id?: string
+          claimed_at?: string | null
+          claimed_by_actor?: string | null
+          claimed_by_device?: string | null
+          created_at?: string
+          dispatch_started_at?: string | null
+          error?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          payload_encrypted?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          transport?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_sms_outbox_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_otp_challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_sms_outbox_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_verified_claims: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          entitlement_id: string
+          expires_at: string
+          id: string
+          tenant_id: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          entitlement_id: string
+          expires_at: string
+          id?: string
+          tenant_id: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          entitlement_id?: string
+          expires_at?: string
+          id?: string
+          tenant_id?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_verified_claims_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: true
+            referencedRelation: "loyalty_otp_challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_verified_claims_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_verified_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
@@ -1992,6 +2886,58 @@ export type Database = {
           },
         ]
       }
+      order_type_item_prices: {
+        Row: {
+          created_at: string
+          id: string
+          menu_item_id: string
+          order_type_id: string
+          price: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          menu_item_id: string
+          order_type_id: string
+          price: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          menu_item_id?: string
+          order_type_id?: string
+          price?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_type_item_prices_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_type_item_prices_order_type_id_fkey"
+            columns: ["order_type_id"]
+            isOneToOne: false
+            referencedRelation: "order_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_type_item_prices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_types: {
         Row: {
           advance_order_allow_asap: boolean
@@ -2000,6 +2946,8 @@ export type Database = {
           advance_order_max_days_ahead: number
           advance_order_slot_interval_minutes: number
           after_billing_payment_enabled: boolean
+          available_on_pos: boolean
+          available_on_web: boolean
           created_at: string
           description: string | null
           id: string
@@ -2009,6 +2957,7 @@ export type Database = {
           name: string
           note: string | null
           order_index: number
+          pos_markup_percent: number | null
           service_charge_enabled: boolean
           service_charge_type: string | null
           service_charge_value: number | null
@@ -2023,6 +2972,8 @@ export type Database = {
           advance_order_max_days_ahead?: number
           advance_order_slot_interval_minutes?: number
           after_billing_payment_enabled?: boolean
+          available_on_pos?: boolean
+          available_on_web?: boolean
           created_at?: string
           description?: string | null
           id?: string
@@ -2032,6 +2983,7 @@ export type Database = {
           name: string
           note?: string | null
           order_index?: number
+          pos_markup_percent?: number | null
           service_charge_enabled?: boolean
           service_charge_type?: string | null
           service_charge_value?: number | null
@@ -2046,6 +2998,8 @@ export type Database = {
           advance_order_max_days_ahead?: number
           advance_order_slot_interval_minutes?: number
           after_billing_payment_enabled?: boolean
+          available_on_pos?: boolean
+          available_on_web?: boolean
           created_at?: string
           description?: string | null
           id?: string
@@ -2055,6 +3009,7 @@ export type Database = {
           name?: string
           note?: string | null
           order_index?: number
+          pos_markup_percent?: number | null
           service_charge_enabled?: boolean
           service_charge_type?: string | null
           service_charge_value?: number | null
@@ -4297,6 +5252,7 @@ export type Database = {
           convex_deployment_url: string | null
           convex_schema_version: string | null
           created_at: string
+          customer_hub_enabled: boolean
           delivery_min_fee: number | null
           delivery_price_per_km: number | null
           delivery_radius_km: number | null
@@ -4401,6 +5357,8 @@ export type Database = {
           link_color: string | null
           logo_url: string
           low_stock_alerts_enabled: boolean
+          loyalty_enabled: boolean
+          loyalty_shadow: boolean
           loyverse_access_token: string | null
           loyverse_enabled: boolean
           loyverse_last_synced_at: string | null
@@ -4445,9 +5403,6 @@ export type Database = {
           page_layout: string | null
           pairing_rules_enabled: boolean | null
           pickup_scan_enabled: boolean
-          customer_hub_enabled: boolean
-          loyalty_enabled: boolean
-          loyalty_shadow: boolean
           presell_enabled: boolean
           primary_color: string
           promotion_banners: Json | null
@@ -4568,6 +5523,7 @@ export type Database = {
           convex_deployment_url?: string | null
           convex_schema_version?: string | null
           created_at?: string
+          customer_hub_enabled?: boolean
           delivery_min_fee?: number | null
           delivery_price_per_km?: number | null
           delivery_radius_km?: number | null
@@ -4672,6 +5628,8 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           low_stock_alerts_enabled?: boolean
+          loyalty_enabled?: boolean
+          loyalty_shadow?: boolean
           loyverse_access_token?: string | null
           loyverse_enabled?: boolean
           loyverse_last_synced_at?: string | null
@@ -4716,9 +5674,6 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
-          customer_hub_enabled?: boolean
-          loyalty_enabled?: boolean
-          loyalty_shadow?: boolean
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -4839,6 +5794,7 @@ export type Database = {
           convex_deployment_url?: string | null
           convex_schema_version?: string | null
           created_at?: string
+          customer_hub_enabled?: boolean
           delivery_min_fee?: number | null
           delivery_price_per_km?: number | null
           delivery_radius_km?: number | null
@@ -4943,6 +5899,8 @@ export type Database = {
           link_color?: string | null
           logo_url?: string
           low_stock_alerts_enabled?: boolean
+          loyalty_enabled?: boolean
+          loyalty_shadow?: boolean
           loyverse_access_token?: string | null
           loyverse_enabled?: boolean
           loyverse_last_synced_at?: string | null
@@ -4987,9 +5945,6 @@ export type Database = {
           page_layout?: string | null
           pairing_rules_enabled?: boolean | null
           pickup_scan_enabled?: boolean
-          customer_hub_enabled?: boolean
-          loyalty_enabled?: boolean
-          loyalty_shadow?: boolean
           presell_enabled?: boolean
           primary_color?: string
           promotion_banners?: Json | null
@@ -5313,6 +6268,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      abandon_loyalty_sms_dispatch: {
+        Args: {
+          p_actor_id: string
+          p_device_id: string
+          p_job_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       app_user_may_reach_branch: {
         Args: { target_outlet_id: string; target_tenant_id: string }
         Returns: boolean
@@ -5320,6 +6284,26 @@ export type Database = {
       app_user_may_see_order: {
         Args: { order_outlet_id: string; order_tenant_id: string }
         Returns: boolean
+      }
+      apply_loyalty_earning: {
+        Args: {
+          p_actor?: string
+          p_customer_id: string
+          p_customer_key: string
+          p_delta: number
+          p_external_order_id: string
+          p_kind: string
+          p_note?: string
+          p_order_backend: string
+          p_program_id: string
+          p_reward_expires_at: string
+          p_reward_terms: Json
+          p_shadow: boolean
+          p_tenant_id: string
+          p_threshold: number
+          p_version_id: string
+        }
+        Returns: Json
       }
       apply_presell_order: {
         Args: {
@@ -5329,6 +6313,80 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: string
+      }
+      authorize_loyalty_sms_dispatch: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_job_id: string
+          p_lease_token: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      claim_loyalty_pos_projections: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          available_at: string
+          completed_at: string | null
+          created_at: string
+          external_order_id: string | null
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          order_backend: string
+          settlement_id: string
+          status: string
+          tenant_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "loyalty_pos_projection_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_loyalty_sms_job: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      enroll_loyalty_sms_device: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      finish_loyalty_pos_projection: {
+        Args: {
+          p_error?: string
+          p_external_order_id: string
+          p_job_id: string
+          p_lease_token: string
+        }
+        Returns: boolean
+      }
+      finish_loyalty_sms_job: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_job_id: string
+          p_lease_token: string
+          p_outcome: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       get_customer_order: {
         Args: { p_order_id: string }
@@ -5397,9 +6455,47 @@ export type Database = {
         Args: { tenant_uuid: string }
         Returns: undefined
       }
+      issue_loyalty_challenge: {
+        Args: {
+          p_challenge_id: string
+          p_code_hash: string
+          p_entitlement_id: string
+          p_expected_customer_key: string
+          p_ip_hash: string
+          p_payload_encrypted: string
+          p_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      loyalty_has_permission: {
+        Args: { p_permission: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      loyalty_sms_delivery_allowed: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
       order_accepts_anon_items: {
         Args: { p_order_id: string }
         Returns: boolean
+      }
+      recover_loyalty_sms_ack: {
+        Args: {
+          p_actor_id: string
+          p_credential_hash: string
+          p_device_id: string
+          p_job_id: string
+          p_lease_token: string
+          p_outcome: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       redeem_voucher: {
         Args: {
@@ -5414,7 +6510,32 @@ export type Database = {
         }
         Returns: string
       }
+      revoke_loyalty_sms_device: {
+        Args: { p_actor_id: string; p_device_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      settle_loyalty_pos_sale: {
+        Args: {
+          p_actor: string
+          p_client_order_id: string
+          p_payment: Json
+          p_quote_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       superadmin_mcp_access_token_hook: { Args: { event: Json }; Returns: Json }
+      verify_loyalty_claim: {
+        Args: {
+          p_candidate_code_hash: string
+          p_challenge_id: string
+          p_claim_token_hash: string
+          p_expected_customer_key: string
+          p_expected_phone_hash: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
