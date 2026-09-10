@@ -20,6 +20,7 @@
 
 import { ORDER_OUTLET_ID_KEY } from "../order-outlet";
 import { toAddonColumn } from "./addon-columns";
+import { toUuidOrNull } from "../uuid";
 
 /** Statuses an order can hold, in pipeline order. */
 export const ORDER_STATUSES = [
@@ -106,7 +107,10 @@ export interface PlatformOrderRow {
    * unexplained gap between the items and the bill.
    */
   service_charge_amount?: number | null;
-  delivery_address?: string | null;
+  // No `delivery_address`: `public.orders` has no such column. Declaring it
+  // here was inert only while the projection stayed "*" — it was the same
+  // phantom that, echoed back into an insert, failed every order from a shipped
+  // build with PGRST204. The address lives in `customer_data`; see `toOrderDto`.
   /**
    * Lalamove's booking trail. `lalamove_quotation_id` is written at checkout
    * when the customer picks Lalamove delivery; the rest are written by
@@ -408,10 +412,9 @@ export function toOrderDto(
         ? undefined
         : toNumber(row.service_charge_amount),
     // The platform table has no delivery_address column: web checkout keeps
-    // the address in customer_data. Read the blob, so a platform delivery
-    // order shows its address and the Lalamove card has something to quote.
+    // the address in customer_data. Read the blob ONLY — reading a column that
+    // does not exist is how the PGRST204 phantom stayed alive.
     deliveryAddress:
-      optional(row.delivery_address) ??
       textFromCustomerData(row.customer_data ?? undefined, "delivery_address") ??
       undefined,
     lalamoveQuotationId: optional(row.lalamove_quotation_id),
@@ -596,7 +599,8 @@ export interface OrderInsert {
 }
 
 export interface OrderItemInsert {
-  menu_item_id: string;
+  /** Nullable, exactly like {@link OrderItemRow.menu_item_id} — see `uuid.ts`. */
+  menu_item_id: string | null;
   menu_item_name: string;
   quantity: number;
   price: number;
@@ -690,7 +694,10 @@ export function buildCreateOrderRows(
   };
 
   const items: OrderItemInsert[] = args.items.map((item) => ({
-    menu_item_id: item.menuItemId,
+    // The order row is committed BEFORE these are inserted and there is no
+    // transaction around the two, so a `''` or a Convex-shaped id here is not a
+    // rejected sale — it is a committed, printable sale with no line items.
+    menu_item_id: toUuidOrNull(item.menuItemId),
     menu_item_name: item.menuItemName,
     quantity: item.quantity,
     price: item.price,

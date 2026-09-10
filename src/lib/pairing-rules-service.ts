@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { verifySuperadmin, verifyTenantPermission } from '@/lib/admin-service'
 import type {
   MenuItem,
   PairingRule,
@@ -113,10 +114,26 @@ export async function getPairingRules(
   })
 }
 
+/**
+ * Who may write a rule. A rule with no tenant is resolved for EVERY store
+ * (`resolveRuleBasedSuggestions` reads `tenant_id IS NULL` as platform-wide),
+ * so it is a superadmin's to create; a tenant's rule needs that tenant's
+ * analytics permission. Writes here run on the service-role client, so this
+ * call is the only thing standing between an anonymous POST and the table.
+ */
+async function verifyRuleWriter(tenantId: string | null): Promise<void> {
+  if (tenantId === null) {
+    await verifySuperadmin()
+    return
+  }
+  await verifyTenantPermission(tenantId, 'analytics')
+}
+
 export async function createPairingRule(
   tenantId: string | null,
   input: CreateRuleInput
 ): Promise<PairingRule> {
+  await verifyRuleWriter(tenantId)
   const supabase = createAdminClient()
 
   if (input.targets.length === 0 || input.targets.length > 3) {
@@ -180,13 +197,16 @@ export async function updatePairingRule(
   tenantId: string | null,
   input: CreateRuleInput
 ): Promise<void> {
+  await verifyRuleWriter(tenantId)
   const supabase = createAdminClient()
 
   if (input.targets.length === 0 || input.targets.length > 3) {
     throw new Error('Rules must have 1-3 target categories')
   }
 
-  const { error: updateError } = await supabase
+  // Scope by the authorized tenant as well as the id: the rule id alone let a
+  // caller rewrite any store's rule. A null tenant scopes to platform rules.
+  const scoped = supabase
     .from('pairing_rules')
     .update({
       name: input.name.trim(),
@@ -197,8 +217,15 @@ export async function updatePairingRule(
       updated_at: new Date().toISOString(),
     })
     .eq('id', ruleId)
+  const { data: updated, error: updateError } = await (tenantId === null
+    ? scoped.is('tenant_id', null)
+    : scoped.eq('tenant_id', tenantId)
+  )
+    .select('id')
+    .single()
 
   if (updateError) throw updateError
+  if (!updated) throw new Error('Pairing rule not found')
 
   const { error: deleteError } = await supabase
     .from('pairing_rule_targets')
@@ -247,6 +274,18 @@ export async function togglePairingRule(
 ): Promise<void> {
   const supabase = createAdminClient()
 
+  // The caller only names a rule, so the tenant to authorize against comes
+  // from the row itself — never from the request.
+  const { data: rule, error: lookupError } = await supabase
+    .from('pairing_rules')
+    .select('id, tenant_id')
+    .eq('id', ruleId)
+    .maybeSingle()
+  if (lookupError) throw lookupError
+  if (!rule) throw new Error('Pairing rule not found')
+
+  await verifyRuleWriter((rule as { tenant_id: string | null }).tenant_id)
+
   const { error } = await supabase
     .from('pairing_rules')
     .update({ is_active: isActive, updated_at: new Date().toISOString() })
@@ -259,6 +298,7 @@ export async function deletePairingRule(
   ruleId: string,
   tenantId: string
 ): Promise<void> {
+  await verifyRuleWriter(tenantId)
   const supabase = createAdminClient()
 
   const { error } = await supabase

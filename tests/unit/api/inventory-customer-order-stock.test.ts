@@ -260,7 +260,7 @@ describe('customer order stock route — Convex-backend tenants', () => {
       CONVEX_TENANT.convex_deployment_url,
       CONVEX_TENANT.convex_deploy_key,
     )
-    expect(convexQuery).toHaveBeenCalledWith('orders:getOrderById', {
+    expect(convexQuery).toHaveBeenCalledWith('orders:getOrderByIdInternal', {
       orderId: CONVEX_ORDER,
     })
     expect(applyOrderStockBestEffort).toHaveBeenCalledWith(

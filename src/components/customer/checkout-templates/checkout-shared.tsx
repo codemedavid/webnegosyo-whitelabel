@@ -12,11 +12,12 @@
  * the experience is unchanged.
  */
 
-import { ArrowLeft, MessageCircle, CreditCard, QrCode, Copy, Check, CheckCircle2, ExternalLink, Package, CalendarClock } from 'lucide-react'
+import { ArrowLeft, MessageCircle, CreditCard, QrCode, Copy, Check, CheckCircle2, ExternalLink, Package, CalendarClock, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
 import { computeOrderTotals } from '@/lib/order-totals'
+import type { OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { toast } from 'sonner'
 import { resolveFinalSubmitLabel } from '@/lib/messenger-availability'
 import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
@@ -60,29 +61,110 @@ export function CheckoutNotFound() {
   )
 }
 
+/**
+ * Shown when every attempt to save the order failed.
+ *
+ * The confirmation screen is optimistic: "Order Placed!" and the cleared cart
+ * both land before the row is written, so a refused save leaves the customer
+ * looking at a green success screen for an order the merchant will never see.
+ * This notice used to live inside the Messenger-redirect block, which meant the
+ * kiosk screen, a tenant with Messenger off, and a tenant with no page
+ * connected all reported success for a lost order. It renders for every design
+ * and every configuration now, directly under the hero.
+ *
+ * The recovery it names has to be one the customer can actually perform: the
+ * Messenger message when there is one (it is the merchant's remaining copy of
+ * the order), and contacting the store directly when there is not.
+ *
+ * A REFUSAL is a different event and gets different words. The store said no on
+ * purpose — below the minimum, sold out, an address with no coordinates — and
+ * `notice.message` is the sentence it wrote for the customer, naming what to
+ * change. Nothing is lost, so there is nothing for Messenger to rescue: telling
+ * this customer to send the message would deliver the merchant an order the
+ * platform just rejected.
+ */
+function OrderSaveFailedNotice({
+  notice,
+  hasMessengerFallback,
+}: {
+  notice: OrderSaveNotice | null
+  hasMessengerFallback: boolean
+}) {
+  // A caller that has not been given a notice yet (an older design, a path
+  // that only flipped the boolean) still gets the wording it had before.
+  const headline = notice?.message ?? 'We could not confirm your order with the store.'
+  const canSendMessenger = (notice?.isMessengerRecoverable ?? true) && hasMessengerFallback
+
+  const recovery = notice?.verdict === 'refused'
+    ? 'Nothing has been sent to the store. Please adjust your order and try again.'
+    : canSendMessenger
+      ? 'Please send the Messenger message below so they receive it.'
+      : 'Nothing has been sent yet — please contact the store directly to place this order.'
+
+  return (
+    <div
+      role="alert"
+      className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-left"
+    >
+      <p className="text-sm font-semibold text-amber-900">{headline}</p>
+      <p className="mt-1 text-sm text-amber-800">{recovery}</p>
+    </div>
+  )
+}
+
 /** Order confirmation / thank-you screen (shared across designs). */
 export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
     tenant, completedOrderData, redirectCountdown, trackingOrderId, trackingToken,
     messageExpanded, setMessageExpanded, router, tenantSlug, messengerEnabled,
-    isKiosk, kioskCountdown, orderSaveFailed,
+    isKiosk, kioskCountdown, orderSaveFailed, orderSaveNotice,
   } = checkout
 
   if (!tenant || !completedOrderData) return null
+
+  // One source of truth for "this screen is lying". `orderSaveNotice` carries
+  // the detail; the boolean is kept because designs and tests predate it, and
+  // the two must never be able to disagree about whether to warn at all.
+  const hasOrderSaveFailed =
+    orderSaveFailed || (orderSaveNotice != null && orderSaveNotice.verdict !== 'saved')
+
+  // The Messenger message is only a recovery when there is somewhere to send
+  // it: the tenant has Messenger on AND a page resolved to redirect to.
+  const hasMessengerFallback = Boolean(messengerEnabled && completedOrderData.messengerUrl)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50/40 to-white">
       <main className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-2xl space-y-6">
 
-          {/* Success Hero */}
+          {/* Hero. A failed save must not be crowned with a green checkmark —
+              the headline is the loudest thing on this screen, and leaving it
+              intact reads as a minor hiccup rather than a lost sale. */}
           <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center w-24 h-24 bg-green-100 rounded-full mb-5">
-              <CheckCircle2 className="h-14 w-14 text-green-600 animate-[scale-in_0.4s_ease-out]" />
+            <div
+              className={`inline-flex items-center justify-center w-24 h-24 rounded-full mb-5 ${
+                hasOrderSaveFailed ? 'bg-amber-100' : 'bg-green-100'
+              }`}
+            >
+              {hasOrderSaveFailed ? (
+                <AlertTriangle className="h-14 w-14 text-amber-600" />
+              ) : (
+                <CheckCircle2 className="h-14 w-14 text-green-600 animate-[scale-in_0.4s_ease-out]" />
+              )}
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Placed!</h1>
-            <p className="text-gray-500 text-lg">Your order has been sent to {tenant.name}</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {hasOrderSaveFailed ? 'Order Not Confirmed' : 'Order Placed!'}
+            </h1>
+            <p className="text-gray-500 text-lg">
+              {hasOrderSaveFailed
+                ? `We could not reach ${tenant.name} with this order.`
+                : `Your order has been sent to ${tenant.name}`}
+            </p>
           </div>
+
+          {hasOrderSaveFailed && (
+            <OrderSaveFailedNotice notice={orderSaveNotice ?? null} hasMessengerFallback={hasMessengerFallback} />
+          )}
 
           {/* Order Summary */}
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
@@ -150,6 +232,16 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 </div>
               )}
 
+              {/* Every deduction the customer actually received, named. The
+                  total below is derived from the same lines, so the two can
+                  never disagree about what a voucher was worth. */}
+              {(completedOrderData.discounts ?? []).map(discount => (
+                <div key={discount.code ?? discount.label} className="flex justify-between text-sm">
+                  <span className="text-gray-600">{discount.label}</span>
+                  <span className="font-medium text-green-700">-{formatPrice(discount.amount)}</span>
+                </div>
+              ))}
+
               <Separator className="my-2" />
 
               <div className="flex justify-between text-lg font-bold">
@@ -159,6 +251,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                     subtotal: completedOrderData.total,
                     deliveryFee: completedOrderData.deliveryFee,
                     serviceCharge: completedOrderData.serviceChargeAmount,
+                    discounts: completedOrderData.discounts,
                   }).grandTotal)}
                 </span>
               </div>
@@ -200,7 +293,9 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
             <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
               <div className="space-y-4 text-center">
                 <p className="text-sm font-medium text-gray-900">
-                  Your order has been sent to {tenant.name}.
+                  {hasOrderSaveFailed
+                    ? `This order did not reach ${tenant.name}. Please tell a staff member.`
+                    : `Your order has been sent to ${tenant.name}.`}
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
@@ -228,27 +323,19 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
             {!messengerEnabled ? (
               <div className="space-y-2 text-center">
-                <p className="text-sm font-medium text-gray-900">Your order has been sent to {tenant.name}.</p>
-                <p className="text-sm text-gray-600">They&apos;ll confirm it shortly — no further action needed.</p>
+                {hasOrderSaveFailed ? (
+                  <p className="text-sm font-medium text-gray-900">
+                    This order did not reach {tenant.name}. Please contact them directly.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-gray-900">Your order has been sent to {tenant.name}.</p>
+                    <p className="text-sm text-gray-600">They&apos;ll confirm it shortly — no further action needed.</p>
+                  </>
+                )}
               </div>
             ) : completedOrderData.messengerUrl ? (
               <div className="space-y-4">
-                {/* The optimistic confirmation above has already claimed the
-                    order succeeded. When the save actually failed, say so and
-                    name the one action that still delivers it. */}
-                {orderSaveFailed && (
-                  <div
-                    role="alert"
-                    className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-left"
-                  >
-                    <p className="text-sm font-semibold text-amber-900">
-                      We could not confirm your order with the store.
-                    </p>
-                    <p className="mt-1 text-sm text-amber-800">
-                      Please send the Messenger message below so they receive it.
-                    </p>
-                  </div>
-                )}
                 {/* Countdown redirect indicator */}
                 <div className="text-center space-y-2">
                   {redirectCountdown !== null && redirectCountdown > 0 ? (

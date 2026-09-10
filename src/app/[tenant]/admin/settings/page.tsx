@@ -15,7 +15,7 @@ import { PickupScanCard } from '@/components/admin/pickup-scan-card'
 import { DeliverySettingsForm } from '@/components/admin/delivery-settings-form'
 import { StaffManagementCard } from '@/components/admin/staff-management-card'
 import { AccountSettingsCard } from '@/components/admin/account-settings-card'
-import { LalamoveKeysCard } from '@/components/admin/lalamove-keys-card'
+import { LalamoveSettingsCard } from '@/components/admin/lalamove-settings-card'
 import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
 import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { listStaffAction } from '@/app/actions/staff'
@@ -140,12 +140,20 @@ export default async function SettingsPage({
       {/* Account — every admin manages their own credentials */}
       <AccountSettingsCard currentEmail={user?.email ?? ''} />
 
-      {/* Lalamove API keys — owner only, when the feature is enabled */}
+      {/* Lalamove delivery — owner only, when the feature is enabled */}
       {isOwner && tenant.lalamove_enabled && (
-        <LalamoveKeysCard
+        <LalamoveSettingsCard
           tenantId={tenant.id}
           tenantSlug={tenantSlug}
           hasExistingKeys={hasLalamoveKeys}
+          senderPhone={tenant.lalamove_sender_phone ?? ''}
+          fallbackPhone={tenant.footer_phone || tenant.footer_whatsapp || ''}
+          pickupAddress={tenant.restaurant_address ?? ''}
+          // Lalamove quotes from coordinates, not from the address text, so a
+          // typed address with no pin is still an unbookable store.
+          hasPickupCoordinates={
+            tenant.restaurant_latitude != null && tenant.restaurant_longitude != null
+          }
         />
       )}
 

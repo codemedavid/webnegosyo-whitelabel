@@ -10,6 +10,7 @@ interface NeonCardProps {
     item: MenuItem
     onSelect: (item: MenuItem) => void
     branding: BrandingColors
+    isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface NeonCardProps {
  * Neon Card Template
  * Dark card with neon glow borders using the primary color, vibrant accents
  */
-export const NeonCard = memo(function NeonCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: NeonCardProps) {
+export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: NeonCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -116,7 +117,7 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, menuE
                     </div>
                 )}
 
-                {!item.is_available && (
+                {!isOrderable && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/80">
                         <span
                             className="text-sm font-bold uppercase tracking-wider"
@@ -187,7 +188,7 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, menuE
                             e.stopPropagation()
                             onSelect(item)
                         }}
-                        disabled={!item.is_available}
+                        disabled={!isOrderable}
                     >
                         <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

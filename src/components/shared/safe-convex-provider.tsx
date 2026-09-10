@@ -3,6 +3,7 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { ConvexProvider } from 'convex/react'
 import { ConvexReactClient } from 'convex/react'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 
 class ConvexErrorBoundary extends Component<
   { children: ReactNode; fallback?: ReactNode },
@@ -28,10 +29,26 @@ class ConvexErrorBoundary extends Component<
 // and avoids React strict-mode double-mount issues entirely.
 const clientCache = new Map<string, ConvexReactClient>()
 
+/**
+ * The platform session token, or null when there is none. The store's
+ * deployment verifies it against Supabase's JWKS and reads the tenant claim
+ * the access-token hook stamps on it; a customer (no session) sends nothing,
+ * which is right — their functions do not ask for a token.
+ */
+async function fetchSessionToken(): Promise<string | null> {
+  try {
+    const { data } = await createSupabaseClient().auth.getSession()
+    return data.session?.access_token ?? null
+  } catch {
+    return null
+  }
+}
+
 function getClient(url: string): ConvexReactClient {
   let client = clientCache.get(url)
   if (!client) {
     client = new ConvexReactClient(url)
+    client.setAuth(fetchSessionToken)
     clientCache.set(url, client)
   }
   return client

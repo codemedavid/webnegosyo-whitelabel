@@ -28,7 +28,7 @@ import type { MenuPerformanceSource, MenuPerformanceCoverage } from '@/lib/queri
 const DEFAULT_WINDOW_DAYS = 30
 /** PostgREST caps a page at 1000; a full page means the tail is missing. */
 const SUPABASE_ROW_LIMIT = 1000
-const CONVEX_TRENDS_PATH = 'analytics:getTrends'
+const CONVEX_TRENDS_PATH = 'analytics:getTrendsInternal'
 const MERCHANT_LOCAL_TIME_ZONE = 'Asia/Manila'
 
 interface ConvexQueryClient {

@@ -40,7 +40,7 @@ const DEFAULT_WINDOW_DAYS = 30
 const DEFAULT_CONVEX_LIMIT = 500
 /** PostgREST caps a page at 1000; a full page means the tail is missing. */
 const SUPABASE_ROW_LIMIT = 1000
-const CONVEX_TOP_ITEMS_PATH = 'analytics:getTopItems'
+const CONVEX_TOP_ITEMS_PATH = 'analytics:getTopItemsInternal'
 
 interface ConvexQueryClient {
   query<T = unknown>(path: string, args: Record<string, unknown>): Promise<T>

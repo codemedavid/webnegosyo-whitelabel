@@ -41,7 +41,7 @@ import { resolveBusinessDayWindow } from '@/lib/inventory/business-day'
 /** How long a Convex deployment gets before the report gives up on it. */
 const DEFAULT_TIMEOUT_MS = 6000
 
-const CONVEX_STATS_PATH = 'orders:getDashboardStatsByPeriod'
+const CONVEX_STATS_PATH = 'orders:getDashboardStatsByPeriodInternal'
 
 export interface DailyRevenueTenant extends OrderBackendTenantFields, TenantOrderCredentials {
   id: string

@@ -19,6 +19,7 @@ import { revisedOrderTotal } from "../pos-cart";
 import type { OrderDiscountPayload } from "../order-discount";
 import type { OrderAddon, OrderVariationSelection } from "./supabase-orders";
 import { toAddonColumn } from "./addon-columns";
+import { toUuidOrNull } from "../uuid";
 
 /** An item as the edit screen submits it. */
 export interface ReviseOrderItem {
@@ -144,7 +145,14 @@ export interface OrderRevisionPatch {
 }
 
 export interface OrderItemRow {
-  menu_item_id: string;
+  /**
+   * NULLABLE, because the column is: `menu_item_id uuid references
+   * menu_items(id) on delete set null`. A line whose product was deleted is
+   * already null in the database, and the edit screen hands that back as `""`
+   * (`order-edit-cart.ts` keys the cart line on `menuItemId ?? ""`). Postgres
+   * refuses `''` for a uuid with 22P02 — see {@link toItemRow}.
+   */
+  menu_item_id: string | null;
   menu_item_name: string;
   quantity: number;
   price: number;
@@ -207,7 +215,13 @@ function toItemRow(item: ReviseOrderItem): OrderItemRow {
   const price = round2(item.price);
 
   return {
-    menu_item_id: item.menuItemId,
+    // Coerced, never passed through. `""` — what the edit screen produces for a
+    // line whose menu item was deleted — is not a uuid, and the revise path
+    // REPLACES an order's items, so this one refusal used to leave a live order
+    // with no line items at all. Null is what the column already holds for such
+    // a line, so writing it loses nothing; the submitted id is kept verbatim in
+    // the audit snapshot.
+    menu_item_id: toUuidOrNull(item.menuItemId),
     menu_item_name: item.menuItemName,
     quantity: item.quantity,
     price,

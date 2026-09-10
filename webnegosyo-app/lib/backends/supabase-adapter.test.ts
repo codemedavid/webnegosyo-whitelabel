@@ -58,6 +58,7 @@ function fakeClient(responses: Record<string, TableResponse[]>) {
       "limit",
       "insert",
       "update",
+      "delete",
       "maybeSingle",
       "single",
     ]) {
@@ -116,6 +117,17 @@ function orderRowFixture(overrides: Record<string, unknown> = {}) {
 }
 
 const TENANT = "tenant-1";
+
+/**
+ * Real uuids, because the adapter now refuses a non-uuid at every uuid-typed
+ * filter. `id=eq.undefined` and `id=eq.js71q9w...` are both 22P02 at Postgres —
+ * a raw database error where a cashier expected a saved tap — so ids that only
+ * look like ids no longer stand in for the real thing here.
+ */
+const ORDER_ID = "1f2e3d4c-5b6a-4798-8a0b-1c2d3e4f5061";
+const OTHER_ORDER_ID = "2a3b4c5d-6e7f-4081-9203-4a5b6c7d8e9f";
+const MISSING_ORDER_ID = "5d6e7f80-9112-43a4-b5c6-7d8e9f012345";
+const CONVEX_ORDER_ID = "js71q9w4ja9g3ryvap69b9xxms8e3fzs";
 
 describe("isPlatformRefSupported", () => {
   it("claims the order refs the screens send", () => {
@@ -185,7 +197,7 @@ describe("runPlatformQuery — the settlement ledger", () => {
 
     // Act
     const rows = (await runPlatformQuery(client, TENANT, "orders:getOrderPayments", {
-      orderId: "order-1",
+      orderId: ORDER_ID,
     })) as Array<Record<string, unknown>>;
 
     // Assert
@@ -205,11 +217,11 @@ describe("runPlatformQuery — the settlement ledger", () => {
     });
 
     // Act
-    await runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: "order-1" });
+    await runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: ORDER_ID });
 
     // Assert
     expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
-    expect(opsOf(calls, "eq")).toContainEqual(["order_id", "order-1"]);
+    expect(opsOf(calls, "eq")).toContainEqual(["order_id", ORDER_ID]);
   });
 
   it("bounds the ledger and the revision history so a phone never pulls an unbounded table", async () => {
@@ -220,8 +232,8 @@ describe("runPlatformQuery — the settlement ledger", () => {
     });
 
     // Act
-    await runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: "order-1" });
-    await runPlatformQuery(client, TENANT, "orders:getOrderRevisions", { orderId: "order-1" });
+    await runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: ORDER_ID });
+    await runPlatformQuery(client, TENANT, "orders:getOrderRevisions", { orderId: ORDER_ID });
 
     // Assert
     expect(opsOf(calls, "limit")).toEqual([[ORDER_LEDGER_LIMIT], [ORDER_REVISIONS_LIMIT]]);
@@ -237,7 +249,7 @@ describe("runPlatformQuery — the settlement ledger", () => {
 
     // Act + Assert
     await expect(
-      runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: "order-1" })
+      runPlatformQuery(client, TENANT, "orders:getOrderPayments", { orderId: ORDER_ID })
     ).rejects.toThrow("permission denied");
   });
 
@@ -267,7 +279,7 @@ describe("runPlatformQuery — the settlement ledger", () => {
 
     // Act
     const rows = (await runPlatformQuery(client, TENANT, "orders:getOrderRevisions", {
-      orderId: "order-1",
+      orderId: ORDER_ID,
     })) as Array<Record<string, unknown>>;
 
     // Assert
@@ -359,7 +371,7 @@ describe("runPlatformQuery — orders:getOrderById", () => {
 
     // Act
     const order = (await runPlatformQuery(client, TENANT, "orders:getOrderById", {
-      orderId: "order-1",
+      orderId: ORDER_ID,
     })) as { items: Array<{ menuItemName: string }> } | null;
 
     // Assert
@@ -372,7 +384,7 @@ describe("runPlatformQuery — orders:getOrderById", () => {
 
     // Act
     const order = await runPlatformQuery(client, TENANT, "orders:getOrderById", {
-      orderId: "someone-elses",
+      orderId: OTHER_ORDER_ID,
     });
 
     // Assert
@@ -524,7 +536,7 @@ describe("runPlatformMutation — prep time", () => {
     const { client, calls } = fakeClient({ orders: [{ data: [{ id: "order-1" }], error: null }] });
 
     await runPlatformMutation(client, TENANT, "orders:setPrepTime", {
-      orderId: "order-1",
+      orderId: ORDER_ID,
       prepMinutes: 15,
       promisedReadyAt: "2026-07-27T02:15:00.000Z",
       status: "preparing",
@@ -537,7 +549,7 @@ describe("runPlatformMutation — prep time", () => {
         status: "preparing",
       },
     ]);
-    expect(opsOf(calls, "eq")).toContainEqual(["id", "order-1"]);
+    expect(opsOf(calls, "eq")).toContainEqual(["id", ORDER_ID]);
     expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
   });
 
@@ -552,7 +564,7 @@ describe("runPlatformMutation — prep time", () => {
         TENANT,
         "orders:setPrepTime",
         {
-          orderId: "order-1",
+          orderId: ORDER_ID,
           prepMinutes: 15,
           promisedReadyAt: "2026-07-27T02:15:00.000Z",
           status: "preparing",
@@ -572,13 +584,13 @@ describe("runPlatformMutation — status updates", () => {
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
-      orderId: "order-1",
+      orderId: ORDER_ID,
       status: "preparing",
     });
 
     // Assert
     expect(opsOf(calls, "update")[0]).toEqual([{ status: "preparing" }]);
-    expect(opsOf(calls, "eq")).toContainEqual(["id", "order-1"]);
+    expect(opsOf(calls, "eq")).toContainEqual(["id", ORDER_ID]);
     expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
   });
 
@@ -588,7 +600,7 @@ describe("runPlatformMutation — status updates", () => {
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updatePaymentStatus", {
-      orderId: "order-1",
+      orderId: ORDER_ID,
       paymentStatus: "paid",
     });
 
@@ -773,7 +785,7 @@ describe("branch-scoped reads", () => {
       client,
       TENANT,
       "orders:getOrderById",
-      { orderId: "order-9" },
+      { orderId: ORDER_ID },
       BRANCH
     );
 
@@ -849,7 +861,7 @@ describe("branch-scoped writes", () => {
       client,
       TENANT,
       "orders:updateOrderStatus",
-      { orderId: "order-9", status: "ready" },
+      { orderId: ORDER_ID, status: "ready" },
       BRANCH
     );
 
@@ -866,7 +878,7 @@ describe("branch-scoped writes", () => {
       client,
       TENANT,
       "orders:updatePaymentStatus",
-      { orderId: "order-9", paymentStatus: "paid" },
+      { orderId: ORDER_ID, paymentStatus: "paid" },
       BRANCH
     );
 
@@ -885,7 +897,7 @@ describe("branch-scoped writes", () => {
         client,
         TENANT,
         "orders:reviseOrder",
-        { orderId: "order-9", items: [], total: 0 },
+        { orderId: ORDER_ID, items: [], total: 0 },
         BRANCH
       )
     ).rejects.toThrow();
@@ -899,7 +911,7 @@ describe("branch-scoped writes", () => {
 
     // Act
     await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
-      orderId: "order-9",
+      orderId: ORDER_ID,
       status: "ready",
     });
 
@@ -953,7 +965,7 @@ describe("runPlatformMutation — silent no-op writes", () => {
 
     await expect(
       runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
-        orderId: "order-gone",
+        orderId: MISSING_ORDER_ID,
         status: "preparing",
       })
     ).rejects.toThrow(/no longer|not found|matched no/i);
@@ -964,7 +976,7 @@ describe("runPlatformMutation — silent no-op writes", () => {
 
     await expect(
       runPlatformMutation(client, TENANT, "orders:updatePaymentStatus", {
-        orderId: "order-gone",
+        orderId: MISSING_ORDER_ID,
         paymentStatus: "paid",
       })
     ).rejects.toThrow(/no longer|not found|matched no/i);
@@ -1009,5 +1021,317 @@ describe("runPlatformAction", () => {
     await expect(
       runPlatformAction(client, TENANT, "lalamove:bookLalamove", {})
     ).rejects.toThrow(/not supported/);
+  });
+});
+
+/**
+ * Every `.eq()` against a uuid column is a place a non-uuid becomes a hard 400.
+ *
+ * supabase-js serialises whatever it is handed into the query string, so
+ * `undefined` becomes the literal `id=eq.undefined` and a Convex document id
+ * goes through as-is. Postgres answers both with `invalid input syntax for type
+ * uuid`, which `unwrap` re-throws verbatim — the cashier reads a database error
+ * message. `String(args.orderId)` was worse still: it actively defeated the
+ * nullish check that would have made the ledger reads safe.
+ */
+describe("uuid-typed filters", () => {
+  it("reads an absent order id as an EMPTY ledger, not an unreadable one", async () => {
+    // Arrange: a MISSING ledger and a FAILED read must stay distinguishable —
+    // one of them tells the cashier to collect a bill that was already paid.
+    const { client, calls } = fakeClient({});
+
+    // Act
+    const rows = await runPlatformQuery(client, TENANT, "orders:getOrderPayments", {});
+
+    // Assert: refused before the round-trip, so nothing reaches the database.
+    expect(rows).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("reads a Convex-style order id as an empty revision history", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({});
+
+    // Act
+    const rows = await runPlatformQuery(client, TENANT, "orders:getOrderRevisions", {
+      orderId: CONVEX_ORDER_ID,
+    });
+
+    // Assert
+    expect(rows).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("returns null from a single-order fetch rather than a raw 22P02", async () => {
+    // Arrange: a stale push notification can carry an id from another backend.
+    const { client, calls } = fakeClient({});
+
+    // Act
+    const order = await runPlatformQuery(client, TENANT, "orders:getOrderById", {
+      orderId: CONVEX_ORDER_ID,
+    });
+
+    // Assert
+    expect(order).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses a status patch with a missing order id, before writing", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({});
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:updateOrderStatus", { status: "ready" })
+    ).rejects.toThrow(/order/i);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses a prep-time patch whose order id is not a uuid", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({});
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:setPrepTime", {
+        orderId: CONVEX_ORDER_ID,
+        prepMinutes: 15,
+        promisedReadyAt: "2026-07-27T02:15:00.000Z",
+        status: "preparing",
+      })
+    ).rejects.toThrow(/order/i);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to revise an order whose id is not a uuid, before touching anything", async () => {
+    // Arrange: the revise path is destructive, so an id it cannot filter on
+    // must stop it at the door rather than part-way through.
+    const { client, calls } = fakeClient({});
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:reviseOrder", {
+        orderId: CONVEX_ORDER_ID,
+        expectedRevisionNumber: 0,
+        items: [],
+      })
+    ).rejects.toThrow(/order/i);
+    expect(calls).toEqual([]);
+  });
+});
+
+/**
+ * Replacing an order's items is four PostgREST requests with no transaction
+ * around them, and one of them is a DELETE. The original ordering deleted the
+ * old lines first, so any refusal on the insert that followed left a LIVE order
+ * with zero line items, a stale total, and a revision row claiming the edit had
+ * landed. That is not a failed edit; it is a destroyed one.
+ *
+ * The irreversible step now goes LAST: the replacements are inserted first, and
+ * only then are the rows they replace deleted, by id. The worst partial failure
+ * is an order showing both sets of lines — visible, and repairable by editing
+ * again — instead of an order showing none.
+ */
+describe("runPlatformMutation — orders:reviseOrder write ordering", () => {
+  const MENU_ITEM_ID = "9f0c1a2b-3d4e-4f50-8a91-b2c3d4e5f607";
+  const OLD_ITEM_ID = "6e7f8091-a2b3-44c5-9607-8d9e0f1a2b3c";
+
+  const reviseArgs = {
+    orderId: ORDER_ID,
+    expectedRevisionNumber: 1,
+    items: [
+      {
+        menuItemId: MENU_ITEM_ID,
+        menuItemName: "Latte",
+        quantity: 2,
+        price: 120,
+        subtotal: 240,
+      },
+    ],
+  };
+
+  function existingItem() {
+    return {
+      id: OLD_ITEM_ID,
+      order_id: ORDER_ID,
+      menu_item_id: MENU_ITEM_ID,
+      menu_item_name: "Latte",
+      quantity: 1,
+      price: 120,
+      subtotal: 120,
+      variation: null,
+      variation_selections: null,
+      addons: null,
+      special_instructions: null,
+      is_upsell_item: false,
+      is_bundle_item: false,
+      bundle_id: null,
+      bundle_name: null,
+      slot_name: null,
+    };
+  }
+
+  /**
+   * The revise path talks to three tables in a fixed order; each queue is
+   * consumed in call order, so an override replaces one specific round-trip.
+   */
+  function reviseClient(overrides: {
+    itemsInsert?: TableResponse;
+    itemsDelete?: TableResponse;
+    orderPatch?: TableResponse;
+  } = {}) {
+    return fakeClient({
+      orders: [
+        { data: { total: 120, revision_number: 1, status: "confirmed" }, error: null },
+        overrides.orderPatch ?? { data: [{ id: ORDER_ID }], error: null },
+      ],
+      order_items: [
+        { data: [existingItem()], error: null },
+        overrides.itemsInsert ?? { data: null, error: null },
+        overrides.itemsDelete ?? { data: [{ id: OLD_ITEM_ID }], error: null },
+      ],
+      order_revisions: [{ data: null, error: null }],
+    });
+  }
+
+  /** Each round-trip as `table:write`, in the order the adapter made them. */
+  function writeSequence(calls: RecordedCall[]): string[] {
+    return calls.map((call) => {
+      const write = call.ops.find((op) =>
+        ["insert", "update", "delete"].includes(op.method)
+      );
+      return `${call.table}:${write ? write.method : "select"}`;
+    });
+  }
+
+  it("inserts the replacement lines before deleting the ones they replace", async () => {
+    // Arrange
+    const { client, calls } = reviseClient();
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:reviseOrder", reviseArgs);
+
+    // Assert
+    expect(writeSequence(calls)).toEqual([
+      "orders:select",
+      "order_items:select",
+      "order_revisions:insert",
+      "order_items:insert",
+      "order_items:delete",
+      "orders:update",
+    ]);
+  });
+
+  it("deletes the previous lines by their own ids, never by order_id", async () => {
+    // Arrange: deleting by order_id at this point would take the replacements
+    // with it — they are already in the table under the same order.
+    const { client, calls } = reviseClient();
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:reviseOrder", reviseArgs);
+
+    // Assert
+    const deleteCall = calls.find((call) => call.ops.some((op) => op.method === "delete"));
+    expect(opsOf(deleteCall ? [deleteCall] : [], "in")).toEqual([["id", [OLD_ITEM_ID]]]);
+    expect(opsOf(deleteCall ? [deleteCall] : [], "eq")).toEqual([]);
+  });
+
+  it("leaves the order's lines intact when the replacement insert is refused", async () => {
+    // Arrange: the 22P02/23503 case. Nothing may be deleted.
+    const { client, calls } = reviseClient({
+      itemsInsert: { data: null, error: { message: "insert or update violates foreign key" } },
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:reviseOrder", reviseArgs)
+    ).rejects.toThrow(/foreign key/);
+    expect(writeSequence(calls)).not.toContain("order_items:delete");
+  });
+
+  it("refuses loudly when the delete of the previous lines matched no row", async () => {
+    // Arrange: a DELETE refused by RLS affects ZERO rows with NO error, so the
+    // only evidence is what comes back. Silence here would leave the order
+    // showing every line twice while the cashier is told the edit saved.
+    const { client } = reviseClient({ itemsDelete: { data: [], error: null } });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:reviseOrder", reviseArgs)
+    ).rejects.toThrow(/twice|duplicat/i);
+  });
+
+  it("refuses loudly when the order patch matched no row", async () => {
+    // Arrange: the same silent class on the UPDATE. Resolving here would report
+    // a saved edit over an order still carrying its old total.
+    const { client } = reviseClient({ orderPatch: { data: [], error: null } });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:reviseOrder", reviseArgs)
+    ).rejects.toThrow(/total|no longer/i);
+  });
+
+  it("returns the order id when every step lands", async () => {
+    // Arrange
+    const { client } = reviseClient();
+
+    // Act
+    const result = await runPlatformMutation(client, TENANT, "orders:reviseOrder", reviseArgs);
+
+    // Assert
+    expect(result).toBe(ORDER_ID);
+  });
+});
+
+/**
+ * `createOrder` cannot be reordered: `order_items.order_id` references the
+ * order, so the irreversible step is forced to go first. What it CAN do is stop
+ * describing the failure as a generic constraint error — a committed, printable
+ * sale with no line items needs to be named as such.
+ */
+describe("runPlatformMutation — orders:createOrder partial failure", () => {
+  const args = {
+    customerName: "Ana",
+    customerContact: "0917",
+    total: 240,
+    itemCount: 2,
+    source: "pos" as const,
+    items: [
+      {
+        menuItemId: "9f0c1a2b-3d4e-4f50-8a91-b2c3d4e5f607",
+        menuItemName: "Latte",
+        quantity: 2,
+        price: 120,
+        subtotal: 240,
+      },
+    ],
+  };
+
+  it("names the committed order when its line items could not be written", async () => {
+    // Arrange
+    const { client } = fakeClient({
+      orders: [{ data: { id: ORDER_ID }, error: null }],
+      order_items: [{ data: null, error: { message: "constraint violation" } }],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:createOrder", args)
+    ).rejects.toThrow(/line items/i);
+  });
+
+  it("carries the underlying refusal and the order id into the message", async () => {
+    // Arrange: the cashier's till now holds a sale the kitchen cannot see. The
+    // id is the only handle anyone has for repairing it.
+    const { client } = fakeClient({
+      orders: [{ data: { id: ORDER_ID }, error: null }],
+      order_items: [{ data: null, error: { message: "constraint violation" } }],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:createOrder", args)
+    ).rejects.toThrow(ORDER_ID);
   });
 });

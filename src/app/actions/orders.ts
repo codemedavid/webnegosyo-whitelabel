@@ -226,13 +226,21 @@ export async function createOrderAction(
    */
   clientOrderId?: string
 ) {
+  // Declared OUTSIDE the try so the catch below can reach them. Presell stock
+  // is claimed mid-flight, and a throw after that point used to walk past every
+  // release: the customer was told the order was lost while their allocation
+  // stayed consumed for good. Set once the claim exists, and once an order row
+  // exists to own it.
+  let releasePresellClaim: (() => Promise<void>) | null = null
+  let orderPersisted = false
+
   try {
     // Basic input sanity checks before hitting the database
     if (!tenantId || typeof tenantId !== 'string') {
-      return { success: false, error: 'Invalid tenant ID' }
+      return { success: false, refused: true, error: 'Invalid tenant ID' }
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return { success: false, error: 'Order must contain at least one item' }
+      return { success: false, refused: true, error: 'Order must contain at least one item' }
     }
 
     // Resolve where this tenant's orders live (Convex / their own Supabase /
@@ -247,7 +255,7 @@ export async function createOrderAction(
       .single()
 
     if (!tenantConfigData) {
-      return { success: false, error: 'Restaurant not found or is currently inactive' }
+      return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
     }
 
     // Credentials live in tenant_secrets, never on the anon-readable tenants
@@ -284,7 +292,7 @@ export async function createOrderAction(
       // as Grab) is refused outright — the storefront never offers it, so
       // reaching here means a stale tab or a direct call.
       if (minRow && !isOrderTypeOrderableOnWeb(minOrderType)) {
-        return { success: false, error: WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE }
+        return { success: false, refused: true, error: WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE }
       }
 
       const itemsSubtotal = items.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0)
@@ -293,6 +301,7 @@ export async function createOrderAction(
       if (!minimumStatus.meets) {
         return {
           success: false,
+          refused: true,
           error:
             formatOrderMinimumMessage(minimumStatus, minOrderType?.name) ??
             'This order is below the minimum for checkout',
@@ -337,6 +346,7 @@ export async function createOrderAction(
           const names = blocked.map((line) => line.menu_item_name).join(', ')
           return {
             success: false,
+            refused: true,
             error: `Sorry, ${names} just went out of stock. Please remove ${blocked.length === 1 ? 'it' : 'them'} from your cart and try again.`,
           }
         }
@@ -448,7 +458,7 @@ export async function createOrderAction(
         resolvedOutlet?.id ?? null,
       )
       if (shortfallMessage) {
-        return { success: false, error: shortfallMessage }
+        return { success: false, refused: true, error: shortfallMessage }
       }
     }
 
@@ -463,7 +473,7 @@ export async function createOrderAction(
       const claimId = crypto.randomUUID()
       const outcome = await claimPresellForOrder(supabaseAdmin, tenantId, claimId, items)
       if (!outcome.ok) {
-        return { success: false, error: outcome.message }
+        return { success: false, refused: true, error: outcome.message }
       }
       if (outcome.lines.length > 0) {
         const presellDate = findCartPresellDate(items) as string
@@ -471,11 +481,53 @@ export async function createOrderAction(
         effectiveCustomerData = withPresellCustomerData(effectiveCustomerData, presellClaim)
       }
     }
-    const refuse = async (error: string): Promise<{ success: false; error: string }> => {
-      if (presellClaim) {
+    /** Release is idempotent: the paths that already gave the stock back must not do it twice. */
+    let claimReleased = false
+
+    // Hand the reserved pre-order stock back before answering. Both helpers do
+    // it; they differ only in what the checkout is told afterwards.
+    //
+    // Never throws. A failed release is a stock leak worth shouting about, but
+    // it is not the failure the customer is waiting to hear — letting it
+    // propagate would replace a refusal they can act on ("outside our delivery
+    // area") with a generic lost-order message, and bury the real exception.
+    const releaseClaim = async () => {
+      if (!presellClaim || claimReleased) return
+      try {
         const { releasePresellForOrder } = await import('@/lib/presell/order-claim')
         await releasePresellForOrder(supabaseAdmin, tenantId, presellClaim.claimId, presellClaim.lines)
+        claimReleased = true
+      } catch (releaseError) {
+        console.error('[createOrderAction] Presell claim release failed — stock stays reserved', {
+          tenantId,
+          claimId: presellClaim.claimId,
+          message: releaseError instanceof Error ? releaseError.message : String(releaseError),
+        })
       }
+    }
+    releasePresellClaim = releaseClaim
+
+    /**
+     * The store saying no on purpose. `error` is written for a diner and names
+     * what to change, so the checkout shows it verbatim — and does NOT offer
+     * the Messenger message, which would deliver an order we just rejected.
+     */
+    const refuse = async (
+      error: string
+    ): Promise<{ success: false; refused: true; error: string }> => {
+      await releaseClaim()
+      return { success: false, refused: true as const, error }
+    }
+
+    /**
+     * The order genuinely going missing. `error` is diagnostic, not customer
+     * copy, so the checkout keeps its own generic wording and keeps offering
+     * the Messenger message — the merchant's last remaining copy of the order.
+     */
+    const abort = async (
+      error: string
+    ): Promise<{ success: false; error: string }> => {
+      await releaseClaim()
       return { success: false, error }
     }
 
@@ -510,7 +562,7 @@ export async function createOrderAction(
         const destLat = Number(cd.delivery_lat)
         const destLng = Number(cd.delivery_lng)
         if (!Number.isFinite(storeLat) || !Number.isFinite(storeLng)) {
-          return await refuse('Delivery is unavailable: the store location has not been configured.')
+          return await abort('Delivery is unavailable: the store location has not been configured.')
         }
         if (!Number.isFinite(destLat) || !Number.isFinite(destLng)) {
           return await refuse('Please select your delivery address from the suggestions so we can calculate the delivery fee.')
@@ -595,7 +647,7 @@ export async function createOrderAction(
       .in('id', menuItemIds)
 
     if (priceCheckError) {
-      return await refuse('Failed to verify item prices')
+      return await abort('Failed to verify item prices')
     }
 
     const storeItems = new Map(
@@ -617,7 +669,7 @@ export async function createOrderAction(
       // sells at the store-wide price", which on a failed query would charge one
       // branch's customers another branch's prices.
       if (overrideError) {
-        return await refuse('Failed to verify branch prices')
+        return await abort('Failed to verify branch prices')
       }
       branchOverrides = buildOutletMenuIndex(
         (overrideRows ?? []) as unknown as OutletMenuOverrideRow[]
@@ -761,6 +813,8 @@ export async function createOrderAction(
         paymentProof,
         discounts: pricing.application.discountLines,
       })
+      // The order row exists and carries the claim; the stock is spent for real.
+      orderPersisted = true
 
       await burnFor(result.order.id)
 
@@ -816,6 +870,8 @@ export async function createOrderAction(
         validatedScheduledISO,
         pricing.application.discountLines
       )
+      // The order row exists and carries the claim; the stock is spent for real.
+      orderPersisted = true
       await burnFor(result.order.id)
       await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
       await pushLoyverseOnCreate(tenantId, null, items)
@@ -854,10 +910,18 @@ export async function createOrderAction(
       // The first attempt already burned vouchers, depleted stock, and pushed
       // notifications for this exact order — running them again is the
       // double-spend the dedupe exists to prevent.
+      //
+      // Its presell claim is the one the saved order carries, so the claim THIS
+      // retry just took reserved the allocation a second time for an order that
+      // already exists. Hand that duplicate back or the shelf shrinks on every
+      // double tap.
+      await releaseClaim()
       let dedupedTrackingToken: string | undefined
       try { dedupedTrackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
       return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: dedupedTrackingToken }
     }
+    // The order row exists and carries the claim; the stock is spent for real.
+    orderPersisted = true
     await burnFor(result.order.id)
     // Return both order and token for secure public API access
     await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
@@ -867,8 +931,39 @@ export async function createOrderAction(
     try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
     return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
   } catch (error) {
-    console.error('[createOrderAction] Order creation failed:', error)
-    return { success: false, error: 'Failed to create order' }
+    // Presell stock reserved for an order that never got written is stock that
+    // silently evaporates: nobody holds it, and no cancel can ever give it
+    // back. Handed over first, and only when no order row claimed it — after a
+    // successful write the allocation belongs to that order.
+    //
+    // `releaseClaim` swallows nothing but never throws either, so the real
+    // exception below stays the one the customer and the log hear about.
+    if (!orderPersisted && releasePresellClaim) {
+      await releasePresellClaim()
+    }
+
+    // A throw here means the customer has already been shown "Order Placed!"
+    // and had their cart cleared for an order that does not exist. The message
+    // is the only record of why, so log it with enough context to find the
+    // tenant and the attempt — a bare `error` object stringifies to
+    // "[object Object]" in the platform log and tells an operator nothing.
+    //
+    // Postgres errors additionally carry a `code`; RLS refusals arrive as
+    // 42501, which is what silently destroyed a live tenant's web orders.
+    const detail = error as { message?: string; code?: string; details?: string } | null
+    console.error('[createOrderAction] ORDER LOST — creation threw', {
+      tenantId,
+      orderTypeId: orderTypeId ?? null,
+      clientOrderId: typeof clientOrderId === 'string' ? clientOrderId : null,
+      itemCount: Array.isArray(items) ? items.length : 0,
+      code: detail?.code ?? null,
+      message: detail?.message ?? String(error),
+      details: detail?.details ?? null,
+    })
+    return {
+      success: false,
+      error: 'We could not save your order. Please try again or contact the store.',
+    }
   }
 }
 

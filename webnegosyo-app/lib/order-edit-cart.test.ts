@@ -477,3 +477,47 @@ describe("legacy variation surfacing", () => {
     expect(lines[0].selections[0].priceModifier).toBe(20);
   });
 });
+
+/**
+ * The line whose product no longer exists.
+ *
+ * `order_items.menu_item_id` is `ON DELETE SET NULL`, so deleting a product
+ * leaves every historical line pointing at nothing — `OrderItemDto.menuItemId`
+ * is null for exactly those. Hydration turns that into `""` to key the cart
+ * line, and the empty string used to be written straight back into the uuid
+ * column, where Postgres refuses it (22P02). These pin that such an order still
+ * loads, still prices, and still serialises: the blanking is handled at the
+ * database boundary (`buildRevisionRows`), not by refusing the edit.
+ */
+describe("a line whose menu item was deleted", () => {
+  it("still hydrates, priced from the order rather than the menu", () => {
+    // Arrange
+    const items = [
+      orderItem({ menuItemId: null, menuItemName: "Discontinued Latte", quantity: 2, subtotal: 250 }),
+    ];
+
+    // Act
+    const { lines, unresolved } = hydratePosCart(items, CATALOG);
+
+    // Assert
+    expect(lines).toHaveLength(1);
+    expect(lines[0].unitPrice).toBe(125);
+    expect(unresolved).toContainEqual({ menuItemName: "Discontinued Latte" });
+  });
+
+  it("serialises back out with a blank id rather than dropping the line", () => {
+    // Arrange
+    const { lines } = hydratePosCart(
+      [orderItem({ menuItemId: null, menuItemName: "Discontinued Latte", quantity: 2, subtotal: 250 })],
+      CATALOG,
+    );
+
+    // Act
+    const items = posCartToOrderItems(lines, CATALOG);
+
+    // Assert
+    expect(items).toHaveLength(1);
+    expect(items[0].menuItemName).toBe("Discontinued Latte");
+    expect(items[0].menuItemId).toBe("");
+  });
+});

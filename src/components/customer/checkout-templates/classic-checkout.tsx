@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
-import { SmsOptInCheckbox, MinimumOrderNotice } from './checkout-primitives'
+import { SmsOptInCheckbox, MinimumOrderNotice, OrderSummaryLines } from './checkout-primitives'
 import { VoucherField } from './voucher-field'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
@@ -401,128 +401,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}>Order Summary</h2>
             <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>Review your order before checkout</p>
 
-            <div className="space-y-4">
-              {items.map((item, index) => (
-                <div key={item.id}>
-                  {index > 0 && <Separator className="my-4" />}
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <div className="flex-1 mr-4">
-                        <span className="font-medium">{item.menu_item.name}</span>
-
-                        {/* Legacy single variation */}
-                        {item.selected_variation && (
-                          <span className="text-sm text-muted-foreground">
-                            {' '}
-                            ({item.selected_variation.name})
-                          </span>
-                        )}
-
-                        {/* New grouped variations */}
-                        {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
-                          <span className="text-sm text-muted-foreground">
-                            {' '}
-                            ({Object.values(item.selected_variations).map(opt => opt.name).join(', ')})
-                          </span>
-                        )}
-
-                        <span className="text-sm text-muted-foreground"> x{item.quantity}</span>
-                      </div>
-                      <span className="font-semibold flex-shrink-0">{formatPrice(item.subtotal)}</span>
-                    </div>
-
-                    {item.selected_addons.length > 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        Add-ons: {item.selected_addons.map((a) => a.name).join(', ')}
-                      </p>
-                    )}
-
-                    {item.special_instructions && (
-                      <p className="text-sm italic text-muted-foreground">
-                        Note: {item.special_instructions}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              <Separator className="my-4" />
-
-              {/* Delivery Fee */}
-              {(deliveryFee !== null || isFetchingDeliveryFee) && (
-                <>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600" style={{ color: palette.mutedText }}>
-                      Delivery Fee
-                    </span>
-                    <span className="font-semibold" style={{ color: palette.text }}>
-                      {isFetchingDeliveryFee ? (
-                        <span className="text-orange-500 animate-pulse" style={{ color: accentColor }}>Calculating...</span>
-                      ) : (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address) ? (
-                        formatPrice(deliveryFee)
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </span>
-                  </div>
-                  <Separator className="my-2" />
-                </>
-              )}
-
-              {/* Service Charge */}
-              {serviceChargeAmount > 0 && (
-                <>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600" style={{ color: palette.mutedText }}>Service Charge</span>
-                    <span className="font-semibold" style={{ color: palette.text }}>{formatPrice(serviceChargeAmount)}</span>
-                  </div>
-                  <Separator className="my-2" />
-                </>
-              )}
-
-              {/*
-                Voucher entry. Classic keeps its own summary markup rather than
-                delegating to `OrderSummaryLines`, because it must stay
-                pixel-identical to the pre-template checkout — so the shared
-                field is placed into that markup instead of the summary being
-                swapped wholesale.
-
-                It sits directly above the total: `grandTotal` is already net of
-                any accepted code, so the discount row and the figure it moved
-                read together.
-              */}
-              <VoucherField
-                codes={voucherCodes}
-                preview={voucherPreview}
-                isChecking={isCheckingVoucher}
-                onApply={applyVoucherCode}
-                onRemove={removeVoucherCode}
-                formatPrice={formatPrice}
-              />
-
-              {(voucherPreview?.accepted.length ?? 0) > 0 && (
-                <>
-                  <Separator className="my-2" />
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600" style={{ color: palette.mutedText }}>Discount</span>
-                    <span className="font-semibold text-green-700">
-                      −{formatPrice(voucherPreview?.discountTotal ?? 0)}
-                    </span>
-                  </div>
-                </>
-              )}
-
-              <div className="flex justify-between text-xl font-bold pt-4 border-t">
-                <span style={{ color: palette.text }}>Total</span>
-                <span className="text-orange-600" style={{ color: accentColor }}>
-                  {isFetchingDeliveryFee ? (
-                    <span className="animate-pulse">Calculating...</span>
-                  ) : (
-                    formatPrice(grandTotal)
-                  )}
-                </span>
-              </div>
-            </div>
+            <OrderSummaryLines checkout={checkout} variant="classic" />
           </div>
 
           {/* Payment Method Selection */}

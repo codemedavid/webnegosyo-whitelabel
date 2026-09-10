@@ -456,6 +456,7 @@ export interface PairSuggestion {
 export async function generateSmartPairSuggestions(
   tenantId: string
 ): Promise<PairSuggestion[]> {
+  await verifyTenantPermission(tenantId, 'analytics')
   const supabase = createAdminClient()
 
   const { data: items } = await supabase
@@ -537,6 +538,7 @@ export async function acceptPairSuggestion(
   targetItemId: string,
   strategy: string
 ): Promise<void> {
+  await verifyTenantPermission(tenantId, 'analytics')
   const supabase = createAdminClient()
   await supabase.from('upsell_pairs').insert({
     tenant_id: tenantId,
@@ -553,6 +555,7 @@ export async function bulkAcceptPairSuggestions(
   tenantId: string,
   suggestions: Array<{ sourceItemId: string; targetItemId: string; strategy: string }>
 ): Promise<void> {
+  await verifyTenantPermission(tenantId, 'analytics')
   const supabase = createAdminClient()
   const rows = suggestions.map(s => ({
     tenant_id: tenantId,

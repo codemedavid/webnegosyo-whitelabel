@@ -10,6 +10,7 @@ import { memo } from 'react'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { isMenuItemOrderable } from '@/lib/menu-item-availability'
 
 // Minimal inline skeleton used as the loading fallback for all card templates.
 // Keeps the grid stable while the correct template chunk loads.
@@ -120,11 +121,17 @@ export function getCardTemplateComponent(template: CardTemplate = 'classic') {
  * Unified Card Template Renderer.
  * Automatically selects the correct template based on the template prop.
  * Only the selected template's JS chunk is downloaded.
+ *
+ * Orderability is resolved here, once, and handed to whichever design renders:
+ * `isMenuItemOrderable` is the single home for that rule, and thirteen copies
+ * of an `is_available` field read is exactly how a template drifts out of step
+ * with it — reading an unset flag as out of stock, and missing every refusal
+ * the helper makes for any other reason.
  */
 export const CardTemplateRenderer = memo(function CardTemplateRenderer({
   template = 'classic',
   ...props
 }: CardTemplateProps & { template?: CardTemplate }) {
   const CardComponent = getCardTemplateComponent(template)
-  return <CardComponent {...props} />
+  return <CardComponent {...props} isOrderable={isMenuItemOrderable(props.item)} />
 })

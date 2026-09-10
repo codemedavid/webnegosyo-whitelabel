@@ -1,5 +1,13 @@
-import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
+import { v, type ObjectType } from "convex/values";
+import {
+  mutation,
+  query,
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
+import { requireAccess } from "./auth";
 import { internal } from "./_generated/api";
 import { localDayStartMs } from "./time";
 import {
@@ -160,6 +168,7 @@ export const updateOrderStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     await ctx.db.patch(args.orderId, { status: args.status });
     return args.orderId;
   },
@@ -184,6 +193,7 @@ export const setPrepTime = mutation({
     status: v.union(v.literal("preparing"), v.literal("confirmed")),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     if (
       !Number.isInteger(args.prepMinutes) ||
       args.prepMinutes < 1 ||
@@ -213,13 +223,13 @@ export const setPrepTime = mutation({
  * here as well as on the web server because Convex is the transaction
  * boundary; two concurrent submissions cannot both land.
  */
-export const updateCustomerContact = mutation({
-  args: {
+const updateCustomerContactArgs = {
     orderId: v.id("orders"),
     contact: v.string(),
     name: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function updateCustomerContactHandler(ctx: MutationCtx, args: ObjectType<typeof updateCustomerContactArgs>) {
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Order not found");
 
@@ -239,8 +249,16 @@ export const updateCustomerContact = mutation({
       ...(args.name ? { customerName: args.name.trim().slice(0, 64) } : {}),
     });
     return args.orderId;
+}
+
+export const updateCustomerContact = mutation({
+  args: updateCustomerContactArgs,
+  handler: async (ctx, args) => {
+    return updateCustomerContactHandler(ctx, args);
   },
 });
+
+export const updateCustomerContactInternal = internalMutation({ args: updateCustomerContactArgs, handler: updateCustomerContactHandler });
 
 export const updatePaymentStatus = mutation({
   args: {
@@ -248,6 +266,7 @@ export const updatePaymentStatus = mutation({
     paymentStatus: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     await ctx.db.patch(args.orderId, { paymentStatus: args.paymentStatus });
   },
 });
@@ -295,6 +314,7 @@ export const reviseOrder = mutation({
     discount: v.optional(v.union(v.any(), v.null())),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("That order no longer exists.");
 
@@ -378,6 +398,7 @@ export const recordPayment = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     await ctx.db.insert("orderPayments", {
       ...args,
       amount: normalizePaymentAmount(args.amount),
@@ -397,17 +418,20 @@ export const recordPayment = mutation({
 /** Every settlement against an order, oldest first. */
 export const getOrderPayments = query({
   args: { orderId: v.id("orders") },
-  handler: async (ctx, args) =>
-    await ctx.db
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return await ctx.db
       .query("orderPayments")
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
-      .collect(),
+      .collect();
+  },
 });
 
 /** Edit history for an order, newest first. */
 export const getOrderRevisions = query({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const rows = await ctx.db
       .query("orderRevisions")
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
@@ -427,6 +451,7 @@ export const updateLalamoveDetails = mutation({
     lalamoveTrackingUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     const { orderId, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([, val]) => val !== undefined)
@@ -474,8 +499,7 @@ const QUERY_LIMIT = 10000;
  */
 const BRANCH_SCAN_LIMIT = 500;
 
-export const getOrders = query({
-  args: {
+const getOrdersArgs = {
     status: v.optional(
       v.union(
         v.literal("pending"),
@@ -490,8 +514,9 @@ export const getOrders = query({
     // Narrow to one branch. Optional so a store-wide account, and every caller
     // on an older app build, keeps today's behaviour exactly.
     outletId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function getOrdersHandler(ctx: QueryCtx, args: ObjectType<typeof getOrdersArgs>) {
     const limit = args.limit ?? 50;
 
     // Branch filtering cannot use `by_outlet` here: orders written before v15
@@ -512,12 +537,20 @@ export const getOrders = query({
     }
 
     return filterOrdersToOutlet(orders, args.outletId).slice(0, limit);
+}
+
+export const getOrders = query({
+  args: getOrdersArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getOrdersHandler(ctx, args);
   },
 });
 
-export const getOrderById = query({
-  args: { orderId: v.id("orders") },
-  handler: async (ctx, args) => {
+export const getOrdersInternal = internalQuery({ args: getOrdersArgs, handler: getOrdersHandler });
+
+const getOrderByIdArgs = { orderId: v.id("orders") };
+async function getOrderByIdHandler(ctx: QueryCtx, args: ObjectType<typeof getOrderByIdArgs>) {
     const order = await ctx.db.get(args.orderId);
     if (!order) return null;
 
@@ -527,16 +560,32 @@ export const getOrderById = query({
       .collect();
 
     return { ...order, items };
+}
+
+export const getOrderById = query({
+  args: getOrderByIdArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getOrderByIdHandler(ctx, args);
   },
 });
 
+export const getOrderByIdInternal = internalQuery({ args: getOrderByIdArgs, handler: getOrderByIdHandler });
+
 // Bulk-load all order items in one query. Used by the product-analytics
 // aggregator to avoid an N+1 (one getOrderById per order, per period).
+async function getAllOrderItemsHandler(ctx: QueryCtx) {
+    return await ctx.db.query("orderItems").take(QUERY_LIMIT);
+}
+
 export const getAllOrderItems = query({
   handler: async (ctx) => {
-    return await ctx.db.query("orderItems").take(QUERY_LIMIT);
+    await requireAccess(ctx, "read");
+    return getAllOrderItemsHandler(ctx);
   },
 });
+
+export const getAllOrderItemsInternal = internalQuery({ handler: getAllOrderItemsHandler });
 
 export const getOrderByClientId = query({
   args: { clientOrderId: v.string() },
@@ -564,6 +613,7 @@ export const getRealtimeQueue = query({
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const statuses = ["pending", "confirmed", "preparing", "ready"] as const;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: Record<string, any[]> = {};
@@ -586,8 +636,7 @@ export const getRealtimeQueue = query({
   },
 });
 
-export const getDashboardStats = query({
-  handler: async (ctx) => {
+async function getDashboardStatsHandler(ctx: QueryCtx) {
     // Start of the merchant's local (PH) day, not UTC midnight, so "today"
     // matches the calendar day the merchant is actually operating in.
     const todayStart = localDayStartMs(Date.now());
@@ -604,11 +653,18 @@ export const getDashboardStats = query({
     // in `summarizeOrderStats`, which is unit-tested — these two handlers
     // carried near-identical copies and neither had any coverage.
     return summarizeOrderStats(todayOrders);
+}
+
+export const getDashboardStats = query({
+  handler: async (ctx) => {
+    await requireAccess(ctx, "read");
+    return getDashboardStatsHandler(ctx);
   },
 });
 
-export const getDashboardStatsByPeriod = query({
-  args: {
+export const getDashboardStatsInternal = internalQuery({ handler: getDashboardStatsHandler });
+
+const getDashboardStatsByPeriodArgs = {
     startDate: v.number(),
     endDate: v.number(),
     /**
@@ -622,8 +678,9 @@ export const getDashboardStatsByPeriod = query({
      * understated by roughly the number of branches.
      */
     outletId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function getDashboardStatsByPeriodHandler(ctx: QueryCtx, args: ObjectType<typeof getDashboardStatsByPeriodArgs>) {
     // A branch's orders are scattered through the window, so taking only
     // QUERY_LIMIT rows and then filtering would silently drop the older half of
     // a busy day — the same reason getOrders widens its take.
@@ -641,5 +698,14 @@ export const getDashboardStatsByPeriod = query({
       .take(take);
 
     return summarizeOrderStats(scanned, args.outletId);
+}
+
+export const getDashboardStatsByPeriod = query({
+  args: getDashboardStatsByPeriodArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getDashboardStatsByPeriodHandler(ctx, args);
   },
 });
+
+export const getDashboardStatsByPeriodInternal = internalQuery({ args: getDashboardStatsByPeriodArgs, handler: getDashboardStatsByPeriodHandler });

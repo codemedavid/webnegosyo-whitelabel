@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { isE164Phone, normalizeLalamovePhone, resolveLalamoveRecipient } from "./lalamoveContact";
 import { action } from "./_generated/server";
-import { internal, api } from "./_generated/api";
+import { internal } from "./_generated/api";
+import { requireActionAccess } from "./auth";
 
 /**
  * Lalamove v3 REST integration (per-tenant Convex deployment).
@@ -208,7 +209,8 @@ export const bookLalamove = action({
      * no phone — the app tells the merchant so. */
     recipientPhoneSource?: "customer" | "store";
   }> => {
-    const order = await ctx.runQuery(api.orders.getOrderById, {
+    await requireActionAccess(ctx, "write");
+    const order = await ctx.runQuery(internal.orders.getOrderByIdInternal, {
       orderId: args.orderId,
     });
 
@@ -340,7 +342,8 @@ export const requoteLalamove = action({
     ctx,
     args
   ): Promise<{ success: boolean; error?: string; quotationId?: string; price?: string }> => {
-    const order = await ctx.runQuery(api.orders.getOrderById, {
+    await requireActionAccess(ctx, "write");
+    const order = await ctx.runQuery(internal.orders.getOrderByIdInternal, {
       orderId: args.orderId,
     });
     if (!order) {
@@ -415,7 +418,8 @@ export const requoteLalamove = action({
 export const cancelLalamove = action({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
-    const order = await ctx.runQuery(api.orders.getOrderById, {
+    await requireActionAccess(ctx, "write");
+    const order = await ctx.runQuery(internal.orders.getOrderByIdInternal, {
       orderId: args.orderId,
     });
     if (!order?.lalamoveOrderId) {
@@ -449,7 +453,8 @@ export const cancelLalamove = action({
 export const addLalamovePriorityFee = action({
   args: { orderId: v.id("orders"), amount: v.string() },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
-    const order = await ctx.runQuery(api.orders.getOrderById, {
+    await requireActionAccess(ctx, "write");
+    const order = await ctx.runQuery(internal.orders.getOrderByIdInternal, {
       orderId: args.orderId,
     });
     if (!order?.lalamoveOrderId) {
@@ -484,7 +489,8 @@ export const addLalamovePriorityFee = action({
 export const syncLalamoveStatus = action({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string; status?: string }> => {
-    const order = await ctx.runQuery(api.orders.getOrderById, {
+    await requireActionAccess(ctx, "write");
+    const order = await ctx.runQuery(internal.orders.getOrderByIdInternal, {
       orderId: args.orderId,
     });
     if (!order?.lalamoveOrderId) {

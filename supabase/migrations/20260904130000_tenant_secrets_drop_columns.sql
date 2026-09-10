@@ -12,8 +12,13 @@ insert into public.tenant_secrets (
   tenant_id, lalamove_api_key, lalamove_secret_key, messenger_page_access_token,
   convex_deploy_key, loyverse_access_token
 )
-select id, lalamove_api_key, lalamove_secret_key, messenger_page_access_token,
-       convex_deploy_key, loyverse_access_token
+-- nullif: an empty string in the old column is "unset", and must not win
+-- over a real secret already stored (coalesce alone would let it).
+-- Where both hold a value the OLD column wins — verified 2026-09-10 against
+-- the two stores that differed: the tenants row was the later edit in both.
+select id, nullif(lalamove_api_key, ''), nullif(lalamove_secret_key, ''),
+       nullif(messenger_page_access_token, ''), nullif(convex_deploy_key, ''),
+       nullif(loyverse_access_token, '')
 from public.tenants
 on conflict (tenant_id) do update set
   lalamove_api_key            = coalesce(excluded.lalamove_api_key, tenant_secrets.lalamove_api_key),

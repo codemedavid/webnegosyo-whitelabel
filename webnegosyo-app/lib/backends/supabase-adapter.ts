@@ -45,6 +45,7 @@ import {
   unwrap,
   type PlatformClient,
 } from "./platform-client";
+import { isUuid, toUuidOrNull } from "../uuid";
 import { isPlatformAnalyticsRef, runPlatformAnalyticsQuery } from "./supabase-analytics";
 import {
   isPlatformProductCostRef,
@@ -84,6 +85,23 @@ const DEFAULT_ORDER_LIMIT = 50;
 const QUEUE_LIMIT = 200;
 
 const OPEN_STATUSES = ["pending", "confirmed", "preparing", "ready"];
+
+/**
+ * The order id a write is allowed to name, or a refusal.
+ *
+ * `orders.id` is a uuid, and supabase-js serialises whatever it is handed into
+ * the query string: `undefined` becomes the literal `id=eq.undefined` and a
+ * Convex document id goes through as-is. Postgres answers both with 22P02,
+ * which `unwrap` re-throws verbatim — so the cashier read "invalid input syntax
+ * for type uuid" where a saved tap belonged. Refusing here keeps the failure
+ * in this app's own words, and keeps a destructive path from starting at all.
+ */
+function requireOrderUuid(value: unknown): string {
+  if (isUuid(value)) return value;
+  throw new Error(
+    "That order could not be opened — its id does not belong to this store's database."
+  );
+}
 
 /** Refs this adapter can serve. Anything else must fall through to Convex. */
 const SUPPORTED_QUERY_REFS = [
@@ -161,6 +179,11 @@ async function getOrderById(
   args: Record<string, unknown>,
   scope: BranchScope
 ) {
+  // An id this database cannot hold — a Convex-shaped one from a stale
+  // notification, or an argument a screen lost — matches no order. Saying so is
+  // both true and something the screen already renders; sending it on is 22P02.
+  if (!isUuid(args.orderId)) return null;
+
   // Scoped as well as fetched by id: without it a deep link — or a stale
   // notification — opens another branch's order in full, line items included.
   const row = await unwrap<(PlatformOrderRow & {
@@ -232,12 +255,20 @@ async function getOrderPayments(
   tenantId: string,
   args: Record<string, unknown>
 ) {
+  // `String(args.orderId)` used to sit here and it actively defeated the check
+  // that would have made this safe: undefined became the literal "undefined",
+  // sent to a uuid column, and the cashier got a raw 22P02 where a settlement
+  // history belonged. An id this database cannot hold has no rows — a MISSING
+  // ledger must read as an EMPTY one. A genuine read failure still throws below.
+  const orderId = toUuidOrNull(args.orderId);
+  if (!orderId) return [];
+
   const rows = await unwrap<PlatformOrderPaymentRow[] | null>(
     client
       .from("order_payments")
       .select("*")
       .eq("tenant_id", tenantId)
-      .eq("order_id", String(args.orderId))
+      .eq("order_id", orderId)
       .order("created_at", { ascending: true })
       .limit(ORDER_LEDGER_LIMIT)
   );
@@ -251,12 +282,16 @@ async function getOrderRevisions(
   tenantId: string,
   args: Record<string, unknown>
 ) {
+  // Same rule as the settlement ledger above: no history is empty, not broken.
+  const orderId = toUuidOrNull(args.orderId);
+  if (!orderId) return [];
+
   const rows = await unwrap<PlatformOrderRevisionRow[] | null>(
     client
       .from("order_revisions")
       .select("*")
       .eq("tenant_id", tenantId)
-      .eq("order_id", String(args.orderId))
+      .eq("order_id", orderId)
       .order("revision_number", { ascending: false })
       .limit(ORDER_REVISIONS_LIMIT)
   );
@@ -336,11 +371,31 @@ async function createOrder(
   if (!inserted) throw new Error("Order insert returned no row.");
 
   if (items.length > 0) {
-    await unwrap(
-      client
-        .from("order_items")
-        .insert(items.map((item) => ({ ...item, order_id: inserted.id })))
-    );
+    try {
+      await unwrap(
+        client
+          .from("order_items")
+          .insert(items.map((item) => ({ ...item, order_id: inserted.id })))
+      );
+    } catch (error) {
+      // NOT atomic, and it cannot be reordered: `order_items.order_id`
+      // references the order, so the irreversible write is forced to go first.
+      //
+      // A compensating delete would be worse than the disease — a network
+      // failure on the way BACK from a successful insert is indistinguishable
+      // from a refusal, and deleting on that guess destroys a complete sale. So
+      // the honest move is to name what is now sitting on the till.
+      //
+      // The class that used to land here is gone: `buildCreateOrderRows` now
+      // coerces a blank or Convex-shaped `menu_item_id` to null, so 22P02 is
+      // no longer reachable. What remains is a product deleted between building
+      // the rows and inserting them (23503) and other check constraints.
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Order ${inserted.id} was saved but its line items were not (${reason}). ` +
+          "The sale is on the order list with nothing on it — open it and add the items before serving."
+      );
+    }
   }
 
   return inserted.id;
@@ -359,13 +414,18 @@ async function patchOrder(
   patch: Record<string, unknown>,
   scope: BranchScope
 ) {
+  // Checked before the write, not after: `orders.id` is a uuid and every caller
+  // takes this straight off `params.orderId`, so an absent argument would have
+  // gone out as `id=eq.undefined` and come back as a raw 22P02.
+  const id = requireOrderUuid(orderId);
+
   // Read back what the write touched. An UPDATE that matches no row (RLS
   // refusal, out-of-branch order, deleted order) is a PostgREST success with
   // zero rows — resolving on it would show the cashier a tap that "worked"
   // while nothing was written.
   const rows = await unwrap<{ id: string }[] | null>(
     scopeToBranch(
-      client.from("orders").update(patch).eq("id", orderId).eq("tenant_id", tenantId),
+      client.from("orders").update(patch).eq("id", id).eq("tenant_id", tenantId),
       scope
     ).select("id")
   );
@@ -374,7 +434,7 @@ async function patchOrder(
       "That order no longer exists in your branch — it may have been moved or deleted."
     );
   }
-  return orderId;
+  return id;
 }
 
 /**
@@ -384,12 +444,21 @@ async function patchOrder(
  * are built from what is actually stored rather than from what the client
  * believed when it opened the edit screen.
  *
- * NOT atomic: PostgREST cannot span a transaction across these writes. The
- * order is ordered so the worst partial failure is recoverable — the revision
- * row (which carries the unique constraint that rejects a concurrent edit)
- * lands FIRST, so a crash after it leaves an audit trail of an edit that did
- * not fully apply, rather than a silently rewritten bill with no record.
- * Moving this into a Postgres RPC is the known follow-up.
+ * NOT atomic: PostgREST cannot span a transaction across these four writes, and
+ * no claim is made that it does. What IS controlled is the order, so that no
+ * single refusal can empty a live order. Exactly what each failure leaves:
+ *
+ *   revision insert refused → nothing written at all
+ *   item insert refused     → the order keeps its ORIGINAL lines, untouched
+ *   item delete refused     → the order lists the old AND the new lines
+ *   order patch refused     → the new lines against the old total
+ *
+ * The first two are clean. The last two are wrong but VISIBLE, and repairable
+ * by editing again; both are reported rather than resolved over. The previous
+ * ordering deleted first, so any refusal on the insert that followed left a
+ * live order with zero line items, a stale total, and a revision row claiming
+ * the edit had landed — data loss, not a failed save. Moving the whole thing
+ * into a Postgres RPC is still the real fix.
  */
 async function reviseOrder(
   client: PlatformClient,
@@ -398,6 +467,9 @@ async function reviseOrder(
   scope: BranchScope
 ): Promise<string> {
   const reviseArgs = args as unknown as ReviseOrderArgs;
+  // Refused at the door: this path deletes rows, so an id it cannot even filter
+  // on must never get part-way through.
+  const orderId = requireOrderUuid(reviseArgs.orderId);
 
   // Scoped to the branch as well as the tenant, so an order at another branch
   // comes back absent and the revise stops here — before any item is deleted.
@@ -410,7 +482,7 @@ async function reviseOrder(
       client
         .from("orders")
         .select("total, revision_number, status")
-        .eq("id", reviseArgs.orderId)
+        .eq("id", orderId)
         .eq("tenant_id", tenantId),
       scope
     ).maybeSingle()
@@ -418,7 +490,7 @@ async function reviseOrder(
   if (!current) throw new Error("That order no longer exists.");
 
   const currentItems = await unwrap<PlatformOrderItemRow[]>(
-    client.from("order_items").select("*").eq("order_id", reviseArgs.orderId)
+    client.from("order_items").select("*").eq("order_id", orderId)
   );
 
   const { orderPatch, itemRows, revision } = buildRevisionRows(tenantId, reviseArgs, {
@@ -452,27 +524,49 @@ async function reviseOrder(
   // edit fails here on the unique constraint, before any item is touched.
   await unwrap(client.from("order_revisions").insert(revision));
 
-  await unwrap(
-    client.from("order_items").delete().eq("order_id", reviseArgs.orderId)
-  );
+  // The replacements go in BEFORE anything is removed. Every row was already
+  // built and validated by `buildRevisionRows` above, so a refusal here is a
+  // database-side one (a product deleted mid-edit, a check constraint) — and it
+  // now costs the order nothing.
   await unwrap(
     client
       .from("order_items")
-      .insert(itemRows.map((row) => ({ ...row, order_id: reviseArgs.orderId })))
+      .insert(itemRows.map((row) => ({ ...row, order_id: orderId })))
   );
 
-  await unwrap(
+  // By their OWN ids, never by order_id: the replacements are already sitting
+  // under this order, and an `order_id` delete would take them with it.
+  const previousItemIds = (currentItems ?? []).map((row) => row.id).filter(isUuid);
+
+  if (previousItemIds.length > 0) {
+    const deleted = await unwrap<{ id: string }[] | null>(
+      client.from("order_items").delete().in("id", previousItemIds).select("id")
+    );
+    // A DELETE refused by RLS affects ZERO rows with NO error — the same silent
+    // class the status patches guard against. Resolving on it would tell the
+    // cashier the edit saved while the kitchen chit lists every item twice.
+    if (!deleted || deleted.length !== previousItemIds.length) {
+      throw new Error(
+        "The new items were saved but the ones they replace could not be removed — " +
+          "this order now lists items twice. Check it before serving."
+      );
+    }
+  }
+
+  const patched = await unwrap<{ id: string }[] | null>(
     scopeToBranch(
-      client
-        .from("orders")
-        .update(orderPatch)
-        .eq("id", reviseArgs.orderId)
-        .eq("tenant_id", tenantId),
+      client.from("orders").update(orderPatch).eq("id", orderId).eq("tenant_id", tenantId),
       scope
-    )
+    ).select("id")
   );
+  if (!patched || patched.length === 0) {
+    throw new Error(
+      "The new items were saved but the order's total could not be updated — " +
+        "reopen the order and check what it now charges."
+    );
+  }
 
-  return reviseArgs.orderId;
+  return orderId;
 }
 
 /** Append one settlement row. `orders.amount_paid` follows by trigger. */

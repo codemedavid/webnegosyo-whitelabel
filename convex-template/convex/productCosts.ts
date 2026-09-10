@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery, type QueryCtx } from "./_generated/server";
+import { requireAccess } from "./auth";
 
 export const setCost = mutation({
   args: {
@@ -8,6 +9,7 @@ export const setCost = mutation({
     costNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     const existing = await ctx.db
       .query("productCosts")
       .withIndex("by_item", (q) => q.eq("menuItemId", args.menuItemId))
@@ -39,6 +41,7 @@ export const getCost = query({
     menuItemId: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     return await ctx.db
       .query("productCosts")
       .withIndex("by_item", (q) => q.eq("menuItemId", args.menuItemId))
@@ -46,8 +49,15 @@ export const getCost = query({
   },
 });
 
+async function getAllCostsHandler(ctx: QueryCtx) {
+    return await ctx.db.query("productCosts").collect();
+}
+
 export const getAllCosts = query({
   handler: async (ctx) => {
-    return await ctx.db.query("productCosts").collect();
+    await requireAccess(ctx, "read");
+    return getAllCostsHandler(ctx);
   },
 });
+
+export const getAllCostsInternal = internalQuery({ handler: getAllCostsHandler });

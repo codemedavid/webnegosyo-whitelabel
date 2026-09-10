@@ -1,4 +1,5 @@
 import type { CartItem, MenuItem, Variation, Addon, VariationOption, CartBundleItem } from '@/types/database'
+import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 
 /** Maximum quantity allowed for a single cart line item. */
 export const MAX_CART_ITEM_QUANTITY = 99
@@ -263,6 +264,21 @@ export interface FormFieldMeta {
 }
 
 /**
+ * The rest of the bill, beyond the item lines and the service charge.
+ *
+ * These used to be invisible to the Messenger ticket, which re-added the total
+ * from item subtotals alone: a delivery order paid with a voucher, or any cart
+ * holding a bundle, reached the merchant with a number that matched neither the
+ * checkout screen nor the saved order. Optional so the hundreds of existing
+ * call shapes keep producing byte-identical messages.
+ */
+export interface MessengerOrderExtras {
+  bundleItems?: readonly CartBundleItem[]
+  deliveryFee?: number | null
+  discounts?: readonly OrderDiscountLine[]
+}
+
+/**
  * Generate messenger message from cart
  */
 export function generateMessengerMessage(
@@ -273,7 +289,8 @@ export function generateMessengerMessage(
   paymentMethod?: { name: string; details?: string } | null,
   formFields?: FormFieldMeta[],
   serviceChargeAmount?: number,
-  scheduledForLabel?: string | null
+  scheduledForLabel?: string | null,
+  extras?: MessengerOrderExtras
 ): string {
   const lines = [
     `🍽️ New Order from ${restaurantName}`,
@@ -375,14 +392,36 @@ export function generateMessengerMessage(
     lines.push('')
   })
 
-  const total = calculateCartTotal(items)
+  const bundleItems = extras?.bundleItems ?? []
+  bundleItems.forEach((bundleItem, index) => {
+    lines.push(`${items.length + index + 1}. ${bundleItem.bundleName} (Bundle) x${bundleItem.quantity}`)
+    lines.push(`   Price: ${formatPrice(bundleItem.subtotal)}`)
+    lines.push('')
+  })
 
-  if (serviceChargeAmount && serviceChargeAmount > 0) {
-    lines.push(`📋 Service Charge: ${formatPrice(serviceChargeAmount)}`)
+  // One arithmetic for every surface — see lib/order-totals.
+  const totals = computeOrderTotals({
+    subtotal: calculateCartTotal(items) + bundleItems.reduce((sum, bundle) => sum + bundle.subtotal, 0),
+    deliveryFee: extras?.deliveryFee,
+    serviceCharge: serviceChargeAmount,
+    discounts: extras?.discounts,
+  })
+
+  if (totals.deliveryFee > 0) {
+    lines.push(`🚚 Delivery Fee: ${formatPrice(totals.deliveryFee)}`)
   }
 
-  const grandTotal = total + (serviceChargeAmount ?? 0)
-  lines.push(`💰 Total: ${formatPrice(grandTotal)}`)
+  if (totals.serviceCharge > 0) {
+    lines.push(`📋 Service Charge: ${formatPrice(totals.serviceCharge)}`)
+  }
+
+  if (totals.discountTotal > 0) {
+    (extras?.discounts ?? []).forEach(discount => {
+      lines.push(`🎟️ ${discount.label}: -${formatPrice(discount.amount)}`)
+    })
+  }
+
+  lines.push(`💰 Total: ${formatPrice(totals.grandTotal)}`)
   lines.push('')
 
   // Add payment method information

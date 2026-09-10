@@ -10,6 +10,7 @@ interface ElegantCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface ElegantCardProps {
  * Elegant Card Template
  * Sophisticated design with soft shadows and refined spacing
  */
-export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ElegantCardProps) {
+export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ElegantCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -103,7 +104,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
           </div>
         )}
 
-        {!item.is_available && (
+        {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center backdrop-blur-md bg-white/30">
             <div
               className="rounded-2xl px-4 py-2 text-sm font-semibold"
@@ -179,7 +180,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
               e.stopPropagation()
               onSelect(item)
             }}
-            disabled={!item.is_available}
+            disabled={!isOrderable}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'scale(1.1)'
               e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.25)'

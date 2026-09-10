@@ -6,20 +6,31 @@
  * `createOrderAction` carries a `client_order_id` that the server dedupes on,
  * which is what makes retrying safe here.
  *
- * Every failure is retried, including a deterministic refusal such as "out of
- * stock". Distinguishing the two from an error string is guesswork, and the
- * asymmetry is stark: a wrongly-retried refusal costs a bounded wait, while a
- * wrongly-abandoned transient failure costs the merchant a real order.
+ * Every failure is retried EXCEPT one the server explicitly marks `refused`.
+ * Guessing a refusal from an error string was never safe, so this used to
+ * retry everything and accept the wasted wait. The server now says which it
+ * is, and the two deserve opposite treatment: a deterministic "no" re-sent
+ * three times just recomputes the same answer while the customer waits out the
+ * whole backoff budget, whereas a transient failure abandoned after one try
+ * costs the merchant a real order.
+ *
+ * The discriminator fails closed. Anything short of `refused === true` — an
+ * older backend, a thrown error, a bare `{ success: false }` — keeps exactly
+ * the retry behaviour it has today.
  */
 
 export interface OrderSaveOutcome {
   success: boolean
+  /** True only when the store deliberately said no. See the header. */
+  refused?: boolean
   error?: string
 }
 
 export interface DurableSaveResult {
   ok: boolean
   attempts: number
+  /** Carried out so the caller can show the store's own sentence. */
+  refused?: boolean
   error?: string
 }
 
@@ -63,6 +74,16 @@ export async function saveOrderDurably(
       const outcome = await save(attempt)
       if (outcome?.success) return { ok: true, attempts: attempt }
       lastError = outcome?.error
+
+      // A refusal is the same answer however many times it is asked.
+      if (outcome?.refused === true) {
+        return {
+          ok: false,
+          attempts: attempt,
+          refused: true,
+          ...(lastError ? { error: lastError } : {}),
+        }
+      }
     } catch (error) {
       lastError = describe(error)
     }

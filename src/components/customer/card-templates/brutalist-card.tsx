@@ -10,6 +10,7 @@ interface BrutalistCardProps {
     item: MenuItem
     onSelect: (item: MenuItem) => void
     branding: BrandingColors
+    isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface BrutalistCardProps {
  * Brutalist Card Template
  * Raw, industrial design with thick borders, stark contrast, and geometric shapes
  */
-export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: BrutalistCardProps) {
+export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: BrutalistCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -87,7 +88,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                     </div>
                 )}
 
-                {!item.is_available && (
+                {!isOrderable && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                         <span
                             className="px-6 py-2 text-sm font-black uppercase tracking-widest"
@@ -146,7 +147,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                             e.stopPropagation()
                             onSelect(item)
                         }}
-                        disabled={!item.is_available}
+                        disabled={!isOrderable}
                     >
                         <span className="text-base md:text-xl font-black">+</span>
                     </button>

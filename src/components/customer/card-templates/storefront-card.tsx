@@ -10,6 +10,7 @@ interface StorefrontCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
 }
@@ -22,6 +23,7 @@ export const StorefrontCard = memo(function StorefrontCard({
   item,
   onSelect,
   branding,
+  isOrderable,
   menuEngineeringEnabled,
   hideCurrencySymbol,
 }: StorefrontCardProps) {
@@ -87,7 +89,7 @@ export const StorefrontCard = memo(function StorefrontCard({
             </div>
           )}
 
-          {!item.is_available && (
+          {!isOrderable && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
               <span className="rounded-full bg-white/95 px-3 py-1.5 text-sm font-medium text-gray-900">
                 Unavailable
@@ -101,7 +103,7 @@ export const StorefrontCard = memo(function StorefrontCard({
               event.stopPropagation()
               onSelect(item)
             }}
-            disabled={!item.is_available}
+            disabled={!isOrderable}
             aria-label={`Add ${item.name}`}
           >
             <svg

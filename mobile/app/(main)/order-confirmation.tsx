@@ -8,6 +8,7 @@ import { useTheme, CONFIRMATION_OVERRIDES } from '@/theme/provider'
 import { formatPrice } from '@/lib/cart-utils'
 import { openMessenger } from '@/lib/messenger-linking'
 import { useOrderStore } from '@/stores/order-store'
+import { describeOrderOutcome, isOrderRecorded } from '@/lib/checkout-outcome'
 import { Button } from '@/components/ui/button'
 
 export default function OrderConfirmationScreen() {
@@ -18,6 +19,14 @@ export default function OrderConfirmationScreen() {
 
   const messengerUrl = completedOrder?.messengerUrl
   const orderId = completedOrder?.orderId
+  const storeName = tenant?.name || 'the restaurant'
+
+  // The header used to be a hardcoded green "Order Placed!", rendered even
+  // when the store had refused the order outright. Everything it claims now
+  // comes from what actually happened. Falling back to 'failed' rather than
+  // 'saved' keeps the "no order data" path from inventing a success.
+  const outcomeCopy = describeOrderOutcome(completedOrder?.saveStatus ?? 'failed', storeName)
+  const isSuccessTone = outcomeCopy.tone === 'success'
 
   // Resolve colors: env override → theme fallback
   const c = {
@@ -38,18 +47,24 @@ export default function OrderConfirmationScreen() {
     footerNote: CONFIRMATION_OVERRIDES.footerNote || theme.textMuted,
   }
 
-  // Auto-open Messenger when screen loads
+  // A refusal or a failure must not borrow the brand's success colour.
+  const headerIcon = isSuccessTone ? c.successIcon : theme.warning
+  const headerIconBg = isSuccessTone ? c.successBg : theme.warning + '20'
+
+  // Auto-open Messenger when screen loads — but never on a refusal. The
+  // platform rejected that order, so sending it on would hand the merchant a
+  // live-looking order the platform had already turned down.
   useEffect(() => {
-    if (messengerUrl && !hasAutoOpened.current) {
-      hasAutoOpened.current = true
-      const timer = setTimeout(() => {
-        openMessenger(messengerUrl, completedOrder?.messengerMessage).catch(err =>
-          console.warn('Failed to open Messenger:', err)
-        )
-      }, 800)
-      return () => clearTimeout(timer)
-    }
-  }, [messengerUrl, completedOrder?.messengerMessage])
+    if (!messengerUrl || !outcomeCopy.canMessengerDeliver || hasAutoOpened.current) return
+
+    hasAutoOpened.current = true
+    const timer = setTimeout(() => {
+      openMessenger(messengerUrl, completedOrder?.messengerMessage).catch(err =>
+        console.warn('Failed to open Messenger:', err)
+      )
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [messengerUrl, outcomeCopy.canMessengerDeliver, completedOrder?.messengerMessage])
 
   const handleOpenMessenger = useCallback(() => {
     if (messengerUrl) {
@@ -91,15 +106,20 @@ export default function OrderConfirmationScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: c.bg }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Success Header */}
+        {/* Outcome Header */}
         <View style={styles.header}>
-          <View style={[styles.iconCircle, { backgroundColor: c.successBg }]}>
-            <Ionicons name="checkmark-circle" size={56} color={c.successIcon} />
+          <View style={[styles.iconCircle, { backgroundColor: headerIconBg }]}>
+            <Ionicons name={outcomeCopy.iconName} size={56} color={headerIcon} />
           </View>
-          <Text style={[styles.title, { color: c.title }]}>Order Placed!</Text>
+          <Text style={[styles.title, { color: c.title }]}>{outcomeCopy.title}</Text>
           <Text style={[styles.subtitle, { color: c.subtitle }]}>
-            Your order has been sent to {tenant?.name || 'the restaurant'}
+            {outcomeCopy.subtitle}
           </Text>
+          {completedOrder.saveMessage ? (
+            <Text style={[styles.outcomeDetail, { color: c.subtitle }]}>
+              {completedOrder.saveMessage}
+            </Text>
+          ) : null}
           {orderId ? (
             <Text style={[styles.orderIdText, { color: c.footerNote }]}>
               Order #{orderId.slice(0, 8).toUpperCase()}
@@ -129,24 +149,27 @@ export default function OrderConfirmationScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
-          <View style={styles.cardRow}>
-            <Ionicons name="people-outline" size={18} color={c.label} />
-            <Text style={[styles.cardLabel, { color: c.label }]}>Customer History</Text>
-          </View>
-          <Text style={[styles.cardValue, { color: c.value }]}>
-            {!completedOrder.isCustomerHistoryTracked
-              ? 'History not tracked (missing phone, email, or name)'
-              : completedOrder.previousOrderCount > 0
-                ? `${completedOrder.previousOrderCount} past order${completedOrder.previousOrderCount === 1 ? '' : 's'} before this order`
-                : 'First order from this customer on this phone'}
-          </Text>
-          {completedOrder.isCustomerHistoryTracked ? (
-            <Text style={[styles.historySubtext, { color: c.label }]}>
-              Total saved orders for this customer: {completedOrder.totalOrderCount}
+        {/* Only meaningful once an order exists — a refused order was never counted. */}
+        {isOrderRecorded(completedOrder.saveStatus) ? (
+          <View style={[styles.card, { backgroundColor: c.cardBg, borderColor: c.cardBorder }]}>
+            <View style={styles.cardRow}>
+              <Ionicons name="people-outline" size={18} color={c.label} />
+              <Text style={[styles.cardLabel, { color: c.label }]}>Customer History</Text>
+            </View>
+            <Text style={[styles.cardValue, { color: c.value }]}>
+              {!completedOrder.isCustomerHistoryTracked
+                ? 'History not tracked (missing phone, email, or name)'
+                : completedOrder.previousOrderCount > 0
+                  ? `${completedOrder.previousOrderCount} past order${completedOrder.previousOrderCount === 1 ? '' : 's'} before this order`
+                  : 'First order from this customer on this phone'}
             </Text>
-          ) : null}
-        </View>
+            {completedOrder.isCustomerHistoryTracked ? (
+              <Text style={[styles.historySubtext, { color: c.label }]}>
+                Total saved orders for this customer: {completedOrder.totalOrderCount}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Customer Information */}
         {completedOrder.formFields.length > 0 ? (
@@ -251,9 +274,10 @@ export default function OrderConfirmationScreen() {
 
         {/* Action Buttons */}
         <View style={styles.buttons}>
-          {messengerUrl ? (
+          {/* Both of these hand the order to the merchant, so both close on a refusal. */}
+          {outcomeCopy.canMessengerDeliver && messengerUrl ? (
             <Button
-              title="Open Messenger"
+              title={isSuccessTone ? 'Open Messenger' : 'Send Order on Messenger'}
               onPress={handleOpenMessenger}
               fullWidth
               size="lg"
@@ -261,15 +285,17 @@ export default function OrderConfirmationScreen() {
               textStyle={{ color: c.buttonText }}
             />
           ) : null}
-          <Button
-            title="Copy Order Message"
-            variant="outline"
-            onPress={handleCopyMessage}
-            fullWidth
-            size="lg"
-            style={{ borderColor: c.cardBorder }}
-            textStyle={{ color: c.value }}
-          />
+          {outcomeCopy.canMessengerDeliver ? (
+            <Button
+              title="Copy Order Message"
+              variant="outline"
+              onPress={handleCopyMessage}
+              fullWidth
+              size="lg"
+              style={{ borderColor: c.cardBorder }}
+              textStyle={{ color: c.value }}
+            />
+          ) : null}
           <Button
             title="Back to Home"
             variant="outline"
@@ -291,7 +317,7 @@ export default function OrderConfirmationScreen() {
         </View>
 
         <Text style={[styles.footerNote, { color: c.footerNote }]}>
-          If Messenger didn&apos;t open, use the buttons above to open it manually or copy your order message.
+          {outcomeCopy.footerNote}
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -325,6 +351,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '800', marginBottom: 6 },
   subtitle: { fontSize: 14, textAlign: 'center', marginBottom: 4 },
   orderIdText: { fontSize: 13, marginTop: 4 },
+  outcomeDetail: { fontSize: 13, textAlign: 'center', marginTop: 8, paddingHorizontal: 8 },
   card: {
     borderRadius: 14,
     borderWidth: 1,

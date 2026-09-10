@@ -35,7 +35,7 @@ describe('fetchUpsellPerformance', () => {
     })
 
     expect(convexQuery).toHaveBeenCalledWith(
-      'analytics:getUpsellAnalytics',
+      'analytics:getUpsellAnalyticsInternal',
       expect.objectContaining({ daysBack: 14 }),
     )
     expect(result.available).toBe(true)

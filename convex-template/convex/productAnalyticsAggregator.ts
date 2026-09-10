@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { action, internalAction, internalMutation } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 
 const QUERY_LIMIT = 10000;
 const MIN_ORDERS_FOR_CLASSIFICATION = 5;
@@ -260,17 +260,17 @@ function generatePairingRecommendation(
 export const computeAnalytics = internalAction({
   handler: async (ctx) => {
     // Step 1: Get all non-cancelled orders (pass high limit to override default 50)
-    const allOrders = await ctx.runQuery(api.orders.getOrders, { limit: QUERY_LIMIT });
+    const allOrders = await ctx.runQuery(internal.orders.getOrdersInternal, { limit: QUERY_LIMIT });
     const activeOrders = allOrders.filter((o: { status: string }) => o.status !== "cancelled");
 
     // Step 2: Get all order items
-    const allCosts = await ctx.runQuery(api.productCosts.getAllCosts, {});
+    const allCosts = await ctx.runQuery(internal.productCosts.getAllCostsInternal, {});
 
     // Bulk-load every order item ONCE and group by order id. Previously this
     // ran one getOrderById per order, per period (and again for the prev
     // window) — an N+1 over up to 10k orders that risked timing out and
     // leaving product analytics empty.
-    const allItems = await ctx.runQuery(api.orders.getAllOrderItems, {});
+    const allItems = await ctx.runQuery(internal.orders.getAllOrderItemsInternal, {});
     const itemsByOrder = new Map<string, typeof allItems>();
     for (const it of allItems) {
       const arr = itemsByOrder.get(it.orderId) ?? [];

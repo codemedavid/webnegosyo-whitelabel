@@ -140,3 +140,71 @@ describe('saveOrderDurably', () => {
     expect(total).toBeLessThanOrEqual(2000)
   })
 })
+
+describe('saveOrderDurably — a refusal is not worth retrying', () => {
+  // Retrying every failure was the right call while a refusal and a transport
+  // failure were indistinguishable from an error string. Now the server says
+  // which it is, so re-sending a deterministic "no" three times only computes
+  // the same refusal twice more and delays the sentence the customer needs by
+  // the full backoff budget.
+
+  it('stops immediately when the store refuses the order', async () => {
+    // Arrange
+    const save = jest.fn().mockResolvedValue({
+      success: false,
+      refused: true,
+      error: 'This order is below the minimum for checkout',
+    })
+
+    // Act
+    const result = await saveOrderDurably(save, { sleep: noSleep })
+
+    // Assert
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(result.ok).toBe(false)
+    expect(result.attempts).toBe(1)
+  })
+
+  it('carries the refusal out so the caller can show it', async () => {
+    const save = jest.fn().mockResolvedValue({
+      success: false,
+      refused: true,
+      error: 'Sorry, Adobo just went out of stock.',
+    })
+
+    const result = await saveOrderDurably(save, { sleep: noSleep })
+
+    expect(result.error).toBe('Sorry, Adobo just went out of stock.')
+    expect(result.refused).toBe(true)
+  })
+
+  it('still retries a plain failure the full budget', async () => {
+    // The transient case is unchanged — this is the one that saves orders.
+    const save = jest.fn().mockResolvedValue({ success: false, error: 'network' })
+
+    const result = await saveOrderDurably(save, { sleep: noSleep })
+
+    expect(save).toHaveBeenCalledTimes(DEFAULT_SAVE_ATTEMPTS)
+    expect(result.refused).toBeUndefined()
+  })
+
+  it('retries when `refused` is anything other than an explicit true', async () => {
+    // Fail closed: a backend that has not been taught the discriminator keeps
+    // exactly today's retry behaviour rather than silently losing its retries.
+    const save = jest.fn().mockResolvedValue({ success: false, refused: undefined, error: 'x' })
+
+    await saveOrderDurably(save, { sleep: noSleep })
+
+    expect(save).toHaveBeenCalledTimes(DEFAULT_SAVE_ATTEMPTS)
+  })
+
+  it('does not treat a thrown error as a refusal', async () => {
+    // A throw carries no verdict, so it stays retryable.
+    const save = jest.fn().mockRejectedValue(new Error('boom'))
+
+    const result = await saveOrderDurably(save, { sleep: noSleep })
+
+    expect(save).toHaveBeenCalledTimes(DEFAULT_SAVE_ATTEMPTS)
+    expect(result.refused).toBeUndefined()
+  })
+})

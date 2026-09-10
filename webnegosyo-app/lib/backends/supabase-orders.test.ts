@@ -136,13 +136,12 @@ describe("toOrderDto", () => {
     expect(dto.source).toBe("web");
   });
 
-  it("carries the delivery address and every Lalamove field onto the DTO", () => {
+  it("carries every Lalamove field onto the DTO", () => {
     // Arrange: a delivery order that was quoted at checkout and later booked.
     // `LalamoveDeliveryCard` renders off exactly these fields; a dropped
     // projection leaves a platform-backed store with no Lalamove UI at all —
     // no Book button, no status, no tracking link.
     const row = orderRow({
-      delivery_address: "12 Mabini St, Quezon City",
       lalamove_quotation_id: "quote-1",
       lalamove_order_id: "lala-1",
       lalamove_status: "ON_GOING",
@@ -155,7 +154,6 @@ describe("toOrderDto", () => {
     const dto = toOrderDto(row);
 
     // Assert
-    expect(dto.deliveryAddress).toBe("12 Mabini St, Quezon City");
     expect(dto.lalamoveQuotationId).toBe("quote-1");
     expect(dto.lalamoveOrderId).toBe("lala-1");
     expect(dto.lalamoveStatus).toBe("ON_GOING");
@@ -172,6 +170,24 @@ describe("toOrderDto", () => {
     const row = orderRow({
       customer_data: { delivery_address: "Enverga Blvd, Lucena", delivery_lat: "13.94" },
     });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.deliveryAddress).toBe("Enverga Blvd, Lucena");
+  });
+
+  it("ignores a stray delivery_address property instead of preferring it", () => {
+    // Arrange: `PlatformOrderRow` used to DECLARE a `delivery_address` column
+    // and `toOrderDto` read it first. It was inert only because the projection
+    // is "*" — the moment anyone narrowed the select, or echoed the field back
+    // into an insert, it became PGRST204, the phantom that failed every order
+    // from the shipped build. The blob is the only real source.
+    const row = {
+      ...orderRow({ customer_data: { delivery_address: "Enverga Blvd, Lucena" } }),
+      delivery_address: "12 Mabini St, Quezon City",
+    } as unknown as PlatformOrderRow;
 
     // Act
     const dto = toOrderDto(row);
@@ -739,5 +755,49 @@ describe("service charge — stored, projected, and readable", () => {
     const dto = toOrderDto(orderRow({ service_charge_amount: "24.50" as unknown as number }));
 
     expect(dto.serviceCharge).toBe(24.5);
+  });
+});
+
+/**
+ * `order_items.menu_item_id` is a NULLABLE uuid. `createOrder` commits the
+ * `orders` row first and inserts the items in a second, separate request, so a
+ * blank or Convex-shaped id there is not a rejected sale — it is a COMMITTED,
+ * printable sale with zero line items. Coercing at the one place every platform
+ * order is built removes the whole 22P02 class before the first write.
+ */
+describe("buildCreateOrderRows — menu_item_id is a uuid column", () => {
+  const PRODUCT = "9f0c1a2b-3d4e-4f50-8a91-b2c3d4e5f607";
+
+  const args = {
+    customerName: "Ana",
+    customerContact: "09171234567",
+    total: 240,
+    itemCount: 2,
+    source: "pos" as const,
+    items: [
+      { menuItemId: PRODUCT, menuItemName: "Latte", quantity: 2, price: 120, subtotal: 240 },
+    ],
+  };
+
+  it("keeps a real product id", () => {
+    expect(buildCreateOrderRows("tenant-1", args).items[0].menu_item_id).toBe(PRODUCT);
+  });
+
+  it("writes NULL for a blank id rather than sending '' to a uuid column", () => {
+    const { items } = buildCreateOrderRows("tenant-1", {
+      ...args,
+      items: [{ ...args.items[0], menuItemId: "" }],
+    });
+
+    expect(items[0].menu_item_id).toBeNull();
+  });
+
+  it("writes NULL for a Convex-style id rather than losing the whole sale", () => {
+    const { items } = buildCreateOrderRows("tenant-1", {
+      ...args,
+      items: [{ ...args.items[0], menuItemId: "js71q9w4ja9g3ryvap69b9xxms8e3fzs" }],
+    });
+
+    expect(items[0].menu_item_id).toBeNull();
   });
 });

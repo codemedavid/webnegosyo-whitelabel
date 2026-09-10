@@ -2116,7 +2116,13 @@ export function TenantFormWrapper({
           toast.error(result.error)
           return
         }
-        toast.success('Tenant updated!')
+        // A Convex-backed store's app backend is pushed to on save; say so
+        // when that push failed, because the tenant row itself did save.
+        if (result?.warning) {
+          toast.warning(result.warning)
+        } else {
+          toast.success('Tenant updated!')
+        }
         router.push('/superadmin/tenants')
       } else {
         // createTenantAction returns error or redirects on success

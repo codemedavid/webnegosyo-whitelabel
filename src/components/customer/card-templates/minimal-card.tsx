@@ -10,6 +10,7 @@ interface MinimalCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface MinimalCardProps {
  * Minimal Card Template
  * Ultra-clean design with subtle borders and minimal decoration
  */
-export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: MinimalCardProps) {
+export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: MinimalCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -82,7 +83,7 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
           </div>
         )}
 
-        {!item.is_available && (
+        {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
             <span
               className="text-xs font-medium px-2 py-1 rounded"
@@ -140,7 +141,7 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
             e.stopPropagation()
             onSelect(item)
           }}
-          disabled={!item.is_available}
+          disabled={!isOrderable}
           onMouseEnter={(e) => {
             e.currentTarget.style.opacity = '0.9'
           }}

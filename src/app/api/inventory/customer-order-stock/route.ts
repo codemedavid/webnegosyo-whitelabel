@@ -78,7 +78,7 @@ async function depleteConvexOrder(
     tenant.convex_deploy_key,
   )
   const order = await convex.query<ConvexOrderForStock | null>(
-    'orders:getOrderById',
+    'orders:getOrderByIdInternal',
     { orderId },
   )
 

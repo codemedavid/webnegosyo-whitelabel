@@ -34,9 +34,11 @@ async function manualFix(slug) {
   // First, get the tenant
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('*')
+    .select('*, tenant_secrets(lalamove_api_key, lalamove_secret_key)')
     .eq('slug', slug)
     .single()
+  // Secrets live in tenant_secrets now; flatten so the checks below read as before.
+  if (tenant) Object.assign(tenant, tenant.tenant_secrets ?? {})
 
   if (error || !tenant) {
     console.error('❌ Tenant not found:', error?.message)

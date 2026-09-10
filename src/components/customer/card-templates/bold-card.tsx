@@ -10,6 +10,7 @@ interface BoldCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface BoldCardProps {
  * Bold Card Template
  * High contrast design with prominent CTA
  */
-export const BoldCard = memo(function BoldCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: BoldCardProps) {
+export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: BoldCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -88,7 +89,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, menuE
           )}
         </div>
 
-        {!item.is_available && (
+        {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80">
             <div className="rounded-xl bg-white px-6 py-3 text-base font-black uppercase tracking-wide text-gray-900">
               Sold Out
@@ -152,7 +153,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, menuE
           e.stopPropagation()
           onSelect(item)
         }}
-        disabled={!item.is_available}
+        disabled={!isOrderable}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'scale(1.02)'
           e.currentTarget.style.opacity = '0.9'
@@ -162,7 +163,7 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, menuE
           e.currentTarget.style.opacity = '1'
         }}
       >
-        {item.is_available ? (
+        {isOrderable ? (
           <>
             <span className="text-lg md:text-2xl mr-1.5 md:mr-2">+</span>
             Add to Cart

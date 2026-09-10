@@ -10,6 +10,11 @@ import { tenantsNeedingDeploy } from "@/lib/convex-deploy-selection";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTenantSecrets, listTenantSecrets, mergeTenantSecrets } from "@/lib/tenant-secrets";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildTenantConfigPayload,
+  CONVEX_CONFIG_TENANT_COLUMNS,
+  type ConvexTenantConfigSource,
+} from "@/lib/convex-tenant-config";
 
 /**
  * Verify the current user is a superadmin.
@@ -48,9 +53,7 @@ export async function deployConvexToTenantAction(tenantId: string) {
 
   const { data, error } = await supabase
     .from("tenants")
-    .select(
-      "name, convex_deployment_url, lalamove_enabled, lalamove_market, lalamove_service_type, lalamove_sandbox, lalamove_sender_phone, footer_phone, footer_whatsapp, restaurant_address, restaurant_latitude, restaurant_longitude"
-    )
+    .select(CONVEX_CONFIG_TENANT_COLUMNS)
     .eq("id", tenantId)
     .single();
 
@@ -90,52 +93,20 @@ export async function deployConvexToTenantAction(tenantId: string) {
     };
   }
 
-  // Sync tenant config (Lalamove creds, restaurant address)
-  const configs: Record<string, string> = {};
+  // Sync tenant config (Lalamove creds, store address) into `tenantConfig`.
+  // Same payload the tenant-save paths push, so a deploy and a settings save
+  // can never leave the deployment holding different values.
+  const configSynced = await syncTenantConfig(
+    tenant.convex_deployment_url,
+    tenant.convex_deploy_key,
+    buildTenantConfigPayload(tenant as ConvexTenantConfigSource)
+  );
 
-  if (tenant.lalamove_enabled && tenant.lalamove_api_key) {
-    configs.lalamove_api_key = tenant.lalamove_api_key;
-    configs.lalamove_secret_key = tenant.lalamove_secret_key ?? "";
-    configs.lalamove_market = tenant.lalamove_market ?? "PH";
-    configs.lalamove_service_type = tenant.lalamove_service_type ?? "MOTORCYCLE";
-    configs.lalamove_sandbox = String(tenant.lalamove_sandbox ?? true);
-    // Sender (pickup) contact the driver calls — store number, never the
-    // customer's. Falls back through footer phone fields.
-    // `||`, not `??`: a merchant who cleared the field leaves '' behind, and
-    // '' must fall through to the footer numbers rather than be synced as the
-    // pickup phone.
-    configs.lalamove_sender_phone =
-      tenant.lalamove_sender_phone ||
-      tenant.footer_phone ||
-      tenant.footer_whatsapp ||
-      "";
-  }
-
-  // Store identity used as the Lalamove sender name + pickup label.
-  if (tenant.name) {
-    configs.restaurant_name = tenant.name;
-  }
-
-  if (tenant.restaurant_address) {
-    configs.restaurant_address = tenant.restaurant_address;
-    configs.restaurant_latitude = String(tenant.restaurant_latitude ?? 0);
-    configs.restaurant_longitude = String(tenant.restaurant_longitude ?? 0);
-  }
-
-  if (Object.keys(configs).length > 0) {
-    const configSynced = await syncTenantConfig(
-      tenant.convex_deployment_url,
-      tenant.convex_deploy_key,
-      configs
-    );
-
-    if (!configSynced) {
-      return {
-        success: false,
-        error:
-          "Schema deployed but failed to sync tenant config. Try again.",
-      };
-    }
+  if (!configSynced) {
+    return {
+      success: false,
+      error: "Schema deployed but failed to sync tenant config. Try again.",
+    };
   }
 
   // Update schema version and enable app

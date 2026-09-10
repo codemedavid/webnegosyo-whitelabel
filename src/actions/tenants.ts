@@ -14,6 +14,7 @@ import { convertToTenant } from '@/lib/leads/leads-service'
 import { invalidateTenantCache } from '@/lib/cache'
 import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-backend'
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
+import { syncTenantConvexConfig, convexConfigSyncWarning } from '@/lib/convex-config-sync'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -247,6 +248,11 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       }
     }
 
+    // A Convex-backed store reads its Lalamove credentials and pickup address
+    // from its own deployment, so the settings just saved have to be pushed
+    // there too or the order screen reports "Lalamove not configured".
+    await syncTenantConvexConfig(tenant.id)
+
     // Revalidate cached data
     revalidatePath('/superadmin')
     revalidatePath('/superadmin/tenants')
@@ -425,6 +431,11 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     }
   }
 
+  // Push the saved settings into the store's own Convex deployment. Without
+  // this, Lalamove keys edited here never reach the backend the merchant's
+  // order screen books through.
+  const convexSync = await syncTenantConvexConfig(id)
+
   // Revalidate cached data
   // The tenant row is Redis-cached for 30 minutes and is what routes orders and
   // gates features, so without this a saved change appears to do nothing until
@@ -436,7 +447,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   revalidatePath(`/superadmin/tenants/${id}`)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { success: true, data: data as any }
+  return { success: true, data: data as any, warning: convexConfigSyncWarning(convexSync) }
 }
 
 // Allow tenant admins to update only branding-related fields for their own tenant
@@ -565,12 +576,21 @@ export async function updateTenantDeliveryForAdminAction(tenantId: string, input
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updated = data as any
   const slug = updated?.slug as string | undefined
+
+  // This is where a merchant sets its store location, which is also the
+  // Lalamove PICKUP point — so the same push a superadmin save does has to
+  // happen here, or a Convex-backed store keeps quoting from the old address.
+  const convexSync = await syncTenantConvexConfig(tenantId)
+
   if (slug) {
+    // The storefront quotes against the Redis-cached tenant row; without this
+    // a moved store keeps its old pickup coordinates for up to 30 minutes.
+    await invalidateTenantCache(slug, tenantId)
     revalidatePath(`/${slug}/admin/settings`)
     revalidatePath(`/${slug}/menu`)
   }
 
-  return { success: true }
+  return { success: true, warning: convexConfigSyncWarning(convexSync) }
 }
 
 // Allow tenant admins to update only footer-related fields for their own tenant

@@ -46,9 +46,9 @@ const DEFAULT_TIMEOUT_MS = 6000
 // Large enough to cover the 'all' range while staying within Convex's 10k row cap.
 const ALL_RANGE_DAYS = 3650
 
-const PATH_PERIOD = 'orders:getDashboardStatsByPeriod'
-const PATH_TRENDS = 'analytics:getTrends'
-const PATH_BREAKDOWN = 'analytics:getRevenueBreakdown'
+const PATH_PERIOD = 'orders:getDashboardStatsByPeriodInternal'
+const PATH_TRENDS = 'analytics:getTrendsInternal'
+const PATH_BREAKDOWN = 'analytics:getRevenueBreakdownInternal'
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {

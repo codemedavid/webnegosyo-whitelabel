@@ -300,108 +300,13 @@ export function OrderTypeSelector({ checkout, compact = false }: { checkout: Use
 
 export { AdvanceOrderScheduler } from './advance-order-scheduler'
 
-/** Order summary line items + totals (branded). */
-export function OrderSummaryLines({ checkout }: { checkout: UseCheckoutReturn }) {
-  const { items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, customerData, serviceChargeAmount, grandTotal, voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode } = checkout
-  const { accent, text, mutedText } = useAccent(checkout)
-  const feeMatches = deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address
-
-  return (
-    <div className="space-y-3">
-      {items.map((item, index) => (
-        <div key={item.id}>
-          {index > 0 && <div className="my-3 border-t border-gray-100" />}
-          <div className="flex justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <span className="font-medium text-sm text-gray-900" style={{ color: text }}>{item.menu_item.name}</span>
-              {item.selected_variation && (
-                <span className="text-xs text-gray-500"> ({item.selected_variation.name})</span>
-              )}
-              {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
-                <span className="text-xs text-gray-500">
-                  {' '}({Object.values(item.selected_variations).map(opt => opt.name).join(', ')})
-                </span>
-              )}
-              <span className="text-xs text-gray-500"> x{item.quantity}</span>
-              {item.selected_addons.length > 0 && (
-                <p className="text-xs text-gray-500 mt-0.5">Add-ons: {item.selected_addons.map(a => a.name).join(', ')}</p>
-              )}
-              {item.special_instructions && (
-                <p className="text-xs italic text-gray-500 mt-0.5">Note: {item.special_instructions}</p>
-              )}
-            </div>
-            <span className="font-semibold text-sm text-gray-900 flex-shrink-0">{formatPrice(item.subtotal)}</span>
-          </div>
-        </div>
-      ))}
-
-      <div className="my-3 border-t border-gray-100" />
-
-      <div className="flex justify-between text-sm">
-        <span className="text-gray-600" style={{ color: mutedText }}>Subtotal</span>
-        <span className="font-medium text-gray-900" style={{ color: text }}>{formatPrice(total)}</span>
-      </div>
-
-      {(deliveryFee !== null || isFetchingDeliveryFee) && (
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Delivery Fee</span>
-          <span className="font-medium text-gray-900">
-            {isFetchingDeliveryFee ? (
-              <span className="animate-pulse" style={{ color: accent }}>Calculating...</span>
-            ) : feeMatches ? (
-              formatPrice(deliveryFee!)
-            ) : (
-              <span className="text-gray-400">—</span>
-            )}
-          </span>
-        </div>
-      )}
-
-      {deliveryFeeError && !isFetchingDeliveryFee && deliveryFee === null && (
-        <p className="text-xs text-red-600" role="alert">
-          {deliveryFeeError}
-        </p>
-      )}
-
-      {serviceChargeAmount > 0 && (
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Service Charge</span>
-          <span className="font-medium text-gray-900">{formatPrice(serviceChargeAmount)}</span>
-        </div>
-      )}
-
-      <div className="my-2 border-t border-gray-200" />
-
-      {/* Shared by all five designs, so a voucher works the same everywhere. */}
-      <VoucherField
-        codes={voucherCodes}
-        preview={voucherPreview}
-        isChecking={isCheckingVoucher}
-        onApply={applyVoucherCode}
-        onRemove={removeVoucherCode}
-        formatPrice={formatPrice}
-      />
-
-      {(voucherPreview?.accepted.length ?? 0) > 0 && (
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Discount</span>
-          <span className="font-medium text-green-700">
-            −{formatPrice(voucherPreview?.discountTotal ?? 0)}
-          </span>
-        </div>
-      )}
-
-      <div className="my-2 border-t border-gray-200" />
-
-      <div className="flex justify-between items-baseline">
-        <span className="text-base font-bold text-gray-900" style={{ color: text }}>Total</span>
-        <span className="text-xl font-bold" style={{ color: accent }}>
-          {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
-        </span>
-      </div>
-    </div>
-  )
-}
+/**
+ * Order summary line items + totals (branded).
+ *
+ * Lives in its own module because all five designs share it now — classic
+ * included, through its `classic` skin — so a row added there reaches every one.
+ */
+export { OrderSummaryLines, type OrderSummaryVariant } from './order-summary-lines'
 
 /** Payment-method selector (radio list + selected details + QR). Branded. */
 export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn }) {

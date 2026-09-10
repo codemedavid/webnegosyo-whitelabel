@@ -1,15 +1,15 @@
 import { v } from "convex/values";
 import { internalAction, internalMutation } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { localDateKey } from "./time";
 
 export const aggregateToday = internalAction({
   handler: async (ctx) => {
-    const stats = await ctx.runQuery(api.orders.getDashboardStats, {});
-    const upsellStats = await ctx.runQuery(api.analytics.getUpsellAnalytics, {
+    const stats = await ctx.runQuery(internal.orders.getDashboardStatsInternal, {});
+    const upsellStats = await ctx.runQuery(internal.analytics.getUpsellAnalyticsInternal, {
       daysBack: 1,
     });
-    const topItems = await ctx.runQuery(api.analytics.getTopItems, {
+    const topItems = await ctx.runQuery(internal.analytics.getTopItemsInternal, {
       daysBack: 1,
       limit: 10,
     });

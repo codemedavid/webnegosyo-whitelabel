@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { verifySuperadmin, verifyTenantPermission } from '@/lib/admin-service'
 import type { TagDefinition } from '@/types/database'
 
 export async function getTagDefinitions(tenantId: string): Promise<TagDefinition[]> {
@@ -26,6 +27,7 @@ export async function getPresetTags(): Promise<TagDefinition[]> {
 }
 
 export async function createTagDefinition(tenantId: string, groupName: string, tagValue: string): Promise<TagDefinition> {
+  await verifyTenantPermission(tenantId, 'menu')
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('tag_definitions')
@@ -36,7 +38,10 @@ export async function createTagDefinition(tenantId: string, groupName: string, t
   return data as TagDefinition
 }
 
+// Preset tags have no tenant: they are the list every store's editor renders,
+// so only the platform may change them.
 export async function createPresetTag(groupName: string, tagValue: string): Promise<TagDefinition> {
+  await verifySuperadmin()
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('tag_definitions')
@@ -48,6 +53,7 @@ export async function createPresetTag(groupName: string, tagValue: string): Prom
 }
 
 export async function deleteTagDefinition(id: string, tenantId: string): Promise<void> {
+  await verifyTenantPermission(tenantId, 'menu')
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('tag_definitions')
@@ -59,6 +65,7 @@ export async function deleteTagDefinition(id: string, tenantId: string): Promise
 }
 
 export async function deletePresetTag(id: string): Promise<void> {
+  await verifySuperadmin()
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('tag_definitions')
@@ -91,7 +98,23 @@ export async function getItemTags(itemId: string, tenantId: string): Promise<Tag
 }
 
 export async function setItemTags(itemId: string, tenantId: string, tagDefinitionIds: string[]): Promise<void> {
+  await verifyTenantPermission(tenantId, 'menu')
   const supabase = createAdminClient()
+
+  // An item may carry its own store's tags or the platform presets — never a
+  // tag definition that belongs to another store.
+  if (tagDefinitionIds.length > 0) {
+    const { data: allowed, error: allowedError } = await supabase
+      .from('tag_definitions')
+      .select('id')
+      .in('id', tagDefinitionIds)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
+    if (allowedError) throw allowedError
+    const allowedIds = new Set(((allowed ?? []) as { id: string }[]).map((t) => t.id))
+    if (tagDefinitionIds.some((id) => !allowedIds.has(id))) {
+      throw new Error('One or more tags are not available to this store')
+    }
+  }
   const { error: deleteError } = await supabase
     .from('menu_item_tags')
     .delete()

@@ -185,7 +185,7 @@ describe('getDailyRevenue — Convex backend', () => {
 
     // Assert
     expect(revenue).toBe(4500)
-    expect(query).toHaveBeenCalledWith('orders:getDashboardStatsByPeriod', {
+    expect(query).toHaveBeenCalledWith('orders:getDashboardStatsByPeriodInternal', {
       startDate: Date.parse(WINDOW_START),
       endDate: Date.parse(WINDOW_END),
     })
@@ -320,7 +320,7 @@ describe('getDailyRevenue — asking Convex for one branch', () => {
     )
 
     expect(query).toHaveBeenCalledWith(
-      'orders:getDashboardStatsByPeriod',
+      'orders:getDashboardStatsByPeriodInternal',
       expect.objectContaining({ outletId: 'north' }),
     )
   })

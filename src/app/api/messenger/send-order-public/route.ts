@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { sendMessage } from '@/lib/facebook-api'
 import { formatOrderMessage } from '@/lib/messenger-message-formatter'
@@ -12,6 +12,28 @@ import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
  */
 function hashIP(ip: string): string {
     return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 12)
+}
+
+/**
+ * Why the "mark as sent" write failed, or null when it really landed.
+ *
+ * A refused or mis-targeted UPDATE affects zero rows and reports NO error —
+ * the shape that let this fail invisibly — so the row count is the only honest
+ * evidence that the order was marked.
+ */
+function describeMarkFailure(
+    error: { message: string } | null,
+    count: number | null
+): string | null {
+    if (error) {
+        return error.message
+    }
+
+    if (count === 0) {
+        return 'update matched no order row'
+    }
+
+    return null
 }
 
 /**
@@ -98,7 +120,14 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const supabase = await createClient()
+        // Every read and write below runs through the SERVICE ROLE, not the
+        // visitor's cookie session. This route's security boundary is the
+        // order token verified above plus the per-IP rate limit — RLS never
+        // was, and it only ever subtracted: `public.orders` grants `anon`
+        // INSERT and nothing else, so on the cookie client the order SELECT
+        // 404'd, the order_items SELECT came back empty (an itemless message),
+        // and the "mark as sent" UPDATE silently touched zero rows.
+        const supabase = createAdminClient()
 
         // Get order details - token verification already confirms ownership
         const { data: orderData, error: orderError } = await supabase
@@ -228,8 +257,11 @@ export async function POST(request: NextRequest) {
         )
 
         if (sent) {
-            // Mark as sent - check for errors to prevent duplicate sends
-            const { error: updateError } = await supabase
+            // Mark as sent - this is what the duplicate-send guard above reads,
+            // so an unchecked write here re-sends the whole order message to the
+            // customer on every retry. Count the affected rows: a write that is
+            // refused or misses its target returns zero rows and no error.
+            const { error: updateError, count: markedCount } = await supabase
                 .from('orders')
                 .update({
                     customer_data: {
@@ -239,15 +271,17 @@ export async function POST(request: NextRequest) {
                         messenger_message_sent_at: new Date().toISOString(),
                         messenger_sent_proactively: true,
                     },
-                } as unknown as never)
+                } as unknown as never, { count: 'exact' })
                 .eq('id', orderId)
 
-            if (updateError) {
+            const markFailure = describeMarkFailure(updateError, markedCount)
+
+            if (markFailure) {
                 // Safe masking: only reveal last 4 chars if PSID is longer than 4, otherwise use fixed mask
                 const maskedPsid = storedPsid.length > 4
                     ? `****${storedPsid.slice(-4)}`
                     : '********'
-                console.error(`[Send Order Public] ❌ Failed to update order ${orderId} (PSID: ${maskedPsid}) after sending message:`, updateError.message)
+                console.error(`[Send Order Public] ❌ Failed to update order ${orderId} (PSID: ${maskedPsid}) after sending message:`, markFailure)
                 return NextResponse.json(
                     {
                         success: true,
