@@ -16,6 +16,9 @@ import { StatusTimeline } from '@/components/customer/order-tracking/status-time
 import { OrderSummaryCard } from '@/components/customer/order-tracking/order-summary-card'
 import { getStatusIndex } from '@/components/customer/order-tracking/status-steps'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
+import { decideStampCardView } from '@/lib/loyalty/stamp-card-view'
+import { isClaimWindowOpen } from '@/lib/loyalty/claim-window'
+import { useOrderStamps } from '@/hooks/use-order-stamps'
 import { shouldRingForTransition } from '@/lib/order-ready-alert'
 import { describePrepPromise } from '@/lib/prep-time'
 import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
@@ -182,6 +185,26 @@ export function OrderTrackingClient({
   })
   const goToMenu = () => router.push(`/${tenantSlug}/menu`)
 
+  // The stamp itself usually lands after the claim — when the merchant
+  // completes the order — so the card is painted from a live read, not from
+  // the claim's own reply. Re-read on every status change.
+  const { stamps, refresh: refreshStamps } = useOrderStamps({
+    orderId,
+    tenantId,
+    trackingToken,
+    enabled: brand.loyaltyOffer !== null,
+    status: trackingData.status,
+  })
+
+  const hasContact = stamps?.hasContact ?? trackingData.hasContact === true
+  const stampView = decideStampCardView({
+    hasOffer: brand.loyaltyOffer !== null,
+    hasContact,
+    isClaimOpen: stamps ? stamps.claim.state === 'open' : isClaimWindowOpen(trackingData.status),
+    hasCard: Boolean(stamps?.card),
+    isCancelled,
+  })
+
   return (
     <div
       className="min-h-screen"
@@ -239,8 +262,8 @@ export function OrderTrackingClient({
             </button>
           )}
 
-          {/* Loyalty stamp / attach-a-number (walk-in / POS orders without a contact) */}
-          {trackingData.hasContact === false && !isCancelled && (
+          {/* The store's loyalty card: claim, live balance, or the closed window */}
+          {stampView !== 'hidden' && (
             <LoyaltyStampCard
               orderId={orderId}
               tenantId={tenantId}
@@ -249,6 +272,9 @@ export function OrderTrackingClient({
               offer={brand.loyaltyOffer}
               isOrderComplete={trackingData.isTerminal}
               storeName={brand.storeName}
+              view={stampView}
+              card={stamps?.card ?? null}
+              onClaimed={refreshStamps}
             />
           )}
 

@@ -48,6 +48,7 @@ import {
   useUpdateConvexPaymentStatus,
 } from "@/hooks/use-convex-orders";
 import { restoreOrderStockAction } from "@/app/actions/inventory";
+import { notifyConvexLifecycleSync } from "@/lib/customers/web-lifecycle-sync";
 import { visibleCustomerFields } from "@/lib/admin/order-customer-fields";
 import { releasePresellForCancelledConvexOrderAction } from "@/app/actions/presell";
 import { orderSummaryRows } from "@/lib/order-summary-rows";
@@ -131,11 +132,16 @@ export function ConvexOrderSheet({
   async function handleAdvanceStatus() {
     if (!orderId || !nextStatus) return;
     await updateStatus({ orderId, status: nextStatus });
+    // Convex holds the order; the platform holds the customer ledger loyalty
+    // earns from. Nothing else in the browser tells it this order moved.
+    void notifyConvexLifecycleSync({ tenantId, externalOrderId: orderId, status: nextStatus });
   }
 
   async function handleCancelOrder() {
     if (!orderId) return;
     await updateStatus({ orderId, status: "cancelled" });
+    // A cancellation reverses the visit — and the stamp it earned.
+    void notifyConvexLifecycleSync({ tenantId, externalOrderId: orderId, status: "cancelled" });
 
     // Put the ingredients back. This order lives in Convex, so cancelling it
     // never reaches updateOrderStatus where stock is restored for
@@ -172,6 +178,8 @@ export function ConvexOrderSheet({
   async function handlePaymentStatusChange(newStatus: string) {
     if (!orderId) return;
     await updatePaymentStatus({ orderId, paymentStatus: newStatus });
+    // A counter sale earns at SETTLEMENT, not at delivery.
+    void notifyConvexLifecycleSync({ tenantId, externalOrderId: orderId, paymentStatus: newStatus });
   }
 
   return (

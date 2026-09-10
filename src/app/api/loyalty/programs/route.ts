@@ -66,6 +66,31 @@ function tenantIdFrom(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+/**
+ * Bring the store's loyalty flags up to what an active programme needs.
+ * Returns whether anything was written. Never throws: the programme is
+ * already active, and a flag write that failed is retried by the next
+ * activation rather than failing the one the merchant just made.
+ */
+async function goLive(
+  admin: Awaited<ReturnType<typeof import('@/lib/supabase/admin')['createAdminClient']>>,
+  tenantId: string,
+): Promise<boolean> {
+  try {
+    const { loadLoyaltyTenantFlags } = await import('@/lib/loyalty/store')
+    const { decideLoyaltyGoLive } = await import('@/lib/loyalty/go-live')
+    const patch = decideLoyaltyGoLive(await loadLoyaltyTenantFlags(admin, tenantId))
+    if (!patch) return false
+
+    const { error } = await admin.from('tenants').update(patch).eq('id', tenantId)
+    if (error) throw new Error(error.message)
+    return true
+  } catch (err) {
+    console.error('[loyalty] could not switch the store live:', err instanceof Error ? err.message : err)
+    return false
+  }
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const tenantId = tenantIdFrom(request.nextUrl.searchParams.get('tenantId'))
   if (!tenantId) return NextResponse.json({ error: 'tenantId is required.' }, { status: 400 })
@@ -133,7 +158,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           return NextResponse.json({ error: `A ${current.status} program cannot become ${to}.` }, { status: 409 })
         }
         await repo.writeLoyaltyProgramStatus(admin, tenantId, programId, patch)
-        return NextResponse.json({ success: true, status: patch.status })
+        // Activating a programme is the merchant saying "go". Without this the
+        // store stayed disabled and in shadow, the programme read "Live", and
+        // not one customer ever saw a stamp.
+        const isLive = patch.status === 'active' ? await goLive(admin, tenantId) : false
+        return NextResponse.json({ success: true, status: patch.status, wentLive: isLive })
       }
       case 'correct_balance': {
         const parsed = manage.parseBalanceCorrection(body.correction)

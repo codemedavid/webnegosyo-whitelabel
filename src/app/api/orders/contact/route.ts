@@ -33,6 +33,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     result.error === 'invalid_token' ? 401
     : result.error === 'not_found' ? 404
     : result.error === 'already_set' ? 409
+    // Gone: the receipt is genuine, the order is simply over. A found receipt
+    // must not be able to claim a stranger's stamp days later.
+    : result.error === 'claim_closed' ? 410
     : 503
   return NextResponse.json({ error: result.error }, { status })
 }

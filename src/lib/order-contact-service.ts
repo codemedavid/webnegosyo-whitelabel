@@ -19,6 +19,8 @@ export type ContactUpdateError =
   | 'invalid_token'
   | 'not_found'
   | 'already_set'
+  /** The order is finished — a receipt found afterwards claims nothing. */
+  | 'claim_closed'
   | 'unavailable'
 
 export type ContactUpdateResult =
@@ -79,7 +81,7 @@ async function updateInConvex(
   if (!order) return { ok: false, error: 'not_found' }
 
   const decision = decideContactWrite(
-    { contact: order.customerContact, name: order.customerName },
+    { contact: order.customerContact, name: order.customerName, status: order.status },
     submission,
   )
   if (!decision.ok) return decision
@@ -90,12 +92,14 @@ async function updateInConvex(
       contact: decision.contact,
       ...(decision.name ? { name: decision.name } : {}),
     })
-    // The Convex order's customer ledger row was projected at order create,
-    // before this number existed, and the capture route that re-projects it
-    // needs a merchant session. Earning for a late-attached number on a Convex
-    // store therefore waits for the next lifecycle sync — so no stamp is
-    // claimed here.
-    return { ok: true, loyalty: ATTACHED_ONLY }
+
+    // A walk-in Convex order identifies nobody, so nothing ever projected it
+    // into the platform-side customer ledger — and loyalty can only read that
+    // ledger. The number the customer just gave is what makes the projection
+    // possible, so it happens here, service-role, rather than waiting for a
+    // merchant session that may never come.
+    const loyalty = await projectAndEarnConvexOrder(submission, order, decision.contact, decision.name)
+    return { ok: true, loyalty }
   } catch (err) {
     // Deployments that predate the mutation reject it — the capture is simply
     // unavailable for that store until its Convex bundle is redeployed.
@@ -110,7 +114,7 @@ async function updateInSupabase(
 ): Promise<ContactUpdateResult> {
   const { data: order } = await supabase
     .from('orders')
-    .select('id, customer_contact, customer_name')
+    .select('id, customer_contact, customer_name, status')
     .eq('id', submission.orderId)
     .eq('tenant_id', submission.tenantId)
     .maybeSingle()
@@ -119,11 +123,12 @@ async function updateInSupabase(
     id: string
     customer_contact?: string | null
     customer_name?: string | null
+    status?: string | null
   } | null
   if (!existing) return { ok: false, error: 'not_found' }
 
   const decision = decideContactWrite(
-    { contact: existing.customer_contact, name: existing.customer_name },
+    { contact: existing.customer_contact, name: existing.customer_name, status: existing.status },
     submission,
   )
   if (!decision.ok) return decision
@@ -147,15 +152,74 @@ async function updateInSupabase(
   return { ok: true, loyalty }
 }
 
+interface ConvexOrderFacts {
+  status?: string | null
+  total?: number | null
+  orderType?: string | null
+  _creationTime?: number | null
+  customerData?: Record<string, unknown> | null
+  items?: Array<{ menuItemName?: string | null; name?: string | null; quantity?: number | null }> | null
+}
+
+/**
+ * Project a Convex order into the platform customer ledger under the number
+ * the customer just gave, then run earning for it.
+ *
+ * The projection is what makes the stamp possible at all: `runLoyaltyForOrder`
+ * reads `customer_external_orders` for a Convex store, and a walk-in order
+ * never wrote a row there. Earning still refuses until the order is completed
+ * — the merchant app's lifecycle sync brings that news — so the honest answer
+ * here is usually `pending`.
+ */
+async function projectAndEarnConvexOrder(
+  submission: ContactSubmission,
+  order: ConvexOrderFacts,
+  contact: string,
+  name: string | undefined,
+): Promise<ContactEarningSummary> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const admin = createAdminClient()
+
+    const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+    const customerId = await captureExternalOrderBestEffort(admin, submission.tenantId, {
+      backend: 'convex',
+      externalOrderId: submission.orderId,
+      name: name ?? null,
+      contact,
+      customerData: (order.customerData ?? null) as Record<string, unknown> | null,
+      total: Number(order.total) || 0,
+      createdAt: order._creationTime ?? new Date().toISOString(),
+      channel: order.orderType ?? null,
+      items: (order.items ?? []).map((item) => ({
+        name: (item?.menuItemName ?? item?.name ?? '').toString(),
+        quantity: Number(item?.quantity) || 0,
+      })),
+    })
+    // No customer means the number could not be resolved to an identity; there
+    // is no ledger row to earn against and nothing to promise.
+    if (!customerId) return ATTACHED_ONLY
+
+    return await runLoyaltyAfterAttach(admin, submission, 'convex')
+  } catch (err) {
+    console.error(
+      '[Order Contact] Convex loyalty projection failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return ATTACHED_ONLY
+  }
+}
+
 async function runLoyaltyAfterAttach(
   supabase: ReturnType<typeof createAdminClient>,
   submission: ContactSubmission,
+  backend: 'platform_supabase' | 'convex' = 'platform_supabase',
 ): Promise<ContactEarningSummary> {
   try {
     const { runLoyaltyForOrder } = await import('@/lib/loyalty/lifecycle')
     const result = await runLoyaltyForOrder(supabase, {
       tenantId: submission.tenantId,
-      backend: 'platform_supabase',
+      backend,
       externalOrderId: submission.orderId,
     })
     return summarizeContactEarning(result)
