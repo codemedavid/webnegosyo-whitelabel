@@ -170,4 +170,84 @@ describe('LoyaltyStampCard', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/try again/i))
     expect(screen.getByRole('button', { name: /claim my stamp/i })).toBeEnabled()
   })
+
+  it('shows the live card, with no form, once the order has earned', () => {
+    render(
+      <LoyaltyStampCard
+        {...BASE}
+        offer={OFFER}
+        view="card"
+        card={{
+          programName: 'Coffee Club',
+          earnMode: 'stamp',
+          balance: 3,
+          threshold: 8,
+          rewardsAvailable: 0,
+          rewardLabel: 'Free Iced Latte',
+        }}
+      />,
+    )
+    expect(screen.getByTestId('stamp-card-earned')).toHaveTextContent('3 of 8 stamps')
+    expect(screen.queryByLabelText(/mobile number/i)).not.toBeInTheDocument()
+    const filled = within(screen.getByTestId('stamp-track'))
+      .getAllByTestId('stamp-slot')
+      .filter((slot) => slot.getAttribute('data-filled') === 'true')
+    expect(filled).toHaveLength(3)
+  })
+
+  it('says a reward is ready when the customer holds one', () => {
+    render(
+      <LoyaltyStampCard
+        {...BASE}
+        offer={OFFER}
+        view="card"
+        card={{
+          programName: 'Coffee Club',
+          earnMode: 'stamp',
+          balance: 0,
+          threshold: 8,
+          rewardsAvailable: 1,
+          rewardLabel: 'Free Iced Latte',
+        }}
+      />,
+    )
+    expect(screen.getByTestId('stamp-card-earned')).toHaveTextContent(/reward ready/i)
+    expect(screen.getByTestId('stamp-card-earned')).toHaveTextContent('Free Iced Latte')
+  })
+
+  it('tells a claimed but unfinished order that the stamp is coming', () => {
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} view="awaiting" isOrderComplete={false} />)
+    expect(screen.getByTestId('stamp-card-awaiting')).toHaveTextContent(/lands as soon as your order is completed/i)
+    expect(screen.queryByLabelText(/mobile number/i)).not.toBeInTheDocument()
+  })
+
+  it('refuses to offer a form once the claim window has closed', () => {
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} view="closed" />)
+    expect(screen.getByTestId('stamp-card-closed')).toHaveTextContent(/claiming is closed/i)
+    expect(screen.queryByLabelText(/mobile number/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /claim my stamp/i })).not.toBeInTheDocument()
+  })
+
+  it('closes the form when the server says the order finished mid-claim', async () => {
+    const user = userEvent.setup()
+    mockFetch(410, { error: 'claim_closed' })
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} />)
+
+    await user.type(screen.getByLabelText(/mobile number/i), '09171234567')
+    await user.click(screen.getByRole('button', { name: /claim my stamp/i }))
+
+    await waitFor(() => expect(screen.getByTestId('stamp-card-closed')).toBeInTheDocument())
+  })
+
+  it('tells the page to re-read the card after a successful claim', async () => {
+    const user = userEvent.setup()
+    mockFetch(200, { success: true, loyalty: { state: 'pending' } })
+    const onClaimed = jest.fn()
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} onClaimed={onClaimed} />)
+
+    await user.type(screen.getByLabelText(/mobile number/i), '09171234567')
+    await user.click(screen.getByRole('button', { name: /claim my stamp/i }))
+
+    await waitFor(() => expect(onClaimed).toHaveBeenCalledTimes(1))
+  })
 })

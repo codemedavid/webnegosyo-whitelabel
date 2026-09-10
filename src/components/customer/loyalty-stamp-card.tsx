@@ -5,6 +5,9 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { Gift, PartyPopper, Phone, ShieldCheck, Sparkles, Stamp } from 'lucide-react'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import type { ContactEarningSummary } from '@/lib/loyalty/contact-earning'
+import type { OrderStampCard } from '@/lib/loyalty/stamp-status'
+import type { StampCardView } from '@/lib/loyalty/stamp-card-view'
+import { CLAIM_WINDOW_CLOSED_MESSAGE } from '@/lib/loyalty/claim-window'
 import { formatPhMobileInput, toPhMobileE164 } from '@/lib/phone-display'
 import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
 
@@ -19,6 +22,15 @@ interface LoyaltyStampCardProps {
   /** Whether the order is already settled — decides the "pending" wording. */
   isOrderComplete: boolean
   storeName: string
+  /**
+   * Which face to show, from `decideStampCardView`. Defaults to the claim form
+   * so the card is usable on its own.
+   */
+  view?: Exclude<StampCardView, 'hidden'>
+  /** The customer's live card, when this order has already earned. */
+  card?: OrderStampCard | null
+  /** Called after a successful claim so the page can re-read the live card. */
+  onClaimed?: () => void
 }
 
 type Phase =
@@ -26,6 +38,7 @@ type Phase =
   | { kind: 'saving' }
   | { kind: 'saved'; loyalty: ContactEarningSummary }
   | { kind: 'already_set' }
+  | { kind: 'claim_closed' }
   | { kind: 'error' }
 
 const NAME_MAX = 64
@@ -45,6 +58,9 @@ export function LoyaltyStampCard({
   offer,
   isOrderComplete,
   storeName,
+  view = 'claim',
+  card = null,
+  onClaimed,
 }: LoyaltyStampCardProps) {
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
@@ -76,8 +92,12 @@ export function LoyaltyStampCard({
       if (res.ok) {
         const body = (await res.json().catch(() => null)) as { loyalty?: ContactEarningSummary } | null
         setPhase({ kind: 'saved', loyalty: body?.loyalty ?? { state: 'attached' } })
+        onClaimed?.()
       } else if (res.status === 409) {
         setPhase({ kind: 'already_set' })
+      } else if (res.status === 410) {
+        // The order finished between loading the page and pressing the button.
+        setPhase({ kind: 'claim_closed' })
       } else {
         setPhase({ kind: 'error' })
       }
@@ -90,6 +110,30 @@ export function LoyaltyStampCard({
     return (
       <CardShell>
         <SavedState loyalty={phase.loyalty} offer={offer} isOrderComplete={isOrderComplete} storeName={storeName} />
+      </CardShell>
+    )
+  }
+
+  if (phase.kind === 'claim_closed' || (phase.kind === 'idle' && view === 'closed')) {
+    return (
+      <CardShell>
+        <ClosedState offer={offer} storeName={storeName} />
+      </CardShell>
+    )
+  }
+
+  if (phase.kind === 'idle' && view === 'card' && card) {
+    return (
+      <CardShell>
+        <EarnedCardState card={card} storeName={storeName} />
+      </CardShell>
+    )
+  }
+
+  if (phase.kind === 'idle' && view === 'awaiting') {
+    return (
+      <CardShell>
+        <AwaitingState offer={offer} storeName={storeName} isOrderComplete={isOrderComplete} />
       </CardShell>
     )
   }
@@ -205,6 +249,100 @@ export function LoyaltyStampCard({
         </p>
       </form>
     </CardShell>
+  )
+}
+
+/**
+ * The customer's live card for this order: the balance the ledger holds right
+ * now, so a refresh hours after the claim shows the same stamps.
+ */
+function EarnedCardState({ card, storeName }: { card: OrderStampCard; storeName: string }) {
+  const unit = card.earnMode === 'stamp' ? 'stamps' : 'points'
+  const hasReward = card.rewardsAvailable > 0
+  const filled = card.balance === 0 && hasReward ? card.threshold : card.balance
+
+  return (
+    <div data-testid="stamp-card-earned">
+      <div
+        className="px-5 pb-4 pt-5 text-center"
+        style={{ background: 'linear-gradient(135deg, var(--trk-accent), var(--trk-accent-strong))', color: 'var(--trk-on-accent)' }}
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">{card.programName}</p>
+        <h2 className="mt-1 text-2xl font-extrabold leading-tight">
+          {hasReward ? 'Reward ready!' : 'Stamp collected!'}
+        </h2>
+        <p className="mt-1.5 text-sm opacity-90">
+          {hasReward
+            ? `${card.rewardLabel} is waiting. Give your number at ${storeName} to use it.`
+            : `${card.balance} of ${card.threshold} ${unit} toward ${card.rewardLabel}`}
+        </p>
+      </div>
+      <div className="p-5">
+        <StampTrack threshold={card.threshold} filled={filled} earnMode={card.earnMode} />
+        <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+          Use the same number when you order and your stamps add up automatically.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** The number is on the order; the stamp lands when the order is completed. */
+function AwaitingState({
+  offer,
+  storeName,
+  isOrderComplete,
+}: {
+  offer: LoyaltyOffer | null
+  storeName: string
+  isOrderComplete: boolean
+}) {
+  return (
+    <div data-testid="stamp-card-awaiting" className="p-5 text-center">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-accent-soft)', color: 'var(--trk-accent)' }}>
+        <Stamp className="h-7 w-7" aria-hidden="true" />
+      </div>
+      <h2 className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-text)' }}>
+        Your stamp is on the way
+      </h2>
+      <p className="mt-1 text-sm" style={{ color: 'var(--trk-text-muted)' }}>
+        {isOrderComplete
+          ? `${storeName} has your number — your stamp lands once this order is settled.`
+          : 'It lands as soon as your order is completed. Come back to this page any time.'}
+      </p>
+      {offer && (
+        <div className="mt-4">
+          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The window is over. Said plainly, and without hinting that an earlier scan
+ * would have worked — the rule exists so a found receipt claims nothing.
+ */
+function ClosedState({ offer, storeName }: { offer: LoyaltyOffer | null; storeName: string }) {
+  return (
+    <div data-testid="stamp-card-closed" className="p-5 text-center">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--trk-card-border)', color: 'var(--trk-text-muted)' }}>
+        <Stamp className="h-7 w-7" aria-hidden="true" />
+      </div>
+      <h2 className="mt-3 text-xl font-extrabold" style={{ color: 'var(--trk-text)' }}>
+        Stamp claiming is closed
+      </h2>
+      <p className="mt-1 text-sm" style={{ color: 'var(--trk-text-muted)' }}>
+        {CLAIM_WINDOW_CLOSED_MESSAGE}
+      </p>
+      {offer && (
+        <p className="mt-3 text-xs" style={{ color: 'var(--trk-text-faint)' }}>
+          {offer.earnMode === 'stamp'
+            ? `${offer.threshold} stamps = ${offer.rewardLabel} at ${storeName}.`
+            : `${offer.threshold} points = ${offer.rewardLabel} at ${storeName}.`}
+        </p>
+      )}
+    </div>
   )
 }
 

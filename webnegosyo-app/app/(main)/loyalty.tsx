@@ -155,8 +155,10 @@ export default function LoyaltyScreen() {
     );
   }
 
+  // Activating a program switches the store live (both flags), so a store with
+  // nothing active is simply not earning yet — not blocked on the platform.
   const earningNote = !loyaltyEnabled || !flags.isEnabled
-    ? "Earning is switched off for this store. Programs can be set up now and start earning once loyalty is enabled."
+    ? "No program is live yet. Activate one and this store starts stamping straight away — customers claim on their receipt."
     : flags.isShadow
       ? "Shadow mode: earning is being recorded and checked, but customers are not yet issued rewards."
       : null;
