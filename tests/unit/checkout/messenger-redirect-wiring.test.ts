@@ -45,3 +45,35 @@ describe('useCheckout — the Messenger redirect must not outrun the order save'
     expect(SOURCE).toMatch(/orderSaveFailed|setOrderSaveError/)
   })
 })
+
+describe('useCheckout — a refused order must not be handed to the merchant', () => {
+  // The store refusing an order and the order going missing are opposite
+  // events. The hook used to treat them as one, which meant a customer whose
+  // order was DELIBERATELY rejected was told to send the merchant the
+  // Messenger message anyway — and the countdown sent it for them.
+
+  it('classifies the save instead of assuming every failure is a lost order', () => {
+    expect(SOURCE).toContain('classifyOrderSave')
+  })
+
+  it('no longer hardcodes the one-size-fits-all failure sentence', () => {
+    // The generic wording still exists, but it now lives in the classifier as
+    // the FAILURE case only, not inline as the answer to everything.
+    expect(SOURCE).not.toContain(
+      "'We could not confirm your order with the store. Please send the Messenger message so they receive it.'"
+    )
+  })
+
+  it('stops the countdown from opening Messenger when the store refused', () => {
+    expect(SOURCE).toContain('orderRefusedRef')
+
+    const guard = SOURCE.indexOf('orderRefusedRef.current) return')
+    const open = SOURCE.indexOf('window.open(')
+    expect(guard).toBeGreaterThan(-1)
+    expect(guard).toBeLessThan(open)
+  })
+
+  it('carries the reason out of the hook so a design can show it', () => {
+    expect(SOURCE).toContain('orderSaveNotice')
+  })
+})

@@ -10,6 +10,7 @@ interface GlassCardProps {
     item: MenuItem
     onSelect: (item: MenuItem) => void
     branding: BrandingColors
+    isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface GlassCardProps {
  * Glass Card Template
  * Glassmorphism design with frosted glass effect, backdrop blur, and translucent layers
  */
-export const GlassCard = memo(function GlassCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: GlassCardProps) {
+export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: GlassCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -108,7 +109,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, men
                     </div>
                 )}
 
-                {!item.is_available && (
+                {!isOrderable && (
                     <div
                         className="absolute inset-0 flex items-center justify-center"
                         style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(255,255,255,0.3)' }}
@@ -134,7 +135,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, men
                         e.stopPropagation()
                         onSelect(item)
                     }}
-                    disabled={!item.is_available}
+                    disabled={!isOrderable}
                 >
                     <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />

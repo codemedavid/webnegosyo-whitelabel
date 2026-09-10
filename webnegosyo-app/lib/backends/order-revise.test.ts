@@ -526,3 +526,95 @@ describe("buildRevisionRows — the named service charge", () => {
     expect(orderPatch).not.toHaveProperty("service_charge_amount");
   });
 });
+
+/**
+ * `order_items.menu_item_id` is `uuid REFERENCES menu_items(id) ON DELETE SET
+ * NULL` — nullable BY DESIGN, because the database itself blanks it when a
+ * merchant deletes a product. The edit path used to write whatever string it
+ * was handed straight into it, and the string is very often `""`:
+ * `hydratePosCart` writes `item.menuItemId ?? ""` and the DTO's `menuItemId` is
+ * null for exactly those deleted-product lines.
+ *
+ * Postgres refuses `''` for a uuid with 22P02. Because the revise path replaced
+ * the order's items, that refusal emptied a LIVE order — zero line items, a
+ * revision row claiming the edit landed, and a stale total. So the coercion is
+ * not tidiness; it is the difference between a cashier editing an old order and
+ * destroying it.
+ */
+describe("menu_item_id — the nullable uuid column", () => {
+  const PRODUCT = "9f0c1a2b-3d4e-4f50-8a91-b2c3d4e5f607";
+
+  it("writes the product id when the line still points at a live menu item", () => {
+    // Arrange
+    const args = reviseArgs({
+      items: [
+        { menuItemId: PRODUCT, menuItemName: "Latte", quantity: 1, price: 100, subtotal: 100 },
+      ],
+    });
+
+    // Act
+    const { itemRows } = buildRevisionRows(TENANT, args, previous());
+
+    // Assert
+    expect(itemRows[0].menu_item_id).toBe(PRODUCT);
+  });
+
+  it("writes NULL for a line whose menu item was deleted", () => {
+    // Arrange: the empty string `hydratePosCart` produces for a null DTO id.
+    const args = reviseArgs({
+      items: [
+        { menuItemId: "", menuItemName: "Discontinued Latte", quantity: 1, price: 100, subtotal: 100 },
+      ],
+    });
+
+    // Act
+    const { itemRows } = buildRevisionRows(TENANT, args, previous());
+
+    // Assert
+    expect(itemRows[0].menu_item_id).toBeNull();
+  });
+
+  it("writes NULL for a Convex-style id rather than refusing the whole edit", () => {
+    // Arrange: an order imported from a Convex-backed store keeps its old ids.
+    const args = reviseArgs({
+      items: [
+        {
+          menuItemId: "js71q9w4ja9g3ryvap69b9xxms8e3fzs",
+          menuItemName: "Latte",
+          quantity: 1,
+          price: 100,
+          subtotal: 100,
+        },
+      ],
+    });
+
+    // Act
+    const { itemRows } = buildRevisionRows(TENANT, args, previous());
+
+    // Assert
+    expect(itemRows[0].menu_item_id).toBeNull();
+  });
+
+  it("keeps the submitted id in the audit snapshot, unblanked", () => {
+    // The row is what the database can store; the snapshot is what the cashier
+    // actually submitted. Blanking the snapshot too would erase the only
+    // record that the line ever named a product.
+    const args = reviseArgs({
+      items: [
+        {
+          menuItemId: "js71q9w4ja9g3ryvap69b9xxms8e3fzs",
+          menuItemName: "Latte",
+          quantity: 1,
+          price: 100,
+          subtotal: 100,
+        },
+      ],
+    });
+
+    // Act
+    const { revision } = buildRevisionRows(TENANT, args, previous());
+
+    // Assert
+    expect(revision.items_after[0].menuItemId).toBe("js71q9w4ja9g3ryvap69b9xxms8e3fzs");
+  });
+});

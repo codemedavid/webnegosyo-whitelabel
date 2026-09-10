@@ -10,6 +10,7 @@ interface ZenCardProps {
     item: MenuItem
     onSelect: (item: MenuItem) => void
     branding: BrandingColors
+    isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface ZenCardProps {
  * Zen Card Template
  * Ultra-minimal, borderless design with generous whitespace and muted tones
  */
-export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ZenCardProps) {
+export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ZenCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -75,7 +76,7 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEng
                     </div>
                 )}
 
-                {!item.is_available && (
+                {!isOrderable && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm">
                         <span
                             className="text-xs font-medium tracking-wider uppercase"
@@ -130,7 +131,7 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, menuEng
                             e.stopPropagation()
                             onSelect(item)
                         }}
-                        disabled={!item.is_available}
+                        disabled={!isOrderable}
                     >
                         <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

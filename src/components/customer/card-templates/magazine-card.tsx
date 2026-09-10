@@ -10,6 +10,7 @@ interface MagazineCardProps {
     item: MenuItem
     onSelect: (item: MenuItem) => void
     branding: BrandingColors
+    isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface MagazineCardProps {
  * Magazine Card Template
  * Editorial-style with full-bleed image and text overlay, like a food magazine spread
  */
-export const MagazineCard = memo(function MagazineCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: MagazineCardProps) {
+export const MagazineCard = memo(function MagazineCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: MagazineCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -78,7 +79,7 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                     )}
                 </div>
 
-                {!item.is_available && (
+                {!isOrderable && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-20">
                         <span className="text-sm font-semibold text-white/90 uppercase tracking-wider">
                             Unavailable
@@ -133,7 +134,7 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                                 e.stopPropagation()
                                 onSelect(item)
                             }}
-                            disabled={!item.is_available}
+                            disabled={!isOrderable}
                         >
                             <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />

@@ -10,6 +10,7 @@ interface ClassicCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface ClassicCardProps {
  * Classic Card Template
  * Traditional layout with image on top, content below
  */
-export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ClassicCardProps) {
+export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ClassicCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -76,7 +77,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
           </div>
         )}
 
-        {!item.is_available && (
+        {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-gray-900">
               Unavailable
@@ -92,7 +93,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
             e.stopPropagation()
             onSelect(item)
           }}
-          disabled={!item.is_available}
+          disabled={!isOrderable}
         >
           <span className="text-sm md:text-lg font-bold">+</span>
         </button>

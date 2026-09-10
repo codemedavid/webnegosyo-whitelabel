@@ -28,11 +28,19 @@ import {
 } from '@/lib/advance-order-utils'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { notifyCustomerOrderStock } from '@/lib/order-stock-notify'
+import {
+  classifyConvexOrderResponse,
+  classifyOrderLinesWriteError,
+  classifyOrderWriteError,
+  savedOrder,
+  untrackedOrder,
+} from '@/lib/checkout-outcome'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
 import { withSmsConsent } from '@/lib/sms-consent'
 import { pickAndUploadPaymentProof, deletePaymentProof, isImageKitConfigured } from '@/lib/imagekit-upload'
 import { PaymentProofField } from '@/components/checkout/payment-proof-field'
 import { SmsOptIn } from '@/components/checkout/sms-opt-in'
+import type { OrderSaveOutcome } from '@/lib/checkout-outcome'
 import type { OrderType, PaymentMethod, CustomerFormField } from '@/types/database'
 
 export default function CheckoutScreen() {
@@ -284,6 +292,12 @@ export default function CheckoutScreen() {
 
     try {
       let orderId: string | null = null
+      // What actually happened, modelled rather than inferred from `orderId`.
+      // It starts as `not-tracked` because a tenant with neither a Convex
+      // deployment nor order management stores no order BY DESIGN — treating
+      // that missing id as a failure would show a false error to every
+      // Messenger-only merchant's customers.
+      let outcome: OrderSaveOutcome = untrackedOrder()
 
       // Create order in Convex (if tenant has Convex configured) or Supabase
       if (tenant.convex_deployment_url) {
@@ -348,8 +362,23 @@ export default function CheckoutScreen() {
           }),
         })
 
-        const convexResult = await convexResponse.json()
-        if (convexResult.status === 'success') {
+        // A non-2xx body is an error page, not JSON. `.json()` used to be
+        // called on it unconditionally and threw straight past the status
+        // check into the catch-all "Something went wrong" alert.
+        const convexResult = convexResponse.ok
+          ? await convexResponse.json().catch((parseError: unknown) => {
+              console.warn('Convex order response was not JSON:', parseError)
+              return null
+            })
+          : null
+
+        outcome = classifyConvexOrderResponse(
+          convexResponse.ok,
+          convexResponse.status,
+          convexResult
+        )
+
+        if (convexResult && convexResult.status === 'success') {
           orderId = convexResult.value
 
           // Spend the ingredients. Same call and same trust boundary as the
@@ -361,8 +390,14 @@ export default function CheckoutScreen() {
           if (orderId) {
             await notifyCustomerOrderStock(tenant.id, orderId)
           }
-        } else {
-          console.warn('Convex order creation failed, proceeding to Messenger...', convexResult)
+        }
+
+        if (outcome.status !== 'saved') {
+          // The deployment's own sentence is now on `outcome.message` and
+          // reaches the customer; this line is only for the log. A `success`
+          // envelope that carried no id lands here too — it is not a saved
+          // order however it was reported.
+          console.warn('Convex order creation failed:', outcome.detail)
         }
       } else if (tenant.enable_order_management) {
         // Existing Supabase flow
@@ -429,15 +464,33 @@ export default function CheckoutScreen() {
           })
 
         if (orderError) {
-          console.warn('Order creation failed, proceeding to Messenger...', orderError)
+          // 42501 is the store refusing, not a hiccup: orders_insert_customer
+          // requires tenants.is_active = true, so a deactivated merchant lands
+          // here for every order their app takes.
+          outcome = classifyOrderWriteError(orderError)
+          console.warn('Order creation failed:', outcome.detail)
         } else {
           orderId = newOrderId
+          outcome = savedOrder(newOrderId)
+
           const itemsToInsert = orderItems.map(oi => ({
             order_id: orderId!,
             ...oi,
           }))
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase().from('order_items') as any).insert(itemsToInsert)
+          const { error: itemsError } = await (supabase().from('order_items') as any)
+            .insert(itemsToInsert)
+
+          if (itemsError) {
+            // The parent row is already committed, so a refused line write
+            // leaves the merchant holding a live pending order with a total
+            // and no items — order_items_insert_customer gates every anon line
+            // on the parent still being pending and under 15 minutes old. Not
+            // a refusal: the store took the order, so the Messenger message
+            // (the only remaining copy of the lines) must still go out.
+            outcome = classifyOrderLinesWriteError(newOrderId, itemsError)
+            console.warn('Order line items failed to save:', outcome.detail)
+          }
 
           // Spend the ingredients. Deliberately after the lines are written —
           // the platform reads them back rather than trusting anything sent
@@ -471,16 +524,24 @@ export default function CheckoutScreen() {
         messengerUrl = generateMessengerUrl(messengerPageId, message)
       }
 
+      // A refusal is the one outcome where nothing downstream may run. The
+      // platform rejected this order, so handing the merchant a copy of it —
+      // by Messenger, by their Google Sheet, or by counting it in this phone's
+      // order history — is the same lie in a quieter voice.
+      const isRefused = outcome.status === 'refused'
+
       const customerHistoryStore = useCustomerHistoryStore.getState()
       const previousOrderCount = customerHistoryStore.getPastOrderCount(tenant.id, formValues)
-      const updatedCustomerHistory = customerHistoryStore.registerOrder({
-        tenantId: tenant.id,
-        customerData: formValues,
-        orderId,
-        orderTypeName: selectedOrderType.name,
-        paymentMethodName: selectedPaymentMethod?.name || null,
-        total,
-      })
+      const updatedCustomerHistory = isRefused
+        ? null
+        : customerHistoryStore.registerOrder({
+            tenantId: tenant.id,
+            customerData: formValues,
+            orderId,
+            orderTypeName: selectedOrderType.name,
+            paymentMethodName: selectedPaymentMethod?.name || null,
+            total,
+          })
       const isCustomerHistoryTracked = !!updatedCustomerHistory
       const totalOrderCount = updatedCustomerHistory?.totalOrders || 0
 
@@ -499,29 +560,35 @@ export default function CheckoutScreen() {
         messengerMessage: message,
         messengerUrl: messengerUrl || '',
         orderId,
+        saveStatus: outcome.status,
+        saveMessage: outcome.message,
         scheduledForLabel,
       })
 
       // Fire-and-forget: sync order to Google Sheets
-      postOrderToSheets({
-        tenantId: tenant.id,
-        tenantName: tenant.name,
-        orderId: orderId || 'ORD-' + Date.now(),
-        orderTypeName: selectedOrderType.name,
-        customerData: formValues,
-        isCustomerHistoryTracked,
-        previousOrderCount,
-        totalOrderCount,
-        total,
-        paymentMethodName: selectedPaymentMethod?.name || null,
-        paymentMethodDetails: selectedPaymentMethod
-          ? { name: selectedPaymentMethod.name, details: selectedPaymentMethod.details }
-          : null,
-        items,
-      })
+      if (!isRefused) {
+        postOrderToSheets({
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          orderId: orderId || 'ORD-' + Date.now(),
+          orderTypeName: selectedOrderType.name,
+          customerData: formValues,
+          isCustomerHistoryTracked,
+          previousOrderCount,
+          totalOrderCount,
+          total,
+          paymentMethodName: selectedPaymentMethod?.name || null,
+          paymentMethodDetails: selectedPaymentMethod
+            ? { name: selectedPaymentMethod.name, details: selectedPaymentMethod.details }
+            : null,
+          items,
+        })
+      }
 
       isCompletingCheckoutRef.current = true
-      clearCart({ resetOrderType: false })
+      // Keep the basket on a refusal: nothing was ordered, and emptying the
+      // cart while telling the customer so would contradict itself.
+      if (!isRefused) clearCart({ resetOrderType: false })
 
       router.replace('/(main)/order-confirmation')
     } catch (error) {

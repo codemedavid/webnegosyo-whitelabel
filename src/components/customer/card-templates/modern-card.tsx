@@ -10,6 +10,7 @@ interface ModernCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface ModernCardProps {
  * Modern Card Template
  * Contemporary design with overlapping elements and bold typography
  */
-export const ModernCard = memo(function ModernCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: ModernCardProps) {
+export const ModernCard = memo(function ModernCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ModernCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -91,7 +92,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, m
           )}
         </div>
 
-        {!item.is_available && (
+        {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
             <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-gray-900">
               Unavailable
@@ -133,7 +134,7 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, m
             e.stopPropagation()
             onSelect(item)
           }}
-          disabled={!item.is_available}
+          disabled={!isOrderable}
         >
           <svg
             className="h-4 w-4 md:h-6 md:w-6"

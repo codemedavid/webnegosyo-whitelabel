@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { OrderSaveStatus } from '@/lib/checkout-outcome'
 import type { CartItem } from '@/types/database'
 
 export interface CompletedOrderData {
@@ -15,6 +16,14 @@ export interface CompletedOrderData {
   messengerMessage: string
   messengerUrl: string
   orderId: string | null
+  /**
+   * What actually happened to the order. Required, because the confirmation
+   * screen used to infer success from `orderId` — which cannot tell a saved
+   * order from a refused one from a Messenger-only tenant that stores none.
+   */
+  saveStatus: OrderSaveStatus
+  /** The one customer-facing sentence about a refusal or failure; null when there is nothing to add. */
+  saveMessage: string | null
   /** Human label for an advance/scheduled order, e.g. "Tue, Jun 18 · 5:00 PM"; null = ASAP. */
   scheduledForLabel?: string | null
 }

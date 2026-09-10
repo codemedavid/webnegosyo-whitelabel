@@ -10,6 +10,7 @@ interface CompactCardProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
   branding: BrandingColors
+  isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
 }
@@ -18,7 +19,7 @@ interface CompactCardProps {
  * Compact Card Template
  * Horizontal layout for space-efficient display
  */
-export const CompactCard = memo(function CompactCard({ item, onSelect, branding, menuEngineeringEnabled, hideCurrencySymbol }: CompactCardProps) {
+export const CompactCard = memo(function CompactCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: CompactCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -84,7 +85,7 @@ export const CompactCard = memo(function CompactCard({ item, onSelect, branding,
             </div>
           )}
 
-          {!item.is_available && (
+          {!isOrderable && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60">
               <span className="rounded bg-white px-2 py-1 text-[10px] font-medium text-gray-900">
                 Out
@@ -152,7 +153,7 @@ export const CompactCard = memo(function CompactCard({ item, onSelect, branding,
                 e.stopPropagation()
                 onSelect(item)
               }}
-              disabled={!item.is_available}
+              disabled={!isOrderable}
             >
               <svg
                 className="h-3.5 w-3.5 md:h-4 md:w-4"

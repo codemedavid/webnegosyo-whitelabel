@@ -21,6 +21,7 @@ import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirect
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-order-save'
 import { awaitSaveBeforeRedirect } from '@/lib/checkout/messenger-redirect-gate'
+import { classifyOrderSave, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
@@ -39,7 +40,7 @@ import { presellAdvanceConfig, presellScheduleDates } from '@/lib/presell/checko
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
 import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
 import { normalizeOperatingHours } from '@/lib/operating-hours'
-import { computeOrderTotals } from '@/lib/order-totals'
+import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { validateVoucherAction } from '@/app/actions/vouchers'
 import {
@@ -86,6 +87,12 @@ export interface CompletedOrderData {
   total: number
   deliveryFee: number | null
   serviceChargeAmount: number
+  /**
+   * What was actually taken off this order. Carried on the snapshot because the
+   * confirmation screen re-derives the grand total from these parts, and a cart
+   * cleared a millisecond later can no longer be asked.
+   */
+  discounts: OrderDiscountLine[]
   customerData: Record<string, string>
   orderTypeName: string | null
   scheduledForLabel: string | null
@@ -146,7 +153,13 @@ export function useCheckout(tenantSlug: string) {
    */
   const orderSavePromiseRef = useRef<Promise<unknown> | null>(null)
   /** Set when every retry of the order save has failed. Surfaced to the customer. */
-  const [orderSaveFailed, setOrderSaveFailed] = useState(false)
+  // What the save actually came back with. `null` until it settles, which is
+  // also the state the optimistic confirmation screen renders under.
+  const [orderSaveNotice, setOrderSaveNotice] = useState<OrderSaveNotice | null>(null)
+  const orderSaveFailed = orderSaveNotice !== null && orderSaveNotice.verdict !== 'saved'
+  // Read by the Messenger countdown, which starts before the save settles and
+  // therefore cannot close over the state above.
+  const orderRefusedRef = useRef(false)
   const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null)
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null)
   const [trackingToken, setTrackingToken] = useState<string | null>(null)
@@ -294,15 +307,17 @@ export function useCheckout(tenantSlug: string) {
     serviceChargeAmount
   )
 
+  // A stale preview contributes nothing: the summary shows full price for a
+  // moment rather than a discount the server will not honour.
+  const effectiveDiscounts = isPreviewStale(voucherState, voucherFingerprint)
+    ? []
+    : discountLinesFrom(voucherState.preview)
+
   const { grandTotal } = computeOrderTotals({
     subtotal: total,
     deliveryFee: validDeliveryFee,
     serviceCharge: serviceChargeAmount,
-    // A stale preview contributes nothing: the summary shows full price for a
-    // moment rather than a discount the server will not honour.
-    discounts: isPreviewStale(voucherState, voucherFingerprint)
-      ? []
-      : discountLinesFrom(voucherState.preview),
+    discounts: effectiveDiscounts,
   })
 
   // Per-order-type minimum. Measured against the ITEM subtotal, never the grand
@@ -605,8 +620,15 @@ export function useCheckout(tenantSlug: string) {
       // A failed save still opens Messenger: that message is the merchant's
       // only remaining copy of the order, so withholding it would lose the
       // order on both channels.
+      //
+      // A REFUSED order is the opposite case. The store said no on purpose —
+      // below the minimum, sold out, no delivery coordinates — so handing the
+      // merchant the message would deliver them an order the platform just
+      // rejected, which is how a kitchen ends up cooking a sale that was never
+      // accepted. The message stays on screen for the customer to send if they
+      // choose; it simply is not sent for them.
       await awaitSaveBeforeRedirect(orderSavePromiseRef.current)
-      if (isCancelled) return
+      if (isCancelled || orderRefusedRef.current) return
       window.open(messengerUrl, '_blank', 'noopener,noreferrer')
     }
     void openMessengerWhenSafe()
@@ -1131,6 +1153,33 @@ export function useCheckout(tenantSlug: string) {
     setPaymentProofPublicId('')
   }
 
+  /**
+   * Tell the customer what actually happened to their order.
+   *
+   * Split out because both the settled-failure path and the thrown path need
+   * it, and because the refusal case has a side effect the failure case must
+   * not have: it stops the Messenger countdown from delivering the merchant an
+   * order the store already turned down.
+   */
+  const announceOrderSaveNotice = (notice: OrderSaveNotice) => {
+    setOrderSaveNotice(notice)
+    orderRefusedRef.current = notice.verdict === 'refused'
+
+    // Only worth surfacing the message box when sending it is the recovery.
+    if (notice.isMessengerRecoverable && messengerEnabled) setMessageExpanded(true)
+
+    // Only promise Messenger to a tenant that actually has it. Naming a
+    // recovery the customer cannot perform is the same defect in a new place.
+    const canSendMessenger = notice.isMessengerRecoverable && messengerEnabled
+
+    toast.error(
+      canSendMessenger
+        ? `${notice.message} Please send the Messenger message so they receive it.`
+        : notice.message,
+      { duration: 12000 }
+    )
+  }
+
   const handleCheckout = async () => {
     if (!tenant || isProcessing || !orderType) return
     if (isOrderingClosed()) return
@@ -1185,7 +1234,12 @@ export function useCheckout(tenantSlug: string) {
         paymentMethodInfo,
         formFieldsMeta,
         serviceChargeAmount || undefined,
-        scheduledForLabel || undefined
+        scheduledForLabel || undefined,
+        {
+          bundleItems,
+          deliveryFee: validDeliveryFee,
+          discounts: effectiveDiscounts,
+        }
       )
 
       // ── PHASE 2: Resolve Messenger URL (fast — uses cached tenant data) ──
@@ -1270,6 +1324,7 @@ export function useCheckout(tenantSlug: string) {
       const snapshotItems = [...items]
       const snapshotBundleItems = [...bundleItems]
       const snapshotTotal = total
+      const snapshotDiscounts = [...effectiveDiscounts]
       const snapshotCustomerData = { ...normalizedCustomerData }
 
       setCompletedOrderData({
@@ -1277,6 +1332,7 @@ export function useCheckout(tenantSlug: string) {
         total: snapshotTotal,
         deliveryFee: (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : null,
         serviceChargeAmount,
+        discounts: snapshotDiscounts,
         customerData: snapshotCustomerData,
         orderTypeName: selectedOrderTypeName,
         scheduledForLabel,
@@ -1385,7 +1441,8 @@ export function useCheckout(tenantSlug: string) {
         // only thing standing between the customer's "Order Placed!" and the
         // merchant hearing about it. It is retried where retrying is proven
         // safe, and the Messenger redirect waits on the promise below.
-        setOrderSaveFailed(false)
+        setOrderSaveNotice(null)
+        orderRefusedRef.current = false
 
         // Captured from inside the retry so the success handling below still
         // sees the server's full reply (order id, tokens) rather than just the
@@ -1488,24 +1545,25 @@ export function useCheckout(tenantSlug: string) {
           } else {
             // The customer was told the order was placed and the cart is gone,
             // so a silent console.warn here is how an order disappears without
-            // anyone noticing. Say it out loud, and keep the Messenger message
-            // on screen: it is the merchant's remaining copy of this order.
-            console.error('[Checkout] Order save failed after retries:', save.error ?? result?.error)
-            setOrderSaveFailed(true)
-            setMessageExpanded(true)
-            toast.error(
-              'We could not confirm your order with the store. Please send the Messenger message so they receive it.',
-              { duration: 12000 }
-            )
+            // anyone noticing. Say it out loud — and say the RIGHT thing: the
+            // store refusing an order and the order going missing need opposite
+            // advice, and both used to collapse into one sentence that told a
+            // refused customer to hand the merchant the order anyway.
+            const notice = classifyOrderSave({
+              success: false,
+              refused: save.refused ?? result?.refused,
+              error: save.error ?? result?.error,
+            })
+            console.error('[Checkout] Order save did not land:', {
+              verdict: notice.verdict,
+              reason: save.error ?? result?.error,
+            })
+            announceOrderSaveNotice(notice)
           }
         }).catch(error => {
+          // A throw carries no verdict, so it can only be read as a lost order.
           console.error('[Checkout] Order save error:', error)
-          setOrderSaveFailed(true)
-          setMessageExpanded(true)
-          toast.error(
-            'We could not confirm your order with the store. Please send the Messenger message so they receive it.',
-            { duration: 12000 }
-          )
+          announceOrderSaveNotice(classifyOrderSave(null))
         })
       }
     } catch (error) {
@@ -1616,6 +1674,9 @@ export function useCheckout(tenantSlug: string) {
     // True when every retry of the order save failed. The confirmation
     // screen turns this into a persistent notice; the toast alone fades.
     orderSaveFailed,
+    // The sentence to show and whether Messenger still delivers this order.
+    // `null` while the save is in flight or once it succeeded.
+    orderSaveNotice,
     setMessageExpanded,
     // handlers
     handleProceedToPayment,
