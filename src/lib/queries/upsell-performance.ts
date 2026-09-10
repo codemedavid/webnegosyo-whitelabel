@@ -14,7 +14,7 @@ import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 
 const DEFAULT_WINDOW_DAYS = 30
-const CONVEX_UPSELL_PATH = 'analytics:getUpsellAnalytics'
+const CONVEX_UPSELL_PATH = 'analytics:getUpsellAnalyticsInternal'
 
 interface ConvexQueryClient {
   query<T = unknown>(path: string, args: Record<string, unknown>): Promise<T>

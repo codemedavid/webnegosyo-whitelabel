@@ -149,7 +149,7 @@ describe('POST /api/loyverse — Convex order resolved by id alone', () => {
 
     expect(response.status).toBe(200)
     expect(createConvexServerClient).toHaveBeenCalledWith('https://t.convex.cloud', 'key')
-    expect(convexQuery).toHaveBeenCalledWith('orders:getOrderById', { orderId: CONVEX_ORDER })
+    expect(convexQuery).toHaveBeenCalledWith('orders:getOrderByIdInternal', { orderId: CONVEX_ORDER })
     expect(pushOrderToLoyverseBestEffort).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: TENANT,

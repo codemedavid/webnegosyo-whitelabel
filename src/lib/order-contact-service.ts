@@ -75,7 +75,7 @@ async function updateInConvex(
   const convex = createConvexServerClient(convexUrl, convexKey)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const order = await convex.query<any>('orders:getOrderById', {
+  const order = await convex.query<any>('orders:getOrderByIdInternal', {
     orderId: submission.orderId,
   })
   if (!order) return { ok: false, error: 'not_found' }
@@ -87,7 +87,7 @@ async function updateInConvex(
   if (!decision.ok) return decision
 
   try {
-    await convex.mutation('orders:updateCustomerContact', {
+    await convex.mutation('orders:updateCustomerContactInternal', {
       orderId: submission.orderId,
       contact: decision.contact,
       ...(decision.name ? { name: decision.name } : {}),

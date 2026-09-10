@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { recipientsForOutlet } from "./pushRecipients";
+import { requireAccess } from "./auth";
 
 // Register a push token for a user (replaces any existing tokens for that user)
 export const registerPushToken = mutation({
@@ -14,6 +15,7 @@ export const registerPushToken = mutation({
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     // Remove existing tokens for this user
     const existing = await ctx.db
       .query("pushTokens")
@@ -42,6 +44,7 @@ export const removePushToken = mutation({
     userId: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "write");
     const existing = await ctx.db
       .query("pushTokens")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))

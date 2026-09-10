@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { MenuItem, ComplementaryPairWithDetails } from '@/types/database'
 import { resolveRuleBasedSuggestions } from '@/lib/pairing-rules-service'
@@ -134,12 +135,29 @@ export async function getComplementaryPairsByTenant(
 /**
  * Create complementary pairs (bulk — one source to multiple targets).
  */
+/**
+ * Pairs are written on the service-role client and shown on the storefront,
+ * so the caller must hold the tenant's analytics permission. Reported in the
+ * same {success,error} shape the writers return, which the UI already reads.
+ */
+async function refusedWriter(tenantId: string): Promise<{ success: false; error: string } | null> {
+  try {
+    await verifyTenantPermission(tenantId, 'analytics')
+    return null
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Unauthorized' }
+  }
+}
+
 export async function createComplementaryPairs(
   tenantId: string,
   sourceType: 'item' | 'category',
   sourceId: string,
   targetItemIds: string[]
 ): Promise<{ success: boolean; error?: string }> {
+  const refused = await refusedWriter(tenantId)
+  if (refused) return refused
+
   const supabase = createAdminClient()
 
   const rows = targetItemIds.map((targetId, index) => ({
@@ -169,6 +187,9 @@ export async function deleteComplementaryPair(
   id: string,
   tenantId: string
 ): Promise<{ success: boolean; error?: string }> {
+  const refused = await refusedWriter(tenantId)
+  if (refused) return refused
+
   const supabase = createAdminClient()
 
   const { error } = await supabase
@@ -193,6 +214,9 @@ export async function deleteComplementaryPairsForSource(
   sourceType: 'item' | 'category',
   sourceId: string
 ): Promise<{ success: boolean; error?: string }> {
+  const refused = await refusedWriter(tenantId)
+  if (refused) return refused
+
   const supabase = createAdminClient()
 
   let query = supabase

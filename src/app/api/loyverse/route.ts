@@ -51,7 +51,7 @@ async function loadConvexOrderItems(
 
     const convex = createConvexServerClient(config.convex_deployment_url, deployKey)
     const order = await convex.query<{ items?: unknown[] } | null>(
-      'orders:getOrderById',
+      'orders:getOrderByIdInternal',
       { orderId },
     )
     if (!order || !Array.isArray(order.items)) return null

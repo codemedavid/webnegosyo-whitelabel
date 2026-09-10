@@ -236,7 +236,7 @@ async function fetchFromConvex(
   const convex = createConvexServerClient(convexUrl, convexKey)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const order = await convex.query<any>('orders:getOrderById', { orderId })
+  const order = await convex.query<any>('orders:getOrderByIdInternal', { orderId })
 
   if (!order) throw new Error('Order not found in Convex')
 

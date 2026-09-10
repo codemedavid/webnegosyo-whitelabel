@@ -82,18 +82,34 @@ async function fetchConvexTenants(
 ): Promise<ConvexTenantRow[]> {
   let query = admin
     .from('tenants')
-    .select('id, name, convex_deployment_url, convex_deploy_key')
+    .select('id, name, convex_deployment_url')
     .not('convex_deployment_url', 'is', null)
-    .not('convex_deploy_key', 'is', null)
     .neq('convex_deployment_url', '')
-    .neq('convex_deploy_key', '')
     .order('created_at', { ascending: true })
 
   if (onlyTenant) query = query.eq('id', onlyTenant)
 
   const { data, error } = await query
   if (error) throw error
-  return (data ?? []) as ConvexTenantRow[]
+  const rows = (data ?? []) as Omit<ConvexTenantRow, 'convex_deploy_key'>[]
+  if (rows.length === 0) return []
+
+  // Deploy keys live in tenant_secrets, never on the tenants row.
+  const { data: secrets, error: secretsError } = await admin
+    .from('tenant_secrets')
+    .select('tenant_id, convex_deploy_key')
+    .in('tenant_id', rows.map((r) => r.id))
+  if (secretsError) throw secretsError
+  const keyByTenant = new Map(
+    ((secrets ?? []) as { tenant_id: string; convex_deploy_key: string | null }[])
+      .filter((s) => s.convex_deploy_key)
+      .map((s) => [s.tenant_id, s.convex_deploy_key as string])
+  )
+
+  return rows.flatMap((row) => {
+    const key = keyByTenant.get(row.id)
+    return key ? [{ ...row, convex_deploy_key: key }] : []
+  })
 }
 
 /**

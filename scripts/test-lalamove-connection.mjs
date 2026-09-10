@@ -56,9 +56,11 @@ async function testLalamove() {
 
   const { data: tenant, error: tenantError } = await supabase
     .from('tenants')
-    .select('*')
+    .select('*, tenant_secrets(lalamove_api_key, lalamove_secret_key)')
     .eq('slug', tenantSlug)
     .single()
+  // Secrets live in tenant_secrets now; flatten so the checks below read as before.
+  if (tenant) Object.assign(tenant, tenant.tenant_secrets ?? {})
 
   if (tenantError || !tenant) {
     console.error('❌ Failed to fetch tenant:', tenantError?.message)

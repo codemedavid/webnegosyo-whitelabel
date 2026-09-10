@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { upsertTenantSecrets } from '@/lib/tenant-secrets'
+import { getTenantSecrets, upsertTenantSecrets } from '@/lib/tenant-secrets'
+import { parseLalamoveSettings } from '@/lib/lalamove-settings'
+import { invalidateTenantCache } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
 import { verifyStaffManager, verifyTenantOwner } from '@/lib/admin-service'
 import {
@@ -292,30 +294,73 @@ export async function updateOwnCredentialsAction(input: {
 }
 
 // ============================================
-// Lalamove API Keys (owner-only)
+// Lalamove delivery settings (owner-only)
 // ============================================
 
-export async function updateLalamoveKeysAction(
+/**
+ * A store owner manages its own Lalamove connection: the account keys and the
+ * number the rider calls at pickup. The pickup ADDRESS is the store location
+ * saved by the delivery settings card, which the same store admin already
+ * owns, so it is deliberately not duplicated here.
+ *
+ * Keys are write-only. Blank key fields mean "keep the stored ones" — a
+ * merchant saving a corrected phone number must not wipe its credentials.
+ */
+export async function updateLalamoveSettingsAction(
   tenantId: string,
   tenantSlug: string,
-  input: { apiKey: string; secretKey: string }
+  input: { apiKey: string; secretKey: string; senderPhone: string }
 ) {
   try {
     await verifyTenantOwner(tenantId)
-    const apiKey = input.apiKey.trim()
-    const secretKey = input.secretKey.trim()
-    if (!apiKey || !secretKey) {
-      throw new Error('Both the API key and secret key are required')
+
+    const admin = createAdminClient()
+    const { data: tenantRow, error: tenantError } = await admin
+      .from('tenants')
+      .select('lalamove_market')
+      .eq('id', tenantId)
+      .single()
+    if (tenantError) {
+      throw new Error(tenantError.message)
     }
 
-    await upsertTenantSecrets(createAdminClient(), tenantId, {
-      lalamove_api_key: apiKey,
-      lalamove_secret_key: secretKey,
-    })
+    const secrets = await getTenantSecrets(admin, tenantId)
+    const hasExistingKeys = Boolean(secrets?.lalamove_api_key && secrets?.lalamove_secret_key)
 
+    const parsed = parseLalamoveSettings(input, {
+      market: (tenantRow as { lalamove_market: string | null } | null)?.lalamove_market ?? null,
+      hasExistingKeys,
+    })
+    if (!parsed.ok) {
+      return { success: false as const, error: parsed.error }
+    }
+
+    if (parsed.patch.secrets) {
+      await upsertTenantSecrets(admin, tenantId, parsed.patch.secrets)
+    }
+
+    const { error: updateError } = await admin
+      .from('tenants')
+      .update(parsed.patch.tenant as unknown as never)
+      .eq('id', tenantId)
+    if (updateError) {
+      throw new Error(updateError.message)
+    }
+
+    // A Convex-backed store books through its own deployment, which reads the
+    // keys and the pickup contact from `tenantConfig` — saving them here only
+    // reaches Supabase.
+    const { syncTenantConvexConfig, convexConfigSyncWarning } = await import(
+      '@/lib/convex-config-sync'
+    )
+    const warning = convexConfigSyncWarning(await syncTenantConvexConfig(tenantId))
+
+    // The storefront quotes against the Redis-cached tenant row, so a saved
+    // pickup phone stays invisible for 30 minutes unless that copy is dropped.
+    await invalidateTenantCache(tenantSlug, tenantId)
     revalidatePath(`/${tenantSlug}/admin/settings`)
-    return { success: true as const }
+    return { success: true as const, warning }
   } catch (error) {
-    return { success: false as const, error: errorMessage(error, 'Failed to save Lalamove keys') }
+    return { success: false as const, error: errorMessage(error, 'Failed to save Lalamove settings') }
   }
 }

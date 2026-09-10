@@ -25,19 +25,19 @@ function makeFactory(opts?: {
       if (opts?.slowUrls?.has(url)) {
         await new Promise((r) => setTimeout(r, 10_000)) // never resolves within timeout
       }
-      if (path === 'orders:getDashboardStatsByPeriod') {
+      if (path === 'orders:getDashboardStatsByPeriodInternal') {
         // distinguish current vs previous window by startDate
         const isPrev = args.startDate === windows7d.prevStartMs
         return (isPrev
           ? { totalOrders: 5, totalRevenue: 1000, avgOrderValue: 200, statusCounts: { delivered: 5, cancelled: 0 } }
           : { totalOrders: 10, totalRevenue: 3000, avgOrderValue: 300, statusCounts: { delivered: 8, cancelled: 2 } }) as T
       }
-      if (path === 'analytics:getTrends') {
+      if (path === 'analytics:getTrendsInternal') {
         return [
           { date: '2026-07-08', totalOrders: 10, totalRevenue: 3000, avgOrderValue: 300 },
         ] as T
       }
-      if (path === 'analytics:getRevenueBreakdown') {
+      if (path === 'analytics:getRevenueBreakdownInternal') {
         return {
           byOrderType: [{ type: 'Dine In', revenue: 3000, count: 10 }],
           byPaymentMethod: [{ method: 'GCash', revenue: 3000, count: 10 }],
@@ -74,7 +74,7 @@ describe('fetchConvexAggregates', () => {
     const aCalls = recorded.filter((r) => r.url === 'https://a.convex.cloud')
     expect(aCalls.every((c) => c.key === 'keyA')).toBe(true)
     const current = aCalls.find(
-      (c) => c.path === 'orders:getDashboardStatsByPeriod' && c.args.startDate === windows7d.startMs,
+      (c) => c.path === 'orders:getDashboardStatsByPeriodInternal' && c.args.startDate === windows7d.startMs,
     )
     expect(current).toBeDefined()
     expect(current!.args.endDate).toBe(windows7d.endMs)
@@ -84,7 +84,7 @@ describe('fetchConvexAggregates', () => {
     const recorded: Recorded[] = []
     const windowsAll = rangeToWindows('all', NOW)
     await fetchConvexAggregates(tenants, windowsAll, { factory: makeFactory({ recorded }) })
-    const periodCalls = recorded.filter((r) => r.path === 'orders:getDashboardStatsByPeriod')
+    const periodCalls = recorded.filter((r) => r.path === 'orders:getDashboardStatsByPeriodInternal')
     // exactly one per tenant (current only; no previous window)
     expect(periodCalls).toHaveLength(2)
     // 'all' starts from epoch 0
@@ -94,7 +94,7 @@ describe('fetchConvexAggregates', () => {
   it('skips the revenue breakdown query when needBreakdown is false', async () => {
     const recorded: Recorded[] = []
     await fetchConvexAggregates(tenants, windows7d, { factory: makeFactory({ recorded }), needBreakdown: false })
-    expect(recorded.some((r) => r.path === 'analytics:getRevenueBreakdown')).toBe(false)
+    expect(recorded.some((r) => r.path === 'analytics:getRevenueBreakdownInternal')).toBe(false)
   })
 
   it('degrades a failing tenant to a zero aggregate without dropping the others', async () => {

@@ -89,8 +89,16 @@ export function DeliverySettingsForm({
           return
         }
 
-        toast.success('Delivery settings saved')
         router.refresh()
+
+        // The store location is also the Lalamove pickup point, and it is
+        // pushed to the store's app backend on save; say so when that push
+        // failed, because the settings themselves did save.
+        if ('warning' in result && result.warning) {
+          toast.warning(result.warning)
+          return
+        }
+        toast.success('Delivery settings saved')
       } catch {
         toast.error('Failed to save delivery settings')
       }
@@ -130,7 +138,7 @@ export function DeliverySettingsForm({
 
         {(enabled || lalamoveEnabled) && (
           <div className="space-y-6">
-            <div className="space-y-2">
+            <div className="space-y-2" id="store-location">
               <Label className="font-medium">Store location</Label>
               <p className="text-sm text-muted-foreground">
                 {lalamoveEnabled && !enabled

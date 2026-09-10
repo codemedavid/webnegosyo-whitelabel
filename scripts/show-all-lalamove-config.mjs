@@ -28,7 +28,7 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 async function showConfig() {
   const { data: tenants, error } = await supabase
     .from('tenants')
-    .select('slug, name, lalamove_enabled, lalamove_sandbox, lalamove_api_key, lalamove_secret_key, lalamove_market, lalamove_service_type')
+    .select('slug, name, lalamove_enabled, lalamove_sandbox, lalamove_market, lalamove_service_type, tenant_secrets(lalamove_api_key, lalamove_secret_key)')
     .order('name')
 
   if (error) {
@@ -38,7 +38,9 @@ async function showConfig() {
 
   console.log('\n📋 All Tenants Lalamove Configuration:\n')
   
-  for (const tenant of tenants) {
+  for (const row of tenants) {
+    // Secrets moved to tenant_secrets; flatten so the checks below read as before.
+    const tenant = { ...row, ...(row.tenant_secrets ?? {}) }
     console.log(`${tenant.name} (${tenant.slug}):`)
     console.log(`  Enabled: ${tenant.lalamove_enabled}`)
     if (tenant.lalamove_enabled) {

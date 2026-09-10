@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
           Authorization: `Convex ${tenant.convex_deploy_key}`,
         },
         body: JSON.stringify({
-          path: "orders:updateLalamoveDetails",
+          path: "orders:updateLalamoveDetailsInternal",
           args: {
             orderId: convexOrderId,
             lalamoveOrderId: lalamoveOrderId,

@@ -120,7 +120,7 @@ describe('fetchSalesSummary backend routing', () => {
       convexFactory: () => ({ query: convexQuery }),
     })
 
-    expect(convexQuery).toHaveBeenCalledWith('analytics:getTrends', expect.objectContaining({ daysBack: 30 }))
+    expect(convexQuery).toHaveBeenCalledWith('analytics:getTrendsInternal', expect.objectContaining({ daysBack: 30 }))
     expect(result.dataSource).toBe('convex')
     expect(result.totalOrders).toBe(2)
     expect(result.totalRevenue).toBe(600)

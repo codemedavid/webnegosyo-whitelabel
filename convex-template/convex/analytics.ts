@@ -1,6 +1,7 @@
-import { v } from "convex/values";
+import { v, type ObjectType } from "convex/values";
 import { summarizeOrderChannels } from "./analyticsChannels";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery, type QueryCtx } from "./_generated/server";
+import { requireAccess } from "./auth";
 import { localDayStartMs, localDateKey, localDayOfWeek, localHour } from "./time";
 import { resolveAnalyticsContact } from "./customerIdentity";
 
@@ -19,11 +20,11 @@ export const trackEvent = mutation({
   },
 });
 
-export const getUpsellAnalytics = query({
-  args: {
+const getUpsellAnalyticsArgs = {
     daysBack: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function getUpsellAnalyticsHandler(ctx: QueryCtx, args: ObjectType<typeof getUpsellAnalyticsArgs>) {
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
@@ -51,14 +52,24 @@ export const getUpsellAnalytics = query({
       clickRate: shownCount > 0 ? clickedCount / shownCount : 0,
       conversionRate: shownCount > 0 ? convertedCount / shownCount : 0,
     };
+}
+
+export const getUpsellAnalytics = query({
+  args: getUpsellAnalyticsArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getUpsellAnalyticsHandler(ctx, args);
   },
 });
+
+export const getUpsellAnalyticsInternal = internalQuery({ args: getUpsellAnalyticsArgs, handler: getUpsellAnalyticsHandler });
 
 export const getBundleAnalytics = query({
   args: {
     daysBack: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
@@ -82,12 +93,12 @@ export const getBundleAnalytics = query({
   },
 });
 
-export const getTopItems = query({
-  args: {
+const getTopItemsArgs = {
     daysBack: v.optional(v.number()),
     limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function getTopItemsHandler(ctx: QueryCtx, args: ObjectType<typeof getTopItemsArgs>) {
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
@@ -127,14 +138,23 @@ export const getTopItems = query({
       .map(([itemId, data]) => ({ itemId, ...data }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, args.limit ?? 10);
+}
+
+export const getTopItems = query({
+  args: getTopItemsArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getTopItemsHandler(ctx, args);
   },
 });
 
-export const getTrends = query({
-  args: {
+export const getTopItemsInternal = internalQuery({ args: getTopItemsArgs, handler: getTopItemsHandler });
+
+const getTrendsArgs = {
     daysBack: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function getTrendsHandler(ctx: QueryCtx, args: ObjectType<typeof getTrendsArgs>) {
     const days = args.daysBack ?? 30;
     // Compute trends LIVE from orders (not the dailyStats snapshot) so the
     // series is reactive: cancelling an order — even on a past day — drops that
@@ -172,14 +192,23 @@ export const getTrends = query({
         avgOrderValue: d.totalOrders > 0 ? d.totalRevenue / d.totalOrders : 0,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export const getTrends = query({
+  args: getTrendsArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getTrendsHandler(ctx, args);
   },
 });
 
-export const getRevenueBreakdown = query({
-  args: {
+export const getTrendsInternal = internalQuery({ args: getTrendsArgs, handler: getTrendsHandler });
+
+const getRevenueBreakdownArgs = {
     daysBack: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
+};
+
+async function getRevenueBreakdownHandler(ctx: QueryCtx, args: ObjectType<typeof getRevenueBreakdownArgs>) {
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
@@ -223,14 +252,24 @@ export const getRevenueBreakdown = query({
         .map(([method, data]) => ({ method, ...data }))
         .sort((a, b) => b.revenue - a.revenue),
     };
+}
+
+export const getRevenueBreakdown = query({
+  args: getRevenueBreakdownArgs,
+  handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
+    return getRevenueBreakdownHandler(ctx, args);
   },
 });
+
+export const getRevenueBreakdownInternal = internalQuery({ args: getRevenueBreakdownArgs, handler: getRevenueBreakdownHandler });
 
 export const getUpsellTrends = query({
   args: {
     daysBack: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
@@ -302,6 +341,7 @@ export const getSalesAnalytics = query({
     daysBack: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     const prevCutoff = cutoff - days * 24 * 60 * 60 * 1000;
@@ -364,6 +404,7 @@ export const getPaymentMethodAnalytics = query({
     daysBack: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const days = args.daysBack ?? 7;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
@@ -426,6 +467,7 @@ export const getOrderHeatmap = query({
     daysBack: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const days = args.daysBack ?? 30;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
@@ -473,6 +515,7 @@ export const getCustomerInsights = query({
     daysBack: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAccess(ctx, "read");
     const days = args.daysBack ?? 30;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 

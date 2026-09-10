@@ -9,13 +9,14 @@
 interface FakeClient {
   url: string;
   close: jest.Mock;
+  setAuth: jest.Mock;
 }
 const mockInstances: FakeClient[] = [];
 
 jest.mock("convex/react", () => ({
   __esModule: true,
   ConvexReactClient: jest.fn().mockImplementation((url: string) => {
-    const instance: FakeClient = { url, close: jest.fn(async () => {}) };
+    const instance: FakeClient = { url, close: jest.fn(async () => {}), setAuth: jest.fn() };
     mockInstances.push(instance);
     return instance;
   }),
@@ -62,6 +63,15 @@ describe("ConvexAuthProvider client lifecycle", () => {
     byUrl(DEMO_STORE.convexUrl).forEach((placeholder) => {
       expect(placeholder.close).not.toHaveBeenCalled();
     });
+  });
+
+  it("hands the store's client the session token fetcher, never the placeholder", () => {
+    // The store's deployment refuses merchant calls without the platform
+    // token once enforced; a client built without setAuth goes dark there.
+    act(() => useAuthStore.setState({ convexUrl: STORE_A }));
+    render(<ConvexAuthProvider><></></ConvexAuthProvider>);
+    expect(byUrl(STORE_A)[0].setAuth).toHaveBeenCalledTimes(1);
+    expect(typeof byUrl(STORE_A)[0].setAuth.mock.calls[0][0]).toBe("function");
   });
 
   it("does not close a client on a re-render with the same URL", () => {

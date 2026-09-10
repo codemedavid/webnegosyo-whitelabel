@@ -3,6 +3,18 @@ import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { useAuthStore } from "../stores/auth-store";
 import { DEMO_STORE } from "./demo";
 
+// The store's deployment (template v28+) gates merchant reads and writes on
+// the platform session token. Bounded: an unbounded getSession() here would
+// deadlock behind a background token refresh, the way the POS once did.
+// Imported at call time: the session module reaches native code through
+// expo-constants, and this provider wraps the whole tree — a static import
+// here would drag that into every screen test that renders it.
+const CONVEX_TOKEN_TIMEOUT_MS = 5_000;
+async function fetchConvexToken(): Promise<string | null> {
+  const { getAccessTokenBounded } = await import("./authorized-post");
+  return getAccessTokenBounded(CONVEX_TOKEN_TIMEOUT_MS);
+}
+
 interface ConvexAuthProviderProps {
   children: React.ReactNode;
 }
@@ -46,9 +58,13 @@ export function ConvexAuthProvider({ children }: ConvexAuthProviderProps) {
     // whole app — this provider wraps the entire navigation tree. Degrade
     // gracefully instead of throwing.
     try {
-      return new ConvexReactClient(convexUrl, {
+      const next = new ConvexReactClient(convexUrl, {
         unsavedChangesWarning: false,
       });
+      // Demo sessions have no token; the demo store admits reads without
+      // one and its screens block writes.
+      next.setAuth(fetchConvexToken);
+      return next;
     } catch (e) {
       console.warn("Failed to initialize Convex client:", e);
       return null;

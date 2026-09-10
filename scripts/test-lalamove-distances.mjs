@@ -29,9 +29,11 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 async function testDistances() {
   const { data: tenant } = await supabase
     .from('tenants')
-    .select('*')
+    .select('*, tenant_secrets(lalamove_api_key, lalamove_secret_key)')
     .eq('slug', 'retiro')
     .single()
+  // Secrets live in tenant_secrets now; flatten so the checks below read as before.
+  if (tenant) Object.assign(tenant, tenant.tenant_secrets ?? {})
 
   const SDKClient = await import('@lalamove/lalamove-js')
   const client = new SDKClient.default.ClientModule(

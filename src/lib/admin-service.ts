@@ -227,6 +227,25 @@ export async function verifyTenantAdmin(tenantId: string) {
 }
 
 /**
+ * Verify the caller is a platform superadmin. For writes that are not scoped
+ * to any tenant — platform-wide presets, the sign-up lead pipeline — where
+ * the service-role client is the only client that can reach the rows.
+ */
+export async function verifySuperadmin() {
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    throw new Error('Unauthorized: Not authenticated')
+  }
+
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
+  if (!appUser || appUser.role !== 'superadmin') {
+    throw new Error('Forbidden: Superadmin access required')
+  }
+  return { user, userRole: appUser }
+}
+
+/**
  * Verify the caller is admin of the tenant AND holds the given feature
  * permission (owners, superadmins, and legacy null-permission admins pass).
  */

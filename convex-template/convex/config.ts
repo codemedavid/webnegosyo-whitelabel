@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalQuery, mutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 
 export const getConfigs = internalQuery({
   args: { keys: v.array(v.string()) },
@@ -16,7 +16,13 @@ export const getConfigs = internalQuery({
   },
 });
 
-export const upsertConfig = mutation({
+/**
+ * Internal on purpose. `tenantConfig` holds the Lalamove credentials and the
+ * pickup point, and as a public mutation anyone with the deployment URL could
+ * overwrite them. The web app's config sync reaches this with the deploy
+ * key, which Convex admits to internal functions; nothing else can.
+ */
+export const upsertConfig = internalMutation({
   args: {
     key: v.string(),
     value: v.string(),
