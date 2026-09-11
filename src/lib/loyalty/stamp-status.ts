@@ -14,6 +14,8 @@ import { describeLoyaltyReward } from './offer'
 import type { LoyaltyEarnMode, LoyaltyProgram } from './types'
 
 export interface OrderStampCard {
+  /** False when showing existing progress before this order earns. */
+  earnedOnOrder?: boolean
   programName: string
   earnMode: LoyaltyEarnMode
   /** Stamps/points toward the next reward. */

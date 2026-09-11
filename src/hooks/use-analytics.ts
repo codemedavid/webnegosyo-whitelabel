@@ -21,29 +21,45 @@ export function useAnalytics() {
     sessionId.current = crypto.randomUUID();
   }, []);
 
+  /**
+   * Sends the whole buffer at once.
+   *
+   * `allSettled`, not a loop of awaits: these are independent one-way events,
+   * and awaiting each in turn meant a customer who browsed ten items paid ten
+   * sequential round-trips per flush — with one slow mutation stalling every
+   * event queued behind it. Rejections are swallowed per event for the same
+   * reason they always were: analytics must never break the storefront.
+   */
   const flush = useCallback(async () => {
     const events = buffer.current.splice(0);
-    for (const event of events) {
-      try {
-        await trackEventMutation({
+    if (events.length === 0) return;
+
+    await Promise.allSettled(
+      events.map((event) =>
+        trackEventMutation({
           type: event.type,
           metadata: event.metadata,
           sessionId: sessionId.current,
-        });
-      } catch {
-        // Silent fail for analytics — don't break the app
-      }
-    }
+        })
+      )
+    );
   }, [trackEventMutation]);
 
-  // Flush every 5 seconds
+  // Held in a ref so the interval below is created once and is not torn down
+  // and re-armed — flushing the buffer early each time — whenever the Convex
+  // mutation reference changes identity.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
+  // Flush every 5 seconds, and once more on the way out so the last events of
+  // a session are not dropped.
   useEffect(() => {
-    const interval = setInterval(flush, 5000);
+    const interval = setInterval(() => void flushRef.current(), 5000);
     return () => {
       clearInterval(interval);
-      flush();
+      void flushRef.current();
     };
-  }, [flush]);
+  }, []);
 
   const trackEvent = useCallback(
     (type: string, metadata?: Record<string, unknown>) => {

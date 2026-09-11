@@ -18,7 +18,7 @@ import { getStatusIndex } from '@/components/customer/order-tracking/status-step
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import { decideStampCardView } from '@/lib/loyalty/stamp-card-view'
 import { isClaimWindowOpen } from '@/lib/loyalty/claim-window'
-import { useOrderStamps } from '@/hooks/use-order-stamps'
+import { useOrderStamps, type OrderStampsState } from '@/hooks/use-order-stamps'
 import { shouldRingForTransition } from '@/lib/order-ready-alert'
 import { describePrepPromise } from '@/lib/prep-time'
 import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
@@ -38,6 +38,7 @@ interface OrderTrackingClientProps {
   tenantId: string
   trackingToken: string
   initialData: TrackingData
+  initialStamps?: OrderStampsState | null
   brand: OrderTrackingBrand
 }
 
@@ -63,6 +64,7 @@ export function OrderTrackingClient({
   tenantId,
   trackingToken,
   initialData,
+  initialStamps,
   brand,
 }: OrderTrackingClientProps) {
   const router = useRouter()
@@ -194,13 +196,14 @@ export function OrderTrackingClient({
     trackingToken,
     enabled: brand.loyaltyOffer !== null,
     status: trackingData.status,
+    initialStamps,
   })
 
-  const hasContact = stamps?.hasContact ?? trackingData.hasContact === true
+  const hasContact = trackingData.hasContact === true || stamps?.hasContact === true
   const stampView = decideStampCardView({
     hasOffer: brand.loyaltyOffer !== null,
     hasContact,
-    isClaimOpen: stamps ? stamps.claim.state === 'open' : isClaimWindowOpen(trackingData.status),
+    isClaimOpen: isClaimWindowOpen(trackingData.status),
     hasCard: Boolean(stamps?.card),
     isCancelled,
   })
@@ -272,6 +275,7 @@ export function OrderTrackingClient({
               offer={brand.loyaltyOffer}
               isOrderComplete={trackingData.isTerminal}
               storeName={brand.storeName}
+              logoUrl={brand.logoUrl}
               view={stampView}
               card={stamps?.card ?? null}
               onClaimed={refreshStamps}

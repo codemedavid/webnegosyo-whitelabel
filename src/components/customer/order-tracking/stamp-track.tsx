@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Check, Gift } from 'lucide-react'
 import type { LoyaltyEarnMode } from '@/lib/loyalty/types'
@@ -14,17 +15,29 @@ interface StampTrackProps {
   nextIsLive?: boolean
   /** Pop the last filled slot in, one at a time. */
   animateLast?: boolean
+  /** The store's logo, used as the mark inside every earned slot. */
+  logoUrl?: string | null
 }
 
 /** Above this many slots a row of circles stops reading; fall back to a bar. */
 const MAX_SLOTS = 12
+
+/** Rendered slot width at its largest (`max-w-11`), used to size the logo mark. */
+const SLOT_PX = 44
 
 /**
  * The loyalty card's punch row. `threshold` slots, `filled` of them stamped,
  * the last one a gift. Points programs (or very long stamp cards) get a
  * progress bar instead, since 500 tiny circles help nobody.
  */
-export function StampTrack({ threshold, filled, earnMode, nextIsLive = false, animateLast = false }: StampTrackProps) {
+export function StampTrack({
+  threshold,
+  filled,
+  earnMode,
+  nextIsLive = false,
+  animateLast = false,
+  logoUrl = null,
+}: StampTrackProps) {
   const reduceMotion = useReducedMotion()
   const safeFilled = Math.max(0, Math.min(filled, threshold))
 
@@ -76,14 +89,28 @@ export function StampTrack({ threshold, filled, earnMode, nextIsLive = false, an
             }`}
             style={
               isFilled
-                ? { backgroundColor: 'var(--trk-accent)', borderColor: 'var(--trk-accent)', color: 'var(--trk-on-accent)' }
+                ? logoUrl
+                  ? { backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-accent)', color: 'var(--trk-accent)' }
+                  : { backgroundColor: 'var(--trk-accent)', borderColor: 'var(--trk-accent)', color: 'var(--trk-on-accent)' }
                 : isNext && nextIsLive
                   ? { borderColor: 'var(--trk-accent)', color: 'var(--trk-accent)', borderStyle: 'dashed', backgroundColor: 'var(--trk-accent-tint)' }
                   : { borderColor: 'var(--trk-card-border)', color: 'var(--trk-text-faint)' }
             }
           >
             {isFilled ? (
-              <Check className="h-5 w-5" strokeWidth={3} aria-hidden="true" />
+              logoUrl ? (
+                <Image
+                  src={logoUrl}
+                  alt=""
+                  aria-hidden="true"
+                  width={SLOT_PX}
+                  height={SLOT_PX}
+                  unoptimized
+                  className="h-full w-full rounded-full object-contain p-1"
+                />
+              ) : (
+                <Check className="h-5 w-5" strokeWidth={3} aria-hidden="true" />
+              )
             ) : isLast ? (
               <Gift className="h-4 w-4" aria-hidden="true" />
             ) : (

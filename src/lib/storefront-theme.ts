@@ -133,19 +133,48 @@ export function fontFamilyName(fontFamily: string): string {
 }
 
 /**
- * Build the Google Fonts `css2` stylesheet URL for every storefront font,
- * derived from STOREFRONT_GOOGLE_FONTS. Single-weight families are requested
- * bare (the `css2` API rejects an explicit weight for fonts that have only one).
+ * The Google Fonts families one pairing needs — at most two, often one.
+ *
+ * The storefront used to load all five families and seventeen weights on every
+ * menu view, including for the majority of tenants who never picked a pairing
+ * at all. Pass the resolved pairing (`null` for `'theme'` or an unset column)
+ * and the storefront asks for exactly what it will render with.
  */
-export function buildStorefrontFontsHref(): string {
-  const families = Object.entries(STOREFRONT_GOOGLE_FONTS)
-    .map(([family, weights]) => {
+export function fontFamiliesForPair(pair: FontPairDefinition | null): string[] {
+  if (!pair) return []
+  const families = [fontFamilyName(pair.heading), fontFamilyName(pair.body)]
+  return [...new Set(families)]
+}
+
+/**
+ * Build the Google Fonts `css2` stylesheet URL for the given storefront
+ * families, defaulting to every family in STOREFRONT_GOOGLE_FONTS. Single-weight
+ * families are requested bare (the `css2` API rejects an explicit weight for
+ * fonts that have only one).
+ *
+ * Returns `null` when there is nothing to request, so the caller renders no
+ * `<link>` rather than a stylesheet with an empty family list.
+ */
+export function buildStorefrontFontsHref(): string
+export function buildStorefrontFontsHref(families: readonly string[]): string | null
+export function buildStorefrontFontsHref(families?: readonly string[]): string | null {
+  const wanted = families ?? Object.keys(STOREFRONT_GOOGLE_FONTS)
+
+  const params = wanted
+    .map((family) => {
+      const weights = STOREFRONT_GOOGLE_FONTS[family]
+      // A family with no declared weights is one this module does not know how
+      // to request; naming it anyway would produce a URL Google rejects.
+      if (!weights || weights.length === 0) return null
       const name = family.replace(/ /g, '+')
       const isSingleDefaultWeight = weights.length === 1 && weights[0] === 400
       return isSingleDefaultWeight ? `family=${name}` : `family=${name}:wght@${weights.join(';')}`
     })
-    .join('&')
-  return `https://fonts.googleapis.com/css2?${families}&display=swap`
+    .filter((param): param is string => param !== null)
+
+  if (params.length === 0) return null
+
+  return `https://fonts.googleapis.com/css2?${params.join('&')}&display=swap`
 }
 
 /**

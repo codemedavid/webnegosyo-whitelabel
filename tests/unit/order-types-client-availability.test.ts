@@ -42,3 +42,26 @@ describe('getEnabledOrderTypesByTenantClient', () => {
     expect(rows).toEqual([{ id: 'ot-1' }])
   })
 })
+
+/**
+ * The admin payment-method editor links methods to order types, so it must see
+ * every enabled type — a register-only channel such as Grab is exactly the one
+ * the merchant came to attach a method to.
+ */
+describe('getLinkableOrderTypesByTenantClient', () => {
+  beforeEach(() => {
+    eqCalls.length = 0
+  })
+
+  test('filters by tenant and enabled only — never by channel', async () => {
+    const { getLinkableOrderTypesByTenantClient } = await import('@/lib/order-types-client')
+
+    const rows = await getLinkableOrderTypesByTenantClient('tenant-1')
+
+    expect(eqCalls).toEqual([
+      ['tenant_id', 'tenant-1'],
+      ['is_enabled', true],
+    ])
+    expect(rows).toEqual([{ id: 'ot-1' }])
+  })
+})

@@ -6,7 +6,7 @@ import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
  * GET /api/orders/stamps?orderId=&tenantId=&token=
  *
  * The tracking page's loyalty read: whether this receipt may still claim a
- * stamp, and where the card stands if it already earned one. Same
+ * stamp, and the current progress linked to its saved phone number. Same
  * authorization as `/api/orders/track` — the order's HMAC tracking token —
  * and, like it, a read, so the limit is the looser one.
  */
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const result = await getOrderStampStatus({ orderId, tenantId, token })
   if (result.ok) {
-    return NextResponse.json({ success: true, ...result.status })
+    return NextResponse.json({ success: true, ...result.status }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
   const status =

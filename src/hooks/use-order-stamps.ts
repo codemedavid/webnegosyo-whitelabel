@@ -18,6 +18,7 @@ interface UseOrderStampsInput {
   enabled: boolean
   /** Re-read whenever this changes — a delivery is when the stamp lands. */
   status: string
+  initialStamps?: OrderStampsState | null
 }
 
 /**
@@ -33,8 +34,9 @@ export function useOrderStamps({
   trackingToken,
   enabled,
   status,
+  initialStamps = null,
 }: UseOrderStampsInput): { stamps: OrderStampsState | null; refresh: () => void } {
-  const [stamps, setStamps] = useState<OrderStampsState | null>(null)
+  const [stamps, setStamps] = useState<OrderStampsState | null>(initialStamps)
   const [reloadKey, setReloadKey] = useState(0)
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), [])
@@ -43,23 +45,37 @@ export function useOrderStamps({
     if (!enabled) return
     let cancelled = false
 
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
     const params = new URLSearchParams({ orderId, tenantId, token: trackingToken })
-    fetch(`/api/orders/stamps?${params}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body) => {
-        if (cancelled || !body?.success) return
-        setStamps({
-          claim: body.claim as ClaimWindow,
-          hasContact: body.hasContact === true,
-          card: (body.card ?? null) as OrderStampCard | null,
+    const read = async () => {
+      try {
+        const res = await fetch(`/api/orders/stamps?${params}`, {
+          cache: 'no-store',
+          signal: controller.signal,
         })
-      })
-      // The page must never fail over a loyalty read; the card simply stays
-      // on whatever the server rendered.
-      .catch(() => undefined)
+        const body = res.ok ? await res.json() : null
+        if (!cancelled && body?.success) {
+          setStamps({
+            claim: body.claim as ClaimWindow,
+            hasContact: body.hasContact === true,
+            card: (body.card ?? null) as OrderStampCard | null,
+          })
+        }
+      } catch {
+        // Keep the last known card if loyalty is temporarily unavailable.
+      } finally {
+        // Earning can settle after the final status poll; keep the open page
+        // current even when the order status no longer changes.
+        if (!cancelled) timer = setTimeout(read, 10000)
+      }
+    }
+    void read()
 
     return () => {
       cancelled = true
+      controller.abort()
+      clearTimeout(timer)
     }
   }, [orderId, tenantId, trackingToken, enabled, status, reloadKey])
 

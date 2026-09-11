@@ -18,6 +18,7 @@ import {
 } from '@/lib/customer-order-facts'
 import type { LoyaltyEarningDeps } from './apply'
 import { parseLoyaltyRules } from './rules'
+import { readLoyaltyTenantFlags, type LoyaltyTenantFlags, type LoyaltyTenantRow } from './tenant-flags'
 import type { LoyaltyProgram } from './types'
 
 const PROGRAM_SELECT =
@@ -148,10 +149,7 @@ export function createSupabaseLoyaltyDeps(client: SupabaseClient): LoyaltyEarnin
   }
 }
 
-export interface LoyaltyTenantFlags {
-  isEnabled: boolean
-  isShadow: boolean
-}
+export type { LoyaltyTenantFlags }
 
 export async function loadLoyaltyTenantFlags(
   client: SupabaseClient,
@@ -163,12 +161,7 @@ export async function loadLoyaltyTenantFlags(
     .eq('id', tenantId)
     .maybeSingle()
   if (error) throw new Error(`loyalty tenant flags could not be read: ${error.message}`)
-  const row = data as { loyalty_enabled?: boolean | null; loyalty_shadow?: boolean | null } | null
-  return {
-    isEnabled: row?.loyalty_enabled === true,
-    // Unknown reads as shadow: a flag that could not be read must not go live.
-    isShadow: row?.loyalty_shadow !== false,
-  }
+  return readLoyaltyTenantFlags(data as LoyaltyTenantRow | null)
 }
 
 export interface LoyaltyOrderRef {

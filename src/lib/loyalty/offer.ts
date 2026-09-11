@@ -6,7 +6,7 @@
  * database. Silent (null) whenever earning is off or in shadow, because a
  * promise the ledger will not keep is worse than no promise.
  */
-import type { LoyaltyTenantFlags } from './store'
+import type { LoyaltyTenantFlags } from './tenant-flags'
 import type { LoyaltyEarnMode, LoyaltyProgram, LoyaltyReward } from './types'
 
 export interface LoyaltyOffer {

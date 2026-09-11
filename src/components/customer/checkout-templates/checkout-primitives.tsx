@@ -30,6 +30,7 @@ import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { VoucherField } from './voucher-field'
+import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
 
 const MapboxAddressAutocomplete = dynamic(
@@ -193,6 +194,12 @@ export function CheckoutFields({ checkout, columns = 2 }: { checkout: UseCheckou
         )
       })}
     </div>
+      {/* The customer's own stamp card, the moment their number is complete.
+          Above consent because it is feedback on the field they just filled. */}
+      <div className="mt-4">
+        <CheckoutLoyaltyProgress checkout={checkout} />
+      </div>
+
       {/* Consent sits below the fields, spanning both columns — it is a
           statement about all of them, not another field. */}
       <SmsOptInCheckbox checkout={checkout} />
