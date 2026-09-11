@@ -12,6 +12,7 @@ import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 import { HorizontalScrollSection } from '../horizontal-scroll-section'
 import { ResponsiveCategorySection } from '../responsive-category-section'
 import { CategoryIcon } from '@/components/shared/category-icon'
+import { MenuListRow } from './menu-list-row'
 
 interface LayoutListProps {
     tenant: Tenant | null
@@ -240,96 +241,16 @@ export const LayoutList = memo(function LayoutList({
                                 }
                                 gridContent={
                                     <div className="divide-y" style={{ borderColor: `${branding.border}80` }}>
-                                        {items.map((item) => {
-                                            const hasDiscount = item.discounted_price && item.discounted_price < item.price
-                                            const displayPrice = hasDiscount ? item.discounted_price! : item.price
-                                            const isStar = menuEngineeringEnabled && item.bcg_classification === 'star'
-
-                                            return (
-                                                <button
-                                                    key={item.id}
-                                                    onClick={() => onItemSelect(item)}
-                                                    className="flex items-center gap-4 py-3 w-full text-left group transition-colors hover:bg-black/[0.02] rounded-lg px-2 -mx-2"
-                                                >
-                                                    {/* Thumbnail */}
-                                                    <div
-                                                        className="relative h-14 w-14 md:h-16 md:w-16 rounded-xl overflow-hidden shrink-0"
-                                                        style={{ backgroundColor: branding.cards }}
-                                                    >
-                                                        {item.image_url ? (
-                                                            <OptimizedImage
-                                                                src={item.image_url}
-                                                                alt={item.name}
-                                                                fill
-                                                                className="object-cover"
-                                                                sizes="64px"
-                                                            />
-                                                        ) : (
-                                                            <div className="flex items-center justify-center h-full text-lg opacity-30">
-                                                                🍽️
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Info */}
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <h3
-                                                                className="text-sm font-medium truncate"
-                                                                style={{ color: branding.cardTitle }}
-                                                            >
-                                                                {item.name}
-                                                            </h3>
-                                                            {isStar && (
-                                                                <span className="text-xs">⭐</span>
-                                                            )}
-                                                            {item.is_featured && (
-                                                                <span
-                                                                    className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full font-medium"
-                                                                    style={{ backgroundColor: `${branding.primary}15`, color: branding.primary }}
-                                                                >
-                                                                    Featured
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {item.description && (
-                                                            <p
-                                                                className="text-xs mt-0.5 line-clamp-1"
-                                                                style={{ color: branding.cardDescription }}
-                                                            >
-                                                                {item.description}
-                                                            </p>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Price + Add */}
-                                                    <div className="flex items-center gap-3 shrink-0">
-                                                        <div className="text-right">
-                                                            <span
-                                                                className="text-sm font-semibold"
-                                                                style={{ color: branding.cardPrice }}
-                                                            >
-                                                                {formatPrice(displayPrice)}
-                                                            </span>
-                                                            {hasDiscount && (
-                                                                <span
-                                                                    className="text-[10px] line-through block"
-                                                                    style={{ color: branding.textMuted }}
-                                                                >
-                                                                    {formatPrice(item.price)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div
-                                                            className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-transform group-hover:scale-110"
-                                                            style={{ backgroundColor: branding.primary, color: '#fff' }}
-                                                        >
-                                                            +
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            )
-                                        })}
+                                        {items.map((item) => (
+                                            <MenuListRow
+                                                key={item.id}
+                                                item={item}
+                                                onSelect={onItemSelect}
+                                                branding={branding}
+                                                formatPrice={formatPrice}
+                                                menuEngineeringEnabled={menuEngineeringEnabled}
+                                            />
+                                        ))}
                                     </div>
                                 }
                             />

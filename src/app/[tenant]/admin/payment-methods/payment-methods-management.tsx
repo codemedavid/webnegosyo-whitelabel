@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PaymentMethodForm } from '@/components/admin/payment-method-form'
 import { PaymentMethodsList } from '@/components/admin/payment-methods-list'
 import { getPaymentMethodsAction, syncLoyversePaymentMethodsAction } from '@/app/actions/payment-methods'
-import { getEnabledOrderTypesByTenantClient } from '@/lib/order-types-client'
+import { getLinkableOrderTypesByTenantClient } from '@/lib/order-types-client'
 import type { PaymentMethodWithOrderTypes } from '@/lib/payment-methods-service'
 import type { OrderType } from '@/types/database'
 import { toast } from 'sonner'
@@ -50,8 +50,9 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConne
         throw new Error(methodsResult.error)
       }
 
-      // Load order types
-      const orderTypesData = await getEnabledOrderTypesByTenantClient(tenantId)
+      // Every enabled order type, not just the web-facing ones: the merchant
+      // links methods to register-only channels (Grab, Foodpanda) from here too.
+      const orderTypesData = await getLinkableOrderTypesByTenantClient(tenantId)
       setOrderTypes(orderTypesData)
     } catch (error) {
       console.error('Error loading payment methods:', error)

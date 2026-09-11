@@ -10,6 +10,8 @@ import type { StampCardView } from '@/lib/loyalty/stamp-card-view'
 import { CLAIM_WINDOW_CLOSED_MESSAGE } from '@/lib/loyalty/claim-window'
 import { formatPhMobileInput, toPhMobileE164 } from '@/lib/phone-display'
 import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
+import { LoyaltyProgressPanel } from '@/components/customer/loyalty-progress-panel'
+import { useLoyaltyProgress } from '@/hooks/use-loyalty-progress'
 
 interface LoyaltyStampCardProps {
   orderId: string
@@ -22,12 +24,14 @@ interface LoyaltyStampCardProps {
   /** Whether the order is already settled — decides the "pending" wording. */
   isOrderComplete: boolean
   storeName: string
+  /** The store's logo, stamped into every earned slot. Null falls back to a check. */
+  logoUrl?: string | null
   /**
    * Which face to show, from `decideStampCardView`. Defaults to the claim form
    * so the card is usable on its own.
    */
   view?: Exclude<StampCardView, 'hidden'>
-  /** The customer's live card, when this order has already earned. */
+  /** The saved number's live progress, including before this order earns. */
   card?: OrderStampCard | null
   /** Called after a successful claim so the page can re-read the live card. */
   onClaimed?: () => void
@@ -58,6 +62,7 @@ export function LoyaltyStampCard({
   offer,
   isOrderComplete,
   storeName,
+  logoUrl = null,
   view = 'claim',
   card = null,
   onClaimed,
@@ -71,6 +76,15 @@ export function LoyaltyStampCard({
   const e164 = toPhMobileE164(phone)
   const isSaving = phase.kind === 'saving'
   const canSubmit = e164 !== null && !isSaving
+
+  // The card the typed number ALREADY holds. A customer scanning a receipt
+  // wants to see their six stamps before they claim the seventh, and until the
+  // number is on the order there is no token-authorized read that can show it.
+  const typedProgress = useLoyaltyProgress({
+    tenantId,
+    phone: e164,
+    enabled: offer !== null && (phase.kind === 'idle' || phase.kind === 'error'),
+  })
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -95,6 +109,7 @@ export function LoyaltyStampCard({
         onClaimed?.()
       } else if (res.status === 409) {
         setPhase({ kind: 'already_set' })
+        onClaimed?.()
       } else if (res.status === 410) {
         // The order finished between loading the page and pressing the button.
         setPhase({ kind: 'claim_closed' })
@@ -106,10 +121,24 @@ export function LoyaltyStampCard({
     }
   }
 
+  if (view === 'card' && card) {
+    return (
+      <CardShell>
+        <EarnedCardState card={card} storeName={storeName} logoUrl={logoUrl} />
+      </CardShell>
+    )
+  }
+
   if (phase.kind === 'saved') {
     return (
       <CardShell>
-        <SavedState loyalty={phase.loyalty} offer={offer} isOrderComplete={isOrderComplete} storeName={storeName} />
+        <SavedState
+          loyalty={phase.loyalty}
+          offer={offer}
+          isOrderComplete={isOrderComplete}
+          storeName={storeName}
+          logoUrl={logoUrl}
+        />
       </CardShell>
     )
   }
@@ -122,18 +151,10 @@ export function LoyaltyStampCard({
     )
   }
 
-  if (phase.kind === 'idle' && view === 'card' && card) {
-    return (
-      <CardShell>
-        <EarnedCardState card={card} storeName={storeName} />
-      </CardShell>
-    )
-  }
-
   if (phase.kind === 'idle' && view === 'awaiting') {
     return (
       <CardShell>
-        <AwaitingState offer={offer} storeName={storeName} isOrderComplete={isOrderComplete} />
+        <AwaitingState offer={offer} storeName={storeName} isOrderComplete={isOrderComplete} logoUrl={logoUrl} />
       </CardShell>
     )
   }
@@ -158,8 +179,26 @@ export function LoyaltyStampCard({
       <OfferHeader offer={offer} storeName={storeName} />
 
       <form onSubmit={handleSubmit} className="space-y-3 p-5">
-        {offer && (
-          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} />
+        {typedProgress.card ? (
+          <LoyaltyProgressPanel
+            offer={typedProgress.offer}
+            card={typedProgress.card}
+            isLoading={false}
+            storeName={storeName}
+            logoUrl={logoUrl}
+          />
+        ) : (
+          <>
+            {/* The store's promise, until the typed number replaces it with
+                the customer's own card. The row stays put while the lookup
+                runs — a track that blinks out mid-type reads as a fault. */}
+            {offer && (
+              <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} />
+            )}
+            {typedProgress.isLoading && (
+              <LoyaltyProgressPanel offer={null} card={null} isLoading storeName={storeName} />
+            )}
+          </>
         )}
 
         <div className="space-y-1.5">
@@ -256,7 +295,15 @@ export function LoyaltyStampCard({
  * The customer's live card for this order: the balance the ledger holds right
  * now, so a refresh hours after the claim shows the same stamps.
  */
-function EarnedCardState({ card, storeName }: { card: OrderStampCard; storeName: string }) {
+function EarnedCardState({
+  card,
+  storeName,
+  logoUrl,
+}: {
+  card: OrderStampCard
+  storeName: string
+  logoUrl: string | null
+}) {
   const unit = card.earnMode === 'stamp' ? 'stamps' : 'points'
   const hasReward = card.rewardsAvailable > 0
   const filled = card.balance === 0 && hasReward ? card.threshold : card.balance
@@ -269,7 +316,7 @@ function EarnedCardState({ card, storeName }: { card: OrderStampCard; storeName:
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">{card.programName}</p>
         <h2 className="mt-1 text-2xl font-extrabold leading-tight">
-          {hasReward ? 'Reward ready!' : 'Stamp collected!'}
+          {hasReward ? 'Reward ready!' : card.earnedOnOrder === false ? 'Your reward progress' : 'Stamp collected!'}
         </h2>
         <p className="mt-1.5 text-sm opacity-90">
           {hasReward
@@ -278,7 +325,7 @@ function EarnedCardState({ card, storeName }: { card: OrderStampCard; storeName:
         </p>
       </div>
       <div className="p-5">
-        <StampTrack threshold={card.threshold} filled={filled} earnMode={card.earnMode} />
+        <StampTrack threshold={card.threshold} filled={filled} earnMode={card.earnMode} logoUrl={logoUrl} />
         <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
           Use the same number when you order and your stamps add up automatically.
         </p>
@@ -292,10 +339,12 @@ function AwaitingState({
   offer,
   storeName,
   isOrderComplete,
+  logoUrl,
 }: {
   offer: LoyaltyOffer | null
   storeName: string
   isOrderComplete: boolean
+  logoUrl: string | null
 }) {
   return (
     <div data-testid="stamp-card-awaiting" className="p-5 text-center">
@@ -312,7 +361,7 @@ function AwaitingState({
       </p>
       {offer && (
         <div className="mt-4">
-          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} />
+          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} />
         </div>
       )}
     </div>
@@ -394,9 +443,10 @@ interface SavedStateProps {
   offer: LoyaltyOffer | null
   isOrderComplete: boolean
   storeName: string
+  logoUrl: string | null
 }
 
-function SavedState({ loyalty, offer, isOrderComplete, storeName }: SavedStateProps) {
+function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: SavedStateProps) {
   const reduceMotion = useReducedMotion()
 
   if (loyalty.state === 'earned' && offer) {
@@ -429,7 +479,7 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName }: SavedStatePr
           </p>
         </div>
         <div className="p-5">
-          <StampTrack threshold={offer.threshold} filled={filled} earnMode={offer.earnMode} animateLast />
+          <StampTrack threshold={offer.threshold} filled={filled} earnMode={offer.earnMode} animateLast logoUrl={logoUrl} />
           <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
             Use the same number when you order and your stamps add up automatically.
           </p>
@@ -453,7 +503,7 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName }: SavedStatePr
             : 'Your stamp lands when your order is completed. Keep this page open or come back later.'}
         </p>
         <div className="mt-4">
-          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} />
+          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} />
         </div>
       </div>
     )

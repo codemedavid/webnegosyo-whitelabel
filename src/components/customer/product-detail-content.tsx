@@ -382,13 +382,22 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         suppressAutoUpgrade,
     })
 
-    // Eager-preload upsell modal bundles so they're ready when triggered
+    // Warm the ONE chunk this page might need but does not already render.
+    //
+    // This used to pull four chunks on every product mount, which undid the
+    // `next/dynamic` split above it: `PostAddUpsellScreen` and `BundleWizard`
+    // are rendered unconditionally (closed), so their chunks already load on
+    // mount, and `checkout-upsell-modal` only ever renders behind
+    // `isBrandAdmin` — every customer was downloading an admin preview.
+    //
+    // `InlineUpgradeSection` is the real case: it renders only behind the gate
+    // below, and it is the first thing a customer sees after "Add to cart".
+    const canShowUpgradeScreen =
+        menuEngineeringEnabled && (upgradeUpsells.length > 0 || upsellBundles.length > 0)
     useEffect(() => {
-        import('./inline-upgrade-section')
-        import('./post-add-upsell-screen')
-        import('@/components/customer/bundle-wizard')
-        import('@/components/customer/checkout-upsell-modal')
-    }, [])
+        if (!canShowUpgradeScreen) return
+        void import('./inline-upgrade-section')
+    }, [canShowUpgradeScreen])
 
     const {
         selectedVariation,
@@ -512,20 +521,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             detail: { section, pane },
         }))
     }, [])
-
-    // Debug logging in development
-    useEffect(() => {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('ProductDetailContent mounted:', {
-                itemName: item.name,
-                variationsCount: item.variations?.length || 0,
-                variationTypesCount: item.variation_types?.length || 0,
-                addonsCount: item.addons?.length || 0,
-                relatedItemsCount: relatedItems?.length || 0,
-                hasCustomization: !!customization
-            })
-        }
-    }, [item, relatedItems, customization])
 
     // Note: Animation config can be added here if needed for custom animations
 

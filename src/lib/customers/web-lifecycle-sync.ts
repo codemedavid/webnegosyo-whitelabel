@@ -35,8 +35,9 @@ export async function notifyConvexLifecycleSync(input: WebLifecycleSyncInput): P
     const accessToken = data.session?.access_token
     if (!accessToken) return
 
-    await fetch(SYNC_PATH, {
+    const response = await fetch(SYNC_PATH, {
       method: 'POST',
+      keepalive: true,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
@@ -49,6 +50,7 @@ export async function notifyConvexLifecycleSync(input: WebLifecycleSyncInput): P
         ...(input.paymentStatus ? { paymentStatus: input.paymentStatus } : {}),
       }),
     })
+    if (!response.ok) throw new Error(`Customer lifecycle sync failed (${response.status})`)
   } catch (error) {
     console.warn('[lifecycle-sync] could not report order lifecycle:', error)
   }

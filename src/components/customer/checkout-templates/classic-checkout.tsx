@@ -19,6 +19,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
 import { SmsOptInCheckbox, MinimumOrderNotice, OrderSummaryLines } from './checkout-primitives'
+import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { VoucherField } from './voucher-field'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
@@ -391,8 +392,12 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                 ))}
               </div>
               {/* Classic renders its own fields rather than composing
-                  CheckoutFields, so the consent box has to be added here
-                  explicitly — it is the one design that can silently miss it. */}
+                  CheckoutFields, so the consent box and the loyalty card have
+                  to be added here explicitly — it is the one design that can
+                  silently miss them. */}
+              <div className="mt-4">
+                <CheckoutLoyaltyProgress checkout={checkout} />
+              </div>
               <SmsOptInCheckbox checkout={checkout} />
             </div>
           )}

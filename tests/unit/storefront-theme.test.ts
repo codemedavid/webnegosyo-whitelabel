@@ -20,6 +20,7 @@ import {
   generatePaletteFromColor,
   fontFamilyName,
   buildStorefrontFontsHref,
+  fontFamiliesForPair,
   buildHeadingFontCss,
   type StorefrontPalette,
 } from '@/lib/storefront-theme'
@@ -359,5 +360,62 @@ describe('resolveHeroPreset', () => {
     expect(resolveHeroPreset(undefined)).toBeNull()
     expect(resolveHeroPreset(null)).toBeNull()
     expect(resolveHeroPreset(9)).toBeNull()
+  })
+})
+
+/**
+ * A tenant that never chose a font pairing used to download five families and
+ * seventeen weights on every storefront page view, and a tenant that DID choose
+ * one downloaded the other four pairings' families too. The stylesheet is now
+ * built for exactly the pairing in force.
+ */
+describe('fontFamiliesForPair', () => {
+  it('asks for only the two families a pairing actually uses', () => {
+    expect(fontFamiliesForPair(resolveFontPair('warm editorial'))).toEqual(['Lora', 'Karla'])
+  })
+
+  it('collapses a pairing whose heading and body are one family', () => {
+    expect(fontFamiliesForPair(resolveFontPair('modern sans'))).toEqual(['Archivo'])
+  })
+
+  it('asks for nothing when no pairing is in force', () => {
+    // `'theme'` and an unset column both resolve to null — the tenant keeps its
+    // own fonts, so there is no stylesheet to load at all.
+    expect(fontFamiliesForPair(resolveFontPair('theme'))).toEqual([])
+    expect(fontFamiliesForPair(resolveFontPair(undefined))).toEqual([])
+  })
+
+  it('names only families the stylesheet builder knows how to request', () => {
+    for (const name of Object.keys(FONT_PAIRS) as Array<keyof typeof FONT_PAIRS>) {
+      for (const family of fontFamiliesForPair(resolveFontPair(name))) {
+        expect(STOREFRONT_GOOGLE_FONTS[family]).toBeDefined()
+      }
+    }
+  })
+})
+
+describe('buildStorefrontFontsHref with a family subset', () => {
+  it('requests just the named families', () => {
+    const href = buildStorefrontFontsHref(['Lora', 'Karla'])
+
+    expect(href).toContain('family=Lora')
+    expect(href).toContain('family=Karla')
+    expect(href).not.toContain('family=Anton')
+    expect(href).not.toContain('Cormorant')
+  })
+
+  it('returns null when there is nothing to load, so no tag is rendered', () => {
+    expect(buildStorefrontFontsHref([])).toBeNull()
+  })
+
+  it('still keeps its single-weight and swap rules', () => {
+    const href = buildStorefrontFontsHref(['Anton'])
+
+    // Anton has one weight; css2 rejects an explicit `wght` for those.
+    expect(href).toContain('family=Anton&display=swap')
+  })
+
+  it('ignores a family it has no weights for rather than emitting a broken URL', () => {
+    expect(buildStorefrontFontsHref(['Comic Sans'])).toBeNull()
   })
 })

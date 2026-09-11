@@ -15,6 +15,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { applyMobileOverrides, mergeMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
+import { buildStorefrontFontsHref } from '@/lib/storefront-theme'
 
 export const BRANDING_PREVIEW_PARAM = 'brandingPreview'
 export const BRANDING_DRAFT_MESSAGE = 'wn-branding-draft'
@@ -142,6 +143,10 @@ export function useMobileOverrides(tenant: { mobile_overrides?: unknown } | null
 export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T {
   const draft = useBrandingPreviewDraft()
   const isMobile = useIsMobileViewport()
+  // Called from here rather than from each page: every surface that takes part
+  // in the preview already calls this hook, so a new one cannot forget and
+  // render a drafted pairing in the fallback typeface.
+  useStorefrontFontPreview()
   return useMemo(() => {
     if (!tenant) return tenant
     let result = { ...(tenant as Record<string, unknown>) }
@@ -160,4 +165,36 @@ export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T 
     if (!draft && !isMobile) return tenant
     return result as T
   }, [tenant, draft, isMobile])
+}
+
+/**
+ * Loads every storefront typeface while the Branding Studio preview is open.
+ *
+ * The storefront's server layout emits a stylesheet for the pairing the tenant
+ * has SAVED, because that is all a real customer will ever render with. The
+ * Studio's whole job is showing unsaved ones, and a draft arrives after the
+ * server response — so inside the preview iframe, and only there, the full set
+ * is loaded once so switching pairings is instant.
+ *
+ * A no-op outside preview mode: a customer never pays for this.
+ */
+export function useStorefrontFontPreview(): void {
+  const [isEnabled] = useState(isPreviewModeActive)
+
+  useEffect(() => {
+    if (!isEnabled || typeof document === 'undefined') return
+
+    const href = buildStorefrontFontsHref()
+    if (document.querySelector(`link[href="${href}"]`)) return
+
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = href
+    link.dataset.brandingPreviewFonts = 'true'
+    document.head.appendChild(link)
+
+    return () => {
+      link.remove()
+    }
+  }, [isEnabled])
 }

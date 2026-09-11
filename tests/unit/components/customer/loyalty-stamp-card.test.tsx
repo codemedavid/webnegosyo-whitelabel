@@ -251,3 +251,77 @@ describe('LoyaltyStampCard', () => {
     await waitFor(() => expect(onClaimed).toHaveBeenCalledTimes(1))
   })
 })
+
+it('replaces the QR claim confirmation with live progress when the refresh arrives', async () => {
+  const user = userEvent.setup()
+  mockFetch(200, { success: true, loyalty: { state: 'pending' } })
+  const { rerender } = render(<LoyaltyStampCard {...BASE} offer={OFFER} isOrderComplete={false} />)
+  await user.type(screen.getByLabelText(/mobile number/i), '09171234567')
+  await user.click(screen.getByRole('button', { name: /claim my stamp/i }))
+  await screen.findByText('Number saved!')
+  rerender(<LoyaltyStampCard {...BASE} offer={OFFER} isOrderComplete={false} view="card" card={{
+    programName: 'Coffee Club', earnMode: 'stamp', balance: 3, threshold: 8, rewardsAvailable: 0, rewardLabel: 'Free Iced Latte',
+  }} />)
+  expect(screen.getByTestId('stamp-track')).toHaveAttribute('aria-label', '3 of 8 stamps')
+  expect(screen.queryByLabelText(/mobile number/i)).not.toBeInTheDocument()
+})
+
+it('shows existing progress without claiming that a pending order already earned', () => {
+  render(<LoyaltyStampCard {...BASE} offer={OFFER} isOrderComplete={false} view="card" card={{
+    programName: 'Coffee Club', earnMode: 'stamp', balance: 3, threshold: 8, rewardsAvailable: 0, rewardLabel: 'Free Iced Latte', earnedOnOrder: false,
+  }} />)
+  expect(screen.getByText('Your reward progress')).toBeInTheDocument()
+  expect(screen.queryByText('Stamp collected!')).not.toBeInTheDocument()
+  expect(screen.getByTestId('stamp-track')).toHaveAttribute('aria-label', '3 of 8 stamps')
+})
+
+describe('store logo as the stamp mark', () => {
+  it('stamps filled slots with the store logo when the store has one', () => {
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} logoUrl="https://cdn.test/logo.png" view="card" card={{
+      programName: 'Coffee Club', earnMode: 'stamp', balance: 3, threshold: 8, rewardsAvailable: 0, rewardLabel: 'Free Iced Latte',
+    }} />)
+    const slots = within(screen.getByTestId('stamp-track')).getAllByTestId('stamp-slot')
+    const marks = slots
+      .filter((slot) => slot.getAttribute('data-filled') === 'true')
+      .map((slot) => slot.querySelector('img'))
+    expect(marks).toHaveLength(3)
+    marks.forEach((img) => {
+      expect(img).not.toBeNull()
+      expect(img).toHaveAttribute('src', 'https://cdn.test/logo.png')
+      expect(img).toHaveAttribute('alt', '')
+    })
+  })
+
+  it('leaves empty slots unstamped so the logo only marks what was earned', () => {
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} logoUrl="https://cdn.test/logo.png" view="card" card={{
+      programName: 'Coffee Club', earnMode: 'stamp', balance: 3, threshold: 8, rewardsAvailable: 0, rewardLabel: 'Free Iced Latte',
+    }} />)
+    const empty = within(screen.getByTestId('stamp-track'))
+      .getAllByTestId('stamp-slot')
+      .filter((slot) => slot.getAttribute('data-filled') === 'false')
+    expect(empty).toHaveLength(5)
+    empty.forEach((slot) => expect(slot.querySelector('img')).toBeNull())
+  })
+
+  it('falls back to the check mark when the store has no logo', () => {
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} view="card" card={{
+      programName: 'Coffee Club', earnMode: 'stamp', balance: 3, threshold: 8, rewardsAvailable: 0, rewardLabel: 'Free Iced Latte',
+    }} />)
+    const slots = within(screen.getByTestId('stamp-track')).getAllByTestId('stamp-slot')
+    slots.forEach((slot) => expect(slot.querySelector('img')).toBeNull())
+  })
+
+  it('stamps the claim form preview and the fresh-claim celebration with the logo too', async () => {
+    const user = userEvent.setup()
+    mockFetch(200, { success: true, loyalty: { state: 'earned', balance: 1, rewardUnlocked: false } })
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} logoUrl="https://cdn.test/logo.png" />)
+    await user.type(screen.getByLabelText(/mobile number/i), '09171234567')
+    await user.click(screen.getByRole('button', { name: /claim my stamp/i }))
+    await screen.findByText('Stamp collected!')
+    const filled = within(screen.getByTestId('stamp-track'))
+      .getAllByTestId('stamp-slot')
+      .filter((slot) => slot.getAttribute('data-filled') === 'true')
+    expect(filled).toHaveLength(1)
+    expect(filled[0].querySelector('img')).toHaveAttribute('src', 'https://cdn.test/logo.png')
+  })
+})

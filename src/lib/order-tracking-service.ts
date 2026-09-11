@@ -9,6 +9,7 @@ import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { isRealContact } from '@/lib/order-contact'
+import { resolveCustomerIdentity } from '@/lib/customer-identity'
 import {
   isPickupScanEnabled,
   resolveOrderTypeKind,
@@ -71,15 +72,40 @@ export interface TrackingData {
   serverNowMs?: number
 }
 
+/** Server-only identity for loyalty reads; never serialized by the tracking API. */
+interface TrackingContextData extends TrackingData {
+  loyaltyIdentity: {
+    customerKey: string | null
+    outletId: string | null
+    backend: 'platform_supabase' | 'convex'
+    source: 'pos' | 'online'
+    paymentStatus: string | null
+    observedAt: string
+  }
+}
+
+export async function fetchOrderTrackingData(
+  orderId: string,
+  token: string,
+  tenantId: string,
+): Promise<{ data: TrackingData | null; error: string | null }> {
+  const result = await fetchOrderTrackingContext(orderId, token, tenantId)
+  if (!result.data) return { data: null, error: result.error }
+  // Strip the private identity before returning data to the page or API.
+  const { loyaltyIdentity, ...data } = result.data
+  void loyaltyIdentity
+  return { data, error: result.error }
+}
+
 /**
  * Fetch order tracking data server-side.
  * Verifies HMAC token, then queries Supabase or Convex depending on tenant config.
  */
-export async function fetchOrderTrackingData(
+export async function fetchOrderTrackingContext(
   orderId: string,
   token: string,
   tenantId: string
-): Promise<{ data: TrackingData | null; error: string | null }> {
+): Promise<{ data: TrackingContextData | null; error: string | null }> {
   if (!verifyTrackingToken(orderId, token)) {
     return { data: null, error: 'Invalid tracking token' }
   }
@@ -105,7 +131,7 @@ export async function fetchOrderTrackingData(
       ? (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
       : null
 
-    let result: TrackingData
+    let result: TrackingContextData
 
     if (config.convex_deployment_url && deployKey) {
       result = await fetchFromConvex(
@@ -232,8 +258,10 @@ async function fetchFromConvex(
   orderId: string,
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string
-): Promise<TrackingData> {
+): Promise<TrackingContextData> {
   const convex = createConvexServerClient(convexUrl, convexKey)
+  // Timestamp BEFORE reading: a newer lifecycle event must win a race.
+  const observedAt = new Date().toISOString()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const order = await convex.query<any>('orders:getOrderByIdInternal', { orderId })
@@ -267,7 +295,15 @@ async function fetchFromConvex(
       orderTypeSnapshot: order.orderType ?? null,
     }),
     customerName: order.customerName,
-    hasContact: isRealContact(order.customerContact),
+    hasContact: isRealContact(order.customerContact) || Boolean(resolveCustomerIdentity({ customerData: order.customerData }).identityKey),
+    loyaltyIdentity: {
+      customerKey: resolveCustomerIdentity({ contact: order.customerContact, customerData: order.customerData }).identityKey,
+      outletId: order.outletId ?? null,
+      backend: 'convex',
+      source: order.source === 'pos' ? 'pos' : 'online',
+      paymentStatus: order.paymentStatus ?? null,
+      observedAt,
+    },
     createdAt: new Date(order._creationTime).toISOString(),
     isTerminal,
     promisedReadyAt: order.promisedReadyAt ?? null,
@@ -283,11 +319,11 @@ async function fetchFromSupabase(
   supabase: ReturnType<typeof createAdminClient>,
   orderId: string,
   tenantId: string
-): Promise<TrackingData> {
+): Promise<TrackingContextData> {
   const { data: order, error } = await supabase
     .from('orders')
     .select(`
-      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, created_at,
+      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, outlet_id, source, payment_status, created_at,
       scheduled_for, customer_data,
       order_items(menu_item_name, quantity, price, subtotal, variation, addons)
     `)
@@ -326,7 +362,15 @@ async function fetchFromSupabase(
       orderTypeSnapshot: o.order_type ?? null,
     }),
     customerName: o.customer_name,
-    hasContact: isRealContact(o.customer_contact),
+    hasContact: isRealContact(o.customer_contact) || Boolean(resolveCustomerIdentity({ customerData: o.customer_data }).identityKey),
+    loyaltyIdentity: {
+      customerKey: resolveCustomerIdentity({ contact: o.customer_contact, customerData: o.customer_data }).identityKey,
+      outletId: o.outlet_id ?? null,
+      backend: 'platform_supabase',
+      source: o.source === 'pos' ? 'pos' : 'online',
+      paymentStatus: o.payment_status ?? null,
+      observedAt: new Date().toISOString(),
+    },
     createdAt: o.created_at,
     isTerminal,
     promisedReadyAt: prepPromise.promisedReadyAt,

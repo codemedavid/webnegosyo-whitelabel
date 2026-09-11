@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
+import { getOrderStampStatus } from '@/lib/loyalty/order-stamp-service'
 import { fetchOrderTrackingData } from '@/lib/order-tracking-service'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { buildTrackingTheme } from '@/components/customer/order-tracking/tracking-theme'
 import { describeLoyaltyOffer, type LoyaltyOffer } from '@/lib/loyalty/offer'
+import { readLoyaltyTenantFlags } from '@/lib/loyalty/tenant-flags'
 import type { Tenant } from '@/types/database'
 import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { OrderTrackingFallback } from './order-tracking-fallback'
@@ -21,10 +23,7 @@ interface PageProps {
  * fail, and must never promise a stamp the ledger will not issue.
  */
 async function resolveLoyaltyOffer(tenant: Tenant): Promise<LoyaltyOffer | null> {
-  const flags = {
-    isEnabled: tenant.loyalty_enabled === true,
-    isShadow: tenant.loyalty_shadow !== false,
-  }
+  const flags = readLoyaltyTenantFlags(tenant)
   if (!flags.isEnabled || flags.isShadow) return null
 
   try {
@@ -63,6 +62,9 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
     const { data } = await fetchOrderTrackingData(orderId, trackingToken, tenant.id)
 
     if (data) {
+      const stamps = brand.loyaltyOffer
+        ? await getOrderStampStatus({ orderId, tenantId: tenant.id, token: trackingToken })
+        : null
       return (
         <OrderTrackingClient
           orderId={orderId}
@@ -70,6 +72,7 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
           tenantId={tenant.id}
           trackingToken={trackingToken}
           initialData={data}
+          initialStamps={stamps?.ok ? stamps.status : null}
           brand={brand}
         />
       )

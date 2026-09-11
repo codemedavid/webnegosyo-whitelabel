@@ -6,6 +6,7 @@ import { MENU_ITEM_LIST_SELECT } from '@/lib/queries/menu-item-select'
 import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
 import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { collectSlotCategoryIds, hydrateBundleSlots } from '@/lib/bundles/slot-hydration'
 import type { Outlet, OutletMenuOverride } from '@/types/database'
 
 export async function getMenuData(tenantSlug: string) {
@@ -133,28 +134,36 @@ export async function getMenuData(tenantSlug: string) {
 
   const bundlesData = (bundleResult.data as unknown as BundleWithSlots[] | null) ?? []
 
-  // Populate each slot's items — filter by included_item_ids when set
+  // Populate each slot's items. ONE query for every slot category at once,
+  // then a pure assignment — this used to await a query per slot inside the
+  // ISR render, so a tenant with three four-slot bundles paid twelve serial
+  // round-trips to build one page. `is_available` is still filtered here
+  // because a slot *offers* a dish rather than listing it.
+  let hydratedBundles = bundlesData
   if (bundlesData.length > 0) {
-    for (const bundle of bundlesData) {
-      for (const slot of bundle.slots ?? []) {
-        let query = supabase
-          .from('menu_items')
-          .select('*')
-          .eq('category_id', slot.category_id)
-          .eq('tenant_id', tenant.id)
-          .eq('is_available', true)
-          .order('order', { ascending: true })
-        if (slot.included_item_ids && slot.included_item_ids.length > 0) {
-          query = query.in('id', slot.included_item_ids)
-        }
-        const { data: slotItems } = await query
-        slot.items = (slotItems as unknown as MenuItem[]) ?? []
+    const slotCategoryIds = collectSlotCategoryIds(bundlesData)
+    if (slotCategoryIds.length > 0) {
+      const { data: slotItems, error: slotItemsError } = await supabase
+        .from('menu_items')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .eq('is_available', true)
+        .in('category_id', slotCategoryIds)
+        .order('order', { ascending: true })
+
+      if (slotItemsError) {
+        console.warn('[menu-server] Bundle slot items query failed:', slotItemsError.message)
       }
+
+      hydratedBundles = hydrateBundleSlots(
+        bundlesData,
+        (slotItems as unknown as MenuItem[] | null) ?? []
+      )
     }
   }
 
   // Filter out bundles with no valid slots
-  const bundles = bundlesData.filter((b) => (b.slots ?? []).length > 0)
+  const bundles = hydratedBundles.filter((b) => (b.slots ?? []).length > 0)
 
   return {
     tenant,

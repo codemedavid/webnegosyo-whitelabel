@@ -43,6 +43,7 @@ import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { validateVoucherAction } from '@/app/actions/vouchers'
+import { buildVoucherPreviewLines } from '@/lib/vouchers/checkout-preview-lines'
 import {
   addCode,
   cartFingerprint,
@@ -301,8 +302,16 @@ export function useCheckout(tenantSlug: string) {
   )
   const [isCheckingVoucher, setIsCheckingVoucher] = useState(false)
 
+  // Bundle slots are priced by the server too, so they belong in both the
+  // request and the fingerprint. Leaving them out of the fingerprint left a
+  // preview looking fresh after the customer changed a bundle under it.
+  const voucherPreviewLines = useMemo(
+    () => buildVoucherPreviewLines(items, bundleItems),
+    [items, bundleItems]
+  )
+
   const voucherFingerprint = cartFingerprint(
-    items.map((item) => ({ id: item.id, subtotal: item.subtotal })),
+    voucherPreviewLines,
     validDeliveryFee,
     serviceChargeAmount
   )
@@ -349,13 +358,7 @@ export function useCheckout(tenantSlug: string) {
       const result = await validateVoucherAction({
         tenantId: tenant.id,
         codes: [...codes],
-        lines: items.map((item) => ({
-          id: item.id,
-          menuItemId: item.menu_item.id,
-          categoryId: item.menu_item.category_id ?? null,
-          quantity: item.quantity,
-          subtotal: item.subtotal,
-        })),
+        lines: voucherPreviewLines,
         deliveryFee: validDeliveryFee,
         serviceCharge: serviceChargeAmount,
         channel: 'checkout',
@@ -374,7 +377,7 @@ export function useCheckout(tenantSlug: string) {
         previewFingerprint: fingerprint,
       }))
     },
-    [tenant, items, validDeliveryFee, serviceChargeAmount, outlet.selectedOutletId]
+    [tenant, voucherPreviewLines, validDeliveryFee, serviceChargeAmount, outlet.selectedOutletId]
   )
 
   const applyVoucherCode = useCallback(

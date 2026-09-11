@@ -20,3 +20,34 @@ export function isOrderTypeOrderableOnWeb(
 ): boolean {
   return row?.available_on_web !== false
 }
+
+export interface ChannelAvailabilityRow extends WebAvailabilityRow {
+  available_on_pos?: boolean | null
+}
+
+/** The register-side twin of {@link isOrderTypeOrderableOnWeb}. */
+export function isOrderTypeOrderableOnPos(
+  row: ChannelAvailabilityRow | null | undefined
+): boolean {
+  return row?.available_on_pos !== false
+}
+
+/**
+ * A short qualifier naming the one channel an order type is limited to, or
+ * null when it runs on both.
+ *
+ * Admin surfaces that list every order type regardless of channel — the
+ * payment-method editor above all — need this: "Grab" and "Delivery" are
+ * indistinguishable as bare names, and a merchant who cannot tell a
+ * register-only channel from an online one cannot tell which methods they are
+ * really turning on. A row that predates either column counts as both.
+ */
+export function describeOrderTypeChannel(
+  row: ChannelAvailabilityRow | null | undefined
+): string | null {
+  const onWeb = isOrderTypeOrderableOnWeb(row)
+  const onPos = isOrderTypeOrderableOnPos(row)
+
+  if (onWeb && onPos) return null
+  return onPos ? 'Register only' : 'Online only'
+}

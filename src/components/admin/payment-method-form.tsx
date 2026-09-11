@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { OrderType } from '@/types/database'
+import { describeOrderTypeChannel } from '@/lib/order-types/order-type-availability'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { createPaymentMethodAction, updatePaymentMethodAction, updatePaymentMethodOrderTypesAction } from '@/app/actions/payment-methods'
@@ -305,32 +306,47 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {orderTypes.map((orderType) => (
-              <div key={orderType.id} className="flex items-start space-x-3">
-                <Checkbox
-                  id={`order-type-${orderType.id}`}
-                  checked={selectedOrderTypes.includes(orderType.id)}
-                  onCheckedChange={() => handleOrderTypeToggle(orderType.id)}
-                />
-                <div className="grid gap-1.5 leading-none">
-                  <Label
-                    htmlFor={`order-type-${orderType.id}`}
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                  >
-                    {orderType.name}
-                  </Label>
-                  {orderType.description && (
-                    <p className="text-sm text-gray-500">{orderType.description}</p>
-                  )}
+            {orderTypes.map((orderType) => {
+              // Register-only and online-only channels sit in the same list, so
+              // each restricted one names its channel — otherwise "Grab" and
+              // "Delivery" read as the same kind of thing.
+              const channel = describeOrderTypeChannel(orderType)
+
+              return (
+                <div key={orderType.id} className="flex items-start space-x-3">
+                  <Checkbox
+                    id={`order-type-${orderType.id}`}
+                    checked={selectedOrderTypes.includes(orderType.id)}
+                    onCheckedChange={() => handleOrderTypeToggle(orderType.id)}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <div className="flex items-center gap-2">
+                      <Label
+                        htmlFor={`order-type-${orderType.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {orderType.name}
+                      </Label>
+                      {channel && (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                          {channel}
+                        </span>
+                      )}
+                    </div>
+                    {orderType.description && (
+                      <p className="text-sm text-gray-500">{orderType.description}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
           {errors.order_types && (
             <p className="text-sm text-red-500 mt-2">{errors.order_types}</p>
           )}
           <p className="text-sm text-gray-500 mt-4">
-            This payment method will only be shown for the selected order types
+            This payment method will only be offered for the selected order types — online
+            checkout and the register both follow these ticks.
           </p>
         </CardContent>
       </Card>

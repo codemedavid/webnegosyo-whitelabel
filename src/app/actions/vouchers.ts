@@ -22,6 +22,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVoucherPreview } from '@/lib/vouchers/preview'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
+import { loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
 import type { VoucherChannel, DiscountLine } from '@/lib/vouchers/types'
 import type { VoucherPreview } from '@/lib/vouchers/preview'
 
@@ -69,6 +70,31 @@ function sanitizeLines(lines: ValidateVoucherInput['lines']): DiscountLine[] {
     }))
 }
 
+/**
+ * Fills in the category of any line that arrived without one.
+ *
+ * Only the missing ones are looked up, and only when at least one is missing —
+ * a cart of ordinary items pays nothing for this. A dish the query does not
+ * return keeps its null: an unknown category must match no voucher rather than
+ * every one.
+ */
+async function withResolvedCategories(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  lines: DiscountLine[],
+): Promise<DiscountLine[]> {
+  const unresolved = lines.filter((line) => line.categoryId === null).map((line) => line.menuItemId)
+  if (unresolved.length === 0) return lines
+
+  const categoryByMenuItemId = await loadCategoryMap(admin, tenantId, [...new Set(unresolved)])
+
+  return lines.map((line) =>
+    line.categoryId === null
+      ? { ...line, categoryId: categoryByMenuItemId[line.menuItemId] ?? null }
+      : line,
+  )
+}
+
 export async function validateVoucherAction(
   input: ValidateVoucherInput,
 ): Promise<ValidateVoucherResult> {
@@ -93,13 +119,22 @@ export async function validateVoucherAction(
     const channel =
       input.channel && VALID_CHANNELS.includes(input.channel) ? input.channel : 'checkout'
 
+    const admin = createAdminClient()
+
+    // Category-scoped vouchers need a category per line, and the caller cannot
+    // always supply one: bundle slots reach the cart without their dish's
+    // category. `createOrderAction` resolves every line's category from the
+    // database before it prices, so resolving the gaps here the same way is
+    // what keeps the preview and the charge in agreement.
+    const pricedLines = await withResolvedCategories(admin, input.tenantId, lines)
+
     const preview = await buildVoucherPreview({
       tenantId: input.tenantId,
       codes,
       customerKey: input.customerKey ?? null,
-      lookup: createVoucherLookup(createAdminClient()),
+      lookup: createVoucherLookup(admin),
       context: {
-        lines,
+        lines: pricedLines,
         deliveryFee: toFiniteNumber(input.deliveryFee),
         serviceCharge: toFiniteNumber(input.serviceCharge),
         channel,
