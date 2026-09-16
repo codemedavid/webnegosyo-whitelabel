@@ -134,6 +134,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
    * it sells. See `resolvePostSaveStep`.
    */
   const [recipeStepItemId, setRecipeStepItemId] = useState<string | null>(null)
+  const [isRecipeSaving, setIsRecipeSaving] = useState(false)
   const [useNewVariations, setUseNewVariations] = useState(
     (item?.variation_types && item.variation_types.length > 0) || false
   )
@@ -317,6 +318,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
 
   /** Leaving the recipe step always lands on the menu list, recipe or not. */
   const finishRecipeStep = () => {
+    if (isRecipeSaving) return
     router.push(`/${tenantSlug}/admin/menu`)
     router.refresh()
   }
@@ -864,8 +866,14 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         Done, Skip, the close button — lands on the menu list either way; the
         dialog only decides whether the dish leaves linked to inventory.
       */}
-      <Dialog open={recipeStepItemId !== null} onOpenChange={(open) => !open && finishRecipeStep()}>
-        <DialogContent className="max-h-[85dvh] max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-auto">
+      <Dialog
+        open={recipeStepItemId !== null}
+        onOpenChange={(open) => !open && !isRecipeSaving && finishRecipeStep()}
+      >
+        <DialogContent
+          className="max-h-[85dvh] max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-auto"
+          showCloseButton={!isRecipeSaving}
+        >
           <DialogHeader>
             <DialogTitle>Link ingredients now?</DialogTitle>
             <DialogDescription>
@@ -879,6 +887,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
               tenantSlug={tenantSlug}
               target={{ type: 'menu_item', menuItemId: recipeStepItemId }}
               label="Base recipe (ingredients used per item)"
+              onSavingChange={setIsRecipeSaving}
             />
           )}
           <DialogFooter>
@@ -887,10 +896,16 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
               variant="outline"
               className="max-sm:h-11"
               onClick={finishRecipeStep}
+              disabled={isRecipeSaving}
             >
               Skip for now
             </Button>
-            <Button type="button" className="max-sm:h-11" onClick={finishRecipeStep}>
+            <Button
+              type="button"
+              className="max-sm:h-11"
+              onClick={finishRecipeStep}
+              disabled={isRecipeSaving}
+            >
               Done
             </Button>
           </DialogFooter>

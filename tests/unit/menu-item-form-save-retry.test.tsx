@@ -5,14 +5,19 @@ import type { Category, MenuItem } from '@/types/database'
 const mockCreate = jest.fn()
 const mockUpdate = jest.fn()
 const mockAllocations = jest.fn()
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }) }))
+const mockRouterPush = jest.fn()
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockRouterPush, refresh: jest.fn() }) }))
 jest.mock('@/app/actions/menu-items', () => ({ createMenuItemAction: (...args: unknown[]) => mockCreate(...args), updateMenuItemAction: (...args: unknown[]) => mockUpdate(...args) }))
 jest.mock('@/app/actions/presell', () => ({ syncPresellAllocationsAction: (...args: unknown[]) => mockAllocations(...args) }))
 jest.mock('@/app/actions/modifier-library', () => ({ createModifierGroupLibraryEntryAction: jest.fn() }))
 jest.mock('@/hooks/use-menu-item-costs', () => ({ useMenuItemCosts: () => ({ optionRecipeCosts: {}, refresh: jest.fn() }) }))
 jest.mock('@/components/shared/image-upload', () => ({ ImageUpload: () => null }))
 jest.mock('@/components/admin/tag-manager', () => ({ TagManager: () => null }))
-jest.mock('@/components/admin/recipe-editor', () => ({ RecipeEditor: () => null }))
+jest.mock('@/components/admin/recipe-editor', () => ({
+  RecipeEditor: ({ onSavingChange }: { onSavingChange?: (saving: boolean) => void }) => (
+    <button type="button" onClick={() => onSavingChange?.(true)}>Begin recipe save</button>
+  ),
+}))
 jest.mock('@/components/admin/product-cost-field', () => ({ ProductCostField: () => null }))
 jest.mock('@/components/admin/product-cost-field-convex', () => ({ ProductCostFieldConvex: () => null }))
 jest.mock('@/components/admin/product-mini-performance', () => ({ ProductMiniPerformance: () => null }))
@@ -60,4 +65,34 @@ it('updates the created item when retrying after a failed allocation save', asyn
   await waitFor(() => expect(mockAllocations).toHaveBeenCalledTimes(2))
   expect(mockCreate).toHaveBeenCalledTimes(1)
   expect(mockUpdate).toHaveBeenCalledWith(id, 'tenant', 'shop', expect.objectContaining({ name: 'New dish' }))
+})
+
+it('keeps the new-item recipe dialog open while its recipe write is pending', async () => {
+  const id = '22222222-2222-4222-8222-222222222222'
+  mockCreate.mockResolvedValue({ success: true, data: { id } })
+  const { container } = render(
+    <MenuItemForm
+      tenantId="tenant"
+      tenantSlug="shop"
+      inventoryEnabled
+      categories={[{
+        id: '11111111-1111-4111-8111-111111111111',
+        name: 'Food',
+      } as Category]}
+    />,
+  )
+  fireEvent.change(screen.getByLabelText('Item Name *'), { target: { value: 'New dish' } })
+  fireEvent.change(screen.getByLabelText('Description *'), {
+    target: { value: 'A delicious new dish' },
+  })
+  fireEvent.change(container.querySelector('#price')!, { target: { value: '100' } })
+  fireEvent.submit(container.querySelector('form')!)
+  await screen.findByText('Link ingredients now?')
+
+  fireEvent.click(screen.getByRole('button', { name: /begin recipe save/i }))
+
+  expect(screen.getByRole('button', { name: /skip for now/i })).toBeDisabled()
+  expect(screen.getByRole('button', { name: /^done$/i })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: /^close$/i })).not.toBeInTheDocument()
+  expect(mockRouterPush).not.toHaveBeenCalled()
 })

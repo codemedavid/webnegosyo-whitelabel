@@ -3,6 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { installResourceFailureDiagnostics } from '@/lib/client-resource-diagnostics';
 import {
     isSentryEnabled,
     sentryEnvironment,
@@ -10,6 +11,8 @@ import {
     SENTRY_DENY_URLS,
     filterSentryClientEvent,
 } from "@/lib/sentry-filtering";
+
+installResourceFailureDiagnostics();
 
 Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,

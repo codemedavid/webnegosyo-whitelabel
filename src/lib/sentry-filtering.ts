@@ -6,6 +6,7 @@
 // Development delivery is disabled below. Do not also suppress module-loading
 // or network failures: production builds use Turbopack too, and failed chunks
 // and fetches can take down the admin dashboard or storefront.
+import { getResourceFailureContext } from '@/lib/client-resource-diagnostics';
 
 /**
  * Whether Sentry should actually deliver events. We only send from real
@@ -62,6 +63,7 @@ export const SENTRY_DENY_URLS: RegExp[] = [
 interface MinimalSentryEvent {
   message?: string;
   tags?: Record<string, unknown>;
+  contexts?: Record<string, unknown>;
   request?: { url?: string };
   exception?: {
     values?: Array<{
@@ -88,6 +90,15 @@ export const filterSentryEvent = <T extends MinimalSentryEvent>(event: T): T | n
 
   const values = event.exception?.values ?? [];
   for (const ex of values) {
+    // Facebook injects this performance bridge into its Android WebView. It
+    // races native teardown on unload; require both the exact error and its
+    // injected frame so application postMessage failures remain visible.
+    if (
+      ex.value === 'Error invoking postMessage: Java object is gone' &&
+      ex.stacktrace?.frames?.some(frame =>
+        /^app:\/\/navigation_performance_logger_android(?:[/?#]|$)/.test(frame.filename ?? frame.abs_path ?? '')
+      )
+    ) return null;
     if (valueMatches(ex.value) || valueMatches(ex.type)) return null;
     if (valueMatches(`${ex.type ?? ""}: ${ex.value ?? ""}`)) return null;
   }
@@ -119,5 +130,6 @@ export const filterSentryClientEvent = <T extends MinimalSentryEvent>(event: T):
   return {
     ...filtered,
     tags: { ...filtered.tags, appSurface, ...(tenantSlug ? { tenantSlug } : {}) },
+    contexts: { ...filtered.contexts, resourceLoad: getResourceFailureContext() },
   };
 };

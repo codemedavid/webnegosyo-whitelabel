@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import type { RecipeTarget } from '@/lib/inventory/recipe-target'
+import type { RecipeWithComponents } from '@/lib/inventory/recipes-service'
 import {
   createEmptyRecipeLine,
   buildRecipeInput,
@@ -23,13 +24,6 @@ import {
   type RecipeFormState,
   type RecipeLineDraft,
 } from '@/lib/inventory/recipe-form'
-import {
-  getIngredientsAction,
-  getInventoryUnitsAction,
-  getRecipeForTargetAction,
-  saveRecipeForTargetAction,
-  deleteRecipeForTargetAction,
-} from '@/app/actions/inventory'
 
 interface RecipeEditorProps {
   tenantId: string
@@ -40,9 +34,17 @@ interface RecipeEditorProps {
   label?: string
   /** Fired after a successful save or clear, so a cost display can refresh. */
   onSaved?: () => void
+  /** Lets a containing picker or dialog hold navigation while a write finishes. */
+  onSavingChange?: (isSaving: boolean) => void
 }
 
 const DEFAULT_LABEL = 'Recipe (ingredients used per sale)'
+
+interface RecipeEditorSnapshot {
+  ingredients: InventoryItem[]
+  units: InventoryUnitRow[]
+  recipe: RecipeWithComponents | null
+}
 
 /**
  * Attach an inventory recipe to any costable target: the base menu item, a
@@ -54,16 +56,35 @@ const DEFAULT_LABEL = 'Recipe (ingredients used per sale)'
  * specifics are carried by `target`, so the same control serves every target
  * and no call site can key a recipe incorrectly (see `recipe-target.ts`).
  */
-export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: RecipeEditorProps) {
+export function RecipeEditor({
+  tenantId,
+  tenantSlug,
+  target,
+  label,
+  onSaved,
+  onSavingChange,
+}: RecipeEditorProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>([])
   const [units, setUnits] = useState<InventoryUnitRow[]>([])
   const [form, setForm] = useState<RecipeFormState>({ notes: '', lines: [createEmptyRecipeLine()] })
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const mountedRef = useRef(true)
+  const latestWriteRef = useRef(0)
 
   // Serialized so the effect re-runs when the target changes identity but not
   // on every parent render (the descriptor is usually an inline object).
   const targetKey = JSON.stringify(target)
+  const targetKeyRef = useRef(targetKey)
+  targetKeyRef.current = targetKey
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   // Only a prep is *produced*; everything else is consumed per sale, where a
   // yield is meaningless and would only invite a wrong number.
@@ -72,31 +93,48 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
 
   useEffect(() => {
     let active = true
+    const controller = new AbortController()
     const currentTarget: RecipeTarget = JSON.parse(targetKey)
+    setIsLoading(true)
+    setLoadError(null)
     ;(async () => {
-      const [ing, unit, recipe] = await Promise.all([
-        getIngredientsAction(tenantId),
-        getInventoryUnitsAction(tenantId),
-        getRecipeForTargetAction(tenantId, currentTarget),
-      ])
-      if (!active) return
-      if (ing.success) setIngredients(ing.data)
-      if (unit.success) setUnits(unit.data)
-      if (recipe.success) {
-        const loaded = recipeFormFromData(recipe.data)
+      try {
+        const search = new URLSearchParams({ tenantId, target: targetKey })
+        const response = await fetch(`/api/inventory/recipe?${search}`, {
+          credentials: 'same-origin',
+          signal: controller.signal,
+        })
+        const payload = await response.json() as {
+          data?: RecipeEditorSnapshot
+          error?: string
+        }
+        if (!response.ok || !payload.data) {
+          throw new Error(payload.error ?? 'Failed to load recipe')
+        }
+        if (!active) return
+
+        const { ingredients: loadedIngredients, units: loadedUnits, recipe } = payload.data
+        setIngredients(loadedIngredients)
+        setUnits(loadedUnits)
+        const loaded = recipeFormFromData(recipe)
         // A prep is priced per its stock unit, so that is the unit a merchant
         // almost always means by "yields". Pre-selecting it saves a step and
         // avoids a yield saved in a unit nobody intended.
         const defaultYieldUnit =
-          currentTarget.type === 'prep_item' && ing.success
-            ? ing.data.find((i) => i.id === currentTarget.prepItemId)?.stock_unit_id
+          currentTarget.type === 'prep_item'
+            ? loadedIngredients.find((i) => i.id === currentTarget.prepItemId)?.stock_unit_id
             : undefined
         setForm({ ...loaded, yieldUnitId: loaded.yieldUnitId || defaultYieldUnit || '' })
+      } catch (error) {
+        if (!active || (error instanceof DOMException && error.name === 'AbortError')) return
+        setLoadError(error instanceof Error ? error.message : 'Failed to load recipe')
+      } finally {
+        if (active) setIsLoading(false)
       }
-      setIsLoading(false)
     })()
     return () => {
       active = false
+      controller.abort()
     }
   }, [tenantId, targetKey])
 
@@ -125,29 +163,57 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
       return
     }
 
+    const writeId = ++latestWriteRef.current
+    const writtenTargetKey = targetKey
+    const isCurrentWrite = () =>
+      mountedRef.current &&
+      latestWriteRef.current === writeId &&
+      targetKeyRef.current === writtenTargetKey
+
     setIsSaving(true)
+    onSavingChange?.(true)
     try {
       // An emptied form means "this target has no recipe" — deleting is the
       // only way to say that; an empty recipe row would cost a confident ₱0.
-      if (input.components.length === 0) {
-        const result = await deleteRecipeForTargetAction(tenantId, tenantSlug, target)
-        if (!result.success) {
-          toast.error(result.error ?? 'Failed to clear recipe')
-          return
+      const clearsRecipe = input.components.length === 0
+      const response = await fetch('/api/inventory/recipe', {
+        method: clearsRecipe ? 'DELETE' : 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId,
+          tenantSlug,
+          target,
+          ...(clearsRecipe ? {} : { input }),
+        }),
+        // Recipe payloads are small. Keeping the request alive makes a full
+        // page navigation safe as well as an in-app route change.
+        keepalive: true,
+      })
+      const result = await response.json() as { success?: boolean; error?: string }
+      if (!response.ok || !result.success) {
+        if (isCurrentWrite()) {
+          toast.error(result.error ?? (clearsRecipe ? 'Failed to clear recipe' : 'Failed to save recipe'))
         }
-        toast.success('Recipe cleared')
+        return
+      }
+
+      // A response may arrive after this editor was replaced by another dish
+      // or by navigation. The write is still valid, but its old toast and
+      // refresh callback are not the latest UI intent.
+      if (isCurrentWrite()) {
+        toast.success(clearsRecipe ? 'Recipe cleared' : 'Recipe saved')
         onSaved?.()
-        return
       }
-      const result = await saveRecipeForTargetAction(tenantId, tenantSlug, target, input)
-      if (!result.success) {
-        toast.error(result.error ?? 'Failed to save recipe')
-        return
+    } catch (error) {
+      if (isCurrentWrite()) {
+        toast.error(error instanceof Error ? error.message : 'Failed to save recipe')
       }
-      toast.success('Recipe saved')
-      onSaved?.()
     } finally {
-      setIsSaving(false)
+      if (mountedRef.current && latestWriteRef.current === writeId) {
+        setIsSaving(false)
+        onSavingChange?.(false)
+      }
     }
   }
 
@@ -157,6 +223,14 @@ export function RecipeEditor({ tenantId, tenantSlug, target, label, onSaved }: R
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Loading recipe…
       </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <p className="rounded-md border border-destructive/40 p-3 text-xs text-destructive">
+        {loadError}
+      </p>
     )
   }
 

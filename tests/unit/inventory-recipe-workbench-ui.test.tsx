@@ -18,8 +18,18 @@ import type { InventoryItem, RecipeComponent } from '@/types/database'
 
 // The editor does its own server round-trips; this suite is about the picker.
 jest.mock('@/components/admin/recipe-editor', () => ({
-  RecipeEditor: ({ target }: { target: { menuItemId?: string } }) => (
-    <div data-testid="recipe-editor">editing {target.menuItemId}</div>
+  RecipeEditor: ({
+    target,
+    onSavingChange,
+  }: {
+    target: { menuItemId?: string }
+    onSavingChange?: (saving: boolean) => void
+  }) => (
+    <div data-testid="recipe-editor">
+      editing {target.menuItemId}
+      <button type="button" onClick={() => onSavingChange?.(true)}>Begin recipe save</button>
+      <button type="button" onClick={() => onSavingChange?.(false)}>Finish recipe save</button>
+    </div>
   ),
 }))
 
@@ -135,6 +145,16 @@ describe('building the recipe', () => {
     fireEvent.click(screen.getByText('Adobo'))
 
     expect(screen.getByTestId('dish-m1')).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('does not replace the editor while its recipe write is pending', () => {
+    renderWorkbench()
+
+    fireEvent.click(screen.getByRole('button', { name: /begin recipe save/i }))
+    fireEvent.click(picker().getByText('Adobo'))
+
+    expect(screen.getByTestId('recipe-editor')).toHaveTextContent('editing m2')
+    expect(screen.getByTestId('dish-m1')).toBeDisabled()
   })
 })
 

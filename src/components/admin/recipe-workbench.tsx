@@ -53,6 +53,7 @@ export function RecipeWorkbench({
 }: RecipeWorkbenchProps) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<CoverageFilter>('all')
+  const [isRecipeSaving, setIsRecipeSaving] = useState(false)
 
   // The list is ordered actionable-first, so the first row is the best default.
   // Landing on an empty pane would throw away the one decision already made.
@@ -186,6 +187,7 @@ export function RecipeWorkbench({
                         data-testid={`dish-${row.menuItemId}`}
                         aria-current={isSelected ? 'true' : undefined}
                         onClick={() => setSelectedId(row.menuItemId)}
+                        disabled={isRecipeSaving}
                         className={cn(
                           'w-full rounded-lg border px-3 py-2 text-left transition-colors',
                           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
@@ -233,6 +235,7 @@ export function RecipeWorkbench({
                 tenantSlug={tenantSlug}
                 target={{ type: 'menu_item', menuItemId: selected.menuItemId }}
                 label="Base recipe"
+                onSavingChange={setIsRecipeSaving}
               />
             </>
           ) : (

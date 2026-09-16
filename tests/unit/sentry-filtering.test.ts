@@ -1,6 +1,20 @@
 import { filterSentryClientEvent, filterSentryEvent, SENTRY_DENY_URLS, SENTRY_IGNORE_ERRORS } from '@/lib/sentry-filtering'
 
 describe('Sentry production crash visibility', () => {
+  it('drops only the disposed Facebook Android performance bridge error', () => {
+    const bridgeEvent = { exception: { values: [{
+      value: 'Error invoking postMessage: Java object is gone',
+      stacktrace: { frames: [{ filename: 'app://navigation_performance_logger_android' }] },
+    }] } }
+    expect(filterSentryEvent(bridgeEvent)).toBeNull()
+    const appEvent = { exception: { values: [{
+      value: 'Error invoking postMessage: Java object is gone',
+      stacktrace: { frames: [{ filename: 'app:///_next/static/chunks/app.js' }] },
+    }] } }
+    expect(filterSentryEvent(appEvent)).toBe(appEvent)
+    expect(filterSentryEvent({ message: 'Error invoking postMessage: Java object is gone' })).not.toBeNull()
+  })
+
   it.each([
     'Module [project]/src/app/page.tsx was instantiated because it was required from module, but the module factory is not available',
     'Failed to fetch dynamically imported module: https://www.webnegosyo.com/_next/static/chunks/page.js',
