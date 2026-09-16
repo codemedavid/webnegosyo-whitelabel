@@ -90,6 +90,7 @@ describe('BannersRow with per-banner formats', () => {
     const onChange = jest.fn()
     render(
       <FieldRow
+        isSet inheritLabel="Default" onClear={jest.fn()}
         field={{ id: 'welcome_page_banners', label: 'Banners', type: 'banners', columnBacked: true, bannerFormats: true }}
         value={[{ id: 'a', imageUrl: 'https://ik.example/a.jpg', format: 'landscape' }]}
         onChange={onChange}
@@ -104,6 +105,7 @@ describe('BannersRow with per-banner formats', () => {
   it('keeps the plain banner editor format-free for the menu banners', () => {
     render(
       <FieldRow
+        isSet inheritLabel="Default" onClear={jest.fn()}
         field={{ id: 'promotion_banners', label: 'Banners', type: 'banners', columnBacked: true }}
         value={[{ id: 'a', imageUrl: 'https://ik.example/a.jpg' }]}
         onChange={jest.fn()}

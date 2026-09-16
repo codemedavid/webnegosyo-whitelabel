@@ -169,3 +169,22 @@ describe('resolveOrderDepletions', () => {
     expect(depletions).toEqual([])
   })
 })
+
+
+describe('add-on portions', () => {
+  it('spends six portions for two parents with three unified add-ons each, counting base twice', () => {
+    const extras = recipe({ id: 'r-extra', menu_item_id: 'm-pizza', target_type: 'modifier_option', modifier_option_id: 'extra' })
+    const result = resolveOrderDepletions([
+      { menuItemId: 'm-pizza', quantity: 2, addonIds: ['extra'], addonQuantities: { extra: 3 } },
+    ], [PIZZA_RECIPE, extras], [...PIZZA_LINES, component({ recipe_id: 'r-extra', inventory_item_id: CHEESE, quantity: 10 })])
+    expect(result).toContainEqual({ inventoryItemId: CHEESE, quantity: 220, unitId: GRAM })
+    expect(result).toContainEqual({ inventoryItemId: FLOUR, quantity: 400, unitId: GRAM })
+  })
+})
+
+
+it('prefers the unified recipe over a stale legacy recipe with the same selected ID', () => {
+  const recipes = [recipe({ id: 'legacy', menu_item_id: 'm-pizza', target_type: 'addon', addon_id: 'extra' }), recipe({ id: 'unified', menu_item_id: 'm-pizza', target_type: 'modifier_option', modifier_option_id: 'extra' })]
+  const result = resolveOrderDepletions([{ menuItemId: 'm-pizza', quantity: 2, addonIds: ['extra'], addonQuantities: { extra: 3 } }], recipes, [component({ recipe_id: 'legacy', quantity: 30 }), component({ recipe_id: 'unified', quantity: 10 })])
+  expect(result).toEqual([{ inventoryItemId: FLOUR, unitId: GRAM, quantity: 60 }])
+})

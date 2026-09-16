@@ -339,6 +339,7 @@ export default function MainLayout() {
         name="order/[orderId]"
         options={{ href: null, title: "Order Detail" }}
       />
+      <Tabs.Screen name="pos-loyalty" options={{ href: null, title: "Redeem Reward", tabBarStyle: { display: "none" } }} />
       <Tabs.Screen
         name="pos-tender"
         options={{ href: null, title: "Take Payment" }}

@@ -10,7 +10,7 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals'
  * price and the refresh would restore the store-wide one.
  */
 
-const from = jest.fn()
+const from = jest.fn<(table: string) => Record<string, unknown>>()
 
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ from }),

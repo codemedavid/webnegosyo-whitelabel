@@ -48,7 +48,7 @@ export async function generateMetadata({
   const tenantName = name || tenantSlug.replace(/-/g, ' ')
 
   return {
-    title: `Menu | ${tenantName}`,
+    title: 'Menu',
     description: `Browse the menu and order from ${tenantName}`,
   }
 }

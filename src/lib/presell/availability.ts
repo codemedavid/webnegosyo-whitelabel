@@ -16,9 +16,15 @@
 /** Below this many remaining, the copy says so. Mirrors stepper-cap. */
 export const PRESELL_HINT_THRESHOLD = 10
 
-/** One presell_stock row, as narrow as the arithmetic needs it. */
+/**
+ * One presell_stock row, as narrow as the arithmetic needs it.
+ *
+ * Deliberately without `menu_item_id`: nothing here reads it — these
+ * functions are always given one dish's rows — and requiring it forced every
+ * caller to carry a field none of them used. Passing a full row still type-
+ * checks, since extra properties are fine.
+ */
 export interface PresellAllocationRow {
-  menu_item_id: string
   presell_date: string
   stock_qty: number
   sold_qty: number

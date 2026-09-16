@@ -6,6 +6,7 @@ import { CardTemplateRenderer } from './card-templates'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
+import { useEagerImages } from '@/components/customer/eager-images-context'
 
 interface PrefetchingCardProps {
   item: MenuItem
@@ -15,6 +16,8 @@ interface PrefetchingCardProps {
   template?: CardTemplate
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  /** Above-the-fold card: image loads eagerly with high fetch priority. */
+  priority?: boolean
 }
 
 /**
@@ -23,7 +26,7 @@ interface PrefetchingCardProps {
  * - Mobile (touch): prefetches via IntersectionObserver when nearing viewport.
  * Memoized to prevent re-renders from parent state changes (e.g. carousel slide).
  */
-export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, tenantSlug, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: PrefetchingCardProps) {
+export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, tenantSlug, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol, priority }: PrefetchingCardProps) {
   const router = useRouter()
   const hasPrefetched = useRef(false)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -63,6 +66,9 @@ export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, t
     return () => observer.disconnect()
   }, [prefetchRoute])
 
+  // A copy of the layout hidden on this viewport must not fetch eagerly.
+  const isEagerAllowed = useEagerImages()
+
   return (
     <div
       ref={cardRef}
@@ -76,6 +82,7 @@ export const PrefetchingCard = memo(function PrefetchingCard({ item, onSelect, t
         branding={branding}
         menuEngineeringEnabled={menuEngineeringEnabled}
         hideCurrencySymbol={hideCurrencySymbol}
+        priority={Boolean(priority) && isEagerAllowed}
       />
     </div>
   )

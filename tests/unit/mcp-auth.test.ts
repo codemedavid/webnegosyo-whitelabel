@@ -15,7 +15,7 @@ import {
  */
 function makeSupabaseStub(row: unknown, error: unknown = null) {
   const maybeSingle = jest.fn(async () => ({ data: row, error }))
-  const eq = jest.fn(() => ({ maybeSingle }))
+  const eq = jest.fn((_field: string, _value: string) => ({ maybeSingle }))
   const select = jest.fn(() => ({ eq }))
   const from = jest.fn(() => ({ select }))
   return { client: { from } as never, from, select, eq, maybeSingle }

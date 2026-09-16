@@ -1,3 +1,5 @@
+export const META_PIXEL_READY_EVENT = 'smartmenu:meta-pixel-ready'
+
 export type MetaEventName =
   | 'PageView'
   | 'ViewContent'
@@ -64,6 +66,7 @@ export function initMetaPixel(pixelId: string) {
 
   window.fbq?.('init', pixelId)
   window.fbq?.('track', 'PageView')
+  window.dispatchEvent(new Event(META_PIXEL_READY_EVENT))
 }
 
 export function trackMetaEvent(

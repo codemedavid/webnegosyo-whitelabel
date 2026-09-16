@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { reportClientError } from '@/lib/report-client-error'
 
 export default function AdminError({
   error,
@@ -11,7 +12,7 @@ export default function AdminError({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error('Admin error:', error)
+    reportClientError(error, 'admin')
   }, [error])
 
   return (
@@ -21,6 +22,7 @@ export default function AdminError({
         An error occurred while loading this page. This is usually temporary.
       </p>
       <Button onClick={reset}>Try again</Button>
+      <Button variant="outline" onClick={() => window.location.reload()}>Reload page</Button>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { formatDailyOrderNumber } from './order-number'
 /**
  * Messenger Message Formatter
  * Formats order details into a message for sending via Messenger
@@ -38,6 +39,7 @@ function formatSummaryRow(row: OrderSummaryRow): string {
 export function formatOrderMessage(order: Order, tenant: Tenant): string {
   const lines = [
     `🍽️ New Order from ${tenant.name}`,
+    `🧾 Order ${formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}`,
     '',
   ]
 

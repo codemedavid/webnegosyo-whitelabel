@@ -15,7 +15,7 @@
 
 import { recordStockMovementWith } from '@/lib/inventory/stock-service'
 
-const processStockLevelChanges = jest.fn(() =>
+const processStockLevelChanges = jest.fn((..._args: unknown[]) =>
   Promise.resolve({
     alertsRaised: 0,
     alertsResolved: 0,
@@ -25,7 +25,7 @@ const processStockLevelChanges = jest.fn(() =>
 )
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
-  processStockLevelChanges: (...args: unknown[]) => processStockLevelChanges(...(args as [])),
+  processStockLevelChanges: (...args: unknown[]) => processStockLevelChanges(...args),
 }))
 jest.mock('@/lib/supabase/server', () => ({
   createClient: () => Promise.resolve({ from: () => ({}) }),

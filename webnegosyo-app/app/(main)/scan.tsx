@@ -21,6 +21,8 @@ import { useAuthStore } from "../../stores/auth-store";
 import { withOrderOutlet } from "../../lib/order-outlet";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
+import { notifyPosStockDepletion } from "../../lib/pos-stock-notify";
+import { qrOrderStockItems } from "../../lib/qr-order-stock";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
 import { goTo } from "../../lib/tab-navigation";
@@ -344,6 +346,7 @@ export default function ScanScreen() {
     try {
       const hasUpsellItems = items.some((i) => i.isUpsellItem);
       const hasBundleItems = items.some((i) => i.isBundleItem);
+      const stockItems = qrOrderStockItems(items, payload.customerData);
 
       const orderId = await createOrder({
         customerName: payload.customerName,
@@ -351,7 +354,7 @@ export default function ScanScreen() {
         // The staff member scanning the code is the branch taking the order,
         // so their branch is stamped over whatever the handoff payload carried.
         customerData: withOrderOutlet(
-          payload.customerData,
+          { ...payload.customerData, _inventory_selections: { version: 1, items: stockItems } },
           outletId && outletName ? { id: outletId, name: outletName } : null,
         ),
         total,
@@ -386,6 +389,7 @@ export default function ScanScreen() {
       // invisible to the Regulars list as a counter sale was. Skips itself when
       // the payload names nobody, and never throws — the order is already in.
       if (tenantId) {
+        await notifyPosStockDepletion(tenantId, String(orderId), stockItems);
         await notifyCustomerCapture(tenantId, {
           backend: "convex",
           orderId: String(orderId),
@@ -704,7 +708,7 @@ function PreviewPanel({
                 ) : null}
                 {item.addons && item.addons.length > 0 ? (
                   <Text style={styles.itemDetail}>
-                    Add-ons: {item.addons.map((a) => a.name).join(", ")}
+                    Add-ons: {item.addons.map((a) => (a.quantity ?? 1) > 1 ? `${a.name} ×${a.quantity}` : a.name).join(", ")}
                   </Text>
                 ) : null}
                 {item.specialInstructions ? (

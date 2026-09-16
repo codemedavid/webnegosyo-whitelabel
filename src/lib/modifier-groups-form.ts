@@ -9,8 +9,8 @@
  *     columns so surfaces that don't yet read `modifier_groups` (storefront,
  *     desktop POS, mobile) keep rendering unchanged.
  *
- * A group is single-select when `max_select === 1`; anything else (null =
- * unlimited, or a finite cap > 1) is multi-select.
+ * Choice groups are single-select when `max_select === 1`. Quantity groups
+ * remain add-ons regardless of their total portion cap.
  */
 
 import type {
@@ -28,19 +28,20 @@ export interface LegacyColumns {
   addons: Addon[]
 }
 
-/** A group is single-select when its max cap is exactly 1. */
+/** A choice group is single-select when its max cap is exactly 1. */
 export function isSingleSelectGroup(group: ModifierGroup): boolean {
-  return group.max_select === 1
+  return group.selection_mode !== 'quantity' && group.max_select === 1
 }
 
-/** New empty group: optional, single-select (the most common shape). */
-export function createModifierGroup(id: string, displayOrder: number): ModifierGroup {
+/** New empty group: optional; quantity add-ons start with no portion cap. */
+export function createModifierGroup(id: string, displayOrder: number, selectionMode?: 'choice' | 'quantity'): ModifierGroup {
   return {
     id,
     name: '',
     display_order: displayOrder,
     min_select: 0,
-    max_select: 1,
+    max_select: selectionMode === 'quantity' ? null : 1,
+    ...(selectionMode ? { selection_mode: selectionMode } : {}),
     options: [],
   }
 }
@@ -151,9 +152,21 @@ export function serializeGroups(groups: readonly ModifierGroup[]): ModifierGroup
     .map((group, index) => ({ ...group, display_order: index }))
 }
 
+/** Omitted counters are preserved atomically by the database when saving an edit. */
+export function omitUnchangedOptionStock(groups: readonly ModifierGroup[], baseline: readonly ModifierGroup[]): ModifierGroup[] {
+  const previous = new Map(baseline.flatMap(group => group.options.map(option => [option.id, option] as const)))
+  return groups.map(group => ({ ...group, options: group.options.map(option => {
+    const before = previous.get(option.id)
+    if (!before || before.stock_qty !== option.stock_qty) return option
+    const next = { ...option }
+    delete next.stock_qty
+    return next
+  }) }))
+}
+
 /**
- * Mirror unified groups into the legacy columns. Single-select groups become
- * `variation_types`; every multi-select group's options are flattened into the
+ * Mirror unified groups into the legacy columns. Single-select choice groups become
+ * `variation_types`; quantity and multi-select options are flattened into the
  * shared `addons` list. `variations` (the oldest flat format) is never emitted —
  * grouped `variation_types` fully supersedes it.
  */

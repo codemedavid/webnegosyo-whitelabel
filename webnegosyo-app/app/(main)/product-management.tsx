@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -20,18 +20,20 @@ import { productHref, NEW_PRODUCT_ID } from "../../lib/navigation";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
 import { Icon } from "../../components/Icon";
+import type { Category } from "../../lib/products";
 import {
   describeMenuAvailability,
   MENU_AVAILABILITY_LABEL,
 } from "../../lib/menu-availability";
 import {
-  listProducts,
-  listCategories,
   toggleProductAvailability,
   calculateMargin,
   type Product,
-  type Category,
 } from "../../lib/products";
+import { useCategories, useMenuCatalogCache, useProducts } from "../../lib/query/use-products";
+import { useRefetchOnScreenFocus } from "../../lib/query/use-screen-focus";
+import { PLATFORM_STALE_MS } from "../../lib/query/query-client";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
 import { LoadingState } from "../../components/LoadingState";
@@ -39,6 +41,12 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 
 const getAllCostsRef = "productCosts:getAllCosts" as unknown as FunctionReference<"query">;
+
+/** Never an empty list after a failed read: "no products" is a claim. */
+const LOAD_ERROR = "Could not load products. Pull down to try again.";
+
+const NO_PRODUCTS: Product[] = [];
+const NO_CATEGORIES: Category[] = [];
 
 interface ProductCost {
   menuItemId: string;
@@ -49,10 +57,20 @@ export default function ProductManagementScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const tenantSlug = useAuthStore((s) => s.tenantSlug);
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // The shared, cached copies of `listProducts` and `listCategories`. This is
+  // a TAB: it mounts once and is never unmounted, so its own mount-time read
+  // would be the ONLY one of the launch — a dish added in the editor, or by
+  // someone on the web admin, stayed invisible until the app was force-quit.
+  const productsResource = useProducts(tenantId);
+  const categoriesResource = useCategories(tenantId);
+  const { patchProductAvailability, invalidate: invalidateCatalog } = useMenuCatalogCache();
+
+  const products = productsResource.data ?? NO_PRODUCTS;
+  const categories = categoriesResource.data ?? NO_CATEGORIES;
+  const isLoading = productsResource.isLoading || categoriesResource.isLoading;
+  const error =
+    productsResource.error || categoriesResource.error ? LOAD_ERROR : null;
+
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -60,49 +78,49 @@ export default function ProductManagementScreen() {
   const { data: costs } = useSafeQuery<ProductCost[]>(getAllCostsRef, {});
   const costByItem = new Map((costs ?? []).map((c) => [c.menuItemId, c.costPrice]));
 
+  const { refetch: refetchProducts } = productsResource;
+  const { refetch: refetchCategories } = categoriesResource;
   const load = useCallback(async () => {
-    if (!tenantId) return;
-    try {
-      setError(null);
-      const [productsResult, categoriesResult] = await Promise.all([
-        listProducts(tenantId),
-        listCategories(tenantId),
-      ]);
-      setProducts(productsResult);
-      setCategories(categoriesResult);
-    } catch {
-      setError("Could not load products. Pull down to try again.");
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
-    }
-  }, [tenantId]);
+    await Promise.all([refetchProducts(), refetchCategories()]);
+  }, [refetchProducts, refetchCategories]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Coming back to the tab stands in for the mount this screen never gets
+  // again — and only when the cache is actually stale, so ordinary tab
+  // switching is not a round trip.
+  const isBusy = isLoading || productsResource.isRefetching || categoriesResource.isRefetching;
+  const dataUpdatedAt = Math.min(
+    productsResource.dataUpdatedAt,
+    categoriesResource.dataUpdatedAt,
+  );
+  useRefetchOnScreenFocus({
+    enabled: !!tenantId,
+    dataUpdatedAt,
+    staleMs: PLATFORM_STALE_MS,
+    isFetching: isBusy,
+    refetch: load,
+  });
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    load();
-  };
+  const onRefresh = useCallback(
+    () => refreshWithMinSpinner([load], setRefreshing),
+    [load],
+  );
 
   const handleToggleAvailability = async (product: Product) => {
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
+    if (!tenantId) return;
     const nextAvailable = !product.is_available;
-    setProducts((prev) =>
-      prev.map((p) => (p.id === product.id ? { ...p, is_available: nextAvailable } : p))
-    );
+    const rollback = patchProductAvailability(tenantId, product.id, nextAvailable);
     try {
-      await toggleProductAvailability(product.id, tenantId as string, nextAvailable);
-      if (tenantSlug) void notifyMenuRevalidate(tenantId as string, tenantSlug);
+      await toggleProductAvailability(product.id, tenantId, nextAvailable);
+      // The register sells from its own cached copy: 86'ing a dish here has to
+      // reach it, or the cashier keeps ringing up something the kitchen pulled.
+      void invalidateCatalog(tenantId);
+      if (tenantSlug) void notifyMenuRevalidate(tenantId, tenantSlug);
     } catch {
-      setProducts((prev) =>
-        prev.map((p) => (p.id === product.id ? { ...p, is_available: product.is_available } : p))
-      );
+      rollback();
       Alert.alert("Error", "Could not update availability.");
     }
   };
@@ -190,7 +208,7 @@ export default function ProductManagementScreen() {
         {isLoading ? (
           <LoadingState message="Loading products..." />
         ) : error ? (
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={() => void load()} />
         ) : filtered.length === 0 ? (
           <EmptyState message="No products match your filters." />
         ) : (

@@ -3,9 +3,14 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { isSentryEnabled, sentryEnvironment, SENTRY_IGNORE_ERRORS, filterSentryEvent } from "@/lib/sentry-filtering";
 
 Sentry.init({
-    dsn: process.env.SENTRY_DSN,
+    dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
+    enabled: isSentryEnabled(),
+    environment: sentryEnvironment,
+    ignoreErrors: SENTRY_IGNORE_ERRORS,
+    beforeSend: filterSentryEvent,
 
     // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
     tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || "0.1"),

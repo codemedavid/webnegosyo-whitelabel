@@ -28,14 +28,25 @@ interface QueueOrder {
   _id: string;
 }
 
-function StatsContent({
+function StatsContent(props: Omit<ConvexDashboardStatsProps, "convexUrl">) {
+  const stats = useConvexDashboardStats() as DashboardStats | undefined;
+  const queue = useConvexOrderQueue() as Record<string, QueueOrder[]> | undefined;
+  return <StatsView {...props} stats={stats} queue={queue} />;
+}
+
+function StatsView({
   tenantSlug,
   menuItemsCount,
   availableItemsCount,
   categoriesCount,
-}: Omit<ConvexDashboardStatsProps, "convexUrl">) {
-  const stats = useConvexDashboardStats() as DashboardStats | undefined;
-  const queue = useConvexOrderQueue() as Record<string, QueueOrder[]> | undefined;
+  stats,
+  queue,
+  unavailable = false,
+}: Omit<ConvexDashboardStatsProps, "convexUrl"> & {
+  stats?: DashboardStats;
+  queue?: Record<string, QueueOrder[]>;
+  unavailable?: boolean;
+}) {
 
   const todayOrders = stats?.totalOrders ?? 0;
   const todayRevenue = stats?.totalRevenue ?? 0;
@@ -48,6 +59,7 @@ function StatsContent({
 
   return (
     <div className="space-y-6">
+      {unavailable && <p role="status" className="text-sm text-muted-foreground">Live order data is temporarily unavailable.</p>}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -155,12 +167,7 @@ export function ConvexDashboardStats({ convexUrl, ...rest }: ConvexDashboardStat
     <SafeConvexProvider
       url={convexUrl}
       fallback={
-        <StatsContent
-          tenantSlug={rest.tenantSlug}
-          menuItemsCount={rest.menuItemsCount}
-          availableItemsCount={rest.availableItemsCount}
-          categoriesCount={rest.categoriesCount}
-        />
+        <StatsView {...rest} unavailable />
       }
     >
       <StatsContent {...rest} />

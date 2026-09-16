@@ -22,11 +22,15 @@ const modifierOptionInputSchema = z.object({
   is_default: z.boolean().optional(),
   display_order: z.number().int().min(0).default(0),
   manual_cost: z.number().min(0, 'Cost must be non-negative').optional(),
+  cost_mode: z.enum(['simple', 'composite']).optional(),
+  menu_item_id: z.string().nullable().optional(),
+  is_upgrade_target: z.boolean().optional(),
 })
 
 export const modifierGroupLibraryEntrySchema = z
   .object({
     name: z.string().min(1, 'Group name is required'),
+    selection_mode: z.enum(['choice', 'quantity']).optional(),
     min_select: z.number().int().min(0).default(0),
     // null → unlimited multi-select; 1 → single-select; N → capped multi-select.
     max_select: z.number().int().min(1).nullable().default(null),
@@ -69,6 +73,9 @@ function libraryOptionToModifierOption(
   if (option.image_url !== undefined) snapshot.image_url = option.image_url
   if (option.is_default !== undefined) snapshot.is_default = option.is_default
   if (option.manual_cost !== undefined) snapshot.manual_cost = option.manual_cost
+  if (option.cost_mode !== undefined) snapshot.cost_mode = option.cost_mode
+  if (option.menu_item_id !== undefined) snapshot.menu_item_id = option.menu_item_id
+  if (option.is_upgrade_target !== undefined) snapshot.is_upgrade_target = option.is_upgrade_target
   return snapshot
 }
 
@@ -86,6 +93,7 @@ export function libraryEntryToModifierGroup(
     display_order: entry.display_order,
     min_select: entry.min_select,
     max_select: entry.max_select,
+    ...(entry.selection_mode ? { selection_mode: entry.selection_mode } : {}),
     options: entry.options.map((o, index) => libraryOptionToModifierOption(o, index, makeId)),
   }
 }
@@ -97,11 +105,12 @@ export function libraryEntryToModifierGroup(
  */
 export function buildLibraryDraftFromGroup(
   group: ModifierGroup,
-): Pick<ModifierGroupLibraryInput, 'name' | 'min_select' | 'max_select' | 'options'> {
+): Pick<ModifierGroupLibraryInput, 'name' | 'selection_mode' | 'min_select' | 'max_select' | 'options'> {
   return {
     name: group.name,
     min_select: group.min_select,
     max_select: group.max_select,
+    selection_mode: group.selection_mode,
     options: group.options.map((o) => ({
       name: o.name,
       price_modifier: o.price_modifier,
@@ -109,6 +118,9 @@ export function buildLibraryDraftFromGroup(
       is_default: o.is_default,
       display_order: o.display_order,
       manual_cost: o.manual_cost,
+      cost_mode: o.cost_mode,
+      menu_item_id: o.menu_item_id,
+      is_upgrade_target: o.is_upgrade_target,
     })),
   }
 }

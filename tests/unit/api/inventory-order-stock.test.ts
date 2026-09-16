@@ -43,10 +43,10 @@ function makeRequest(body: unknown, authHeader?: string): NextRequest {
 
 describe('POST /api/inventory/order-stock', () => {
   let mockCreateClient: jest.Mock
-  let getUserMock: jest.Mock
-  let appUserSingleMock: jest.Mock
-  let tenantSingleMock: jest.Mock
-  let orderMaybeSingleMock: jest.Mock
+  let getUserMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let appUserSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let tenantSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let orderMaybeSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let applyMock: jest.Mock
   let reverseMock: jest.Mock
 
@@ -59,10 +59,10 @@ describe('POST /api/inventory/order-stock', () => {
     const { createClient } = await import('@supabase/supabase-js')
     mockCreateClient = createClient as unknown as jest.Mock
 
-    getUserMock = jest.fn()
-    appUserSingleMock = jest.fn()
-    tenantSingleMock = jest.fn()
-    orderMaybeSingleMock = jest.fn()
+    getUserMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    appUserSingleMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    tenantSingleMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    orderMaybeSingleMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 
     // Default: a legitimate admin of t1, whose tenant has inventory enabled.
     getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
@@ -194,7 +194,7 @@ describe('POST /api/inventory/order-stock', () => {
           menuItemId: 'm-pizza',
           quantity: 1,
           optionIds: ['o-large'],
-          modifierOptionIds: ['o-large'],
+          modifierOptionIds: ['o-large', 'add-cheese'],
           addonIds: ['add-cheese'],
         },
       ],
@@ -370,11 +370,12 @@ describe('POST /api/inventory/order-stock', () => {
       })
 
       const { POST } = await import('@/app/api/inventory/order-stock/route')
-      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+      const platformBody = { ...VALID_BODY, orderId: '11111111-1111-4111-8111-111111111111' }
+      await POST(makeRequest(platformBody, 'Bearer token-1'))
 
       expect(applyMock).toHaveBeenCalledWith(
         't1',
-        VALID_BODY.orderId,
+        platformBody.orderId,
         expect.anything(),
         'sale',
         0,
@@ -393,11 +394,12 @@ describe('POST /api/inventory/order-stock', () => {
       })
 
       const { POST } = await import('@/app/api/inventory/order-stock/route')
-      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+      const platformBody = { ...VALID_BODY, orderId: '11111111-1111-4111-8111-111111111111' }
+      await POST(makeRequest(platformBody, 'Bearer token-1'))
 
       expect(applyMock).toHaveBeenCalledWith(
         't1',
-        VALID_BODY.orderId,
+        platformBody.orderId,
         expect.anything(),
         'sale',
         0,

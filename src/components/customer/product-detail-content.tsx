@@ -10,11 +10,13 @@ import { useCart } from '@/hooks/useCart'
 import { useVariationState } from '@/hooks/useVariationState'
 import { useModifierGroups } from '@/hooks/useModifierGroups'
 import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
+import { AddonQuantityControl } from '@/components/customer/addon-quantity-control'
+import { addonQuantity, addonLabel } from '@/lib/addon-quantity'
 import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
 import { useProductDetailModals } from '@/hooks/useProductDetailModals'
 import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
-import type { MenuItem, Variation, Addon, VariationOption, Category, UpgradeUpsell } from '@/types/database'
+import type { MenuItem, Variation, VariationOption, Category, UpgradeUpsell } from '@/types/database'
 import type { SelectedTenant } from '@/lib/product-detail-data'
 import { getTenantBranding, type BrandingColors } from '@/lib/branding-utils'
 import { useBrandingPreviewDraft, useBrandingPreviewTenant, useIsMobileViewport } from '@/hooks/use-branding-preview'
@@ -235,62 +237,7 @@ const LegacyVariationButton = memo(function LegacyVariationButton({
     )
 })
 
-// Memoized Addon Button Component
-interface AddonButtonProps {
-    addon: Addon
-    isSelected: boolean
-    onToggle: () => void
-    dynamicStyles: Record<string, React.CSSProperties> | undefined
-    freeText: string
-}
 
-const AddonButton = memo(function AddonButton({
-    addon,
-    isSelected,
-    onToggle,
-    dynamicStyles,
-    freeText,
-}: AddonButtonProps) {
-    return (
-        <button
-            type="button"
-            data-branding-scope="product/addon-option"
-            onClick={onToggle}
-            className="w-full flex items-center justify-between p-3.5 border-2 transition-all duration-150 active:scale-[0.98]"
-            style={isSelected ? dynamicStyles?.addonButtonSelected : dynamicStyles?.addonButton}
-        >
-            <div className="flex items-center gap-3">
-                <div
-                    className="h-5 w-5 rounded border-2 flex items-center justify-center transition-all"
-                    style={isSelected ? {
-                        borderColor: 'var(--pd-addon-check)',
-                        backgroundColor: 'var(--pd-addon-check)'
-                    } : {
-                        borderColor: 'var(--pd-addon-border)'
-                    }}
-                >
-                    {isSelected && (
-                        <svg className="h-3 w-3" style={{ color: 'var(--pd-addon-selected-text)' }} fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                    )}
-                </div>
-                <span
-                    className="text-sm font-medium"
-                    style={{ color: isSelected ? 'var(--pd-addon-selected-text)' : 'var(--pd-addon-text)' }}
-                >
-                    {addon.name}
-                </span>
-            </div>
-            <span
-                className="text-sm font-semibold"
-                style={{ color: isSelected ? 'var(--pd-addon-selected-text)' : 'var(--pd-addon-price)' }}
-            >
-                {addon.price === 0 ? freeText : `+${formatPrice(addon.price)}`}
-            </span>
-        </button>
-    )
-})
 
 
 
@@ -414,7 +361,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         mergedAddons,
         handleVariationTypeSelect,
         handleLegacyVariationSelect,
-        toggleAddon,
+        changeAddonQuantity,
         handleDecreaseQuantity,
         handleIncreaseQuantity,
     } = useVariationState({ item, category })
@@ -659,7 +606,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         if (useGroups) {
             const names = mg.groups.flatMap((group) => {
                 const selectedIds = mg.selection[group.id] ?? []
-                return group.options.filter((o) => selectedIds.includes(o.id)).map((o) => o.name)
+                return group.options.filter((o) => selectedIds.includes(o.id)).map((o) => addonLabel({ name: o.name, quantity: selectedIds.filter(id => id === o.id).length }))
             })
             return names.length > 0 ? names.join(', ') : themeColors.footerEmptySummaryText
         }
@@ -676,7 +623,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
 
         if (selectedAddons.length > 0) {
-            parts.push(...selectedAddons.map(a => a.name))
+            parts.push(...selectedAddons.map(addonLabel))
         }
 
         return parts.length > 0 ? parts.join(', ') : themeColors.footerEmptySummaryText
@@ -686,7 +633,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const addCurrentItemToCart = useCallback((): boolean => {
         const presell = isPresell && presellDate ? presellDate : undefined
         const result = useGroups
-            ? addItem(item, mg.cartFormat.selectedVariations, mg.cartFormat.selectedAddons, mg.quantity, undefined, undefined, undefined, presell)
+            ? addItem({ ...item, modifier_groups: mg.groups }, mg.cartFormat.selectedVariations, mg.cartFormat.selectedAddons, mg.quantity, undefined, undefined, undefined, presell)
             : addItem(item, useNewVariations ? selectedVariations : selectedVariation, selectedAddons, quantity, undefined, undefined, undefined, presell)
         if (!result.ok) {
             toast.error(`Your cart is already for ${formatPresellDateLabel(result.committedDate)}. Pre-orders are placed one date at a time.`)
@@ -694,7 +641,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
         toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
         return true
-    }, [useGroups, mg.cartFormat, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate])
+    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate])
 
     const matchingBundle = useMemo(() => {
         if (!bundlesEnabled || !upsellBundles?.length) return null
@@ -1039,6 +986,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 groups={mg.groups}
                                 selection={mg.selection}
                                 onToggle={mg.toggle}
+                                onQuantityChange={mg.setOptionQuantity}
+                                parentQuantity={mg.quantity}
                                 hideCurrencySymbol={hideCurrencySymbol}
                             />
                         </div>
@@ -1158,15 +1107,16 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                                 />
                             </div>
 
+                            <p className="mb-3 text-xs opacity-70">Quantities are per item.</p>
                             <div className="space-y-2">
                                 {mergedAddons.map((addon) => (
-                                    <AddonButton
+                                    <AddonQuantityControl
                                         key={addon.id}
-                                        addon={addon}
-                                        isSelected={selectedAddons.some((a) => a.id === addon.id)}
-                                        onToggle={() => toggleAddon(addon)}
-                                        dynamicStyles={dynamicStyles}
-                                        freeText={themeColors.addonPriceFreeText}
+                                        name={addon.name}
+                                        price={addon.price}
+                                        quantity={selectedAddons.some(a => a.id === addon.id) ? addonQuantity(selectedAddons.find(a => a.id === addon.id)!) : 0}
+                                        onChange={value => changeAddonQuantity(addon, value)}
+                                        hideCurrencySymbol={hideCurrencySymbol}
                                     />
                                 ))}
                             </div>

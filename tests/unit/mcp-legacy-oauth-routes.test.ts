@@ -1,7 +1,6 @@
 import { describe, expect, it } from '@jest/globals'
 import { buildAuthorizationServerMetadata } from '@/lib/mcp/oauth-metadata'
-import { isSupportedMerchantScope } from '@/app/api/mcp/oauth/authorize/route'
-import { resolveMerchantTokenAudience } from '@/app/api/mcp/oauth/token/route'
+import { isSupportedMerchantScope, resolveMerchantTokenAudience } from '@/lib/mcp/merchant-oauth-rules'
 
 describe('remaining SmartMenu OAuth issuer', () => {
   it('advertises merchant authority only', () => {

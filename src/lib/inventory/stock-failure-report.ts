@@ -15,6 +15,7 @@ export type StockFailureOperation =
   | 'apply_order_stock'
   | 'reverse_order_stock'
   | 'redeplete_order_stock'
+  | 'revise_simple_option_stock'
   | 'customer_order_stock_route'
 
 export interface StockFailureContext {

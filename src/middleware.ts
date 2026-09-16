@@ -139,7 +139,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/download') ||
-    pathname.includes('/login') ||
+    (/^\/[^/]+\/login(\/|$)/.test(pathname) && !pathname.includes('/admin/')) ||
     pathname === '/superadmin/mcp/authorize' ||
     pathname.startsWith('/superadmin/login')
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   FlatList,
   Platform,
@@ -25,29 +26,17 @@ import {
   type IncomingOrder,
 } from "../../lib/pos-incoming";
 import { usePosCartStore } from "../../stores/pos-cart-store";
+import { sanitizeSearchQuery, type Category } from "../../lib/products";
+import { type PosOrderType } from "../../lib/pos-catalog";
 import {
-  listCategories,
-  listProducts,
-  sanitizeSearchQuery,
-  type Category,
-  type Product,
-} from "../../lib/products";
-import {
-  listOrderTypeItemPrices,
-  listRegisterOrderTypes,
-  type PosOrderType,
-} from "../../lib/pos-catalog";
-import {
-  buildOrderTypePriceIndex,
   pricingForOrderType,
   type OrderTypePriceIndex,
 } from "../../lib/order-type-pricing";
+import { usePosCatalog, type RegisterItem } from "../../lib/query/use-pos-catalog";
+import { useRegisterPricing } from "../../lib/query/use-register-pricing";
+import { useRefetchOnScreenFocus } from "../../lib/query/use-screen-focus";
+import { PLATFORM_STALE_MS } from "../../lib/query/query-client";
 import { displayPriceForOrderType } from "../../lib/pos-order-type-pricing";
-import {
-  normalizeModifierGroups,
-  type ModifierGroup,
-  type ModifierSource,
-} from "../../lib/modifier-groups";
 import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
 import { fetchPosStockCeilings } from "../../lib/pos-stock-ceilings";
 import {
@@ -70,12 +59,6 @@ import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { Icon } from "../../components/Icon";
 
-/** A product whose modifier groups have already been normalized. */
-interface RegisterItem {
-  product: Product;
-  groups: ModifierGroup[];
-}
-
 /** Tiles per grid row. Rows are pre-chunked so every column is the same width. */
 const COLUMNS = 3;
 
@@ -94,6 +77,11 @@ const EMPTY_CEILINGS: PosStockCeilings = new Map();
 
 /** No exact per-order-type prices loaded yet — every type prices by markup alone. */
 const EMPTY_PRICE_INDEX: OrderTypePriceIndex = {};
+
+/** Stable empties, so a render before the reads land does not churn the memos. */
+const NO_ITEMS: RegisterItem[] = [];
+const NO_CATEGORIES: Category[] = [];
+const NO_ORDER_TYPES: PosOrderType[] = [];
 
 function toRows<T>(items: T[], size: number): T[][] {
   return items.reduce<T[][]>((rows, item, index) => {
@@ -133,14 +121,8 @@ export default function PosScreen() {
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
 
-  const [items, setItems] = useState<RegisterItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [orderTypes, setOrderTypes] = useState<PosOrderType[]>([]);
-  const [priceIndex, setPriceIndex] = useState<OrderTypePriceIndex>(EMPTY_PRICE_INDEX);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [sheetFor, setSheetFor] = useState<RegisterItem | null>(null);
   const [isCartExpanded, setIsCartExpanded] = useState(false);
   const [isIncomingExpanded, setIsIncomingExpanded] = useState(false);
@@ -200,6 +182,23 @@ export default function PosScreen() {
   // before per-branch pricing existed.
   const registerOutletId = scope.kind === "branch" ? scope.outletId : null;
 
+  // ── The menu the register sells from ──
+  // Read through the shared cache, not a mount-time `useEffect`: this is a TAB,
+  // so it mounts once per launch and never again. Its own one-shot read meant a
+  // dish added in the editor — or by anyone on the web admin — was unsellable
+  // until the cashier force-quit the app.
+  const catalog = usePosCatalog(tenantId, registerOutletId);
+  const pricing = useRegisterPricing(tenantId);
+
+  const items = catalog.data?.items ?? NO_ITEMS;
+  const categories = catalog.data?.categories ?? NO_CATEGORIES;
+  const orderTypes = pricing.data?.orderTypes ?? NO_ORDER_TYPES;
+  const priceIndex = pricing.data?.priceIndex ?? EMPTY_PRICE_INDEX;
+  const isLoading = catalog.isLoading || pricing.isLoading;
+  // A failed PRICE read is a load error, not a fallback to list prices: the
+  // register must never quietly undercharge on a marked-up channel.
+  const loadError = catalog.error ?? pricing.error;
+
   // What the chosen channel charges. Loaded with the catalog, so a chip and
   // its pricing arrive together — a type shown before its prices would ring
   // up at list. Null under edit: a placed order keeps the prices it was
@@ -235,62 +234,32 @@ export default function PosScreen() {
     [lines, stockCeilings],
   );
 
+  // Default to the first order type so the cashier can ring up immediately;
+  // they can switch before tendering. Priced from the index that came with the
+  // types, so a chip is never shown ahead of what it charges.
   useEffect(() => {
-    if (!tenantId) return;
-    let cancelled = false;
+    if (orderTypes.length === 0) return;
+    if (usePosCartStore.getState().orderTypeId) return;
+    const [first] = orderTypes;
+    const startingPricing = usePosCartStore.getState().editContext
+      ? null
+      : pricingForOrderType(first, priceIndex);
+    setOrderType(first.id, first.name, first.serviceCharge, startingPricing);
+  }, [orderTypes, priceIndex, setOrderType]);
 
-    async function load(id: string) {
-      setIsLoading(true);
-      setLoadError(null);
-      try {
-        // The price rows ride the same Promise.all as the products: a failed
-        // read surfaces as the load error rather than a register that quietly
-        // charges list prices on a marked-up channel.
-        const [products, cats, types, priceRows] = await Promise.all([
-          listProducts(id, registerOutletId),
-          listCategories(id),
-          // The register reader, not the shared one: a web-only type must not
-          // be offered as a chip even though the payment editor still sees it.
-          listRegisterOrderTypes(id),
-          listOrderTypeItemPrices(id),
-        ]);
-        if (cancelled) return;
-        const index = buildOrderTypePriceIndex(priceRows);
-
-        setItems(
-          products
-            .filter((p) => p.is_available)
-            .map((product) => ({
-              product,
-              groups: normalizeModifierGroups(product as unknown as ModifierSource),
-            })),
-        );
-        setCategories(cats);
-        setOrderTypes(types);
-        setPriceIndex(index);
-
-        // Default to the first order type so the cashier can ring up
-        // immediately; they can switch before tendering. Priced from the
-        // freshly built index, not state — that has not been applied yet.
-        if (!usePosCartStore.getState().orderTypeId && types.length > 0) {
-          const pricing = usePosCartStore.getState().editContext
-            ? null
-            : pricingForOrderType(types[0], index);
-          setOrderType(types[0].id, types[0].name, types[0].serviceCharge, pricing);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : "Could not load the menu.");
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    void load(tenantId);
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId, setOrderType, registerOutletId]);
+  // Coming back to the register stands in for the mount it never gets again,
+  // and only when the cache is stale — an ordinary tab switch is not a read.
+  const { refetch: refetchCatalog } = catalog;
+  const { refetch: refetchPricing } = pricing;
+  const menuUpdatedAt = Math.min(catalog.dataUpdatedAt, pricing.dataUpdatedAt);
+  const isMenuBusy = isLoading || catalog.isRefetching || pricing.isRefetching;
+  useRefetchOnScreenFocus({
+    enabled: !!tenantId,
+    dataUpdatedAt: menuUpdatedAt,
+    staleMs: PLATFORM_STALE_MS,
+    isFetching: isMenuBusy,
+    refetch: async () => { await Promise.all([refetchCatalog(), refetchPricing()]); },
+  });
 
   // Returning from a completed sale must never show the previous cart's state.
   useFocusEffect(
@@ -353,15 +322,19 @@ export default function PosScreen() {
     // Both at the store price: the store derives `basePrice` from
     // `listBasePrice` through the sale's channel pricing.
     const listBasePrice = item.product.discounted_price ?? item.product.price;
-    add({
-      menuItemId: item.product.id,
-      name: item.product.name,
-      listBasePrice,
-      basePrice: listBasePrice,
-      quantity,
-      selections,
-    });
-    setSheetFor(null);
+    try {
+      add({
+        menuItemId: item.product.id,
+        name: item.product.name,
+        listBasePrice,
+        basePrice: listBasePrice,
+        quantity,
+        selections,
+      });
+      setSheetFor(null);
+    } catch (error) {
+      Alert.alert("Check branch", error instanceof Error ? error.message : "Unable to add this item.");
+    }
   };
 
   const handleTap = (item: RegisterItem) => {

@@ -1,3 +1,4 @@
+import { formatDailyOrderNumber } from "../lib/order-number";
 import React, { memo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
@@ -16,9 +17,11 @@ import {
 import { getScheduledISO, getScheduledLabel } from "../lib/scheduled-orders";
 import { getPresellDate, formatPresellDate } from "../lib/presell-orders";
 import { getOrderTableNumber } from "../lib/order-table-number";
+import { isOrderUnpaid } from "../lib/order-paid-state";
 import { useTickerNow } from "./TickerProvider";
 
 export interface OrderCardOrder {
+  dailyNumber?: number | null;
   _id: string;
   _creationTime: number;
   customerName: string;
@@ -29,6 +32,13 @@ export interface OrderCardOrder {
   status: string;
   source?: string;
   paymentStatus?: string;
+  /**
+   * Net of the settlement ledger, when the backend keeps one. Read alongside
+   * {@link paymentStatus} because collecting on a placed order writes the
+   * ledger — an order settled at the counter before that write reached the
+   * status column would otherwise keep its "Unpaid" chip forever.
+   */
+  amountPaid?: number;
   /** Raw Lalamove delivery status — shows a rider chip so deliveries needing
    * attention are visible without opening each order. */
   lalamoveStatus?: string;
@@ -89,7 +99,7 @@ export const OrderCard = memo(function OrderCard({
   );
   const timeAgo = formatTimeAgo(order._creationTime, nowMs);
   const accentColor = isActive ? urgencyColor : colors.separator;
-  const isUnpaid = order.paymentStatus != null && order.paymentStatus !== "paid";
+  const isUnpaid = isOrderUnpaid(order);
 
   const shownThumbs = (thumbnails ?? []).filter(Boolean).slice(0, MAX_THUMBNAILS);
   const extraThumbs = Math.max(0, order.itemCount - shownThumbs.length);
@@ -125,6 +135,7 @@ export const OrderCard = memo(function OrderCard({
       </View>
 
       <View style={styles.metaRow}>
+        <Text style={styles.typeLabel}>{formatDailyOrderNumber(order.dailyNumber, order._id)}</Text>
         <View style={styles.typeChip}>
           <Text style={styles.typeLabel}>{typeMeta.label}</Text>
         </View>

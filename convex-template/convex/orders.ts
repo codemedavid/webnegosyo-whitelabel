@@ -1,3 +1,6 @@
+import { allocateDailyOrderNumber } from './orderNumber';
+import { orderTimeFilter, orderForClient } from './orderTime';
+import { orderBranchFilter } from './branchFilter';
 import { v, type ObjectType } from "convex/values";
 import {
   mutation,
@@ -125,7 +128,9 @@ export const createOrder = mutation({
     const outletId =
       orderOutletIdFromCustomerData(args.customerData) ?? undefined;
 
+    const number = await allocateDailyOrderNumber(ctx, Date.now());
     const orderId = await ctx.db.insert("orders", {
+      ...number,
       ...orderData,
       status: skipPending ? "confirmed" : "pending",
       paymentStatus: "pending",
@@ -420,10 +425,11 @@ export const getOrderPayments = query({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
-    return await ctx.db
+    const payments = await ctx.db
       .query("orderPayments")
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
       .collect();
+    return payments.map(payment => payment.occurredAt === undefined ? payment : { ...payment, _creationTime: payment.occurredAt });
   },
 });
 
@@ -519,24 +525,19 @@ const getOrdersArgs = {
 async function getOrdersHandler(ctx: QueryCtx, args: ObjectType<typeof getOrdersArgs>) {
     const limit = args.limit ?? 50;
 
-    // Branch filtering cannot use `by_outlet` here: orders written before v15
-    // carry the branch only in `customerData`, so an indexed lookup on the
-    // column would silently drop them. Over-fetch and filter on the resolved
-    // branch instead — correctness over the index until a backfill lands.
-    const take = args.outletId ? Math.max(limit, BRANCH_SCAN_LIMIT) : limit;
-
-    let orders;
+    // Filter both canonical and legacy branch metadata before the limit. A
+    // short result must mean the history is complete, even at busy neighbors.
+    let query;
     if (args.status) {
-      orders = await ctx.db
+      query = ctx.db
         .query("orders")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
-        .order("desc")
-        .take(take);
+        .order("desc");
     } else {
-      orders = await ctx.db.query("orders").order("desc").take(take);
+      query = ctx.db.query("orders").order("desc");
     }
-
-    return filterOrdersToOutlet(orders, args.outletId).slice(0, limit);
+    if (args.outletId) query = query.filter(q => orderBranchFilter(q, args.outletId));
+    return (await query.take(limit)).map(orderForClient);
 }
 
 export const getOrders = query({
@@ -559,7 +560,7 @@ async function getOrderByIdHandler(ctx: QueryCtx, args: ObjectType<typeof getOrd
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
       .collect();
 
-    return { ...order, items };
+    return { ...orderForClient(order), items };
 }
 
 export const getOrderById = query({
@@ -603,7 +604,7 @@ export const getOrderByClientId = query({
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
       .collect();
 
-    return { ...order, items };
+    return { ...orderForClient(order), items };
   },
 });
 
@@ -629,7 +630,7 @@ export const getRealtimeQueue = query({
         .order("desc")
         .take(take);
 
-      result[status] = filterOrdersToOutlet(rows, args.outletId).slice(0, 50);
+      result[status] = filterOrdersToOutlet(rows, args.outletId).slice(0, 50).map(orderForClient);
     }
 
     return result;
@@ -643,7 +644,7 @@ async function getDashboardStatsHandler(ctx: QueryCtx) {
 
     const todayOrders = await ctx.db
       .query("orders")
-      .filter((q) => q.gte(q.field("_creationTime"), todayStart))
+      .filter((q) => orderTimeFilter(q, "gte", todayStart))
       .order("desc")
       .take(QUERY_LIMIT);
 
@@ -690,8 +691,8 @@ async function getDashboardStatsByPeriodHandler(ctx: QueryCtx, args: ObjectType<
       .query("orders")
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), args.startDate),
-          q.lte(q.field("_creationTime"), args.endDate)
+          orderTimeFilter(q, "gte", args.startDate),
+          orderTimeFilter(q, "lte", args.endDate)
         )
       )
       .order("desc")

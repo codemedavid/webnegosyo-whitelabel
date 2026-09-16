@@ -21,7 +21,8 @@ const alert = (overrides: Partial<StockAlertView> = {}): StockAlertView => ({
   reorderLevel: 500,
   unitAbbreviation: 'g',
   createdAt: '2026-08-10T00:00:00.000Z',
-  ...overrides,
+  outletId: null,
+    ...overrides,
 })
 
 describe('the low-stock banner belongs to the shelf underneath it', () => {

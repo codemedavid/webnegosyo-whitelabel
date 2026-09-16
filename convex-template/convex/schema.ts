@@ -2,6 +2,11 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  dailyOrderCounters: defineTable({
+    orderDate: v.string(),
+    lastNumber: v.number(),
+  }).index('by_date', ['orderDate']),
+
   orders: defineTable({
     customerName: v.string(),
     customerContact: v.string(),
@@ -25,6 +30,10 @@ export default defineSchema({
       v.literal("pos")
     ),
     clientOrderId: v.optional(v.string()),
+    // Business instant for asynchronously projected paid sales.
+    saleOccurredAt: v.optional(v.number()),
+    dailyNumber: v.optional(v.number()),
+    orderDate: v.optional(v.string()),
     itemCount: v.number(),
     paymentMethod: v.optional(v.string()),
     paymentMethodDetails: v.optional(v.string()),
@@ -69,6 +78,7 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_client_order_id", ["clientOrderId"])
+    .index("by_order_date", ["orderDate"])
     .index("by_outlet", ["outletId"]),
 
   // Append-only settlement ledger. Mirrors `public.order_payments` on the
@@ -77,6 +87,8 @@ export default defineSchema({
   // positive — `kind` carries the direction.
   orderPayments: defineTable({
     orderId: v.id("orders"),
+    /** Canonical settlement time when this payment was projected later. */
+    occurredAt: v.optional(v.number()),
     kind: v.union(v.literal("charge"), v.literal("refund")),
     amount: v.number(),
     paymentMethodId: v.optional(v.string()),

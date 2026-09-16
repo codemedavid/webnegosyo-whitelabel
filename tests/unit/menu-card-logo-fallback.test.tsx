@@ -42,13 +42,13 @@ const noop = () => {}
 describe('menu card logo fallback', () => {
   describe('ClassicCard', () => {
     it('shows the tenant logo when the item has no image', () => {
-      render(<ClassicCard item={makeItem({ image_url: '' })} onSelect={noop} branding={branding} />)
+      render(<ClassicCard isOrderable item={makeItem({ image_url: '' })} onSelect={noop} branding={branding} />)
       expect(imgSrc()).toContain('cdn.test/tenant-logo.png')
     })
 
     it('shows the item image when present', () => {
       render(
-        <ClassicCard
+        <ClassicCard isOrderable
           item={makeItem({ image_url: 'https://cdn.test/burger.png' })}
           onSelect={noop}
           branding={branding}
@@ -60,13 +60,13 @@ describe('menu card logo fallback', () => {
 
   describe('ModernCard', () => {
     it('shows the tenant logo when the item has no image', () => {
-      render(<ModernCard item={makeItem({ image_url: '' })} onSelect={noop} branding={branding} />)
+      render(<ModernCard isOrderable item={makeItem({ image_url: '' })} onSelect={noop} branding={branding} />)
       expect(imgSrc()).toContain('cdn.test/tenant-logo.png')
     })
 
     it('shows the item image when present', () => {
       render(
-        <ModernCard
+        <ModernCard isOrderable
           item={makeItem({ image_url: 'https://cdn.test/burger.png' })}
           onSelect={noop}
           branding={branding}

@@ -14,6 +14,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { fetchOrderTrackingContext } from '@/lib/order-tracking-service'
+import type { OrderFactsBackend } from '@/lib/customer-order-facts'
 import { evaluateClaimWindow, type ClaimWindow } from './claim-window'
 import { loadActiveLoyaltyPrograms, loadLoyaltyTenantFlags, loadLoyaltyOrderFact, createSupabaseLoyaltyDeps } from './store'
 import { syncOrderLifecycle } from '@/lib/customer-lifecycle-sync'
@@ -41,11 +42,17 @@ interface OrderStampQuery {
   token: string
 }
 
-/** The order's own non-shadow earn row, if it ever earned. */
+/**
+ * The order's own non-shadow earn row, if it ever earned.
+ *
+ * `backend` is every backend the ledger records, tenant-Supabase included —
+ * it is a filter value, not a decision, and narrowing it here would only stop
+ * the tracking page from answering for a store on its own project.
+ */
 async function readOrderEarn(
   admin: ReturnType<typeof createAdminClient>,
   query: OrderStampQuery,
-  backend: 'platform_supabase' | 'convex',
+  backend: OrderFactsBackend,
 ): Promise<{ programId: string; customerKey: string } | null> {
   const { data, error } = await admin
     .from('loyalty_ledger')

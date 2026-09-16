@@ -40,7 +40,7 @@ export function AnalyticsProvider({ convexUrl, children }: AnalyticsProviderProp
   }
 
   return (
-    <SafeConvexProvider url={convexUrl}>
+    <SafeConvexProvider url={convexUrl} fallback={children}>
       <AnalyticsInner>{children}</AnalyticsInner>
     </SafeConvexProvider>
   );

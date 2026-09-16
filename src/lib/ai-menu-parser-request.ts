@@ -14,7 +14,16 @@ export const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000
 /** Real menus can be large; 1k tokens truncated them. */
 export const PARSE_MENU_MAX_TOKENS = 8_192
 
-const ALLOWED_IMAGE_DATA_URL = /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/
+const ALLOWED_IMAGE_DATA_URL_PREFIX = /^data:image\/(?:png|jpe?g|webp);base64,/
+
+function isAllowedImageDataUrl(image: string): boolean {
+    const prefix = ALLOWED_IMAGE_DATA_URL_PREFIX.exec(image)
+    if (!prefix) return false
+    const payload = image.slice(prefix[0].length)
+    // Scan for invalid bytes without a quantified alternative over megabytes
+    // of input, which can exhaust the regex interpreter's stack.
+    return payload.length > 0 && !/[^A-Za-z0-9+/=]/.test(payload)
+}
 
 export const PARSE_MENU_SYSTEM_PROMPT = `You are an expert restaurant menu digitization assistant. You read restaurant menus (as plain text or photos) and extract every category, item, price, variation, and add-on into structured JSON.
 
@@ -119,11 +128,11 @@ export function validateParseMenuRequest(body: unknown): ParseMenuValidation {
         return { ok: false, error: `Too many images. Maximum ${MAX_MENU_IMAGES} allowed.` }
     }
     for (const image of imageList) {
-        if (typeof image !== 'string' || !ALLOWED_IMAGE_DATA_URL.test(image)) {
-            return { ok: false, error: 'Images must be PNG, JPEG, or WebP data URLs' }
-        }
-        if (image.length > MAX_IMAGE_DATA_URL_LENGTH) {
+        if (typeof image === 'string' && image.length > MAX_IMAGE_DATA_URL_LENGTH) {
             return { ok: false, error: 'Each image must be under 4MB' }
+        }
+        if (typeof image !== 'string' || !isAllowedImageDataUrl(image)) {
+            return { ok: false, error: 'Images must be PNG, JPEG, or WebP data URLs' }
         }
     }
 

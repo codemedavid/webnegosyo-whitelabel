@@ -46,14 +46,19 @@ export function posOutletContext(
 /**
  * Stamp the branch onto an order's `customerData`.
  *
- * With no branch the caller's payload is returned as it is — no added key — so
- * an order from a single-location store is byte-for-byte what it is today.
+ * With no branch, strip unvalidated branch keys while preserving the rest of
+ * the payload. Single-location sales have no branch fields.
  */
 export function withOrderOutlet(
   customerData: Record<string, unknown> | undefined,
   outlet: OrderOutletContext | null | undefined,
 ): Record<string, unknown> {
-  if (!outlet) return { ...(customerData ?? {}) };
+  if (!outlet) {
+    const clean = { ...(customerData ?? {}) };
+    delete clean[ORDER_OUTLET_ID_KEY];
+    delete clean[ORDER_OUTLET_NAME_KEY];
+    return clean;
+  }
 
   return {
     ...(customerData ?? {}),

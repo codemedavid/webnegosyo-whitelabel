@@ -7,7 +7,7 @@
  * not a nicety.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import type { Addon } from '@/types/database'
 import { AddonEditor } from '@/components/admin/addon-editor'
 
@@ -42,8 +42,11 @@ function renderEditor(extra: Record<string, unknown> = {}) {
 
 describe('AddonEditor recipe attachment', () => {
   it('lets a merchant attach a recipe to an addon, keyed to that addon', () => {
-    // Arrange / Act
+    // Arrange
     renderEditor({ recipeContext: RECIPE_CONTEXT })
+
+    // Act — the editor is behind a disclosure; opening it is what mounts it.
+    fireEvent.click(screen.getByRole('button', { name: /Recipe for Extra Cheese/ }))
 
     // Assert
     const editor = screen.getByTestId('recipe-editor')
@@ -52,6 +55,16 @@ describe('AddonEditor recipe attachment', () => {
       menuItemId: 'm1',
       addonId: 'a1',
     })
+  })
+
+  it('does not mount the recipe editor until the merchant asks for it', () => {
+    // Arrange / Act — every add-on used to mount its own editor, and each one
+    // fires three server actions that Next runs one after another.
+    renderEditor({ recipeContext: RECIPE_CONTEXT })
+
+    // Assert
+    expect(screen.getByRole('button', { name: /Recipe for Extra Cheese/ })).toBeInTheDocument()
+    expect(screen.queryByTestId('recipe-editor')).not.toBeInTheDocument()
   })
 
   it('shows no recipe control when the tenant has inventory turned off', () => {

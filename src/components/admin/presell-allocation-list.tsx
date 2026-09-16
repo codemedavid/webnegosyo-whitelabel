@@ -3,7 +3,11 @@
 /**
  * The dates a dish is promised for, one row each: how much sold against
  * the offer, a stepper that can never go below what already sold, and a
- * remove that the server refuses once anything has sold.
+ * remove that is refused once anything has sold.
+ *
+ * Every control edits the form's draft in place. There is no busy state
+ * because nothing here talks to the server — the dish's own save writes the
+ * whole draft at once.
  */
 
 import { useState } from 'react'
@@ -11,16 +15,14 @@ import { Minus, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatPresellDateLong } from '@/lib/presell/month-grid'
 import { describeAllocationStatus, type AllocationStatus } from '@/lib/presell/admin-allocations'
-import { resolvePresellRemaining } from '@/lib/presell/availability'
-import type { PresellStock } from '@/types/database'
+import { resolvePresellRemaining, type PresellAllocationRow } from '@/lib/presell/availability'
 
 interface PresellAllocationListProps {
-  rows: readonly PresellStock[]
+  rows: readonly PresellAllocationRow[]
   selectedDate: string | null
-  isBusy: boolean
   onSelect: (dateKey: string) => void
-  onSetStock: (row: PresellStock, stockQty: number) => void
-  onRemove: (row: PresellStock) => void
+  onSetStock: (row: PresellAllocationRow, stockQty: number) => void
+  onRemove: (row: PresellAllocationRow) => void
 }
 
 const STATUS_DOT: Record<AllocationStatus, string> = {
@@ -38,9 +40,15 @@ const STATUS_BAR: Record<AllocationStatus, string> = {
 const STEPPER_BUTTON =
   'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30'
 
-export function StockStepper({ row, isBusy, onSetStock }: Pick<PresellAllocationListProps, 'isBusy' | 'onSetStock'> & { row: PresellStock }) {
+export function StockStepper({ row, onSetStock }: Pick<PresellAllocationListProps, 'onSetStock'> & { row: PresellAllocationRow }) {
   const [draft, setDraft] = useState<string | null>(null)
   const label = formatPresellDateLong(row.presell_date)
+
+  /** Step from the stored figure, discarding any half-typed draft that would otherwise keep shadowing it. */
+  const step = (delta: number) => {
+    setDraft(null)
+    onSetStock(row, row.stock_qty + delta)
+  }
 
   const commitDraft = () => {
     if (draft === null) return
@@ -55,8 +63,8 @@ export function StockStepper({ row, isBusy, onSetStock }: Pick<PresellAllocation
       <button
         type="button"
         aria-label={`Decrease stock for ${label}`}
-        disabled={isBusy || row.stock_qty <= row.sold_qty}
-        onClick={() => onSetStock(row, row.stock_qty - 1)}
+        disabled={row.stock_qty <= row.sold_qty}
+        onClick={() => step(-1)}
         className={STEPPER_BUTTON}
       >
         <Minus className="h-3.5 w-3.5" />
@@ -76,8 +84,7 @@ export function StockStepper({ row, isBusy, onSetStock }: Pick<PresellAllocation
       <button
         type="button"
         aria-label={`Increase stock for ${label}`}
-        disabled={isBusy}
-        onClick={() => onSetStock(row, row.stock_qty + 1)}
+        onClick={() => step(1)}
         className={STEPPER_BUTTON}
       >
         <Plus className="h-3.5 w-3.5" />
@@ -86,7 +93,7 @@ export function StockStepper({ row, isBusy, onSetStock }: Pick<PresellAllocation
   )
 }
 
-export function PresellAllocationList({ rows, selectedDate, isBusy, onSelect, onSetStock, onRemove }: PresellAllocationListProps) {
+export function PresellAllocationList({ rows, selectedDate, onSelect, onSetStock, onRemove }: PresellAllocationListProps) {
   return (
     <ul aria-label="Upcoming dates" className="divide-y rounded-xl border bg-card">
       {rows.map((row) => {
@@ -126,13 +133,12 @@ export function PresellAllocationList({ rows, selectedDate, isBusy, onSelect, on
             </button>
 
             <div className="flex items-center gap-1 pl-4 sm:pl-0">
-              <StockStepper row={row} isBusy={isBusy} onSetStock={onSetStock} />
+              <StockStepper row={row} onSetStock={onSetStock} />
               <button
                 type="button"
                 aria-label={`Remove ${label}`}
-                disabled={isBusy}
                 onClick={() => onRemove(row)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

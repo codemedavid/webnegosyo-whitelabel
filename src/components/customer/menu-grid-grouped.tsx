@@ -12,6 +12,7 @@ import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 import { resolveCategoryCardTemplate } from '@/lib/category-card-template'
 import { HorizontalScrollSection } from './horizontal-scroll-section'
 import { ResponsiveCategorySection } from './responsive-category-section'
+import { isAboveTheFold, pageIndexOf } from '@/lib/above-the-fold'
 
 interface MenuGridGroupedProps {
   items: MenuItem[]
@@ -62,7 +63,7 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
 
   return (
     <div className="space-y-12" data-branding-scope="storefront/cards">
-      {groupedItems.map(({ category, items: categoryItems }) => {
+      {groupedItems.map(({ category, items: categoryItems }, groupIndex) => {
         const categoryTemplate = resolveCategoryCardTemplate(category, template)
         return (
         <section
@@ -125,7 +126,7 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
             }
             gridContent={
               <div className={`grid gap-3 md:gap-6 lg:grid-cols-3 ${mobileGridColumns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                {categoryItems.map((item) => (
+                {categoryItems.map((item, itemIndex) => (
                   <MenuItemCard
                     key={item.id}
                     item={item}
@@ -134,6 +135,7 @@ export const MenuGridGrouped = memo(function MenuGridGrouped({
                     template={categoryTemplate}
                     menuEngineeringEnabled={menuEngineeringEnabled}
                     hideCurrencySymbol={hideCurrencySymbol}
+                    priority={isAboveTheFold(pageIndexOf(groupedItems, groupIndex, itemIndex))}
                   />
                 ))}
               </div>

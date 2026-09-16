@@ -33,10 +33,10 @@ jest.mock('@/lib/inventory/stock-alerts-service', () => ({
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 jest.mock('@/lib/supabase/server', () => ({
-  createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a) }),
+  createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 jest.mock('@/lib/admin-service', () => ({
   verifyTenantPermission: jest.fn(() => Promise.resolve()),

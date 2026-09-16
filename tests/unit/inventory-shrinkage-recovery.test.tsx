@@ -46,7 +46,7 @@ const FLOUR: InventoryItem = {
 function line(overrides: Partial<DailyReportRow> = {}): DailyReportRow {
   return {
     inventoryItemId: 'item-flour', name: 'Flour', stockUnitAbbreviation: 'g',
-    opening: 1000, received: 0, sold: 200, waste: 0, countAdjustment: 0,
+    opening: 1000, received: 0, sold: 200, waste: 0, countAdjustment: 0, transferred: 0,
     shrinkage: 0, closing: 800, cogs: 10, wasteCost: 0, shrinkageCost: 0,
     wasCounted: false, ...overrides,
   }
@@ -54,6 +54,7 @@ function line(overrides: Partial<DailyReportRow> = {}): DailyReportRow {
 
 function report(overrides: Partial<DailyInventoryReportForDay> = {}): DailyInventoryReportForDay {
   return {
+    countSession: null,
     dayKey: '2026-07-29', rows: [line()],
     totals: { cogs: 10, wasteCost: 0, shrinkageCost: 0 },
     countedCount: 0, uncountedCount: 1, uncostedCount: 0, ...overrides,

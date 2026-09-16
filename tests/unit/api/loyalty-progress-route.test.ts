@@ -24,8 +24,8 @@ jest.mock('@/lib/rate-limit', () => ({
 }))
 
 const TENANT = '11111111-1111-4111-8111-111111111111'
-const card = { earnedOnOrder: false, programName: 'Coffee Club', earnMode: 'stamp', balance: 5, threshold: 8, rewardsAvailable: 0, rewardLabel: '₱100 off' }
-const offer = { programName: 'Coffee Club', earnMode: 'stamp', threshold: 8, rewardLabel: '₱100 off', minSpend: null }
+const card = { earnedOnOrder: false, programName: 'Coffee Club', earnMode: 'stamp' as const, balance: 5, threshold: 8, rewardsAvailable: 0, rewardLabel: '₱100 off' }
+const offer = { programName: 'Coffee Club', earnMode: 'stamp' as const, threshold: 8, rewardLabel: '₱100 off', minSpend: null }
 
 const request = (body: unknown) =>
   new NextRequest('http://localhost/api/loyalty/progress', {

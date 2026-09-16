@@ -15,6 +15,8 @@
  *    after the async quote returns to drop stale quotes.
  */
 
+import { addonQuantity, addonLabel } from '@/lib/addon-quantity'
+import { buildInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
@@ -61,7 +63,7 @@ import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
-import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
+import { extractSelectionIds, extractBundleSlotSelectionIds } from '@/lib/inventory/order-item-selection'
 import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
@@ -912,11 +914,12 @@ export function useCheckout(tenantSlug: string) {
           menuItemName: item.menu_item.name,
           quantity: item.quantity,
           price: itemPrice,
+          basePrice: getEffectiveItemPrice(item.menu_item),
           subtotal: item.subtotal,
           ...(variationSelections.length > 0 ? { variationSelections } : {}),
           ...(variationText ? { variation: variationText } : {}),
           ...(item.selected_addons.length > 0
-            ? { addons: item.selected_addons.map(a => ({ name: a.name, price: a.price })) }
+            ? { addons: item.selected_addons.map(a => ({ name: a.name, price: a.price, quantity: addonQuantity(a) })) }
             : {}),
           ...(item.special_instructions ? { specialInstructions: item.special_instructions } : {}),
           ...(item.upsellSource ? { isUpsellItem: true } : {}),
@@ -951,7 +954,7 @@ export function useCheckout(tenantSlug: string) {
             }
           }
 
-          const addonTotal = slot.selectedAddons.reduce((sum, a) => sum + a.price, 0)
+          const addonTotal = slot.selectedAddons.reduce((sum, a) => sum + a.price * addonQuantity(a), 0)
           const quantity = slot.quantity * bundle.quantity
           const itemTotal = (slotPrice + addonTotal) * quantity
 
@@ -959,12 +962,13 @@ export function useCheckout(tenantSlug: string) {
             menuItemId: slot.menuItemId,
             menuItemName: slot.menuItemName,
             quantity,
+            basePrice: slot.priceOverride,
             price: slotPrice + addonTotal,
             subtotal: itemTotal,
             ...(variationSelections.length > 0 ? { variationSelections } : {}),
             ...(variationText ? { variation: variationText } : {}),
             ...(slot.selectedAddons.length > 0
-              ? { addons: slot.selectedAddons.map(a => ({ name: a.name, price: a.price })) }
+              ? { addons: slot.selectedAddons.map(a => ({ name: a.name, price: a.price, quantity: addonQuantity(a) })) }
               : {}),
             isBundleItem: true,
             bundleId: bundle.bundleId,
@@ -994,6 +998,10 @@ export function useCheckout(tenantSlug: string) {
         customerContact: resolveOrderContact({ name: normalizedCustomerData.customer_name, customerData: normalizedCustomerData }),
         customerData: {
           ...normalizedCustomerData,
+          _inventory_selections: buildInventorySelectionSnapshot([
+            ...items.map(item => { const selected = extractSelectionIds(item); return { menu_item_id: item.menu_item.id, quantity: item.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } }),
+            ...bundleItems.flatMap(bundle => bundle.slots.map(slot => { const selected = extractBundleSlotSelectionIds(slot); return { menu_item_id: slot.menuItemId, quantity: slot.quantity * bundle.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } })),
+          ]),
           ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
           ...((paymentProofUrl || paymentProofReference)
             ? {
@@ -1366,6 +1374,7 @@ export function useCheckout(tenantSlug: string) {
           special_instructions?: string
           option_ids?: string[]
           addon_ids?: string[]
+          addon_quantities?: Record<string, number>
           isUpsellItem?: boolean
           isBundleItem?: boolean
           bundleId?: string
@@ -1396,13 +1405,14 @@ export function useCheckout(tenantSlug: string) {
             menu_item_id: item.menu_item.id,
             menu_item_name: item.menu_item.name,
             variation: variationText || undefined,
-            addons: item.selected_addons.map(a => a.name),
+            addons: item.selected_addons.map(addonLabel),
             quantity: item.quantity,
             price: itemPrice,
             subtotal: item.subtotal,
             special_instructions: item.special_instructions,
             option_ids: selection.optionIds,
             addon_ids: selection.addonIds,
+            ...(selection.addonQuantities ? { addon_quantities: selection.addonQuantities } : {}),
             ...(item.upsellSource ? { isUpsellItem: true } : {}),
             ...(item.presell_date ? { presell_date: item.presell_date } : {}),
           }

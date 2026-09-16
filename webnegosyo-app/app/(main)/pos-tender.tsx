@@ -12,6 +12,8 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../../lib/hooks";
+import { hasPermission } from "../../lib/staff-permissions";
+import { isLoyaltyPosEnabled, readPendingLoyaltySale, readReservedLoyaltyQuote } from "../../lib/loyalty/pos-api";
 import { useAuthStore } from "../../stores/auth-store";
 import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backend";
 import { usePosCartStore } from "../../stores/pos-cart-store";
@@ -31,7 +33,8 @@ import { buildPosOrder } from "../../lib/pos-order";
 import { posReceiptOrder } from "../../lib/pos-receipt";
 import { staleBackendMessage } from "../../lib/stale-backend";
 import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
-import { posOutletContext } from "../../lib/order-outlet";
+import { resolveRegisterOutlet } from "../../lib/register-outlet";
+import { useBranchContextStore } from "../../stores/branch-context-store";
 import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
 import { notifyLoyversePosSale, posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
@@ -74,8 +77,9 @@ async function settleSaleInBackground(settle: () => Promise<void>): Promise<void
 export default function PosTenderScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const userId = useAuthStore((s) => s.userId);
-  const outletId = useAuthStore((s) => s.outletId);
-  const outletName = useAuthStore((s) => s.outletName);
+  const saleOutlet = usePosCartStore((s) => s.saleOutlet);
+  const editing = usePosCartStore((s) => s.editContext);
+  const outletId = editing ? editing.outletId ?? null : saleOutlet?.id ?? null;
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
@@ -377,6 +381,7 @@ export default function PosTenderScreen() {
       setIsCompleting(false);
     }
   }, [
+    serviceChargeArg,
     editContext,
     edit,
     isCompleting,
@@ -406,8 +411,24 @@ export default function PosTenderScreen() {
       return;
     }
 
+    const selection = useBranchContextStore.getState();
+    const currentOutlet = resolveRegisterOutlet(useAuthStore.getState(), selection);
+    if ((selection.knownOutletIds?.length ?? 0) > 0 && !saleOutlet) {
+      Alert.alert("Choose a branch", "Select a branch and start a new sale before taking payment.");
+      return;
+    }
+    if ((currentOutlet?.id ?? null) !== (saleOutlet?.id ?? null)) {
+      Alert.alert("Branch changed", "Return to the branch where this sale started, or clear the cart and start a new sale.");
+      return;
+    }
+
     setIsCompleting(true);
     try {
+      if (tenantId && userId && (await readPendingLoyaltySale(tenantId, userId) || await readReservedLoyaltyQuote(tenantId, userId))) {
+        setIsCompleting(false);
+        router.push("/(main)/pos-loyalty");
+        return;
+      }
       const tender = toTender(method, {
         cashTendered: tendered,
         changeDue: change.changeDue,
@@ -439,10 +460,8 @@ export default function PosTenderScreen() {
         // Read at tender time for the same reason as the discount lines: the
         // fee the customer is charged is whatever the sale holds NOW.
         delivery: usePosCartStore.getState().delivery,
-        // A counter sale belongs to the till that rang it, so the branch on
-        // the session is stamped onto the order. Null for a single-location
-        // register, which stamps nothing.
-        outlet: posOutletContext(outletId, outletName),
+        // Keep the branch that supplied the cart's prices and stock.
+        outlet: saleOutlet,
       });
 
       // `buildPosOrder` reports the charge unconditionally; the gate decides
@@ -558,6 +577,7 @@ export default function PosTenderScreen() {
       setIsCompleting(false);
     }
   }, [
+    serviceChargeArg,
     method,
     isCompleting,
     hasOrderBackend,
@@ -581,7 +601,7 @@ export default function PosTenderScreen() {
     // resolves after this callback is first built does not keep ringing sales
     // up against a stale (or absent) branch.
     outletId,
-    outletName,
+    saleOutlet,
     // Which backend wrote the order, which decides how its guest is captured.
     // Listed for the same reason as the branch: a session that resolves its
     // backend late must not keep capturing sales against a stale answer.
@@ -615,6 +635,7 @@ export default function PosTenderScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.body}>
+        {!edit && isLoyaltyPosEnabled() && hasPermission({ role, isOwner, permissions }, "loyalty_redeem") ? <TouchableOpacity disabled={isCompleting} onPress={() => router.push("/(main)/pos-loyalty")}><Text style={styles.eyebrow}>Redeem a loyalty reward</Text></TouchableOpacity> : null}
         <Text style={styles.eyebrow}>
           {isAlreadySettled
             ? "Nothing to settle"

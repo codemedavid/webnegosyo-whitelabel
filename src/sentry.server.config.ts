@@ -11,7 +11,7 @@ import {
 } from "@/lib/sentry-filtering";
 
 Sentry.init({
-    dsn: process.env.SENTRY_DSN,
+    dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
 
     // Only deliver events from real deployments. Keeps local dev-server
     // Turbopack/HMR noise out of the dashboard. Override with
@@ -19,7 +19,7 @@ Sentry.init({
     enabled: isSentryEnabled(),
     environment: sentryEnvironment,
 
-    // Drop known framework/network noise (see src/lib/sentry-filtering.ts).
+    // Keep production module/network failures; filter only benign notifications.
     // denyUrls is omitted here because server/edge events carry no script URLs;
     // filterSentryEvent inspects stack frames + values instead.
     ignoreErrors: SENTRY_IGNORE_ERRORS,

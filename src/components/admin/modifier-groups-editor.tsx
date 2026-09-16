@@ -50,7 +50,7 @@ interface ModifierGroupsEditorProps {
    * (which owns the server action) so this editor stays presentational.
    */
   optionRecipeCosts?: Record<string, number>
-  /** Optional slot rendered beside "Add Group" (e.g. the library picker). */
+  /** Optional slot rendered beside the creation actions (e.g. the library picker). */
   headerAction?: ReactNode
   /** When provided, each group card gets a "Save to library" control. */
   onSaveGroupToLibrary?: (group: ModifierGroup) => void
@@ -69,15 +69,14 @@ export interface LinkableMenuItem {
 }
 
 /**
- * Unified editor for Modifier Groups — the single control that replaces the
- * separate Variation Types and Add-ons editors. Each group has selection rules
- * (required, single/multi) and each option carries a price modifier plus
+ * Editor for separate variation choices and quantity add-on groups. Each group
+ * has selection rules and each option carries a price modifier plus
  * optional per-option cost and stock. State is owned by the parent form; this
  * component is presentational and mutates immutably through `onChange`.
  */
 export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, optionRecipeCosts, headerAction, onSaveGroupToLibrary, linkableItems }: ModifierGroupsEditorProps) {
-  const addGroup = () => {
-    onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length)])
+  const addGroup = (mode: 'choice' | 'quantity') => {
+    onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length, mode)])
   }
 
   const removeGroup = (groupIndex: number) => {
@@ -136,30 +135,37 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>Modifier Groups</CardTitle>
+          <CardTitle>Variations &amp; Add-ons</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Variations and add-ons in one place. Set selection rules per group and cost/stock per
-            option.
+            Variations customize an item. Add-ons let customers choose how many portions of each extra to add.
+            {' '}Set an option price to 0 for no extra charge.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {headerAction}
-          <Button type="button" variant="outline" size="sm" onClick={addGroup}>
+          <Button type="button" variant="outline" size="sm" onClick={() => addGroup('choice')}>
             <Plus className="mr-2 h-4 w-4" />
-            Add Group
+            Add Variation
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => addGroup('quantity')}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Add-on Group
           </Button>
         </div>
       </CardHeader>
       <CardContent>
         {groups.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground py-8">
-            No modifier groups. Add a group like Size (single-select) or Extras (multi-select).
+            Add a variation like Size, or an add-on group like Extra Rice &amp; Sauces.
           </p>
         ) : (
           <div className="space-y-6">
-            {groups.map((group, groupIndex) => (
+            {(['choice', 'quantity'] as const).map((mode) => (
+              <section key={mode} className="space-y-4" aria-label={mode === 'quantity' ? 'Add-ons' : 'Variations'}>
+                <h3 className="font-medium">{mode === 'quantity' ? 'Add-ons' : 'Variations'}</h3>
+                {groups.map((group, groupIndex) => (group.selection_mode ?? 'choice') === mode && (
               <ModifierGroupCard
                 key={group.id}
                 group={group}
@@ -170,6 +176,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 onSaveToLibrary={onSaveGroupToLibrary ? () => onSaveGroupToLibrary(group) : undefined}
                 onRemoveGroup={() => removeGroup(groupIndex)}
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
+                onUpdateMode={(mode) => updateGroupField(groupIndex, 'selection_mode', mode)}
                 onToggleRequired={(required) => replaceGroup(groupIndex, setGroupRequired(group, required))}
                 onToggleMultiple={(multiple) => replaceGroup(groupIndex, setGroupMultiple(group, multiple))}
                 onUpdateMinSelect={(min) => replaceGroup(groupIndex, setGroupMinSelect(group, min))}
@@ -181,6 +188,8 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 }
                 onReplaceOption={(optionIndex, next) => replaceOption(groupIndex, optionIndex, next)}
               />
+                ))}
+              </section>
             ))}
           </div>
         )}
@@ -198,6 +207,7 @@ interface ModifierGroupCardProps {
   onSaveToLibrary?: () => void
   onRemoveGroup: () => void
   onUpdateName: (name: string) => void
+  onUpdateMode: (mode: 'choice' | 'quantity') => void
   onToggleRequired: (required: boolean) => void
   onToggleMultiple: (multiple: boolean) => void
   onUpdateMinSelect: (min: number) => void
@@ -221,6 +231,7 @@ function ModifierGroupCard({
   onSaveToLibrary,
   onRemoveGroup,
   onUpdateName,
+  onUpdateMode,
   onToggleRequired,
   onToggleMultiple,
   onUpdateMinSelect,
@@ -231,6 +242,7 @@ function ModifierGroupCard({
   onReplaceOption,
 }: ModifierGroupCardProps) {
   const isSingle = isSingleSelectGroup(group)
+  const isQuantity = group.selection_mode === 'quantity'
   const isRequired = group.min_select >= 1
 
   return (
@@ -244,6 +256,15 @@ function ModifierGroupCard({
             className="font-medium"
           />
           <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <span>Group type</span>
+              <select aria-label={`Group type for ${group.name || 'new group'}`} value={group.selection_mode ?? 'choice'}
+                onChange={event => onUpdateMode(event.target.value as 'choice' | 'quantity')}
+                className="rounded-md border bg-background px-2 py-1.5">
+                <option value="choice">Variation — choose options</option>
+                <option value="quantity">Add-on — choose quantities</option>
+              </select>
+            </label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -253,7 +274,7 @@ function ModifierGroupCard({
               />
               <span className="text-sm">Required</span>
             </label>
-            <label className="flex items-center gap-2">
+            {!isQuantity && <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={!isSingle}
@@ -261,11 +282,11 @@ function ModifierGroupCard({
                 className="h-4 w-4"
               />
               <span className="text-sm">Allow multiple</span>
-            </label>
+            </label>}
             {!isSingle && (
               <>
                 <label className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Min</span>
+                  <span className="text-sm text-muted-foreground">{isQuantity ? 'Min portions' : 'Min'}</span>
                   <Input
                     type="number"
                     min={0}
@@ -279,7 +300,7 @@ function ModifierGroupCard({
                   />
                 </label>
                 <label className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Max</span>
+                  <span className="text-sm text-muted-foreground">{isQuantity ? 'Max portions' : 'Max'}</span>
                   <Input
                     type="number"
                     min={1}
@@ -298,7 +319,9 @@ function ModifierGroupCard({
           {/* Exactly what the customer will be told, so the merchant can see the
               effect of Min/Max without leaving the editor. */}
           <p className="text-xs text-muted-foreground">
-            Customer sees: {describeSelectionRule(group)}
+            {isQuantity
+              ? 'Customers use − / + for each extra. Limits count total portions per item ordered; leave Max portions blank for no limit.'
+              : <>Customer sees: {describeSelectionRule(group)}</>}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">

@@ -13,13 +13,14 @@ interface ZenCardProps {
     isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Zen Card Template
  * Ultra-minimal, borderless design with generous whitespace and muted tones
  */
-export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ZenCardProps) {
+export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: ZenCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -39,7 +40,8 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrder
                         fill
                         className="object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-105"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                        loading="lazy"
+                        loading={priority ? 'eager' : 'lazy'}
+                        fetchPriority={priority ? 'high' : undefined}
                     />
                 )}
 

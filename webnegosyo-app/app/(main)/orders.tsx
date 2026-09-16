@@ -4,6 +4,13 @@ import { FunctionReference } from "convex/server";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
 import { filterOrdersToScope } from "../../lib/branch-scope";
+import {
+  ORDER_BRANCH_FILTER_ALL,
+  ORDER_BRANCH_FILTER_UNASSIGNED,
+  filterOrdersToBranchFilter,
+  hasUnassignedOrders,
+  listOrderBranchOptions,
+} from "../../lib/order-branch-filter";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { colors, spacing } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
@@ -75,6 +82,7 @@ export default function OrdersScreen() {
     STATUS_FILTERS.includes(params.status as FilterKey) ? (params.status as FilterKey) : "all"
   );
   const [sort, setSort] = useState<SortOrder>("newest");
+  const [branchFilter, setBranchFilter] = useState<string>(ORDER_BRANCH_FILTER_ALL);
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -120,9 +128,51 @@ export default function OrdersScreen() {
   // A branch account sees only its own branch's orders. Filtering here — before
   // the counts, search and sort are computed — keeps the status pill counts
   // describing the same list the merchant is looking at.
-  const allOrders = useMemo(
+  const scopedOrders = useMemo(
     () => filterOrdersToScope(scope, orders) as ConvexOrder[],
     [scope, orders],
+  );
+
+  /**
+   * Branch pills, offered only to an account that can see the whole store — a
+   * branch account is already looking at one branch and has nothing to narrow.
+   * "Unassigned" appears only when such orders exist, so a merchant whose
+   * attribution is healthy is not shown an empty question.
+   */
+  const branchFilters: StatusFilterOption[] = useMemo(() => {
+    if (scope.kind !== "all") return [];
+    const options = listOrderBranchOptions(scopedOrders);
+    if (options.length === 0) return [];
+
+    const rows: StatusFilterOption[] = [
+      { key: ORDER_BRANCH_FILTER_ALL, label: "All branches", count: scopedOrders.length },
+      ...options.map((option) => ({
+        key: option.id,
+        label: option.name,
+        count: filterOrdersToBranchFilter(option.id, scopedOrders).length,
+      })),
+    ];
+
+    if (hasUnassignedOrders(scopedOrders)) {
+      rows.push({
+        key: ORDER_BRANCH_FILTER_UNASSIGNED,
+        label: "Unassigned",
+        count: filterOrdersToBranchFilter(ORDER_BRANCH_FILTER_UNASSIGNED, scopedOrders).length,
+      });
+    }
+
+    return rows;
+  }, [scope.kind, scopedOrders]);
+
+  // A branch pill the merchant can no longer see must not keep hiding orders.
+  const activeBranchFilter =
+    branchFilters.some((row) => row.key === branchFilter) ? branchFilter : ORDER_BRANCH_FILTER_ALL;
+
+  // Narrowed BEFORE the status counts are computed, so the pill counts always
+  // describe the same list the merchant is looking at.
+  const allOrders = useMemo(
+    () => filterOrdersToBranchFilter(activeBranchFilter, scopedOrders),
+    [activeBranchFilter, scopedOrders],
   );
 
   const counts = useMemo(() => {
@@ -330,6 +380,9 @@ export default function OrdersScreen() {
         onSortToggle={() => setSort((s) => (s === "newest" ? "oldest" : "newest"))}
         search={search}
         onSearchChange={setSearch}
+        branchFilters={branchFilters}
+        activeBranchFilter={activeBranchFilter}
+        onBranchFilterChange={setBranchFilter}
       />
 
       {/* One clock for every card's age and urgency accent, so a tick redraws

@@ -9,6 +9,7 @@ import {
   mapSelectionToCartFormat,
   toggleOption,
   validateAllGroups,
+  setOptionQuantity,
   type CartSelectionFormat,
   type ModifierSelection,
 } from '@/lib/modifier-groups-cart'
@@ -34,6 +35,7 @@ interface UseModifierGroupsResult {
   totalPrice: number
   cartFormat: CartSelectionFormat
   toggle: (group: ModifierGroup, optionId: string) => void
+  setOptionQuantity: (group: ModifierGroup, optionId: string, quantity: number) => void
   setQuantity: (quantity: number) => void
   incrementQuantity: () => void
   decrementQuantity: () => void
@@ -57,7 +59,7 @@ export function useModifierGroups({ item, linkedItems }: UseModifierGroupsOption
     const normalized = normalizeModifierGroups({ modifier_groups: item.modifier_groups })
     // Linked options resolve to an ordinary ModifierOption, so everything
     // downstream (pricing, validation, cart projection) is unchanged.
-    return linkedItems ? resolveLinkedOptions(normalized, linkedItems) : normalized
+    return resolveLinkedOptions(normalized, linkedItems ?? new Map())
   }, [active, item.modifier_groups, linkedItems])
 
   const [selection, setSelection] = useState<ModifierSelection>(() => getDefaultSelection(groups))
@@ -102,8 +104,8 @@ export function useModifierGroups({ item, linkedItems }: UseModifierGroupsOption
   }, [])
 
   const validate = useCallback(
-    () => validateAllGroups(groups, selection),
-    [groups, selection],
+    () => validateAllGroups(groups, selection, quantity),
+    [groups, selection, quantity],
   )
 
   return {
@@ -115,6 +117,7 @@ export function useModifierGroups({ item, linkedItems }: UseModifierGroupsOption
     totalPrice,
     cartFormat,
     toggle,
+    setOptionQuantity: (group, optionId, portions) => setSelection(prev => setOptionQuantity(prev, group, optionId, portions)),
     setQuantity,
     incrementQuantity,
     decrementQuantity,

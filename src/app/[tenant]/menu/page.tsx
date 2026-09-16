@@ -25,6 +25,7 @@ export default async function MenuPage({
       overridesFailed={overridesFailed}
       tenantSlug={tenantSlug}
       isBrandAdmin={isBrandAdmin}
+      status={data.status}
       error={error}
     />
   )

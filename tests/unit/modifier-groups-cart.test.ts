@@ -18,6 +18,9 @@ import {
   getSelectedOptions,
   mapSelectionToCartFormat,
   validateAllGroups,
+  setOptionQuantity,
+  mapCartFormatToSelection,
+  restoreLinkedOptionSnapshots,
   type ModifierSelection,
 } from '@/lib/modifier-groups-cart'
 
@@ -74,6 +77,30 @@ const cappedMultiGroup: ModifierGroup = {
 }
 
 const groups: ModifierGroup[] = [sizeGroup, spiceGroup, addonGroup]
+
+it('keeps the resolved price of a linked extra when editing a saved cart', () => {
+  const linked = { ...addonGroup, selection_mode: 'quantity' as const, options: [{ id: 'coke', name: 'Coke', menu_item_id: 'drink', price_modifier: 0, display_order: 0 }] }
+  const cart = { selectedVariations: {}, selectedAddons: [{ id: 'coke', name: 'Coke', price: 50, quantity: 2 }] }
+  const restored = restoreLinkedOptionSnapshots([linked], cart)
+  const selection = mapCartFormatToSelection(restored, cart)
+  expect(mapSelectionToCartFormat(restored, selection).selectedAddons).toEqual(cart.selectedAddons)
+})
+
+it('round-trips repeated extras through the cart and prices every portion', () => {
+  const extras: ModifierGroup = { ...addonGroup, selection_mode: 'quantity' }
+  const selection = setOptionQuantity({}, extras, 'o-cheese', 3)
+  const cart = mapSelectionToCartFormat([extras], selection)
+  expect(cart.selectedAddons).toEqual([{ id: 'o-cheese', name: 'Extra Cheese', price: 15, quantity: 3 }])
+  expect(computeModifierSubtotal(100, getSelectedOptions([extras], selection), 2)).toBe(290)
+  expect(mapCartFormatToSelection([extras], cart)).toEqual(selection)
+})
+
+it('keeps a quantity add-on capped at one out of the variation slot', () => {
+  const extras: ModifierGroup = { ...addonGroup, selection_mode: 'quantity', max_select: 1 }
+  const selection = setOptionQuantity({}, extras, 'o-cheese', 1)
+  expect(mapSelectionToCartFormat([extras], selection).selectedVariations).toEqual({})
+  expect(setOptionQuantity(selection, extras, 'o-cheese', 2)).toEqual(selection)
+})
 
 // ---- getDefaultSelection ----------------------------------------------------
 

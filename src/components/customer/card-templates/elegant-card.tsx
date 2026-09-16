@@ -13,13 +13,14 @@ interface ElegantCardProps {
   isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Elegant Card Template
  * Sophisticated design with soft shadows and refined spacing
  */
-export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ElegantCardProps) {
+export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: ElegantCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -50,7 +51,8 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
             fill
             className="object-cover transition-all duration-500 group-hover:scale-105"
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
           />
         )}
 

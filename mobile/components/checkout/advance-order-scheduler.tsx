@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useTheme } from '@/theme/provider'
+import type { OrderType } from '@/types/database'
 import {
   type AdvanceOrderConfig,
   type ScheduleDateOption,
@@ -21,7 +22,7 @@ export interface AdvanceOrderSchedulerProps {
   onChangeTime: (time: string) => void
   scheduledForLabel: string | null
   /** Order type kind — drives the "Ready"/"Arriving" wording. */
-  orderTypeKind?: 'dine_in' | 'pickup' | 'delivery'
+  orderTypeKind?: OrderType['type']
 }
 
 /**

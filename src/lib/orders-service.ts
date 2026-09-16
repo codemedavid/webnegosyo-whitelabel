@@ -2,6 +2,7 @@
  * Orders service for tenant admin operations
  */
 
+import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
@@ -414,6 +415,9 @@ export async function createOrder(
   tenantId: string,
   items: Array<{
     menu_item_id: string
+    option_ids?: string[]
+    addon_ids?: string[]
+    addon_quantities?: Record<string, number>
     menu_item_name: string
     variation?: string
     addons: string[]
@@ -659,7 +663,7 @@ export async function createOrder(
       order_type: orderTypeId ? await getOrderTypeName(orderTypeId) : null,
       customer_name: customerInfo?.name,
       customer_contact: customerInfo?.contact,
-      customer_data: customerData || {},
+      customer_data: withInventorySelectionSnapshot(customerData, items),
       scheduled_for: scheduledForValue,
       total: finalTotal,
       delivery_fee: deliveryFee || 0,
@@ -803,6 +807,9 @@ export async function createOrderConvex(
   tenantId: string,
   items: Array<{
     menu_item_id: string
+    option_ids?: string[]
+    addon_ids?: string[]
+    addon_quantities?: Record<string, number>
     menu_item_name: string
     variation?: string
     addons: string[] | { name: string; price: number; quantity?: number }[]
@@ -857,7 +864,7 @@ export async function createOrderConvex(
   // top-level `scheduledFor` arg (a pre-v9 mutation would reject the unknown
   // field and fail the checkout, so the version gates it).
   const convexCustomerData: Record<string, unknown> = {
-    ...(customerData ?? {}),
+    ...withInventorySelectionSnapshot(customerData, items),
     ...(scheduledForISO ? { scheduled_for: scheduledForISO } : {}),
   }
   const tenantConvexSchemaVersion = (

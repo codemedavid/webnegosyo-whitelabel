@@ -13,13 +13,14 @@ interface MagazineCardProps {
     isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Magazine Card Template
  * Editorial-style with full-bleed image and text overlay, like a food magazine spread
  */
-export const MagazineCard = memo(function MagazineCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: MagazineCardProps) {
+export const MagazineCard = memo(function MagazineCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: MagazineCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -39,7 +40,8 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                         fill
                         className="object-cover transition-transform duration-700 group-hover:scale-110"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                        loading="lazy"
+                        loading={priority ? 'eager' : 'lazy'}
+                        fetchPriority={priority ? 'high' : undefined}
                     />
                 )}
 

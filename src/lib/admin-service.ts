@@ -72,6 +72,9 @@ export const modifierOptionSchema = z.object({
   is_default: z.boolean().optional(),
   display_order: z.number().int().min(0),
   manual_cost: z.number().min(0).optional(),
+  cost_mode: z.enum(['simple', 'composite']).optional(),
+  menu_item_id: z.string().nullable().optional(),
+  is_upgrade_target: z.boolean().optional(),
   stock_mode: z.enum(['none', 'simple', 'recipe']).optional(),
   stock_qty: z.number().min(0).optional(),
   is_available: z.boolean().optional(),
@@ -80,6 +83,7 @@ export const modifierOptionSchema = z.object({
 export const modifierGroupSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Group name is required'),
+  selection_mode: z.enum(['choice', 'quantity']).optional(),
   display_order: z.number().int().min(0),
   min_select: z.number().int().min(0),
   max_select: z.number().int().min(1).nullable(),
@@ -89,7 +93,7 @@ export const modifierGroupSchema = z.object({
 export const menuItemSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
-  price: z.number().positive('Price must be positive'),
+  price: z.number().min(0, 'Price must be 0 or more'),
   discounted_price: z.number().positive().optional().nullable(),
   // Image is optional — a product can be saved without one. Accept a valid
   // delivery URL or an empty string; missing values normalize to ''.
@@ -131,7 +135,7 @@ export const menuItemSchema = z.object({
 export const menuItemUpdateSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
-  price: z.number().positive('Price must be positive'),
+  price: z.number().min(0, 'Price must be 0 or more'),
   discounted_price: z.number().positive().nullable(),
   image_url: z.string().url('Must be a valid URL').or(z.literal('')),
   category_id: z.string().uuid('Must select a category'),

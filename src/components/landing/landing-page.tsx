@@ -1,3 +1,4 @@
+import { LandingViewContent } from '@/components/tracking/landing-view-content'
 import { CapabilitiesSection } from './capabilities-section'
 import { FAQSection, PricingSection } from './pricing-faq'
 import { FeatureJourney } from './feature-journey'
@@ -30,6 +31,7 @@ export function LandingPage() {
       <div aria-hidden dangerouslySetInnerHTML={{ __html: DIRECTION_CONTRACT }} />
       <style>{LANDING_STYLES}</style>
 
+      <LandingViewContent />
       <LandingNav />
       <main>
         <LandingHero />

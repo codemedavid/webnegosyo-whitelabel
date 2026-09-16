@@ -395,6 +395,8 @@ export interface Addon {
   name: string; // "Extra Cheese", "No Onions"
   price: number;
   is_default?: boolean;
+  /** Selected portions per parent item; absent on legacy selections means one. */
+  quantity?: number;
 }
 
 // Reusable per-tenant add-on definition. Attaching one to a menu item copies a
@@ -417,6 +419,7 @@ export interface AddonLibraryEntry {
 // selection rules + option list) once; attaching copies a fresh-id snapshot into
 // menu_items.modifier_groups (snapshot-on-attach, like AddonLibraryEntry).
 export interface ModifierGroupLibraryEntry {
+  selection_mode?: 'choice' | 'quantity';
   id: string;
   tenant_id: string;
   name: string;
@@ -575,6 +578,8 @@ export interface ModifierOption {
 }
 
 export interface ModifierGroup {
+  /** Quantity groups are add-ons, independently of their min/max limit. */
+  selection_mode?: 'choice' | 'quantity';
   id: string;
   name: string; // "Size", "Add-ons", "Spice Level"
   display_order: number;
@@ -883,6 +888,9 @@ export interface FacebookPage {
 }
 
 export interface Order {
+  daily_number?: number | null
+  daily_order_number?: number | null
+  order_date?: string | null
   id: string;
   tenant_id: string;
   order_type_id?: string;

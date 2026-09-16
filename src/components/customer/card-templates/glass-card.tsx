@@ -13,13 +13,14 @@ interface GlassCardProps {
     isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Glass Card Template
  * Glassmorphism design with frosted glass effect, backdrop blur, and translucent layers
  */
-export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: GlassCardProps) {
+export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: GlassCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -55,7 +56,8 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                         fill
                         className="object-cover transition-transform duration-500 group-hover:scale-110"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                        loading="lazy"
+                        loading={priority ? 'eager' : 'lazy'}
+                        fetchPriority={priority ? 'high' : undefined}
                     />
                 )}
 

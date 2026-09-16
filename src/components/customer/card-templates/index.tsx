@@ -80,6 +80,8 @@ interface CardTemplateProps {
   branding: BrandingColors
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  /** Above-the-fold card: image loads eagerly with high fetch priority. */
+  priority?: boolean
 }
 
 /**

@@ -22,10 +22,21 @@ import { ORDER_OUTLET_ID_KEY, ORDER_OUTLET_NAME_KEY } from './order-outlet'
 /** The dropdown value meaning "do not filter by branch". */
 export const OUTLET_FILTER_ALL = 'all'
 
+/**
+ * The orders that name no branch at all.
+ *
+ * Prefixed so it can never collide with a branch id, which is a uuid. Without
+ * this option a merchant could see each branch's orders and the grand total,
+ * and had no way to ask what accounts for the difference.
+ */
+export const OUTLET_FILTER_UNASSIGNED = '__unassigned__'
+
 /** Order-shaped subset needed to read a branch from either backend. */
 export interface OutletOrderLike {
   /** Platform Supabase only; absent on Convex and tenant-owned projects. */
   outlet_id?: string | null
+  /** Canonical branch column on current Convex deployments. */
+  outletId?: string | null
   /** Tenant-owned Supabase projects, which mirror the platform column names. */
   customer_data?: Record<string, unknown> | null
   /**
@@ -62,7 +73,8 @@ function readString(source: Record<string, unknown> | null | undefined, key: str
 export function getOrderOutletId(order: OutletOrderLike | null | undefined): string | null {
   if (!order) return null
 
-  const fromColumn = typeof order.outlet_id === 'string' ? order.outlet_id.trim() : ''
+  const fromColumn = (typeof order.outlet_id === 'string' ? order.outlet_id.trim() : '') ||
+    (typeof order.outletId === 'string' ? order.outletId.trim() : '')
   if (fromColumn !== '') return fromColumn
 
   return readOrderBlob(order, ORDER_OUTLET_ID_KEY)
@@ -118,12 +130,26 @@ export function listOrderOutlets(orders: readonly OutletOrderLike[]): OrderOutle
 }
 
 /**
+ * Whether this merchant has orders that name no branch.
+ *
+ * Only meaningful alongside `listOrderOutlets`: a single-location merchant's
+ * orders are ALL unattributed, and offering them an "Unassigned" option would
+ * be offering them their own order list under a confusing name. Callers gate on
+ * both, so the option appears only where the distinction exists.
+ */
+export function hasUnattributedOrders(orders: readonly OutletOrderLike[]): boolean {
+  return orders.some((order) => getOrderOutletId(order) === null)
+}
+
+/**
  * Whether an order belongs to the selected branch.
  *
  * An unattributed order is hidden while a branch is selected — it was not taken
- * by that branch, and showing it would defeat the filter.
+ * by that branch, and showing it would defeat the filter. `OUTLET_FILTER_UNASSIGNED`
+ * is how the merchant asks for exactly those orders instead.
  */
 export function matchesOutletFilter(order: OutletOrderLike | null | undefined, filterId: string): boolean {
   if (filterId === OUTLET_FILTER_ALL) return true
+  if (filterId === OUTLET_FILTER_UNASSIGNED) return getOrderOutletId(order) === null
   return getOrderOutletId(order) === filterId
 }

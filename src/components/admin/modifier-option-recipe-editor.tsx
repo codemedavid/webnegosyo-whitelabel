@@ -1,6 +1,6 @@
 'use client'
 
-import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { RecipeDisclosure } from '@/components/admin/recipe-disclosure'
 
 interface ModifierOptionRecipeEditorProps {
   tenantId: string
@@ -14,9 +14,10 @@ interface ModifierOptionRecipeEditorProps {
 /**
  * Recipe-attach control for a unified modifier option.
  *
- * A thin wrapper over the target-generic `RecipeEditor` — it exists only to name
- * the target. The editing, loading, and persistence logic is shared with every
- * other costable target rather than duplicated per call site.
+ * A thin wrapper over the target-generic editor — it exists only to name the
+ * target. Collapsed by default, like the add-on rows: every option that could
+ * take a recipe used to mount its own editor and fire three server actions
+ * before the merchant had touched anything.
  */
 export function ModifierOptionRecipeEditor({
   tenantId,
@@ -26,10 +27,11 @@ export function ModifierOptionRecipeEditor({
   onSaved,
 }: ModifierOptionRecipeEditorProps) {
   return (
-    <RecipeEditor
+    <RecipeDisclosure
       tenantId={tenantId}
       tenantSlug={tenantSlug}
       target={{ type: 'modifier_option', menuItemId, modifierOptionId }}
+      label="Recipe (ingredients used per sale)"
       onSaved={onSaved}
     />
   )

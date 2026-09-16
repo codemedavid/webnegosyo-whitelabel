@@ -23,6 +23,10 @@ function isPositive(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
+function isMoney(value: number): boolean {
+  return value <= 9_999_999.99 && Math.abs(value * 100 - Math.round(value * 100)) < 1e-6
+}
+
 function optionalNonNegative(value: unknown): number | null | undefined {
   if (value === undefined || value === null) return null
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
@@ -35,7 +39,7 @@ function parseReward(raw: unknown): { ok: true; value: LoyaltyReward } | { ok: f
 
   switch (reward.type) {
     case 'fixed': {
-      if (!isPositive(reward.amount)) return { ok: false, error: 'A fixed reward needs an amount above zero.' }
+      if (!isPositive(reward.amount) || !isMoney(reward.amount)) return { ok: false, error: 'A fixed reward needs a positive amount with at most two decimal places.' }
       return { ok: true, value: { type: 'fixed', amount: reward.amount } }
     }
     case 'percent': {
@@ -43,7 +47,7 @@ function parseReward(raw: unknown): { ok: true; value: LoyaltyReward } | { ok: f
         return { ok: false, error: 'A percent reward must be between 0 and 100.' }
       }
       const maxAmount = optionalNonNegative(reward.maxAmount)
-      if (maxAmount === undefined) return { ok: false, error: 'The percent cap must be a positive amount.' }
+      if (maxAmount === undefined || (maxAmount !== null && !isMoney(maxAmount))) return { ok: false, error: 'The percent cap must be an amount with at most two decimal places.' }
       return { ok: true, value: { type: 'percent', percent: reward.percent, maxAmount: maxAmount || null } }
     }
     case 'free_item': {
@@ -65,6 +69,7 @@ export function parseLoyaltyRules(raw: unknown): LoyaltyRulesParse {
     return refuse('earnMode must be stamp or points.')
   }
   if (!isPositive(input.threshold)) return refuse('threshold must be above zero.')
+  if (input.earnMode === 'stamp' && !Number.isSafeInteger(input.threshold)) return refuse('Orders per reward must be a whole number.')
 
   const pointsPerPeso = input.earnMode === 'points' ? input.pointsPerPeso : null
   if (input.earnMode === 'points' && !isPositive(pointsPerPeso)) {
@@ -76,6 +81,7 @@ export function parseLoyaltyRules(raw: unknown): LoyaltyRulesParse {
 
   const rewardExpiryDays = optionalNonNegative(input.rewardExpiryDays)
   if (rewardExpiryDays === undefined) return refuse('rewardExpiryDays cannot be negative.')
+  if (rewardExpiryDays !== null && !Number.isSafeInteger(rewardExpiryDays)) return refuse('Reward expiry must be a whole number of days.')
 
   const reward = parseReward(input.reward)
   if (!reward.ok) return refuse(reward.error)

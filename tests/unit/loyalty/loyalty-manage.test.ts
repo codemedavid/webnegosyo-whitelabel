@@ -9,6 +9,12 @@ const RULES = { earnMode: 'stamp', threshold: 10, reward: { type: 'fixed', amoun
 const NOW = new Date('2026-09-05T08:00:00.000Z')
 
 describe('parseLoyaltyProgramInput', () => {
+  it('preserves scheduled earning dates and rejects an inverted window', () => {
+    const program = { name: 'October card', rules: RULES, activatesAt: '2026-10-01T00:00:00+08:00', endsAt: '2026-11-01T00:00:00+08:00' }
+    const result = parseLoyaltyProgramInput(program)
+    expect(result.ok && result.value).toMatchObject({ activatesAt: '2026-09-30T16:00:00.000Z', endsAt: '2026-10-31T16:00:00.000Z' })
+    expect(parseLoyaltyProgramInput({ ...program, endsAt: '2026-09-01T00:00:00Z' }).ok).toBe(false)
+  })
   it('accepts a business-wide stamp program', () => {
     const parsed = parseLoyaltyProgramInput({ name: ' Coffee card ', rules: RULES })
     expect(parsed.ok && parsed.value).toMatchObject({ name: 'Coffee card', scope: 'business', outletId: null, earnMode: 'stamp' })

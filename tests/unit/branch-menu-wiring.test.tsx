@@ -135,7 +135,7 @@ describe('useBranchMenu', () => {
 
 describe('storefront wiring', () => {
   const menuServer = read('src/app/[tenant]/menu/menu-server.tsx')
-  const menuClient = read('src/app/[tenant]/menu/menu-client.tsx')
+  const menuClient = read('src/storefront/catalog/use-storefront-menu.ts')
 
   it('fetches branch overrides on the menu query', () => {
     expect(menuServer).toContain('outlet_menu_items')

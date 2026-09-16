@@ -1,48 +1,21 @@
 'use client'
 
+import { isAboveTheFold, pageIndexOf } from '@/lib/above-the-fold'
+
+import type { MenuLayoutContentProps } from '@/storefront/contracts'
+
 import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
-import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import { StorefrontHero } from '@/components/customer/storefront-hero'
-import type { BrandingColors } from '@/lib/branding-utils'
 import { getContrastColor } from '@/lib/branding-utils'
-import type { CardTemplate } from '@/lib/card-templates'
 import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 import { HorizontalScrollSection } from '../horizontal-scroll-section'
 import { ResponsiveCategorySection } from '../responsive-category-section'
 import { CategoryIcon } from '@/components/shared/category-icon'
 
-interface LayoutMosaicProps {
-    tenant: Tenant | null
-    tenantSlug: string
-    categories: Category[]
-    filteredItems: MenuItem[]
-    allMenuItems: MenuItem[]
-    activeCategory: string | null
-    setActiveCategory: (id: string | null) => void
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    onItemSelect: (item: MenuItem) => void
-    branding: BrandingColors
-    cardTemplate: CardTemplate
-    heroOverride?: {
-        title?: string
-        description?: string
-        heroTitleColor?: string
-        heroDescriptionColor?: string
-    } | null
-    bannerOverride?: {
-        promotionBanners?: PromotionBanner[]
-        isPromotionVisible?: boolean
-    } | null
-    currentSlide: number
-    setCurrentSlide: (slide: number) => void
-    mobileGridColumns?: number
-    menuEngineeringEnabled?: boolean
-    hideCurrencySymbol?: boolean
-}
+type LayoutMosaicProps = MenuLayoutContentProps
 
 export const LayoutMosaic = memo(function LayoutMosaic({
     tenant,
@@ -229,7 +202,7 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                         columnGap: '1rem',
                     }}
                 >
-                    {filteredItems.map((item) => (
+                    {filteredItems.map((item, index) => (
                         <div key={item.id} className="break-inside-avoid mb-4">
                             <MenuItemCard
                                 item={item}
@@ -238,6 +211,7 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                                 template={cardTemplate}
                                 menuEngineeringEnabled={menuEngineeringEnabled}
                                 hideCurrencySymbol={hideCurrencySymbol}
+                                priority={isAboveTheFold(index)}
                             />
                         </div>
                     ))}
@@ -245,7 +219,7 @@ export const LayoutMosaic = memo(function LayoutMosaic({
             ) : (
                 /* Grouped masonry with inline section headers */
                 <div className="space-y-12">
-                    {groupedItems.map(({ category, items }) => (
+                    {groupedItems.map(({ category, items }, groupIndex) => (
                         <section key={category.id} id={`category-${category.id}`} className="scroll-mt-24">
                             {/* Inline Section Header */}
                             <div className="flex items-center gap-3 mb-6">
@@ -288,7 +262,7 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                                         }}
                                         className="md:[column-count:3]"
                                     >
-                                        {items.map((item) => (
+                                        {items.map((item, itemIndex) => (
                                             <div key={item.id} className="break-inside-avoid mb-4">
                                                 <MenuItemCard
                                                     item={item}
@@ -297,6 +271,7 @@ export const LayoutMosaic = memo(function LayoutMosaic({
                                                     template={cardTemplate}
                                                     menuEngineeringEnabled={menuEngineeringEnabled}
                                                     hideCurrencySymbol={hideCurrencySymbol}
+                                                    priority={isAboveTheFold(pageIndexOf(groupedItems, groupIndex, itemIndex))}
                                                 />
                                             </div>
                                         ))}

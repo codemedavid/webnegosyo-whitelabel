@@ -7,6 +7,7 @@ const quoteId = '22222222-2222-4222-8222-222222222222'
 let mockUser: { id: string } | null
 let mockMember: Record<string, unknown> | null
 let mockQuote: Record<string, unknown> | null
+let mockReceipt: Record<string, unknown> | null
 let mockReadError: unknown
 let mockAuthError: unknown
 let mockMemberError: unknown
@@ -18,11 +19,11 @@ jest.mock('@supabase/supabase-js', () => ({ createClient: () => ({
   from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: mockMember, error: mockMemberError }) }) }) }),
 }) }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({
-  from: () => {
+  from: (table: string) => {
     const query = {
       select: () => query,
       eq: (key: string, value: unknown) => { mockQuoteFilters[key] = value; return query },
-      maybeSingle: async () => ({ data: mockQuote, error: mockReadError }),
+      maybeSingle: async () => ({ data: table === 'loyalty_pos_settlements' ? mockReceipt : mockQuote, error: mockReadError }),
     }
     return query
   },
@@ -45,6 +46,7 @@ beforeEach(() => {
     totalCentavos: 8000, allowedMethods: [{ id: 'cash', kind: 'cash', requiresReference: false }],
   } } }
   mockReadError = null
+  mockReceipt = null
   mockAuthError = null
   mockMemberError = null
   mockRpc.mockReset().mockResolvedValue({ data: { settlementId: 'receipt', clientOrderId: 'pos-sale-1',
@@ -71,6 +73,17 @@ it('settles the cashier-scoped frozen quote with normalized cash and server-calc
 it('stays unavailable unless the deployment release gate is explicitly enabled', async () => {
   delete process.env.LOYALTY_POS_SETTLEMENT_ENABLED
   expect((await POST(request())).status).toBe(503)
+  expect(mockRpc).not.toHaveBeenCalled()
+})
+
+it('recovers only the exact existing receipt while new settlements are disabled', async () => {
+  delete process.env.LOYALTY_POS_SETTLEMENT_ENABLED
+  mockReceipt = { id: 'receipt', quote_id: quoteId, cashier_id: 'cashier', client_order_id: 'pos-sale-1', total_centavos: 8000, settled_at: '2026-09-14T00:00:00Z',
+    payment: { methodId: 'cash', kind: 'cash', amountTenderedCentavos: 10000, changeCentavos: 2000, reference: null } }
+  const response = await POST(request())
+  expect(response.status).toBe(200)
+  expect((await response.json()).receipt.settlementId).toBe('receipt')
+  expect((await POST(request({ tender: { methodId: 'cash', amountTenderedCentavos: 9000 } }))).status).toBe(409)
   expect(mockRpc).not.toHaveBeenCalled()
 })
 

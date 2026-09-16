@@ -1,3 +1,4 @@
+import { StaffPerformancePanel } from "../../components/StaffPerformancePanel";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -249,6 +250,7 @@ export default function TeamScreen() {
         }
       />
       <ScrollView contentContainerStyle={styles.content}>
+      {isTabAllowed({ role, isOwner, permissions }, "analytics") && <StaffPerformancePanel staff={staff} />}
 
       <TouchableOpacity
         style={styles.addButton}

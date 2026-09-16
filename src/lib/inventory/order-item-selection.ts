@@ -20,6 +20,7 @@ export interface OrderSelectionIds {
    */
   optionIds: string[]
   addonIds: string[]
+  addonQuantities?: Record<string, number>
 }
 
 /** Keeps only real string ids — a legacy option saved before ids existed is skipped. */
@@ -27,6 +28,15 @@ function collectIds(values: ReadonlyArray<{ id?: string } | undefined>): string[
   return values.flatMap((value) =>
     value && typeof value.id === 'string' && value.id !== '' ? [value.id] : [],
   )
+}
+
+function addonQuantities(addons: ReadonlyArray<{ id?: string; quantity?: number }>): Pick<OrderSelectionIds, 'addonQuantities'> {
+  const entries = addons.flatMap((addon) =>
+    addon.id && addon.quantity !== undefined && addon.quantity !== 1
+      ? [[addon.id, addon.quantity] as const]
+      : [],
+  )
+  return entries.length ? { addonQuantities: Object.fromEntries(entries) } : {}
 }
 
 export function extractSelectionIds(item: CartItem): OrderSelectionIds {
@@ -41,6 +51,7 @@ export function extractSelectionIds(item: CartItem): OrderSelectionIds {
   return {
     optionIds: collectIds(optionSources),
     addonIds: collectIds(item.selected_addons ?? []),
+    ...addonQuantities(item.selected_addons ?? []),
   }
 }
 
@@ -67,5 +78,6 @@ export function extractBundleSlotSelectionIds(
   return {
     optionIds: collectIds(optionSources),
     addonIds: collectIds(slot.selectedAddons ?? []),
+    ...addonQuantities(slot.selectedAddons ?? []),
   }
 }

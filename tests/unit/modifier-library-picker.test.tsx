@@ -44,6 +44,14 @@ beforeEach(() => {
 })
 
 describe('ModifierLibraryPicker', () => {
+  it('labels quantity add-ons independently of a one-portion cap', async () => {
+    getModifierGroupLibraryAction.mockResolvedValue({ success: true, data: [makeEntry({ name: 'Extras', selection_mode: 'quantity', max_select: 1 })] })
+    render(<ModifierLibraryPicker tenantId="t1" onAttach={jest.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /add from library/i }))
+    expect(await screen.findByText(/add-ons · quantities/i)).toBeInTheDocument()
+    expect(screen.queryByText(/single-select/i)).not.toBeInTheDocument()
+  })
+
   it('loads and lists only active library entries when opened', async () => {
     getModifierGroupLibraryAction.mockResolvedValue({
       success: true,

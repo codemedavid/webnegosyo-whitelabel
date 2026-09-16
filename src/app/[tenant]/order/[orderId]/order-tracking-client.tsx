@@ -1,5 +1,7 @@
 'use client'
 
+import { formatDailyOrderNumber } from '@/lib/order-number'
+
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import type { CSSProperties } from 'react'
@@ -178,7 +180,7 @@ export function OrderTrackingClient({
 
   const currentIndex = getStatusIndex(trackingData.status)
   const isCancelled = trackingData.status === 'cancelled'
-  const shortId = orderId.slice(0, 8).toUpperCase()
+  const shortId = formatDailyOrderNumber(trackingData.dailyNumber, orderId).replace(/^#/, '')
   const hasRealName = Boolean(trackingData.customerName && trackingData.customerName.toLowerCase() !== 'walk-in')
   const showPickupQr = shouldShowPickupQr({
     kind: trackingData.orderTypeKind ?? null,
@@ -268,6 +270,7 @@ export function OrderTrackingClient({
           {/* The store's loyalty card: claim, live balance, or the closed window */}
           {stampView !== 'hidden' && (
             <LoyaltyStampCard
+              tenantSlug={tenantSlug}
               orderId={orderId}
               tenantId={tenantId}
               trackingToken={trackingToken}

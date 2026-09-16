@@ -13,13 +13,14 @@ interface NeonCardProps {
     isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Neon Card Template
  * Dark card with neon glow borders using the primary color, vibrant accents
  */
-export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: NeonCardProps) {
+export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: NeonCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -55,7 +56,8 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrd
                         fill
                         className="object-cover transition-transform duration-500 group-hover:scale-110 brightness-90"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                        loading="lazy"
+                        loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
                     />
                 )}
 

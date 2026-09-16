@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   return {
-    title: `Refund / Cancellation Policy | ${tenant.name}`,
+    title: 'Refund / Cancellation Policy',
     description: `Refund and cancellation policy for ${tenant.name}.`,
   }
 }

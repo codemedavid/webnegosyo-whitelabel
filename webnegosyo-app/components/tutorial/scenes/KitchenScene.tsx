@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Animated, Easing, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors, radius, spacing, typography } from "../../../theme/colors";
 import { ScreenHeader } from "../../ScreenHeader";
@@ -8,18 +8,11 @@ import { mockKitchenTicket } from "../../../lib/tutorial/mock-data";
 import { MockViewChip, SceneFrame, type SceneProps } from "./shared";
 
 /** The kitchen board with the tour's order as its one ticket. */
-const TICK_MS = 1000;
 
 export function KitchenScene({ phase, tried, onTried }: SceneProps) {
   const [ticket, setTicket] = useState(() => mockKitchenTicket());
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const [isBumped, setIsBumped] = useState(false);
   const fly = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), TICK_MS);
-    return () => clearInterval(id);
-  }, []);
 
   const bump = () => {
     if (phase !== "bump") return;
@@ -60,7 +53,6 @@ export function KitchenScene({ phase, tried, onTried }: SceneProps) {
             <CoachTarget active={!tried} padding={4}>
               <TicketCard
                 ticket={ticket}
-                nowMs={nowMs}
                 isNew={false}
                 onBump={bump}
                 onPrint={() => {}}

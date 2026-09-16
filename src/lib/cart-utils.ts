@@ -1,5 +1,6 @@
 import type { CartItem, MenuItem, Variation, Addon, VariationOption, CartBundleItem } from '@/types/database'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
+import { addonQuantity, addonCartKey, addonLabel } from '@/lib/addon-quantity'
 
 /** Maximum quantity allowed for a single cart line item. */
 export const MAX_CART_ITEM_QUANTITY = 99
@@ -50,7 +51,7 @@ export function calculateCartItemSubtotal(
     }
   }
 
-  const addonsPrice = addons.reduce((sum, addon) => sum + addon.price, 0)
+  const addonsPrice = addons.reduce((sum, addon) => sum + addon.price * addonQuantity(addon), 0)
   const itemTotal = basePrice + variationPrice + addonsPrice
   return Math.round(itemTotal * quantity * 100) / 100
 }
@@ -113,7 +114,7 @@ export function generateCartItemId(
   }
 
   if (addonIds && addonIds.length > 0) {
-    parts.push(addonIds.sort().join('-'))
+    parts.push([...addonIds].sort().join('-'))
   }
   // A presell date is part of the line's identity: the same bilao for two
   // different pickup dates is two lines, each capped by its own date's stock.
@@ -154,13 +155,13 @@ export function makeCartItem(
     ? generateCartItemId(
         menuItem.id,
         variationOrVariations as { [typeId: string]: VariationOption },
-        addons.map((a) => a.id),
+        addons.map(addonCartKey),
         presellDate
       )
     : generateCartItemId(
         menuItem.id,
         (variationOrVariations as Variation | undefined)?.id,
-        addons.map((a) => a.id),
+        addons.map(addonCartKey),
         presellDate
       )
 
@@ -380,7 +381,7 @@ export function generateMessengerMessage(
     lines.push(`${index + 1}. ${item.menu_item.name}${variationText} x${item.quantity}`)
 
     if (item.selected_addons.length > 0) {
-      const addonsText = item.selected_addons.map((a) => a.name).join(', ')
+      const addonsText = item.selected_addons.map(addonLabel).join(', ')
       lines.push(`   Add-ons: ${addonsText}`)
     }
 

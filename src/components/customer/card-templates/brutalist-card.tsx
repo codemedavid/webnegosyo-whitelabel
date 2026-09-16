@@ -13,13 +13,14 @@ interface BrutalistCardProps {
     isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Brutalist Card Template
  * Raw, industrial design with thick borders, stark contrast, and geometric shapes
  */
-export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: BrutalistCardProps) {
+export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: BrutalistCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -50,7 +51,8 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                         fill
                         className="object-cover transition-transform duration-200 group-hover:scale-105"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                        loading="lazy"
+                        loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
                     />
                 )}
 

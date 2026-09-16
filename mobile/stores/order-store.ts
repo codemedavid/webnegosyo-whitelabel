@@ -3,6 +3,7 @@ import type { OrderSaveStatus } from '@/lib/checkout-outcome'
 import type { CartItem } from '@/types/database'
 
 export interface CompletedOrderData {
+  dailyNumber?: number | null
   items: CartItem[]
   total: number
   customerData: Record<string, string>

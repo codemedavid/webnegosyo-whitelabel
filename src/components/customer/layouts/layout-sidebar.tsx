@@ -1,46 +1,15 @@
 'use client'
 
+import type { MenuLayoutContentProps } from '@/storefront/contracts'
+
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
-import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
-import type { BrandingColors } from '@/lib/branding-utils'
-import type { CardTemplate } from '@/lib/card-templates'
 import { CategoryIcon } from '@/components/shared/category-icon'
 import { StorefrontHero } from '@/components/customer/storefront-hero'
 
-interface LayoutSidebarProps {
-    tenant: Tenant | null
-    tenantSlug: string
-    categories: Category[]
-    filteredItems: MenuItem[]
-    allMenuItems: MenuItem[]
-    activeCategory: string | null
-    setActiveCategory: (id: string | null) => void
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    onItemSelect: (item: MenuItem) => void
-    branding: BrandingColors
-    cardTemplate: CardTemplate
-    // Hero overrides
-    heroOverride?: {
-        title?: string
-        description?: string
-        heroTitleColor?: string
-        heroDescriptionColor?: string
-    } | null
-    // Banner overrides
-    bannerOverride?: {
-        promotionBanners?: PromotionBanner[]
-        isPromotionVisible?: boolean
-    } | null
-    currentSlide: number
-    setCurrentSlide: (slide: number) => void
-    mobileGridColumns?: number
-    menuEngineeringEnabled?: boolean
-    hideCurrencySymbol?: boolean
-}
+type LayoutSidebarProps = MenuLayoutContentProps
 
 import { useEffect, useState, useRef } from 'react'
 

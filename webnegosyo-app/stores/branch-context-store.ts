@@ -14,6 +14,8 @@ import { create } from "zustand";
  * missing.
  */
 interface BranchContextState {
+  tenantId: string | null;
+  bindTenant: (tenantId: string | null) => void;
   /** Branch being viewed; null = the whole store. */
   selectedOutletId: string | null;
   /** Its name, for the context bar. Snapshotted so the bar needs no query. */
@@ -31,6 +33,7 @@ interface BranchContextState {
 }
 
 const EMPTY = {
+  tenantId: null,
   selectedOutletId: null,
   selectedOutletName: null,
   knownOutletIds: null,
@@ -38,6 +41,8 @@ const EMPTY = {
 
 export const useBranchContextStore = create<BranchContextState>((set) => ({
   ...EMPTY,
+  bindTenant: (tenantId) => set((state) =>
+    state.tenantId === tenantId ? state : { ...EMPTY, tenantId }),
   selectBranch: (outletId, outletName) =>
     set({ selectedOutletId: outletId, selectedOutletName: outletName }),
   clearBranch: () => set({ selectedOutletId: null, selectedOutletName: null }),

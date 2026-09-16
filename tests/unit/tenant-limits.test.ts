@@ -90,6 +90,10 @@ describe('createStaff seat limit', () => {
       async insertStaffRow(row) {
         rows.push(row)
       },
+      async updateStaffRow(userId, patch) {
+        const row = rows.find(row => row.user_id === userId)
+        if (row) Object.assign(row, patch)
+      },
       async deleteAuthUser() {},
       async updateAuthPassword() {},
     }
@@ -154,7 +158,7 @@ describe('createStaff seat limit', () => {
       store,
       'tenant-1',
       { ...newStaff, outletId: 'outlet-b' },
-      { maxStaffPerBranch: 3, outlets: [{ id: 'outlet-b', tenant_id: 'tenant-1' }] }
+      { maxStaffPerBranch: 3, outlets: [{ id: 'outlet-b' }] }
     )
 
     expect(created.outlet_id).toBe('outlet-b')

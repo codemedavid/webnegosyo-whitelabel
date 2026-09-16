@@ -65,6 +65,30 @@ function renderEditor(group: ModifierGroup, extra: Record<string, unknown> = {})
 }
 
 describe('per-option cost source control', () => {
+  it('converts an existing group into add-ons while retaining IDs and recipes', () => {
+    const group = groupWith({ stock_mode: 'recipe', cost_mode: 'composite' })
+    const { onChange } = renderEditor(group)
+    fireEvent.change(screen.getByLabelText('Group type for Size'), { target: { value: 'quantity' } })
+    expect(onChange).toHaveBeenCalledWith([{ ...group, selection_mode: 'quantity' }])
+  })
+  it('creates variations and quantity add-ons through separate actions', () => {
+    const onChange = jest.fn()
+    render(<ModifierGroupsEditor groups={[]} onChange={onChange} basePrice={100} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add Variation' }))
+    expect(onChange.mock.calls[0][0][0]).toMatchObject({ selection_mode: 'choice', min_select: 0, max_select: 1 })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Add-on Group' }))
+    expect(onChange.mock.calls[1][0][0]).toMatchObject({ selection_mode: 'quantity', min_select: 0, max_select: null })
+  })
+
+  it('edits total portions for a capped add-on without turning it into a variation', () => {
+    const group: ModifierGroup = { ...groupWith({ cost_mode: 'composite', stock_mode: 'recipe' }), selection_mode: 'quantity', max_select: 1 }
+    const { onChange } = renderEditor(group)
+    expect(screen.queryByLabelText('Allow multiple')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Max portions'), { target: { value: '3' } })
+    expect(onChange.mock.calls[0][0][0]).toEqual({ ...group, max_select: 3 })
+    expect(screen.getByText(/per item ordered/i)).toBeInTheDocument()
+  })
+
   it('lets the merchant switch an option to recipe-based costing', () => {
     // Arrange
     const { onChange } = renderEditor(groupWith({ manual_cost: 40 }))

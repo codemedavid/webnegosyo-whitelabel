@@ -1,3 +1,4 @@
+import { LOYALTY_ORDER_PROJECTION_SCHEMA } from './loyalty/order-projection-schema'
 /**
  * Canonical, standalone order-schema bundle for a tenant's OWN, separate
  * Supabase project (the analogue of `convex-template/` for the Supabase order
@@ -144,26 +145,36 @@ create trigger orders_set_updated_at
 -- Per-tenant daily order number: #1, #2, … resetting each Asia/Manila day.
 -- Computed BEFORE INSERT so every order gets a stable human-facing number.
 -- ---------------------------------------------------------------------------
+create table if not exists public.daily_order_counters (
+  tenant_id uuid not null,
+  order_date date not null,
+  last_number integer not null,
+  primary key (tenant_id, order_date)
+);
+alter table public.daily_order_counters enable row level security;
+revoke all on public.daily_order_counters from public, anon, authenticated;
+
 create or replace function public.assign_daily_order_number()
-returns trigger as $$
+returns trigger language plpgsql security definer set search_path = public as $$
 declare
+  local_date date;
   next_number integer;
 begin
-  if new.daily_order_number is not null then
-    return new;
-  end if;
-
-  select coalesce(max(o.daily_order_number), 0) + 1
-    into next_number
-    from public.orders o
-   where o.tenant_id = new.tenant_id
-     and (o.created_at at time zone 'Asia/Manila')::date
-       = (now() at time zone 'Asia/Manila')::date;
-
+  local_date := (coalesce(new.created_at, now()) at time zone 'Asia/Manila')::date;
+  -- Atomic UPSERT serializes concurrent inserts. Seed from existing numbers
+  -- so upgrading an active register does not restart today's sequence.
+  insert into daily_order_counters(tenant_id, order_date, last_number)
+  select new.tenant_id, local_date, coalesce(max(o.daily_order_number), 0) + 1
+    from orders o where o.tenant_id = new.tenant_id
+      and (o.created_at at time zone 'Asia/Manila')::date = local_date
+  on conflict (tenant_id, order_date) do update
+    set last_number = greatest(daily_order_counters.last_number + 1, excluded.last_number)
+  returning last_number into next_number;
   new.daily_order_number := next_number;
   return new;
 end;
-$$ language plpgsql;
+$$;
+revoke all on function public.assign_daily_order_number() from public, anon, authenticated;
 
 drop trigger if exists orders_assign_daily_number on public.orders;
 create trigger orders_assign_daily_number
@@ -261,4 +272,4 @@ begin
   end if;
 end
 $$;
-`;
+` + LOYALTY_ORDER_PROJECTION_SCHEMA;

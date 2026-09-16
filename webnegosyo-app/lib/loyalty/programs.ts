@@ -100,7 +100,14 @@ export interface ProgramForm {
   threshold: string;
   pointsPerPeso: string;
   minSpend: string;
-  rewardType: "fixed" | "percent";
+  scope: "business" | "branch";
+  outletId: string;
+  rewardType: "fixed" | "percent" | "free_item";
+  rewardItemId: string;
+  rewardItemName: string;
+  rewardExpiryDays: string;
+  activatesAt: string;
+  endsAt: string;
   rewardValue: string;
   rewardCap: string;
 }
@@ -111,13 +118,21 @@ export const EMPTY_FORM: ProgramForm = {
   threshold: "10",
   pointsPerPeso: "1",
   minSpend: "",
+  scope: "business",
+  outletId: "",
+  rewardItemId: "",
+  rewardItemName: "",
+  rewardExpiryDays: "",
+  activatesAt: "",
+  endsAt: "",
   rewardType: "fixed",
   rewardValue: "",
   rewardCap: "",
 };
 
+export type ProgramInput = { name: string; scope: "business" | "branch"; outletId?: string; activatesAt?: string; endsAt?: string; rules: LoyaltyRules };
 export type FormParse =
-  | { ok: true; program: { name: string; scope: "business"; rules: LoyaltyRules } }
+  | { ok: true; program: ProgramInput }
   | { ok: false; error: string };
 
 function positive(value: string): number | null {
@@ -136,11 +151,22 @@ function optional(value: string): number | null | undefined {
  * the problem on the form rather than in a failed request.
  */
 export function parseProgramForm(form: ProgramForm): FormParse {
+  const dates: { activatesAt?: string; endsAt?: string } = {};
+  for (const field of ["activatesAt", "endsAt"] as const) {
+    const value = form[field].trim();
+    if (!value) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00+08:00`))) return { ok: false, error: "Use dates in YYYY-MM-DD format." };
+    dates[field] = new Date(`${value}T00:00:00+08:00`).toISOString();
+  }
+  if (dates.activatesAt && dates.endsAt && dates.endsAt <= dates.activatesAt) return { ok: false, error: "The end must be after activation." };
   const name = form.name.trim();
   if (!name) return { ok: false, error: "Give the program a name." };
+  if (name.length > 80) return { ok: false, error: "Keep the name under 80 characters." };
+  if (form.scope === "branch" && !form.outletId) return { ok: false, error: "Choose a branch." };
 
   const threshold = positive(form.threshold);
   if (!threshold) return { ok: false, error: "How many orders or points earn a reward?" };
+  if (form.earnMode === "stamp" && !Number.isInteger(threshold)) return { ok: false, error: "Orders per reward must be a whole number." };
 
   const pointsPerPeso = form.earnMode === "points" ? positive(form.pointsPerPeso) : null;
   if (form.earnMode === "points" && !pointsPerPeso) {
@@ -151,32 +177,57 @@ export function parseProgramForm(form: ProgramForm): FormParse {
   if (minSpend === undefined) return { ok: false, error: "Minimum spend must be a positive amount." };
 
   const rewardValue = positive(form.rewardValue);
-  if (!rewardValue) return { ok: false, error: "What is the reward worth?" };
-  if (form.rewardType === "percent" && rewardValue > 100) {
+  if (form.rewardType !== "free_item" && !rewardValue) return { ok: false, error: "What is the reward worth?" };
+  if (form.rewardType === "percent" && rewardValue! > 100) {
     return { ok: false, error: "A percent reward cannot exceed 100%." };
   }
   const rewardCap = optional(form.rewardCap);
-  if (rewardCap === undefined) return { ok: false, error: "The cap must be a positive amount." };
+  if (form.rewardType === "percent" && rewardCap === undefined) return { ok: false, error: "The cap must be a positive amount." };
+  if (form.rewardType === "free_item" && (!form.rewardItemId || !form.rewardItemName.trim())) return { ok: false, error: "Choose the free menu item." };
+  const expiry = optional(form.rewardExpiryDays);
+  if (expiry === undefined || (expiry !== null && (!Number.isInteger(expiry) || expiry < 1))) return { ok: false, error: "Reward expiry must be a whole number of days above zero, or blank." };
 
   const reward: LoyaltyReward =
-    form.rewardType === "percent"
-      ? { type: "percent", percent: rewardValue, maxAmount: rewardCap || null }
-      : { type: "fixed", amount: rewardValue };
+    form.rewardType === "free_item"
+      ? { type: "free_item", menuItemId: form.rewardItemId, itemName: form.rewardItemName.trim() }
+      : form.rewardType === "percent"
+        ? { type: "percent", percent: rewardValue!, maxAmount: rewardCap || null }
+        : { type: "fixed", amount: rewardValue! };
 
   return {
     ok: true,
     program: {
       name,
-      scope: "business",
+      ...dates,
+      scope: form.scope,
+      ...(form.scope === "branch" ? { outletId: form.outletId } : {}),
       rules: {
         earnMode: form.earnMode,
         threshold,
         pointsPerPeso,
         minSpend: minSpend || null,
         reward,
-        rewardExpiryDays: null,
+        rewardExpiryDays: expiry,
         isExclusive: true,
       },
     },
+  };
+}
+
+/** Existing rules are loaded in full; editing never resets hidden reward terms. */
+export function programToForm(program: LoyaltyProgramSummary): ProgramForm {
+  const rules = program.rules;
+  if (!rules) return { ...EMPTY_FORM, name: program.name, earnMode: program.earnMode, scope: program.scope, outletId: program.outletId ?? "" };
+  const reward = rules.reward;
+  return {
+    activatesAt: "", endsAt: "",
+    name: program.name, earnMode: rules.earnMode, scope: program.scope, outletId: program.outletId ?? "",
+    threshold: String(rules.threshold), pointsPerPeso: String(rules.pointsPerPeso ?? 1),
+    minSpend: rules.minSpend == null ? "" : String(rules.minSpend), rewardType: reward.type,
+    rewardValue: reward.type === "fixed" ? String(reward.amount) : reward.type === "percent" ? String(reward.percent) : "",
+    rewardCap: reward.type === "percent" && reward.maxAmount != null ? String(reward.maxAmount) : "",
+    rewardItemId: reward.type === "free_item" ? reward.menuItemId : "",
+    rewardItemName: reward.type === "free_item" ? reward.itemName : "",
+    rewardExpiryDays: rules.rewardExpiryDays == null ? "" : String(rules.rewardExpiryDays),
   };
 }

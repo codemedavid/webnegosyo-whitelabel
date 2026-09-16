@@ -13,13 +13,14 @@ interface CompactCardProps {
   isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Compact Card Template
  * Horizontal layout for space-efficient display
  */
-export const CompactCard = memo(function CompactCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: CompactCardProps) {
+export const CompactCard = memo(function CompactCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: CompactCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -45,7 +46,8 @@ export const CompactCard = memo(function CompactCard({ item, onSelect, branding,
               fill
               className="object-cover transition-transform group-hover:scale-110"
               sizes="128px"
-              loading="lazy"
+              loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: branding.border }}>

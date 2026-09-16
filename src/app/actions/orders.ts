@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import {
   getOrdersByTenant,
   getOrderById,
@@ -31,7 +32,7 @@ import { burnRedemptions, loadCategoryMap } from '@/lib/vouchers/order-voucher-f
 import { writeOrderDiscount } from '@/lib/order-discount'
 import { resolveOrderContact } from '@/lib/customer-identity'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
-import { resolveOrderOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
+import { requireCheckoutOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
 import {
   resolveOrderLinePrice,
   type StoreMenuItemPricing,
@@ -104,6 +105,7 @@ async function depleteStockForOrder(
     quantity: number
     option_ids?: string[]
     addon_ids?: string[]
+    addon_quantities?: Record<string, number>
   }>,
   /**
    * Branch that took the order — the already-validated `resolvedOutlet`, never
@@ -125,8 +127,9 @@ async function depleteStockForOrder(
       // modifier options both arrive here and ids are unique per option, so
       // whichever recipe target exists matches and the other finds nothing.
       optionIds: item.option_ids ?? [],
-      modifierOptionIds: item.option_ids ?? [],
+      modifierOptionIds: [...new Set([...(item.option_ids ?? []), ...(item.addon_ids ?? [])])],
       addonIds: item.addon_ids ?? [],
+      ...(item.addon_quantities ? { addonQuantities: item.addon_quantities } : {}),
     })),
     'sale',
     0,
@@ -177,6 +180,7 @@ export async function createOrderAction(
     // this (mobile apps, older clients) simply deplete base recipes.
     option_ids?: string[]
     addon_ids?: string[]
+    addon_quantities?: Record<string, number>
     isUpsellItem?: boolean
     isBundleItem?: boolean
     bundleId?: string
@@ -243,6 +247,10 @@ export async function createOrderAction(
       return { success: false, refused: true, error: 'Order must contain at least one item' }
     }
 
+    if (items.some((item) => !validateAddonQuantities(item.addon_quantities, item.addon_ids))) {
+      return { success: false, refused: true, error: 'Invalid add-on quantities' }
+    }
+
     // Resolve where this tenant's orders live (Convex / their own Supabase /
     // the shared platform DB) AND that the tenant is active.
     // Using is_active check prevents order creation for deactivated tenants.
@@ -267,6 +275,18 @@ export async function createOrderAction(
     const tenantConfig: Record<string, any> = {
       ...(tenantConfigData as Record<string, unknown>),
       convex_deploy_key: tenantSecrets?.convex_deploy_key ?? null,
+    }
+
+    if (tenantConfig.inventory_enabled === true && items.some((item) => item.option_ids?.length || item.addon_ids?.length)) {
+      const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
+      try {
+        await assertSimpleOptionStockAvailable(tenantId, items.map((item) => ({
+          menuItemId: item.menu_item_id, quantity: item.quantity,
+          optionIds: item.option_ids, addonIds: item.addon_ids, addonQuantities: item.addon_quantities,
+        })))
+      } catch (error) {
+        return { success: false, refused: true, error: error instanceof Error ? error.message : 'Could not check add-on stock' }
+      }
     }
 
     // ── Minimum-order enforcement (authoritative; covers EVERY order backend) ──
@@ -416,16 +436,21 @@ export async function createOrderAction(
     // conditions are checked before the query runs, so a tenant without the
     // feature issues exactly the queries they issue today.
     let resolvedOutlet: { id: string; name: string } | null = null
-    if (isMultiBranchEnabled(tenantConfig) && typeof outletId === 'string' && outletId.trim() !== '') {
-      const { data: outletRows } = await supabaseAdmin
+    if (isMultiBranchEnabled(tenantConfig)) {
+      const { data: outletRows, error: outletError } = await supabaseAdmin
         .from('outlets')
         .select('id, name, is_active')
         .eq('tenant_id', tenantId)
-      resolvedOutlet = resolveOrderOutlet({
-        isEnabled: true,
-        requestedOutletId: outletId,
-        outlets: (outletRows ?? []) as Array<{ id: string; name: string; is_active: boolean }>,
-      })
+      if (outletError) return { success: false, error: 'Unable to verify your branch. Please try again.' }
+      try {
+        resolvedOutlet = requireCheckoutOutlet({
+          isEnabled: true,
+          requestedOutletId: outletId,
+          outlets: (outletRows ?? []) as Array<{ id: string; name: string; is_active: boolean }>,
+        })
+      } catch (error) {
+        return { success: false, refused: true, error: error instanceof Error ? error.message : 'Choose a branch before placing your order.' }
+      }
     }
 
     // Convex and tenant-owned Supabase projects have no outlet column, so the

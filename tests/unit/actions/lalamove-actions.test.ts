@@ -90,7 +90,7 @@ describe('lalamove server actions', () => {
     })
 
     const { createClient } = await import('@/lib/supabase/server')
-    ;(createClient as unknown as jest.Mock).mockResolvedValue({
+    ;(createClient as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
       from: jest.fn((table: string) => {
         const builder: Record<string, unknown> = {}
         builder.select = jest.fn((columns?: string) => {
@@ -117,7 +117,7 @@ describe('lalamove server actions', () => {
   describe('syncLalamoveOrderAction', () => {
     test('a thin poll response never blanks fields already on the order', async () => {
       const service = await import('@/lib/lalamove-service')
-      ;(service.getLalamoveOrder as unknown as jest.Mock).mockResolvedValue({
+      ;(service.getLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
         status: 'ON_GOING',
         // no shareLink, no driver — Lalamove polls often come back thin
       })
@@ -135,7 +135,7 @@ describe('lalamove server actions', () => {
 
     test('reads a driver embedded on the order payload, not only via driverId', async () => {
       const service = await import('@/lib/lalamove-service')
-      ;(service.getLalamoveOrder as unknown as jest.Mock).mockResolvedValue({
+      ;(service.getLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
         status: 'ON_GOING',
         shareLink: 'https://share.lalamove.com/x',
         driver: { name: 'Rico', phone: '+639998887777' },
@@ -169,7 +169,7 @@ describe('lalamove server actions', () => {
     test('still cancels a delivery that is underway', async () => {
       orderRow = { id: 'order-1', lalamove_order_id: 'lala-1', lalamove_status: 'ASSIGNING_DRIVER' }
       const service = await import('@/lib/lalamove-service')
-      ;(service.cancelLalamoveOrder as unknown as jest.Mock).mockResolvedValue(true)
+      ;(service.cancelLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue(true)
 
       const { cancelLalamoveOrderAction } = await import('@/app/actions/lalamove')
       const result = await cancelLalamoveOrderAction('t1', 'order-1', 'lala-1')
@@ -187,7 +187,7 @@ describe('lalamove server actions', () => {
         customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
       }
       const service = await import('@/lib/lalamove-service')
-      ;(service.createLalamoveQuotation as unknown as jest.Mock).mockResolvedValue({
+      ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
         quotationId: 'quote-new',
         price: 89,
         currency: 'PHP',
@@ -263,7 +263,7 @@ describe('lalamove server actions', () => {
 
     test('never selects the whole tenant row on the anon-reachable path', async () => {
       const service = await import('@/lib/lalamove-service')
-      ;(service.createLalamoveQuotation as unknown as jest.Mock).mockResolvedValue({
+      ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
         quotationId: 'q1',
         price: 100,
         currency: 'PHP',
@@ -305,7 +305,7 @@ describe('lalamove server actions', () => {
         customer_data: { delivery_address: '12 Mabini St' },
       }
       const service = await import('@/lib/lalamove-service')
-      ;(service.createLalamoveOrder as unknown as jest.Mock).mockResolvedValue({
+      ;(service.createLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
         orderId: 'lala-new',
         status: 'ASSIGNING_DRIVER',
         shareLink: 'https://share.lalamove.com/lala-new',

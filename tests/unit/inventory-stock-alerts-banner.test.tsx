@@ -21,6 +21,7 @@ function alert(overrides: Partial<StockAlertView> = {}): StockAlertView {
     reorderLevel: 20,
     unitAbbreviation: 'kg',
     createdAt: '2026-07-27T10:00:00.000Z',
+    outletId: null,
     ...overrides,
   }
 }

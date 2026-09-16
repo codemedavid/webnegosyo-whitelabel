@@ -79,6 +79,13 @@ export function convexOrderQueryArgs(
 
   if (scope.kind === "all") return rest;
 
+  // Aggregates cannot be narrowed after the response. Always send the branch:
+  // an older deployment must report a backend update, never store-wide totals
+  // under a branch heading.
+  if (/^(analytics|productAnalytics):/.test(refName)) {
+    return { ...rest, outletId: scope.outletId };
+  }
+
   const minVersion = BRANCH_SCOPED_REF_MIN_VERSION.get(refName);
   if (minVersion === undefined) return rest;
 

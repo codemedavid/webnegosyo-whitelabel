@@ -161,3 +161,10 @@ describe('extractBundleSlotSelectionIds', () => {
     expect(ids.optionIds).toEqual(['opt-large'])
   })
 })
+
+
+it('retains portions for normal and bundled add-ons without repeating their IDs', () => {
+  const addons = [{ id: 'extra', name: 'Extra', price: 5, quantity: 3 }]
+  expect(extractSelectionIds(cartItem({ selected_addons: addons }))).toEqual({ optionIds: [], addonIds: ['extra'], addonQuantities: { extra: 3 } })
+  expect(extractBundleSlotSelectionIds({ selectedAddons: addons })).toEqual({ optionIds: [], addonIds: ['extra'], addonQuantities: { extra: 3 } })
+})

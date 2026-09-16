@@ -961,3 +961,8 @@ describe("a stored service charge is named, not left in the residue", () => {
     expect(totals.carriedChargesForSave).toBe(24);
   });
 });
+
+it('keeps the original order branch for stock and voucher settlement during POS edits', () => {
+  const entered = enterEditMode({ ...deliveryOrder(), customerData: { outlet_id: 'south' } }, [], EMPTY_CATALOG);
+  expect(entered.context.outletId).toBe('south');
+});

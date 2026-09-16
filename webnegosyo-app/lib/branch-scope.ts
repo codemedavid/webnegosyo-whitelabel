@@ -42,6 +42,8 @@ export type BranchScope = { kind: "all" } | { kind: "branch"; outletId: string }
 export interface ScopedOrderLike {
   /** Present on the platform-Supabase adapter's rows. */
   outlet_id?: string | null;
+  /** Canonical Convex branch column. */
+  outletId?: string | null;
   /** Convex and tenant-owned projects carry the branch in here. */
   customerData?: unknown;
 }
@@ -76,7 +78,7 @@ export function resolveBranchScope(session: BranchScopedSession): BranchScope {
 export function getOrderOutletId(order: ScopedOrderLike | null | undefined): string | null {
   if (!order) return null;
 
-  const fromColumn = trimmed(order.outlet_id);
+  const fromColumn = trimmed(order.outlet_id) || trimmed(order.outletId);
   if (fromColumn !== "") return fromColumn;
 
   const blob = order.customerData;

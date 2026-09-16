@@ -13,7 +13,7 @@ jest.mock('@/lib/supabase/server', () => ({
 }))
 
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
-const { updateMenuItemFields } = require('@/lib/admin-service') as any
+const { updateMenuItemFields, modifierGroupSchema, menuItemSchema } = require('@/lib/admin-service') as any
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
@@ -39,6 +39,29 @@ beforeEach(() => {
 })
 
 describe('updateMenuItemFields (MCP partial-update path)', () => {
+  it('allows a free menu item with free variation and add-on options on create and update', async () => {
+    const input = {
+      name: 'Free sample', description: 'A complimentary sample', category_id: CATEGORY, price: 0,
+      variations: [{ id: 'regular', name: 'Regular', price_modifier: 0 }],
+      addons: [{ id: 'sauce', name: 'Sauce', price: 0 }],
+    }
+    expect(menuItemSchema.parse(input)).toMatchObject(input)
+    const { ctx, update } = makeUpdateStub({ id: ITEM, price: 0 })
+    await updateMenuItemFields(ITEM, TENANT, { price: 0 }, ctx)
+    expect(update).toHaveBeenCalledWith({ price: 0 })
+    expect(() => menuItemSchema.parse({ ...input, price: -1 })).toThrow()
+    await expect(updateMenuItemFields(ITEM, TENANT, { price: -1 }, ctx)).rejects.toThrow()
+  })
+  it('preserves quantity rules, option identity, recipe costing and linked-item fields when validating editor saves', () => {
+    const group = {
+      id: 'extras', name: 'Extras', display_order: 0, selection_mode: 'quantity', min_select: 0, max_select: 1,
+      options: [{ id: 'rice', name: 'Rice', price_modifier: 25, display_order: 0, cost_mode: 'composite', stock_mode: 'recipe', menu_item_id: ITEM, is_upgrade_target: true }],
+    }
+    expect(modifierGroupSchema.parse(group)).toEqual(group)
+    const unlinked = { ...group, options: [{ ...group.options[0], menu_item_id: null }] }
+    expect(modifierGroupSchema.parse(unlinked)).toEqual(unlinked)
+  })
+
   it('writes only the provided fields via the injected client and never touches the cookie client', async () => {
     const row = { id: ITEM, description: 'A rich, velvety Biscoff frappe' }
     const { ctx, from, update } = makeUpdateStub(row)

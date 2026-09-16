@@ -1,3 +1,6 @@
+import { META_PIXEL_READY_EVENT } from '@/lib/meta-pixel'
+import Script from 'next/script'
+
 interface MetaPixelBootstrapProps {
   pixelId?: string
 }
@@ -14,11 +17,15 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '${pixelId}');
-fbq('track', 'PageView');`
+fbq('track', 'PageView');
+window.dispatchEvent(new Event('${META_PIXEL_READY_EVENT}'));`
 
   return (
     <>
-      <script
+      {/* afterInteractive: runs post-hydration so the pixel never blocks first paint. */}
+      <Script
+        id="meta-pixel-bootstrap"
+        strategy="afterInteractive"
         dangerouslySetInnerHTML={{
           __html: bootstrapCode,
         }}

@@ -125,6 +125,7 @@ describe('ProductDetailContent', () => {
     }
 
     const mockBranding: BrandingColors = {
+        logoUrl: null, headingFont: null, headingWeight: null, bodyFont: null, radius: null,
         primary: '#3b82f6',
         secondary: '#64748b',
         cartAccent: '#3b82f6',

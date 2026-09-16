@@ -41,7 +41,7 @@ describe('buildOrderParityColumns', () => {
   })
 
   it('reports plain orders as plain', () => {
-    const columns = buildOrderParityColumns([{ menu_item_id: 'm3', quantity: 1 }], {})
+    const columns = buildOrderParityColumns([{ quantity: 1 }], {})
     expect(columns.has_upsell_items).toBe(false)
     expect(columns.has_bundle_items).toBe(false)
     expect(columns.item_count).toBe(1)

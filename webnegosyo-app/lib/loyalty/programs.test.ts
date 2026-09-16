@@ -34,6 +34,10 @@ describe("nextStatusAction", () => {
 });
 
 describe("parseProgramForm", () => {
+  it("saves a selected free item, branch, and reward expiry", () => {
+    const parsed = parseProgramForm({ ...EMPTY_FORM, name: "North coffee", scope: "branch", outletId: "north", rewardType: "free_item", rewardItemId: "latte", rewardItemName: "Latte", rewardExpiryDays: "30" });
+    expect(parsed).toMatchObject({ ok: true, program: { scope: "branch", outletId: "north", rules: { reward: { type: "free_item", menuItemId: "latte", itemName: "Latte" }, rewardExpiryDays: 30 } } });
+  });
   it("turns a filled stamp form into platform rules", () => {
     const parsed = parseProgramForm({ ...EMPTY_FORM, name: "Coffee card", rewardValue: "50" });
     expect(parsed.ok && parsed.program).toEqual({

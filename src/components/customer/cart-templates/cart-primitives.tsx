@@ -13,6 +13,7 @@
  * neutral defaults until chosen — no visual regression for existing tenants.
  */
 
+import { addonLabel } from '@/lib/addon-quantity'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, Trash2, Pencil, ShoppingBag, Package } from 'lucide-react'
@@ -94,7 +95,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
               </div>
             )}
             {item.selected_addons.length > 0 && (
-              <p className="text-sm text-gray-600 mt-1" style={{ color: p.mutedText }}><span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}</p>
+              <p className="text-sm text-gray-600 mt-1" style={{ color: p.mutedText }}><span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}</p>
             )}
             {item.special_instructions && (
               <p className="text-sm italic text-gray-500 mt-0.5" style={{ color: p.mutedText }}><span className="font-medium">Note:</span> {item.special_instructions}</p>
@@ -179,7 +180,7 @@ export function CartBundleRow({ cart, bundleItem }: { cart: UseCartViewReturn; b
               <span className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 mt-0.5">{slot.selectedVariation.name}</span>
             )}
             {slot.selectedAddons.length > 0 && (
-              <p className="text-xs text-gray-500 mt-0.5" style={{ color: p.mutedText }}>+ {slot.selectedAddons.map(a => a.name).join(', ')}</p>
+              <p className="text-xs text-gray-500 mt-0.5" style={{ color: p.mutedText }}>+ {slot.selectedAddons.map(addonLabel).join(', ')}</p>
             )}
           </div>
         ))}

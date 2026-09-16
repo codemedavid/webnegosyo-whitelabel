@@ -20,13 +20,28 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PresellStock } from '@/types/database'
 import { releasePresellForCancelledConvexOrder } from '@/lib/presell/convex-cancel'
+import { MAX_RANGE_DAYS } from '@/lib/presell/month-grid'
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
 
-const allocationSchema = z.object({
+const dateKeySchema = z.string().regex(DATE_KEY, 'Date must be YYYY-MM-DD')
+
+/**
+ * One save for the whole panel: the dates now on offer, and the dates the
+ * merchant dropped. Bounded by MAX_RANGE_DAYS on each side so a runaway
+ * client cannot ask for an unbounded write.
+ */
+const syncAllocationsSchema = z.object({
   menuItemId: z.string().uuid('Must be a menu item id'),
-  presellDate: z.string().regex(DATE_KEY, 'Date must be YYYY-MM-DD'),
-  stockQty: z.number().int('Stock must be a whole number').min(0, 'Stock cannot be negative'),
+  upserts: z
+    .array(
+      z.object({
+        presellDate: dateKeySchema,
+        stockQty: z.number().int('Stock must be a whole number').min(0, 'Stock cannot be negative'),
+      }),
+    )
+    .max(MAX_RANGE_DAYS, `No more than ${MAX_RANGE_DAYS} dates at once`),
+  deletes: z.array(dateKeySchema).max(MAX_RANGE_DAYS, `No more than ${MAX_RANGE_DAYS} dates at once`),
 })
 
 interface ActionResult<T = undefined> {
@@ -35,120 +50,148 @@ interface ActionResult<T = undefined> {
   error?: string
 }
 
+/**
+ * Turn anything thrown in here into a message the merchant can act on.
+ *
+ * PostgREST errors are plain objects, not `Error`s, so an `instanceof Error`
+ * check alone reported every database refusal as the generic fallback — the
+ * merchant was told "failed to save" while the real reason (a constraint, a
+ * refused policy) never left the server.
+ */
 function fail(error: unknown, fallback: string): ActionResult<never> {
   if (error instanceof z.ZodError) {
     return { success: false, error: error.issues.map((issue) => issue.message).join('; ') }
   }
-  return { success: false, error: error instanceof Error ? error.message : fallback }
+  if (error instanceof Error) return { success: false, error: error.message }
+  if (error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') {
+    return { success: false, error: (error as { message: string }).message }
+  }
+  return { success: false, error: fallback }
 }
 
-function revalidateMenu(tenantSlug: string, menuItemId: string): void {
-  revalidatePath(`/${tenantSlug}/admin/menu/${menuItemId}`)
+/**
+ * Drop the storefront's cached menu so the new dates are on offer.
+ *
+ * Note what this costs, because it is not obvious and it is why this is now
+ * called exactly once per save rather than once per click: revalidating ANY
+ * path from a Server Action re-renders the route the caller is standing on.
+ * Next sets `pathWasRevalidated` unconditionally (next/dist/server/web/
+ * spec-extension/revalidate.js — its own TODO says "only revalidate if the
+ * path matches"), and the action handler then ships a fresh RSC payload for
+ * the current page while the client throws away its whole router cache.
+ *
+ * Naming only the storefront paths therefore does NOT spare the editor. The
+ * edit page is re-rendered either way — six queries, including a full menu
+ * scan — which is what merchants reported as "it keeps refreshing". The fix
+ * is not a narrower path; it is calling this once, from the dish's own save,
+ * after which the form navigates away anyway.
+ */
+function revalidateMenu(tenantSlug: string): void {
   revalidatePath(`/${tenantSlug}/menu`)
   revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
 }
 
-/** Every allocation for one item, soonest date first — sold counts included so the panel can show remaining. */
-export async function getPresellStockAction(
+/**
+ * Write the panel's whole draft in one go, when the dish is saved.
+ *
+ * This replaced four chatty actions — a save per date, a save per stepper
+ * click, a delete, and a reload after each. Next runs server actions strictly
+ * one after another and re-renders the current route after any revalidation,
+ * so editing a week of dates meant a week of sequential round trips with the
+ * editor re-rendering under the merchant between each: the "it keeps
+ * refreshing" they reported. Nothing is written until "Update Menu Item".
+ *
+ * Refusals come first and refuse the WHOLE save. A partial apply would tell
+ * the merchant it failed while half their dates had already landed.
+ */
+export async function syncPresellAllocationsAction(
   tenantId: string,
-  menuItemId: string,
+  tenantSlug: string,
+  input: { menuItemId: string; upserts: { presellDate: string; stockQty: number }[]; deletes: string[] },
 ): Promise<ActionResult<PresellStock[]>> {
   try {
     await verifyTenantPermission(tenantId, 'menu')
+    const parsed = syncAllocationsSchema.parse(input)
+    if (parsed.upserts.length === 0 && parsed.deletes.length === 0) return { success: true, data: [] }
 
     const supabase = createAdminClient()
-    const { data, error } = await supabase
-      .from('presell_stock')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('menu_item_id', menuItemId)
-      .order('presell_date', { ascending: true })
-    if (error) throw error
 
-    return { success: true, data: (data ?? []) as PresellStock[] }
+    if (parsed.deletes.length > 0) {
+      const sold = await findSoldDates(supabase, tenantId, parsed.menuItemId, parsed.deletes)
+      if (sold.length > 0) {
+        return {
+          success: false,
+          error: `${formatDateList(sold)} already has orders. Set its stock to the sold count instead of removing it.`,
+        }
+      }
+    }
+
+    let saved: PresellStock[] = []
+    if (parsed.upserts.length > 0) {
+      const now = new Date().toISOString()
+      const { data, error } = await supabase
+        .from('presell_stock')
+        .upsert(
+          parsed.upserts.map((allocation) => ({
+            tenant_id: tenantId,
+            menu_item_id: parsed.menuItemId,
+            presell_date: allocation.presellDate,
+            stock_qty: allocation.stockQty,
+            updated_at: now,
+          })) as never,
+          { onConflict: 'tenant_id,menu_item_id,presell_date' },
+        )
+        .select('*')
+      if (error) throw error
+      saved = (data ?? []) as PresellStock[]
+    }
+
+    for (const presellDate of parsed.deletes) {
+      const { error } = await supabase
+        .from('presell_stock')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .eq('menu_item_id', parsed.menuItemId)
+        .eq('presell_date', presellDate)
+      if (error) throw error
+    }
+
+    revalidateMenu(tenantSlug)
+    return { success: true, data: saved }
   } catch (error) {
-    return fail(error, 'Failed to load presell dates')
-  }
-}
-
-/** Create or change one date's allocation. Upsert on (tenant, item, date). */
-export async function savePresellAllocationAction(
-  tenantId: string,
-  tenantSlug: string,
-  input: { menuItemId: string; presellDate: string; stockQty: number },
-): Promise<ActionResult<PresellStock>> {
-  try {
-    await verifyTenantPermission(tenantId, 'menu')
-    const parsed = allocationSchema.parse(input)
-
-    const supabase = createAdminClient()
-    const { data, error } = await supabase
-      .from('presell_stock')
-      .upsert(
-        {
-          tenant_id: tenantId,
-          menu_item_id: parsed.menuItemId,
-          presell_date: parsed.presellDate,
-          stock_qty: parsed.stockQty,
-          updated_at: new Date().toISOString(),
-        } as never,
-        { onConflict: 'tenant_id,menu_item_id,presell_date' },
-      )
-      .select('*')
-      .single()
-    if (error) throw error
-
-    revalidateMenu(tenantSlug, parsed.menuItemId)
-    return { success: true, data: data as PresellStock }
-  } catch (error) {
-    return fail(error, 'Failed to save presell date')
+    return fail(error, 'Failed to save the pre-order dates')
   }
 }
 
 /**
- * Remove a date's allocation entirely. Refused while the date has sales —
- * deleting the row would erase the only record of how many were promised;
- * setting stock to the sold count is the way to stop selling more.
+ * Which of these dates already have sales. Deleting one would erase the only
+ * record of what was promised, so the save is refused and the merchant is
+ * told to lower its stock instead.
  */
-export async function deletePresellAllocationAction(
+async function findSoldDates(
+  supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,
-  tenantSlug: string,
-  input: { menuItemId: string; presellDate: string },
-): Promise<ActionResult> {
-  try {
-    await verifyTenantPermission(tenantId, 'menu')
-    const parsed = allocationSchema.omit({ stockQty: true }).parse(input)
+  menuItemId: string,
+  presellDates: readonly string[],
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('presell_stock')
+    .select('presell_date, sold_qty')
+    .eq('tenant_id', tenantId)
+    .eq('menu_item_id', menuItemId)
+    .in('presell_date', presellDates as string[])
+  if (error) throw error
 
-    const supabase = createAdminClient()
-    const { data: existing, error: readError } = await supabase
-      .from('presell_stock')
-      .select('sold_qty')
-      .eq('tenant_id', tenantId)
-      .eq('menu_item_id', parsed.menuItemId)
-      .eq('presell_date', parsed.presellDate)
-      .maybeSingle()
-    if (readError) throw readError
+  return ((data ?? []) as { presell_date: string; sold_qty: number }[])
+    .filter((row) => Number(row.sold_qty) > 0)
+    .map((row) => row.presell_date)
+}
 
-    if (existing && Number((existing as { sold_qty: number }).sold_qty) > 0) {
-      return {
-        success: false,
-        error: 'This date already has orders. Set its stock to the sold count to stop selling more.',
-      }
-    }
-
-    const { error } = await supabase
-      .from('presell_stock')
-      .delete()
-      .eq('tenant_id', tenantId)
-      .eq('menu_item_id', parsed.menuItemId)
-      .eq('presell_date', parsed.presellDate)
-    if (error) throw error
-
-    revalidateMenu(tenantSlug, parsed.menuItemId)
-    return { success: true }
-  } catch (error) {
-    return fail(error, 'Failed to remove presell date')
-  }
+/** "20 Dec", or "20 Dec and 2 other dates" — readable without being a wall. */
+function formatDateList(dates: readonly string[]): string {
+  const [first, ...rest] = dates
+  if (rest.length === 0) return first
+  return `${first} and ${rest.length} other date${rest.length === 1 ? '' : 's'}`
 }
 
 /**

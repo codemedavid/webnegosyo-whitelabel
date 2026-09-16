@@ -58,10 +58,10 @@ describe('makeCartItem with a presell date', () => {
   it('still records upsell provenance alongside the date', () => {
     const item = makeCartItem(bilao, undefined, [], 1, undefined, {
       presellDate: '2026-12-24',
-      upsellSource: 'inline_upgrade',
+      upsellSource: 'upgrade',
       upsellSourceItemId: 'm-adobo',
     })
-    expect(item.upsellSource).toBe('inline_upgrade')
+    expect(item.upsellSource).toBe('upgrade')
     expect(item.presell_date).toBe('2026-12-24')
   })
 })

@@ -4,6 +4,7 @@ import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { ConvexProvider } from 'convex/react'
 import { ConvexReactClient } from 'convex/react'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { reportClientError } from '@/lib/report-client-error'
 
 class ConvexErrorBoundary extends Component<
   { children: ReactNode; fallback?: ReactNode },
@@ -14,7 +15,7 @@ class ConvexErrorBoundary extends Component<
     return { hasError: true }
   }
   componentDidCatch(err: Error, info: ErrorInfo) {
-    console.warn('Convex error caught:', err.message, info)
+    reportClientError(err, 'convex', info.componentStack)
   }
   render() {
     if (this.state.hasError) {
@@ -29,16 +30,37 @@ class ConvexErrorBoundary extends Component<
 // and avoids React strict-mode double-mount issues entirely.
 const clientCache = new Map<string, ConvexReactClient>()
 
+// Only a refresh hint, never an authorization decision. Convex verifies the
+// signature and tenant. Tokens issued before the auth hook was repaired can
+// still be valid JWTs while missing the membership required by merchant queries.
+function hasMerchantClaims(token: string): boolean {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const claims = JSON.parse(atob(payload))
+    return claims.wn_role === 'superadmin' ||
+      (claims.wn_role === 'admin' && typeof claims.wn_tenant_id === 'string')
+  } catch {
+    return false
+  }
+}
+
 /**
  * The platform session token, or null when there is none. The store's
  * deployment verifies it against Supabase's JWKS and reads the tenant claim
  * the access-token hook stamps on it; a customer (no session) sends nothing,
  * which is right — their functions do not ask for a token.
  */
-async function fetchSessionToken(): Promise<string | null> {
+async function fetchSessionToken({ forceRefreshToken }: { forceRefreshToken: boolean }): Promise<string | null> {
   try {
-    const { data } = await createSupabaseClient().auth.getSession()
-    return data.session?.access_token ?? null
+    const auth = createSupabaseClient().auth
+    const { data, error } = await auth.getSession()
+    if (error || !data.session) return null
+    const token = data.session.access_token
+    if (forceRefreshToken || !hasMerchantClaims(token)) {
+      const refreshed = await auth.refreshSession()
+      return refreshed.error ? null : refreshed.data.session?.access_token ?? null
+    }
+    return token
   } catch {
     return null
   }
@@ -66,13 +88,15 @@ interface SafeConvexProviderProps {
  * - Built-in error boundary to prevent crashes from missing Convex functions
  */
 export function SafeConvexProvider({ url, children, fallback }: SafeConvexProviderProps) {
-  const client = getClient(url)
-
   return (
-    <ConvexErrorBoundary fallback={fallback}>
-      <ConvexProvider client={client}>
-        {children}
-      </ConvexProvider>
+    <ConvexErrorBoundary key={url} fallback={fallback}>
+      <ConvexClientProvider url={url}>{children}</ConvexClientProvider>
     </ConvexErrorBoundary>
   )
+}
+
+// Construct inside a descendant: an error boundary cannot catch exceptions
+// thrown by the component that creates the boundary itself.
+function ConvexClientProvider({ url, children }: Pick<SafeConvexProviderProps, 'url' | 'children'>) {
+  return <ConvexProvider client={getClient(url)}>{children}</ConvexProvider>
 }

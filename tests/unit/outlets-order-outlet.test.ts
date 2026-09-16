@@ -155,3 +155,28 @@ describe('withOrderOutlet', () => {
     ).toEqual({ outlet_id: 'outlet-bgc', outlet_name: 'Lucky Joy — BGC' })
   })
 })
+
+describe('unvalidated branch metadata', () => {
+  it('removes client-supplied branch fields when no branch was validated', () => {
+    const input = { customer_name: 'Ana', outlet_id: 'foreign', outlet_name: 'Foreign' }
+    expect(withOrderOutlet(input, null)).toEqual({ customer_name: 'Ana' })
+    expect(input.outlet_id).toBe('foreign')
+  })
+})
+
+import { requireCheckoutOutlet } from '@/lib/outlets/order-outlet'
+
+describe('checkout branch validation', () => {
+  it('requires a branch when a multi-branch store has outlets', () => {
+    expect(() => requireCheckoutOutlet({ isEnabled: true, outlets: [BGC, MAKATI] })).toThrow(/Choose a branch/)
+  })
+  it('rejects a foreign or stale selection', () => {
+    expect(() => requireCheckoutOutlet({ isEnabled: true, outlets: [BGC], requestedOutletId: MAKATI.id })).toThrow(/Choose a branch/)
+  })
+  it('retains the selected branch for every order backend', () => {
+    expect(requireCheckoutOutlet({ isEnabled: true, outlets: [BGC, MAKATI], requestedOutletId: MAKATI.id })).toEqual({ id: MAKATI.id, name: MAKATI.name })
+  })
+  it('allows the unbranched pool when no outlets exist', () => {
+    expect(requireCheckoutOutlet({ isEnabled: true, outlets: [] })).toBeNull()
+  })
+})

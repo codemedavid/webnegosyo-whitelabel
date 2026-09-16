@@ -39,7 +39,13 @@ function zodErrorMessage(error: z.ZodError): string {
 
 function fail(error: unknown, fallback: string) {
   if (error instanceof z.ZodError) return { success: false as const, error: zodErrorMessage(error) }
-  return { success: false as const, error: error instanceof Error ? error.message : fallback }
+  if (error instanceof Error) return { success: false as const, error: error.message }
+  // A PostgREST refusal — an RLS policy, a missing column, a trigger's RAISE —
+  // arrives as a plain object, not an Error. The merchant keeps the generic
+  // line (no internal ids on screen); the code and message go to the server
+  // log, which is the only place they can be read.
+  console.error('[inventory] action failed', { fallback, error })
+  return { success: false as const, error: fallback }
 }
 
 const inventoryPath = (slug: string) => `/${slug}/admin/inventory`

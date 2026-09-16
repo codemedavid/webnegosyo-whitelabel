@@ -37,7 +37,7 @@ import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
 import type { OrderBackend } from "./order-backend";
 import type { StaffPermissionHolder } from "./staff-permissions";
-import type { BranchScope, ScopedOrderLike } from "./branch-scope";
+import { getOrderOutletId, type BranchScope, type ScopedOrderLike } from "./branch-scope";
 
 /**
  * Everything the register needs to remember about the order it is editing,
@@ -64,6 +64,8 @@ export type OrderEditMode = "revise" | "append";
 
 export interface OrderEditContext {
   orderId: string;
+  /** The placed order keeps its branch through edits and settlement. */
+  outletId?: string | null;
   /** See {@link OrderEditMode}. */
   mode: OrderEditMode;
   /**
@@ -147,7 +149,7 @@ export interface OrderEditContext {
 }
 
 /** The order as the detail screen already has it. */
-export interface EditableOrderLike {
+export interface EditableOrderLike extends ScopedOrderLike {
   _id: string;
   total: number;
   revisionNumber?: number;
@@ -321,6 +323,7 @@ function loadOrder(
     cart: mode === "append" ? [] : lines,
     context: {
       orderId: order._id,
+      outletId: getOrderOutletId({ ...order, customerData: order.customerData ?? order.customer_data }),
       mode,
       appendBaseCart: mode === "append" ? lines : [],
       expectedRevisionNumber: order.revisionNumber ?? 0,

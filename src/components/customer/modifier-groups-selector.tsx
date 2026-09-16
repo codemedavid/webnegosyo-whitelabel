@@ -5,11 +5,14 @@ import { describeSelectionRule, isOptionAvailable, isSelectionAtMax } from '@/li
 import type { ModifierSelection } from '@/lib/modifier-groups-cart'
 import { formatPrice } from '@/lib/cart-utils'
 import { cn } from '@/lib/utils'
+import { AddonQuantityControl } from './addon-quantity-control'
 
 interface ModifierGroupsSelectorProps {
   groups: ModifierGroup[]
   selection: ModifierSelection
   onToggle: (group: ModifierGroup, optionId: string) => void
+  onQuantityChange?: (group: ModifierGroup, optionId: string, quantity: number) => void
+  parentQuantity?: number
   hideCurrencySymbol?: boolean
 }
 
@@ -27,6 +30,8 @@ export function ModifierGroupsSelector({
   groups,
   selection,
   onToggle,
+  onQuantityChange,
+  parentQuantity = 1,
   hideCurrencySymbol,
 }: ModifierGroupsSelectorProps) {
   if (groups.length === 0) {
@@ -37,6 +42,7 @@ export function ModifierGroupsSelector({
     <div className="space-y-6">
       {groups.map((group) => {
         const selectedIds = selection[group.id] ?? []
+        const quantityMode = group.selection_mode === 'quantity'
         const isMultiSelect = group.max_select !== 1
         const atMax = isSelectionAtMax(group, selectedIds.length)
         const progress = describeSelectionProgress(group, selectedIds.length)
@@ -66,9 +72,19 @@ export function ModifierGroupsSelector({
               )}
             </div>
 
+            {quantityMode && <p className="mb-3 text-xs opacity-70">Quantities are per item. Choose how many of each extra to add.</p>}
+
             <div className="flex flex-wrap gap-2">
               {group.options.map((option) => {
                 const isSelected = selectedIds.includes(option.id)
+                if (quantityMode) {
+                  const portions = selectedIds.filter(id => id === option.id).length
+                  return <AddonQuantityControl key={option.id} name={option.name} price={option.price_modifier}
+                    quantity={portions} disabled={!isOptionAvailable(option)} hideCurrencySymbol={hideCurrencySymbol}
+                    atMax={(group.max_select !== null && selectedIds.length >= group.max_select)
+                      || (option.stock_mode === 'simple' && (portions + 1) * parentQuantity > (option.stock_qty ?? 0))}
+                    onChange={value => onQuantityChange?.(group, option.id, value)} />
+                }
                 return (
                   <ModifierOptionChip
                     key={option.id}
@@ -133,7 +149,7 @@ function ModifierOptionChip({
   const priceLabel =
     option.price_modifier > 0
       ? `+${formatPrice(option.price_modifier, { hideCurrencySymbol })}`
-      : null
+      : option.price_modifier === 0 ? 'No extra charge' : null
 
   return (
     <button

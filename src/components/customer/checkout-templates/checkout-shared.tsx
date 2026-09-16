@@ -12,6 +12,7 @@
  * the experience is unchanged.
  */
 
+import { addonLabel } from '@/lib/addon-quantity'
 import { ArrowLeft, MessageCircle, CreditCard, QrCode, Copy, Check, CheckCircle2, ExternalLink, Package, CalendarClock, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -197,7 +198,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                       <span className="text-xs text-muted-foreground"> x{item.quantity}</span>
                       {item.selected_addons.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Add-ons: {item.selected_addons.map(a => a.name).join(', ')}
+                          Add-ons: {item.selected_addons.map(addonLabel).join(', ')}
                         </p>
                       )}
                       {item.special_instructions && (

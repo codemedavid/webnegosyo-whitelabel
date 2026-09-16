@@ -75,3 +75,61 @@ describe("decideAccess", () => {
     expect(decideAccess({ ...soft, identity: stranger, kind: "read" }).allowed).toBe(false);
   });
 });
+
+describe("decideAccess — tokens that name no store", () => {
+  // The claims ride on the platform JWT, stamped by the Supabase access-token
+  // hook. When that hook cannot read `app_users` (an RLS policy short of the
+  // grant it needs, a customer account with no row at all), the token arrives
+  // carrying an identity but NO store. Reading that as "a token naming a
+  // different store" refused every merchant device in the fleet with
+  // `wrong_tenant`, in soft mode, where nothing was supposed to be refused yet.
+  // A caller who never claimed a store is simply unidentified.
+  const claimless: AccessIdentity = { subject: "u4", wn_role: null, wn_tenant_id: null };
+
+  test("passes as an anonymous caller until the store is enforced", () => {
+    const soft = { tenantId: TENANT, authEnforced: false, publicReads: false };
+    expect(decideAccess({ ...soft, identity: claimless, kind: "write" })).toEqual({
+      allowed: true,
+      reason: "not_enforced",
+    });
+  });
+
+  test("is refused as unauthenticated once the store is enforced", () => {
+    expect(decideAccess({ ...enforced, identity: claimless, kind: "read" })).toEqual({
+      allowed: false,
+      reason: "unauthenticated",
+    });
+  });
+
+  test("still reaches the demo store's public reads", () => {
+    const demo = { ...enforced, publicReads: true };
+    expect(decideAccess({ ...demo, identity: claimless, kind: "read" })).toEqual({
+      allowed: true,
+      reason: "public_read",
+    });
+    expect(decideAccess({ ...demo, identity: claimless, kind: "write" }).allowed).toBe(false);
+  });
+});
+
+describe("decideAccess — a deployment with no store pinned", () => {
+  // `tenant_id` reaches the deployment through the config sync, and a store
+  // deployed before that sync existed has no such row. Failing closed there is
+  // right once a store is enforced; doing it in soft mode takes down a store
+  // whose only fault is that nobody has re-synced its config.
+  const unpinned = { tenantId: null, publicReads: false };
+
+  test("keeps serving its merchant until the store is enforced", () => {
+    expect(
+      decideAccess({ ...unpinned, authEnforced: false, identity: merchant, kind: "write" })
+    ).toEqual({ allowed: true, reason: "not_enforced" });
+  });
+
+  test("refuses everyone but a superadmin once enforced", () => {
+    expect(
+      decideAccess({ ...unpinned, authEnforced: true, identity: merchant, kind: "read" })
+    ).toEqual({ allowed: false, reason: "unpinned" });
+    expect(
+      decideAccess({ ...unpinned, authEnforced: true, identity: superadmin, kind: "read" }).allowed
+    ).toBe(true);
+  });
+});

@@ -1,49 +1,11 @@
 'use client'
 
+import type { MenuLayoutContentProps } from '@/storefront/contracts'
+
 import dynamic from 'next/dynamic'
-import { useEffect } from 'react'
-import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
-import type { BrandingColors } from '@/lib/branding-utils'
-import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 
-interface MenuLayoutProps {
-    layout: PageLayout
-    tenant: Tenant | null
-    tenantSlug: string
-    categories: Category[]
-    filteredItems: MenuItem[]
-    allMenuItems: MenuItem[]
-    activeCategory: string | null
-    setActiveCategory: (id: string | null) => void
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    onItemSelect: (item: MenuItem) => void
-    branding: BrandingColors
-    cardTemplate: CardTemplate
-    isLoading: boolean
-    // Hero overrides
-    heroOverride?: {
-        title?: string
-        description?: string
-        heroTitleColor?: string
-        heroDescriptionColor?: string
-    } | null
-    // Banner overrides
-    bannerOverride?: {
-        promotionBanners?: PromotionBanner[]
-        isPromotionVisible?: boolean
-    } | null
-    currentSlide: number
-    setCurrentSlide: (slide: number) => void
-    mobileGridColumns?: number
-    menuEngineeringEnabled?: boolean
-    hideCurrencySymbol?: boolean
-    /** @deprecated Branding editing moved to the Branding Studio admin page; accepted but ignored. */
-    isBrandAdmin?: boolean
-    /** @deprecated Branding editing moved to the Branding Studio admin page; accepted but ignored. */
-    onOpenBrandingSection?: (section: string) => void
-}
+type MenuLayoutProps = MenuLayoutContentProps & { layout: PageLayout }
 
 // Minimal skeleton shown while the layout chunk loads on first render.
 function LayoutSkeleton() {
@@ -85,20 +47,10 @@ const LayoutMosaic = dynamic(
     { loading: LayoutSkeleton }
 )
 
-// The deprecated branding-editor props ride along in the spread but are
-// ignored by every layout. Editing lives in the Branding Studio admin page.
 export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
-    const { activeCategory, setActiveCategory } = props
-    // Reset active category when switching to sidebar layout (to show all items)
-    useEffect(() => {
-        if (layout === 'sidebar' && activeCategory) {
-            setActiveCategory(null)
-        }
-    }, [layout, activeCategory, setActiveCategory])
-
     switch (layout) {
         case 'sidebar':
-            return <LayoutSidebar {...props} />
+            return <LayoutSidebar {...props} filteredItems={props.searchItems ?? props.filteredItems} />
         case 'magazine':
             return <LayoutMagazine {...props} />
         case 'grid-focus':

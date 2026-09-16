@@ -1,48 +1,21 @@
 'use client'
 
+import { isAboveTheFold, pageIndexOf } from '@/lib/above-the-fold'
+
+import type { MenuLayoutContentProps } from '@/storefront/contracts'
+
 import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
-import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import { StorefrontHero } from '@/components/customer/storefront-hero'
-import type { BrandingColors } from '@/lib/branding-utils'
 import { getContrastColor } from '@/lib/branding-utils'
-import type { CardTemplate } from '@/lib/card-templates'
 import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 import { HorizontalScrollSection } from '../horizontal-scroll-section'
 import { ResponsiveCategorySection } from '../responsive-category-section'
 import { CategoryIcon } from '@/components/shared/category-icon'
 
-interface LayoutMagazineProps {
-    tenant: Tenant | null
-    tenantSlug: string
-    categories: Category[]
-    filteredItems: MenuItem[]
-    allMenuItems: MenuItem[]
-    activeCategory: string | null
-    setActiveCategory: (id: string | null) => void
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    onItemSelect: (item: MenuItem) => void
-    branding: BrandingColors
-    cardTemplate: CardTemplate
-    heroOverride?: {
-        title?: string
-        description?: string
-        heroTitleColor?: string
-        heroDescriptionColor?: string
-    } | null
-    bannerOverride?: {
-        promotionBanners?: PromotionBanner[]
-        isPromotionVisible?: boolean
-    } | null
-    currentSlide: number
-    setCurrentSlide: (slide: number) => void
-    mobileGridColumns?: number
-    menuEngineeringEnabled?: boolean
-    hideCurrencySymbol?: boolean
-}
+type LayoutMagazineProps = MenuLayoutContentProps
 
 export const LayoutMagazine = memo(function LayoutMagazine({
     tenant,
@@ -287,7 +260,7 @@ export const LayoutMagazine = memo(function LayoutMagazine({
                 </div>
             ) : (
                 <div className="space-y-16">
-                    {groupedItems.map(({ category, items }) => (
+                    {groupedItems.map(({ category, items }, groupIndex) => (
                         <section key={category.id} id={`category-${category.id}`} className="scroll-mt-24">
                             {/* Category Divider */}
                             <div className="mb-8 space-y-3">
@@ -329,7 +302,7 @@ export const LayoutMagazine = memo(function LayoutMagazine({
                                 }
                                 gridContent={
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {items.map((item) => (
+                                        {items.map((item, itemIndex) => (
                                             <MenuItemCard
                                                 key={item.id}
                                                 item={item}
@@ -338,6 +311,7 @@ export const LayoutMagazine = memo(function LayoutMagazine({
                                                 template={cardTemplate}
                                                 menuEngineeringEnabled={menuEngineeringEnabled}
                                                 hideCurrencySymbol={hideCurrencySymbol}
+                                                priority={isAboveTheFold(pageIndexOf(groupedItems, groupIndex, itemIndex))}
                                             />
                                         ))}
                                     </div>

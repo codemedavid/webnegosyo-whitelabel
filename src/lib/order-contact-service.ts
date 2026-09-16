@@ -3,6 +3,7 @@ import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTrackingToken } from '@/lib/tracking-token'
 import { decideContactWrite, type ContactSubmission } from '@/lib/order-contact'
+import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { summarizeContactEarning, type ContactEarningSummary } from '@/lib/loyalty/contact-earning'
 
 /**
@@ -44,20 +45,22 @@ export async function updateOrderContact(
 
     const { data: tenantConfig } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url')
+      .select('order_backend, convex_deployment_url')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
 
-    const config = tenantConfig as { convex_deployment_url?: string | null } | null
+    const config = tenantConfig as OrderBackendTenantFields | null
 
     if (!config) return { ok: false, error: 'not_found' }
 
-    const deployKey = config.convex_deployment_url
-      ? (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
-      : null
-
-    if (config.convex_deployment_url && deployKey) {
+    // Same resolver checkout writes through. Routing on the credentials alone
+    // ignores a deliberate `order_backend` pin, which sent the number to a
+    // database the order was never written to — see
+    // tests/unit/order-contact-backend-routing.test.ts.
+    if (resolveOrderBackend(config) === 'convex') {
+      const deployKey = (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
+      if (!config.convex_deployment_url || !deployKey) return { ok: false, error: 'unavailable' }
       return updateInConvex(config.convex_deployment_url, deployKey, submission)
     }
     return updateInSupabase(supabaseAdmin, submission)

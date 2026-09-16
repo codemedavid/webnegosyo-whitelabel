@@ -6,6 +6,7 @@ import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
 import { CardTemplateRenderer } from './card-templates'
+import { useEagerImages } from '@/components/customer/eager-images-context'
 
 interface MenuItemCardProps {
   item: MenuItem
@@ -14,9 +15,11 @@ interface MenuItemCardProps {
   template?: CardTemplate
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  /** Above-the-fold card: image loads eagerly with high fetch priority. */
+  priority?: boolean
 }
 
-export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol }: MenuItemCardProps) {
+export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, branding, template = 'classic', menuEngineeringEnabled, hideCurrencySymbol, priority }: MenuItemCardProps) {
   /*
    * Every template disables its own "+" button, but the card *body* is a
    * separate click target that routes to the product page — where the dish can
@@ -32,6 +35,9 @@ export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, brandin
     [onSelect],
   )
 
+  // A copy of the layout hidden on this viewport must not fetch eagerly.
+  const isEagerAllowed = useEagerImages()
+
   return (
     // Click-to-inspect tag lives on the card wrapper (not the grid) so every
     // layout — grid-focus, magazine, mosaic, horizontal scroll — is covered.
@@ -43,6 +49,7 @@ export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, brandin
         branding={branding}
         menuEngineeringEnabled={menuEngineeringEnabled}
         hideCurrencySymbol={hideCurrencySymbol}
+        priority={Boolean(priority) && isEagerAllowed}
       />
     </div>
   )

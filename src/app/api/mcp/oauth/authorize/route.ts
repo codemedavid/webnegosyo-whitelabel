@@ -4,10 +4,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveAllowedRedirectUri, issueAuthorizationCode, type PkceMethod } from '@/lib/mcp/oauth-service'
 import {
   AUTH_CODE_TTL_SECONDS,
-  OAUTH_OFFLINE_SCOPE,
   getOrigin,
 } from '@/lib/mcp/oauth-config'
 import { MERCHANT_OAUTH_PATHS, MERCHANT_OAUTH_SCOPE } from '@/lib/mcp/merchant-config'
+import { isSupportedMerchantScope } from '@/lib/mcp/merchant-oauth-rules'
 import { isMerchantAuthorized, isTenantMcpEnabled } from '@/lib/mcp/merchant-gate'
 
 // OAuth 2.1 authorization endpoint. The human-login gate: it verifies the
@@ -24,11 +24,6 @@ interface RegisteredClientRow {
   redirect_uris: string[]
 }
 
-export function isSupportedMerchantScope(scope: string): boolean {
-  const requested = scope.split(/\s+/).filter(Boolean)
-  const allowed = new Set([MERCHANT_OAUTH_SCOPE, OAUTH_OFFLINE_SCOPE])
-  return requested.includes(MERCHANT_OAUTH_SCOPE) && requested.every((item) => allowed.has(item))
-}
 
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url)

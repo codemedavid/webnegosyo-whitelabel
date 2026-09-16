@@ -1,5 +1,7 @@
 'use client'
 
+import type { MenuLayoutContentProps } from '@/storefront/contracts'
+
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuGrid } from '../menu-grid'
@@ -7,43 +9,9 @@ import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
 import { CategoryTabs } from '../category-tabs'
 // CategorySubmenu not currently used in this layout
-import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
 import { StorefrontHero } from '@/components/customer/storefront-hero'
-import type { BrandingColors } from '@/lib/branding-utils'
-import type { CardTemplate } from '@/lib/card-templates'
 
-interface LayoutDefaultProps {
-    tenant: Tenant | null
-    tenantSlug: string
-    categories: Category[]
-    filteredItems: MenuItem[]
-    allMenuItems: MenuItem[]
-    activeCategory: string | null
-    setActiveCategory: (id: string | null) => void
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    onItemSelect: (item: MenuItem) => void
-    branding: BrandingColors
-    cardTemplate: CardTemplate
-    isLoading: boolean
-    // Hero overrides
-    heroOverride?: {
-        title?: string
-        description?: string
-        heroTitleColor?: string
-        heroDescriptionColor?: string
-    } | null
-    // Banner overrides
-    bannerOverride?: {
-        promotionBanners?: PromotionBanner[]
-        isPromotionVisible?: boolean
-    } | null
-    currentSlide: number
-    setCurrentSlide: (slide: number) => void
-    mobileGridColumns?: number
-    menuEngineeringEnabled?: boolean
-    hideCurrencySymbol?: boolean
-}
+type LayoutDefaultProps = MenuLayoutContentProps
 
 export const LayoutDefault = memo(function LayoutDefault({
     tenant,

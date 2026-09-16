@@ -33,9 +33,7 @@ function table(data: unknown[] | Record<string, unknown> = []) {
       return chain
     }
   }
-  return chain as ReturnType<typeof jest.fn> & {
-    calls: Record<string, unknown[][]>
-  }
+  return { ...chain, calls }
 }
 
 function ingredient(overrides: Partial<InventoryItem> = {}): InventoryItem {

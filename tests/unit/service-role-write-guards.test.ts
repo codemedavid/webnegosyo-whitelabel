@@ -40,7 +40,7 @@ jest.mock('next/cache', () => ({ revalidatePath: jest.fn() }))
  * none happened.
  */
 interface Fake {
-  client: { from: jest.Mock }
+  client: { from: jest.Mock<(table: string) => Record<string, unknown>> }
   writes: Array<{ table: string; op: string; payload?: unknown }>
   filters: Array<{ table: string; op: string; args: unknown[] }>
   respond: (table: string, response: { data: unknown; error: unknown }) => void

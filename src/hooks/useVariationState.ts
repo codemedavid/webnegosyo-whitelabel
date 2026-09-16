@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { calculateCartItemSubtotal } from '@/lib/cart-utils'
+import { setAddonQuantity } from '@/lib/addon-quantity'
 import type { MenuItem, Variation, Addon, VariationOption, Category } from '@/types/database'
 
 interface UseVariationStateOptions {
@@ -142,6 +143,7 @@ export function useVariationState({ item, category }: UseVariationStateOptions) 
         handleVariationTypeSelect,
         handleLegacyVariationSelect,
         toggleAddon,
+        changeAddonQuantity: (addon: Addon, portions: number) => setSelectedAddons(prev => setAddonQuantity(prev, addon, portions)),
         handleDecreaseQuantity,
         handleIncreaseQuantity,
     }

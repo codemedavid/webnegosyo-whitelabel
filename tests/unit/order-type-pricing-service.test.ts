@@ -7,7 +7,7 @@
  * price replaces the row instead of tripping the unique index.
  */
 
-const verifyTenantPermission = jest.fn(() => Promise.resolve())
+const verifyTenantPermission = jest.fn((..._args: unknown[]) => Promise.resolve())
 jest.mock('@/lib/admin-service', () => ({
   verifyTenantPermission: (...args: unknown[]) => verifyTenantPermission(...args),
 }))

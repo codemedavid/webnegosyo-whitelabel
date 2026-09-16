@@ -61,7 +61,9 @@ export function useOutlets(): OutletsResult {
   // opening a different store must both drop it. Keyed on the tenant alone, so
   // a pull-to-refresh does not throw the merchant back to the whole store.
   useEffect(() => {
-    useBranchContextStore.getState().clear();
+    // This hook has multiple mounted consumers. A new consumer in the same
+    // tenant must not erase the branch selected on another screen.
+    useBranchContextStore.getState().bindTenant(tenantId);
   }, [tenantId]);
 
   const fetcher = useCallback(() => fetchOutlets(tenantId as string), [tenantId]);

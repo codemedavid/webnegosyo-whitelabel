@@ -14,8 +14,8 @@ import type { BranchStockSummary } from '@/lib/inventory/branch-stock-summary'
 const summary = (overrides: Partial<BranchStockSummary> = {}): BranchStockSummary => ({
   isMultiBranch: true,
   lines: [
-    { outletId: 'o-north', name: 'North', quantity: 500 },
-    { outletId: 'o-south', name: 'South', quantity: 200 },
+    { outletId: 'o-north', name: 'North', quantity: 500, reorderLevel: 0 },
+    { outletId: 'o-south', name: 'South', quantity: 200, reorderLevel: 0 },
   ],
   total: 700,
   emptyBranches: [],
@@ -46,10 +46,10 @@ describe('BranchStockPanel', () => {
       <BranchStockPanel
         summary={summary({
           lines: [
-            { outletId: 'o-north', name: 'North', quantity: 700 },
-            { outletId: 'o-south', name: 'South', quantity: 0 },
+            { outletId: 'o-north', name: 'North', quantity: 700, reorderLevel: 0 },
+            { outletId: 'o-south', name: 'South', quantity: 0, reorderLevel: 0 },
           ],
-          emptyBranches: [{ outletId: 'o-south', name: 'South', quantity: 0 }],
+          emptyBranches: [{ outletId: 'o-south', name: 'South', quantity: 0, reorderLevel: 0 }],
         })}
         unitLabel="g"
       />,
@@ -62,7 +62,7 @@ describe('BranchStockPanel', () => {
     render(
       <BranchStockPanel
         summary={summary({
-          emptyBranches: [{ outletId: 'o-south', name: 'South', quantity: 0 }],
+          emptyBranches: [{ outletId: 'o-south', name: 'South', quantity: 0, reorderLevel: 0 }],
           suggestion: {
             fromOutletId: 'o-north',
             fromName: 'North',

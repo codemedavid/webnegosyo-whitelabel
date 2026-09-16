@@ -21,6 +21,7 @@ export interface Product {
   discounted_price: number | null;
   image_url: string;
   is_available: boolean;
+  presell_enabled?: boolean;
   is_featured: boolean;
   order: number;
   /** Set when auto-86 hid this item; NULL means the merchant chose to. */
