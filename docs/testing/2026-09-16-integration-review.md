@@ -65,3 +65,7 @@ This is a code integration, not a live database migration or feature-flag rollou
 - Staged diff whitespace check passed. Credential-pattern scan of staged text found no private-key, GitHub token, AWS key or JWT literals. This is a pattern scan, not a comprehensive secret audit.
 
 Validation exercised the integrated tree. No live database changes, SMS sends, mobile release builds, feature-flag changes, or tenant schema deployments were performed.
+
+## PR build environment
+
+PR #54 initially failed Vercel prebuild because preview lacked the public ImageKit endpoint/key and Sentry DSN. Extended the existing production ImageKit variables to preview without changing their values; configured the project's local public Sentry DSN for production and preview. No private integration credentials, database data, tenant deployments, or feature flags were changed. The follow-up docs commit triggers a fresh preview using that configuration.
