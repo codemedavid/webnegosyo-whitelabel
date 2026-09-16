@@ -16,7 +16,7 @@
  */
 
 import { addonQuantity, addonLabel } from '@/lib/addon-quantity'
-import { buildInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
+import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
@@ -74,7 +74,8 @@ import { createQuotationAction } from '@/app/actions/lalamove'
 import { calculateDistanceDeliveryFeeAction } from '@/app/actions/delivery'
 import { resolveDeliveryQuotePlan } from '@/lib/delivery-quote'
 import { createClient } from '@/lib/supabase/client'
-import { encodeOrderToQr, computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
+import { computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
+import { prepareOrderQr } from '@/lib/qr-order-capacity'
 import { savePendingOrder } from '@/lib/qr-pending-order'
 import { resolveOrderContact } from '@/lib/customer-identity'
 import { normalizeCustomerData } from '@/lib/customer-field-normalization'
@@ -983,6 +984,22 @@ export function useCheckout(tenantSlug: string) {
       // asked for less than it billed, and it would have missed any discount.
       const grandTotalForQr = grandTotal
 
+      const inventorySelections = [
+        ...items.map(item => { const selected = extractSelectionIds(item); return { menu_item_id: item.menu_item.id, quantity: item.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } }),
+        ...bundleItems.flatMap(bundle => bundle.slots.map(slot => { const selected = extractBundleSlotSelectionIds(slot); return { menu_item_id: slot.menuItemId, quantity: slot.quantity * bundle.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } })),
+      ]
+      const qrCustomerData = withInventorySelectionSnapshot({
+        ...normalizedCustomerData,
+        ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
+        ...((paymentProofUrl || paymentProofReference)
+          ? {
+              payment_proof_url: paymentProofUrl || undefined,
+              payment_proof_public_id: paymentProofPublicId || undefined,
+              payment_proof_reference: paymentProofReference || undefined,
+            }
+          : {}),
+      }, inventorySelections)
+
       const payload: Omit<QrOrderPayloadV1, 'ck'> = {
         v: 1,
         cid: crypto.randomUUID(),
@@ -996,40 +1013,36 @@ export function useCheckout(tenantSlug: string) {
         // literal customer_phone/customer_email keys) so the stored contact is a
         // stable per-customer identity for analytics.
         customerContact: resolveOrderContact({ name: normalizedCustomerData.customer_name, customerData: normalizedCustomerData }),
-        customerData: {
-          ...normalizedCustomerData,
-          _inventory_selections: buildInventorySelectionSnapshot([
-            ...items.map(item => { const selected = extractSelectionIds(item); return { menu_item_id: item.menu_item.id, quantity: item.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } }),
-            ...bundleItems.flatMap(bundle => bundle.slots.map(slot => { const selected = extractBundleSlotSelectionIds(slot); return { menu_item_id: slot.menuItemId, quantity: slot.quantity * bundle.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } })),
-          ]),
-          ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
-          ...((paymentProofUrl || paymentProofReference)
-            ? {
-                payment_proof_url: paymentProofUrl || undefined,
-                payment_proof_public_id: paymentProofPublicId || undefined,
-                payment_proof_reference: paymentProofReference || undefined,
-              }
-            : {}),
-        },
+        customerData: qrCustomerData,
         items: qrItems,
         total: grandTotalForQr,
         ...(selectedPayment ? { paymentMethodId: selectedPayment.id, paymentMethod: selectedPayment.name } : {}),
         ...(scheduledForISO ? { scheduledFor: scheduledForISO, ...(scheduledForLabel ? { scheduledForLabel } : {}) } : {}),
       }
 
-      const qrString = encodeOrderToQr(payload)
+      const preparedQr = prepareOrderQr(payload)
+      if (!preparedQr.ok) {
+        console.warn(
+          `[Checkout] QR payload length ${preparedQr.encodedLength} exceeds the level-M capacity ${preparedQr.maxEncodedLength}; order was kept in the cart.`
+        )
+        toast.error('This order has too many details for one QR code. Your cart is unchanged—remove some customizations or split the order, then try again.')
+        setIsProcessing(false)
+        return
+      }
+
+      const { qrString, payload: compactPayload } = preparedQr
       if (qrString.length > QR_SIZE_WARN_THRESHOLD) {
         console.warn(
           `[Checkout] QR payload length ${qrString.length} exceeds warning threshold ${QR_SIZE_WARN_THRESHOLD}; QR may be hard to scan.`
         )
       }
 
-      const fullPayload: QrOrderPayloadV1 = { ...payload, ck: computeChecksum(payload) }
+      const fullPayload: QrOrderPayloadV1 = { ...compactPayload, ck: computeChecksum(compactPayload) }
 
       savePendingOrder(tenantSlug, {
         payload: fullPayload,
         qrString,
-        createdAt: payload.t,
+        createdAt: compactPayload.t,
         lastStatus: 'pending',
       })
 

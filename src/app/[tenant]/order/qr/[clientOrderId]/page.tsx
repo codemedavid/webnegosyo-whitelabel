@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { ArrowLeft, Clock, CheckCircle2, ChefHat, Package, Truck, X, ShieldQuestion, CalendarClock } from 'lucide-react'
+import { ArrowLeft, Clock, CheckCircle2, ChefHat, Package, Truck, X, ShieldQuestion, CalendarClock, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
@@ -17,6 +17,7 @@ import {
   type PendingOrderRecord,
 } from '@/lib/qr-pending-order'
 import { QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
+import { canRenderOrderQr, prepareOrderQr } from '@/lib/qr-order-capacity'
 import type { Tenant } from '@/types/database'
 
 const STATUS_STEPS = [
@@ -118,6 +119,17 @@ export default function QrOrderPage() {
 
   const branding = useMemo(() => getTenantBranding(tenant as Record<string, unknown> | null), [tenant])
   const brandingStyle = useMemo(() => generateBrandingCSS(branding), [branding])
+  const qrStringForDisplay = useMemo(() => {
+    if (!record) return null
+    if (canRenderOrderQr(record.qrString)) return record.qrString
+
+    // Older pending records may predate compatible compaction. Rebuild from
+    // their self-contained payload before conceding that the order cannot fit.
+    const { ck: checksum, ...payloadWithoutChecksum } = record.payload
+    if (!checksum) return null
+    const prepared = prepareOrderQr(payloadWithoutChecksum)
+    return prepared.ok ? prepared.qrString : null
+  }, [record])
 
   const handleDismiss = () => {
     clearPendingOrder(tenantSlug, clientOrderId)
@@ -157,6 +169,7 @@ export default function QrOrderPage() {
   }
 
   const { payload, qrString } = record
+  const canRenderQr = qrStringForDisplay !== null
   const currentIndex = liveStatus ? getStatusIndex(liveStatus) : -1
   const isCancelled = liveStatus === 'cancelled'
 
@@ -200,13 +213,34 @@ export default function QrOrderPage() {
           </div>
 
           {/* QR + pending message (hide QR once confirmed) */}
-          {!confirmed ? (
+          {!confirmed && !canRenderQr ? (
+            <div
+              className="rounded-2xl border p-6 flex flex-col items-center text-center"
+              style={{ borderColor: branding.border, backgroundColor: branding.cards }}
+            >
+              <AlertTriangle className="h-12 w-12 mb-3" style={{ color: branding.warning }} />
+              <h2 className="text-lg font-semibold" style={{ color: branding.textPrimary }}>
+                This order is too large for one QR code
+              </h2>
+              <p className="mt-2 text-sm" style={{ color: branding.textSecondary }}>
+                This older saved order cannot be restored to your cart automatically. Use the order summary below to rebuild it as smaller orders from the menu.
+              </p>
+              <Button
+                onClick={() => router.push(`/${tenantSlug}/menu`)}
+                className="mt-5 rounded-full h-11 px-6"
+                style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Rebuild from Menu
+              </Button>
+            </div>
+          ) : !confirmed ? (
             <div
               className="rounded-2xl border p-6 flex flex-col items-center text-center"
               style={{ borderColor: branding.border, backgroundColor: branding.cards }}
             >
               <div className="rounded-xl bg-white p-4 shadow-sm">
-                <QRCodeSVG value={qrString} size={232} level="M" marginSize={2} />
+                <QRCodeSVG value={qrStringForDisplay ?? qrString} size={232} level="M" marginSize={2} />
               </div>
               <p className="mt-5 text-base font-semibold" style={{ color: branding.textPrimary }}>
                 Show this QR to the vendor to confirm your order
@@ -314,9 +348,9 @@ export default function QrOrderPage() {
                       <span className="text-sm font-medium" style={{ color: branding.textPrimary }}>
                         {item.menuItemName}
                       </span>
-                      {item.variation && (
+                      {(item.variation || item.variationSelections?.length) && (
                         <span className="text-xs" style={{ color: branding.textSecondary }}>
-                          {' '}({item.variation})
+                          {' '}({item.variation ?? item.variationSelections?.map(selection => selection.optionName).join(', ')})
                         </span>
                       )}
                       <span className="text-xs" style={{ color: branding.textSecondary }}> x{item.quantity}</span>

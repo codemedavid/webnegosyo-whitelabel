@@ -8,23 +8,11 @@
  * for every target, and the target-specific behavior that must not leak.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { RecipeTarget } from '@/lib/inventory/recipe-target'
 import { RecipeEditor } from '@/components/admin/recipe-editor'
 
-const getIngredientsAction = jest.fn()
-const getInventoryUnitsAction = jest.fn()
-const getRecipeForTargetAction = jest.fn()
-const saveRecipeForTargetAction = jest.fn()
-const deleteRecipeForTargetAction = jest.fn()
-
-jest.mock('@/app/actions/inventory', () => ({
-  getIngredientsAction: (...a: unknown[]) => getIngredientsAction(...a),
-  getInventoryUnitsAction: (...a: unknown[]) => getInventoryUnitsAction(...a),
-  getRecipeForTargetAction: (...a: unknown[]) => getRecipeForTargetAction(...a),
-  saveRecipeForTargetAction: (...a: unknown[]) => saveRecipeForTargetAction(...a),
-  deleteRecipeForTargetAction: (...a: unknown[]) => deleteRecipeForTargetAction(...a),
-}))
+const fetchMock = jest.fn()
 
 const toastError = jest.fn()
 const toastSuccess = jest.fn()
@@ -79,30 +67,48 @@ function setup({
   ingredients = [FLOUR],
   recipe = null as ReturnType<typeof recipeWith> | null,
 } = {}) {
-  getIngredientsAction.mockResolvedValue({ success: true, data: ingredients })
-  getInventoryUnitsAction.mockResolvedValue({ success: true, data: [GRAM] })
-  getRecipeForTargetAction.mockResolvedValue({ success: true, data: recipe })
-  saveRecipeForTargetAction.mockResolvedValue({ success: true, data: {} })
-  deleteRecipeForTargetAction.mockResolvedValue({ success: true })
+  fetchMock.mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      success: true,
+      data: { ingredients, units: [GRAM], recipe },
+    }),
+  })
 }
 
 beforeEach(() => {
   ;[
-    getIngredientsAction,
-    getInventoryUnitsAction,
-    getRecipeForTargetAction,
-    saveRecipeForTargetAction,
-    deleteRecipeForTargetAction,
     toastError,
     toastSuccess,
+    fetchMock,
   ].forEach((m) => m.mockReset())
+  global.fetch = fetchMock as typeof fetch
 })
 
 function renderEditor(target: RecipeTarget, extra: Record<string, unknown> = {}) {
   return render(<RecipeEditor tenantId="t1" tenantSlug="demo" target={target} {...extra} />)
 }
 
+function writeRequest(method: 'PUT' | 'DELETE') {
+  return fetchMock.mock.calls.find(([, options]) => options?.method === method)
+}
+
 describe('RecipeEditor', () => {
+  it('loads one editor snapshot and aborts that request when navigation unmounts it', async () => {
+    setup({ recipe: recipeWith() })
+
+    const { unmount } = renderEditor(ITEM_TARGET)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.signal).toBeInstanceOf(AbortSignal)
+    expect(options.signal.aborted).toBe(false)
+
+    unmount()
+
+    expect(options.signal.aborted).toBe(true)
+  })
+
   it('loads the existing recipe for whichever target it is given', async () => {
     // Arrange — a base-item recipe, the target that had no editor before.
     setup({ recipe: recipeWith() })
@@ -112,7 +118,10 @@ describe('RecipeEditor', () => {
 
     // Assert
     expect(await screen.findByDisplayValue('120')).toBeInTheDocument()
-    expect(getRecipeForTargetAction).toHaveBeenCalledWith('t1', ITEM_TARGET)
+    const url = new URL(fetchMock.mock.calls[0][0], 'http://localhost')
+    expect(url.pathname).toBe('/api/inventory/recipe')
+    expect(url.searchParams.get('tenantId')).toBe('t1')
+    expect(JSON.parse(url.searchParams.get('target')!)).toEqual(ITEM_TARGET)
   })
 
   it('saves against the target it was given, not a hardcoded one', async () => {
@@ -121,9 +130,42 @@ describe('RecipeEditor', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /save recipe/i }))
 
-    await waitFor(() => expect(saveRecipeForTargetAction).toHaveBeenCalled())
-    const [, , target] = saveRecipeForTargetAction.mock.calls[0]
-    expect(target).toEqual(ADDON_TARGET)
+    await waitFor(() => expect(writeRequest('PUT')).toBeDefined())
+    const [, options] = writeRequest('PUT')!
+    expect(JSON.parse(options.body).target).toEqual(ADDON_TARGET)
+  })
+
+  it('keeps an in-flight write alive across navigation without firing stale callbacks', async () => {
+    setup({ recipe: recipeWith() })
+    let finishWrite!: (value: unknown) => void
+    const writeResponse = new Promise((resolve) => {
+      finishWrite = resolve
+    })
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: { ingredients: [FLOUR], units: [GRAM], recipe: recipeWith() },
+      }),
+    }).mockReturnValueOnce(writeResponse)
+    const onSaved = jest.fn()
+    const { unmount } = renderEditor(ITEM_TARGET, { onSaved })
+
+    fireEvent.click(await screen.findByRole('button', { name: /save recipe/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const [, options] = fetchMock.mock.calls[1]
+    expect(options).toEqual(expect.objectContaining({ method: 'PUT', keepalive: true }))
+    expect(options.signal).toBeUndefined()
+
+    unmount()
+    await act(async () => {
+      finishWrite({ ok: true, json: async () => ({ success: true }) })
+      await writeResponse
+    })
+
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
   it('clears the recipe instead of saving an empty one', async () => {
@@ -134,8 +176,8 @@ describe('RecipeEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: /remove ingredient/i }))
     fireEvent.click(screen.getByRole('button', { name: /save recipe/i }))
 
-    await waitFor(() => expect(deleteRecipeForTargetAction).toHaveBeenCalled())
-    expect(saveRecipeForTargetAction).not.toHaveBeenCalled()
+    await waitFor(() => expect(writeRequest('DELETE')).toBeDefined())
+    expect(writeRequest('PUT')).toBeUndefined()
   })
 
   it('tells the merchant to add ingredients before a recipe can be attached', async () => {
@@ -154,7 +196,7 @@ describe('RecipeEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: /save recipe/i }))
 
     await waitFor(() => expect(toastError).toHaveBeenCalled())
-    expect(saveRecipeForTargetAction).not.toHaveBeenCalled()
+    expect(writeRequest('PUT')).toBeUndefined()
   })
 
   it('notifies the container after a save so a cost display can refresh', async () => {
@@ -196,8 +238,9 @@ describe('RecipeEditor prep yield', () => {
     fireEvent.click(screen.getByRole('button', { name: /save recipe/i }))
 
     // Assert
-    await waitFor(() => expect(saveRecipeForTargetAction).toHaveBeenCalled())
-    const [, , , input] = saveRecipeForTargetAction.mock.calls[0]
+    await waitFor(() => expect(writeRequest('PUT')).toBeDefined())
+    const [, options] = writeRequest('PUT')!
+    const { input } = JSON.parse(options.body)
     expect(input.yield_quantity).toBe(900)
     expect(input.yield_unit_id).toBe(GRAM.id)
   })

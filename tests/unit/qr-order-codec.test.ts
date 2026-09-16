@@ -6,8 +6,16 @@ import {
   encodeOrderToQr,
   decodeQrToOrder,
 } from '@/lib/qr-order-codec'
+import {
+  QR_ORDER_MAX_MEDIUM_BYTES,
+  prepareOrderQr,
+} from '@/lib/qr-order-capacity'
 import { compressToEncodedURIComponent } from 'lz-string'
 import type { QrOrderPayloadV1, QrOrderItemV1 } from '@/types/qr-order'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { QRCodeSVG } from 'qrcode.react'
+import { decodeQrToOrder as decodeQrToOrderInMerchantApp } from '../../webnegosyo-app/lib/qr-order-codec'
 
 function makeBasePayload(): Omit<QrOrderPayloadV1, 'ck'> {
   return {
@@ -241,5 +249,90 @@ describe('QR size threshold', () => {
 
   it('exposes the documented threshold constant', () => {
     expect(QR_SIZE_WARN_THRESHOLD).toBe(1200)
+  })
+
+  it('rejects an order before qrcode.react can throw Data too long', () => {
+    const payload = buildMultiItemPayload(80)
+    const encoded = encodeOrderToQr(payload)
+
+    expect(encoded.length).toBeGreaterThan(QR_ORDER_MAX_MEDIUM_BYTES)
+    expect(() => renderToStaticMarkup(
+      React.createElement(QRCodeSVG, { value: encoded, level: 'M' }),
+    )).toThrow('Data too long')
+
+    expect(prepareOrderQr(payload)).toEqual({
+      ok: false,
+      error: 'too_long',
+      encodedLength: encoded.length,
+      maxEncodedLength: QR_ORDER_MAX_MEDIUM_BYTES,
+    })
+  })
+
+  it('accepts the exact qrcode.react byte-mode boundary at level M', () => {
+    expect(() => renderToStaticMarkup(
+      React.createElement(QRCodeSVG, { value: 'a'.repeat(2331), level: 'M' }),
+    )).not.toThrow()
+    expect(() => renderToStaticMarkup(
+      React.createElement(QRCodeSVG, { value: 'a'.repeat(2332), level: 'M' }),
+    )).toThrow('Data too long')
+    expect(QR_ORDER_MAX_MEDIUM_BYTES).toBe(2331)
+  })
+
+  it('compacts only payload fields already represented in scanner-compatible form', () => {
+    const base = makeBasePayload()
+    const payload: Omit<QrOrderPayloadV1, 'ck'> = {
+      ...base,
+      customerData: {
+        ...base.customerData,
+        scheduled_for: '2026-09-17T04:00:00.000Z',
+        scheduled_for_label: 'Sep 17, 12:00 PM',
+      },
+      scheduledFor: '2026-09-17T04:00:00.000Z',
+      scheduledForLabel: 'Sep 17, 12:00 PM',
+      items: base.items.map(item => ({ ...item, variation: 'Large' })),
+    }
+
+    const prepared = prepareOrderQr(payload)
+    expect(prepared.ok).toBe(true)
+    if (!prepared.ok) return
+
+    const decoded = decodeQrToOrder(prepared.qrString)
+    expect(decoded.ok).toBe(true)
+    if (!decoded.ok) return
+
+    expect(decoded.payload.customerData).toMatchObject({
+      scheduled_for: payload.scheduledFor,
+      scheduled_for_label: payload.scheduledForLabel,
+    })
+    expect(decoded.payload.scheduledFor).toBeUndefined()
+    expect(decoded.payload.scheduledForLabel).toBeUndefined()
+    expect(decoded.payload.items[0].variation).toBeUndefined()
+    expect(decoded.payload.items[0].variationSelections).toEqual(
+      payload.items[0].variationSelections,
+    )
+
+    const merchantDecoded = decodeQrToOrderInMerchantApp(prepared.qrString)
+    expect(merchantDecoded.ok).toBe(true)
+    if (!merchantDecoded.ok) return
+    expect(merchantDecoded.payload.items[0].variationSelections).toEqual(
+      payload.items[0].variationSelections,
+    )
+  })
+
+  it('keeps top-level scheduling when no compatible customerData copy exists', () => {
+    const payload = {
+      ...makeBasePayload(),
+      scheduledFor: '2026-09-17T04:00:00.000Z',
+      scheduledForLabel: 'Sep 17, 12:00 PM',
+    }
+    const prepared = prepareOrderQr(payload)
+    expect(prepared.ok).toBe(true)
+    if (!prepared.ok) return
+
+    const decoded = decodeQrToOrder(prepared.qrString)
+    expect(decoded.ok).toBe(true)
+    if (!decoded.ok) return
+    expect(decoded.payload.scheduledFor).toBe(payload.scheduledFor)
+    expect(decoded.payload.scheduledForLabel).toBe(payload.scheduledForLabel)
   })
 })

@@ -24,6 +24,7 @@ import { useOrderStamps, type OrderStampsState } from '@/hooks/use-order-stamps'
 import { shouldRingForTransition } from '@/lib/order-ready-alert'
 import { describePrepPromise } from '@/lib/prep-time'
 import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
+import { formatOrderTrackingTime } from '@/lib/order-tracking-time'
 
 export interface OrderTrackingBrand {
   storeName: string
@@ -47,18 +48,6 @@ interface OrderTrackingClientProps {
 const POLL_MS = 10000
 const POLL_ALERT_MS = 5000
 const CLEANUP_DELAY_MS = 3000
-
-function formatTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return ''
-  return date.toLocaleString('en-PH', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  })
-}
 
 export function OrderTrackingClient({
   orderId,
@@ -234,7 +223,7 @@ export function OrderTrackingClient({
             status={trackingData.status}
             currentIndex={currentIndex}
             customerName={trackingData.customerName}
-            placedLabel={formatTime(trackingData.createdAt)}
+            placedLabel={formatOrderTrackingTime(trackingData.createdAt)}
             orderTypeLabel={trackingData.orderType}
             scheduledLabel={trackingData.scheduledLabel}
             prepPromise={prepPromise}

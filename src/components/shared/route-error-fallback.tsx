@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { reportClientError } from '@/lib/report-client-error'
+import { isResourceLoadError, recoverChunkLoad } from '@/lib/client-resource-recovery'
 
 export interface RouteErrorProps {
   error: Error & { digest?: string }
@@ -13,6 +14,7 @@ export interface RouteErrorProps {
 export function RouteErrorFallback({ error, reset, boundary }: RouteErrorProps & { boundary: string }) {
   useEffect(() => {
     reportClientError(error, boundary)
+    recoverChunkLoad(error)
   }, [error, boundary])
 
   return (
@@ -22,7 +24,10 @@ export function RouteErrorFallback({ error, reset, boundary }: RouteErrorProps &
         We couldn&apos;t load this page. Try again, or reload the page if the problem continues.
       </p>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-        <button type="button" onClick={reset} style={{ padding: '10px 16px', border: '1px solid currentColor', borderRadius: 6, cursor: 'pointer' }}>
+        <button type="button" onClick={() => {
+          if (isResourceLoadError(error)) window.location.reload()
+          else reset()
+        }} style={{ padding: '10px 16px', border: '1px solid currentColor', borderRadius: 6, cursor: 'pointer' }}>
           Try again
         </button>
         <button type="button" onClick={() => window.location.reload()} style={{ padding: '10px 16px', border: '1px solid currentColor', borderRadius: 6, cursor: 'pointer' }}>
