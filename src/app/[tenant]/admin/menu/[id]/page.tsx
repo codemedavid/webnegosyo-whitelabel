@@ -6,6 +6,8 @@ import { ItemBranchesPanel } from '@/components/admin/item-branches-panel'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
+import { getPresellAllocations } from '@/lib/presell/allocations-read'
+import { toBusinessDayKey } from '@/lib/inventory/business-day'
 
 export default async function EditMenuItemPage({
   params,
@@ -22,17 +24,40 @@ export default async function EditMenuItemPage({
 
   const isMultiBranch = isMultiBranchEnabled(tenant)
 
-  const [item, categories, linkableItems, outlets, itemOverrides] = await Promise.all([
+  // Fetched here rather than by the panel on mount: the panel used to render
+  // empty, hydrate, then start its own round trip, so the merchant watched an
+  // empty calendar before any dates appeared. This rides along with the
+  // queries the page already makes.
+  const isPresellTenant = tenant.presell_enabled ?? false
+  const isModifierGroupsTenant = tenant.modifier_groups_enabled ?? false
+
+  const [item, categories, linkableItems, outlets, itemOverrides, presellRead] = await Promise.all([
     getMenuItemById(itemId, tenant.id).catch(() => null),
     getCachedCategoriesByTenant(tenant.id),
-    getLinkableMenuItems(tenant.id).catch(() => []),
+    // Only the modifier-groups editor reads these, and the query is an
+    // unbounded scan of every dish the tenant has. Skipping it when the
+    // editor is off spares every other store the whole round trip.
+    isModifierGroupsTenant ? getLinkableMenuItems(tenant.id).catch(() => []) : Promise.resolve([]),
     isMultiBranch
       ? createSupabaseOutletRepository().listByTenant(tenant.id).catch(() => [])
       : Promise.resolve([]),
     isMultiBranch
       ? createSupabaseOutletMenuRepository().listByMenuItem(tenant.id, itemId).catch(() => [])
       : Promise.resolve([]),
+    // `allSettled`, not `.catch(() => undefined)`: an unreadable panel and a
+    // dish with no dates are the same empty array, and the merchant would
+    // then save that emptiness over dates that are still on sale.
+    isPresellTenant
+      ? Promise.allSettled([
+          getPresellAllocations(tenant.id, itemId, toBusinessDayKey(new Date().toISOString())),
+        ]).then(([outcome]) => outcome)
+      : Promise.resolve(null),
   ])
+
+  const presellAllocations =
+    presellRead?.status === 'fulfilled' ? presellRead.value : undefined
+  const presellLoadError =
+    presellRead?.status === 'rejected' ? "Could not load this dish's pre-order dates." : undefined
 
   if (!item) {
     return (
@@ -73,10 +98,12 @@ export default async function EditMenuItemPage({
         tenantId={tenant.id}
         tenantSlug={tenantSlug}
         menuEngineeringEnabled={tenant.menu_engineering_enabled}
-        modifierGroupsEnabled={tenant.modifier_groups_enabled ?? false}
+        modifierGroupsEnabled={isModifierGroupsTenant}
         linkableItems={linkableItems}
         inventoryEnabled={tenant.inventory_enabled ?? false}
-        presellEnabled={tenant.presell_enabled ?? false}
+        presellEnabled={isPresellTenant}
+        presellAllocations={presellAllocations}
+        presellLoadError={presellLoadError}
         convexUrl={tenant.convex_deployment_url ?? undefined}
       />
 

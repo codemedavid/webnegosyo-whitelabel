@@ -196,7 +196,7 @@ describe('getDailyRevenue — Convex backend', () => {
     // from the credentials is what keeps this read agreeing with checkout.
     const query = jest.fn().mockResolvedValue({ totalRevenue: 10 })
 
-    await getDailyRevenue({ id: 't3', ...TENANT }, DAY, { convexClient: () => ({ query }) })
+    await getDailyRevenue({ ...TENANT, id: 't3' }, DAY, { convexClient: () => ({ query }) })
 
     expect(query).toHaveBeenCalled()
   })
@@ -210,7 +210,7 @@ describe('getDailyRevenue — Convex backend', () => {
   })
 
   test('returns null when the deployment times out rather than hanging the page', async () => {
-    const query = jest.fn(() => new Promise(() => {}))
+    const query = jest.fn((): Promise<never> => new Promise(() => {}))
 
     const revenue = await getDailyRevenue(TENANT, DAY, {
       convexClient: () => ({ query }),

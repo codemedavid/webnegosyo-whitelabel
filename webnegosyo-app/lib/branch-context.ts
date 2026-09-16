@@ -30,17 +30,10 @@ function trimmed(value: string | null | undefined): string {
  * The scope to actually filter by, given who the account is and which branch
  * they have drilled into.
  *
- * `knownOutletIds` is the store's own branches, used to reject a selection
- * this store does not have — a branch deleted while it was being viewed, or an
- * id left over from another store on a shared device. Such a selection
- * resolves to the whole store rather than to a branch matching no order: an
- * empty Operations tab reads as a broken app, while store-wide reads as "no
- * branch chosen", which is what actually happened.
- *
- * Omitting `knownOutletIds` means the list has not loaded yet, which is not
- * the same as the store having no branches. The selection is honoured in that
- * window — it could only have been set by tapping a card in that same list —
- * so the context does not flicker back to store-wide on every cold start.
+ * A stale selection must stay narrow until explicitly cleared. Falling back
+ * to the whole store would put every branch's totals under the old branch
+ * heading. The register separately validates the roster before accepting sales.
+
  */
 export function resolveEffectiveScope(
   accountScope: BranchScope,
@@ -54,7 +47,9 @@ export function resolveEffectiveScope(
   const selected = trimmed(selectedOutletId);
   if (selected === "") return accountScope;
 
-  if (knownOutletIds && !knownOutletIds.includes(selected)) return accountScope;
+  if (knownOutletIds && !knownOutletIds.includes(selected)) {
+    return { kind: "branch", outletId: selected };
+  }
 
   return { kind: "branch", outletId: selected };
 }

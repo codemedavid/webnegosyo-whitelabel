@@ -1,3 +1,4 @@
+import { formatDailyOrderNumber } from "../../../lib/order-number";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from "react-native";
 import { openExternalUrl } from "../../../lib/safe-url";
@@ -25,6 +26,7 @@ import {
   type CollectedPayment,
 } from "../../../components/order/CollectPaymentSheet";
 import { canCollectPayment } from "../../../lib/order-collect";
+import { isOrderUnpaid, shouldMarkOrderPaid } from "../../../lib/order-paid-state";
 import { resolveLedgerState, isLedgerSafeToEdit } from "../../../lib/order-ledger";
 import { summarizeSettlement } from "../../../lib/order-history-view";
 import { listAllPaymentMethods } from "../../../lib/pos-catalog";
@@ -55,6 +57,8 @@ const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"q
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
 const getOrderPaymentsRef = "orders:getOrderPayments" as unknown as FunctionReference<"query">;
 const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
+const updatePaymentStatusRef =
+  "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
 const getOrderRevisionsRef = "orders:getOrderRevisions" as unknown as FunctionReference<"query">;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
@@ -91,6 +95,9 @@ interface BundleGroup {
 }
 
 interface OrderDetail {
+  dailyNumber?: number | null;
+  outlet_id?: string | null;
+  outletId?: string | null;
   _id: string;
   _creationTime: number;
   customerName: string;
@@ -393,12 +400,33 @@ export default function OrderDetailScreen() {
   // an order edit, which was the only path before: re-tendering rewrites a bill
   // nobody disputed just to record money changing hands.
   const recordPayment = useSafeMutation(recordPaymentRef);
+  // Settling the ledger is only half of it: `payment_status` is what the order
+  // list, the web admin and every export read, and nothing was writing it.
+  const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
   const [isCollectOpen, setIsCollectOpen] = useState(false);
   const [collectMethods, setCollectMethods] = useState<PosPaymentMethod[]>([]);
 
   // The same summary the card renders, so the figure the cashier is asked to
   // collect and the figure they were shown as owing cannot disagree.
-  const balanceDue = order ? summarizeSettlement(order.total, payments ?? []).balance : 0;
+  const settlement = order ? summarizeSettlement(order.total, payments ?? []) : null;
+  const balanceDue = settlement?.balance ?? 0;
+
+  // What the ledger says was collected — only where it can be trusted. An
+  // unavailable or absent ledger says nothing, and silence must not be read as
+  // "nothing collected" on an order whose status is the only witness.
+  const collectedFromLedger =
+    ledgerState === "available" ? settlement?.amountPaid : undefined;
+
+  // The two records of the same money. Collecting writes both now, but every
+  // order collected before that still carries `pending` on the row, and the
+  // ledger beside it is the one that saw the cash.
+  const paymentStatusLabel = isOrderUnpaid({
+    paymentStatus: order?.paymentStatus ?? "pending",
+    total: order?.total,
+    amountPaid: collectedFromLedger,
+  })
+    ? (order?.paymentStatus ?? "pending")
+    : "paid";
   const collectGate = order
     ? canCollectPayment({
         status: order.status,
@@ -448,6 +476,29 @@ export default function OrderDetailScreen() {
         outletId: scope.kind === "branch" ? scope.outletId : undefined,
       });
       setIsCollectOpen(false);
+
+      // The ledger now holds the money; the order row must say so too. Until
+      // this write existed, a collected order kept its "Unpaid" chip and read
+      // as owing its whole total — which is how two bills got collected twice.
+      //
+      // Only when the payment squares the bill: a part payment leaves the
+      // order genuinely owing, and "paid" on it would hide the rest.
+      //
+      // Its own try/catch, and never an alert: the money IS recorded, and a
+      // failure here must not read as a failed collection. The chip falls back
+      // to the ledger, which is right either way.
+      if (
+        shouldMarkOrderPaid({
+          paymentStatus: order.paymentStatus,
+          balanceAfter: balanceDue - payment.amount,
+        })
+      ) {
+        try {
+          await updatePaymentStatus({ orderId: order._id, paymentStatus: "paid" });
+        } catch (err) {
+          console.warn("[order] Payment recorded but the order still reads unpaid:", err);
+        }
+      }
 
       // Bill-out: the money is settled, so this is the customer's receipt.
       // Fire-and-forget — the payment is already recorded, and a dead printer
@@ -552,6 +603,8 @@ export default function OrderDetailScreen() {
         load(
           {
             _id: order._id,
+            outlet_id: order.outlet_id,
+            outletId: order.outletId,
             total: order.total,
             revisionNumber: order.revisionNumber,
             deliveryFee: order.deliveryFee,
@@ -680,7 +733,7 @@ export default function OrderDetailScreen() {
   return (
     <View style={styles.screen}>
       <BackHeader
-        title="Order details"
+        title={`Order ${formatDailyOrderNumber(order.dailyNumber, order._id)}`}
         subtitle={displayCustomerName(order.customerName)}
         actions={<Badge label={order.status} variant={order.status} />}
       />
@@ -832,7 +885,7 @@ export default function OrderDetailScreen() {
                 <Text style={styles.proofLink}>View payment proof</Text>
               </TouchableOpacity>
             )}
-            <Text style={styles.sub}>Status: {order.paymentStatus ?? "pending"}</Text>
+            <Text style={styles.sub}>Status: {paymentStatusLabel}</Text>
           </Card>
         );
       })()}

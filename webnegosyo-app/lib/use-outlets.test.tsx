@@ -114,3 +114,25 @@ describe("useOutlets", () => {
     expect(mockSelectCalls).toBe(2);
   });
 });
+
+it('keeps the selected branch when another screen mounts the branch list', async () => {
+  useAuthStore.getState().setAuth({ tenantId: 't1' });
+  mockQueued = [{ data: [NORTH, SOUTH], error: null }];
+  const first = renderHook(() => useOutlets(), { wrapper });
+  await waitFor(() => expect(first.result.current.isLoading).toBe(false));
+  act(() => useBranchContextStore.getState().selectBranch(SOUTH.id, SOUTH.name));
+  renderHook(() => useOutlets(), { wrapper });
+  expect(useBranchContextStore.getState().selectedOutletId).toBe(SOUTH.id);
+});
+
+it('clears the selection when switching tenants', async () => {
+  useAuthStore.getState().setAuth({ tenantId: 't1' });
+  mockQueued = [{ data: [NORTH], error: null }, { data: [SOUTH], error: null }];
+  const hook = renderHook(() => useOutlets(), { wrapper });
+  await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
+  act(() => useBranchContextStore.getState().selectBranch(NORTH.id, NORTH.name));
+  act(() => useAuthStore.getState().setAuth({ tenantId: 't2' }));
+  await waitFor(() => expect(hook.result.current.outlets).toEqual([SOUTH]));
+  expect(useBranchContextStore.getState().selectedOutletId).toBeNull();
+  expect(useBranchContextStore.getState().knownOutletIds).toEqual([SOUTH.id]);
+});

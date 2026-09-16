@@ -40,6 +40,42 @@ function navigatorWrapper(focusListeners: Array<() => void>) {
 }
 
 describe("useRefetchOnScreenFocus", () => {
+  it("refreshes after a cold load completes and uses each newly loaded timestamp", () => {
+    const listeners: Array<() => void> = [];
+    const refetch = jest.fn(async () => {});
+    const now = jest.spyOn(Date, "now").mockReturnValue(50_000);
+    try {
+      const { rerender, unmount } = renderHook(
+        ({ isFetching, dataUpdatedAt }: { isFetching: boolean; dataUpdatedAt: number }) =>
+          useRefetchOnScreenFocus({ enabled: true, staleMs: 10_000, isFetching, dataUpdatedAt, refetch }),
+        { initialProps: { isFetching: true, dataUpdatedAt: 0 }, wrapper: navigatorWrapper(listeners) }
+      );
+      const onFocus = listeners[0];
+      onFocus();
+      expect(refetch).not.toHaveBeenCalled();
+
+      rerender({ isFetching: false, dataUpdatedAt: 50_000 });
+      now.mockReturnValue(60_001);
+      onFocus();
+      expect(refetch).toHaveBeenCalledTimes(1);
+
+      rerender({ isFetching: true, dataUpdatedAt: 50_000 });
+      onFocus();
+      expect(refetch).toHaveBeenCalledTimes(1);
+
+      rerender({ isFetching: false, dataUpdatedAt: 60_001 });
+      onFocus();
+      expect(refetch).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(70_002);
+      onFocus();
+      expect(refetch).toHaveBeenCalledTimes(2);
+      expect(listeners).toEqual([onFocus]);
+      unmount();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("does nothing outside a navigator", () => {
     const refetch = jest.fn(async () => {});
     renderHook(() =>

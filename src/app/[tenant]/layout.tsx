@@ -6,6 +6,7 @@ import { SiteFooter } from '@/components/customer/site-footer'
 import { TenantFlashProvider } from '@/components/customer/flash-screen-loader'
 import { resolveFlashScreenBranding } from '@/lib/flash-loader'
 import { resolveTenantFavicon } from '@/lib/tenant-favicon'
+import { omitTenantSecrets } from '@/lib/tenant-public'
 
 type Props = {
     params: Promise<{ tenant: string }>
@@ -51,7 +52,7 @@ export default async function TenantLayout({ params, children }: Props) {
                 <NavigationProgress color={primaryColor} />
             </Suspense>
             {children}
-            <SiteFooter tenant={tenant} />
+            <SiteFooter tenant={omitTenantSecrets(tenant)} />
         </TenantFlashProvider>
     )
 }

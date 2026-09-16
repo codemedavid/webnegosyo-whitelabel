@@ -29,7 +29,11 @@ import { InventoryHealthStrip, InventoryLogs } from '@/components/admin/inventor
 import { DailyReportPanel } from '@/components/admin/daily-report-panel'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { RecipeCoverageRow } from '@/lib/inventory/recipe-coverage'
-import type { InventoryHealth } from '@/lib/inventory/inventory-health'
+import {
+  summarizeInventoryHealth,
+  type InventoryFlags,
+  type InventoryHealth,
+} from '@/lib/inventory/inventory-health'
 import type { AutoHiddenDish } from '@/lib/inventory/auto-86-blame'
 import type { ActivityFeedEntry } from '@/lib/inventory/activity-feed'
 import { cn } from '@/lib/utils'
@@ -161,6 +165,14 @@ interface InventoryManagerProps {
    * tabs rather than crashing if a caller has not been updated.
    */
   health?: InventoryHealth
+  /**
+   * The tenant flags the verdict depends on. With these the strip is
+   * re-summarised from the ingredient list on screen, so a row the merchant
+   * just added counts immediately instead of waiting for the server figure —
+   * the table said "1 ingredient" under a strip still saying "No ingredients
+   * yet". Without them the server's `health` is shown as given.
+   */
+  healthFlags?: InventoryFlags
   autoHidden?: AutoHiddenDish[]
   activity?: ActivityFeedEntry[]
   /** The ledger read failed — distinct from a quiet day with nothing in it. */
@@ -237,6 +249,7 @@ export function InventoryManager({
   recipeComponents = [],
   coverageLoadFailed = false,
   health,
+  healthFlags,
   autoHidden = [],
   activity = [],
   activityLoadFailed = false,
@@ -255,6 +268,19 @@ export function InventoryManager({
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
 
   const canShowReport = Boolean(dailyReport && latestDayKey)
+
+  // One list feeds both the table and the strip above it, so they cannot
+  // disagree about how many ingredients exist. Falls back to the server's
+  // figure when the flags it needs were not supplied.
+  const liveHealth = useMemo(() => {
+    if (!healthFlags) return health
+    return summarizeInventoryHealth({
+      ingredients,
+      coverage: coverageRows,
+      autoHiddenCount: autoHidden.length,
+      flags: healthFlags,
+    })
+  }, [health, healthFlags, ingredients, coverageRows, autoHidden.length])
 
   // An EMPTY coverage list means the caller could not say what is set up — not
   // that nothing is. Passing 0 there would let a missing prop masquerade as the
@@ -312,7 +338,7 @@ export function InventoryManager({
           branchStockByItemId={branchStockByItemId}
           onChange={setIngredients}
           onUnitsChange={setUnits}
-          health={health}
+          health={liveHealth}
           autoHidden={autoHidden}
           activity={activity}
           activityLoadFailed={activityLoadFailed}

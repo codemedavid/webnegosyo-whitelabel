@@ -63,6 +63,9 @@ export function ProductDetailSheet({
     const [upsellsLoading, setUpsellsLoading] = useState(false)
     const requestedItemRef = useRef<string | null>(null)
     const dragControls = useDragControls()
+    const linkedModifierItems = useMemo(() => new Map(
+        allMenuItems.filter(candidate => candidate.tenant_id === tenant.id).map(candidate => [candidate.id, candidate]),
+    ), [allMenuItems, tenant.id])
 
     useBodyScrollLock(open)
 
@@ -226,6 +229,7 @@ export function ProductDetailSheet({
                             pairingRulesEnabled={pairingRulesEnabled}
                             bundlesEnabled={bundlesEnabled}
                             modifierGroupsEnabled={!!tenant.modifier_groups_enabled}
+                            linkedModifierItems={linkedModifierItems}
                             hideCurrencySymbol={hideCurrencySymbol}
                             isBrandAdmin={false}
                             suppressAutoUpgrade={suppressAutoUpgrade}

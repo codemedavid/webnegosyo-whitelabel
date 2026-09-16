@@ -14,6 +14,8 @@ export interface LoyaltyProgramInput {
   scope: LoyaltyProgramScope
   outletId: string | null
   rules: LoyaltyRules
+  activatesAt: string | null
+  endsAt: string | null
 }
 
 export type LoyaltyProgramInputParse =
@@ -29,6 +31,17 @@ function text(value: unknown): string {
 export function parseLoyaltyProgramInput(raw: unknown): LoyaltyProgramInputParse {
   if (!raw || typeof raw !== 'object') return { ok: false, error: 'A program object is required.' }
   const input = raw as Record<string, unknown>
+
+  const dates: Record<string, string | null> = {}
+  for (const field of ['activatesAt', 'endsAt']) {
+    const value = input[field]
+    if (value == null || value === '') { dates[field] = null; continue }
+    if (typeof value !== 'string' || !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
+      return { ok: false, error: 'Use a valid date and time with a time zone.' }
+    }
+    dates[field] = new Date(value).toISOString()
+  }
+  if (dates.activatesAt && dates.endsAt && dates.endsAt <= dates.activatesAt) return { ok: false, error: 'The end must be after activation.' }
 
   const name = text(input.name)
   if (!name) return { ok: false, error: 'Give the program a name.' }
@@ -50,6 +63,8 @@ export function parseLoyaltyProgramInput(raw: unknown): LoyaltyProgramInputParse
       scope,
       outletId: scope === 'branch' ? outletId : null,
       rules: rules.value,
+      activatesAt: dates.activatesAt,
+      endsAt: dates.endsAt,
     },
   }
 }

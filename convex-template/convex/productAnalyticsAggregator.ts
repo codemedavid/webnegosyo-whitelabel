@@ -1,3 +1,4 @@
+import { orderTime } from './orderTime';
 import { v } from "convex/values";
 import { action, internalAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -296,7 +297,7 @@ export const computeAnalytics = internalAction({
               1,
               activeOrders.length > 0
                 ? Math.ceil(
-                    (now - Math.min(...activeOrders.map((o: { _creationTime: number }) => o._creationTime))) /
+                    (now - Math.min(...activeOrders.map((o: { _creationTime: number }) => orderTime(o)))) /
                       (24 * 60 * 60 * 1000)
                   )
                 : 1
@@ -307,7 +308,7 @@ export const computeAnalytics = internalAction({
 
       // Filter orders by period
       const periodOrders = activeOrders.filter(
-        (o: { _creationTime: number }) => o._creationTime >= cutoff
+        (o: { _creationTime: number }) => orderTime(o) >= cutoff
       );
       // Get all order items and filter by period orders
       // We need to get items for each order
@@ -330,7 +331,7 @@ export const computeAnalytics = internalAction({
           existing.totalRevenue += item.subtotal;
           existing.lastOrderDate = Math.max(
             existing.lastOrderDate,
-            order._creationTime
+            orderTime(order)
           );
           itemMap.set(item.menuItemId, existing);
         }
@@ -370,7 +371,7 @@ export const computeAnalytics = internalAction({
         const prevCutoff = now - 14 * 24 * 60 * 60 * 1000;
         const prevOrders = activeOrders.filter(
           (o: { _creationTime: number }) =>
-            o._creationTime >= prevCutoff && o._creationTime < cutoff
+            orderTime(o) >= prevCutoff && orderTime(o) < cutoff
         );
 
         const prevItemMap = new Map<string, number>();

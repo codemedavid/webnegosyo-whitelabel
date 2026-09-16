@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { Minus, Plus, X } from 'lucide-react'
 import {
@@ -12,6 +12,11 @@ import { Button } from '@/components/ui/button'
 import type { MenuItem, Variation, Addon, VariationOption, CartItem } from '@/types/database'
 import { formatPrice, calculateCartItemSubtotal } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { AddonQuantityControl } from './addon-quantity-control'
+import { ModifierGroupsSelector } from './modifier-groups-selector'
+import { addonQuantity, setAddonQuantity } from '@/lib/addon-quantity'
+import { normalizeModifierGroups } from '@/lib/modifier-groups'
+import { getDefaultSelection, mapCartFormatToSelection, mapSelectionToCartFormat, restoreLinkedOptionSnapshots, setOptionQuantity, toggleOption, validateAllGroups, type ModifierSelection } from '@/lib/modifier-groups-cart'
 import { toast } from 'sonner'
 
 interface ItemDetailModalProps {
@@ -44,6 +49,12 @@ export function ItemDetailModal({
   editItem,
 }: ItemDetailModalProps) {
   const isEditMode = !!editItem
+  const groups = useMemo(() => {
+    const normalized = item?.modifier_groups?.length ? normalizeModifierGroups(item) : []
+    return editItem ? restoreLinkedOptionSnapshots(normalized, { selectedVariations: editItem.selected_variations ?? {}, selectedAddons: editItem.selected_addons }) : normalized
+  }, [item, editItem])
+  const useGroups = groups.length > 0
+  const [selection, setSelection] = useState<ModifierSelection>({})
   // Legacy single variation
   const [selectedVariation, setSelectedVariation] = useState<Variation | undefined>()
   // New grouped variations: map of type ID -> selected option
@@ -71,6 +82,10 @@ export function ItemDetailModal({
   useEffect(() => {
     if (!open || !item) return
 
+    setSelection(editItem ? mapCartFormatToSelection(groups, {
+      selectedVariations: editItem.selected_variations ?? (editItem.selected_variation ? { 'legacy-variations': { ...editItem.selected_variation, display_order: 0 } } : {}),
+      selectedAddons: editItem.selected_addons,
+    }) : getDefaultSelection(groups))
     if (editItem) {
       setSelectedVariation(editItem.selected_variation)
       setSelectedVariations(editItem.selected_variations ?? {})
@@ -97,7 +112,10 @@ export function ItemDetailModal({
       })
       setSelectedVariations(defaults)
     }
-  }, [open, item, editItem])
+    setSelectedAddons([])
+    setQuantity(1)
+    setSpecialInstructions('')
+  }, [open, item, editItem, groups])
 
   if (!item) return null
 
@@ -106,16 +124,23 @@ export function ItemDetailModal({
   const hasVariations = item.variations.length > 0
   const hasVariationTypes = item.variation_types && item.variation_types.length > 0
   const hasAddons = item.addons.length > 0
-  const hasCustomizations = hasVariations || hasVariationTypes || hasAddons
+  const hasCustomizations = useGroups || hasVariations || hasVariationTypes || hasAddons
 
   // Calculate total price based on which variation system is used
-  const totalPrice = useNewVariations
+  const cartFormat = mapSelectionToCartFormat(groups, selection)
+  const totalPrice = useGroups
+    ? calculateCartItemSubtotal(basePrice, cartFormat.selectedVariations, cartFormat.selectedAddons, quantity)
+    : useNewVariations
     ? calculateCartItemSubtotal(basePrice, selectedVariations, selectedAddons, quantity)
     : calculateCartItemSubtotal(basePrice, selectedVariation, selectedAddons, quantity)
 
   const handleAddToCart = () => {
+    if (useGroups) {
+      const result = validateAllGroups(groups, selection, quantity)
+      if (!result.valid) { toast.error(result.error); return }
+    }
     // Check if required variation types have selections
-    if (useNewVariations && item.variation_types) {
+    if (!useGroups && useNewVariations && item.variation_types) {
       const missingRequired = item.variation_types.find(
         type => type.is_required && !selectedVariations[type.id]
       )
@@ -126,26 +151,17 @@ export function ItemDetailModal({
     }
 
     // Pass the appropriate variation format
-    const variationData = useNewVariations ? selectedVariations : selectedVariation
-    onAddToCart(item, variationData, selectedAddons, quantity, specialInstructions)
+    const variationData = useGroups ? cartFormat.selectedVariations : useNewVariations ? selectedVariations : selectedVariation
+    onAddToCart(item, variationData, useGroups ? cartFormat.selectedAddons : selectedAddons, quantity, specialInstructions)
     toast.success(isEditMode ? `Updated ${item.name}` : `Added ${item.name} to cart`)
     handleOpenChange(false)
-  }
-
-  const toggleAddon = (addon: Addon) => {
-    setSelectedAddons((prev) => {
-      const exists = prev.find((a) => a.id === addon.id)
-      if (exists) {
-        return prev.filter((a) => a.id !== addon.id)
-      }
-      return [...prev, addon]
-    })
   }
 
   // Compact, minimal modal design - only show what's needed
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        aria-describedby={undefined}
         data-branding-scope="storefront/quickview"
         className="!fixed w-[calc(100%-2rem)] max-w-md sm:max-w-lg flex flex-col p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl !left-1/2 !-translate-x-1/2 !m-0 border shadow-2xl !bottom-4 sm:!top-1/2 sm:!bottom-auto sm:!-translate-y-1/2 h-[72vh] sm:h-auto sm:max-h-[68vh]"
         showCloseButton={false}
@@ -231,7 +247,7 @@ export function ItemDetailModal({
             <div className="bg-white">
               <div className="p-4 sm:p-6 space-y-5 pb-6">
                 {/* New Grouped Variation Types */}
-                {hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
+                {!useGroups && hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
                   const selectedOption = selectedVariations[variationType.id]
 
                   return (
@@ -346,7 +362,7 @@ export function ItemDetailModal({
                 })}
 
                 {/* Legacy Variations (fallback for old items) */}
-                {!useNewVariations && hasVariations && (
+                {!useGroups && !useNewVariations && hasVariations && (
                   <div className="scroll-mt-4">
                     <h3 className="text-sm sm:text-base font-semibold mb-3 text-gray-900">
                       Choose Size
@@ -386,58 +402,23 @@ export function ItemDetailModal({
                   </div>
                 )}
 
+                {useGroups && <ModifierGroupsSelector groups={groups} selection={selection} parentQuantity={quantity}
+                  onToggle={(group, id) => setSelection(prev => toggleOption(prev, group, id))}
+                  onQuantityChange={(group, id, value) => setSelection(prev => setOptionQuantity(prev, group, id, value))} />}
+
                 {/* Add-ons */}
-                {hasAddons && (
+                {!useGroups && hasAddons && (
                   <div className="scroll-mt-4">
                     <h3 className="text-sm sm:text-base font-semibold mb-3 text-gray-900">
                       Add-ons <span className="text-xs font-normal text-gray-500">(Optional)</span>
                     </h3>
                     <div className="space-y-2">
-                      {item.addons.map((addon) => {
-                        const isSelected = selectedAddons.some((a) => a.id === addon.id)
-
-                        return (
-                          <button
-                            key={addon.id}
-                            type="button"
-                            onClick={() => toggleAddon(addon)}
-                            className={`
-                            w-full flex items-center justify-between p-3 sm:p-3.5 rounded-lg border-2 transition-all active:scale-[0.98]
-                            ${isSelected
-                                ? 'border-[currentColor] shadow-sm'
-                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                              }
-                          `}
-                            style={isSelected ? {
-                              color: branding.primary,
-                              borderColor: branding.primary,
-                              backgroundColor: `${branding.primary}08`
-                            } : { backgroundColor: 'white' }}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={`
-                              h-5 w-5 rounded border-2 flex items-center justify-center transition-all flex-shrink-0
-                              ${isSelected
-                                  ? 'border-[currentColor] bg-[currentColor]'
-                                  : 'border-gray-300'
-                                }
-                            `}>
-                                {isSelected && (
-                                  <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                              </div>
-                              <span className={`text-sm font-medium truncate ${isSelected ? '' : 'text-gray-900'}`}>
-                                {addon.name}
-                              </span>
-                            </div>
-                            <span className={`text-sm font-semibold flex-shrink-0 ml-2 ${isSelected ? '' : 'text-gray-700'}`}>
-                              {addon.price === 0 ? 'Free' : `+${formatPrice(addon.price)}`}
-                            </span>
-                          </button>
-                        )
-                      })}
+                      <p className="text-xs text-gray-500">Quantities are per item.</p>
+                      {item.addons.map(addon => (
+                        <AddonQuantityControl key={addon.id} name={addon.name} price={addon.price}
+                          quantity={selectedAddons.some(a => a.id === addon.id) ? addonQuantity(selectedAddons.find(a => a.id === addon.id)!) : 0}
+                          onChange={value => setSelectedAddons(prev => setAddonQuantity(prev, addon, value))} />
+                      ))}
                     </div>
                   </div>
                 )}

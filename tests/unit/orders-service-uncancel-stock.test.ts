@@ -35,7 +35,7 @@ jest.mock('@/lib/loyverse/push-service', () => ({
 // Loyalty follows every status change through the same writer. Mocked so the
 // test never reaches for a real service-role client, and asserted below so the
 // hook cannot be dropped silently.
-const runLoyaltyForOrder = jest.fn(() => Promise.resolve(null))
+const runLoyaltyForOrder = jest.fn((..._args: unknown[]) => Promise.resolve(null))
 jest.mock('@/lib/loyalty/lifecycle', () => ({
   runLoyaltyForOrder: (...args: unknown[]) => runLoyaltyForOrder(...args),
 }))

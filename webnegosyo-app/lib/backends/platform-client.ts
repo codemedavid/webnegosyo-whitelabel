@@ -21,6 +21,7 @@ export interface PlatformClient {
 export interface PlatformQueryBuilder {
   select(columns?: string): PlatformQueryBuilder;
   eq(column: string, value: unknown): PlatformQueryBuilder;
+  or(filters: string): PlatformQueryBuilder;
   neq(column: string, value: unknown): PlatformQueryBuilder;
   in(column: string, values: readonly unknown[]): PlatformQueryBuilder;
   gte(column: string, value: unknown): PlatformQueryBuilder;

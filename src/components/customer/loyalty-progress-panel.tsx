@@ -1,6 +1,7 @@
 'use client'
 
 import { Loader2, Sparkles, Stamp } from 'lucide-react'
+import Link from 'next/link'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import type { OrderStampCard } from '@/lib/loyalty/stamp-status'
 import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
@@ -13,6 +14,7 @@ interface LoyaltyProgressPanelProps {
   isLoading: boolean
   storeName: string
   logoUrl?: string | null
+  tenantSlug?: string
 }
 
 /**
@@ -32,6 +34,7 @@ export function LoyaltyProgressPanel({
   isLoading,
   storeName,
   logoUrl = null,
+  tenantSlug,
 }: LoyaltyProgressPanelProps) {
   if (isLoading) {
     return (
@@ -85,6 +88,7 @@ export function LoyaltyProgressPanel({
         <p className="text-xs" style={{ color: 'var(--trk-text-muted)' }}>
           Use this number every time and your stamps add up automatically.
         </p>
+        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="inline-block text-xs font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & claim</Link> : null}
       </div>
     </section>
   )

@@ -72,7 +72,7 @@ const tenantInput = {
 }
 
 describe('updateTenantSupabase with an injected ProvisioningCtx (MCP path)', () => {
-  beforeEach(() => cookieCreateClient.mockClear())
+  beforeEach(() => { cookieCreateClient.mockClear() })
 
   it('updates the tenant via the injected client and never touches the cookie client', async () => {
     const stub = makeChainableClient()
@@ -92,7 +92,7 @@ describe('updateTenantSupabase with an injected ProvisioningCtx (MCP path)', () 
 })
 
 describe('createPaymentMethod with an injected ProvisioningCtx (MCP path)', () => {
-  beforeEach(() => cookieCreateClient.mockClear())
+  beforeEach(() => { cookieCreateClient.mockClear() })
 
   it('inserts via the injected client and never touches the cookie client', async () => {
     const stub = makeChainableClient()

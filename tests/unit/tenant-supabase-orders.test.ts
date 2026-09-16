@@ -37,6 +37,12 @@ function makeInput(overrides: Partial<TenantOrderInput> = {}): TenantOrderInput 
 // ── Pure row builders ────────────────────────────────────────────────────────
 
 describe('buildTenantOrderRow', () => {
+  it('persists selected extra quantities in the existing order metadata', () => {
+    const input = makeInput()
+    input.items[0] = { ...input.items[0], addon_ids: ['cheese'], addon_quantities: { cheese: 3 } }
+    const row = buildTenantOrderRow(input, FIXED_TOKEN)
+    expect(row.customer_data._inventory_selections).toMatchObject({ version: 1, items: [{ quantity: 2, addonIds: ['cheese'], addonQuantities: { cheese: 3 } }] })
+  })
   it('totals item subtotals plus delivery fee and service charge', () => {
     // Arrange
     const input = makeInput({ deliveryFee: 50, serviceChargeAmount: 20 })

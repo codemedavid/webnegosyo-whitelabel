@@ -117,6 +117,21 @@ describe('libraryEntryToModifierGroup', () => {
 })
 
 describe('buildLibraryDraftFromGroup', () => {
+  it('round trips quantity rules and option costing/link definitions through library validation and attachment', () => {
+    const original: ModifierGroup = {
+      id: 'extras', name: 'Extras', display_order: 0, selection_mode: 'quantity', min_select: 0, max_select: 1,
+      options: [{ id: 'rice', name: 'Rice', price_modifier: 25, display_order: 0, cost_mode: 'composite', menu_item_id: '11111111-1111-4111-8111-111111111111', is_upgrade_target: true, manual_cost: 8, stock_mode: 'recipe' }],
+    }
+    const parsed = modifierGroupLibraryEntrySchema.parse(buildLibraryDraftFromGroup(original))
+    const attached = libraryEntryToModifierGroup(makeEntry({ ...parsed, options: parsed.options as ModifierGroup['options'] }), seqIds())
+    expect(attached).toMatchObject({ selection_mode: 'quantity', min_select: 0, max_select: 1 })
+    expect(attached.options[0]).toMatchObject({ cost_mode: 'composite', menu_item_id: original.options[0].menu_item_id, is_upgrade_target: true, manual_cost: 8 })
+    expect(attached.options[0].stock_mode).toBeUndefined()
+    expect(attached.options[0].id).not.toBe('rice')
+    const unlinked = { ...original, options: [{ ...original.options[0], menu_item_id: null }] }
+    expect(modifierGroupLibraryEntrySchema.parse(buildLibraryDraftFromGroup(unlinked)).options[0].menu_item_id).toBeNull()
+  })
+
   it('prefills a draft from an existing item group, stripping ids', () => {
     const group: ModifierGroup = {
       id: 'grp_x',

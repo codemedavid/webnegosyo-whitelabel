@@ -259,3 +259,11 @@ describe("runPlatformAnalyticsQuery — figures", () => {
     expect(rows[0].marginPercent).toBe(50);
   });
 });
+
+describe('branch funnel events', () => {
+  it('filters events by the branch in metadata', async () => {
+    const { client, calls } = fakePlatformClient({ analytics_events: [{ data: [], error: null }] });
+    await runPlatformAnalyticsQuery(client, TENANT, 'analytics:getUpsellAnalytics', {}, { kind: 'branch', outletId: 'north' });
+    expect(opsOf(calls, 'or')).toContainEqual(['metadata->>outlet_id.eq."north",and(metadata->>outlet_id.is.null,metadata->>outletId.eq."north")']);
+  });
+});

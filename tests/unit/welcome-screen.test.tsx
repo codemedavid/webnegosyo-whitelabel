@@ -245,6 +245,38 @@ describe('OutletSplash — single CTA journey', () => {
 })
 
 /**
+ * Second live-tenant fix on the same phone: the splash overlay is fixed, but
+ * the MENU PAGE underneath stayed scrollable — iOS Safari kept painting the
+ * scrolled menu in the strip under its translucent toolbar, so product cards
+ * "cropped" through below the welcome page. The overlay must lock the body
+ * scroll for as long as it is on screen, and give the scroll back when the
+ * customer moves on to the menu.
+ */
+describe('OutletSplash — locks the page behind it', () => {
+  it('locks body scrolling while mounted and restores it on unmount', () => {
+    const outlets = [makePickerOutlet({ id: 'valenzuela' }), makePickerOutlet({ id: 'cainta' })]
+    document.body.style.overflow = ''
+
+    const { unmount } = render(
+      <OutletSplash
+        tenantName="Above Sea Level"
+        outlets={outlets}
+        reason={null}
+        isLocating={false}
+        onLocate={jest.fn()}
+        rankFor={() => ({ outlets: rankAll(outlets) })}
+        onSelect={jest.fn()}
+        welcome={null}
+      />
+    )
+    expect(document.body.style.overflow).toBe('hidden')
+
+    unmount()
+    expect(document.body.style.overflow).toBe('')
+  })
+})
+
+/**
  * Two fixes after seeing the page on a live multi-branch tenant:
  * the flash-screen headline ("Loading menu...") was leaking into the welcome
  * heading, and three tiles wrapped 2 + 1 hard against the left edge.

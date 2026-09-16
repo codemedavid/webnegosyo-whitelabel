@@ -1,3 +1,5 @@
+import { readOrderNumber } from '@/lib/read-order-number'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { View, ScrollView, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native'
 import { uuid } from 'expo-modules-core'
@@ -8,7 +10,7 @@ import { useOrderTypes } from '@/lib/queries/use-order-types'
 import { useFormFields } from '@/lib/queries/use-form-fields'
 import { usePaymentMethods } from '@/lib/queries/use-payment-methods'
 import { supabase } from '@/lib/supabase'
-import { formatPrice, generateMessengerMessage, generateMessengerUrl, generateMessengerCombinedUrl, generateMessengerDirectUrl, calculateCartItemUnitPrice } from '@/lib/cart-utils'
+import { generateMessengerMessage, generateMessengerUrl, generateMessengerCombinedUrl, generateMessengerDirectUrl, calculateCartItemUnitPrice } from '@/lib/cart-utils'
 import { DynamicForm } from '@/components/checkout/dynamic-form'
 import { PaymentMethodCard } from '@/components/checkout/payment-method-card'
 import { AdvanceOrderScheduler } from '@/components/checkout/advance-order-scheduler'
@@ -183,6 +185,8 @@ export default function CheckoutScreen() {
     scheduleMode,
     scheduleDate,
     advanceConfig.enabled,
+    advanceConfig.allowAsap,
+    isSmsOptedIn,
     advanceConfig.maxDaysAhead,
     advanceConfig.leadTimeMinutes,
     advanceConfig.slotIntervalMinutes,
@@ -499,6 +503,11 @@ export default function CheckoutScreen() {
         }
       }
 
+      // The write stays insert-only: anon reads use the existing capability RPC.
+      const dailyNumber = orderId && !tenant.convex_deployment_url
+        ? await readOrderNumber(() => supabase().rpc('get_customer_order', { p_order_id: orderId }) as unknown as PromiseLike<{ data: unknown; error: unknown }>)
+        : null
+
       // Generate messenger message and URL (always happens)
       const message = generateMessengerMessage(
         items,
@@ -507,7 +516,8 @@ export default function CheckoutScreen() {
         formValues,
         selectedPaymentMethod ? { name: selectedPaymentMethod.name, details: selectedPaymentMethod.details } : null,
         formFields.map(f => ({ field_name: f.field_name, field_label: f.field_label })),
-        scheduledForLabel
+        scheduledForLabel,
+        formatDailyOrderNumber(dailyNumber, orderId ?? undefined)
       )
 
       const messengerPageId = tenant.messenger_page_id || tenant.messenger_username
@@ -560,6 +570,7 @@ export default function CheckoutScreen() {
         messengerMessage: message,
         messengerUrl: messengerUrl || '',
         orderId,
+        dailyNumber,
         saveStatus: outcome.status,
         saveMessage: outcome.message,
         scheduledForLabel,
@@ -611,6 +622,8 @@ export default function CheckoutScreen() {
     paymentProofPublicId,
     paymentProofReference,
     advanceConfig.enabled,
+    advanceConfig.allowAsap,
+    isSmsOptedIn,
     scheduleMode,
     scheduledForISO,
     scheduledForLabel,

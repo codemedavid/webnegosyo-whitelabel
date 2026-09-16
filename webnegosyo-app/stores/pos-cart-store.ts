@@ -8,6 +8,9 @@
  * new arrays — this store never mutates in place.
  */
 
+import { resolveRegisterOutlet } from "../lib/register-outlet";
+import type { OrderOutletContext } from "../lib/order-outlet";
+import { useBranchContextStore } from "./branch-context-store";
 import { create } from "zustand";
 import {
   addLine,
@@ -62,6 +65,8 @@ import {
 
 interface PosCartState {
   lines: PosCartLine[];
+  /** Branch that priced this sale, captured when its first item is added. */
+  saleOutlet: OrderOutletContext | null;
   /**
    * Set while the register is editing a placed order rather than ringing up a
    * new sale. Null is the ordinary counter-sale mode.
@@ -191,6 +196,7 @@ function discountBasis(state: PosCartState): { charge: number; deliveryFee: numb
 
 export const usePosCartStore = create<PosCartState>((set, get) => ({
   lines: [],
+  saleOutlet: null,
   editContext: null,
   editWarnings: [],
   orderTypeId: null,
@@ -204,12 +210,22 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   // A placed order's lines are priced as quoted; the register never marks
   // them up, so an edit ignores the channel pricing entirely.
   add: (input) =>
-    set((s) => ({
-      lines: addLine(
-        s.lines,
-        priceLineInputForOrderType(input, s.editContext ? null : s.orderTypePricing),
-      ),
-    })),
+    set((s) => {
+      const selection = useBranchContextStore.getState();
+      const outlet = resolveRegisterOutlet(useAuthStore.getState(), selection);
+      if (!s.editContext) {
+        if ((selection.knownOutletIds?.length ?? 0) > 0 && !outlet) {
+          throw new Error("Choose a branch before starting a sale.");
+        }
+        if (s.lines.length > 0 && (s.saleOutlet?.id ?? null) !== (outlet?.id ?? null)) {
+          throw new Error("Branch changed. Return to the original branch, or clear the cart and start a new sale.");
+        }
+      }
+      return {
+        saleOutlet: s.lines.length === 0 && !s.editContext ? outlet : s.saleOutlet,
+        lines: addLine(s.lines, priceLineInputForOrderType(input, s.editContext ? null : s.orderTypePricing)),
+      };
+    }),
   // Both of these can empty the cart — `updateQty(key, 0)` removes the line —
   // and an emptied cart is the end of a sale. `discountAfterCartChange` decides
   // whether the held discount survives, so a cashier stepping down to zero
@@ -234,6 +250,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   reset: () =>
     set({
       lines: clearCart(),
+      saleOutlet: null,
       ...clearedSaleCustomer(),
       ...clearedSaleDelivery(),
       editContext: null,
@@ -275,6 +292,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   endEdit: () =>
     set({
       lines: clearCart(),
+      saleOutlet: null,
       ...clearedSaleCustomer(),
       ...clearedSaleDelivery(),
       editContext: null,
@@ -313,10 +331,11 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   sessionDiscount: () => {
     const { lines, discount } = get();
     const { charge, deliveryFee } = discountBasis(get());
-    // The branch comes from the session, not a caller: `totals()` is read from
-    // many places that have no reason to know about outlets, and a dropped
-    // branch would silently honour a voucher locked to another shop.
-    const outletId = useAuthStore.getState().outletId;
+    // Keep voucher eligibility on the branch that priced the cart (or the
+    // original order during edits), even if the owner changes their view.
+    const outletId = get().editContext
+      ? get().editContext?.outletId ?? null
+      : get().saleOutlet?.id ?? null;
     return sessionDiscount(discount, lines, charge, new Date(), outletId, deliveryFee);
   },
 
@@ -329,7 +348,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       lines,
       charge,
       new Date(),
-      useAuthStore.getState().outletId,
+      get().editContext ? get().editContext?.outletId ?? null : get().saleOutlet?.id ?? null,
       deliveryFee,
     );
   },

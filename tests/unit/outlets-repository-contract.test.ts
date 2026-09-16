@@ -27,12 +27,14 @@ export function describeOutletRepositoryContract(
       name: 'BGC High Street',
       slug: 'bgc',
       address: '9th Ave, Taguig',
+      image_url: null,
       latitude: 14.5507,
       longitude: 121.047,
       phone: null,
       operating_hours: null,
       timezone: null,
       supports_pickup: true,
+      supports_dine_in: false,
       supports_delivery: true,
       delivery_radius_km: null,
       is_active: true,
@@ -260,7 +262,7 @@ export function describeOutletRepositoryContract(
 
       it('rejects a patch that turns off the last remaining fulfillment mode', async () => {
         // Only catchable after merging: the patch alone looks harmless.
-        await repo.update(TENANT, existing.id, { supports_pickup: false })
+        await repo.update(TENANT, existing.id, { supports_pickup: false, supports_dine_in: false })
         await expect(
           repo.update(TENANT, existing.id, { supports_delivery: false })
         ).rejects.toThrow(/dine-in, pickup, or delivery/i)

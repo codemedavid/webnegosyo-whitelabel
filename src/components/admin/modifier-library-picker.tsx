@@ -25,7 +25,9 @@ interface ModifierLibraryPickerProps {
 function describeEntry(entry: ModifierGroupLibraryEntry): string {
   const count = `${entry.options.length} option${entry.options.length === 1 ? '' : 's'}`
   const kind =
-    entry.max_select === 1
+    entry.selection_mode === 'quantity'
+      ? 'add-ons · quantities'
+      : entry.max_select === 1
       ? 'single-select'
       : entry.max_select === null
         ? 'multi-select'

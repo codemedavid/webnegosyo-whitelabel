@@ -5,7 +5,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { RecipeDisclosure } from '@/components/admin/recipe-disclosure'
 
 interface Addon {
   id: string
@@ -62,6 +62,7 @@ export function AddonEditor({
         </div>
       </CardHeader>
       <CardContent>
+        <p className="mb-3 text-xs text-muted-foreground">Enter 0 for a free add-on.</p>
         {addons.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground">
             No add-ons. Add extras like Extra Cheese, No Onions.
@@ -93,7 +94,15 @@ export function AddonEditor({
                 </Button>
               </div>
               {canAttachRecipe && recipeContext?.menuItemId && (
-                <RecipeEditor
+                /*
+                 * Behind a disclosure, not mounted outright: each editor
+                 * fires three server actions on mount, two of them reading
+                 * the tenant's whole ingredient and unit catalogs, and Next
+                 * runs server actions one at a time. A dish with eight
+                 * add-ons was queueing two dozen sequential round trips
+                 * before the merchant could touch anything.
+                 */
+                <RecipeDisclosure
                   tenantId={recipeContext.tenantId}
                   tenantSlug={recipeContext.tenantSlug}
                   target={{

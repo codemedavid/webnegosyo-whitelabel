@@ -94,7 +94,7 @@ describe('settlement summary parity — web vs merchant app', () => {
   it.each(LEDGERS)('agrees on the account for %s', (_label, payments) => {
     for (const total of TOTALS) {
       const web = summarizeOnWeb(total, payments)
-      const app = summarizeOnApp(total, payments)
+      const app = summarizeOnApp(total, payments.map((payment, index) => ({ ...payment, _id: String(index), _creationTime: 0 })))
 
       expect({
         totalCharged: web.totalCharged,

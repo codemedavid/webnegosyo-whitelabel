@@ -1,3 +1,4 @@
+import { ProfitInsights } from "../../components/ProfitInsights";
 import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
@@ -14,6 +15,8 @@ import {
 } from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
+import { useBranchScope } from "../../lib/use-branch-scope";
+import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
@@ -86,6 +89,7 @@ const DAY_PICKER_LIMIT = 14;
 
 /** A raw order as either backend returns it. */
 interface BackendOrder {
+  saleOccurredAt?: number;
   _id: string;
   _creationTime: number;
   status: string;
@@ -105,6 +109,8 @@ interface BackendOrderItem {
 }
 
 interface AnalyticsRow extends ProductLifetimeItem {
+  totalCost?: number;
+  totalProfit?: number;
   avgDailyUnits: number;
   recommendation: string;
   hasData?: boolean;
@@ -220,7 +226,7 @@ export default function ProductAnalyticsScreen() {
    */
   const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const { data: rows, isLoading, refetch: refetchRows } = useSafeQuery<AnalyticsRow[]>(
+  const { data: rows, isLoading, error: rowsError, isMissingFunction: rowsMissing, refetch: refetchRows } = useSafeQuery<AnalyticsRow[]>(
     getAllRef,
     { period }
   );
@@ -228,7 +234,7 @@ export default function ProductAnalyticsScreen() {
     period,
   });
   const {
-    data: backendOrders,
+    data: accountOrders,
     isLoading: ordersLoading,
     refetch: refetchOrders,
   } = useSafeQuery<BackendOrder[]>(getOrdersRef, { limit: ORDER_FETCH_LIMIT });
@@ -237,6 +243,11 @@ export default function ProductAnalyticsScreen() {
     isMissingFunction: itemsMissing,
     refetch: refetchItems,
   } = useSafeQuery<BackendOrderItem[]>(getAllOrderItemsRef, {});
+  const scope = useBranchScope();
+  const backendOrders = useMemo(
+    () => accountOrders === undefined ? undefined : [...filterOrdersToScope(scope, accountOrders)],
+    [scope, accountOrders],
+  );
   const setCost = useSafeMutation(setCostRef);
   const refreshAnalytics = useSafeAction(refreshRef);
 
@@ -265,7 +276,7 @@ export default function ProductAnalyticsScreen() {
     () =>
       (backendOrders ?? []).map((o) => ({
         id: o._id,
-        createdAtMs: o._creationTime,
+        createdAtMs: o.saleOccurredAt ?? o._creationTime,
         status: o.status,
         source: o.source,
       })),
@@ -547,6 +558,7 @@ export default function ProductAnalyticsScreen() {
           ))}
         </View>
       )}
+      {!rowsError && merged.length > 0 && <ProfitInsights rows={merged} />}
     </>
   );
 
@@ -559,12 +571,14 @@ export default function ProductAnalyticsScreen() {
         // The whole menu is one list; a virtualised list keeps a long menu
         // from mounting every row at once.
         <FlatList
-          data={isMenuPending ? [] : merged}
+          data={isMenuPending || rowsError ? [] : merged}
           keyExtractor={keyOfRow}
           renderItem={renderLifetimeRow}
           ListHeaderComponent={lifetimeHeader}
           ListEmptyComponent={
-            isMenuPending ? (
+            rowsError ? (
+              <ErrorState message={rowsMissing ? "Update this store's backend to show branch product analytics." : rowsError} />
+            ) : isMenuPending ? (
               <LoadingState message="Loading products..." />
             ) : (
               <EmptyState message="No products on the menu yet." />

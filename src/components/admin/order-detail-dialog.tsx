@@ -1,5 +1,7 @@
 'use client'
 
+import { formatDailyOrderNumber } from '@/lib/order-number'
+
 import dynamic from 'next/dynamic'
 import { format, formatDistance } from 'date-fns'
 import { orderSummaryRows } from '@/lib/order-summary-rows'
@@ -157,7 +159,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <DialogTitle className="text-2xl font-bold">
-                    Order #{order.id.slice(0, 8).toUpperCase()}
+                    Order {formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}
                   </DialogTitle>
                   <Badge className={currentStatus.color} variant="outline">
                     <StatusIcon className="mr-1.5 h-3.5 w-3.5" />
@@ -374,7 +376,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                             .filter(([key, value]) =>
                               // The branch has its own banner above; these are
                               // the raw carrier keys behind it.
-                              !['scheduled_for', 'scheduled_for_label', 'delivery_lat', 'delivery_lng', 'messenger_psid', 'outlet_id', 'outlet_name'].includes(key) &&
+                              !['_inventory_selections', 'scheduled_for', 'scheduled_for_label', 'delivery_lat', 'delivery_lng', 'messenger_psid', 'outlet_id', 'outlet_name'].includes(key) &&
                               value !== '' && value != null
                             )
                             .map(([key, value]) => {

@@ -110,6 +110,7 @@ function groupFromLegacyVariations(variations: readonly Variation[]): ModifierGr
 function groupFromAddons(addons: readonly Addon[]): ModifierGroup {
   return {
     id: 'legacy-addons',
+    selection_mode: 'quantity',
     name: LEGACY_ADDON_GROUP_NAME,
     // Sort after variation groups by default.
     display_order: 1000,
@@ -140,6 +141,11 @@ export interface SelectionValidationResult {
 export function describeSelectionRule(group: ModifierGroup): string {
   const { min_select: min, max_select: max } = group
   const prefix = min > 0 ? 'Required' : 'Optional'
+  if (group.selection_mode === 'quantity') {
+    if (min === 0) return max === null ? `${prefix} — add any extras` : `${prefix} — up to ${max} portions`
+    return max === null ? `${prefix} — at least ${min} portions`
+      : min === max ? `${prefix} — ${min} portions` : `${prefix} — ${min} to ${max} portions`
+  }
 
   if (min === 0) {
     return max === null ? `${prefix} — choose any` : `${prefix} — choose up to ${max}`

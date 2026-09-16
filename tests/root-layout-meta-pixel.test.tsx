@@ -22,6 +22,15 @@ jest.mock('@/components/ui/sonner', () => ({
   Toaster: () => null,
 }))
 
+// next/script (afterInteractive) renders nothing under renderToStaticMarkup;
+// stand in with a plain <script> so the pixel bootstrap is visible in markup.
+jest.mock('next/script', () => ({
+  __esModule: true,
+  default: ({ dangerouslySetInnerHTML }: { dangerouslySetInnerHTML?: { __html: string } }) => (
+    <script dangerouslySetInnerHTML={dangerouslySetInnerHTML} />
+  ),
+}))
+
 import RootLayout from '@/app/layout'
 
 describe('RootLayout Meta Pixel', () => {
@@ -45,5 +54,15 @@ describe('RootLayout Meta Pixel', () => {
     expect(html).toContain('https://connect.facebook.net/en_US/fbevents.js')
     expect(html).toContain("fbq('init', '123456789')")
     expect(html).toContain('https://www.facebook.com/tr?id=123456789&amp;ev=PageView&amp;noscript=1')
+  })
+
+  it('does not ship the mapbox-gl stylesheet to every page', () => {
+    const html = renderToStaticMarkup(
+      <RootLayout>
+        <div>content</div>
+      </RootLayout>
+    )
+
+    expect(html).not.toContain('mapbox-gl.css')
   })
 })

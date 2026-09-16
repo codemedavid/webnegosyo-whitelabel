@@ -45,6 +45,14 @@ function payload(items: QrOrderItemV1[], tenantId = TENANT): QrOrderPayloadV1 {
 const catalog = new Map<string, number>([["item-1", 150], ["item-2", 80]]);
 
 describe("evaluateCartHandoff", () => {
+  it('keeps repeated add-on charges when a web QR carries a loaded price', () => {
+    const result = evaluateCartHandoff({
+      payload: payload([item({ basePrice: 150, price: 180, subtotal: 360, addons: [{ name: 'Cheese', price: 10, quantity: 3 }] })]),
+      sessionTenantId: TENANT,
+      catalogPrices: catalog,
+    });
+    expect(result).toMatchObject({ ok: true, total: 360, items: [{ price: 180, subtotal: 360 }] });
+  });
   it("accepts a cart whose items are all in the catalog at matching prices", () => {
     const result = evaluateCartHandoff({
       payload: payload([item(), item({ menuItemId: "item-2", price: 80, subtotal: 80, quantity: 1 })]),

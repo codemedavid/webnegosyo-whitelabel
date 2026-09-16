@@ -52,6 +52,17 @@ function renderSelector(selection: ModifierSelection, onToggle = jest.fn()) {
 }
 
 describe('ModifierGroupsSelector', () => {
+  it('shows per-item add-on quantities and reports plus/minus changes', () => {
+    const group: ModifierGroup = { ...addonGroup, selection_mode: 'quantity' }
+    const onQuantityChange = jest.fn()
+    render(<ModifierGroupsSelector groups={[group]} selection={{ 'g-addons': ['o-cheese', 'o-cheese'] }} onToggle={jest.fn()} onQuantityChange={onQuantityChange} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Increase Extra Cheese' }))
+    expect(onQuantityChange).toHaveBeenLastCalledWith(group, 'o-cheese', 3)
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease Extra Cheese' }))
+    expect(onQuantityChange).toHaveBeenLastCalledWith(group, 'o-cheese', 1)
+    expect(screen.getByRole('button', { name: 'Increase Egg' })).toBeDisabled()
+    expect(screen.getByText(/Quantities are per item/)).toBeInTheDocument()
+  })
   it('renders every group name', () => {
     renderSelector({})
     expect(screen.getByText('Size')).toBeInTheDocument()

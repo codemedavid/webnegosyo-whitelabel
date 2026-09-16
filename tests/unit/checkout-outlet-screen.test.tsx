@@ -36,6 +36,8 @@ const outletState = (
   overrides: Partial<UseCheckoutOutletResult> = {}
 ): UseCheckoutOutletResult => ({
   isPickerVisible: true,
+  isLoading: false,
+  droppedReason: null,
   choices: [ranked('o-cainta', 'Cainta'), ranked('o-makati', 'Makati')],
   selectedOutletId: null,
   select: jest.fn(),

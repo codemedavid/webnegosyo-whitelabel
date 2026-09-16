@@ -27,7 +27,7 @@ jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: jest.fn(),
 }))
 
-const findByCodesMock = jest.fn()
+const findByCodesMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 jest.mock('@/lib/vouchers/repository', () => ({
   createVoucherLookup: jest.fn(() => ({ findByCodes: findByCodesMock })),
 }))
@@ -43,8 +43,8 @@ function makeRequest(body: unknown, authHeader?: string): NextRequest {
 const VALID_BODY = { tenantId: 't1', codes: ['WELCOME10'] }
 
 describe('POST /api/vouchers/lookup', () => {
-  let getUserMock: jest.Mock
-  let appUserSingleMock: jest.Mock
+  let getUserMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let appUserSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
 
   beforeEach(async () => {
     jest.resetModules()
@@ -55,8 +55,8 @@ describe('POST /api/vouchers/lookup', () => {
     const { createClient } = await import('@supabase/supabase-js')
     const mockCreateClient = createClient as unknown as jest.Mock
 
-    getUserMock = jest.fn()
-    appUserSingleMock = jest.fn()
+    getUserMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    appUserSingleMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 
     getUserMock.mockResolvedValue({ data: { user: { id: 'cashier-1' } }, error: null })
     appUserSingleMock.mockResolvedValue({

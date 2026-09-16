@@ -13,7 +13,7 @@
  * client-side render, and messages are accepted from the page's origin only.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { applyMobileOverrides, mergeMobileOverrides, type OverrideMap } from '@/lib/mobile-overrides'
 import { buildStorefrontFontsHref } from '@/lib/storefront-theme'
 
@@ -32,17 +32,29 @@ export type BrandingPreviewDraft = Record<string, unknown>
  * true inside the Studio's 390px preview iframe, so the mobile preview shows
  * mobile overrides.
  */
+const viewportListeners = new Set<() => void>()
+let viewportQuery: MediaQueryList | null = null
+const desktopSnapshot = () => false
+const viewportSnapshot = () => viewportQuery?.matches ?? false
+const notifyViewport = () => viewportListeners.forEach(listener => listener())
+
+function subscribeViewport(listener: () => void): () => void {
+  viewportListeners.add(listener)
+  if (viewportListeners.size === 1 && typeof window.matchMedia === 'function') {
+    viewportQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`)
+    viewportQuery.addEventListener('change', notifyViewport)
+  }
+  return () => {
+    viewportListeners.delete(listener)
+    if (viewportListeners.size === 0) {
+      viewportQuery?.removeEventListener('change', notifyViewport)
+      viewportQuery = null
+    }
+  }
+}
+
 export function useIsMobileViewport(): boolean {
-  const [isMobile, setIsMobile] = useState(false)
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`)
-    const update = () => setIsMobile(mql.matches)
-    update()
-    mql.addEventListener('change', update)
-    return () => mql.removeEventListener('change', update)
-  }, [])
-  return isMobile
+  return useSyncExternalStore(subscribeViewport, viewportSnapshot, desktopSnapshot)
 }
 
 /** Remove editor-only meta keys (double-underscore prefixed) from a draft. */
@@ -76,33 +88,45 @@ function isPreviewModeActive(): boolean {
  * inside the editor's preview iframe. Includes meta keys (e.g.
  * `__previewSurface`) — merge into tenants via useBrandingPreviewTenant().
  */
+// Browser-only subscriptions are shared by every preview consumer. No draft
+// is set during SSR, and the last unmount releases both the listener and data.
+const draftListeners = new Set<() => void>()
+let previewDraft: BrandingPreviewDraft | null = null
+const emptyDraft = () => null
+const draftSnapshot = () => previewDraft
+const noSubscription = () => () => {}
+
+function receiveDraft(event: MessageEvent): void {
+  if (event.origin !== window.location.origin) return
+  const data = event.data as { type?: unknown; draft?: unknown } | null
+  if (!data || typeof data !== 'object' || data.type !== BRANDING_DRAFT_MESSAGE) return
+  if (!data.draft || typeof data.draft !== 'object' || Array.isArray(data.draft)) return
+  previewDraft = data.draft as BrandingPreviewDraft
+  draftListeners.forEach(listener => listener())
+}
+
+function subscribeDraft(listener: () => void): () => void {
+  draftListeners.add(listener)
+  if (draftListeners.size === 1) window.addEventListener('message', receiveDraft)
+  // Each newly mounted surface asks the editor to re-send its current draft.
+  // This preserves the existing route-change handshake without more listeners.
+  window.parent?.postMessage({ type: BRANDING_READY_MESSAGE }, window.location.origin)
+  return () => {
+    draftListeners.delete(listener)
+    if (draftListeners.size === 0) {
+      window.removeEventListener('message', receiveDraft)
+      previewDraft = null
+    }
+  }
+}
+
 export function useBrandingPreviewDraft(): BrandingPreviewDraft | null {
   const [isEnabled] = useState(isPreviewModeActive)
-  const [draft, setDraft] = useState<BrandingPreviewDraft | null>(null)
-
-  useEffect(() => {
-    if (!isEnabled) return
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return
-      const data = event.data as { type?: unknown; draft?: unknown } | null
-      if (!data || typeof data !== 'object' || data.type !== BRANDING_DRAFT_MESSAGE) return
-      if (!data.draft || typeof data.draft !== 'object' || Array.isArray(data.draft)) return
-      setDraft(data.draft as BrandingPreviewDraft)
-    }
-
-    window.addEventListener('message', handleMessage)
-    // Tell the editor we can receive drafts (it re-sends the current draft on
-    // every ready signal, so route changes inside the iframe stay in sync).
-    try {
-      window.parent?.postMessage({ type: BRANDING_READY_MESSAGE }, window.location.origin)
-    } catch {
-      // Cross-origin parent (not the editor) — nothing to announce.
-    }
-    return () => window.removeEventListener('message', handleMessage)
-  }, [isEnabled])
-
-  return isEnabled ? draft : null
+  return useSyncExternalStore(
+    isEnabled ? subscribeDraft : noSubscription,
+    isEnabled ? draftSnapshot : emptyDraft,
+    emptyDraft,
+  )
 }
 
 /**

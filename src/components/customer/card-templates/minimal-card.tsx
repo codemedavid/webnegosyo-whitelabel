@@ -13,13 +13,14 @@ interface MinimalCardProps {
   isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Minimal Card Template
  * Ultra-clean design with subtle borders and minimal decoration
  */
-export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: MinimalCardProps) {
+export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: MinimalCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -44,7 +45,8 @@ export const MinimalCard = memo(function MinimalCard({ item, onSelect, branding,
             fill
             className="object-cover transition-opacity group-hover:opacity-90"
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
           />
         )}
 

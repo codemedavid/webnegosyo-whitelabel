@@ -35,6 +35,9 @@ const REQUIRED_VARS = [
     'NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT',
     'NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY',
     'IMAGEKIT_PRIVATE_KEY',
+    // Next.js inlines public variables during the build. Adding this only at
+    // runtime leaves the deployed browser SDK without a transport/DSN.
+    'NEXT_PUBLIC_SENTRY_DSN',
 ];
 
 const missing = [];

@@ -43,7 +43,7 @@ describe("convexOrderQueryArgs", () => {
   it("never adds the argument to a query that cannot accept it", () => {
     // Only the order reads gained the parameter in v15. Sending it to anything
     // else is the same validator rejection, self-inflicted.
-    const args = convexOrderQueryArgs("analytics:getTopItems", { days: 7 }, NORTH);
+    const args = convexOrderQueryArgs("productCosts:getAll", { days: 7 }, NORTH);
 
     expect(args).toEqual({ days: 7 });
   });
@@ -150,4 +150,10 @@ describe("a ref that only newer deployments understand", () => {
 
     expect(args).toEqual({ startDate: 1 });
   });
+});
+
+
+it('never falls back to store-wide aggregates on an older Convex deployment', () => {
+  expect(convexOrderQueryArgs('analytics:getSalesAnalytics', { daysBack: 7 }, NORTH, 29))
+    .toEqual({ daysBack: 7, outletId: 'outlet-north' });
 });

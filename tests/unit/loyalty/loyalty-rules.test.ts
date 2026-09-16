@@ -36,6 +36,9 @@ describe('parseLoyaltyRules', () => {
   it.each([
     ['an unknown earn mode', { ...STAMP, earnMode: 'visits' }],
     ['a zero threshold', { ...STAMP, threshold: 0 }],
+    ['a fractional stamp threshold', { ...STAMP, threshold: 1.5 }],
+    ['fractional expiry days', { ...STAMP, rewardExpiryDays: 1.5 }],
+    ['a sub-centavo fixed reward', { ...STAMP, reward: { type: 'fixed', amount: 0.001 } }],
     ['a points program without a rate', { ...POINTS, pointsPerPeso: undefined }],
     ['a negative min spend', { ...STAMP, minSpend: -1 }],
     ['a percent reward over 100', { ...POINTS, reward: { type: 'percent', percent: 150 } }],

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { invalidateTenantCache } from '@/lib/cache'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import {
     writeBrandingWithClient,
@@ -46,21 +47,36 @@ export async function saveBrandingAction(
             return result
         }
 
-        // Revalidate all affected pages for instant updates
-        // Using 'layout' type revalidates the route and all its children
-        revalidatePath(`/${tenantSlug}/menu`, 'layout')
-        // Checkout/cart design changes must invalidate those routes too
-        revalidatePath(`/${tenantSlug}/checkout`, 'layout')
-        revalidatePath(`/${tenantSlug}/cart`, 'layout')
-        revalidatePath(`/${tenantSlug}/admin/settings`)
-        // Footer also drives the storefront and content pages
-        revalidatePath(`/${tenantSlug}`)
-        revalidatePath(`/${tenantSlug}/about`)
-        revalidatePath(`/${tenantSlug}/terms`)
-        revalidatePath(`/${tenantSlug}/refund`)
-        revalidatePath(`/${tenantSlug}/privacy`)
+        // The write is committed. A cache outage must not report that saving
+        // failed, and Next's route caches still need an invalidation attempt.
+        try {
+            await invalidateTenantCache(tenantSlug, tenantId)
+        } catch (error) {
+            console.warn('[saveBrandingAction] Branding saved, but tenant cache invalidation failed:', error)
+        }
 
-        console.log(`[saveBrandingAction] Branding saved and cache revalidated for ${tenantSlug}`)
+        // Layout invalidation covers descendants; footer branding also affects
+        // content pages. Attempt every route even if one cache refresh fails.
+        const routes: Array<[string, 'layout'?]> = [
+            [`/${tenantSlug}/menu`, 'layout'],
+            [`/${tenantSlug}/checkout`, 'layout'],
+            [`/${tenantSlug}/cart`, 'layout'],
+            [`/${tenantSlug}/admin/settings`],
+            [`/${tenantSlug}`],
+            [`/${tenantSlug}/about`],
+            [`/${tenantSlug}/terms`],
+            [`/${tenantSlug}/refund`],
+            [`/${tenantSlug}/privacy`],
+        ]
+        for (const route of routes) {
+            try {
+                revalidatePath(...route)
+            } catch (error) {
+                console.warn(`[saveBrandingAction] Branding saved, but route invalidation failed for ${route[0]}:`, error)
+            }
+        }
+
+        console.log(`[saveBrandingAction] Branding saved for ${tenantSlug}`)
 
         return result
     } catch (error) {

@@ -11,7 +11,7 @@
 
 // Bump when the order-schema bundle changes so a re-deploy re-provisions every
 // tenant project — mirrors Convex's CURRENT_SCHEMA_VERSION.
-export const SUPABASE_ORDER_SCHEMA_VERSION = 1;
+export const SUPABASE_ORDER_SCHEMA_VERSION = 3;
 
 export interface SupabaseDeployResult {
   success: boolean;

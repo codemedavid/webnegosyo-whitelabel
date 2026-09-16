@@ -1,3 +1,4 @@
+import { ShiftCard } from "../../components/ShiftCard";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
@@ -193,6 +194,7 @@ export default function PosSalesScreen() {
         contentContainerStyle={styles.body}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       >
+        <ShiftCard orders={data ?? []} complete={!isLoading && (data?.length ?? 0) < SHIFT_ORDER_LIMIT} />
         {/* The money first: it is the only reason this screen is open. */}
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Expected in drawer · Cash</Text>

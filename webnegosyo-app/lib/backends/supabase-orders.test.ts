@@ -801,3 +801,10 @@ describe("buildCreateOrderRows — menu_item_id is a uuid column", () => {
     expect(items[0].menu_item_id).toBeNull();
   });
 });
+
+
+it('maps both persisted daily-number column conventions without changing order identity', () => {
+  expect(toOrderDto(orderRow({ daily_number: 7 }))).toMatchObject({ _id: 'order-1', dailyNumber: 7 });
+  expect(toOrderDto(orderRow({ daily_order_number: 9 }))).toMatchObject({ _id: 'order-1', dailyNumber: 9 });
+  expect(toOrderDto(orderRow()).dailyNumber).toBeNull();
+});

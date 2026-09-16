@@ -11,15 +11,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ImageUpload } from '@/components/shared/image-upload'
 import { CategoryIcon } from '@/components/shared/category-icon'
-import type { MenuItem, Category, VariationType, VariationOption, BcgClassification, ModifierGroup } from '@/types/database'
+import type { MenuItem, Category, VariationType, VariationOption, BcgClassification, ModifierGroup, PresellStock } from '@/types/database'
 import { VariationGroupsEditor } from '@/components/admin/variation-groups-editor'
 import { AddonEditor } from '@/components/admin/addon-editor'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
 import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
 import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
 import { MenuItemPresellSection, SettingSwitch } from '@/components/admin/menu-item-presell-section'
+import { syncPresellAllocationsAction } from '@/app/actions/presell'
+import { draftFromRows, diffDraft, type DraftAllocation } from '@/lib/presell/allocation-draft'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
-import { serializeGroups, splitGroupsToLegacyColumns } from '@/lib/modifier-groups-form'
+import { serializeGroups, splitGroupsToLegacyColumns, omitUnchangedOptionStock } from '@/lib/modifier-groups-form'
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
 import { attachEntriesToGroups, buildLibraryDraftFromGroup } from '@/lib/modifier-library-utils'
 import { createModifierGroupLibraryEntryAction } from '@/app/actions/modifier-library'
@@ -54,6 +56,10 @@ interface MenuItemFormProps {
   inventoryEnabled?: boolean
   /** Tenant flag: per-date presell allocations (migration 20260830120000). */
   presellEnabled?: boolean
+  /** Allocations fetched by the page so the presell panel opens populated. */
+  presellAllocations?: PresellStock[]
+  /** Set when the page could not read them; the panel is withheld rather than shown empty. */
+  presellLoadError?: string
   convexUrl?: string
 }
 
@@ -63,8 +69,8 @@ const menuItemFormSchema = z.object({
   description: z.string().min(10, 'Description must be at least 10 characters'),
   price: z.string().refine((val) => {
     const num = parseFloat(val)
-    return !isNaN(num) && num > 0
-  }, 'Price must be a positive number'),
+    return Number.isFinite(num) && num >= 0
+  }, 'Price must be 0 or more'),
   discounted_price: z.string().optional().refine((val) => {
     if (!val) return true
     const num = parseFloat(val)
@@ -84,8 +90,10 @@ type FormErrors = {
   category_id?: string
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, linkableItems, inventoryEnabled, presellEnabled, convexUrl }: MenuItemFormProps) {
+export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, linkableItems, inventoryEnabled, presellEnabled, presellAllocations, presellLoadError, convexUrl }: MenuItemFormProps) {
   const router = useRouter()
+  const [persistedItemId, setPersistedItemId] = useState(item?.id)
+  const [stockBaseline, setStockBaseline] = useState<ModifierGroup[]>(item?.modifier_groups ?? [])
   // Recipe-derived costs for the per-option margin display. No-ops when the
   // tenant has no inventory or the item has not been saved yet.
   const { optionRecipeCosts, refresh: refreshCosts } = useMenuItemCosts(
@@ -129,6 +137,17 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
   const [useNewVariations, setUseNewVariations] = useState(
     (item?.variation_types && item.variation_types.length > 0) || false
   )
+  /**
+   * Pre-order dates, staged like every other field.
+   *
+   * `savedAllocations` is the baseline the save diffs against; `presellDraft`
+   * is what the merchant has now. Both are seeded once — an initializer does
+   * not re-run — so a server re-render mid-edit cannot discard typing.
+   */
+  const [savedAllocations, setSavedAllocations] = useState<DraftAllocation[]>(() =>
+    draftFromRows(presellAllocations ?? []),
+  )
+  const [presellDraft, setPresellDraft] = useState<DraftAllocation[]>(savedAllocations)
 
   const validateForm = (): boolean => {
     try {
@@ -162,6 +181,29 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     }
   }
 
+  /**
+   * Persist the pre-order dates the merchant staged. Returns a message when
+   * the write was refused — a date that already has orders cannot be dropped
+   * — and undefined when there was nothing to do or it all landed.
+   */
+  const savePresellDraft = async (menuItemId: string): Promise<string | undefined> => {
+    const { upserts, deletes } = diffDraft(savedAllocations, presellDraft)
+    if (upserts.length === 0 && deletes.length === 0) return undefined
+
+    const result = await syncPresellAllocationsAction(tenantId, tenantSlug, {
+      menuItemId,
+      upserts,
+      deletes,
+    })
+    if (!result.success) return result.error || 'Failed to save the pre-order dates'
+
+    // The draft is the baseline now, so the "unsaved dates" warning clears
+    // and a second save does not re-send what already landed. This matters
+    // when the save keeps the merchant here — the recipe step does.
+    setSavedAllocations(presellDraft)
+    return undefined
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -189,7 +231,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         discounted_price: formData.discounted_price ? parseFloat(formData.discounted_price) : null,
         image_url: formData.image_url,
         category_id: formData.category_id,
-        modifier_groups: cleanGroups,
+        modifier_groups: persistedItemId ? omitUnchangedOptionStock(cleanGroups, stockBaseline) : cleanGroups,
         // Include legacy formats for backward compatibility
         variation_types: legacy ? legacy.variation_types : useNewVariations ? variationTypes : [],
         variations: legacy ? legacy.variations : useNewVariations ? [] : variations,
@@ -205,16 +247,33 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         ...(presellEnabled ? { presell_enabled: formData.presell_enabled } : {}),
       }
 
-      const result = item
-        ? await updateMenuItemAction(item.id, tenantId, tenantSlug, input)
+      const result = persistedItemId
+        ? await updateMenuItemAction(persistedItemId, tenantId, tenantSlug, input)
         : await createMenuItemAction(tenantId, tenantSlug, input)
 
       if (result.success) {
+        const savedItemId = (result.data as { id?: string } | undefined)?.id ?? persistedItemId
+        setPersistedItemId(savedItemId)
+        setStockBaseline(cleanGroups)
+        /*
+         * The dates land here, with the dish, rather than one server action
+         * per click while the merchant is still editing. If they do not land
+         * the merchant is told and kept on the page — navigating away would
+         * discard a draft that only exists in this component's state.
+         */
+        if (presellEnabled && savedItemId && !presellLoadError) {
+          const allocationError = await savePresellDraft(savedItemId)
+          if (allocationError) {
+            toast.error(allocationError)
+            return
+          }
+        }
+
         toast.success(item ? 'Menu item updated!' : 'Menu item created!')
         const step = resolvePostSaveStep({
           isNewItem: !item,
           inventoryEnabled: inventoryEnabled ?? false,
-          savedItemId: (result.data as { id?: string } | undefined)?.id,
+          savedItemId,
         })
         if (step.kind === 'link-ingredients') {
           // Hold the merchant here for the recipe instead of closing: until a
@@ -447,6 +506,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
               <Input
                 id="price"
                 type="number"
+                min="0"
                 step="0.01"
                 value={formData.price}
                 onChange={(e) => {
@@ -457,6 +517,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
                 required
                 className={errors.price ? 'border-destructive' : ''}
               />
+              <p className="text-xs text-muted-foreground">Enter 0 for a free item.</p>
               {errors.price && (
                 <p className="text-sm text-destructive">{errors.price}</p>
               )}
@@ -599,9 +660,10 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
             <MenuItemPresellSection
               isEnabled={formData.presell_enabled}
               onToggle={(checked) => setFormData({ ...formData, presell_enabled: checked })}
-              tenantId={tenantId}
-              tenantSlug={tenantSlug}
-              menuItemId={item?.id ?? null}
+              savedAllocations={savedAllocations}
+              draft={presellDraft}
+              onDraftChange={setPresellDraft}
+              loadError={presellLoadError}
             />
           )}
 
@@ -837,4 +899,3 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     </form>
   )
 }
-

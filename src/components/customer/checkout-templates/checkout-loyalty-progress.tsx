@@ -41,6 +41,7 @@ export function CheckoutLoyaltyProgress({ checkout }: { checkout: UseCheckoutRet
         isLoading={progress.isLoading}
         storeName={tenant?.name ?? 'the store'}
         logoUrl={branding.logoUrl}
+        tenantSlug={tenant?.slug}
       />
     </div>
   )

@@ -10,6 +10,10 @@ import { verifyTrackingToken } from '@/lib/tracking-token'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { isRealContact } from '@/lib/order-contact'
 import { resolveCustomerIdentity } from '@/lib/customer-identity'
+import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { createTenantOrderRealtimeClient } from '@/lib/supabase/tenant-order-client'
+import { fetchTenantOrderById } from '@/lib/tenant-supabase-orders-read'
+import type { OrderFactsBackend } from '@/lib/customer-order-facts'
 import {
   isPickupScanEnabled,
   resolveOrderTypeKind,
@@ -51,6 +55,7 @@ export interface TrackingData {
    * contact itself is never exposed here — the token is printed on paper.
    */
   hasContact?: boolean
+  dailyNumber?: number | null
   createdAt: string
   isTerminal: boolean
   /** Pre-computed, hydration-safe label for a scheduled (advance) order, or null for ASAP. */
@@ -77,7 +82,7 @@ interface TrackingContextData extends TrackingData {
   loyaltyIdentity: {
     customerKey: string | null
     outletId: string | null
-    backend: 'platform_supabase' | 'convex'
+    backend: OrderFactsBackend
     source: 'pos' | 'online'
     paymentStatus: string | null
     observedAt: string
@@ -98,8 +103,28 @@ export async function fetchOrderTrackingData(
 }
 
 /**
+ * The tenant columns that decide where this order lives.
+ *
+ * `order_backend` is the load-bearing one: it is a deliberate superadmin pin,
+ * and routing on the credentials alone ignores it. A store pinned to the
+ * platform database that still carries a Convex deployment URL from an earlier
+ * setup writes its orders to the platform database and had them looked up in
+ * Convex — which is how a customer who had just ordered was told, seconds
+ * later, that no such order exists.
+ *
+ * Every column named here exists on `public.tenants`; see the note on
+ * `fetchPickupScanEnabled` for why this list is kept deliberately short.
+ */
+const TENANT_ROUTING_COLUMNS =
+  'order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key'
+
+/**
  * Fetch order tracking data server-side.
- * Verifies HMAC token, then queries Supabase or Convex depending on tenant config.
+ *
+ * Verifies the HMAC token, then reads the order from whichever backend
+ * `resolveOrderBackend` names — the SAME resolver checkout writes through and
+ * the merchant's order queue reads through, so the three can never disagree
+ * about where a given store's orders live.
  */
 export async function fetchOrderTrackingContext(
   orderId: string,
@@ -113,27 +138,32 @@ export async function fetchOrderTrackingContext(
   try {
     const supabaseAdmin = createAdminClient()
 
-    // Check if tenant uses Convex
     const { data: tenantConfig } = await supabaseAdmin
       .from('tenants')
-      .select('convex_deployment_url')
+      .select(TENANT_ROUTING_COLUMNS)
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
 
-    const config = tenantConfig as { convex_deployment_url?: string | null } | null
+    const config = tenantConfig as OrderBackendTenantFields | null
 
     if (!config) {
       return { data: null, error: 'Restaurant not found' }
     }
 
-    const deployKey = config.convex_deployment_url
-      ? (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
-      : null
+    const backend = resolveOrderBackend(config)
 
     let result: TrackingContextData
 
-    if (config.convex_deployment_url && deployKey) {
+    if (backend === 'convex') {
+      const deployKey = (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
+      if (!config.convex_deployment_url || !deployKey) {
+        // Checkout refuses to write for this store (`assertOrderBackendReady`
+        // throws), so there is no order to find. Reading the platform database
+        // instead would be the same silent misroute in the other direction.
+        console.error('[Order Tracking] Convex backend is not reachable for tenant', tenantId)
+        return { data: null, error: 'Order not found' }
+      }
       result = await fetchFromConvex(
         config.convex_deployment_url,
         deployKey,
@@ -141,6 +171,8 @@ export async function fetchOrderTrackingContext(
         supabaseAdmin,
         tenantId
       )
+    } else if (backend === 'supabase') {
+      result = await fetchFromTenantSupabase(config, supabaseAdmin, orderId, tenantId)
     } else {
       result = await fetchFromSupabase(supabaseAdmin, orderId, tenantId)
     }
@@ -304,7 +336,8 @@ async function fetchFromConvex(
       paymentStatus: order.paymentStatus ?? null,
       observedAt,
     },
-    createdAt: new Date(order._creationTime).toISOString(),
+    dailyNumber: order.dailyNumber,
+    createdAt: new Date(order.saleOccurredAt ?? order._creationTime).toISOString(),
     isTerminal,
     promisedReadyAt: order.promisedReadyAt ?? null,
     prepMinutes: order.prepMinutes ?? null,
@@ -323,7 +356,7 @@ async function fetchFromSupabase(
   const { data: order, error } = await supabase
     .from('orders')
     .select(`
-      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, outlet_id, source, payment_status, created_at,
+      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, outlet_id, source, payment_status, created_at, daily_number,
       scheduled_for, customer_data,
       order_items(menu_item_name, quantity, price, subtotal, variation, addons)
     `)
@@ -333,15 +366,77 @@ async function fetchFromSupabase(
 
   if (error || !order) throw new Error('Order not found in Supabase')
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const o = order as any
-  const isTerminal = o.status === 'delivered' || o.status === 'cancelled'
   const orderTypeFromRow = await fetchOrderTypeKind(
     supabase,
-    o.order_type_id,
+    (order as { order_type_id?: string | null }).order_type_id,
     tenantId
   )
   const prepPromise = await fetchPrepPromise(supabase, orderId, tenantId)
+
+  return mapSupabaseOrderRow(order, {
+    backend: 'platform_supabase',
+    orderTypeFromRow,
+    ...prepPromise,
+  })
+}
+
+/**
+ * Read the order from the tenant's OWN Supabase project (`order_backend =
+ * 'supabase'`).
+ *
+ * Uses the anon-key client, not the service-role one: this runs on a public,
+ * customer-reachable path, the standalone bundle's SELECT policy already
+ * covers it, and handing a service-role key to a page a stranger can open is
+ * a bigger key than the job needs.
+ *
+ * Order types stay on the PLATFORM database for every backend, so the kind
+ * lookup still goes through the admin client. The tenant bundle has no
+ * `prep_minutes` / `promised_ready_at` columns, so no estimate is promised.
+ */
+async function fetchFromTenantSupabase(
+  config: OrderBackendTenantFields,
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string,
+  tenantId: string
+): Promise<TrackingContextData> {
+  const order = await fetchTenantOrderById(
+    createTenantOrderRealtimeClient(config),
+    tenantId,
+    orderId
+  )
+
+  if (!order) throw new Error('Order not found in the tenant Supabase project')
+
+  const orderTypeFromRow = await fetchOrderTypeKind(supabase, order.order_type_id as string | null, tenantId)
+
+  return mapSupabaseOrderRow(order, {
+    backend: 'tenant_supabase',
+    orderTypeFromRow,
+    promisedReadyAt: null,
+    prepMinutes: null,
+  })
+}
+
+/**
+ * The one projection from a Postgres order row into tracking data, shared by
+ * the platform database and a tenant's own project. Their column names are
+ * identical by design — the standalone bundle in `supabase-order-schema.ts`
+ * mirrors the platform table — so one mapper serves both, and a field added to
+ * the customer's view can never appear on only one of them.
+ */
+function mapSupabaseOrderRow(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  order: any,
+  context: {
+    backend: Extract<OrderFactsBackend, 'platform_supabase' | 'tenant_supabase'>
+    orderTypeFromRow: string | null
+    promisedReadyAt: string | null
+    prepMinutes: number | null
+  }
+): TrackingContextData {
+  const o = order
+  const isTerminal = o.status === 'delivered' || o.status === 'cancelled'
+  const { backend, orderTypeFromRow, promisedReadyAt, prepMinutes } = context
 
   return {
     status: o.status,
@@ -366,15 +461,16 @@ async function fetchFromSupabase(
     loyaltyIdentity: {
       customerKey: resolveCustomerIdentity({ contact: o.customer_contact, customerData: o.customer_data }).identityKey,
       outletId: o.outlet_id ?? null,
-      backend: 'platform_supabase',
+      backend,
       source: o.source === 'pos' ? 'pos' : 'online',
       paymentStatus: o.payment_status ?? null,
       observedAt: new Date().toISOString(),
     },
+    dailyNumber: o.daily_number ?? o.daily_order_number ?? null,
     createdAt: o.created_at,
     isTerminal,
-    promisedReadyAt: prepPromise.promisedReadyAt,
-    prepMinutes: prepPromise.prepMinutes,
+    promisedReadyAt,
+    prepMinutes,
     scheduledLabel: getOrderScheduledLabel({
       scheduled_for: o.scheduled_for ?? null,
       customer_data: (o.customer_data ?? null) as Record<string, unknown> | null,

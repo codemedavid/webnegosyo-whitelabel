@@ -31,7 +31,7 @@ export function describeLoyaltyReward(reward: LoyaltyReward): string {
     case 'fixed':
       return `${formatPeso(reward.amount)} off`
     case 'percent':
-      return `${reward.percent}% off`
+      return `${reward.percent}% off${reward.maxAmount ? ` (up to ${formatPeso(reward.maxAmount)})` : ''}`
     case 'free_item':
       return `Free ${reward.itemName}`
   }

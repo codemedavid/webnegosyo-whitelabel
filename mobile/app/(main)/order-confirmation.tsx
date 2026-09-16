@@ -1,3 +1,4 @@
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import React, { useEffect, useRef, useCallback } from 'react'
 import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -122,7 +123,7 @@ export default function OrderConfirmationScreen() {
           ) : null}
           {orderId ? (
             <Text style={[styles.orderIdText, { color: c.footerNote }]}>
-              Order #{orderId.slice(0, 8).toUpperCase()}
+              Order {formatDailyOrderNumber(completedOrder.dailyNumber, orderId)}
             </Text>
           ) : null}
         </View>

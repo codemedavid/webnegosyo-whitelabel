@@ -13,13 +13,14 @@ interface ModernCardProps {
   isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Modern Card Template
  * Contemporary design with overlapping elements and bold typography
  */
-export const ModernCard = memo(function ModernCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ModernCardProps) {
+export const ModernCard = memo(function ModernCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: ModernCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -41,7 +42,8 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, i
             fill
             className="object-cover transition-transform group-hover:scale-110"
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: branding.border }}>

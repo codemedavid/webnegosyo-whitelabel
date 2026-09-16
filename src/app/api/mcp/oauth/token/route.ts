@@ -7,7 +7,7 @@ import {
   getJwtSecret,
   getOrigin,
 } from '@/lib/mcp/oauth-config'
-import { MERCHANT_OAUTH_PATHS } from '@/lib/mcp/merchant-config'
+import { resolveMerchantTokenAudience } from '@/lib/mcp/merchant-oauth-rules'
 
 // OAuth 2.1 token endpoint. Exchanges an authorization code (with PKCE verifier)
 // or a refresh token for a Bearer access token. Accepts both form-encoded (the
@@ -16,13 +16,6 @@ import { MERCHANT_OAUTH_PATHS } from '@/lib/mcp/merchant-config'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export function resolveMerchantTokenAudience(
-  origin: string,
-  resource: string | undefined,
-): string | null {
-  const merchantAudience = `${origin}${MERCHANT_OAUTH_PATHS.mcp}`
-  return !resource || resource === merchantAudience ? merchantAudience : null
-}
 
 async function readParams(req: Request): Promise<Record<string, string>> {
   const contentType = req.headers.get('content-type') ?? ''

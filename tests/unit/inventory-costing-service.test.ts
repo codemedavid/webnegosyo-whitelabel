@@ -40,7 +40,7 @@ const BASE_COMPONENT: RecipeComponent = {
 const EMPTY_ROWS: CostingRowSets = { units: [], items: [], recipes: [], components: [] }
 
 function depsReturning(rows: CostingRowSets) {
-  return { fetchCostingRows: jest.fn(async () => rows) }
+  return { fetchCostingRows: jest.fn(async (_tenantId: string) => rows) }
 }
 
 describe('getCostingGraph', () => {

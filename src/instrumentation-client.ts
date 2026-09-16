@@ -8,7 +8,7 @@ import {
     sentryEnvironment,
     SENTRY_IGNORE_ERRORS,
     SENTRY_DENY_URLS,
-    filterSentryEvent,
+    filterSentryClientEvent,
 } from "@/lib/sentry-filtering";
 
 Sentry.init({
@@ -20,10 +20,10 @@ Sentry.init({
     enabled: isSentryEnabled(),
     environment: sentryEnvironment,
 
-    // Drop known framework/network/extension noise (see src/lib/sentry-filtering.ts).
+    // Keep actionable production errors and attach storefront/admin context.
     ignoreErrors: SENTRY_IGNORE_ERRORS,
     denyUrls: SENTRY_DENY_URLS,
-    beforeSend: filterSentryEvent,
+    beforeSend: filterSentryClientEvent,
 
     // Add optional integrations for additional features
     integrations: [Sentry.replayIntegration()],

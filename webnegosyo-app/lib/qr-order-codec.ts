@@ -19,6 +19,8 @@ import {
 } from "lz-string";
 
 export interface QrOrderItemV1 {
+  /** Base price before extras; optional for old handoff codes. */
+  basePrice?: number;
   menuItemId: string;
   menuItemName: string;
   quantity: number;

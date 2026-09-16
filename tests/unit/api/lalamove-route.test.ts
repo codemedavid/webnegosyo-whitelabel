@@ -105,8 +105,8 @@ function makeRequest(body: unknown, authHeader?: string): NextRequest {
 }
 
 describe('POST /api/lalamove', () => {
-  let getUserMock: jest.Mock
-  let appUserSingleMock: jest.Mock
+  let getUserMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let appUserSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let adminUpdateMock: jest.Mock
   let tenantRow: Record<string, unknown> | null
   let orderRow: Record<string, unknown> | null
@@ -123,8 +123,8 @@ describe('POST /api/lalamove', () => {
     const { createClient } = await import('@supabase/supabase-js')
     const mockCreateClient = createClient as unknown as jest.Mock
 
-    getUserMock = jest.fn()
-    appUserSingleMock = jest.fn()
+    getUserMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    appUserSingleMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
     getUserMock.mockResolvedValue({ data: { user: { id: 'merchant-1' } }, error: null })
     appUserSingleMock.mockResolvedValue({
       data: { role: 'admin', tenant_id: 't1', outlet_id: null },
@@ -183,19 +183,19 @@ describe('POST /api/lalamove', () => {
     })
 
     const service = await import('@/lib/lalamove-service')
-    ;(service.createLalamoveOrder as unknown as jest.Mock).mockResolvedValue({
+    ;(service.createLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
       orderId: 'lala-1',
       status: 'ASSIGNING_DRIVER',
       shareLink: 'https://share.lalamove.com/lala-1',
     })
-    ;(service.getLalamoveOrder as unknown as jest.Mock).mockResolvedValue({
+    ;(service.getLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
       status: 'ON_GOING',
       shareLink: 'https://share.lalamove.com/lala-1',
       driver: { name: 'Rico', phone: '09998887777' },
     })
-    ;(service.cancelLalamoveOrder as unknown as jest.Mock).mockResolvedValue(true)
-    ;(service.addLalamovePriorityFee as unknown as jest.Mock).mockResolvedValue({})
-    ;(service.createLalamoveQuotation as unknown as jest.Mock).mockResolvedValue({
+    ;(service.cancelLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue(true)
+    ;(service.addLalamovePriorityFee as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({})
+    ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
       quotationId: 'quote-new',
       price: 89,
       currency: 'PHP',
@@ -513,7 +513,7 @@ describe('POST /api/lalamove', () => {
     // "Quotation expired" tells a merchant to re-quote from the web dashboard.
     // "Something went wrong" leaves them tapping a button that will never work.
     const service = await import('@/lib/lalamove-service')
-    ;(service.createLalamoveOrder as unknown as jest.Mock).mockRejectedValue(
+    ;(service.createLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockRejectedValue(
       new Error('Quotation expired'),
     )
 

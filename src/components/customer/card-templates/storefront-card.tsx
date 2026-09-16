@@ -13,6 +13,7 @@ interface StorefrontCardProps {
   isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
@@ -26,6 +27,7 @@ export const StorefrontCard = memo(function StorefrontCard({
   isOrderable,
   menuEngineeringEnabled,
   hideCurrencySymbol,
+  priority,
 }: StorefrontCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
@@ -45,7 +47,8 @@ export const StorefrontCard = memo(function StorefrontCard({
               fill
               className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
               sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-              loading="lazy"
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : undefined}
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center px-5 text-center">

@@ -13,13 +13,14 @@ interface BoldCardProps {
   isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Bold Card Template
  * High contrast design with prominent CTA
  */
-export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: BoldCardProps) {
+export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: BoldCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -44,7 +45,8 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
             fill
             className="object-cover transition-transform group-hover:scale-105"
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
           />
         )}
 

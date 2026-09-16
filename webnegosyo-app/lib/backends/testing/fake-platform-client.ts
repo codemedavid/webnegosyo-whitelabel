@@ -24,6 +24,7 @@ export interface TableResponse {
 const CHAINABLE_METHODS = [
   "select",
   "eq",
+  "or",
   "neq",
   "in",
   "gte",

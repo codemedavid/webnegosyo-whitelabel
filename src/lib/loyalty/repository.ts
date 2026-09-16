@@ -8,7 +8,6 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BalanceCorrectionInput, LoyaltyProgramInput } from './manage'
-import { nextProgramVersion } from './versioning'
 import type { LoyaltyProgramStatus, LoyaltyRules } from './types'
 import { parseLoyaltyRules } from './rules'
 
@@ -53,12 +52,17 @@ async function countBy(
   tenantId: string,
   extra: Record<string, string> = {},
 ): Promise<Map<string, number>> {
-  let query = client.from(table).select('program_id').eq('tenant_id', tenantId)
-  for (const [column, value] of Object.entries(extra)) query = query.eq(column, value)
-  const { data } = await query
   const counts = new Map<string, number>()
-  for (const row of (data ?? []) as Array<{ program_id: string }>) {
-    counts.set(row.program_id, (counts.get(row.program_id) ?? 0) + 1)
+  for (let offset = 0; ; offset += 1000) {
+    let query = client.from(table).select('program_id').eq('tenant_id', tenantId)
+    for (const [column, value] of Object.entries(extra)) query = query.eq(column, value)
+    if (table === 'loyalty_entitlements') query = query.in('status', ['issued', 'restored']).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    const { data, error } = await query.order('id').range(offset, offset + 999)
+    if (error) throw new Error('Program totals could not be loaded. Please retry.')
+    for (const row of (data ?? []) as Array<{ program_id: string }>) {
+      counts.set(row.program_id, (counts.get(row.program_id) ?? 0) + 1)
+    }
+    if (!data || data.length < 1000) break
   }
   return counts
 }
@@ -77,16 +81,17 @@ export async function listLoyaltyPrograms(
   if (programs.length === 0) return []
 
   const versionIds = programs.map((p) => p.current_version_id).filter((id): id is string => !!id)
-  const { data: versionRows } = versionIds.length
+  const { data: versionRows, error: versionError } = versionIds.length
     ? await client.from('loyalty_program_versions').select('id, version, rules').in('id', versionIds)
-    : { data: [] }
+    : { data: [], error: null }
+  if (versionError) throw new Error('Reward rules could not be loaded. Please retry.')
   const versions = new Map(
     ((versionRows ?? []) as Array<{ id: string; version: number; rules: unknown }>).map((v) => [v.id, v]),
   )
 
   const [members, rewards] = await Promise.all([
     countBy(client, 'loyalty_balances', tenantId),
-    countBy(client, 'loyalty_entitlements', tenantId, { status: 'issued' }),
+    countBy(client, 'loyalty_entitlements', tenantId),
   ])
 
   return programs.map((row) => {
@@ -111,91 +116,28 @@ export async function listLoyaltyPrograms(
   })
 }
 
-/** Writes the version row and points the program at it. */
-async function writeVersion(
-  client: SupabaseClient,
-  tenantId: string,
-  programId: string,
-  rules: LoyaltyRules,
-  actor: string | null,
-): Promise<{ id: string; version: number }> {
-  const { data: latest } = await client
-    .from('loyalty_program_versions')
-    .select('version')
-    .eq('program_id', programId)
-    .order('version', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const version = nextProgramVersion((latest as { version: number } | null)?.version ?? null)
-  const { data, error } = await client
-    .from('loyalty_program_versions')
-    .insert({ tenant_id: tenantId, program_id: programId, version, rules, created_by: actor })
-    .select('id, version')
-    .single()
-  if (error || !data) throw new Error(`loyalty version could not be written: ${error?.message}`)
-
-  const { error: pointError } = await client
-    .from('loyalty_programs')
-    .update({ current_version_id: data.id })
-    .eq('id', programId)
-    .eq('tenant_id', tenantId)
-  if (pointError) throw new Error(`loyalty program could not adopt its version: ${pointError.message}`)
-
-  return data as { id: string; version: number }
-}
-
+/** The database commits the program and current version together. */
 export async function createLoyaltyProgram(
-  client: SupabaseClient,
-  tenantId: string,
-  input: LoyaltyProgramInput,
-  actor: string | null,
+  client: SupabaseClient, tenantId: string, input: LoyaltyProgramInput, actor: string | null,
 ): Promise<{ programId: string; versionId: string }> {
-  const { data, error } = await client
-    .from('loyalty_programs')
-    .insert({
-      tenant_id: tenantId,
-      name: input.name,
-      description: input.description,
-      earn_mode: input.earnMode,
-      scope: input.scope,
-      outlet_id: input.outletId,
-      status: 'draft',
-      created_by: actor,
-    })
-    .select('id')
-    .single()
-  if (error || !data) throw new Error(`loyalty program could not be created: ${error?.message}`)
-
-  const version = await writeVersion(client, tenantId, data.id, input.rules, actor)
-  return { programId: data.id, versionId: version.id }
+  const { data, error } = await client.rpc('manage_loyalty_program', {
+    p_tenant_id: tenantId, p_actor: actor, p_action: 'create', p_program_id: null,
+    p_input: input, p_expected_version: null,
+  })
+  if (error || !data) throw new Error(error?.message ?? 'Program could not be created.')
+  return data
 }
 
-/** A rule change is a new version; the program row itself keeps its identity. */
 export async function reviseLoyaltyProgram(
-  client: SupabaseClient,
-  tenantId: string,
-  programId: string,
-  rules: LoyaltyRules,
-  actor: string | null,
+  client: SupabaseClient, tenantId: string, programId: string, rules: LoyaltyRules,
+  actor: string | null, expectedVersion: number | null,
 ): Promise<{ versionId: string; version: number }> {
-  const { data: program } = await client
-    .from('loyalty_programs')
-    .select('id, earn_mode, status')
-    .eq('id', programId)
-    .eq('tenant_id', tenantId)
-    .maybeSingle()
-  if (!program) throw new Error('Program not found.')
-  const row = program as { earn_mode: string; status: LoyaltyProgramStatus }
-  if (row.status === 'ended') throw new Error('An ended program cannot be changed.')
-  if (row.earn_mode !== rules.earnMode) {
-    // Stamps and points are not convertible; every balance would become
-    // meaningless. A merchant who wants the other mode starts a new program.
-    throw new Error('A program cannot change between stamps and points.')
-  }
-
-  const version = await writeVersion(client, tenantId, programId, rules, actor)
-  return { versionId: version.id, version: version.version }
+  const { data, error } = await client.rpc('manage_loyalty_program', {
+    p_tenant_id: tenantId, p_actor: actor, p_action: 'revise', p_program_id: programId,
+    p_input: { rules }, p_expected_version: expectedVersion,
+  })
+  if (error || !data) throw new Error(error?.message ?? 'Rules could not be saved.')
+  return data
 }
 
 export async function readLoyaltyProgramStatus(
@@ -214,17 +156,15 @@ export async function readLoyaltyProgramStatus(
 }
 
 export async function writeLoyaltyProgramStatus(
-  client: SupabaseClient,
-  tenantId: string,
-  programId: string,
+  client: SupabaseClient, tenantId: string, programId: string,
   patch: { status: LoyaltyProgramStatus; activates_at?: string; ends_at?: string },
+  actor: string, expectedStatus: LoyaltyProgramStatus,
 ): Promise<void> {
-  const { error } = await client
-    .from('loyalty_programs')
-    .update(patch)
-    .eq('id', programId)
-    .eq('tenant_id', tenantId)
-  if (error) throw new Error(`loyalty program status could not be written: ${error.message}`)
+  const { error } = await client.rpc('manage_loyalty_program', {
+    p_tenant_id: tenantId, p_actor: actor, p_action: 'set_status', p_program_id: programId,
+    p_input: { status: patch.status, expectedStatus }, p_expected_version: null,
+  })
+  if (error) throw new Error(error.message)
 }
 
 /** An audited balance correction: a ledger row with a note, applied atomically. */

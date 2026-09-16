@@ -167,6 +167,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   mcp: 'store_setup',
   customers: 'customers',
   vouchers: 'vouchers',
+  loyalty: 'loyalty_manage',
 }
 
 /**

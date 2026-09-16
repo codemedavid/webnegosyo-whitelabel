@@ -28,19 +28,6 @@ describe("platform read scoping", () => {
     expect(HOOKS()).toMatch(/useAccountBranchScope/);
   });
 
-  it("does not narrow queries by the branch being viewed", () => {
-    // `useBranchScope` is already narrowed to the drill-down. Fetching through
-    // it would leave the portfolio and the Branches comparison unable to read
-    // the branches they exist to compare — the same collapse
-    // `business-screen-mount` pins on the screens, one layer down. An owner is
-    // entitled to the whole store anyway, so pushing their selection to the
-    // server buys no safety.
-    //
-    // Asserted on the IMPORT, not on any mention: prose explaining why the
-    // narrowed hook is not used would otherwise fail its own guardrail.
-    expect(HOOKS()).not.toMatch(/import \{[^}]*\buseBranchScope\b[^}]*\}/);
-  });
-
   it("passes the scope into the platform query", () => {
     expect(PLATFORM_QUERY()).toMatch(/runPlatformQuery\([\s\S]{0,200}scope/);
   });

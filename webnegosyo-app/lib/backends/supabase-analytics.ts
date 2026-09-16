@@ -248,14 +248,20 @@ async function fetchEvents(
   client: PlatformClient,
   tenantId: string,
   types: readonly string[],
+  scope: BranchScope,
   window: Window
 ): Promise<AnalyticsEvent[]> {
+  let builder = client.from("analytics_events")
+    .select("type, created_at")
+    .eq("tenant_id", tenantId);
+  if (scope.kind === "branch") {
+    // Checkout historically used outletId; newer event producers use outlet_id.
+    // Prefer the canonical key if both exist. Quote PostgREST filter values.
+    const id = JSON.stringify(scope.outletId);
+    builder = builder.or(`metadata->>outlet_id.eq.${id},and(metadata->>outlet_id.is.null,metadata->>outletId.eq.${id})`);
+  }
   const rows = await unwrap<AnalyticsEventRow[] | null>(
-    client
-      .from("analytics_events")
-      .select("type, created_at")
-      .eq("tenant_id", tenantId)
-      .in("type", types)
+    builder.in("type", types)
       .gte("created_at", new Date(window.startMs).toISOString())
       .order("created_at", { ascending: false })
       .limit(STATS_LIMIT)
@@ -294,8 +300,8 @@ async function fetchProductRows(
 // --- dispatch ------------------------------------------------------------------------
 
 /**
- * `scope` is the ACCOUNT's branch (see `supabase-adapter.ts`): a manager sees
- * their branch's figures, an owner the whole store.
+ * `scope` is the effective viewing branch: the account restriction narrowed
+ * by the owner's selection. An aggregate cannot be narrowed after computing.
  */
 export async function runPlatformAnalyticsQuery(
   client: PlatformClient,
@@ -310,11 +316,11 @@ export async function runPlatformAnalyticsQuery(
   switch (ref) {
     case "analytics:getUpsellAnalytics":
       return computeUpsellAnalytics(
-        await fetchEvents(client, tenant, UPSELL_EVENT_TYPES, rollingWindow(params, 7))
+        await fetchEvents(client, tenant, UPSELL_EVENT_TYPES, scope, rollingWindow(params, 7))
       );
     case "analytics:getBundleAnalytics":
       return computeBundleAnalytics(
-        await fetchEvents(client, tenant, BUNDLE_EVENT_TYPES, rollingWindow(params, 7))
+        await fetchEvents(client, tenant, BUNDLE_EVENT_TYPES, scope, rollingWindow(params, 7))
       );
     case "analytics:getTopItems":
       return computeTopItems(
@@ -328,7 +334,7 @@ export async function runPlatformAnalyticsQuery(
     case "analytics:getUpsellTrends": {
       const window = rollingWindow(params, 7);
       const [events, items] = await Promise.all([
-        fetchEvents(client, tenant, UPSELL_EVENT_TYPES, window),
+        fetchEvents(client, tenant, UPSELL_EVENT_TYPES, scope, window),
         fetchItems(client, tenant, scope, window),
       ]);
       return computeUpsellTrends(events, items);

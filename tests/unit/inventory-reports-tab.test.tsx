@@ -23,6 +23,7 @@ function dailyReport(
   overrides: Partial<DailyInventoryReportForDay> = {},
 ): DailyInventoryReportForDay {
   return {
+    countSession: null,
     dayKey: '2026-07-29',
     rows: [],
     totals: { cogs: 0, wasteCost: 0, shrinkageCost: 0 },

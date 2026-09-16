@@ -54,6 +54,8 @@ function findItemFault(
 ): HandoffBlockReason | null {
   if (!catalogPrices.has(item.menuItemId)) return "unknown_item";
   if (!isValidQuantity(item.quantity)) return "bad_quantity";
+  if (item.basePrice !== undefined && (!Number.isFinite(item.basePrice) || item.basePrice < 0)) return "bad_price";
+  if ((item.addons ?? []).some(addon => addon.quantity !== undefined && (!isValidQuantity(addon.quantity) || addon.quantity > 99))) return "bad_quantity";
   if (!Number.isFinite(item.price) || !Number.isFinite(item.subtotal)) return "bad_price";
   return null;
 }
@@ -63,10 +65,11 @@ function findItemFault(
  * QR carried is preserved; only the base price is the catalog's to decide.
  */
 function repriceFromCatalog(item: QrOrderItemV1, catalogPrice: number): QrOrderItemV1 {
-  if (Math.abs(catalogPrice - item.price) < PRICE_EPSILON) return item;
-  const perUnitDelta = round2(item.subtotal / item.quantity - item.price);
+  const basePrice = item.basePrice ?? item.price;
+  if (Math.abs(catalogPrice - basePrice) < PRICE_EPSILON) return item;
+  const perUnitDelta = round2(item.subtotal / item.quantity - basePrice);
   const newUnit = round2(catalogPrice + perUnitDelta);
-  return { ...item, price: catalogPrice, subtotal: round2(newUnit * item.quantity) };
+  return { ...item, ...(item.basePrice !== undefined ? { basePrice: catalogPrice } : {}), price: item.basePrice !== undefined ? newUnit : catalogPrice, subtotal: round2(newUnit * item.quantity) };
 }
 
 export function evaluateCartHandoff({

@@ -13,13 +13,14 @@ interface ClassicCardProps {
   isOrderable: boolean
   menuEngineeringEnabled?: boolean
   hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Classic Card Template
  * Traditional layout with image on top, content below
  */
-export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: ClassicCardProps) {
+export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: ClassicCardProps) {
   const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -44,7 +45,8 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
             fill
             className="object-cover transition-transform group-hover:scale-105"
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
           />
         )}
 

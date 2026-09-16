@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 
 import { useId, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
@@ -24,6 +25,7 @@ interface LoyaltyStampCardProps {
   /** Whether the order is already settled — decides the "pending" wording. */
   isOrderComplete: boolean
   storeName: string
+  tenantSlug?: string
   /** The store's logo, stamped into every earned slot. Null falls back to a check. */
   logoUrl?: string | null
   /**
@@ -62,6 +64,7 @@ export function LoyaltyStampCard({
   offer,
   isOrderComplete,
   storeName,
+  tenantSlug,
   logoUrl = null,
   view = 'claim',
   card = null,
@@ -125,6 +128,7 @@ export function LoyaltyStampCard({
     return (
       <CardShell>
         <EarnedCardState card={card} storeName={storeName} logoUrl={logoUrl} />
+        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & claim</Link> : null}
       </CardShell>
     )
   }
@@ -139,6 +143,7 @@ export function LoyaltyStampCard({
           storeName={storeName}
           logoUrl={logoUrl}
         />
+        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & claim</Link> : null}
       </CardShell>
     )
   }
@@ -181,6 +186,7 @@ export function LoyaltyStampCard({
       <form onSubmit={handleSubmit} className="space-y-3 p-5">
         {typedProgress.card ? (
           <LoyaltyProgressPanel
+            tenantSlug={tenantSlug}
             offer={typedProgress.offer}
             card={typedProgress.card}
             isLoading={false}

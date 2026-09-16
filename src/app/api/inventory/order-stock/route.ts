@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isUuid } from '@/lib/uuid'
+import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import { createClient } from '@supabase/supabase-js'
 
 /**
@@ -39,6 +40,7 @@ interface OrderStockItemInput {
   quantity?: unknown
   optionIds?: unknown
   addonIds?: unknown
+  addonQuantities?: unknown
 }
 
 function toStringArray(value: unknown): string[] {
@@ -57,9 +59,13 @@ function toDepletionItems(value: unknown) {
   if (!Array.isArray(value)) return []
 
   return (value as OrderStockItemInput[])
-    .filter((item) => typeof item?.menuItemId === 'string' && Number(item?.quantity) > 0)
+    .filter((item) => typeof item?.menuItemId === 'string' && Number.isFinite(Number(item?.quantity)) && Number(item?.quantity) > 0 && validateAddonQuantities(item.addonQuantities, toStringArray(item.addonIds)))
     .map((item) => {
       const optionIds = toStringArray(item.optionIds)
+      const addonIds = toStringArray(item.addonIds)
+      const addonQuantities = item.addonQuantities && typeof item.addonQuantities === 'object' && !Array.isArray(item.addonQuantities)
+        ? Object.fromEntries(Object.entries(item.addonQuantities).filter(([id, quantity]) => addonIds.includes(id) && Number.isSafeInteger(quantity) && Number(quantity) > 0 && Number(quantity) <= 99))
+        : undefined
       return {
         menuItemId: item.menuItemId as string,
         quantity: Number(item.quantity),
@@ -67,11 +73,12 @@ function toDepletionItems(value: unknown) {
         // whichever recipe target exists matches and the other finds nothing.
         // Mirrors `depleteStockForOrder` in src/app/actions/orders.ts.
         optionIds,
-        modifierOptionIds: optionIds,
+        modifierOptionIds: [...new Set([...optionIds, ...addonIds])],
         // Carried through so addon-targeted recipes deplete too. Hardcoding
         // this empty was the defect that made counter sales base-recipe-only
         // for add-ons while web checkout spent them.
-        addonIds: toStringArray(item.addonIds),
+        addonIds,
+        ...(addonQuantities ? { addonQuantities } : {}),
       }
     })
 }

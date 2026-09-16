@@ -7,6 +7,7 @@
  * interstitial are rendered by the page shell (shared).
  */
 
+import { addonLabel } from '@/lib/addon-quantity'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import Link from 'next/link'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -138,7 +139,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
                         {item.selected_addons.length > 0 && (
                           <p className="text-sm text-gray-600 mb-1" style={{ color: palette.mutedText }}>
-                            <span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}
+                            <span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}
                           </p>
                         )}
 
@@ -237,7 +238,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                           )}
                           {slot.selectedAddons.length > 0 && (
                             <p className="text-xs text-gray-500 mt-0.5" style={{ color: palette.mutedText }}>
-                              + {slot.selectedAddons.map(a => a.name).join(', ')}
+                              + {slot.selectedAddons.map(addonLabel).join(', ')}
                             </p>
                           )}
                         </div>

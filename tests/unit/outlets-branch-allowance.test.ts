@@ -74,6 +74,7 @@ describe('creating a branch when the allowance cannot be read', () => {
     // Assert — refused, but honestly. The old message named a limit of 1 to a
     // merchant who is visibly running three.
     expect(result.success).toBe(false)
+    if (result.success) throw new Error('Expected branch creation to fail')
     expect(result.error).toContain('Could not check how many branches')
     expect(result.error).not.toContain('This plan includes')
     expect(create).not.toHaveBeenCalled()
@@ -104,6 +105,7 @@ describe('creating a branch when the allowance reads cleanly', () => {
     const result = await createOutletAction('t1', 'cafe', NEW_BRANCH as never)
 
     expect(result.success).toBe(false)
+    if (result.success) throw new Error('Expected branch creation to fail')
     expect(result.error).toContain('This plan includes 3 branches')
     expect(create).not.toHaveBeenCalled()
   })
@@ -116,6 +118,7 @@ describe('creating a branch when the allowance reads cleanly', () => {
     const result = await createOutletAction('t1', 'cafe', NEW_BRANCH as never)
 
     expect(result.success).toBe(false)
+    if (result.success) throw new Error('Expected branch creation to fail')
     expect(result.error).toContain('This plan includes 1 branch')
   })
 })

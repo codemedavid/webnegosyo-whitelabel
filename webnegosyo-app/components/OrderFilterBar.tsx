@@ -18,6 +18,14 @@ interface OrderFilterBarProps {
   onSortToggle: () => void;
   search: string;
   onSearchChange: (value: string) => void;
+  /**
+   * Branches to narrow by, including the orders that belong to none. Absent or
+   * empty renders no second row at all, which is what keeps a single-location
+   * store and a branch-locked account on exactly the bar that shipped.
+   */
+  branchFilters?: StatusFilterOption[];
+  activeBranchFilter?: string;
+  onBranchFilterChange?: (key: string) => void;
 }
 
 export function OrderFilterBar({
@@ -28,7 +36,11 @@ export function OrderFilterBar({
   onSortToggle,
   search,
   onSearchChange,
+  branchFilters,
+  activeBranchFilter,
+  onBranchFilterChange,
 }: OrderFilterBarProps) {
+  const hasBranchRow = (branchFilters?.length ?? 0) > 0
   return (
     <View style={styles.container}>
       <View style={styles.searchRow}>
@@ -88,6 +100,37 @@ export function OrderFilterBar({
           );
         })}
       </ScrollView>
+
+      {hasBranchRow && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillRow}
+        >
+          {branchFilters?.map((branch) => {
+            const isActive = branch.key === activeBranchFilter;
+            return (
+              <TouchableOpacity
+                key={branch.key}
+                style={[styles.pill, isActive && styles.pillActive]}
+                onPress={() => onBranchFilterChange?.(branch.key)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${branch.label} orders`}
+              >
+                <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
+                  {branch.label}
+                </Text>
+                <View style={[styles.countBadge, isActive && styles.countBadgeActive]}>
+                  <Text style={[styles.countText, isActive && styles.countTextActive]}>
+                    {branch.count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
     </View>
   );
 }

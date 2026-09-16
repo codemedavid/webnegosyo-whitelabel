@@ -17,6 +17,12 @@ import { createTestMenuItem, createTestVariation, createTestAddon, createTestVar
 
 describe('cart-utils', () => {
   describe('calculateCartItemSubtotal', () => {
+    test('free variations and repeated free add-ons add no charge to free or paid items', () => {
+      const variation = createTestVariation({ price_modifier: 0 })
+      const addons = [{ ...createTestAddon({ price: 0 }), quantity: 3 }]
+      expect(calculateCartItemSubtotal(0, variation, addons, 2)).toBe(0)
+      expect(calculateCartItemSubtotal(100, variation, addons, 2)).toBe(200)
+    })
     test('calculates subtotal with base price only', () => {
       const menuItem = createTestMenuItem({ price: 100 })
       const result = calculateCartItemSubtotal(menuItem.price, undefined, [], 2)

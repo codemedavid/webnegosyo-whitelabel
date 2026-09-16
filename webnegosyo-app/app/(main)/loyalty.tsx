@@ -7,12 +7,15 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
+  Alert,
+  Linking,
 } from "react-native";
 
 import { useAuthStore } from "../../stores/auth-store";
 import {
   createLoyaltyProgram,
   fetchLoyaltyPrograms,
+  reviseLoyaltyProgram,
   setLoyaltyProgramStatus,
 } from "../../lib/loyalty/repo";
 import {
@@ -20,6 +23,7 @@ import {
   EMPTY_FORM,
   nextStatusAction,
   parseProgramForm,
+  programToForm,
   STATUS_LABELS,
   type LoyaltyFlags,
   type LoyaltyProgramSummary,
@@ -30,6 +34,9 @@ import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { useOutlets } from "../../lib/use-outlets";
+import { listProducts, type Product } from "../../lib/products";
+import { getWebAppUrl } from "../../lib/web-app-url";
 import { LoyaltySmsDeviceCard } from "../../components/LoyaltySmsDeviceCard";
 
 /**
@@ -48,7 +55,11 @@ import { LoyaltySmsDeviceCard } from "../../components/LoyaltySmsDeviceCard";
 
 export default function LoyaltyScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
-  const loyaltyEnabled = useAuthStore((s) => s.loyaltyEnabled);
+  const tenantSlug = useAuthStore((s) => s.tenantSlug);
+  const { outlets, error: outletsError } = useOutlets();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<LoyaltyProgramSummary | null>(null);
 
   const [programs, setPrograms] = useState<LoyaltyProgramSummary[]>([]);
   const [flags, setFlags] = useState<LoyaltyFlags>({ isEnabled: false, isShadow: true });
@@ -60,6 +71,18 @@ export default function LoyaltyScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [busyProgramId, setBusyProgramId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!tenantId || !isComposing) return;
+    let active = true;
+    setProducts([]);
+    setCatalogError(null);
+    listProducts(tenantId, form.scope === "branch" ? form.outletId : null).then(
+      rows => { if (active) setProducts(rows.filter(row => row.is_available && !row.presell_enabled)); },
+      () => { if (active) setCatalogError("Menu items could not be loaded. Reopen the form to retry."); },
+    );
+    return () => { active = false; };
+  }, [tenantId, isComposing, form.scope, form.outletId]);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -95,16 +118,19 @@ export default function LoyaltyScreen() {
     }
     setIsSaving(true);
     setFormError(null);
-    const result = await createLoyaltyProgram(tenantId, parsed.program);
+    const result = editing
+      ? await reviseLoyaltyProgram(tenantId, editing.id, parsed.program.rules, editing.versionNumber)
+      : await createLoyaltyProgram(tenantId, parsed.program);
     setIsSaving(false);
     if (!result.ok) {
       setFormError(result.error);
       return;
     }
     setForm(EMPTY_FORM);
+    setEditing(null);
     setIsComposing(false);
     await load();
-  }, [tenantId, form, load]);
+  }, [tenantId, form, load, editing]);
 
   const changeStatus = useCallback(
     async (program: LoyaltyProgramSummary, to: "active" | "paused" | "ended") => {
@@ -157,8 +183,8 @@ export default function LoyaltyScreen() {
 
   // Activating a program switches the store live (both flags), so a store with
   // nothing active is simply not earning yet — not blocked on the platform.
-  const earningNote = !loyaltyEnabled || !flags.isEnabled
-    ? "No program is live yet. Activate one and this store starts stamping straight away — customers claim on their receipt."
+  const earningNote = !flags.isEnabled
+    ? "No program is live yet. Activate one and this store starts stamping straight away — customers can view progress on your loyalty page."
     : flags.isShadow
       ? "Shadow mode: earning is being recorded and checked, but customers are not yet issued rewards."
       : null;
@@ -173,6 +199,8 @@ export default function LoyaltyScreen() {
         {earningNote ? <Text style={styles.notice}>{earningNote}</Text> : null}
         {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
         <LoyaltySmsDeviceCard />
+        {tenantSlug ? <TouchableOpacity accessibilityRole="link" onPress={() => void Linking.openURL(`${getWebAppUrl()}/${tenantSlug}/admin/loyalty`)}><Text style={styles.cardRules}>Manage reward sale syncing on the web ↗</Text></TouchableOpacity> : null}
+        {tenantSlug ? <TouchableOpacity accessibilityRole="link" onPress={() => void Linking.openURL(`${getWebAppUrl()}/${tenantSlug}/loyalty`)}><Text style={styles.cardRules}>Open customer loyalty page ↗</Text></TouchableOpacity> : null}
 
         {programs.length === 0 && !isComposing ? (
           <EmptyState
@@ -198,6 +226,14 @@ export default function LoyaltyScreen() {
                 {program.rewardsOutstanding === 1 ? "" : "s"} unclaimed
                 {program.versionNumber ? ` · rules v${program.versionNumber}` : ""}
               </Text>
+              {program.activatesAt ? <Text style={styles.cardMeta}>Earns from {new Date(program.activatesAt).toLocaleDateString("en-PH")}{program.endsAt ? ` until ${new Date(program.endsAt).toLocaleDateString("en-PH")}` : ""}</Text> : null}
+              <Text style={styles.cardMeta}>
+                {program.scope === "branch" ? outlets.find(outlet => outlet.id === program.outletId)?.name ?? "Selected branch" : "All branches"}
+                {program.rules?.rewardExpiryDays ? ` · Rewards expire after ${program.rules.rewardExpiryDays} days` : " · Rewards do not expire"}
+              </Text>
+              {program.status !== "ended" ? <TouchableOpacity style={styles.buttonGhost} disabled={isSaving} onPress={() => {
+                setEditing(program); setForm(programToForm(program)); setFormError(null); setIsComposing(true);
+              }}><Text style={styles.buttonGhostLabel}>Edit reward & rules</Text></TouchableOpacity> : null}
               {action ? (
                 <View style={styles.actions}>
                   <TouchableOpacity
@@ -211,7 +247,7 @@ export default function LoyaltyScreen() {
                     <TouchableOpacity
                       style={styles.buttonGhost}
                       disabled={isBusy}
-                      onPress={() => void changeStatus(program, "ended")}
+                      onPress={() => Alert.alert("End this program?", "New orders will stop earning. Rewards already issued keep their terms.", [{ text: "Cancel", style: "cancel" }, { text: "End program", style: "destructive", onPress: () => void changeStatus(program, "ended") }])}
                     >
                       <Text style={styles.buttonGhostLabel}>End</Text>
                     </TouchableOpacity>
@@ -224,11 +260,14 @@ export default function LoyaltyScreen() {
 
         {isComposing ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>New program</Text>
+            <Text style={styles.cardTitle}>{editing ? "Edit reward & rules" : "New program"}</Text>
+            {editing ? <Text style={styles.notice}>Changes apply to future earning. Rewards already issued keep their original terms.</Text> : null}
             <TextInput
               style={styles.input}
               placeholder="Name, e.g. Coffee card"
               placeholderTextColor={colors.textSecondary}
+              editable={!editing && !isSaving}
+              accessibilityLabel="Program name"
               value={form.name}
               onChangeText={(name) => setForm({ ...form, name })}
             />
@@ -237,6 +276,7 @@ export default function LoyaltyScreen() {
                 <TouchableOpacity
                   key={mode}
                   style={[styles.segmentItem, form.earnMode === mode && styles.segmentActive]}
+                  disabled={!!editing || isSaving}
                   onPress={() => setForm({ ...form, earnMode: mode })}
                 >
                   <Text style={[styles.segmentLabel, form.earnMode === mode && styles.segmentLabelActive]}>
@@ -245,6 +285,14 @@ export default function LoyaltyScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            {!editing ? <>
+              <Text style={styles.fieldLabel}>Where customers earn</Text>
+              <View style={styles.segment}>{(["business", "branch"] as const).map(scope => <TouchableOpacity key={scope} style={[styles.segmentItem, form.scope === scope && styles.segmentActive]} onPress={() => setForm({ ...form, scope })}><Text style={[styles.segmentLabel, form.scope === scope && styles.segmentLabelActive]}>{scope === "business" ? "All branches" : "One branch"}</Text></TouchableOpacity>)}</View>
+              {form.scope === "branch" ? <View style={styles.field}>
+                {outletsError ? <Text style={styles.error}>{outletsError}</Text> : null}
+                {outlets.map(outlet => <TouchableOpacity key={outlet.id} style={styles.buttonGhost} onPress={() => setForm({ ...form, outletId: outlet.id })}><Text style={styles.buttonGhostLabel}>{form.outletId === outlet.id ? "Selected: " : ""}{outlet.name}</Text></TouchableOpacity>)}
+              </View> : null}
+            </> : null}
             <Field
               label={form.earnMode === "stamp" ? "Orders per reward" : "Points per reward"}
               value={form.threshold}
@@ -263,23 +311,29 @@ export default function LoyaltyScreen() {
               onChange={(minSpend) => setForm({ ...form, minSpend })}
             />
             <View style={styles.segment}>
-              {(["fixed", "percent"] as const).map((type) => (
+              {(["fixed", "percent", "free_item"] as const).map((type) => (
                 <TouchableOpacity
                   key={type}
                   style={[styles.segmentItem, form.rewardType === type && styles.segmentActive]}
                   onPress={() => setForm({ ...form, rewardType: type })}
                 >
                   <Text style={[styles.segmentLabel, form.rewardType === type && styles.segmentLabelActive]}>
-                    {type === "fixed" ? "₱ off" : "% off"}
+                    {type === "fixed" ? "₱ off" : type === "percent" ? "% off" : "Free item"}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Field
+            {form.rewardType === "free_item" ? <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Choose one free base item</Text>
+              <Text style={styles.notice}>Upgrades and add-ons stay payable. Unavailable items cannot be substituted.</Text>
+              {catalogError ? <Text style={styles.error}>{catalogError}</Text> : null}
+              {form.rewardItemName ? <Text style={styles.cardRules}>Selected: {form.rewardItemName}</Text> : null}
+              {products.map(item => <TouchableOpacity key={item.id} style={styles.buttonGhost} onPress={() => setForm({ ...form, rewardItemId: item.id, rewardItemName: item.name })}><Text style={styles.buttonGhostLabel}>{form.rewardItemId === item.id ? "Selected: " : ""}{item.name}</Text></TouchableOpacity>)}
+            </View> : <Field
               label={form.rewardType === "fixed" ? "Reward amount (₱)" : "Reward percent"}
               value={form.rewardValue}
               onChange={(rewardValue) => setForm({ ...form, rewardValue })}
-            />
+            />}
             {form.rewardType === "percent" ? (
               <Field
                 label="Cap (₱, optional)"
@@ -287,10 +341,17 @@ export default function LoyaltyScreen() {
                 onChange={(rewardCap) => setForm({ ...form, rewardCap })}
               />
             ) : null}
+            {!editing ? <>
+              <Text style={styles.notice}>Optional earning dates, in Manila time. Activate the draft to start or schedule earning.</Text>
+              <Field label="Activation date (YYYY-MM-DD, optional)" value={form.activatesAt} onChange={activatesAt => setForm({ ...form, activatesAt })} numeric={false} />
+              <Field label="End date (YYYY-MM-DD, optional)" value={form.endsAt} onChange={endsAt => setForm({ ...form, endsAt })} numeric={false} />
+            </> : null}
+            <Field label="Reward expiry (days, optional)" value={form.rewardExpiryDays} onChange={(rewardExpiryDays) => setForm({ ...form, rewardExpiryDays })} />
+            <Text style={styles.notice}>One reward per sale. Rewards cannot combine with vouchers or manual discounts.</Text>
             {formError ? <Text style={styles.error}>{formError}</Text> : null}
             <View style={styles.actions}>
               <TouchableOpacity style={styles.button} disabled={isSaving} onPress={() => void submit()}>
-                <Text style={styles.buttonLabel}>{isSaving ? "Saving…" : "Save as draft"}</Text>
+                <Text style={styles.buttonLabel}>{isSaving ? "Saving…" : editing ? "Save new rules" : "Save as draft"}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.buttonGhost}
@@ -305,7 +366,7 @@ export default function LoyaltyScreen() {
             </View>
           </View>
         ) : (
-          <TouchableOpacity style={styles.button} onPress={() => setIsComposing(true)}>
+          <TouchableOpacity style={styles.button} onPress={() => { setEditing(null); setForm(EMPTY_FORM); setIsComposing(true); }}>
             <Text style={styles.buttonLabel}>New program</Text>
           </TouchableOpacity>
         )}
@@ -318,17 +379,20 @@ function Field({
   label,
   value,
   onChange,
+  numeric = true,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  numeric?: boolean;
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         style={styles.input}
-        keyboardType="decimal-pad"
+        accessibilityLabel={label}
+        keyboardType={numeric ? "decimal-pad" : "default"}
         value={value}
         onChangeText={onChange}
         placeholderTextColor={colors.textSecondary}

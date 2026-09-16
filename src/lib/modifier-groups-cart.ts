@@ -6,21 +6,22 @@
  * default selection, toggle options honouring single- vs multi-select rules,
  * validate min/max, and map the selection back into the legacy
  * `selected_variations` / `selected_addons` shapes the existing cart, order and
- * messenger pipeline already understands — so nothing downstream needs to know
- * about modifier groups.
+ * messenger pipeline uses. Quantity groups carry explicit per-item portions on
+ * their selected add-on snapshots.
  *
- * A group is single-select when `max_select === 1` (variation-style) and
- * multi-select otherwise (`null` = unlimited, or a numeric cap).
+ * Choice groups use `max_select` for single/multi selection; quantity groups
+ * stay add-ons even when capped to one portion.
  */
 
 import type { Addon, ModifierGroup, ModifierOption, VariationOption } from '@/types/database'
+import { addonQuantity, MAX_ADDON_QUANTITY } from '@/lib/addon-quantity'
 import {
   isOptionAvailable,
   validateGroupSelection,
   type SelectionValidationResult,
 } from '@/lib/modifier-groups'
 
-/** Customer selection: group id → the ids of the options chosen in that group. */
+/** Group → option IDs; quantity groups carry one occurrence per portion. */
 export type ModifierSelection = { [groupId: string]: string[] }
 
 /** Cart-facing projection of a selection, consumable by `calculateCartItemSubtotal`. */
@@ -29,8 +30,52 @@ export interface CartSelectionFormat {
   selectedAddons: Addon[]
 }
 
+/** Older carts stored raw linked groups but resolved prices on their selections. */
+export function restoreLinkedOptionSnapshots(groups: readonly ModifierGroup[], cart: CartSelectionFormat): ModifierGroup[] {
+  return groups.map(group => ({ ...group, options: group.options.map(option => {
+    if (!option.menu_item_id) return option
+    const addon = cart.selectedAddons.find(a => a.id === option.id)
+    const variation = Object.values(cart.selectedVariations).find(o => o.id === option.id)
+    return addon ? { ...option, name: addon.name, price_modifier: addon.price }
+      : variation ? { ...option, name: variation.name, price_modifier: variation.price_modifier } : option
+  }) }))
+}
+
 function isSingleSelect(group: ModifierGroup): boolean {
-  return group.max_select === 1
+  return group.selection_mode !== 'quantity' && group.max_select === 1
+}
+
+/** Update portions immutably; count caps apply to all portions in the group. */
+export function setOptionQuantity(
+  selection: ModifierSelection, group: ModifierGroup, optionId: string, quantity: number,
+): ModifierSelection {
+  if (group.selection_mode !== 'quantity' || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > MAX_ADDON_QUANTITY) return selection
+  const option = group.options.find(o => o.id === optionId)
+  if (!option) return selection
+  const current = selection[group.id] ?? []
+  const previous = current.filter(id => id === optionId).length
+  const others = current.filter(id => id !== optionId)
+  if (quantity > previous && (!isOptionAvailable(option)
+    || (group.max_select !== null && others.length + quantity > group.max_select)
+    || (option.stock_mode === 'simple' && quantity > (option.stock_qty ?? 0)))) return selection
+  return { ...selection, [group.id]: [...others, ...Array<string>(quantity).fill(optionId)] }
+}
+
+/** Restore a cart configuration without collapsing repeated portions. */
+export function mapCartFormatToSelection(groups: readonly ModifierGroup[], cart: CartSelectionFormat): ModifierSelection {
+  const selection: ModifierSelection = {}
+  for (const group of groups) {
+    if (isSingleSelect(group)) {
+      const option = cart.selectedVariations[group.id]
+      selection[group.id] = option ? [option.id] : []
+    } else {
+      selection[group.id] = group.options.flatMap(option => {
+        const addon = cart.selectedAddons.find(a => a.id === option.id)
+        return addon ? Array<string>(group.selection_mode === 'quantity' ? addonQuantity(addon) : 1).fill(option.id) : []
+      })
+    }
+  }
+  return selection
 }
 
 /**
@@ -56,6 +101,7 @@ export function getDefaultSelection(groups: readonly ModifierGroup[]): ModifierS
       selection[group.id] = group.options
         .filter((o) => o.is_default && isOptionAvailable(o))
         .map((o) => o.id)
+        .slice(0, group.max_select ?? undefined)
     }
   }
 
@@ -100,9 +146,8 @@ export function getSelectedOptions(
   for (const group of groups) {
     const selectedIds = selection[group.id] ?? []
     for (const option of group.options) {
-      if (selectedIds.includes(option.id)) {
-        options.push(option)
-      }
+      const count = selectedIds.filter(id => id === option.id).length
+      options.push(...Array<ModifierOption>(group.selection_mode === 'quantity' ? count : Math.min(count, 1)).fill(option))
     }
   }
 
@@ -150,9 +195,12 @@ export function mapSelectionToCartFormat(
 
     if (isSingleSelect(group)) {
       // Single-select: at most one option maps to a variation entry.
-      selectedVariations[group.id] = optionToVariationOption(chosen[0])
+      if (chosen[0]) selectedVariations[group.id] = optionToVariationOption(chosen[0])
     } else {
-      selectedAddons.push(...chosen.map(optionToAddon))
+      selectedAddons.push(...chosen.map(option => ({
+        ...optionToAddon(option),
+        ...(group.selection_mode === 'quantity' ? { quantity: selectedIds.filter(id => id === option.id).length } : {}),
+      })))
     }
   }
 
@@ -166,9 +214,20 @@ export function mapSelectionToCartFormat(
 export function validateAllGroups(
   groups: readonly ModifierGroup[],
   selection: ModifierSelection,
+  parentQuantity = 1,
 ): SelectionValidationResult {
   for (const group of groups) {
-    const result = validateGroupSelection(group, selection[group.id] ?? [])
+    const ids = selection[group.id] ?? []
+    for (const id of ids) {
+      const option = group.options.find(o => o.id === id)
+      const portions = ids.filter(selected => selected === id).length
+      if (!option || !isOptionAvailable(option)) return { valid: false, error: `An option in ${group.name} is no longer available.` }
+      if (group.selection_mode !== 'quantity' && portions > 1) return { valid: false, error: `Choose each option in ${group.name} only once.` }
+      if (portions > MAX_ADDON_QUANTITY || (option.stock_mode === 'simple' && portions * parentQuantity > (option.stock_qty ?? 0))) {
+        return { valid: false, error: `Not enough stock for ${option.name}.` }
+      }
+    }
+    const result = validateGroupSelection(group, ids)
     if (!result.valid) {
       return result
     }

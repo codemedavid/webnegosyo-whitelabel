@@ -87,7 +87,7 @@ describe('background overlay wiring', () => {
  */
 describe('background overlay stacking', () => {
   const MOUNT_SITES = [
-    'src/app/[tenant]/menu/menu-client.tsx',
+    'src/storefront/packs/legacy/menu-storefront.tsx',
     'src/components/customer/product-detail-content.tsx',
   ]
 

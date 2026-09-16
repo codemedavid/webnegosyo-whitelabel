@@ -107,7 +107,8 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // revenue, not just the hand-counted web/mobile pair. Below 27 the merchant
 // app falls back to those two channels rather than showing a split that
 // silently excludes the register.
-const CURRENT_SCHEMA_VERSION = 28;
+// v30 scopes sales, funnel and product analytics by outlet before aggregation.
+const CURRENT_SCHEMA_VERSION = 31;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

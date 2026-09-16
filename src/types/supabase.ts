@@ -14,6 +14,13 @@ export type Database = {
   }
   public: {
     Tables: {
+      simple_option_stock_applications: {
+        Row: { tenant_id: string; order_id: string; action: string; revision: number; created_at: string }
+        Insert: { tenant_id: string; order_id: string; action: string; revision: number; created_at?: string }
+        Update: { tenant_id?: string; order_id?: string; action?: string; revision?: number; created_at?: string }
+        Relationships: []
+      }
+
       addon_library: {
         Row: {
           created_at: string | null
@@ -3043,6 +3050,8 @@ export type Database = {
           edited_by: string | null
           has_bundle_items: boolean
           has_upsell_items: boolean
+          daily_number: number | null
+          order_date: string | null
           id: string
           item_count: number | null
           lalamove_driver_id: string | null
@@ -6304,6 +6313,17 @@ export type Database = {
           p_version_id: string
         }
         Returns: Json
+      }
+      apply_simple_option_order_stock: {
+        Args: {
+          p_tenant_id: string
+          p_order_id: string
+          p_action: string
+          p_revision?: number
+          p_items?: Json
+          p_outlet_id?: string | null
+        }
+        Returns: number
       }
       apply_presell_order: {
         Args: {

@@ -21,7 +21,7 @@ function calledPaths(): string[] {
   return fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init.body)).path)
 }
 
-beforeEach(() => fetchMock.mockReset())
+beforeEach(() => { fetchMock.mockReset() })
 
 describe('createConvexServerClient', () => {
   test('falls back to the public name when the internal variant is missing', async () => {

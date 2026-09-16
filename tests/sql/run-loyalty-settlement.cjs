@@ -29,11 +29,16 @@ async function main() {
       '20260906160000_loyalty_access.sql',
       '20260906170000_loyalty_pos_settlement.sql',
       '20260907120000_loyalty_quote_immutability.sql',
+      '20260914170000_loyalty_projection_recovery.sql',
+      '20260914171000_loyalty_refund_restoration.sql',
+      '20260914172000_loyalty_settlement_earning_snapshot.sql',
     ]) {
       await db.exec(readFileSync(path.join(root, 'supabase/migrations', name), 'utf8'))
     }
     await db.exec(`update tenants set loyalty_enabled=true,loyalty_shadow=false`)
     const program = (await db.query(`insert into loyalty_programs(tenant_id,name,earn_mode) values($1,'Coffee','stamp') returning id`, [t])).rows[0].id
+    const version=(await db.query(`insert into loyalty_program_versions(tenant_id,program_id,version,rules) values($2,$1,1,'{"threshold":10}') returning id`,[program,t])).rows[0].id
+    await db.query("update loyalty_programs set status='active',current_version_id=$1,activates_at=now()-interval '1 day' where id=$2",[version,program])
     async function quote(isExpired = false) {
       const e = (await db.query(`insert into loyalty_entitlements(tenant_id,program_id,customer_key,terms,status)
         values($1,$2,'phone:+639171234567','{}','reserved') returning id`, [t, program])).rows[0].id
@@ -50,6 +55,10 @@ async function main() {
     const first = await quote()
     const result = await settle(first.q)
     assert.equal(result.totalCentavos,9000)
+    await db.query("update loyalty_programs set status='paused' where id=$1",[program])
+    const frozen=(await db.query('select order_snapshot from loyalty_pos_settlements where id=$1',[result.settlementId])).rows[0].order_snapshot.earningPrograms
+    assert.equal(frozen[0].status,'active','Later pause cannot remove settlement-time earning')
+    assert.equal(frozen[0].version.id,version)
     assert.equal((await db.query('select status from loyalty_entitlements where id=$1',[first.e])).rows[0].status,'consumed')
     assert.equal((await db.query('select * from loyalty_pos_projection_jobs')).rows.length,1)
     assert.deepEqual(await settle(first.q),result,'Exact retries return the original receipt')
@@ -91,6 +100,25 @@ async function main() {
     const recovered = (await db.query('select * from claim_loyalty_pos_projections(1)')).rows[0]
     assert.equal(await finish(recovered.lease_token,'external-1'),true)
     assert.equal((await db.query('select * from claim_loyalty_pos_projections(1)')).rows.length,0)
+    const reschedule=async()=> (await db.query('select retry_loyalty_pos_projection($1,$2,$3) as applied',[t,actor,job.id])).rows[0].applied
+    await assert.rejects(reschedule(),/Forbidden/)
+    await db.exec("update app_users set permissions=array['pos','loyalty_redeem','loyalty_manage']")
+    assert.equal(await reschedule(),false,'Completed receipts cannot be replayed as new work')
+    await db.query("update loyalty_pos_projection_jobs set status='failed',attempts=8 where id=$1",[job.id])
+    assert.equal(await reschedule(),true)
+    assert.equal(await reschedule(),false,'A retry is scheduled only once')
+    assert.equal((await db.query('select attempts from loyalty_pos_projection_jobs where id=$1',[job.id])).rows[0].attempts,0)
+    const restore=async()=> (await db.query('select restore_loyalty_refunded_receipt($1,$2) as applied',[t,result.settlementId])).rows[0].applied
+    assert.equal(await restore(),true,'Full refund returns the original reward')
+    assert.equal(await restore(),false,'Refund notification replay cannot return a reward twice')
+    assert.equal((await db.query('select status from loyalty_entitlements where id=$1',[first.e])).rows[0].status,'restored')
+    assert.equal((await db.query('select * from loyalty_refund_restorations')).rows.length,1)
+    await db.query("update loyalty_entitlements set status='consumed',consumed_order_id=gen_random_uuid()::text where id=$1",[first.e])
+    assert.equal(await restore(),false,'An old refund cannot restore a reward redeemed on a later sale')
+    const expiredReturn=await settle(held.q,'expired-return')
+    await db.query("update loyalty_entitlements set expires_at=now()-interval '1 day' where id=$1",[held.e])
+    assert.equal((await db.query('select restore_loyalty_refunded_receipt($1,$2) as applied',[t,expiredReturn.settlementId])).rows[0].applied,true)
+    assert.equal((await db.query('select status from loyalty_entitlements where id=$1',[held.e])).rows[0].status,'expired','Refund does not extend reward expiry')
     // A quote cannot change between HTTP tender validation and SQL locking.
     await assert.rejects(db.query('update loyalty_pos_quotes set total_centavos=1 where id=$1',[held.q]),/immutable/)
     await assert.rejects(db.query("update loyalty_pos_quotes set order_snapshot='{}' where id=$1",[held.q]),/immutable/)

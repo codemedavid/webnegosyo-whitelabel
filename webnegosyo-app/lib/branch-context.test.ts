@@ -43,15 +43,12 @@ describe("resolveEffectiveScope", () => {
     expect(resolveEffectiveScope(ALL, undefined, KNOWN)).toEqual(ALL);
   });
 
-  it("falls back to store-wide for a branch this store does not have", () => {
-    // A deleted or foreign branch resolves to the whole store rather than to a
-    // scope that matches no order: an empty Operations tab reads as a broken
-    // app, while store-wide reads as "no branch chosen" — which is the truth.
-    expect(resolveEffectiveScope(ALL, "outlet-gone", KNOWN)).toEqual(ALL);
+  it("never widens a stale branch selection into store-wide totals", () => {
+    expect(resolveEffectiveScope(ALL, "outlet-gone", KNOWN)).toEqual({ kind: "branch", outletId: "outlet-gone" });
   });
 
-  it("falls back to store-wide when the store has no branches at all", () => {
-    expect(resolveEffectiveScope(ALL, "outlet-north", [])).toEqual(ALL);
+  it("keeps a branch selection narrow while the roster becomes empty", () => {
+    expect(resolveEffectiveScope(ALL, "outlet-north", [])).toEqual(NORTH);
   });
 
   it("trusts a selection while the branch list is still loading", () => {

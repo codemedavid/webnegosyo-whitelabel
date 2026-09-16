@@ -22,7 +22,7 @@ import {
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 
 /** Chainable, thenable Supabase stub that records what it was asked to write. */

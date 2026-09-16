@@ -104,10 +104,12 @@ export function generateMessengerMessage(
   customerData?: Record<string, string>,
   paymentMethod?: { name: string; details?: string } | null,
   formFields?: FormFieldMeta[],
-  scheduledForLabel?: string | null
+  scheduledForLabel?: string | null,
+  orderNumber?: string
 ): string {
   const lines = [
     `New Order from ${restaurantName}`,
+    ...(orderNumber ? [`Order ${orderNumber}`] : []),
     '',
   ]
 

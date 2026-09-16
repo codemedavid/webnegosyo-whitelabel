@@ -1,9 +1,9 @@
 'use client'
 
-import { usePresellCartCaps } from '@/hooks/use-presell-cart-caps'
+import { addonLabel } from '@/lib/addon-quantity'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useCartCommands } from '@/storefront/cart/use-cart-commands'
+import { useCartCheckout } from '@/storefront/cart/use-cart-checkout'
 import { ShoppingCart, Minus, Plus, Trash2, Pencil, Package, ArrowLeft } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import {
@@ -30,9 +30,8 @@ import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { ItemDetailModal } from '@/components/customer/item-detail-modal'
-import { getCheckoutUpsellsAction } from '@/app/actions/menu-engineering'
 import { getCartPalette, type BrandingColors } from '@/lib/branding-utils'
-import type { CartItem, CartBundleItem, MenuItem, Tenant } from '@/types/database'
+import type { Tenant } from '@/types/database'
 import Link from 'next/link'
 
 interface CartDrawerProps {
@@ -63,117 +62,28 @@ export function CartDrawer({
   checkoutUpsellSubtitle = 'You might also enjoy these items',
   checkoutUpsellMaxItems = 4,
 }: CartDrawerProps) {
-  const router = useRouter()
   // Cart page palette: accent is always resolved (falls back to brand colors);
   // the override fields (background/cardBackground/summaryBackground/text/…)
   // are undefined unless the merchant set that cart_* color, so they no-op into
   // the drawer's existing defaults — zero change for tenants who set nothing.
   const palette = getCartPalette(tenant ?? null, branding)
   const accent = palette.accent
-  const { items, total, updateQuantity, removeItem, updateItemConfiguration, bundleItems, updateBundleQuantity, removeBundleFromCart } = useCart()
-  const { canIncreaseItem, presellHintFor } = usePresellCartCaps(tenant?.id, items)
-  const [itemToRemove, setItemToRemove] = useState<CartItem | null>(null)
-  const [itemToEdit, setItemToEdit] = useState<CartItem | null>(null)
-  const [bundleToRemove, setBundleToRemove] = useState<CartBundleItem | null>(null)
-  const [showUpsellModal, setShowUpsellModal] = useState(false)
-  const [prefetchedUpsellItems, setPrefetchedUpsellItems] = useState<MenuItem[] | undefined>(undefined)
-  const prefetchedRef = useRef(false)
-
-  const showInterstitial = menuEngineeringEnabled && checkoutUpsellEnabled && !!tenantId
-
-  // Prefetch checkout route and upsell items when cart drawer opens
-  useEffect(() => {
-    if (!open || items.length === 0) return
-
-    router.prefetch(`/${tenantSlug}/checkout`)
-
-    // Prefetch upsell items so the modal opens instantly (no skeleton)
-    if (showInterstitial && tenantId && !prefetchedRef.current) {
-      prefetchedRef.current = true
-      const cartItemIds = items.map((ci) => ci.menu_item.id)
-      getCheckoutUpsellsAction(cartItemIds, tenantId, checkoutUpsellMaxItems)
-        .then((result) => {
-          if (result.success && result.data) {
-            setPrefetchedUpsellItems(result.data)
-          }
-        })
-        .catch(() => {})
-    }
-  }, [open, items, router, tenantSlug, showInterstitial, tenantId, checkoutUpsellMaxItems])
-
-  const handleCheckoutClick = useCallback(() => {
-    if (showInterstitial) {
-      onClose()
-      setShowUpsellModal(true)
-    } else {
-      onClose()
-      router.push(`/${tenantSlug}/checkout`)
-    }
-  }, [showInterstitial, onClose, router, tenantSlug])
-
-  const handleUpsellContinue = useCallback(() => {
-    setShowUpsellModal(false)
-    onClose()
-    router.push(`/${tenantSlug}/checkout`)
-  }, [onClose, router, tenantSlug])
-
-  const handleDecreaseQuantity = (item: CartItem) => {
-    if (item.quantity <= 1) {
-      // Show confirmation dialog when trying to decrease below 1
-      setItemToRemove(item)
-    } else {
-      updateQuantity(item.id, item.quantity - 1)
-    }
-  }
-
-  const handleConfirmRemove = () => {
-    if (itemToRemove) {
-      removeItem(itemToRemove.id)
-      setItemToRemove(null)
-    }
-  }
-
-  const handleCancelRemove = () => {
-    setItemToRemove(null)
-  }
-
-  // Commit an edited cart line (new flavor/variation, add-ons, quantity, note).
-  // Routed through updateItemConfiguration so only the clicked line changes —
-  // a sibling line of the same product with a different flavor is untouched.
-  const handleUpdateItem = useCallback(
-    (
-      cartItemId: string,
-      menuItem: Parameters<typeof updateItemConfiguration>[1],
-      variationOrVariations: Parameters<typeof updateItemConfiguration>[2],
-      addons: Parameters<typeof updateItemConfiguration>[3],
-      quantity: number,
-      specialInstructions?: string
-    ) => {
-      const presellDate = items.find((line) => line.id === cartItemId)?.presell_date
-      updateItemConfiguration(
-        cartItemId, menuItem, variationOrVariations, addons, quantity, specialInstructions,
-        // Appended only for a presell line so ordinary edits keep their exact arity.
-        ...(presellDate ? [presellDate] : []),
-      )
-      setItemToEdit(null)
-    },
-    [updateItemConfiguration, items]
-  )
-
-  const handleDecreaseBundleQuantity = (bundle: CartBundleItem) => {
-    if (bundle.quantity <= 1) {
-      setBundleToRemove(bundle)
-    } else {
-      updateBundleQuantity(bundle.id, bundle.quantity - 1)
-    }
-  }
-
-  const handleConfirmBundleRemove = () => {
-    if (bundleToRemove) {
-      removeBundleFromCart(bundleToRemove.id)
-      setBundleToRemove(null)
-    }
-  }
+  const cart = useCart()
+  const { items, total, updateQuantity, bundleItems, updateBundleQuantity } = cart
+  const {
+    canIncreaseItem, presellHintFor, itemToRemove, setItemToRemove, itemToEdit, setItemToEdit,
+    bundleToRemove, setBundleToRemove, handleDecreaseQuantity, handleConfirmRemove,
+    handleCancelRemove, handleUpdateItem, handleDecreaseBundleQuantity, handleConfirmBundleRemove,
+  } = useCartCommands({ tenantId: tenant?.id ?? tenantId, cart })
+  const {
+    showInterstitial, showUpsellModal, prefetchedItems, requestCheckout: handleCheckoutClick,
+    onUpsellContinue: handleUpsellContinue,
+  } = useCartCheckout({
+    tenant, tenantSlug, tenantId: tenant?.id ?? tenantId, items,
+    hasItems: items.length + bundleItems.length > 0, enabled: open,
+    menuEngineeringEnabled, checkoutUpsellEnabled, checkoutUpsellMaxItems,
+    onCheckoutStart: onClose,
+  })
 
   return (
     <>
@@ -306,7 +216,7 @@ export function CartDrawer({
                           <div className="text-xs text-gray-500 mb-2 space-y-0.5">
                             {item.selected_addons.length > 0 && (
                               <p className="line-clamp-2">
-                                <span className="font-medium">Add-ons:</span> {item.selected_addons.map((a) => a.name).join(', ')}
+                                <span className="font-medium">Add-ons:</span> {item.selected_addons.map(addonLabel).join(', ')}
                               </p>
                             )}
                             {item.special_instructions && (
@@ -538,12 +448,12 @@ export function CartDrawer({
         <CheckoutUpsellModal
           open={showUpsellModal}
           onContinue={handleUpsellContinue}
-          tenantId={tenantId}
+          tenantId={(tenant?.id ?? tenantId)!}
           branding={branding}
           title={checkoutUpsellTitle}
           subtitle={checkoutUpsellSubtitle}
           maxItems={checkoutUpsellMaxItems}
-          prefetchedItems={prefetchedUpsellItems}
+          prefetchedItems={prefetchedItems ?? undefined}
         />
       )}
     </>

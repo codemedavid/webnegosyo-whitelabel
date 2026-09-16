@@ -8,7 +8,7 @@
  * mobile toggle exercises real responsive breakpoints.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BRANDING_DRAFT_MESSAGE,
   BRANDING_PREVIEW_PARAM,
@@ -24,6 +24,12 @@ import type { BrandingSurface } from '@/lib/branding-registry'
 
 const DRAFT_POST_DEBOUNCE_MS = 60
 const MOBILE_PREVIEW_WIDTH_PX = 390
+/**
+ * How long the storefront gets to announce itself before the pane admits it
+ * has nothing to show. A silent white frame is indistinguishable from a slow
+ * one; past this point the merchant is told, and handed the framed URL.
+ */
+export const PREVIEW_READY_TIMEOUT_MS = 8000
 
 interface PreviewFrameProps {
   tenantSlug: string
@@ -73,6 +79,29 @@ export function PreviewFrame({
     const { path } = getPreviewTarget(tenantSlug, surfaceId, sampleItemId)
     return `${path}?${BRANDING_PREVIEW_PARAM}=1`
   }, [tenantSlug, surfaceId, sampleItemId])
+
+  // Which load the storefront last said "ready" for. Keyed by path plus a
+  // retry counter so switching surface, or pressing retry, starts the clock
+  // again rather than trusting a signal from the previous document.
+  const [reloadCount, setReloadCount] = useState(0)
+  const frameKey = `${previewPath}#${reloadCount}`
+  const frameKeyRef = useRef(frameKey)
+  frameKeyRef.current = frameKey
+  const [readyFrameKey, setReadyFrameKey] = useState<string | null>(null)
+  const [hasTimedOut, setHasTimedOut] = useState(false)
+  const isReady = readyFrameKey === frameKey
+
+  useEffect(() => {
+    if (isReady) return
+    setHasTimedOut(false)
+    const timer = setTimeout(() => setHasTimedOut(true), PREVIEW_READY_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [isReady, frameKey])
+
+  const retry = useCallback(() => {
+    setHasTimedOut(false)
+    setReloadCount((count) => count + 1)
+  }, [])
 
   const postDraft = useCallback(() => {
     const frameWindow = iframeRef.current?.contentWindow
@@ -134,6 +163,7 @@ export function PreviewFrame({
       const data = event.data as { type?: unknown; scope?: unknown } | null
       if (!data || typeof data !== 'object') return
       if (data.type === BRANDING_READY_MESSAGE) {
+        setReadyFrameKey(frameKeyRef.current)
         postDraft()
         return
       }
@@ -157,9 +187,28 @@ export function PreviewFrame({
         }`}
         style={isMobile ? { width: MOBILE_PREVIEW_WIDTH_PX } : undefined}
       >
+        {hasTimedOut && !isReady && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12.5px] text-amber-900"
+          >
+            <span className="font-semibold">The preview did not load.</span>
+            <a
+              href={previewPath}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2"
+            >
+              Open the storefront in a new tab
+            </a>
+            <button type="button" onClick={retry} className="font-semibold underline underline-offset-2">
+              Try again
+            </button>
+          </div>
+        )}
         <iframe
           ref={iframeRef}
-          key={previewPath}
+          key={frameKey}
           src={previewPath}
           title="Storefront live preview"
           onLoad={postDraft}

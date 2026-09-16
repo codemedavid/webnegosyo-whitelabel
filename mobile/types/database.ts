@@ -294,6 +294,8 @@ export interface FacebookPage {
 export interface Order {
   id: string;
   tenant_id: string;
+  /** Per-tenant, daily-resetting display number; absent on pre-feature orders. */
+  daily_number?: number | null;
   order_type_id?: string;
   order_type?: string;
   customer_name?: string;
@@ -365,59 +367,62 @@ export interface UpsellPairWithItems extends UpsellPair {
   target_item: MenuItem;
 }
 
+// Mapped rows satisfy Supabase's record schema without weakening field types.
+type DatabaseRow<T> = { [K in keyof T]: T[K] };
+
 export interface Database {
   public: {
     Tables: {
       tenants: {
-        Row: Tenant;
+        Row: DatabaseRow<Tenant>;
         Insert: Omit<Tenant, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Tenant, 'id' | 'created_at' | 'updated_at'>>;
         Relationships: [];
       };
       categories: {
-        Row: Category;
+        Row: DatabaseRow<Category>;
         Insert: Omit<Category, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Category, 'id' | 'created_at' | 'updated_at'>>;
         Relationships: [];
       };
       menu_items: {
-        Row: MenuItem;
+        Row: DatabaseRow<MenuItem>;
         Insert: Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>>;
         Relationships: [];
       };
       order_types: {
-        Row: OrderType;
+        Row: DatabaseRow<OrderType>;
         Insert: Omit<OrderType, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<OrderType, 'id' | 'created_at' | 'updated_at'>>;
         Relationships: [];
       };
       customer_form_fields: {
-        Row: CustomerFormField;
+        Row: DatabaseRow<CustomerFormField>;
         Insert: Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<CustomerFormField, 'id' | 'created_at' | 'updated_at'>>;
         Relationships: [];
       };
       payment_methods: {
-        Row: PaymentMethod;
+        Row: DatabaseRow<PaymentMethod>;
         Insert: Omit<PaymentMethod, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<PaymentMethod, 'id' | 'created_at' | 'updated_at'>>;
         Relationships: [];
       };
       payment_method_order_types: {
-        Row: PaymentMethodOrderType;
+        Row: DatabaseRow<PaymentMethodOrderType>;
         Insert: Omit<PaymentMethodOrderType, 'id' | 'created_at'>;
         Update: Partial<Omit<PaymentMethodOrderType, 'id' | 'created_at'>>;
         Relationships: [];
       };
       orders: {
-        Row: Order;
+        Row: DatabaseRow<Order>;
         Insert: Omit<Order, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Order, 'id' | 'created_at' | 'updated_at'>>;
         Relationships: [];
       };
       order_items: {
-        Row: DbOrderItem;
+        Row: DatabaseRow<DbOrderItem>;
         Insert: Omit<DbOrderItem, 'id'>;
         Update: Partial<Omit<DbOrderItem, 'id'>>;
         Relationships: [];

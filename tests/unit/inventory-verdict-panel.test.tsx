@@ -17,6 +17,7 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) 
 
 function report(overrides: Partial<DailyInventoryReportForDay> = {}): DailyInventoryReportForDay {
   return {
+    countSession: null,
     dayKey: '2026-07-29',
     rows: [],
     totals: { cogs: 1000, wasteCost: 0, shrinkageCost: 10 },

@@ -4,35 +4,43 @@
  * Per-date presell allocations for one menu item, inside the menu item form.
  *
  * A calendar to pick dates on, a list of the dates already promised, and a
- * range helper. Only `stock_qty` is ever written — sold counts move
- * exclusively through orders (apply_presell_order), so this panel can never
- * un-sell. Deleting a date with sales is refused server-side; the merchant
- * lowers stock to the sold count instead.
+ * range helper. Fully controlled: every edit goes to the draft the form holds
+ * and nothing is written until "Update Menu Item" is pressed. The panel used
+ * to call a server action per click, and because any revalidation in a Server
+ * Action re-renders the current route, the editor refreshed under the
+ * merchant between every keystroke — see `revalidateMenu` in the action.
+ *
+ * Only `stockQty` is ever edited. Sold counts move exclusively through orders
+ * (apply_presell_order), so this panel can never un-sell; dropping a date
+ * with sales is refused before save and again on the server.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { CalendarPlus, CalendarRange, ChevronDown } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { CalendarPlus, CalendarRange, ChevronDown, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  getPresellStockAction,
-  savePresellAllocationAction,
-  deletePresellAllocationAction,
-} from '@/app/actions/presell'
 import { toBusinessDayKey } from '@/lib/inventory/business-day'
 import { formatPresellDateLong } from '@/lib/presell/month-grid'
 import { splitAllocations, summarizeAllocations } from '@/lib/presell/admin-allocations'
 import { resolvePresellRemaining } from '@/lib/presell/availability'
+import {
+  setDraftStock,
+  removeDraftDate,
+  fillDraftRange,
+  isDraftDirty,
+  type DraftAllocation,
+} from '@/lib/presell/allocation-draft'
 import { PresellAllocationCalendar } from '@/components/admin/presell-allocation-calendar'
 import { PresellAllocationList, StockStepper } from '@/components/admin/presell-allocation-list'
 import { PresellRangeForm } from '@/components/admin/presell-range-form'
-import type { PresellStock } from '@/types/database'
 
 interface PresellStockPanelProps {
-  tenantId: string
-  tenantSlug: string
-  menuItemId: string
+  /** The dates as the dish was last saved — the baseline unsaved edits show against. */
+  savedAllocations: readonly DraftAllocation[]
+  /** The dates as the merchant has them now. */
+  draft: readonly DraftAllocation[]
+  onDraftChange: (next: DraftAllocation[]) => void
   /** Today's business day (Asia/Manila); injectable for tests. */
   todayKey?: string
 }
@@ -46,108 +54,64 @@ function SummaryFigure({ label, value }: { label: string; value: number }) {
   )
 }
 
-export function PresellStockPanel({ tenantId, tenantSlug, menuItemId, todayKey: todayKeyProp }: PresellStockPanelProps) {
-  const todayKey = useMemo(() => todayKeyProp ?? toBusinessDayKey(new Date().toISOString()), [todayKeyProp])
-  const [rows, setRows] = useState<PresellStock[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
+/**
+ * The shape the calendar, list and summary all read. They were written
+ * against the database row, and a draft entry is the same three facts under
+ * different names, so it is adapted here rather than duplicating each view.
+ */
+function toRow(entry: DraftAllocation) {
+  return { presell_date: entry.presellDate, stock_qty: entry.stockQty, sold_qty: entry.soldQty }
+}
+
+export function PresellStockPanel({
+  savedAllocations,
+  draft,
+  onDraftChange,
+  todayKey: todayKeyProp,
+}: PresellStockPanelProps) {
+  const todayKey = useMemo(
+    () => todayKeyProp ?? toBusinessDayKey(new Date().toISOString()),
+    [todayKeyProp],
+  )
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [newQty, setNewQty] = useState('')
   const [isRangeOpen, setIsRangeOpen] = useState(false)
   const [isPastOpen, setIsPastOpen] = useState(false)
 
-  const reload = useCallback(async () => {
-    const result = await getPresellStockAction(tenantId, menuItemId)
-    if (result.success && result.data) {
-      setRows(result.data)
-    } else if (result.error) {
-      toast.error(result.error)
-    }
-    setIsLoading(false)
-  }, [tenantId, menuItemId])
-
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
+  const rows = useMemo(() => draft.map(toRow), [draft])
   const { upcoming, past } = useMemo(() => splitAllocations(rows, todayKey), [rows, todayKey])
   const summary = useMemo(() => summarizeAllocations(rows, todayKey), [rows, todayKey])
   const selectedRow = selectedDate ? rows.find((r) => r.presell_date === selectedDate) ?? null : null
+  const hasUnsavedEdits = useMemo(
+    () => isDraftDirty(savedAllocations, draft),
+    [savedAllocations, draft],
+  )
 
-  const saveAllocation = async (presellDate: string, stockQty: number): Promise<boolean> => {
-    const result = await savePresellAllocationAction(tenantId, tenantSlug, { menuItemId, presellDate, stockQty })
-    if (!result.success) {
-      toast.error(result.error || 'Failed to save presell date')
-      return false
+  const handleAddSelected = () => {
+    const qty = Number(newQty)
+    if (!selectedDate || newQty === '' || !Number.isInteger(qty) || qty < 0) {
+      toast.error('Enter a whole-number stock amount')
+      return
     }
-    return true
+    onDraftChange(setDraftStock(draft, selectedDate, qty))
+    setNewQty('')
   }
 
-  const withSaving = async (work: () => Promise<void>) => {
-    setIsSaving(true)
-    try {
-      await work()
-    } finally {
-      setIsSaving(false)
+  const handleSetStock = (row: { presell_date: string }, stockQty: number) =>
+    onDraftChange(setDraftStock(draft, row.presell_date, stockQty))
+
+  const handleRemove = (row: { presell_date: string; sold_qty: number }) => {
+    if (row.sold_qty > 0) {
+      toast.error('This date already has orders. Set its stock to the sold count to stop selling more.')
+      return
     }
+    if (selectedDate === row.presell_date) setSelectedDate(null)
+    onDraftChange(removeDraftDate(draft, row.presell_date))
   }
 
-  const handleAddSelected = () =>
-    withSaving(async () => {
-      const qty = Number(newQty)
-      if (!selectedDate || newQty === '' || !Number.isInteger(qty) || qty < 0) {
-        toast.error('Enter a whole-number stock amount')
-        return
-      }
-      if (await saveAllocation(selectedDate, qty)) {
-        setNewQty('')
-        toast.success(`${formatPresellDateLong(selectedDate)} is now on offer`)
-        await reload()
-      }
-    })
-
-  const handleSetStock = (row: PresellStock, stockQty: number) =>
-    withSaving(async () => {
-      if (stockQty < 0 || stockQty === row.stock_qty) return
-      if (await saveAllocation(row.presell_date, stockQty)) await reload()
-    })
-
-  const handleRemove = (row: PresellStock) =>
-    withSaving(async () => {
-      const result = await deletePresellAllocationAction(tenantId, tenantSlug, { menuItemId, presellDate: row.presell_date })
-      if (!result.success) {
-        toast.error(result.error || 'Failed to remove presell date')
-        return
-      }
-      if (selectedDate === row.presell_date) setSelectedDate(null)
-      toast.success('Date removed')
-      await reload()
-    })
-
-  const handleApplyRange = (dateKeys: string[], stockQty: number) =>
-    withSaving(async () => {
-      let saved = 0
-      for (const key of dateKeys) {
-        if (!(await saveAllocation(key, stockQty))) break
-        saved += 1
-      }
-      if (saved > 0) {
-        toast.success(`${saved} date${saved === 1 ? '' : 's'} set to ${stockQty} each`)
-        setIsRangeOpen(false)
-        await reload()
-      }
-    })
-
-  if (isLoading) {
-    return (
-      <div className="space-y-3" aria-busy="true" aria-label="Loading pre-order dates">
-        <div className="h-14 animate-pulse rounded-xl bg-muted" />
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="h-72 animate-pulse rounded-xl bg-muted" />
-          <div className="h-72 animate-pulse rounded-xl bg-muted" />
-        </div>
-      </div>
-    )
+  const handleApplyRange = (dateKeys: string[], stockQty: number) => {
+    onDraftChange(fillDraftRange(draft, dateKeys, stockQty))
+    setIsRangeOpen(false)
   }
 
   return (
@@ -160,14 +124,34 @@ export function PresellStockPanel({ tenantId, tenantSlug, menuItemId, todayKey: 
           <SummaryFigure label="Left" value={summary.remaining} />
         </div>
         {!isRangeOpen && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setIsRangeOpen(true)} disabled={isSaving}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setIsRangeOpen(true)}>
             <CalendarRange className="mr-1.5 h-4 w-4" /> Add several dates
           </Button>
         )}
       </div>
 
+      {/*
+        Nothing here is written until the dish is saved, so the panel has to
+        say so — otherwise a merchant who adds a date and navigates away loses
+        it with no warning, which is the opposite of the bug this replaced.
+      */}
+      {hasUnsavedEdits && (
+        <p
+          role="status"
+          className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Unsaved date changes — press &ldquo;Update Menu Item&rdquo; to save them.
+        </p>
+      )}
+
       {isRangeOpen && (
-        <PresellRangeForm rows={rows} todayKey={todayKey} isBusy={isSaving} onApply={handleApplyRange} onCancel={() => setIsRangeOpen(false)} />
+        <PresellRangeForm
+          rows={rows}
+          todayKey={todayKey}
+          onApply={handleApplyRange}
+          onCancel={() => setIsRangeOpen(false)}
+        />
       )}
 
       <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
@@ -192,11 +176,22 @@ export function PresellStockPanel({ tenantId, tenantSlug, menuItemId, todayKey: 
                   </p>
                 </div>
                 {selectedRow ? (
-                  <StockStepper row={selectedRow} isBusy={isSaving} onSetStock={handleSetStock} />
+                  <StockStepper row={selectedRow} onSetStock={handleSetStock} />
                 ) : (
-                  <form
+                  /*
+                   * A div, not a form. This panel renders inside the menu item
+                   * editor's `<form>`, and submit bubbles — so "Add date" was
+                   * also submitting the whole dish, which saved every field
+                   * and bounced the merchant back to the menu list before the
+                   * allocation landed. Enter is handled explicitly instead.
+                   */
+                  <div
                     className="flex items-center gap-2"
-                    onSubmit={(e) => { e.preventDefault(); void handleAddSelected() }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return
+                      e.preventDefault()
+                      handleAddSelected()
+                    }}
                   >
                     <Input
                       type="number"
@@ -210,10 +205,10 @@ export function PresellStockPanel({ tenantId, tenantSlug, menuItemId, todayKey: 
                       className="h-9 w-24"
                       autoFocus
                     />
-                    <Button type="submit" size="sm" disabled={isSaving || newQty === ''}>
+                    <Button type="button" size="sm" onClick={handleAddSelected} disabled={newQty === ''}>
                       <CalendarPlus className="mr-1.5 h-4 w-4" /> Add date
                     </Button>
-                  </form>
+                  </div>
                 )}
               </div>
             </div>
@@ -233,8 +228,7 @@ export function PresellStockPanel({ tenantId, tenantSlug, menuItemId, todayKey: 
             <PresellAllocationList
               rows={upcoming}
               selectedDate={selectedDate}
-              isBusy={isSaving}
-              onSelect={setSelectedDate}
+                  onSelect={setSelectedDate}
               onSetStock={handleSetStock}
               onRemove={handleRemove}
             />

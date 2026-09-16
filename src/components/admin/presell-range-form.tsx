@@ -18,12 +18,11 @@ import type { PresellAllocationRow } from '@/lib/presell/availability'
 interface PresellRangeFormProps {
   rows: readonly PresellAllocationRow[]
   todayKey: string
-  isBusy: boolean
-  onApply: (dateKeys: string[], stockQty: number) => Promise<void>
+  onApply: (dateKeys: string[], stockQty: number) => void
   onCancel: () => void
 }
 
-export function PresellRangeForm({ rows, todayKey, isBusy, onApply, onCancel }: PresellRangeFormProps) {
+export function PresellRangeForm({ rows, todayKey, onApply, onCancel }: PresellRangeFormProps) {
   const [from, setFrom] = useState(todayKey)
   const [to, setTo] = useState('')
   const [qty, setQty] = useState('')
@@ -33,12 +32,26 @@ export function PresellRangeForm({ rows, todayKey, isBusy, onApply, onCancel }: 
   const stock = Number(qty)
   const isValid = targets.length > 0 && qty !== '' && Number.isInteger(stock) && stock >= 0
 
+  const apply = () => {
+    if (isValid) onApply(targets, stock)
+  }
+
+  /**
+   * A div, not a form. This block renders INSIDE the menu item editor's own
+   * `<form>`, and a submit event bubbles: a nested form's submit also ran the
+   * editor's `onSubmit`, which saved the whole dish and navigated back to the
+   * menu list. Enter is wired by hand instead — see the panel's add-date row,
+   * which had the same defect.
+   */
   return (
-    <form
+    <div
+      role="group"
+      aria-label="Add several dates"
       className="space-y-3 rounded-xl border border-dashed bg-muted/30 p-3"
-      onSubmit={(e) => {
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter') return
         e.preventDefault()
-        if (isValid) void onApply(targets, stock)
+        apply()
       }}
     >
       <div className="grid gap-3 sm:grid-cols-3">
@@ -69,11 +82,11 @@ export function PresellRangeForm({ rows, todayKey, isBusy, onApply, onCancel }: 
       </p>
 
       <div className="flex items-center justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={isBusy}>Cancel</Button>
-        <Button type="submit" size="sm" disabled={!isValid || isBusy}>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+        <Button type="button" size="sm" onClick={apply} disabled={!isValid}>
           {targets.length > 0 ? `Apply to ${targets.length} date${targets.length === 1 ? '' : 's'}` : 'Apply'}
         </Button>
       </div>
-    </form>
+    </div>
   )
 }

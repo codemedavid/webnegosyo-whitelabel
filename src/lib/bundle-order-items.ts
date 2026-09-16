@@ -10,6 +10,7 @@
  * Pure and side-effect free.
  */
 
+import { addonQuantity, addonLabel } from '@/lib/addon-quantity'
 import type { CartBundleItem, CartBundleSlotSelection } from '@/types/database'
 import { extractBundleSlotSelectionIds } from '@/lib/inventory/order-item-selection'
 
@@ -25,6 +26,7 @@ export interface BundleOrderItem {
   special_instructions?: string
   option_ids: string[]
   addon_ids: string[]
+  addon_quantities?: Record<string, number>
   isBundleItem: true
   bundleId: string
   bundleName: string
@@ -47,7 +49,7 @@ function slotPricing(slot: CartBundleSlotSelection): {
     variationText = options.map((option) => option.name).join(', ')
   }
 
-  const addonTotal = slot.selectedAddons.reduce((sum, addon) => sum + addon.price, 0)
+  const addonTotal = slot.selectedAddons.reduce((sum, addon) => sum + addon.price * addonQuantity(addon), 0)
 
   return { unitPrice: price + addonTotal, variationText }
 }
@@ -66,13 +68,14 @@ export function flattenBundleOrderItems(
         menu_item_id: slot.menuItemId,
         menu_item_name: slot.menuItemName,
         variation: variationText || undefined,
-        addons: slot.selectedAddons.map((addon) => addon.name),
+        addons: slot.selectedAddons.map(addonLabel),
         quantity,
         price: unitPrice,
         subtotal: unitPrice * quantity,
         special_instructions: undefined,
         option_ids: selection.optionIds,
         addon_ids: selection.addonIds,
+        ...(selection.addonQuantities ? { addon_quantities: selection.addonQuantities } : {}),
         isBundleItem: true as const,
         bundleId: bundle.bundleId,
         bundleName: bundle.bundleName,

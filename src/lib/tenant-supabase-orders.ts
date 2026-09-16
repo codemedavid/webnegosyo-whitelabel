@@ -1,3 +1,5 @@
+import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
+import { addonLabel } from '@/lib/addon-quantity'
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateOrderTokenPair, type OrderTokenPair } from "@/lib/order-token";
 import { resolveOrderContact } from "@/lib/customer-identity";
@@ -25,6 +27,9 @@ import {
  */
 
 export interface TenantOrderItemInput {
+  option_ids?: string[];
+  addon_ids?: string[];
+  addon_quantities?: Record<string, number>;
   menu_item_id: string;
   menu_item_name: string;
   variation?: string;
@@ -149,7 +154,7 @@ export function buildTenantOrderRow(
           customerData: input.customerData,
         })
       ),
-    customer_data: input.customerData ?? {},
+    customer_data: withInventorySelectionSnapshot(input.customerData, input.items),
     scheduled_for: input.scheduledForISO ?? null,
     total: computeOrderTotals({
       subtotal: itemsTotal,
@@ -190,7 +195,7 @@ export function buildTenantOrderItemRows(
     menu_item_name: item.menu_item_name,
     variation: item.variation ?? null,
     addons: (item.addons ?? []).map((addon) =>
-      typeof addon === "string" ? addon : addon.name
+      typeof addon === "string" ? addon : addonLabel(addon)
     ),
     quantity: item.quantity,
     price: item.price,

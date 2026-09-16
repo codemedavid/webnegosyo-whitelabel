@@ -9,7 +9,7 @@
 
 import { supabase } from "../supabase";
 import { getWebAppUrl } from "../web-app-url";
-import type { LoyaltyFlags, LoyaltyProgramSummary, LoyaltyRules } from "./programs";
+import type { LoyaltyFlags, LoyaltyProgramSummary, LoyaltyRules, ProgramInput } from "./programs";
 
 const PROGRAMS_PATH = "/api/loyalty/programs";
 const TIMEOUT_MS = 15_000;
@@ -81,9 +81,13 @@ async function write(tenantId: string, body: Record<string, unknown>): Promise<P
 
 export function createLoyaltyProgram(
   tenantId: string,
-  program: { name: string; scope: "business"; rules: LoyaltyRules },
+  program: ProgramInput,
 ): Promise<ProgramWriteResult> {
   return write(tenantId, { action: "create", program });
+}
+
+export function reviseLoyaltyProgram(tenantId: string, programId: string, rules: LoyaltyRules, expectedVersion: number | null): Promise<ProgramWriteResult> {
+  return write(tenantId, { action: "revise", programId, rules, expectedVersion });
 }
 
 export function setLoyaltyProgramStatus(

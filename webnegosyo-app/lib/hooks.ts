@@ -13,7 +13,7 @@ import {
   usePlatformQuery,
   type SafeQueryResult,
 } from "./backends/use-platform-query";
-import { useAccountBranchScope } from "./use-branch-scope";
+import { useAccountBranchScope, useBranchScope } from "./use-branch-scope";
 import { planLifecycleSync } from "./customers/lifecycle-plan";
 import { notifyLifecycleSync } from "./customers/lifecycle";
 import type { OrderBackend } from "./order-backend";
@@ -53,18 +53,13 @@ export function useSafeQuery<T>(
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
 
-  /**
-   * The branch this ACCOUNT may see — deliberately not `useBranchScope`, which
-   * is already narrowed to the branch an owner has drilled into.
-   *
-   * Fetching through the narrowed scope would leave the portfolio and the
-   * Branches comparison unable to read the branches they exist to compare, and
-   * an owner may see the whole store regardless, so the drill-down stays a
-   * client-side narrowing. What the account is confined to is a different
-   * matter: pushing that into the query is the only thing that stops a
-   * manager's device receiving rows it may not see.
-   */
+  // Raw rows stay account-wide for the portfolio. Aggregated analytics must
+  // be narrowed before computing totals; they cannot be filtered on screen.
   const accountScope = useAccountBranchScope();
+  const viewingScope = useBranchScope();
+  const queryScope = /^(analytics|productAnalytics):/.test(String(ref)) || String(ref) === "orders:getDashboardStatsByPeriod"
+    ? viewingScope
+    : accountScope;
 
   // Screens address their backend by string ref, so the ref doubles as its name.
   const refName = String(ref);
@@ -74,7 +69,7 @@ export function useSafeQuery<T>(
     refName,
     args,
     route === "platform" ? tenantId : null,
-    accountScope
+    queryScope
   );
 
   // Convex stays untouched for every tenant that routes to it; a platform
@@ -87,7 +82,7 @@ export function useSafeQuery<T>(
   const queryArgs =
     route !== "convex" || !convexUrl
       ? "skip"
-      : convexOrderQueryArgs(refName, args, accountScope, convexSchemaVersion);
+      : convexOrderQueryArgs(refName, args, queryScope, convexSchemaVersion);
 
   let result: T | undefined;
   let hookError: string | null = null;

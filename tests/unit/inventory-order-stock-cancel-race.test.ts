@@ -21,6 +21,7 @@
 
 import {
   applyOrderStockMovements,
+  applyOrderRevisionStockBestEffort,
   reverseOrderStockMovements,
 } from '@/lib/inventory/order-stock-service'
 import type { OrderStockClaimRow } from '@/lib/inventory/order-stock-claim'
@@ -32,7 +33,7 @@ const GRAM = 'unit-gram'
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
@@ -252,4 +253,17 @@ describe('the sale path defers to an existing void claim (cancel wins)', () => {
     expect(retried.movementCount).toBe(0)
     expect(world.ledgerInserts).toEqual([])
   })
+})
+
+
+it('applies both sides of a quantity edit without its restore blocking replacement depletion', async () => {
+  const world = buildWorld({ claims: [{ reason: 'sale', revision: 0 }] })
+  from.mockImplementation(world.impl)
+  const deplete = [{ menuItemId: 'menu-1', quantity: 3 }]
+  const restore = [{ menuItemId: 'menu-1', quantity: 2 }]
+  await applyOrderRevisionStockBestEffort(TENANT, ORDER, 1, deplete, restore)
+  expect(world.ledgerInserts).toHaveLength(2)
+  expect(world.ledgerInserts.reduce((sum, row) => sum + Number(row.quantity_delta), 0)).toBe(-100)
+  await applyOrderRevisionStockBestEffort(TENANT, ORDER, 1, deplete, restore)
+  expect(world.ledgerInserts).toHaveLength(2)
 })

@@ -1,5 +1,8 @@
 'use client'
 
+import { Input } from '@/components/ui/input'
+import { formatDailyOrderNumber } from '@/lib/order-number'
+
 import { useState } from 'react'
 import { formatDistance } from 'date-fns'
 import {
@@ -26,9 +29,11 @@ import { formatPrice } from '@/lib/cart-utils'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import {
   getOrderOutletLabel,
+  hasUnattributedOrders,
   listOrderOutlets,
   matchesOutletFilter,
   OUTLET_FILTER_ALL,
+  OUTLET_FILTER_UNASSIGNED,
 } from '@/lib/outlets/order-outlet-display'
 import { OrderDetailDialog } from '@/components/admin/order-detail-dialog'
 import type { OrderWithItems } from '@/lib/orders-service'
@@ -85,6 +90,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [orderTypeFilter, setOrderTypeFilter] = useState<string>('all')
+  const [search, setSearch] = useState('')
   const [outletFilter, setOutletFilter] = useState<string>(OUTLET_FILTER_ALL)
 
   // Extract unique order types from orders
@@ -94,11 +100,18 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
   // above. A single-location tenant yields an empty list, so no branch filter
   // renders and this list looks precisely as it does today.
   const outlets = listOrderOutlets(orders)
+  // Offered only where "no branch" is a distinction rather than the norm: a
+  // single-location merchant has no branch dropdown at all, and every one of
+  // their orders is unattributed.
+  const canFilterUnassigned = outlets.length > 0 && hasUnattributedOrders(orders)
 
+  const searchTerm = search.trim().toLowerCase().replace(/^#/, '')
   const filteredOrders = orders.filter((order) => {
+    const number = order.daily_number ?? order.daily_order_number
+    const matchesSearch = !searchTerm || formatDailyOrderNumber(number, order.id).toLowerCase().includes(searchTerm) || String(number ?? '') === searchTerm || order.customer_name?.toLowerCase().includes(searchTerm)
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
     const matchesType = orderTypeFilter === 'all' || order.order_type === orderTypeFilter
-    return matchesStatus && matchesType && matchesOutletFilter(order, outletFilter)
+    return matchesStatus && matchesType && matchesSearch && matchesOutletFilter(order, outletFilter)
   })
 
   if (orders.length === 0) {
@@ -116,6 +129,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
   return (
     <>
       <div className="flex gap-4 mb-6">
+        <Input aria-label="Search order number or customer" type="search" placeholder="Order # or customer" value={search} onChange={event => setSearch(event.target.value)} className="w-[220px]" />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Filter by status" />
@@ -153,6 +167,9 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
               {outlets.map(outlet => (
                 <SelectItem key={outlet.id} value={outlet.id}>{outlet.name}</SelectItem>
               ))}
+              {canFilterUnassigned && (
+                <SelectItem value={OUTLET_FILTER_UNASSIGNED}>Unassigned</SelectItem>
+              )}
             </SelectContent>
           </Select>
         )}
@@ -170,7 +187,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle className="text-lg">Order #{order.id.slice(0, 8)}</CardTitle>
+                    <CardTitle className="text-lg">Order {formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}</CardTitle>
                     <p className="text-sm text-muted-foreground">
                       {formatDistance(new Date(order.created_at), new Date(), { addSuffix: true })}
                     </p>

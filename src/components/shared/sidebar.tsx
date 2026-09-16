@@ -687,6 +687,11 @@ export const adminSidebarItems: SidebarEntry[] = [
     icon: Ticket,
   },
   {
+    label: 'Loyalty',
+    href: '/admin/loyalty',
+    icon: Ticket,
+  },
+  {
     label: 'Customers',
     href: '/admin/customers',
     icon: Users,

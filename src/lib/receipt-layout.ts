@@ -269,6 +269,44 @@ function leftRight(left: string, right: string, width: number): string {
   return left + " ".repeat(gap) + right;
 }
 
+/**
+ * Break `text` into lines that fit the paper instead of clipping it. Names are
+ * merchant-authored and are the one thing a customer reads to check their
+ * order, so nothing is ever cut: we break at a space where one is available and
+ * hard-split a word too long to fit a line of its own. The first line may be
+ * narrower than the rest — an item line gives up columns to the quantity and
+ * the price, and only the continuation lines get the full name column.
+ */
+function wrapText(text: string, firstWidth: number, restWidth: number): string[] {
+  const rest = Math.max(1, Math.floor(restWidth));
+  const lines: string[] = [];
+  let remaining = text;
+  let width = Math.max(0, Math.floor(firstWidth));
+
+  while (remaining.length > 0) {
+    // No room left on this line at all (a price that eats the whole width):
+    // start the name on the next, full-width line rather than dropping it.
+    if (width < 1) {
+      lines.push("");
+      width = rest;
+      continue;
+    }
+    if (remaining.length <= width) {
+      lines.push(remaining);
+      break;
+    }
+    // Look one character past the window so a break landing exactly on the
+    // boundary space still counts as a clean word break.
+    const breakAt = remaining.slice(0, width + 1).lastIndexOf(" ");
+    const cut = breakAt > 0 ? breakAt : width;
+    lines.push(remaining.slice(0, cut).trimEnd());
+    remaining = remaining.slice(cut).trimStart();
+    width = rest;
+  }
+
+  return lines.length > 0 ? lines : [""];
+}
+
 // ---------------------------------------------------------------------------
 // Shared render context — computed once per receipt, used by several blocks
 // ---------------------------------------------------------------------------
@@ -323,16 +361,13 @@ function itemLines(item: ReceiptOrderItem, w: number, slotPrefix = ""): string[]
   const priceStr = `P${item.subtotal.toFixed(2)}`;
   const fullName = `${slotPrefix}${item.menuItemName}`;
   const nameMaxLen = Math.max(0, w - qtyStr.length - priceStr.length - 3);
-  let name: string;
-  if (nameMaxLen === 0) {
-    name = "";
-  } else if (fullName.length > nameMaxLen) {
-    name = nameMaxLen > 1 ? fullName.slice(0, nameMaxLen - 1) + "." : fullName.slice(0, nameMaxLen);
-  } else {
-    name = fullName;
-  }
+  // The name column starts after the quantity; continuation lines line up
+  // under it so a wrapped name still reads as one item.
+  const indent = " ".repeat(qtyStr.length + 2);
+  const [firstLine, ...restLines] = wrapText(fullName, nameMaxLen, w - indent.length);
 
-  lines.push(leftRight(`${qtyStr}  ${name}`, priceStr, w));
+  lines.push(leftRight(`${qtyStr}  ${firstLine}`, priceStr, w));
+  for (const part of restLines) lines.push(`${indent}${part}`);
 
   if (item.variationSelections && item.variationSelections.length > 0) {
     for (const sel of item.variationSelections) {
@@ -415,7 +450,7 @@ function renderItems(ctx: RenderContext, w: number): string[] {
 
   for (const [, bundle] of ctx.bundles) {
     lines.push("");
-    lines.push(`*** BUNDLE: ${bundle.name} ***`);
+    for (const part of wrapText(`*** BUNDLE: ${bundle.name} ***`, w, w)) lines.push(part);
     for (const item of bundle.items) {
       lines.push(...itemLines(item, w, item.slotName ? `[${item.slotName}] ` : ""));
     }
@@ -568,14 +603,11 @@ function modernItemLines(item: ReceiptOrderItem, w: number, slotPrefix = ""): st
   const priceStr = `P${item.subtotal.toFixed(2)}`;
   const fullName = `${slotPrefix}${item.menuItemName}`;
   const nameMaxLen = Math.max(0, w - qtyStr.length - priceStr.length - 2);
-  const name =
-    fullName.length > nameMaxLen
-      ? nameMaxLen > 1
-        ? fullName.slice(0, nameMaxLen - 1) + "."
-        : fullName.slice(0, nameMaxLen)
-      : fullName;
+  const indent = " ".repeat(qtyStr.length + 1);
+  const [firstLine, ...restLines] = wrapText(fullName, nameMaxLen, w - indent.length);
 
-  const lines = [leftRight(`${qtyStr} ${name}`, priceStr, w)];
+  const lines = [leftRight(`${qtyStr} ${firstLine}`, priceStr, w)];
+  for (const part of restLines) lines.push(`${indent}${part}`);
   if (item.variationSelections && item.variationSelections.length > 0) {
     for (const sel of item.variationSelections) lines.push(`${MODERN_INDENT}${sel.optionName}`);
   } else if (item.variation) {
@@ -591,7 +623,7 @@ function renderModernItems(ctx: RenderContext, w: number): string[] {
   for (const item of ctx.regularItems) lines.push(...modernItemLines(item, w));
   for (const [, bundle] of ctx.bundles) {
     lines.push("");
-    lines.push(`<B>${truncate(`Bundle: ${bundle.name}`, w)}</B>`);
+    for (const part of wrapText(`Bundle: ${bundle.name}`, w, w)) lines.push(`<B>${part}</B>`);
     for (const item of bundle.items) {
       lines.push(...modernItemLines(item, w, item.slotName ? `[${item.slotName}] ` : ""));
     }

@@ -30,8 +30,8 @@ function makeRequest(body: unknown, authHeader?: string): NextRequest {
 
 describe('POST /api/revalidate-menu', () => {
   let mockCreateClient: jest.Mock
-  let getUserMock: jest.Mock
-  let singleMock: jest.Mock
+  let getUserMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let singleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
 
   beforeEach(async () => {
     jest.resetModules()
@@ -42,8 +42,8 @@ describe('POST /api/revalidate-menu', () => {
     const { createClient } = await import('@supabase/supabase-js')
     mockCreateClient = createClient as unknown as jest.Mock
 
-    getUserMock = jest.fn()
-    singleMock = jest.fn()
+    getUserMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    singleMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 
     mockCreateClient.mockReturnValue({
       auth: { getUser: getUserMock },

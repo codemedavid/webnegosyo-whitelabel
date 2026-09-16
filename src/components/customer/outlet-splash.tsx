@@ -79,6 +79,18 @@ export function OutletSplash({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The menu page is mounted underneath this overlay. Left scrollable, iOS
+  // Safari paints the scrolled menu in the strip under its translucent toolbar
+  // — product cards bleeding through below the welcome page. Lock the body for
+  // as long as the splash is up; restore whatever was there on the way out.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [])
+
   const modes = useMemo(() => resolveAvailableModes(outlets), [outlets])
 
   // One clock reading for the whole picker: deriving `new Date()` per card

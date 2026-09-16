@@ -1,3 +1,4 @@
+import { addonQuantity } from '@/lib/addon-quantity'
 import type { CartBundleItem, CartBundleSlotSelection } from '@/types/database'
 
 /**
@@ -29,7 +30,7 @@ export function calculateSlotBundleExtras(slots: CartBundleSlotSelection[]): num
     } else if (s.selectedVariation) {
       variationExtra = s.selectedVariation.price_modifier || 0
     }
-    const addonExtra = s.selectedAddons.reduce((acc, a) => acc + a.price, 0)
+    const addonExtra = s.selectedAddons.reduce((acc, a) => acc + a.price * addonQuantity(a), 0)
     return sum + s.priceOverride + variationExtra + addonExtra
   }, 0)
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { readInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import {
@@ -48,6 +49,7 @@ interface TenantStockConfig {
 
 /** Shape of `orders:getOrderById` as far as depletion cares. */
 interface ConvexOrderForStock {
+  customerData?: unknown
   outletId?: string | null
   items?: unknown[]
 }
@@ -88,9 +90,8 @@ async function depleteConvexOrder(
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  const items = buildDepletionItemsFromConvexOrderItems(
-    Array.isArray(order.items) ? order.items : [],
-  )
+  const savedItems = buildDepletionItemsFromConvexOrderItems(Array.isArray(order.items) ? order.items : [])
+  const items = readInventorySelectionSnapshot(order.customerData, savedItems) ?? savedItems
   if (items.length > 0) {
     // The branch comes off the stored order, never off the request body.
     await applyOrderStockBestEffort(
@@ -120,7 +121,7 @@ async function depletePlatformOrder(
   // shop they have nothing to do with.
   const { data: order } = await supabase
     .from('orders')
-    .select('tenant_id, outlet_id')
+    .select('tenant_id, outlet_id, customer_data')
     .eq('id', orderId)
     .single()
 
@@ -133,7 +134,8 @@ async function depletePlatformOrder(
     .select('menu_item_id, quantity')
     .eq('order_id', orderId)
 
-  const items = buildDepletionItemsFromOrderRows(lines ?? [])
+  const savedItems = buildDepletionItemsFromOrderRows(lines ?? [])
+  const items = readInventorySelectionSnapshot((order as { customer_data?: unknown }).customer_data, savedItems) ?? savedItems
   if (items.length > 0) {
     await applyOrderStockBestEffort(
       tenantId,

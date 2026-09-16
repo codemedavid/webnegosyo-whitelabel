@@ -83,6 +83,8 @@ export interface PlatformOrderItemRow {
 
 /** A `public.orders` row as PostgREST returns it. */
 export interface PlatformOrderRow {
+  daily_number?: number | null;
+  daily_order_number?: number | null;
   id: string;
   tenant_id: string;
   /** Branch that took the order; null on every single-location tenant. */
@@ -195,6 +197,7 @@ export interface OrderItemDto {
 }
 
 export interface OrderDto {
+  dailyNumber?: number | null;
   _id: string;
   _creationTime: number;
   /**
@@ -391,6 +394,7 @@ export function toOrderDto(
 
   return {
     _id: row.id,
+    dailyNumber: row.daily_number ?? row.daily_order_number ?? null,
     _creationTime: Date.parse(row.created_at),
     outlet_id: optional(row.outlet_id),
     customerName: row.customer_name ?? "",

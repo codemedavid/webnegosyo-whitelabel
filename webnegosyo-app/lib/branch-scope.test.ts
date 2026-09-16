@@ -122,3 +122,7 @@ describe("filterOrdersToScope", () => {
     expect(filterOrdersToScope(all, undefined)).toEqual([]);
   });
 });
+
+it('prefers the Convex outlet column over conflicting legacy metadata', () => {
+  expect(getOrderOutletId({ outletId: 'outlet-south', customerData: { outlet_id: 'outlet-north' } })).toBe('outlet-south');
+});

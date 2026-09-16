@@ -107,3 +107,54 @@ describe("OrderCard table chip", () => {
     expect(screen.queryByText(/^Table /)).toBeNull();
   });
 });
+
+describe("OrderCard unpaid chip", () => {
+  it("drops the Unpaid chip once the bill has been collected at the counter", () => {
+    // Collecting appends a settlement row; the status column is written too,
+    // but every order collected before that fix still carries `pending`.
+    render(
+      <OrderCard
+        order={{ ...baseOrder, total: 1240, paymentStatus: "pending", amountPaid: 1240 }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText("Unpaid")).toBeNull();
+  });
+
+  it("keeps the Unpaid chip on a part-paid bill", () => {
+    render(
+      <OrderCard
+        order={{ ...baseOrder, total: 1240, paymentStatus: "pending", amountPaid: 500 }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Unpaid")).toBeTruthy();
+  });
+
+  it("keeps the Unpaid chip on an order nobody has collected", () => {
+    render(
+      <OrderCard
+        order={{ ...baseOrder, paymentStatus: "pending" }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Unpaid")).toBeTruthy();
+  });
+
+  it("shows no chip on an order paid online, whose ledger is empty", () => {
+    render(
+      <OrderCard
+        order={{ ...baseOrder, paymentStatus: "paid", amountPaid: 0 }}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText("Unpaid")).toBeNull();
+  });
+});
+
+
+it('shows the daily display number while navigation keeps the canonical order ID', () => {
+  const onPress = jest.fn();
+  render(<OrderCard order={{ ...baseOrder, dailyNumber: 7 }} onPress={onPress} />);
+  expect(screen.getByText('#07')).toBeTruthy();
+});

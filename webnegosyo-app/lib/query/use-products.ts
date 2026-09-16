@@ -14,9 +14,10 @@
 import { useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/query-core";
-import { resourceKey } from "../backends/query-keys";
+import { resourceKey, type ResourceQueryKey } from "../backends/query-keys";
 import { listCategories, listProducts, type Category, type Product } from "../products";
 import { listBranchMenuOverrides } from "../branch-menu-service";
+import { POS_CATALOG_RESOURCE } from "./use-pos-catalog";
 import type { OutletMenuOverrideRow } from "../outlet-menu-overrides";
 import { invalidateResource, useResource, type ResourceResult } from "./use-resource";
 
@@ -24,10 +25,16 @@ export const PRODUCTS_RESOURCE = "products";
 export const CATEGORIES_RESOURCE = "categories";
 export const BRANCH_MENU_OVERRIDES_RESOURCE = "branch-menu-overrides";
 
+/**
+ * The register's own copy is invalidated with the rest: it is keyed by branch
+ * and lives on a different key, and leaving it out meant a dish added in the
+ * editor was not sellable until the app was force-quit.
+ */
 const CATALOG_RESOURCES = [
   PRODUCTS_RESOURCE,
   CATEGORIES_RESOURCE,
   BRANCH_MENU_OVERRIDES_RESOURCE,
+  POS_CATALOG_RESOURCE,
 ] as const;
 
 const NO_PRODUCTS: Product[] = [];
@@ -145,6 +152,17 @@ export function applyBranchListing(
   ];
 }
 
+/** The product list with one dish's availability switched, as a new array. */
+export function applyProductAvailability(
+  products: readonly Product[],
+  productId: string,
+  isAvailable: boolean
+): Product[] {
+  return products.map((product) =>
+    product.id === productId ? { ...product, is_available: isAvailable } : product
+  );
+}
+
 export interface MenuCatalogCache {
   /** Refetch the tenant's products, categories and overrides. */
   invalidate: (tenantId: string) => Promise<void>;
@@ -158,6 +176,15 @@ export interface MenuCatalogCache {
     menuItemId: string,
     isListed: boolean
   ) => () => void;
+  /**
+   * Show a dish as already 86'd (or back on) while the write is in flight.
+   * Returns the rollback to call when the write fails.
+   */
+  patchProductAvailability: (
+    tenantId: string,
+    productId: string,
+    isAvailable: boolean
+  ) => () => void;
 }
 
 /** The catalog's mutation-side cache handle, for screens that write to the menu. */
@@ -169,19 +196,40 @@ export function useMenuCatalogCache(): MenuCatalogCache {
     [client]
   );
 
-  const patchBranchListing = useCallback(
-    (tenantId: string, outletId: string, menuItemId: string, isListed: boolean) => {
-      const key = resourceKey(BRANCH_MENU_OVERRIDES_RESOURCE, tenantId);
-      const previous = client.getQueryData<OutletMenuOverrideRow[]>(key);
-      client.setQueryData<OutletMenuOverrideRow[]>(key, (current) =>
-        applyBranchListing(current ?? NO_OVERRIDES, outletId, menuItemId, isListed)
-      );
+  /** Patch one cached list and hand back the undo, so both patches read alike. */
+  const patchList = useCallback(
+    <T,>(key: ResourceQueryKey, next: (current: T[]) => T[], fallback: T[]) => {
+      const previous = client.getQueryData<T[]>(key);
+      client.setQueryData<T[]>(key, (current) => next(current ?? fallback));
       return () => {
-        client.setQueryData<OutletMenuOverrideRow[]>(key, previous);
+        client.setQueryData<T[]>(key, previous);
       };
     },
     [client]
   );
 
-  return useMemo(() => ({ invalidate, patchBranchListing }), [invalidate, patchBranchListing]);
+  const patchBranchListing = useCallback(
+    (tenantId: string, outletId: string, menuItemId: string, isListed: boolean) =>
+      patchList<OutletMenuOverrideRow>(
+        resourceKey(BRANCH_MENU_OVERRIDES_RESOURCE, tenantId),
+        (current) => applyBranchListing(current, outletId, menuItemId, isListed),
+        NO_OVERRIDES
+      ),
+    [patchList]
+  );
+
+  const patchProductAvailability = useCallback(
+    (tenantId: string, productId: string, isAvailable: boolean) =>
+      patchList<Product>(
+        resourceKey(PRODUCTS_RESOURCE, tenantId),
+        (current) => applyProductAvailability(current, productId, isAvailable),
+        NO_PRODUCTS
+      ),
+    [patchList]
+  );
+
+  return useMemo(
+    () => ({ invalidate, patchBranchListing, patchProductAvailability }),
+    [invalidate, patchBranchListing, patchProductAvailability]
+  );
 }

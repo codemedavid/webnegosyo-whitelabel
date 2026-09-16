@@ -21,7 +21,7 @@ import { reverseOrderStockMovements } from '@/lib/inventory/order-stock-service'
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { MapPin, LocateFixed, Map, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { useMapboxStylesheet } from '@/hooks/use-mapbox-stylesheet'
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,9 @@ export function MapboxAddressAutocomplete({
   // Cache for reverse geocoding results to avoid redundant API calls
   // Key: "lat_lng" (rounded to 4 decimal places), Value: address string
   const geocodeCacheRef = useRef<Record<string, string>>({})
+
+  // mapbox-gl's stylesheet is loaded here, on demand, instead of in the root layout.
+  useMapboxStylesheet(mapboxEnabled)
 
   useEffect(() => {
     setIsClient(true)

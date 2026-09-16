@@ -2,12 +2,30 @@ import {
   createModifierGroup,
   createModifierOption,
   serializeGroups,
+  omitUnchangedOptionStock,
   setGroupMultiple,
   setGroupRequired,
   setOptionCostMode,
   splitGroupsToLegacyColumns,
 } from '@/lib/modifier-groups-form'
 import type { ModifierGroup, ModifierOption } from '@/types/database'
+
+it('omits untouched stock while retaining explicit adjustments and new option balances', () => {
+  const baseline = [{ ...createModifierGroup('g', 0), options: [
+    createModifierOption('unchanged', 0), createModifierOption('adjusted', 1),
+  ].map(option => ({ ...option, stock_qty: 10 })) }]
+  const edited = [{ ...baseline[0], options: [
+    { ...baseline[0].options[0], name: 'Renamed' },
+    { ...baseline[0].options[1], stock_qty: 12 },
+    { ...createModifierOption('new', 2), stock_qty: 8 },
+  ] }]
+  const result = omitUnchangedOptionStock(edited, baseline)
+  expect(result[0].options[0]).not.toHaveProperty('stock_qty')
+  expect(result[0].options[1].stock_qty).toBe(12)
+  expect(result[0].options[2].stock_qty).toBe(8)
+  expect(edited[0].options[0].stock_qty).toBe(10)
+  expect(omitUnchangedOptionStock(edited, edited)[0].options.every(option => option.stock_qty === undefined)).toBe(true)
+})
 
 // ---- helpers -------------------------------------------------------------
 
@@ -30,6 +48,7 @@ function group(overrides: Partial<ModifierGroup> = {}): ModifierGroup {
     // Respect an explicit null (unlimited); only default when the key is absent.
     max_select: 'max_select' in overrides ? overrides.max_select! : 1,
     options: overrides.options ?? [option()],
+    ...overrides,
   }
 }
 
@@ -133,6 +152,12 @@ describe('serializeGroups', () => {
 // ---- splitGroupsToLegacyColumns (backward-compat contract) ---------------
 
 describe('splitGroupsToLegacyColumns', () => {
+  it('keeps quantity add-ons out of variation types even with a one-portion cap', () => {
+    const extras = group({ selection_mode: 'quantity', max_select: 1, options: [option({ id: 'rice', name: 'Rice', price_modifier: 25 })] })
+    expect(splitGroupsToLegacyColumns([extras])).toEqual({
+      variation_types: [], variations: [], addons: [{ id: 'rice', name: 'Rice', price: 25 }],
+    })
+  })
   it('maps a single-select group to a variation_type; required from min_select', () => {
     const g = group({
       id: 'size',

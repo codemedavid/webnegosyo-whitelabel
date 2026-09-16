@@ -4,6 +4,10 @@
     {
       "path": "/api/loyverse/reconcile",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/loyalty/maintenance",
+      "schedule": "* * * * *"
     }
   ]
 }

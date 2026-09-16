@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, memo } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronLeft,
   ChevronRight,
@@ -71,6 +71,7 @@ import type {
 } from '@/lib/queries/tenants-server'
 
 const PAGE_SIZE = 20
+const SEARCH_DEBOUNCE_MS = 300
 const VIEW_STORAGE_KEY = 'sa-tenant-view'
 
 const ZERO_METRICS: Omit<TenantMetrics, 'tenantId'> = {
@@ -344,14 +345,17 @@ export function TenantManager({
   initialMetrics,
 }: TenantManagerProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const initialSearch = searchParams.get('q') ?? ''
 
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants)
   const [count, setCount] = useState(initialCount)
   const [metrics, setMetrics] =
     useState<Record<string, TenantMetrics>>(initialMetrics)
 
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [search, setSearch] = useState(initialSearch)
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -384,9 +388,19 @@ export function TenantManager({
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
       setPage(1)
-    }, 300)
+    }, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [search])
+
+  /* Mirror the debounced search into ?q= so reload/back restore the filter */
+  useEffect(() => {
+    const current = searchParams.get('q') ?? ''
+    if (current === debouncedSearch) return
+    const query = debouncedSearch
+      ? `?q=${encodeURIComponent(debouncedSearch)}`
+      : ''
+    router.replace(`${pathname}${query}`, { scroll: false })
+  }, [debouncedSearch, pathname, router, searchParams])
 
   /* Reset to page 1 whenever filters/sort change */
   useEffect(() => {
@@ -575,7 +589,7 @@ export function TenantManager({
           <div className="relative w-full lg:max-w-sm">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
             <input
-              type="search"
+              type="text"
               placeholder="Search by name or slug..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}

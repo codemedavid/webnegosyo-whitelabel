@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 
 import { useAuthStore } from "../../stores/auth-store";
@@ -20,7 +20,7 @@ import {
 import { judgeVariance, type VarianceLevel } from "../../lib/daily-report/variance-verdict";
 import { resolveFoodCostPercent } from "../../lib/daily-report/food-cost";
 import { resolveReportRevenue } from "../../lib/daily-report-revenue";
-import { resolveBranchScope } from "../../lib/branch-scope";
+import { useBranchScope } from "../../lib/use-branch-scope";
 import { BRANCH_STATS_SCHEMA_VERSION } from "../../lib/convex-order-scope";
 import { useSafeQuery } from "../../lib/hooks";
 import type { FunctionReference } from "convex/server";
@@ -110,16 +110,10 @@ export default function DailyReportScreen() {
   const [selection] = useState(() => resolveReportDay(undefined, new Date().toISOString()));
   const [dayKey, setDayKey] = useState(selection.dayKey);
 
-  // The ACCOUNT's branch, not the owner's drill-down — matching what useSafeQuery
-  // itself narrows the query by, which is what makes the mismatch decidable.
-  const outletId = useAuthStore((s) => s.outletId);
-  const isOwner = useAuthStore((s) => s.isOwner);
-  const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
-  const isDemo = useAuthStore((s) => s.isDemo);
+  const scope = useBranchScope();
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const convexSchemaVersion = useAuthStore((s) => s.convexSchemaVersion);
-  const isBranchScoped =
-    resolveBranchScope({ outletId, isOwner, isSuperadmin, isDemo }).kind === "branch";
+  const isBranchScoped = scope.kind === "branch";
 
   /**
    * Whether the TAKINGS half was narrowed to the same branch as the stock half.
@@ -136,13 +130,16 @@ export default function DailyReportScreen() {
    * cannot disagree.
    */
   const isRevenueBranchScoped =
-    orderBackend !== "convex" ||
+    orderBackend === "platform" ||
     (convexSchemaVersion ?? 0) >= BRANCH_STATS_SCHEMA_VERSION;
 
   /** The branch this account's report covers, or null for the whole store. */
-  const reportOutletId = isBranchScoped ? outletId : null;
+  const reportOutletId = scope.kind === "branch" ? scope.outletId : null;
 
-  const [report, setReport] = useState<DailyReportForDay | null>(null);
+  const reportKey = JSON.stringify([tenantId, dayKey, reportOutletId]);
+  const requestVersion = useRef(0);
+  const [loadedReport, setLoadedReport] = useState<{ key: string; data: DailyReportForDay | null } | null>(null);
+  const report = loadedReport?.key === reportKey ? loadedReport.data : null;
   const [dishesWithRecipe, setDishesWithRecipe] = useState<number | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -151,25 +148,28 @@ export default function DailyReportScreen() {
   const load = useCallback(async () => {
     if (!tenantId) return;
 
+    const version = ++requestVersion.current;
     setFailed(false);
     const [loaded, covered] = await Promise.all([
       loadDailyReport(tenantId, dayKey, undefined, reportOutletId),
       countDishesWithRecipe(tenantId),
     ]);
 
+    if (version !== requestVersion.current) return;
     // The read returns null rather than an empty report precisely so this can
     // tell a bad connection from a quiet day.
     if (loaded === null) setFailed(true);
 
-    setReport(loaded);
+    setLoadedReport({ key: reportKey, data: loaded });
     setDishesWithRecipe(covered);
     setIsLoading(false);
     setRefreshing(false);
-  }, [tenantId, dayKey, reportOutletId]);
+  }, [tenantId, dayKey, reportOutletId, reportKey]);
 
   useEffect(() => {
     setIsLoading(true);
-    load();
+    void load();
+    return () => { requestVersion.current += 1; };
   }, [load]);
 
   const onRefresh = () => {
@@ -230,7 +230,7 @@ export default function DailyReportScreen() {
   const isLatestDay = dayKey >= selection.latestDayKey;
 
   const body = () => {
-    if (isLoading) return <LoadingState message="Reconciling the day..." />;
+    if (isLoading || loadedReport?.key !== reportKey) return <LoadingState message="Reconciling the day..." />;
     if (failed || !report) {
       return (
         <ErrorState

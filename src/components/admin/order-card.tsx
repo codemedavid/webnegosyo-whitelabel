@@ -1,5 +1,7 @@
 'use client'
 
+import { formatDailyOrderNumber } from '@/lib/order-number'
+
 import { formatDistance } from 'date-fns'
 import { Clock, CheckCircle, XCircle, ShoppingBag, Package, Truck, UtensilsCrossed, CalendarClock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -59,7 +61,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-lg">Order #{order.id.slice(0, 8)}</CardTitle>
+            <CardTitle className="text-lg">Order {formatDailyOrderNumber(order.daily_number ?? order.daily_order_number, order.id)}</CardTitle>
             <p className="text-sm text-muted-foreground">
               {formatDistance(new Date(order.created_at), new Date(), { addSuffix: true })}
             </p>

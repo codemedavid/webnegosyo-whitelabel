@@ -14,6 +14,7 @@
  * Adding a row here means every design gets it. That is the point.
  */
 
+import { addonLabel } from '@/lib/addon-quantity'
 import type { CSSProperties, ReactNode } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
@@ -134,7 +135,7 @@ function SummaryItem({
   nameStyle?: CSSProperties
 }) {
   const addons = item.selected_addons.length > 0 && (
-    <p className={skin.itemAddons}>Add-ons: {item.selected_addons.map(a => a.name).join(', ')}</p>
+    <p className={skin.itemAddons}>Add-ons: {item.selected_addons.map(addonLabel).join(', ')}</p>
   )
   const note = item.special_instructions && (
     <p className={skin.itemNote}>Note: {item.special_instructions}</p>

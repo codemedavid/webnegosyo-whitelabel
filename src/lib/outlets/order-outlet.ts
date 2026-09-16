@@ -6,8 +6,8 @@
  * claim into something safe to write down: it is honoured only when the tenant
  * opted in, and only when it names one of that tenant's own branches.
  *
- * Nothing here throws or queries. An order that cannot be attributed to a
- * branch is still an order.
+ * The resolver is pure; checkout uses the strict wrapper to refuse ambiguous
+ * attribution before writing an order.
  */
 
 /** The branch fields needed to validate a claim — the tenant's own branches. */
@@ -53,6 +53,15 @@ export function resolveOrderOutlet({
   return { id: match.id, name: match.name }
 }
 
+/** Checkout must not silently book an order into an unassigned pool. */
+export function requireCheckoutOutlet(input: OrderOutletInput): OrderOutletContext | null {
+  const outlet = resolveOrderOutlet(input)
+  if (input.isEnabled && !outlet && (input.outlets.length > 0 || input.requestedOutletId?.trim())) {
+    throw new Error('Choose a branch before placing your order. Your previous selection may no longer be available.')
+  }
+  return outlet
+}
+
 /** Keys the branch travels under inside `customer_data`. */
 export const ORDER_OUTLET_ID_KEY = 'outlet_id'
 export const ORDER_OUTLET_NAME_KEY = 'outlet_name'
@@ -65,15 +74,20 @@ export const ORDER_OUTLET_NAME_KEY = 'outlet_name'
  * carrier the advance-order schedule and the payment proof already use for
  * exactly this reason, and it needs no redeploy to start working.
  *
- * With no branch resolved the caller's payload is returned *as it is* — same
- * object, no added key — so an order placed by a tenant without the feature is
- * byte-for-byte what it is today.
+ * With no branch resolved, remove any branch fields supplied by the client.
+ * Payloads without those fields keep their original identity.
  */
 export function withOrderOutlet(
   customerData: Record<string, unknown> | undefined,
   outlet: OrderOutletContext | null
 ): Record<string, unknown> | undefined {
-  if (!outlet) return customerData
+  if (!outlet) {
+    if (!customerData || !(ORDER_OUTLET_ID_KEY in customerData || ORDER_OUTLET_NAME_KEY in customerData)) return customerData
+    const clean = { ...customerData }
+    delete clean[ORDER_OUTLET_ID_KEY]
+    delete clean[ORDER_OUTLET_NAME_KEY]
+    return clean
+  }
 
   return {
     ...(customerData ?? {}),

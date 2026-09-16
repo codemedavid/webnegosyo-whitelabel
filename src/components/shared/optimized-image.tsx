@@ -1,8 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import Image, { ImageProps } from 'next/image'
+import Image, { ImageProps, ImageLoaderProps } from 'next/image'
 import { transformImageUrl, isOptimizableImageUrl } from '@/lib/imagekit-utils'
+
+/** Largest variant the CDN is asked for; menu originals are never bigger. */
+const MAX_CDN_WIDTH = 2000
+/** Retina multiplier applied to a CSS width before asking the CDN. */
+const DEVICE_PIXEL_RATIO = 2
+/** Widest common phone viewport; drives the mobile-first default `src`. */
+const MOBILE_VIEWPORT_WIDTH = 430
+/** Fallback CSS width for a `fill` image whose `sizes` cannot be parsed. */
+const DEFAULT_FILL_WIDTH = 1200
 
 interface OptimizedImageProps extends Omit<ImageProps, 'src'> {
     src: string | null | undefined
@@ -82,6 +91,42 @@ function estimateRenderedWidthFromSizes(sizes?: string): number | null {
 }
 
 /**
+ * Estimate the rendered width on a phone from a `sizes` string: the first
+ * `(max-width: Npx)` branch evaluated at a phone viewport. Mobile-first because
+ * the default `src` should be the SMALL candidate; browsers with srcset support
+ * pick their own variant, so only phones and legacy engines ever fetch it.
+ */
+function estimateMobileRenderedWidthFromSizes(sizes?: string): number | null {
+    if (!sizes) return null
+
+    const entries = sizes.split(',').map((part) => part.trim()).filter(Boolean)
+    for (const entry of entries) {
+        const mediaMatch = entry.match(/^\(max-width:\s*(\d+)px\)\s+(.+)$/)
+        if (!mediaMatch) continue
+        const viewport = Math.min(Number(mediaMatch[1]), MOBILE_VIEWPORT_WIDTH)
+        const width = parseSizeTokenToPx(mediaMatch[2].trim(), viewport)
+        if (width) return width
+    }
+
+    return estimateRenderedWidthFromSizes(sizes)
+}
+
+/**
+ * next/image loader for CDN-hosted `fill` images. next/image derives the
+ * candidate widths from `sizes` + the configured deviceSizes and calls this
+ * once per width, so the browser gets a real srcset of CDN variants instead of
+ * one tablet-sized `unoptimized` URL. `f-auto` lets the CDN serve WebP/AVIF.
+ */
+function cdnFillLoader({ src, width, quality }: ImageLoaderProps): string {
+    return transformImageUrl(src, {
+        width: Math.min(MAX_CDN_WIDTH, width),
+        quality: typeof quality === 'number' ? quality : 'auto',
+        format: 'auto',
+        crop: 'limit',
+    }) || src
+}
+
+/**
  * An optimized image component that uses Cloudinary's native transformations
  * instead of Next.js Image Optimization for Cloudinary URLs.
  * 
@@ -140,24 +185,47 @@ export function OptimizedImage({
     // Determine loading strategy: priority overrides lazy
     const loadingProp = priority ? undefined : (lazy ? 'lazy' : 'eager')
 
-    // If it's a CDN URL (ImageKit or legacy Cloudinary) use CDN transforms
-    if (useCloudinaryTransform && isOptimizableImageUrl(resolvedSrc)) {
-        // Calculate dimensions for transformation.
-        // For fill images, estimate a practical max width from `sizes` to avoid loading originals.
-        const estimatedFillWidth = fill ? estimateRenderedWidthFromSizes(sizes) : null
-        const requestedWidth = typeof width === 'number'
-            ? width
-            : fill
-                ? (estimatedFillWidth || 1200)
-                : undefined
+    const isCdnImage = useCloudinaryTransform && isOptimizableImageUrl(resolvedSrc)
+
+    // CDN `fill` images (menu cards): real srcset via the CDN loader, with a
+    // phone-sized default `src` so nothing downloads the largest branch.
+    if (isCdnImage && fill) {
+        const mobileWidth = estimateMobileRenderedWidthFromSizes(sizes) || DEFAULT_FILL_WIDTH
+        const mobileSrc = cdnFillLoader({
+            src: resolvedSrc,
+            width: Math.round(mobileWidth * DEVICE_PIXEL_RATIO),
+            quality: typeof cloudinaryQuality === 'number' ? cloudinaryQuality : undefined,
+        })
+
+        return (
+            <Image
+                src={resolvedSrc}
+                alt={alt}
+                fill
+                sizes={sizes}
+                priority={priority}
+                loading={loadingProp}
+                decoding="async"
+                loader={cdnFillLoader}
+                overrideSrc={mobileSrc}
+                quality={typeof cloudinaryQuality === 'number' ? cloudinaryQuality : undefined}
+                {...props}
+                onError={handleError}
+            />
+        )
+    }
+
+    // Fixed-size CDN images (logos, thumbnails): a single cropped CDN variant.
+    if (isCdnImage) {
+        const requestedWidth = typeof width === 'number' ? width : undefined
         const requestedHeight = typeof height === 'number' ? height : undefined
-        // The * 2 multiplier already accounts for retina/2x displays,
+        // The multiplier already accounts for retina/2x displays,
         // so we do NOT add dpr:'auto' (which would double the size again).
         const transformWidth = typeof requestedWidth === 'number'
-            ? Math.min(2000, Math.round(requestedWidth * 2))
+            ? Math.min(MAX_CDN_WIDTH, Math.round(requestedWidth * DEVICE_PIXEL_RATIO))
             : undefined
         const transformHeight = typeof requestedHeight === 'number'
-            ? Math.min(2000, Math.round(requestedHeight * 2))
+            ? Math.min(MAX_CDN_WIDTH, Math.round(requestedHeight * DEVICE_PIXEL_RATIO))
             : undefined
         const cropMode = transformWidth && transformHeight ? 'fill' : 'limit'
 
@@ -176,7 +244,6 @@ export function OptimizedImage({
                 alt={alt}
                 width={width}
                 height={height}
-                fill={fill}
                 sizes={sizes}
                 priority={priority}
                 loading={loadingProp}

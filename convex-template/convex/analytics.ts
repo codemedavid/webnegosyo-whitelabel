@@ -1,4 +1,6 @@
+import { orderTime, orderTimeFilter } from './orderTime';
 import { v, type ObjectType } from "convex/values";
+import { orderBranchFilter, eventBranchFilter } from "./branchFilter";
 import { summarizeOrderChannels } from "./analyticsChannels";
 import { mutation, query, internalQuery, type QueryCtx } from "./_generated/server";
 import { requireAccess } from "./auth";
@@ -22,6 +24,7 @@ export const trackEvent = mutation({
 
 const getUpsellAnalyticsArgs = {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
 };
 
 async function getUpsellAnalyticsHandler(ctx: QueryCtx, args: ObjectType<typeof getUpsellAnalyticsArgs>) {
@@ -31,14 +34,17 @@ async function getUpsellAnalyticsHandler(ctx: QueryCtx, args: ObjectType<typeof 
     const shown = await ctx.db
       .query("analyticsEvents")
       .withIndex("by_type", (q) => q.eq("type", "upsell_shown"))
+      .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
     const clicked = await ctx.db
       .query("analyticsEvents")
       .withIndex("by_type", (q) => q.eq("type", "upsell_clicked"))
+      .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
     const converted = await ctx.db
       .query("analyticsEvents")
       .withIndex("by_type", (q) => q.eq("type", "upsell_converted"))
+      .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
 
     const shownCount = shown.filter((e) => e._creationTime >= cutoff).length;
@@ -67,6 +73,7 @@ export const getUpsellAnalyticsInternal = internalQuery({ args: getUpsellAnalyti
 export const getBundleAnalytics = query({
   args: {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
@@ -76,10 +83,12 @@ export const getBundleAnalytics = query({
     const viewed = await ctx.db
       .query("analyticsEvents")
       .withIndex("by_type", (q) => q.eq("type", "bundle_viewed"))
+      .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
     const added = await ctx.db
       .query("analyticsEvents")
       .withIndex("by_type", (q) => q.eq("type", "bundle_added"))
+      .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
 
     const viewedCount = viewed.filter((e) => e._creationTime >= cutoff).length;
@@ -95,6 +104,7 @@ export const getBundleAnalytics = query({
 
 const getTopItemsArgs = {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
     limit: v.optional(v.number()),
 };
 
@@ -105,9 +115,10 @@ async function getTopItemsHandler(ctx: QueryCtx, args: ObjectType<typeof getTopI
     // Server-side filter: only fetch orders from the period instead of all
     const recentOrders = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), cutoff),
+          orderTimeFilter(q, "gte", cutoff),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -152,6 +163,7 @@ export const getTopItemsInternal = internalQuery({ args: getTopItemsArgs, handle
 
 const getTrendsArgs = {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
 };
 
 async function getTrendsHandler(ctx: QueryCtx, args: ObjectType<typeof getTrendsArgs>) {
@@ -166,9 +178,10 @@ async function getTrendsHandler(ctx: QueryCtx, args: ObjectType<typeof getTrends
 
     const orders = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), startMs),
+          orderTimeFilter(q, "gte", startMs),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -177,7 +190,7 @@ async function getTrendsHandler(ctx: QueryCtx, args: ObjectType<typeof getTrends
 
     const dayMap = new Map<string, { totalOrders: number; totalRevenue: number }>();
     for (const order of orders) {
-      const date = localDateKey(order._creationTime);
+      const date = localDateKey(orderTime(order));
       const existing = dayMap.get(date) ?? { totalOrders: 0, totalRevenue: 0 };
       existing.totalOrders += 1;
       existing.totalRevenue += order.total;
@@ -206,6 +219,7 @@ export const getTrendsInternal = internalQuery({ args: getTrendsArgs, handler: g
 
 const getRevenueBreakdownArgs = {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
 };
 
 async function getRevenueBreakdownHandler(ctx: QueryCtx, args: ObjectType<typeof getRevenueBreakdownArgs>) {
@@ -215,9 +229,10 @@ async function getRevenueBreakdownHandler(ctx: QueryCtx, args: ObjectType<typeof
     // Server-side filter: push date and status filtering into the query
     const filtered = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), cutoff),
+          orderTimeFilter(q, "gte", cutoff),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -267,6 +282,7 @@ export const getRevenueBreakdownInternal = internalQuery({ args: getRevenueBreak
 export const getUpsellTrends = query({
   args: {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
@@ -277,10 +293,12 @@ export const getUpsellTrends = query({
     const shownEvents = await ctx.db
       .query("analyticsEvents")
       .withIndex("by_type", (q) => q.eq("type", "upsell_shown"))
+      .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
     const convertedEvents = await ctx.db
       .query("analyticsEvents")
       .withIndex("by_type", (q) => q.eq("type", "upsell_converted"))
+      .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
 
     const recentShown = shownEvents.filter((e) => e._creationTime >= cutoff);
@@ -312,9 +330,10 @@ export const getUpsellTrends = query({
     // Server-side filter: only fetch orders from the period
     const recentOrders = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), cutoff),
+          orderTimeFilter(q, "gte", cutoff),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -339,6 +358,7 @@ export const getUpsellTrends = query({
 export const getSalesAnalytics = query({
   args: {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
@@ -349,17 +369,19 @@ export const getSalesAnalytics = query({
     // Current period orders
     const currentOrders = await ctx.db
       .query("orders")
-      .filter((q) => q.gte(q.field("_creationTime"), cutoff))
+      .filter((q) => orderBranchFilter(q, args.outletId))
+      .filter((q) => orderTimeFilter(q, "gte", cutoff))
       .order("desc")
       .take(QUERY_LIMIT);
 
     // Previous period orders (for growth comparison)
     const prevOrders = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), prevCutoff),
-          q.lt(q.field("_creationTime"), cutoff)
+          orderTimeFilter(q, "gte", prevCutoff),
+          orderTimeFilter(q, "lt", cutoff)
         )
       )
       .order("desc")
@@ -402,6 +424,7 @@ export const getSalesAnalytics = query({
 export const getPaymentMethodAnalytics = query({
   args: {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
@@ -410,9 +433,10 @@ export const getPaymentMethodAnalytics = query({
 
     const orders = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), cutoff),
+          orderTimeFilter(q, "gte", cutoff),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -444,7 +468,7 @@ export const getPaymentMethodAnalytics = query({
     // Daily breakdown for trend lines
     const dailyMap = new Map<string, Map<string, number>>();
     for (const order of orders) {
-      const date = localDateKey(order._creationTime);
+      const date = localDateKey(orderTime(order));
       const method = order.paymentMethod ?? "Unknown";
       if (!dailyMap.has(date)) dailyMap.set(date, new Map());
       const dayMethods = dailyMap.get(date)!;
@@ -465,6 +489,7 @@ export const getPaymentMethodAnalytics = query({
 export const getOrderHeatmap = query({
   args: {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
@@ -473,9 +498,10 @@ export const getOrderHeatmap = query({
 
     const orders = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), cutoff),
+          orderTimeFilter(q, "gte", cutoff),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -487,7 +513,7 @@ export const getOrderHeatmap = query({
     const countMap = new Map<string, number>();
 
     for (const order of orders) {
-      const key = `${localDayOfWeek(order._creationTime)}-${localHour(order._creationTime)}`;
+      const key = `${localDayOfWeek(orderTime(order))}-${localHour(orderTime(order))}`;
       countMap.set(key, (countMap.get(key) ?? 0) + 1);
     }
 
@@ -513,6 +539,7 @@ export const getOrderHeatmap = query({
 export const getCustomerInsights = query({
   args: {
     daysBack: v.optional(v.number()),
+    outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
@@ -521,9 +548,10 @@ export const getCustomerInsights = query({
 
     const orders = await ctx.db
       .query("orders")
+      .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          q.gte(q.field("_creationTime"), cutoff),
+          orderTimeFilter(q, "gte", cutoff),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -560,13 +588,13 @@ export const getCustomerInsights = query({
       if (existing) {
         existing.orderCount += 1;
         existing.totalSpent += order.total;
-        existing.lastOrderDate = Math.max(existing.lastOrderDate, order._creationTime);
+        existing.lastOrderDate = Math.max(existing.lastOrderDate, orderTime(order));
       } else {
         customerMap.set(key, {
           name: order.customerName,
           orderCount: 1,
           totalSpent: order.total,
-          lastOrderDate: order._creationTime,
+          lastOrderDate: orderTime(order),
         });
       }
     }

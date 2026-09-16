@@ -170,17 +170,28 @@ describe('Menu Server Component - SSR and ISR', () => {
       mockSupabase.from.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } })
+        maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null })
       })
 
       const result = await getMenuData('non-existent')
 
       expect(result).toMatchObject({
+        status: 'not-found',
         tenant: null,
         categories: [],
         menuItems: [],
         error: 'Restaurant not found'
       })
+    })
+
+    it('distinguishes a database failure from an absent restaurant', async () => {
+      mockSupabase.from.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn().mockResolvedValue({ data: null, error: { message: 'Database unavailable' } }),
+      })
+      const result = await getMenuData('test-restaurant')
+      expect(result).toMatchObject({ status: 'error', tenant: null, error: expect.stringContaining('Failed to load restaurant') })
     })
 
     it('should fetch tenant with valid slug', async () => {

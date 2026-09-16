@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readBody } from '@/lib/loyalty/merchant-http'
+import { validateProgramCatalog } from '@/lib/loyalty/program-catalog'
 
 /**
  * /api/loyalty/programs — owner program management for the merchant app.
@@ -116,7 +118,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+  const raw = await readBody(request)
+  if (raw instanceof NextResponse) return raw
+  const body = raw as Record<string, unknown> | null
   const tenantId = tenantIdFrom(body?.tenantId)
   if (!tenantId) return NextResponse.json({ error: 'tenantId is required.' }, { status: 400 })
 
@@ -133,6 +137,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'create': {
         const parsed = manage.parseLoyaltyProgramInput(body.program)
         if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
+        const catalogError = await validateProgramCatalog(admin, tenantId, parsed.value.rules)
+        if (catalogError) return NextResponse.json({ error: catalogError }, { status: 400 })
         const created = await repo.createLoyaltyProgram(admin, tenantId, parsed.value, caller.userId)
         return NextResponse.json({ success: true, ...created })
       }
@@ -142,7 +148,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const { parseLoyaltyRules } = await import('@/lib/loyalty/rules')
         const rules = parseLoyaltyRules(body.rules)
         if (!rules.ok) return NextResponse.json({ error: rules.error }, { status: 400 })
-        const revised = await repo.reviseLoyaltyProgram(admin, tenantId, programId, rules.value, caller.userId)
+        if (body.expectedVersion !== null && (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1)) {
+          return NextResponse.json({ error: 'Reload the program before editing.' }, { status: 409 })
+        }
+        const catalogError = await validateProgramCatalog(admin, tenantId, rules.value)
+        if (catalogError) return NextResponse.json({ error: catalogError }, { status: 400 })
+        const revised = await repo.reviseLoyaltyProgram(admin, tenantId, programId, rules.value, caller.userId, body.expectedVersion as number | null)
         return NextResponse.json({ success: true, ...revised })
       }
       case 'set_status': {
@@ -153,11 +164,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
         const current = await repo.readLoyaltyProgramStatus(admin, tenantId, programId)
         if (!current) return NextResponse.json({ error: 'Program not found.' }, { status: 404 })
+        if (body.expectedStatus !== undefined && body.expectedStatus !== current.status) return NextResponse.json({ error: 'Program changed. Reload before editing.' }, { status: 409 })
         const patch = manage.programStatusPatch(current, to, new Date())
         if (!patch) {
           return NextResponse.json({ error: `A ${current.status} program cannot become ${to}.` }, { status: 409 })
         }
-        await repo.writeLoyaltyProgramStatus(admin, tenantId, programId, patch)
+        await repo.writeLoyaltyProgramStatus(admin, tenantId, programId, patch, caller.userId, current.status)
         // Activating a programme is the merchant saying "go". Without this the
         // store stayed disabled and in shadow, the programme read "Live", and
         // not one customer ever saw a stamp.
@@ -176,6 +188,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Loyalty request failed.'
     console.error('[loyalty/programs]', body?.action, message)
-    return NextResponse.json({ error: message }, { status: 500 })
+    const isConflict = /changed|ended|cannot change|Set reward rules|active branch/.test(message)
+    return NextResponse.json({ error: isConflict ? message : 'Could not save the program. Please reload and try again.' }, { status: isConflict ? 409 : 503 })
   }
 }

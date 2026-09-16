@@ -19,6 +19,7 @@ import {
     PARSE_MENU_MODEL,
     MAX_MENU_TEXT_LENGTH,
     MAX_MENU_IMAGES,
+    MAX_IMAGE_DATA_URL_LENGTH,
 } from '@/lib/ai-menu-parser-request'
 
 const PNG_DATA_URL = `data:image/png;base64,${'A'.repeat(100)}`
@@ -90,6 +91,12 @@ describe('validateParseMenuRequest', () => {
         expect(validateParseMenuRequest({ images: ['https://evil.test/menu.png'] }).ok).toBe(false)
         expect(validateParseMenuRequest({ images: ['data:text/html;base64,AAAA'] }).ok).toBe(false)
         expect(validateParseMenuRequest({ images: ['data:image/svg+xml;base64,AAAA'] }).ok).toBe(false)
+    })
+
+    test('accepts a valid image at the size limit without overflowing the regex stack', () => {
+        const prefix = 'data:image/png;base64,'
+        const image = prefix + 'A'.repeat(MAX_IMAGE_DATA_URL_LENGTH - prefix.length)
+        expect(validateParseMenuRequest({ images: [image] }).ok).toBe(true)
     })
 
     test('rejects oversized images', () => {

@@ -8,8 +8,9 @@ import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repositor
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { collectSlotCategoryIds, hydrateBundleSlots } from '@/lib/bundles/slot-hydration'
 import type { Outlet, OutletMenuOverride } from '@/types/database'
+import type { MenuData } from '@/storefront/data/menu-data'
 
-export async function getMenuData(tenantSlug: string) {
+export async function getMenuData(tenantSlug: string): Promise<MenuData> {
   const supabase = await createClient()
 
   const { tenant: tenantData, error: tenantError } = await fetchActiveTenantBySlug<Tenant>(
@@ -19,7 +20,7 @@ export async function getMenuData(tenantSlug: string) {
   )
 
   if (tenantError || !tenantData) {
-    return { tenant: null, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], outletsFailed: false, menuOverrides: [] as OutletMenuOverride[], overridesFailed: false, isBrandAdmin: false, error: 'Restaurant not found' }
+    return { status: tenantError ? 'error' : 'not-found', tenant: null, categories: [], menuItems: [], bundles: [], outlets: [], outletsFailed: false, menuOverrides: [], overridesFailed: false, isBrandAdmin: false, error: tenantError ? `Failed to load restaurant (${tenantError})` : 'Restaurant not found' }
   }
 
   const tenant = tenantData as unknown as Tenant
@@ -124,7 +125,7 @@ export async function getMenuData(tenantSlug: string) {
       catsResult.error?.message && `categories: ${catsResult.error.message}`,
       itemsResult.error?.message && `items: ${itemsResult.error.message}`,
     ].filter(Boolean).join('; ')
-    return { tenant, categories: [], menuItems: [], bundles: [] as BundleWithSlots[], outlets: [] as Outlet[], outletsFailed: false, menuOverrides: [] as OutletMenuOverride[], overridesFailed: false, isBrandAdmin, error: `Failed to load menu data (${details})` }
+    return { status: 'error', tenant, categories: [], menuItems: [], bundles: [], outlets, outletsFailed, menuOverrides, overridesFailed, isBrandAdmin, error: `Failed to load menu data (${details})` }
   }
 
   // Bundle query errors are non-fatal — menu items should still show
@@ -166,6 +167,7 @@ export async function getMenuData(tenantSlug: string) {
   const bundles = hydratedBundles.filter((b) => (b.slots ?? []).length > 0)
 
   return {
+    status: 'ready',
     tenant,
     categories: (catsResult.data as unknown as Category[]) || [],
     menuItems: (itemsResult.data as unknown as MenuItem[]) || [],

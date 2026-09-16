@@ -73,6 +73,15 @@ function makeLegacyItem(): MenuItem {
 // ---- makeCartItem ---------------------------------------------------------
 
 describe('makeCartItem', () => {
+  it('prices repeated extras per parent item and keeps distinct extra quantities on separate lines', () => {
+    const item = makeMenuItem()
+    const cheese = { id: 'cheese', name: 'Cheese', price: 10, quantity: 3 }
+    const three = makeCartItem(item, undefined, [cheese], 2)
+    const one = makeCartItem(item, undefined, [{ ...cheese, quantity: 1 }], 2)
+    expect(three.subtotal).toBe(260)
+    expect(three.id).not.toBe(one.id)
+    expect(three.selected_addons[0]).toEqual(cheese)
+  })
   it('builds a cart item with grouped-variation id and correct subtotal', () => {
     // Arrange
     const item = makeMenuItem()

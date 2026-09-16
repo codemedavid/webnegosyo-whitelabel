@@ -13,13 +13,14 @@ interface PolaroidCardProps {
     isOrderable: boolean
     menuEngineeringEnabled?: boolean
     hideCurrencySymbol?: boolean
+  priority?: boolean
 }
 
 /**
  * Polaroid Card Template
  * Retro photo-style card with thick white frame, slight tilt on hover, and caption-style text
  */
-export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol }: PolaroidCardProps) {
+export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: PolaroidCardProps) {
     const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
 
@@ -52,7 +53,8 @@ export const PolaroidCard = memo(function PolaroidCard({ item, onSelect, brandin
                         fill
                         className="object-cover transition-transform duration-500 group-hover:scale-105"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                        loading="lazy"
+                        loading={priority ? 'eager' : 'lazy'}
+                        fetchPriority={priority ? 'high' : undefined}
                     />
                 )}
 

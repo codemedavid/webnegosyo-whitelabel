@@ -17,7 +17,7 @@ import { getCachedLastPurchaseDates } from '@/lib/inventory/last-purchase'
 import { getRecipeCoverage } from '@/lib/inventory/recipe-coverage-read'
 import { getInventoryActivity } from '@/lib/inventory/activity-feed-read'
 import { explainAutoHiddenDishes } from '@/lib/inventory/auto-86-blame'
-import { summarizeInventoryHealth } from '@/lib/inventory/inventory-health'
+import { summarizeInventoryHealth, type InventoryFlags } from '@/lib/inventory/inventory-health'
 import { getDailyInventoryReport } from '@/lib/inventory/daily-report-read'
 import {
   getOpenCount,
@@ -142,14 +142,15 @@ export default async function AdminInventoryPage({
     ingredients.map((item) => item.id),
   )
   const autoHidden = explainAutoHiddenDishes(menuItems, recipes, recipeComponents, ingredients)
+  const healthFlags: InventoryFlags = {
+    lowStockAlertsEnabled: Boolean(tenant.low_stock_alerts_enabled),
+    auto86Enabled: Boolean(tenant.auto_86_enabled),
+  }
   const health = summarizeInventoryHealth({
     ingredients,
     coverage: coverageRows,
     autoHiddenCount: autoHidden.length,
-    flags: {
-      lowStockAlertsEnabled: Boolean(tenant.low_stock_alerts_enabled),
-      auto86Enabled: Boolean(tenant.auto_86_enabled),
-    },
+    flags: healthFlags,
   })
 
   // The report reconciles one Manila day: what the trade took off the shelf and
@@ -247,6 +248,7 @@ export default async function AdminInventoryPage({
         recipeComponents={recipeComponents}
         coverageLoadFailed={loadFailed}
         health={health}
+        healthFlags={healthFlags}
         autoHidden={autoHidden}
         activity={activity.entries}
         activityLoadFailed={activity.loadFailed}

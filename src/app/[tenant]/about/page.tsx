@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getFooterConfig } from '@/lib/footer-utils'
 import { FooterContentPage } from '@/components/customer/footer-content-page'
+import { omitTenantSecrets } from '@/lib/tenant-public'
 
 interface PageProps {
   params: Promise<{ tenant: string }>
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   return {
-    title: `About Us | ${tenant.name}`,
+    title: 'About Us',
     description: `Learn more about ${tenant.name}.`,
   }
 }
@@ -31,5 +32,5 @@ export default async function AboutPage({ params }: PageProps) {
   const content = config.content.aboutUs
   if (!config.enabled || !content) notFound()
 
-  return <FooterContentPage tenant={tenant} title="About Us" content={content} />
+  return <FooterContentPage tenant={omitTenantSecrets(tenant)} title="About Us" content={content} />
 }

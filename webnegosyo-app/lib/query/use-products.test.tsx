@@ -23,8 +23,10 @@ jest.mock("../branch-menu-service", () => ({
 }));
 
 import { createAppQueryClient } from "./query-client";
+import { usePosCatalog } from "./use-pos-catalog";
 import {
   applyBranchListing,
+  applyProductAvailability,
   invalidateMenuCatalog,
   useBranchMenuOverrides,
   useCategories,
@@ -140,6 +142,26 @@ describe("invalidateMenuCatalog", () => {
     expect(mockListCategories).toHaveBeenCalledTimes(2);
     expect(mockListOverrides).toHaveBeenCalledTimes(2);
   });
+
+  it("re-reads the REGISTER's menu too, so a new dish is sellable without a restart", async () => {
+    const { result } = renderHook(
+      () => ({ list: useProducts("t1"), register: usePosCatalog("t1", "o1") }),
+      { wrapper }
+    );
+    await waitFor(() => expect(result.current.list.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.register.isLoading).toBe(false));
+    mockListProducts.mockClear();
+
+    await act(async () => {
+      await invalidateMenuCatalog(client, "t1");
+    });
+
+    // Both copies re-read: the management list store-wide, the register on its
+    // own branch key. Missing the second is the register showing yesterday's
+    // menu until the cashier force-quits the app.
+    const outletArgs = mockListProducts.mock.calls.map((call) => call[1] ?? "store-wide");
+    expect(outletArgs.sort()).toEqual(["o1", "store-wide"]);
+  });
 });
 
 describe("applyBranchListing", () => {
@@ -158,7 +180,34 @@ describe("applyBranchListing", () => {
   });
 });
 
+describe("applyProductAvailability", () => {
+  it("switches one dish without mutating the list", () => {
+    const rows = [{ ...ADOBO, is_available: true }, { id: "p2", name: "Sisig", is_available: true }];
+    const next = applyProductAvailability(rows as never, "p1", false);
+    expect(next.map((p) => p.is_available)).toEqual([false, true]);
+    expect(rows[0].is_available).toBe(true);
+  });
+});
+
 describe("useMenuCatalogCache", () => {
+  it("patches a dish's availability optimistically and rolls it back", async () => {
+    mockListProducts.mockResolvedValue([{ ...ADOBO, is_available: true }]);
+    const { result } = renderHook(
+      () => ({ products: useProducts("t1"), cache: useMenuCatalogCache() }),
+      { wrapper }
+    );
+    await waitFor(() => expect(result.current.products.isLoading).toBe(false));
+
+    let rollback: () => void = () => {};
+    act(() => {
+      rollback = result.current.cache.patchProductAvailability("t1", "p1", false);
+    });
+    await waitFor(() => expect(result.current.products.data?.[0].is_available).toBe(false));
+
+    act(() => rollback());
+    await waitFor(() => expect(result.current.products.data?.[0].is_available).toBe(true));
+  });
+
   it("patches the cached overrides optimistically and rolls them back", async () => {
     const { result } = renderHook(
       () => ({ overrides: useBranchMenuOverrides("t1"), cache: useMenuCatalogCache() }),

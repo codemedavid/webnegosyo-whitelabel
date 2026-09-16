@@ -86,6 +86,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     webAppUrl: process.env.EXPO_PUBLIC_WEB_APP_URL ?? "",
     // Handset half of the loyalty OTP delivery pilot gate; the web routes are
     // gated separately. Off unless a build sets it to exactly "true".
+    loyaltyPosEnabled: process.env.EXPO_PUBLIC_LOYALTY_POS_SETTLEMENT_ENABLED === "true",
     loyaltySmsDeliveryEnabled: process.env.EXPO_PUBLIC_LOYALTY_SMS_DELIVERY_ENABLED === "true",
     consultationUrl:
       process.env.EXPO_PUBLIC_CONSULTATION_MESSENGER_URL ??

@@ -28,7 +28,7 @@ const GRAM = 'unit-gram'
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a) }),
+  createAdminClient: () => ({ from: (...a: unknown[]) => from(...a), rpc: async () => ({ data: 0, error: null }) }),
 }))
 
 jest.mock('@/lib/inventory/stock-alerts-service', () => ({
@@ -58,6 +58,10 @@ const UNITS = [
 interface StubOptions {
   /** Claims already sitting in order_stock_applications. */
   claims?: OrderStockClaimRow[]
+  customerData?: Record<string, unknown>
+  simpleClaims?: Array<{ revision: number }>
+  recipes?: unknown[]
+  components?: unknown[]
   /** The order's recorded ledger rows, served to a reversal. */
   movements?: unknown[]
   /** The order's saved lines, served to the re-depletion read. */
@@ -73,8 +77,9 @@ function stubPipeline(
   options: StubOptions = {},
 ) {
   const dataFor = (table: string): unknown[] => {
-    if (table === 'recipes') return RECIPES
-    if (table === 'recipe_components') return COMPONENTS
+    if (table === 'simple_option_stock_applications') return options.simpleClaims ?? []
+    if (table === 'recipes') return options.recipes ?? RECIPES
+    if (table === 'recipe_components') return options.components ?? COMPONENTS
     if (table === 'inventory_items') return INGREDIENTS
     if (table === 'inventory_units') return UNITS
     if (table === 'stock_movements') return options.movements ?? []
@@ -91,7 +96,7 @@ function stubPipeline(
           Promise.resolve(
             options.orderReadError
               ? { data: null, error: options.orderReadError }
-              : { data: { id: ORDER, outlet_id: null }, error: null },
+              : { data: { id: ORDER, outlet_id: null, customer_data: options.customerData }, error: null },
           ),
       }
       return chain
@@ -291,4 +296,30 @@ describe('revision arithmetic (pure)', () => {
     expect(hasBlockingVoidClaim([{ reason: 'void', revision: 0 }], 1)).toBe(false)
     expect(hasBlockingVoidClaim([{ reason: 'sale', revision: 0 }], 0)).toBe(false)
   })
+})
+
+
+it('reopens the saved configuration snapshot instead of base-only legacy rows', async () => {
+  const { withInventorySelectionSnapshot } = await import('@/lib/inventory-selection-snapshot')
+  const claims: Record<string, unknown>[] = []
+  const ledger: Record<string, unknown>[] = []
+  from.mockImplementation(stubPipeline(claims, ledger, {
+    customerData: withInventorySelectionSnapshot({}, [{ menu_item_id: 'menu-1', quantity: 2, addon_ids: ['extra'], addon_quantities: { extra: 3 } }]),
+    recipes: [...RECIPES, { id: 'extra-recipe', menu_item_id: 'menu-1', target_type: 'modifier_option', modifier_option_id: 'extra' }],
+    components: [...COMPONENTS, { ...COMPONENTS[0], id: 'extra-component', recipe_id: 'extra-recipe', quantity: 10 }],
+    orderItems: [{ menu_item_id: 'menu-1', quantity: 2 }],
+  }))
+  await redepleteOrderStockBestEffort(TENANT, ORDER)
+  expect(ledger[0]).toMatchObject({ quantity_delta: -260 })
+})
+
+
+it('reopens above the latest simple-only edit and cancellation revision', async () => {
+  const claims: Record<string, unknown>[] = []
+  const ledger: Record<string, unknown>[] = []
+  from.mockImplementation(stubPipeline(claims, ledger, {
+    claims: [{ reason: 'void', revision: 0 }], simpleClaims: [{ revision: 5 }],
+  }))
+  await redepleteOrderStockBestEffort(TENANT, ORDER)
+  expect(claims).toContainEqual(expect.objectContaining({ reason: 'sale', revision: 6 }))
 })

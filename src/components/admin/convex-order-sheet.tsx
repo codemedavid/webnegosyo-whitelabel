@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDailyOrderNumber } from '@/lib/order-number'
+
 import {
   Package,
   User,
@@ -188,7 +190,7 @@ export function ConvexOrderSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Package className="size-5" />
-            {order ? `Order #${order._id.slice(-6).toUpperCase()}` : "Order Details"}
+            {order ? `Order ${formatDailyOrderNumber(order.dailyNumber, order._id)}` : "Order Details"}
           </SheetTitle>
           <SheetDescription>
             {order ? formatDate(order._creationTime) : "Loading order details..."}

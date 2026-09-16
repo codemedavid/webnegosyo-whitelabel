@@ -1,49 +1,21 @@
 'use client'
 
+import { isAboveTheFold, pageIndexOf } from '@/lib/above-the-fold'
+
+import type { MenuLayoutContentProps } from '@/storefront/contracts'
+
 import { memo, useMemo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { MenuItemCard } from '../menu-item-card'
 import { SearchBar } from '../search-bar'
-import type { MenuItem, Category, Tenant, PromotionBanner } from '@/types/database'
-import type { BrandingColors } from '@/lib/branding-utils'
 import { getContrastColor } from '@/lib/branding-utils'
-import type { CardTemplate } from '@/lib/card-templates'
 import { groupMenuItemsByCategory } from '@/lib/menu-grouping'
 import { HorizontalScrollSection } from '../horizontal-scroll-section'
 import { ResponsiveCategorySection } from '../responsive-category-section'
 import { CategoryIcon } from '@/components/shared/category-icon'
 import { StorefrontHero } from '@/components/customer/storefront-hero'
 
-interface LayoutGridFocusProps {
-    tenant: Tenant | null
-    tenantSlug: string
-    categories: Category[]
-    filteredItems: MenuItem[]
-    allMenuItems: MenuItem[]
-    activeCategory: string | null
-    setActiveCategory: (id: string | null) => void
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    onItemSelect: (item: MenuItem) => void
-    branding: BrandingColors
-    cardTemplate: CardTemplate
-    isLoading: boolean
-    heroOverride?: {
-        title?: string
-        description?: string
-        heroTitleColor?: string
-        heroDescriptionColor?: string
-    } | null
-    bannerOverride?: {
-        promotionBanners?: PromotionBanner[]
-        isPromotionVisible?: boolean
-    } | null
-    currentSlide: number
-    setCurrentSlide: (slide: number) => void
-    mobileGridColumns?: number
-    menuEngineeringEnabled?: boolean
-    hideCurrencySymbol?: boolean
-}
+type LayoutGridFocusProps = MenuLayoutContentProps
 
 export const LayoutGridFocus = memo(function LayoutGridFocus({
     tenant,
@@ -204,7 +176,7 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
                 </div>
             ) : activeCategory ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {filteredItems.map((item) => (
+                    {filteredItems.map((item, index) => (
                         <MenuItemCard
                             key={item.id}
                             item={item}
@@ -213,12 +185,13 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
                             template={cardTemplate}
                             menuEngineeringEnabled={menuEngineeringEnabled}
                             hideCurrencySymbol={hideCurrencySymbol}
+                            priority={isAboveTheFold(index)}
                         />
                     ))}
                 </div>
             ) : (
                 <div className="space-y-8">
-                    {groupedItems.map(({ category, items }) => (
+                    {groupedItems.map(({ category, items }, groupIndex) => (
                         <section key={category.id} id={`category-${category.id}`} className="scroll-mt-28">
                             <div className="mb-3 flex items-center justify-between gap-2">
                                 <h2
@@ -244,7 +217,7 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
                                 }
                                 gridContent={
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                        {items.map((item) => (
+                                        {items.map((item, itemIndex) => (
                                             <MenuItemCard
                                                 key={item.id}
                                                 item={item}
@@ -253,6 +226,7 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
                                                 template={cardTemplate}
                                                 menuEngineeringEnabled={menuEngineeringEnabled}
                                                 hideCurrencySymbol={hideCurrencySymbol}
+                                                priority={isAboveTheFold(pageIndexOf(groupedItems, groupIndex, itemIndex))}
                                             />
                                         ))}
                                     </div>
