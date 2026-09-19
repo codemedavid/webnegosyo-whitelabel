@@ -170,7 +170,7 @@ describe("clampSelection", () => {
       NOW
     );
 
-    expect(rangeDayCount(clamped, NOW)).toBe(MAX_RANGE_DAYS);
+    expect(rangeDayCount(clamped)).toBe(MAX_RANGE_DAYS);
   });
 
   it("keeps a preset within the servable range", () => {
@@ -225,16 +225,16 @@ describe("describeSelection", () => {
 
 describe("rangeDayCount", () => {
   it("counts both ends of a range", () => {
-    expect(rangeDayCount({ kind: "range", fromKey: "2026-09-01", toKey: "2026-09-14" }, NOW)).toBe(
+    expect(rangeDayCount({ kind: "range", fromKey: "2026-09-01", toKey: "2026-09-14" })).toBe(
       14
     );
   });
 
   it("counts a single day as one", () => {
-    expect(rangeDayCount({ kind: "day", dayKey: "2026-09-03" }, NOW)).toBe(1);
+    expect(rangeDayCount({ kind: "day", dayKey: "2026-09-03" })).toBe(1);
   });
 
   it("counts a preset as its span", () => {
-    expect(rangeDayCount({ kind: "preset", days: 30 }, NOW)).toBe(30);
+    expect(rangeDayCount({ kind: "preset", days: 30 })).toBe(30);
   });
 });

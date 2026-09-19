@@ -211,7 +211,7 @@ export function describeSelection(selection: ReportSelection, nowMs: number): st
 }
 
 /** How many days the selection covers, counting both ends. */
-export function rangeDayCount(selection: ReportSelection, nowMs: number): number {
+export function rangeDayCount(selection: ReportSelection): number {
   if (selection.kind === "preset") return clampDays(selection.days);
   if (selection.kind === "day") return 1;
   return daysBetween(selection.fromKey, selection.toKey);

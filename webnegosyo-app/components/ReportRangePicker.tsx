@@ -72,7 +72,7 @@ export function ReportRangePicker({
 
   const rows = useMemo(() => buildMonthGrid(cursor, nowMs), [cursor, nowMs]);
   const pending = draftSelection(draft);
-  const tooWide = pending !== null && rangeDayCount(pending, nowMs) > MAX_RANGE_DAYS;
+  const tooWide = pending !== null && rangeDayCount(pending) > MAX_RANGE_DAYS;
 
   const summary = pending
     ? describeSelection(pending, nowMs)
