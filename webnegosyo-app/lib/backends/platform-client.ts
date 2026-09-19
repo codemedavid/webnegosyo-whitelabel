@@ -26,6 +26,8 @@ export interface PlatformQueryBuilder {
   in(column: string, values: readonly unknown[]): PlatformQueryBuilder;
   gte(column: string, value: unknown): PlatformQueryBuilder;
   lte(column: string, value: unknown): PlatformQueryBuilder;
+  /** Strictly less than — the exclusive upper end of a half-open window. */
+  lt(column: string, value: unknown): PlatformQueryBuilder;
   order(column: string, options: { ascending: boolean }): PlatformQueryBuilder;
   limit(count: number): PlatformQueryBuilder;
   insert(values: unknown): PlatformQueryBuilder;

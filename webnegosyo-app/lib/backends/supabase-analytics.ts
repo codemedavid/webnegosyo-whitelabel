@@ -240,7 +240,7 @@ async function fetchOrders(
   ).gte("created_at", new Date(window.startMs).toISOString());
 
   if (window.endMs !== undefined) {
-    builder = builder.lte("created_at", new Date(window.endMs).toISOString());
+    builder = builder.lt("created_at", new Date(window.endMs).toISOString());
   }
   // Pushed to PostgREST rather than filtered after the cap: on a busy store a
   // post-filter would let cancelled rows crowd real sales out of the window.
@@ -276,7 +276,7 @@ async function fetchItems(
   // no date of its own, so without this a window asking for one day would take
   // that day's first item and every item sold since.
   if (window.endMs !== undefined) {
-    builder = builder.lte("orders.created_at", new Date(window.endMs).toISOString());
+    builder = builder.lt("orders.created_at", new Date(window.endMs).toISOString());
   }
 
   const rows = await unwrap<AnalyticsItemRow[] | null>(
@@ -306,7 +306,7 @@ async function fetchEvents(
     .gte("created_at", new Date(window.startMs).toISOString());
 
   if (window.endMs !== undefined) {
-    builder = builder.lte("created_at", new Date(window.endMs).toISOString());
+    builder = builder.lt("created_at", new Date(window.endMs).toISOString());
   }
 
   const rows = await unwrap<AnalyticsEventRow[] | null>(
