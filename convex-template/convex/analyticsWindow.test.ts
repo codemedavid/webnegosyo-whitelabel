@@ -118,9 +118,11 @@ it('bounds the trends series to the window', async () => {
 });
 
 it('bounds the payment-method breakdown to the window', async () => {
-  const result = await invoke('getPaymentMethodAnalytics', { orders }, { startMs: SEP_3, endMs: SEP_4 });
+  const result = await invoke<{ dailyBreakdown: Array<{ date: string }> }>(
+    'getPaymentMethodAnalytics', { orders }, { startMs: SEP_3, endMs: SEP_4 }
+  );
 
-  expect(result.totalOrders).toBe(1);
+  expect(result.dailyBreakdown.map((d) => d.date)).toEqual(['2026-09-03']);
 });
 
 it('bounds the revenue breakdown to the window', async () => {

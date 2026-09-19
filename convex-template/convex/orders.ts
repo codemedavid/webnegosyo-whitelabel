@@ -520,6 +520,16 @@ const getOrdersArgs = {
     // Narrow to one branch. Optional so a store-wide account, and every caller
     // on an older app build, keeps today's behaviour exactly.
     outletId: v.optional(v.string()),
+    /**
+     * v32. The day or range a report is about, half-open `[startMs, endMs)`.
+     *
+     * Without it this query is a "most recent N" page, so a screen asking for
+     * one past day could only narrow what it had already fetched — on a busy
+     * store that is nearly always nothing, which reads as a day that took no
+     * orders. Optional, so every live-queue caller is unaffected.
+     */
+    startMs: v.optional(v.number()),
+    endMs: v.optional(v.number()),
 };
 
 async function getOrdersHandler(ctx: QueryCtx, args: ObjectType<typeof getOrdersArgs>) {
@@ -537,6 +547,20 @@ async function getOrdersHandler(ctx: QueryCtx, args: ObjectType<typeof getOrders
       query = ctx.db.query("orders").order("desc");
     }
     if (args.outletId) query = query.filter(q => orderBranchFilter(q, args.outletId));
+
+    // Applied BEFORE the limit, for the same reason the branch filter is: a
+    // window narrowed after the take would answer "which of the most recent N
+    // orders fell in this window?", which is a different question.
+    if (args.startMs !== undefined) {
+      const startMs = args.startMs;
+      const endMs = args.endMs;
+      query = query.filter(q =>
+        endMs === undefined
+          ? orderTimeFilter(q, "gte", startMs)
+          : q.and(orderTimeFilter(q, "gte", startMs), orderTimeFilter(q, "lt", endMs))
+      );
+    }
+
     return (await query.take(limit)).map(orderForClient);
 }
 

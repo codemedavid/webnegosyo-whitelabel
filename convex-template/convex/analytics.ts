@@ -1,3 +1,5 @@
+import type { FilterBuilder } from 'convex/server';
+import type { DataModel } from './_generated/dataModel';
 import { orderTime, orderTimeFilter } from './orderTime';
 import { v, type ObjectType } from "convex/values";
 import { orderBranchFilter, eventBranchFilter } from "./branchFilter";
@@ -11,6 +13,62 @@ import { resolveAnalyticsContact } from "./customerIdentity";
 const QUERY_LIMIT = 10000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * The instants a report is about.
+ *
+ * `daysBack` can only say "the last N days ending now", so a merchant could
+ * never ask how one particular day went, or compare the first half of a month
+ * with the second. `startMs`/`endMs` say it exactly.
+ *
+ * Both are OPTIONAL and both arms stay live on purpose. Every store runs its
+ * own deployment and they are re-pushed in bulk, so a screen on an older
+ * bundle keeps sending `daysBack` alone and must keep getting exactly what it
+ * got before. `end` is Infinity for that rolling case, which leaves the
+ * existing single-ended filters behaving as they always did.
+ */
+function resolveWindow(
+  args: { daysBack?: number; startMs?: number; endMs?: number },
+  defaultDays: number
+): { start: number; end: number } {
+  if (args.startMs !== undefined) {
+    return { start: args.startMs, end: args.endMs ?? Date.now() };
+  }
+  return { start: Date.now() - (args.daysBack ?? defaultDays) * DAY_MS, end: Infinity };
+}
+
+/** Half-open `[start, end)`, so a boundary instant belongs to one day only. */
+function inWindow(atMs: number, window: { start: number; end: number }): boolean {
+  return atMs >= window.start && atMs < window.end;
+}
+
+/** The window of equal length immediately before this one. */
+function precedingWindow(window: { start: number; end: number }): { start: number; end: number } {
+  const end = Number.isFinite(window.end) ? window.end : Date.now();
+  return { start: window.start - (end - window.start), end: window.start };
+}
+
+/** The order-time predicate for a window, upper bound included when bounded. */
+function orderWindowFilter(
+  q: FilterBuilder<DataModel["orders"]>,
+  window: { start: number; end: number }
+) {
+  const lower = orderTimeFilter(q, "gte", window.start);
+  if (!Number.isFinite(window.end)) return lower;
+  return q.and(lower, orderTimeFilter(q, "lt", window.end));
+}
+
+/** The window arguments every analytics query accepts. */
+const windowArgs = {
+  daysBack: v.optional(v.number()),
+  /**
+   * v32. A bounded report window. Optional so every caller that asks exactly
+   * what it asks today keeps working — a validator rejects arguments it does
+   * not know, so a new REQUIRED argument would break every screen at once.
+   */
+  startMs: v.optional(v.number()),
+  endMs: v.optional(v.number()),
+};
+
 export const trackEvent = mutation({
   args: {
     type: v.string(),
@@ -23,13 +81,12 @@ export const trackEvent = mutation({
 });
 
 const getUpsellAnalyticsArgs = {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
 };
 
 async function getUpsellAnalyticsHandler(ctx: QueryCtx, args: ObjectType<typeof getUpsellAnalyticsArgs>) {
-    const days = args.daysBack ?? 7;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 7);
 
     const shown = await ctx.db
       .query("analyticsEvents")
@@ -47,9 +104,9 @@ async function getUpsellAnalyticsHandler(ctx: QueryCtx, args: ObjectType<typeof 
       .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
 
-    const shownCount = shown.filter((e) => e._creationTime >= cutoff).length;
-    const clickedCount = clicked.filter((e) => e._creationTime >= cutoff).length;
-    const convertedCount = converted.filter((e) => e._creationTime >= cutoff).length;
+    const shownCount = shown.filter((e) => inWindow(e._creationTime, window)).length;
+    const clickedCount = clicked.filter((e) => inWindow(e._creationTime, window)).length;
+    const convertedCount = converted.filter((e) => inWindow(e._creationTime, window)).length;
 
     return {
       shown: shownCount,
@@ -72,13 +129,12 @@ export const getUpsellAnalyticsInternal = internalQuery({ args: getUpsellAnalyti
 
 export const getBundleAnalytics = query({
   args: {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
-    const days = args.daysBack ?? 7;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 7);
 
     const viewed = await ctx.db
       .query("analyticsEvents")
@@ -91,8 +147,8 @@ export const getBundleAnalytics = query({
       .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
 
-    const viewedCount = viewed.filter((e) => e._creationTime >= cutoff).length;
-    const addedCount = added.filter((e) => e._creationTime >= cutoff).length;
+    const viewedCount = viewed.filter((e) => inWindow(e._creationTime, window)).length;
+    const addedCount = added.filter((e) => inWindow(e._creationTime, window)).length;
 
     return {
       viewed: viewedCount,
@@ -103,14 +159,13 @@ export const getBundleAnalytics = query({
 });
 
 const getTopItemsArgs = {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
     limit: v.optional(v.number()),
 };
 
 async function getTopItemsHandler(ctx: QueryCtx, args: ObjectType<typeof getTopItemsArgs>) {
-    const days = args.daysBack ?? 7;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 7);
 
     // Server-side filter: only fetch orders from the period instead of all
     const recentOrders = await ctx.db
@@ -118,7 +173,7 @@ async function getTopItemsHandler(ctx: QueryCtx, args: ObjectType<typeof getTopI
       .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          orderTimeFilter(q, "gte", cutoff),
+          orderWindowFilter(q, window),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -162,26 +217,33 @@ export const getTopItems = query({
 export const getTopItemsInternal = internalQuery({ args: getTopItemsArgs, handler: getTopItemsHandler });
 
 const getTrendsArgs = {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
 };
 
 async function getTrendsHandler(ctx: QueryCtx, args: ObjectType<typeof getTrendsArgs>) {
-    const days = args.daysBack ?? 30;
     // Compute trends LIVE from orders (not the dailyStats snapshot) so the
     // series is reactive: cancelling an order — even on a past day — drops that
     // day's revenue immediately, and today's bar appears as soon as orders come
     // in (the old 23:59-UTC cron only wrote today's row, never corrected the
-    // past, and excluded the in-progress day). Inclusive N-day window ending on
-    // the current local day; bucketed by the merchant's local (PH) day.
-    const startMs = localDayStartMs(Date.now()) - (days - 1) * DAY_MS;
+    // past, and excluded the in-progress day). Bucketed by the merchant's
+    // local (PH) day.
+    //
+    // A rolling request still gets the inclusive N-day window ending on the
+    // current local day, so the series starts on a day boundary rather than
+    // mid-afternoon N days ago and the first bar is never a part-day.
+    const days = args.daysBack ?? 30;
+    const window =
+      args.startMs !== undefined
+        ? resolveWindow(args, days)
+        : { start: localDayStartMs(Date.now()) - (days - 1) * DAY_MS, end: Infinity };
 
     const orders = await ctx.db
       .query("orders")
       .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          orderTimeFilter(q, "gte", startMs),
+          orderWindowFilter(q, window),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -218,13 +280,12 @@ export const getTrends = query({
 export const getTrendsInternal = internalQuery({ args: getTrendsArgs, handler: getTrendsHandler });
 
 const getRevenueBreakdownArgs = {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
 };
 
 async function getRevenueBreakdownHandler(ctx: QueryCtx, args: ObjectType<typeof getRevenueBreakdownArgs>) {
-    const days = args.daysBack ?? 7;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 7);
 
     // Server-side filter: push date and status filtering into the query
     const filtered = await ctx.db
@@ -232,7 +293,7 @@ async function getRevenueBreakdownHandler(ctx: QueryCtx, args: ObjectType<typeof
       .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          orderTimeFilter(q, "gte", cutoff),
+          orderWindowFilter(q, window),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -281,13 +342,12 @@ export const getRevenueBreakdownInternal = internalQuery({ args: getRevenueBreak
 
 export const getUpsellTrends = query({
   args: {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
-    const days = args.daysBack ?? 7;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 7);
 
     // Get upsell events for the period
     const shownEvents = await ctx.db
@@ -301,8 +361,8 @@ export const getUpsellTrends = query({
       .filter((q) => eventBranchFilter(q, args.outletId))
       .collect();
 
-    const recentShown = shownEvents.filter((e) => e._creationTime >= cutoff);
-    const recentConverted = convertedEvents.filter((e) => e._creationTime >= cutoff);
+    const recentShown = shownEvents.filter((e) => inWindow(e._creationTime, window));
+    const recentConverted = convertedEvents.filter((e) => inWindow(e._creationTime, window));
 
     // Group by date for daily rates
     const dailyMap = new Map<string, { shown: number; converted: number }>();
@@ -333,7 +393,7 @@ export const getUpsellTrends = query({
       .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          orderTimeFilter(q, "gte", cutoff),
+          orderWindowFilter(q, window),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -357,20 +417,22 @@ export const getUpsellTrends = query({
 
 export const getSalesAnalytics = query({
   args: {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
-    const days = args.daysBack ?? 7;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const prevCutoff = cutoff - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 7);
+    // "vs previous" means the window of the same LENGTH immediately before
+    // this one, so a picked day compares against the day before it rather than
+    // against a week.
+    const previous = precedingWindow(window);
 
     // Current period orders
     const currentOrders = await ctx.db
       .query("orders")
       .filter((q) => orderBranchFilter(q, args.outletId))
-      .filter((q) => orderTimeFilter(q, "gte", cutoff))
+      .filter((q) => orderWindowFilter(q, window))
       .order("desc")
       .take(QUERY_LIMIT);
 
@@ -378,12 +440,7 @@ export const getSalesAnalytics = query({
     const prevOrders = await ctx.db
       .query("orders")
       .filter((q) => orderBranchFilter(q, args.outletId))
-      .filter((q) =>
-        q.and(
-          orderTimeFilter(q, "gte", prevCutoff),
-          orderTimeFilter(q, "lt", cutoff)
-        )
-      )
+      .filter((q) => orderWindowFilter(q, previous))
       .order("desc")
       .take(QUERY_LIMIT);
 
@@ -423,20 +480,19 @@ export const getSalesAnalytics = query({
 
 export const getPaymentMethodAnalytics = query({
   args: {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
-    const days = args.daysBack ?? 7;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 7);
 
     const orders = await ctx.db
       .query("orders")
       .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          orderTimeFilter(q, "gte", cutoff),
+          orderWindowFilter(q, window),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -488,20 +544,19 @@ export const getPaymentMethodAnalytics = query({
 
 export const getOrderHeatmap = query({
   args: {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
-    const days = args.daysBack ?? 30;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 30);
 
     const orders = await ctx.db
       .query("orders")
       .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          orderTimeFilter(q, "gte", cutoff),
+          orderWindowFilter(q, window),
           q.neq(q.field("status"), "cancelled")
         )
       )
@@ -538,20 +593,19 @@ export const getOrderHeatmap = query({
 
 export const getCustomerInsights = query({
   args: {
-    daysBack: v.optional(v.number()),
+    ...windowArgs,
     outletId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "read");
-    const days = args.daysBack ?? 30;
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const window = resolveWindow(args, 30);
 
     const orders = await ctx.db
       .query("orders")
       .filter((q) => orderBranchFilter(q, args.outletId))
       .filter((q) =>
         q.and(
-          orderTimeFilter(q, "gte", cutoff),
+          orderWindowFilter(q, window),
           q.neq(q.field("status"), "cancelled")
         )
       )
