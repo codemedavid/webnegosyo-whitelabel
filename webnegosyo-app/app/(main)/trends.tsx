@@ -1,5 +1,13 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  useWindowDimensions,
+} from "react-native";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
@@ -12,10 +20,15 @@ import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { ReportPeriodBar } from "../../components/ReportPeriodBar";
+import {
+  REPORT_PRESETS,
+  defaultSelection,
+  describeSelection,
+  selectionToQueryArgs,
+  type ReportSelection,
+} from "../../lib/report-window";
 
 const getTrendsRef = "analytics:getTrends" as unknown as FunctionReference<"query">;
 const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
@@ -49,7 +62,11 @@ interface PaymentMethodAnalytics {
   dailyBreakdown: { date: string; methods: Record<string, number> }[];
 }
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
+/**
+ * Chrome around the bars - card padding and the value gutter - subtracted from
+ * the window before the remainder is divided between them.
+ */
+const CHART_CHROME = 100;
 
 function BarChart({ series, color, label, isMoney }: {
   series: TrendPoint[];
@@ -57,13 +74,18 @@ function BarChart({ series, color, label, isMoney }: {
   label: string;
   isMoney: boolean;
 }) {
+  // The LIVE width, not a module-scope `Dimensions.get`: a tablet turned
+  // sideways has half again the space these bars had, and a width frozen at
+  // import would leave the chart drawn for the orientation the app opened in.
+  const { width } = useWindowDimensions();
+
   if (series.length === 0) return null;
 
   const maxVal = Math.max(...series.map((p) => p.value), 1);
   // Past ~10 bars the chart no longer fits the screen width, so switch to a
   // fixed-width scrollable strip with legible bars/labels instead of cramming.
   const scroll = series.length > 10;
-  const barWidth = scroll ? 24 : Math.max(((SCREEN_WIDTH - 100) / series.length) - 6, 14);
+  const barWidth = scroll ? 24 : Math.max(((width - CHART_CHROME) / series.length) - 6, 14);
 
   const bars = (
     <View style={[styles.barsContainer, scroll && styles.barsContainerScroll]}>
@@ -104,6 +126,8 @@ function StackedBarChart({ data, label }: {
   data: { date: string; methods: Record<string, number> }[];
   label: string;
 }) {
+  const { width } = useWindowDimensions();
+
   if (data.length === 0) return null;
 
   // Get all unique methods
@@ -123,7 +147,7 @@ function StackedBarChart({ data, label }: {
     ...data.map((d) => Object.values(d.methods).reduce((s, v) => s + v, 0)),
     1
   );
-  const barWidth = Math.max(((SCREEN_WIDTH - 100) / data.length) - 4, 6);
+  const barWidth = Math.max(((width - CHART_CHROME) / data.length) - 4, 6);
 
   return (
     <Card title={label} style={styles.chartCard}>
@@ -174,10 +198,16 @@ const stackStyles = StyleSheet.create({
 });
 
 export default function TrendsScreen() {
-  const [daysBack, setDaysBack] = useState(14);
-  const { data: trends, isLoading, error, isMissingFunction: trendsMissing, refetch: refetchTrends } = useSafeQuery<DailyStat[]>(getTrendsRef, { daysBack });
-  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
-  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
+  // One selection drives every query on this screen. `windowArgs` is spread
+  // into each: a preset still sends `daysBack` alone, so a store on an older
+  // Convex bundle is unaffected until the merchant picks actual dates.
+  const [selection, setSelection] = useState<ReportSelection>(() => defaultSelection(14));
+  const [nowMs] = useState(() => Date.now());
+  const windowArgs = useMemo(() => selectionToQueryArgs(selection, nowMs), [selection, nowMs]);
+  const periodLabel = describeSelection(selection, nowMs);
+  const { data: trends, isLoading, error, isMissingFunction: trendsMissing, refetch: refetchTrends } = useSafeQuery<DailyStat[]>(getTrendsRef, { ...windowArgs });
+  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { ...windowArgs });
+  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { ...windowArgs });
 
   const anyMissing = trendsMissing || salesMissing || paymentMissing;
 
@@ -208,8 +238,7 @@ export default function TrendsScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
-      <ScreenHeader title="Trends" subtitle={`Last ${daysBack} days`} />
+      <ScreenHeader title="Trends" subtitle={periodLabel} />
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -218,18 +247,12 @@ export default function TrendsScreen() {
       }
     >
 
-      <View style={styles.periodRow}>
-        {[7, 14, 30].map((d) => (
-          <TouchableOpacity
-            key={d}
-            style={[styles.periodPill, daysBack === d && styles.periodPillActive]}
-            onPress={() => setDaysBack(d)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.periodText, daysBack === d && styles.periodTextActive]}>{d} days</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <ReportPeriodBar
+        selection={selection}
+        presets={REPORT_PRESETS}
+        nowMs={nowMs}
+        onChange={setSelection}
+      />
 
       {anyMissing && (
         <View style={bannerStyles.banner}>

@@ -222,6 +222,9 @@ export function previousReportWindow(window: ReportWindow): ReportWindow {
   return { startMs: window.startMs - (window.endMs - window.startMs), endMs: window.startMs };
 }
 
+/** The day counts the report pills offer. Unchanged from what they shipped. */
+export const REPORT_PRESETS: readonly number[] = [7, 14, 30];
+
 /** The default every report opens on — unchanged from what the pills shipped. */
 export function defaultSelection(days: number): ReportSelection {
   return { kind: "preset", days: clampDays(days) };

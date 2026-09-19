@@ -9,7 +9,7 @@ const NOW_MS = Date.UTC(2026, 7, 19, 8, 0, 0);
 
 function fullInput(): AnalyticsReportInput {
   return {
-    daysBack: 7,
+    periodLabel: "Last 7 days",
     nowMs: NOW_MS,
     sales: {
       totalRevenue: 12500,

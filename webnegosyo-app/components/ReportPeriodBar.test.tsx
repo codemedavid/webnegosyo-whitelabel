@@ -66,3 +66,46 @@ describe("ReportPeriodBar", () => {
     expect(screen.getByLabelText("Pick dates").props.accessibilityState.selected).toBe(false);
   });
 });
+
+/**
+ * The Orders tab is a live queue first and a report second, so it offers no
+ * day presets — only the calendar, plus a way back. Without that way back a
+ * merchant who taps a date is stranded on a past day with no obvious exit.
+ */
+describe("ReportPeriodBar — clearable", () => {
+  it("offers the way back only once dates are chosen", () => {
+    const onClear = jest.fn();
+    const { rerender } = render(
+      <ReportPeriodBar
+        selection={{ kind: "preset", days: 1 }}
+        presets={[]}
+        nowMs={NOW}
+        onChange={jest.fn()}
+        onClear={onClear}
+        clearLabel="Live"
+      />
+    );
+
+    expect(screen.queryByLabelText("Live")).toBeNull();
+
+    rerender(
+      <ReportPeriodBar
+        selection={{ kind: "day", dayKey: "2026-09-03" }}
+        presets={[]}
+        nowMs={NOW}
+        onChange={jest.fn()}
+        onClear={onClear}
+        clearLabel="Live"
+      />
+    );
+
+    fireEvent.press(screen.getByLabelText("Live"));
+    expect(onClear).toHaveBeenCalled();
+  });
+
+  it("shows no way back when the screen has not asked for one", () => {
+    renderBar({ kind: "day", dayKey: "2026-09-03" });
+
+    expect(screen.queryByLabelText("Live")).toBeNull();
+  });
+});

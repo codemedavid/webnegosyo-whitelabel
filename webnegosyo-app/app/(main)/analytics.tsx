@@ -19,10 +19,15 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { HeatmapGrid } from "../../components/HeatmapGrid";
-// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { ReportPeriodBar } from "../../components/ReportPeriodBar";
+import {
+  REPORT_PRESETS,
+  defaultSelection,
+  describeSelection,
+  selectionToQueryArgs,
+  type ReportSelection,
+} from "../../lib/report-window";
 import { IconButton } from "../../components/IconButton";
 import { ExportSheet } from "../../components/ExportSheet";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
@@ -94,21 +99,27 @@ const BAR_COLORS = [colors.primary, colors.accent, colors.warning, colors.textSe
 const FUNNEL_COLORS = [colors.primary, colors.warning, colors.accent];
 
 export default function AnalyticsScreen() {
-  const [daysBack, setDaysBack] = useState(7);
+  // One selection drives every query on this screen. `windowArgs` is spread
+  // into each: a preset still sends `daysBack` alone, so a store on an older
+  // Convex bundle is unaffected until the merchant picks actual dates.
+  const [selection, setSelection] = useState<ReportSelection>(() => defaultSelection(7));
+  const [nowMs] = useState(() => Date.now());
+  const windowArgs = useMemo(() => selectionToQueryArgs(selection, nowMs), [selection, nowMs]);
+  const periodLabel = describeSelection(selection, nowMs);
   const [refreshing, setRefreshing] = useState(false);
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const { data: upsellStats, error: upsellError, refetch: refetchUpsell } = useSafeQuery<UpsellStats>(getUpsellAnalyticsRef, { daysBack });
-  const { data: bundleStats, error: bundleError, refetch: refetchBundles } = useSafeQuery<BundleStats>(getBundleAnalyticsRef, { daysBack });
-  const { data: topItems, error: topItemsError, refetch: refetchTopItems } = useSafeQuery<TopItem[]>(getTopItemsRef, { daysBack, limit: 10 });
-  const { data: revenueBreakdown, error: revenueError, refetch: refetchRevenue } = useSafeQuery<RevenueBreakdown>(getRevenueBreakdownRef, { daysBack });
-  const { data: upsellTrends, error: trendsError, refetch: refetchUpsellTrends } = useSafeQuery<UpsellTrends>(getUpsellTrendsRef, { daysBack });
-  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { daysBack });
-  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { daysBack });
-  const { data: heatmapData, error: heatmapError, isMissingFunction: heatmapMissing, refetch: refetchHeatmap } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { daysBack });
-  const { data: customerInsights, error: customerError, isMissingFunction: customerMissing, refetch: refetchCustomers } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { daysBack });
+  const { data: upsellStats, error: upsellError, refetch: refetchUpsell } = useSafeQuery<UpsellStats>(getUpsellAnalyticsRef, { ...windowArgs });
+  const { data: bundleStats, error: bundleError, refetch: refetchBundles } = useSafeQuery<BundleStats>(getBundleAnalyticsRef, { ...windowArgs });
+  const { data: topItems, error: topItemsError, refetch: refetchTopItems } = useSafeQuery<TopItem[]>(getTopItemsRef, { ...windowArgs, limit: 10 });
+  const { data: revenueBreakdown, error: revenueError, refetch: refetchRevenue } = useSafeQuery<RevenueBreakdown>(getRevenueBreakdownRef, { ...windowArgs });
+  const { data: upsellTrends, error: trendsError, refetch: refetchUpsellTrends } = useSafeQuery<UpsellTrends>(getUpsellTrendsRef, { ...windowArgs });
+  const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { ...windowArgs });
+  const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { ...windowArgs });
+  const { data: heatmapData, error: heatmapError, isMissingFunction: heatmapMissing, refetch: refetchHeatmap } = useSafeQuery<OrderHeatmap>(getOrderHeatmapRef, { ...windowArgs });
+  const { data: customerInsights, error: customerError, isMissingFunction: customerMissing, refetch: refetchCustomers } = useSafeQuery<CustomerInsights>(getCustomerInsightsRef, { ...windowArgs });
 
   // Every channel the store took orders through — the register included, which
   // the old web/mobile pair left out of a merchant's own order count.
@@ -167,7 +178,7 @@ export default function AnalyticsScreen() {
     setExportError(null);
     try {
       await runAnalyticsExport({
-        daysBack,
+        periodLabel,
         nowMs: Date.now(),
         sales: salesAnalytics,
         revenueBreakdown,
@@ -189,10 +200,9 @@ export default function AnalyticsScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader
         title="Analytics"
-        subtitle={`Last ${daysBack} days`}
+        subtitle={periodLabel}
         actions={
           <IconButton
             icon="export"
@@ -214,7 +224,7 @@ export default function AnalyticsScreen() {
 
       <ExportSheet
         visible={isExportOpen}
-        title={`Export analytics (last ${daysBack} days)`}
+        title={`Export analytics (${periodLabel})`}
         isBusy={isExporting}
         errorMessage={exportError}
         showPresets={false}
@@ -222,18 +232,12 @@ export default function AnalyticsScreen() {
         onClose={() => setExportOpen(false)}
       />
 
-      <View style={styles.periodRow}>
-        {[7, 14, 30].map((d) => (
-          <TouchableOpacity
-            key={d}
-            style={[styles.periodPill, daysBack === d && styles.periodPillActive]}
-            onPress={() => setDaysBack(d)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.periodText, daysBack === d && styles.periodTextActive]}>{d} days</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <ReportPeriodBar
+        selection={selection}
+        presets={REPORT_PRESETS}
+        nowMs={nowMs}
+        onChange={setSelection}
+      />
 
       {error && <ErrorState message={error} />}
 

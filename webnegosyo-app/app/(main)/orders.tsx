@@ -18,17 +18,25 @@ import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { OrderListRow, type OrderListRowOrder } from "../../components/OrderListRow";
 import { OrderFilterBar, type SortOrder, type StatusFilterOption } from "../../components/OrderFilterBar";
+import { ReportPeriodBar } from "../../components/ReportPeriodBar";
+import { defaultSelection, selectionToQueryArgs, type ReportSelection } from "../../lib/report-window";
+
+/**
+ * A day's orders are a report, not a queue: the window has to be fetched, and
+ * a busy store's day can run well past the queue's default page.
+ */
+const DATED_FETCH_LIMIT = 2000;
+
+/** What the picker opens on when the screen is still showing the live queue. */
+const LIVE_QUEUE_SELECTION = defaultSelection(1);
 import { TickerProvider } from "../../components/TickerProvider";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
-// Rendered by <ScreenHeader>; the import stays so the guardrail that every
-// tab is escapable keeps reading it here.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
+import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { ExportSheet } from "../../components/ExportSheet";
 import { runOrdersExport } from "../../lib/export/run-export";
 import { formatExportDay } from "../../lib/export/dates";
@@ -84,6 +92,11 @@ export default function OrdersScreen() {
   const [sort, setSort] = useState<SortOrder>("newest");
   const [branchFilter, setBranchFilter] = useState<string>(ORDER_BRANCH_FILTER_ALL);
   const [search, setSearch] = useState("");
+  // Absent means the live queue — the tab's normal job. A selection turns the
+  // screen into "the orders of these days", which needs a windowed fetch: the
+  // queue is a most-recent-N page and would have nothing from a past day in it.
+  const [dateSelection, setDateSelection] = useState<ReportSelection | null>(null);
+  const [nowMs] = useState(() => Date.now());
   const [refreshing, setRefreshing] = useState(false);
 
   // Deep link from the dashboard pipeline (`/orders?status=preparing`). The tab
@@ -97,7 +110,12 @@ export default function OrdersScreen() {
   // Fetch the full recent queue once, then filter/search/sort on the client so
   // every status pill can show a live count without extra round-trips.
   const { data: orders, isLoading, error, refetch: refetchOrders } =
-    useSafeQuery<ConvexOrder[]>(getOrdersRef, {});
+    useSafeQuery<ConvexOrder[]>(
+      getOrdersRef,
+      dateSelection
+        ? { ...selectionToQueryArgs(dateSelection, nowMs), limit: DATED_FETCH_LIMIT }
+        : {}
+    );
   const scope = useBranchScope();
 
   // Export state. The deeper reads (a 2000-order page plus every line item)
@@ -348,12 +366,13 @@ export default function OrdersScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader
         title="Orders"
         subtitle={isLoading ? undefined : `${visibleOrders.length} shown`}
         actions={
           <>
+            {/* Kitchen and Schedule hang under Orders (lib/subscreen-links.ts). */}
+            <SubScreenLinks parent="orders" variant="actions" />
             <IconButton
               icon="export"
               label="Export"
@@ -362,14 +381,17 @@ export default function OrdersScreen() {
                 setExportOpen(true);
               }}
             />
-            <IconButton
-              icon="qr"
-              label="Scan QR"
-              tone="primary"
-              onPress={() => router.push("/(main)/scan")}
-            />
           </>
         }
+      />
+
+      <ReportPeriodBar
+        selection={dateSelection ?? LIVE_QUEUE_SELECTION}
+        presets={[]}
+        nowMs={nowMs}
+        onChange={setDateSelection}
+        onClear={() => setDateSelection(null)}
+        clearLabel="Live queue"
       />
 
       <OrderFilterBar

@@ -95,7 +95,12 @@ export interface AnalyticsTopItem {
 }
 
 export interface AnalyticsReportInput {
-  daysBack: number;
+  /**
+   * The days this file covers, as the screen names them ("Sep 3",
+   * "Sep 1 – Sep 14", "Last 7 days"). A day COUNT cannot describe a picked
+   * date, and the heading is the only place the file says what it is.
+   */
+  periodLabel: string;
   nowMs: number;
   sales?: AnalyticsSales | null;
   revenueBreakdown?: AnalyticsRevenueBreakdown | null;
@@ -316,7 +321,7 @@ function topItemsSection(items: readonly AnalyticsTopItem[] | null | undefined):
 export function buildAnalyticsReportCsv(input: AnalyticsReportInput): string {
   const lines = [
     row("Analytics Report"),
-    row("Period", `Last ${input.daysBack} days`),
+    row("Period", input.periodLabel),
     row("Exported", formatExportDateTime(input.nowMs)),
     "",
     ...salesSections(input.sales),
