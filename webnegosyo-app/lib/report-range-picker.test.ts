@@ -97,7 +97,7 @@ describe("tapDay — range mode", () => {
   it("starts a new range on the third tap", () => {
     let draft = tapDay(rangeDraft(), "2026-09-01", NOW);
     draft = tapDay(draft, "2026-09-14", NOW);
-    draft = tapDay(draft, "2026-09-20" > "2026-09-19" ? "2026-09-18" : "2026-09-18", NOW);
+    draft = tapDay(draft, "2026-09-18", NOW);
 
     expect(draftSelection(draft)).toBeNull();
     expect(isDayInDraft(draft, "2026-09-18")).toBe(true);
