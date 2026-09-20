@@ -11,6 +11,7 @@ import { shouldPrintAt } from "../lib/print-trigger";
 import { scanNewTickets } from "../lib/kitchen-tickets";
 import { claimPrinted, usePrintedLedger } from "../lib/printed-ledger";
 import { selectConfirmedOrderIds, selectOrdersToAutoPrint } from "../lib/receipt-autoprint";
+import { splitOnLinesLoaded } from "../lib/autoprint-lines";
 import { useOrderPrint } from "../hooks/useOrderPrint";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -80,7 +81,10 @@ function ReceiptAutoPrintWatcher() {
   const { data: orders } = useSafeQuery<ReceiptOrder[]>(getOrdersRef, {
     limit: ORDERS_FETCH_LIMIT,
   });
-  const { data: allItems } = useSafeQuery<ReceiptItem[]>(getAllOrderItemsRef, {});
+  const { data: allItems } = useSafeQuery<ReceiptItem[]>(
+    getAllOrderItemsRef,
+    orders === undefined ? "skip" : { orderIds: orders.map((order) => order._id) },
+  );
   const scope = useBranchScope();
   const { printOrder } = useOrderPrint();
 
@@ -107,22 +111,29 @@ function ReceiptAutoPrintWatcher() {
       pendingRef.current = observed;
       return;
     }
-    pendingRef.current = [];
+    const ordersById = new Map(scopedOrders.map((order) => [order._id, order]));
+    const itemsByOrder = new Map<string, ReceiptItem[]>();
+    for (const item of allItems ?? []) {
+      itemsByOrder.set(item.orderId, [...(itemsByOrder.get(item.orderId) ?? []), item]);
+    }
+    // A receipt whose lines have not been read yet would print with nothing on
+    // it, and the claim below would mark it done so the real one never came.
+    // Hold it on the same pending mechanism the printed-ledger gap uses.
+    const lines = splitOnLinesLoaded(
+      observed,
+      new Map([...ordersById.keys()].map((id) => [id, itemsByOrder.get(id)?.length ?? 0]))
+    );
+    pendingRef.current = lines.waiting;
+    if (lines.printable.length === 0) return;
 
     const candidates = selectOrdersToAutoPrint({
-      newIds: observed,
+      newIds: lines.printable,
       printedList,
       printsOnConfirmation: true, // the outer gate already checked the trigger
       hasCashierPrinter: true, // and the cashier-role printer
       isDemo: false, // and demo mode
     });
     if (candidates.length === 0) return;
-
-    const ordersById = new Map(scopedOrders.map((order) => [order._id, order]));
-    const itemsByOrder = new Map<string, ReceiptItem[]>();
-    for (const item of allItems ?? []) {
-      itemsByOrder.set(item.orderId, [...(itemsByOrder.get(item.orderId) ?? []), item]);
-    }
     // Claim BEFORE printing: a jammed receipt reprints from the order
     // screen's button; a crash loop reprinting every confirmation is worse.
     void claimPrinted("receipt", candidates).then((toPrint) =>

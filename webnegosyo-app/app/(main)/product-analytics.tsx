@@ -239,7 +239,11 @@ export default function ProductAnalyticsScreen() {
     data: backendItems,
     isMissingFunction: itemsMissing,
     refetch: refetchItems,
-  } = useSafeQuery<BackendOrderItem[]>(getAllOrderItemsRef, {});
+  } = useSafeQuery<BackendOrderItem[]>(
+    getAllOrderItemsRef,
+    // The items of the orders in the window just read, not the whole history.
+    accountOrders === undefined ? "skip" : { orderIds: accountOrders.map((order) => order._id) },
+  );
   const scope = useBranchScope();
   const backendOrders = useMemo(
     () => accountOrders === undefined ? undefined : [...filterOrdersToScope(scope, accountOrders)],

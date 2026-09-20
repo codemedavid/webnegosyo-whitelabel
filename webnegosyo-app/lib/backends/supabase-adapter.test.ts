@@ -1,4 +1,5 @@
 import {
+  ORDER_ID_CHUNK_SIZE,
   ORDER_LEDGER_LIMIT,
   ORDER_REVISIONS_LIMIT,
   isPlatformRefSupported,
@@ -1396,5 +1397,212 @@ describe("runPlatformQuery — orders:getOrders over a date window", () => {
     await expect(
       runPlatformQuery(client, TENANT, "orders:getOrders", { startMs: "sep 3", endMs: END })
     ).rejects.toThrow(/epoch milliseconds/i);
+  });
+});
+
+/** A valid uuid per index, for reads that take a list of order ids. */
+function uuidAt(index: number): string {
+  return `0000000${index % 10}-0000-4000-8000-${String(index).padStart(12, "0")}`;
+}
+
+describe("runPlatformQuery — orders:getAllOrderItems bounded by order ids", () => {
+  // The unbounded form is a 10k-row join every poll, on every device. Every
+  // live screen already holds the orders it shows, so it names them instead.
+  it("reads only the named orders' items", async () => {
+    const { client, calls } = fakeClient({ order_items: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {
+      orderIds: [ORDER_ID, OTHER_ORDER_ID],
+    });
+
+    expect(opsOf(calls, "in")).toEqual([["order_id", [ORDER_ID, OTHER_ORDER_ID]]]);
+    expect(opsOf(calls, "eq")).toContainEqual(["orders.tenant_id", TENANT]);
+  });
+
+  it("makes no request at all for an empty order set", async () => {
+    const { client, calls } = fakeClient({});
+
+    const items = await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", { orderIds: [] });
+
+    expect(items).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("drops ids this database cannot hold rather than sending them", async () => {
+    const { client, calls } = fakeClient({ order_items: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {
+      orderIds: [CONVEX_ORDER_ID, ORDER_ID, undefined],
+    });
+
+    expect(opsOf(calls, "in")).toEqual([["order_id", [ORDER_ID]]]);
+  });
+
+  it("splits a long id list into bounded requests and joins the answers", async () => {
+    const ids = Array.from({ length: ORDER_ID_CHUNK_SIZE * 2 + 1 }, (_, i) => uuidAt(i));
+    const { client, calls } = fakeClient({
+      order_items: [
+        { data: [{ id: "a", order_id: ids[0], menu_item_name: "A", quantity: 1, price: 1, subtotal: 1 }], error: null },
+        { data: [{ id: "b", order_id: ids[200], menu_item_name: "B", quantity: 1, price: 1, subtotal: 1 }], error: null },
+        { data: [{ id: "c", order_id: ids[400], menu_item_name: "C", quantity: 1, price: 1, subtotal: 1 }], error: null },
+      ],
+    });
+
+    const items = (await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {
+      orderIds: ids,
+    })) as { _id: string }[];
+
+    expect(calls).toHaveLength(3);
+    expect(opsOf(calls, "in").map((op) => (op[1] as string[]).length)).toEqual([
+      ORDER_ID_CHUNK_SIZE,
+      ORDER_ID_CHUNK_SIZE,
+      1,
+    ]);
+    expect(items.map((item) => item._id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("runPlatformQuery — orders:getOrderPaymentsForOrders", () => {
+  function paymentRow(orderId: string, id: string) {
+    return {
+      id,
+      order_id: orderId,
+      tenant_id: TENANT,
+      kind: "charge",
+      amount: "25",
+      payment_method_id: null,
+      payment_method_name: "Cash",
+      reference: null,
+      proof_url: null,
+      proof_public_id: null,
+      recorded_by: "cashier",
+      outlet_id: null,
+      note: null,
+      created_at: "2026-09-21T10:00:00.000Z",
+    };
+  }
+
+  it("is a supported ref", () => {
+    expect(isPlatformRefSupported("orders:getOrderPaymentsForOrders")).toBe(true);
+  });
+
+  it("reads every named order's ledger in one tenant-scoped request", async () => {
+    // One shift card used to mount one read PER ORDER, each polling — the
+    // busiest endpoint in the 2026-09-20 saturation, at 30k requests.
+    const { client, calls } = fakeClient({
+      order_payments: [
+        { data: [paymentRow(ORDER_ID, "p1"), paymentRow(OTHER_ORDER_ID, "p2")], error: null },
+      ],
+    });
+
+    const rows = (await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {
+      orderIds: [ORDER_ID, OTHER_ORDER_ID],
+    })) as { _id: string; orderId: string; amount: number }[];
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].table).toBe("order_payments");
+    expect(opsOf(calls, "eq")).toEqual([["tenant_id", TENANT]]);
+    expect(opsOf(calls, "in")).toEqual([["order_id", [ORDER_ID, OTHER_ORDER_ID]]]);
+    expect(opsOf(calls, "order")).toEqual([["created_at", { ascending: true }]]);
+    expect(rows).toEqual([
+      expect.objectContaining({ _id: "p1", orderId: ORDER_ID, amount: 25 }),
+      expect.objectContaining({ _id: "p2", orderId: OTHER_ORDER_ID, amount: 25 }),
+    ]);
+  });
+
+  it("caps each request at the per-order ledger ceiling times the orders asked for", async () => {
+    const { client, calls } = fakeClient({ order_payments: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {
+      orderIds: [ORDER_ID, OTHER_ORDER_ID],
+    });
+
+    expect(opsOf(calls, "limit")).toEqual([[ORDER_LEDGER_LIMIT * 2]]);
+  });
+
+  it("reads nothing for an explicitly empty id list", async () => {
+    const { client, calls } = fakeClient({});
+
+    expect(
+      await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [] })
+    ).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("splits a long id list into bounded requests", async () => {
+    const ids = Array.from({ length: ORDER_ID_CHUNK_SIZE + 1 }, (_, i) => uuidAt(i));
+    const { client, calls } = fakeClient({
+      order_payments: [
+        { data: [paymentRow(ids[0], "p1")], error: null },
+        { data: [paymentRow(ids[200], "p2")], error: null },
+      ],
+    });
+
+    const rows = (await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {
+      orderIds: ids,
+    })) as { _id: string }[];
+
+    expect(calls).toHaveLength(2);
+    expect(rows.map((row) => row._id)).toEqual(["p1", "p2"]);
+  });
+
+  it("refuses a request that filled its shared cap rather than returning a trimmed ledger", async () => {
+    // The cap is shared across the chunk: a full page may have dropped rows
+    // from any order in it, and the screen cannot tell which.
+    const { client } = fakeClient({
+      order_payments: [
+        { data: Array.from({ length: ORDER_LEDGER_LIMIT * 2 }, (_, i) => paymentRow(ORDER_ID, `p${i}`)), error: null },
+      ],
+    });
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {
+        orderIds: [ORDER_ID, OTHER_ORDER_ID],
+      })
+    ).rejects.toThrow(/incomplete/);
+  });
+
+  it("surfaces a read failure instead of an empty ledger", async () => {
+    const { client } = fakeClient({
+      order_payments: [{ data: null, error: { message: "statement timeout" } }],
+    });
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [ORDER_ID] })
+    ).rejects.toThrow("statement timeout");
+  });
+});
+
+describe("runPlatformQuery — orders:getOrderPaymentsForOrders refuses a malformed ask", () => {
+  // An empty ledger reads on screen as "this shift is reconciled". A caller
+  // that forgets `orderIds`, or hands over ids this database cannot hold,
+  // must not be answered with silence — the drawer's own doctrine is that no
+  // drawer beats a drawer reconciled against a ledger that isn't all there.
+  it("refuses when orderIds is missing entirely", async () => {
+    const { client } = fakeClient({});
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {})
+    ).rejects.toThrow(/orderIds/i);
+  });
+
+  it("refuses when every id given is one this database cannot hold", async () => {
+    const { client } = fakeClient({});
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {
+        orderIds: [CONVEX_ORDER_ID],
+      })
+    ).rejects.toThrow(/orderIds/i);
+  });
+
+  it("still answers an explicitly empty shift with an empty ledger", async () => {
+    // Nothing was asked about, so nothing is the complete answer.
+    const { client, calls } = fakeClient({});
+
+    expect(
+      await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [] })
+    ).toEqual([]);
+    expect(calls).toHaveLength(0);
   });
 });

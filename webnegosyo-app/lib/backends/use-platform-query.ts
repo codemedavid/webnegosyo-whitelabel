@@ -17,12 +17,19 @@
  * alerts watcher and a branch-scoped board share a channel correctly.
  */
 
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { keepPreviousData, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { supabase } from "../supabase";
 import { withPlatformTimeout } from "./platform-call";
 import { runPlatformQuery, type PlatformClient } from "./supabase-adapter";
-import { isRefRealtimeBacked, resolvePollMs, type RealtimeStatus } from "./supabase-realtime";
+import {
+  NO_FAILURES,
+  countConsecutiveFailures,
+  isRefRealtimeBacked,
+  resolvePollMs,
+  type FailureStreak,
+  type RealtimeStatus,
+} from "./supabase-realtime";
 import {
   SKIPPED_PLATFORM_KEY,
   branchScopeKey,
@@ -31,7 +38,7 @@ import {
 } from "./query-keys";
 import { realtimeHub } from "./realtime-hub-singleton";
 import { bindRealtimeToQueryClient } from "../query/realtime-bridge";
-import { resolveStaleMs } from "../query/query-client";
+import { resolveStaleMs, shouldKeepPreviousData } from "../query/query-client";
 import { useRefetchOnScreenFocus } from "../query/use-screen-focus";
 import type { BranchScope } from "../branch-scope";
 
@@ -109,6 +116,13 @@ export function usePlatformQuery<T>(
     [refName, argsKey, tenantId, isSkipped, scopeKey]
   );
 
+  // Drawn once per hook instance, never per evaluation: the cache re-reads the
+  // interval on every update and re-arms the timer whenever the number
+  // changes, so a fresh draw each time would push the retry out forever.
+  const jitterSeed = useRef(Math.random()).current;
+  // Where the current failure streak started; carried between evaluations.
+  const streakRef = useRef<FailureStreak>(NO_FAILURES);
+
   const isRealtimeBacked = isRefRealtimeBacked(refName);
   useRealtimeSubscription(tenantId, !isSkipped && isRealtimeBacked);
   const realtimeStatus = useRealtimeStatus(tenantId);
@@ -122,9 +136,20 @@ export function usePlatformQuery<T>(
     staleTime: resolveStaleMs(refName),
     // Realtime is the primary path once connected; the poll drops to a slow
     // safety net then, and speeds back up if the socket goes away. Changing the
-    // interval re-arms the timer without a fetch.
-    refetchInterval: isSkipped ? false : resolvePollMs(realtimeStatus),
+    // interval re-arms the timer without a fetch. A read that keeps failing
+    // waits longer each time: the fleet re-asking a saturated database on the
+    // base interval is the loop that kept it saturated.
+    refetchInterval: isSkipped
+      ? false
+      : (query) => {
+          const { streak, failures } = countConsecutiveFailures(query.state, streakRef.current);
+          streakRef.current = streak;
+          return resolvePollMs(realtimeStatus, failures, () => jitterSeed);
+        },
     refetchIntervalInBackground: false,
+    // Only for refs whose key changes while the screen does not (see
+    // `shouldKeepPreviousData`); everything else shows a loading state.
+    placeholderData: shouldKeepPreviousData(refName) ? keepPreviousData : undefined,
     // Keeps array identity across unchanged polls, so watchers keyed on data
     // identity do not re-run their joins every 15 s.
     structuralSharing: true,

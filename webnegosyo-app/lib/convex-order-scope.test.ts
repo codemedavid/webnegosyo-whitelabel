@@ -157,3 +157,27 @@ it('never falls back to store-wide aggregates on an older Convex deployment', ()
   expect(convexOrderQueryArgs('analytics:getSalesAnalytics', { daysBack: 7 }, NORTH, 29))
     .toEqual({ daysBack: 7, outletId: 'outlet-north' });
 });
+
+describe("convexOrderQueryArgs — platform-only arguments", () => {
+  // `orderIds` bounds the platform adapter's line-item read. The Convex
+  // validator for getAllOrderItems does not know it, and an unknown argument
+  // is read by hooks.ts as "this store needs a backend update".
+  const ids = ["11111111-1111-4111-8111-111111111111"];
+
+  it("strips orderIds from the line-item read for a store-wide account", () => {
+    expect(convexOrderQueryArgs("orders:getAllOrderItems", { orderIds: ids }, { kind: "all" })).toEqual({});
+  });
+
+  it("strips orderIds for a branch-scoped account too", () => {
+    expect(
+      convexOrderQueryArgs("orders:getAllOrderItems", { orderIds: ids }, { kind: "branch", outletId: "south" }, 20)
+    ).toEqual({});
+  });
+
+  it("leaves every other argument in place", () => {
+    expect(convexOrderQueryArgs("orders:getOrders", { limit: 5, orderIds: ids }, { kind: "all" })).toEqual({
+      limit: 5,
+      orderIds: ids,
+    });
+  });
+});

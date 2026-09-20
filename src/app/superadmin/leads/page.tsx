@@ -7,6 +7,10 @@ import { LeadAnalytics } from './components/lead-analytics'
 import { LeadStatusPipeline } from './components/lead-status-pipeline'
 import { LeadsTable } from './components/leads-table'
 
+// Operational lead data behind superadmin auth: render per request so the
+// production build never has to reach Supabase to prerender this page.
+export const dynamic = 'force-dynamic'
+
 export default async function LeadsPage() {
   const [stats, leadsResult] = await Promise.all([
     getLeadStats(),

@@ -5,6 +5,10 @@ import { PageHeader } from '@/components/superadmin/ui/primitives'
 import { getAllPlatformPaymentMethods } from '@/lib/checkout-leads/platform-payment-methods-service'
 import { PaymentMethodsSettings } from './payment-methods-settings'
 
+// Platform payment settings behind superadmin auth: render per request so the
+// production build never has to reach Supabase to prerender this page.
+export const dynamic = 'force-dynamic'
+
 export default async function PaymentMethodsPage() {
   const methods = await getAllPlatformPaymentMethods()
 

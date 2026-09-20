@@ -22,6 +22,17 @@ export const REALTIME_FALLBACK_POLL_MS = 60000;
 /** Poll interval when realtime is not connected; the merchant still needs orders. */
 export const DISCONNECTED_POLL_MS = 15000;
 
+/**
+ * The longest a failing read waits before trying again. Every device
+ * re-issuing a failing read on the base interval is what kept the platform
+ * database saturated on 2026-09-20: the slower Postgres got, the more the
+ * fleet asked of it.
+ */
+export const MAX_FAILURE_POLL_MS = 120000;
+
+/** Jitter applied to a retry, so devices that failed together do not retry together. */
+const RETRY_JITTER_RATIO = 0.2;
+
 export type RealtimeStatus = "connected" | "disconnected";
 
 export interface OrderChannelBinding {
@@ -70,6 +81,9 @@ const REALTIME_BACKED_REFS: readonly string[] = [
   "orders:getRealtimeQueue",
   "orders:getDashboardStats",
   "orders:getDashboardStatsByPeriod",
+  // A settlement is recorded in the same breath as the order's payment_status,
+  // so an order change is the ledger's freshness signal too.
+  "orders:getOrderPaymentsForOrders",
 ];
 
 /**
@@ -155,9 +169,62 @@ export function resolveRealtimeStatus(status: string): RealtimeStatus {
   return status === "SUBSCRIBED" ? "connected" : "disconnected";
 }
 
-/** How often to re-read while realtime is in the given state. */
-export function resolvePollMs(status: RealtimeStatus): number {
-  return status === "connected" ? REALTIME_FALLBACK_POLL_MS : DISCONNECTED_POLL_MS;
+/**
+ * How often to re-read while realtime is in the given state.
+ *
+ * `failureCount` is the number of consecutive reads that have failed (the
+ * cache resets it on the first success). Each failure doubles the wait, up to
+ * `MAX_FAILURE_POLL_MS`, and spreads it by ±20 % so a fleet that failed
+ * together does not retry together. A healthy poll is exact and unjittered.
+ */
+export function resolvePollMs(
+  status: RealtimeStatus,
+  failureCount = 0,
+  random: () => number = Math.random
+): number {
+  const base = status === "connected" ? REALTIME_FALLBACK_POLL_MS : DISCONNECTED_POLL_MS;
+  if (failureCount <= 0) return base;
+
+  const backedOff = Math.min(base * 2 ** failureCount, MAX_FAILURE_POLL_MS);
+  const jitter = 1 - RETRY_JITTER_RATIO + 2 * RETRY_JITTER_RATIO * random();
+  return Math.round(backedOff * jitter);
+}
+
+/**
+ * The cache's bookkeeping a failure streak is read from. `fetchFailureCount`
+ * is NOT usable for this: it is reset at the start of every fetch and only
+ * counts retries inside one, so across polls it never rises above one.
+ */
+export interface QueryOutcomeState {
+  dataUpdatedAt: number;
+  errorUpdateCount: number;
+}
+
+/** Where the streak was last broken: the success, and the errors before it. */
+export interface FailureStreak {
+  dataUpdatedAt: number;
+  errorsAtLastSuccess: number;
+}
+
+export const NO_FAILURES: FailureStreak = { dataUpdatedAt: 0, errorsAtLastSuccess: 0 };
+
+/**
+ * How many reads have failed since the last one that landed.
+ *
+ * Pure: the caller keeps the returned `streak` and hands it back next time. A
+ * new success (a later `dataUpdatedAt`) moves the marker, so the count starts
+ * again from zero; a new query with fresh counters heals the marker the same
+ * way, so a stale marker can never inflate — or hide — a streak.
+ */
+export function countConsecutiveFailures(
+  state: QueryOutcomeState,
+  previous: FailureStreak
+): { streak: FailureStreak; failures: number } {
+  const streak =
+    state.dataUpdatedAt !== previous.dataUpdatedAt
+      ? { dataUpdatedAt: state.dataUpdatedAt, errorsAtLastSuccess: state.errorUpdateCount }
+      : previous;
+  return { streak, failures: Math.max(0, state.errorUpdateCount - streak.errorsAtLastSuccess) };
 }
 
 /** Whether this ref should re-read when an order row changes. */

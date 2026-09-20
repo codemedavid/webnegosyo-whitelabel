@@ -36,6 +36,21 @@ export function resolveStaleMs(refName: string): number {
   return STALE_MS_BY_REF[refName] ?? PLATFORM_STALE_MS;
 }
 
+/**
+ * Refs whose key changes routinely while the screen stays the same.
+ *
+ * The line-item read is keyed on the order ids on screen, which change with
+ * every new order. A key change normally means "a different question" and
+ * shows a loading state (see `usePlatformQuery`); here the old answer is
+ * still the right lines for every order that was already showing, so it stays
+ * up while the new set is read instead of blanking the kitchen board.
+ */
+const KEEP_PREVIOUS_DATA_REFS: ReadonlySet<string> = new Set(["orders:getAllOrderItems"]);
+
+export function shouldKeepPreviousData(refName: string): boolean {
+  return KEEP_PREVIOUS_DATA_REFS.has(refName);
+}
+
 export function createAppQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {

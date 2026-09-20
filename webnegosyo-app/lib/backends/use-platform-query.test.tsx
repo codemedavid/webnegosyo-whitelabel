@@ -381,3 +381,75 @@ describe("usePlatformQuery — screen focus", () => {
     await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(2));
   });
 });
+
+describe("usePlatformQuery — backing off while reads fail", () => {
+  it("waits longer after each failed poll and resets once a read lands", async () => {
+    // Every device re-issuing a failing read every 15 s is the feedback loop
+    // that kept the platform database saturated on 2026-09-20.
+    jest.useFakeTimers();
+    // Pin the jitter to exactly 1.0 so the schedule is 30 s, 60 s, 120 s.
+    jest.spyOn(Math, "random").mockReturnValue(0.5);
+    mockRunPlatformQuery.mockRejectedValue(new Error("statement timeout"));
+    renderHook(() => usePlatformQuery("orders:getOrders", {}, "tenant-1", ALL), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(1));
+
+    // One failure on the books: the retry waits 30 s instead of the base 15 s.
+    await act(async () => {
+      jest.advanceTimersByTime(28_000);
+    });
+    expect(fetchesFor("orders:getOrders")).toBe(1);
+    await act(async () => {
+      jest.advanceTimersByTime(4_000);
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(2));
+
+    // Two failures: 60 s, counted from the failed read.
+    await act(async () => {
+      jest.advanceTimersByTime(56_000);
+    });
+    expect(fetchesFor("orders:getOrders")).toBe(2);
+    await act(async () => {
+      jest.advanceTimersByTime(6_000);
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(3));
+
+    // Three failures: capped at 120 s.
+    await act(async () => {
+      jest.advanceTimersByTime(114_000);
+    });
+    expect(fetchesFor("orders:getOrders")).toBe(3);
+    mockRunPlatformQuery.mockResolvedValue([]);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(4));
+
+    // That one succeeded, so the poll is back to its base interval.
+    await act(async () => {
+      jest.advanceTimersByTime(16_000);
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(5));
+  });
+});
+
+describe("usePlatformQuery — line items keep the last answer across an order-set change", () => {
+  it("keeps showing the previous items while the new order ids are read", async () => {
+    mockRunPlatformQuery.mockResolvedValue(["item-for-a"]);
+    const { result, rerender } = renderHook(
+      ({ args }: { args: Record<string, unknown> }) =>
+        usePlatformQuery("orders:getAllOrderItems", args, "tenant-1", ALL),
+      { initialProps: { args: { orderIds: ["a"] } }, wrapper: wrapperFor(client) }
+    );
+    await waitFor(() => expect(result.current.data).toEqual(["item-for-a"]));
+
+    // A new order arrived: the id set changed and the read is in flight. The
+    // kitchen board must not blank every ticket's lines for the duration.
+    mockRunPlatformQuery.mockImplementation(() => new Promise(() => {}));
+    rerender({ args: { orderIds: ["a", "b"] } });
+
+    expect(result.current.data).toEqual(["item-for-a"]);
+    expect(result.current.isLoading).toBe(false);
+  });
+});

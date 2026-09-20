@@ -58,6 +58,18 @@ export const CONVEX_BRANCH_SCOPED_REFS: ReadonlySet<string> = new Set(
 type QueryArgs = Record<string, unknown> | "skip" | undefined;
 
 /**
+ * Arguments only the platform adapter understands, per ref. A Convex
+ * validator rejects a key it does not declare, and `hooks.ts` reads that
+ * rejection as "this store needs a backend update" — so they never go out.
+ *
+ * `orderIds` bounds the platform line-item read to the orders on screen;
+ * Convex's `getAllOrderItems` is a live subscription and reads them all.
+ */
+const PLATFORM_ONLY_ARGS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["orders:getAllOrderItems", new Set(["orderIds"])],
+]);
+
+/**
  * The arguments to send for `refName`, narrowed to the account's branch.
  *
  * For a store-wide account the result is the caller's own arguments with no key
@@ -73,8 +85,11 @@ export function convexOrderQueryArgs(
 
   // The scope decides the branch, never the caller: a stale literal left in a
   // screen's arguments must not narrow an owner's view.
+  const platformOnly = PLATFORM_ONLY_ARGS.get(refName);
   const rest = Object.fromEntries(
-    Object.entries(args ?? {}).filter(([key]) => key !== "outletId"),
+    Object.entries(args ?? {}).filter(
+      ([key]) => key !== "outletId" && !platformOnly?.has(key),
+    ),
   );
 
   if (scope.kind === "all") return rest;

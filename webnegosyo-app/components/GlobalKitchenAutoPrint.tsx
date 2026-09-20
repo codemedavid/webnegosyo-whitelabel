@@ -17,6 +17,7 @@ import {
 } from "../lib/kitchen-tickets";
 import { buildKitchenChitSegments } from "../lib/kitchen-chit";
 import { selectTicketsToAutoPrint } from "../lib/kitchen-autoprint";
+import { splitOnLinesLoaded } from "../lib/autoprint-lines";
 import { claimPrinted, usePrintedLedger } from "../lib/printed-ledger";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
@@ -60,7 +61,10 @@ function KitchenAutoPrintWatcher() {
   const { data: orders } = useSafeQuery<KitchenOrderLike[]>(getOrdersRef, {
     limit: ORDERS_FETCH_LIMIT,
   });
-  const { data: allItems } = useSafeQuery<KitchenItemLike[]>(getAllOrderItemsRef, {});
+  const { data: allItems } = useSafeQuery<KitchenItemLike[]>(
+    getAllOrderItemsRef,
+    orders === undefined ? "skip" : { orderIds: orders.map((order) => order._id) },
+  );
   const scope = useBranchScope();
 
   // The shared printed ledger guards two gaps: the remount gap (unmounting
@@ -75,8 +79,8 @@ function KitchenAutoPrintWatcher() {
   const isPrintingRef = useRef(false);
 
   // Joined once per change of the underlying rows. The cache keeps row
-  // identity across unchanged polls, so a quiet 15 s poll neither re-runs the
-  // 10k-row join nor re-runs the scan below.
+  // identity across unchanged polls, so a quiet poll neither re-runs the
+  // join nor re-runs the scan below.
   const tickets = useMemo(() => {
     if (orders === undefined) return undefined;
     const scopedOrders = filterOrdersToScope(scope, orders) as KitchenOrderLike[];
@@ -99,18 +103,25 @@ function KitchenAutoPrintWatcher() {
       pendingRef.current = observed;
       return;
     }
-    pendingRef.current = [];
+    const ticketsById = new Map(tickets.map((t) => [t.order._id, t]));
+    // A ticket whose lines have not been read yet would print blank, and the
+    // claim below would mark it done so the real chit never came. Hold it on
+    // the same pending mechanism the printed-ledger gap uses.
+    const lines = splitOnLinesLoaded(
+      observed,
+      new Map([...ticketsById].map(([id, ticket]) => [id, ticket.items.length]))
+    );
+    pendingRef.current = lines.waiting;
+    if (lines.printable.length === 0) return;
 
     const candidates = selectTicketsToAutoPrint({
-      newIds: observed,
+      newIds: lines.printable,
       printedList,
       enabled: true, // the outer gate already checked the toggle
       hasKitchenPrinter: true, // and the kitchen-role printer
       isDemo: false, // and demo mode
     });
     if (candidates.length === 0) return;
-
-    const ticketsById = new Map(tickets.map((t) => [t.order._id, t]));
     // Claim BEFORE printing: a chit that jams reprints from the ticket's
     // manual button; a crash loop reprinting every new order is worse. The
     // claim also loses, correctly, to a register that already printed it.
