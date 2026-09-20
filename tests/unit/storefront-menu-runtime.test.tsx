@@ -15,7 +15,12 @@ const mockStatus = { isOrderingBlocked: false, nextOpenLabel: null }
 let mockMobile = false
 const mockMediaListeners = new Set<() => void>()
 
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }))
+// useSearchParams comes with TableLinkCapture, which the menu mounts to read a
+// scanned table's ?table= — a mock without it fails every render in this file.
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+  useSearchParams: () => new URLSearchParams(),
+}))
 jest.mock('@/hooks/useCart', () => ({ useCart: () => ({ addItem: mockAddItem, item_count: 0, setTenantContext: mockSetTenant }) }))
 jest.mock('@/hooks/use-store-open-status', () => ({ useStoreOpenStatus: () => mockStatus }))
 jest.mock('@/hooks/use-outlet-selection', () => ({ useOutletSelection: () => ({ outlet: null }) }))
