@@ -21,6 +21,7 @@ import {
   setItemTagsAction,
   createTagDefinitionAction,
 } from '@/app/actions/tags'
+import { runServerAction } from '@/components/admin/server-action-safety'
 
 interface TagManagerProps {
   itemId: string | null
@@ -49,12 +50,31 @@ export function TagManager({ itemId, tenantId, tenantSlug, onChange }: TagManage
 
   useEffect(() => {
     startTransition(async () => {
-      const [tagsResult, itemTagsResult] = await Promise.all([
-        getTagDefinitionsAction(tenantId),
-        itemId ? getItemTagsAction(itemId, tenantId) : Promise.resolve({ success: true as const, data: [] }),
-      ])
+      /*
+       * These two Server Action POSTs are the menu editor's only mount-time
+       * round trips, and they are the ones a navigation races: leaving the
+       * editor moves the router's canonical URL out from under the in-flight
+       * action, the answer is no longer an RSC payload, and Next rejects the
+       * promise. Unguarded, that rejection escaped this transition and was
+       * reported as an unhandled crash with the merchant told nothing.
+       */
+      const outcome = await runServerAction(() =>
+        Promise.all([
+          getTagDefinitionsAction(tenantId),
+          itemId ? getItemTagsAction(itemId, tenantId) : Promise.resolve({ success: true as const, data: [] }),
+        ])
+      )
 
+      if (!outcome.ok) {
+        // A read cut short by a backgrounded tab or a navigation away costs
+        // the merchant nothing, so it is not worth a toast; anything else is.
+        if (outcome.kind !== 'aborted') toast.error(outcome.message)
+        return
+      }
+
+      const [tagsResult, itemTagsResult] = outcome.value
       if (tagsResult.success) setAllTags(tagsResult.data)
+      else toast.error(tagsResult.error)
       if (itemTagsResult.success && 'data' in itemTagsResult) {
         setSelectedIds(new Set(itemTagsResult.data.map((t: TagDefinition) => t.id)))
       }
@@ -71,8 +91,20 @@ export function TagManager({ itemId, tenantId, tenantSlug, onChange }: TagManage
       onChange(Array.from(next))
     } else if (itemId) {
       startTransition(async () => {
-        const result = await setItemTagsAction(itemId, tenantId, tenantSlug, Array.from(next))
-        if (!result.success) toast.error(result.error)
+        const outcome = await runServerAction(() =>
+          setItemTagsAction(itemId, tenantId, tenantSlug, Array.from(next))
+        )
+        // A write that did not land is always worth saying out loud, abort or
+        // not: the badge already moved, so silence would misreport it as saved.
+        if (!outcome.ok) {
+          toast.error(outcome.message)
+          setSelectedIds(selectedIds)
+          return
+        }
+        if (!outcome.value.success) {
+          toast.error(outcome.value.error)
+          setSelectedIds(selectedIds)
+        }
       })
     }
   }
@@ -81,7 +113,14 @@ export function TagManager({ itemId, tenantId, tenantSlug, onChange }: TagManage
     if (!newGroup.trim() || !newValue.trim()) return
 
     startTransition(async () => {
-      const result = await createTagDefinitionAction(tenantId, tenantSlug, newGroup.trim(), newValue.trim())
+      const outcome = await runServerAction(() =>
+        createTagDefinitionAction(tenantId, tenantSlug, newGroup.trim(), newValue.trim())
+      )
+      if (!outcome.ok) {
+        toast.error(outcome.message)
+        return
+      }
+      const result = outcome.value
       if (result.success) {
         setAllTags(prev => [...prev, result.data])
         setNewGroup('')

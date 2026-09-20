@@ -12,6 +12,7 @@ import {
   saveOutletMenuOverrideAction,
   clearOutletMenuOverrideAction,
 } from '@/app/actions/outlet-menu'
+import { runServerAction } from '@/components/admin/server-action-safety'
 import {
   buildOutletMenuIndex,
   describeBranchSummary,
@@ -71,14 +72,18 @@ export function ItemBranchesPanel({
   ) => {
     setSavingId(outletId)
     startTransition(async () => {
-      const result = await saveOutletMenuOverrideAction(
-        tenantId,
-        tenantSlug,
-        outletId,
-        item.id,
-        patch
+      // An action rejection inside a transition body has no caller to catch
+      // it; unguarded it becomes an unhandled rejection instead of a message.
+      const outcome = await runServerAction(() =>
+        saveOutletMenuOverrideAction(tenantId, tenantSlug, outletId, item.id, patch)
       )
       setSavingId(null)
+
+      if (!outcome.ok) {
+        toast.error(outcome.message)
+        return
+      }
+      const result = outcome.value
 
       if (!result.success) {
         toast.error(result.error)
@@ -95,10 +100,16 @@ export function ItemBranchesPanel({
   const reset = (outletId: string) => {
     setSavingId(outletId)
     startTransition(async () => {
-      const result = await clearOutletMenuOverrideAction(tenantId, tenantSlug, outletId, item.id)
+      const outcome = await runServerAction(() =>
+        clearOutletMenuOverrideAction(tenantId, tenantSlug, outletId, item.id)
+      )
       setSavingId(null)
-      if (!result.success) {
-        toast.error(result.error)
+      if (!outcome.ok) {
+        toast.error(outcome.message)
+        return
+      }
+      if (!outcome.value.success) {
+        toast.error(outcome.value.error)
         return
       }
       setOverrides((prev) => prev.filter((row) => row.outlet_id !== outletId))

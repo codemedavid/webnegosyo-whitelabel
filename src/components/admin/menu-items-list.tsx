@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { deleteMenuItemAction, toggleAvailabilityAction } from '@/app/actions/menu-items'
+import { describeActionError } from '@/components/admin/server-action-safety'
 import { toast } from 'sonner'
 import type { MenuItem, Category, OutletMenuOverride } from '@/types/database'
 import {
@@ -98,8 +99,8 @@ export function MenuItemsList({
       } else {
         toast.error(result.error || 'Failed to delete menu item')
       }
-    } catch {
-      toast.error('Failed to delete menu item')
+    } catch (error) {
+      toast.error(describeActionError(error))
     } finally {
       setIsDeleting(false)
     }
@@ -115,8 +116,8 @@ export function MenuItemsList({
       } else {
         toast.error(result.error || 'Failed to update availability')
       }
-    } catch {
-      toast.error('Failed to update availability')
+    } catch (error) {
+      toast.error(describeActionError(error))
     } finally {
       setTogglingId(null)
     }

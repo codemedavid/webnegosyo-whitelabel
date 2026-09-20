@@ -669,6 +669,7 @@ export const adminSidebarItems: SidebarEntry[] = [
     children: [
       { label: 'Order Types', href: '/admin/order-types', icon: Store },
       { label: 'Branches', href: '/admin/outlets', icon: MapPin },
+      { label: 'Staff', href: '/admin/staff', icon: Users },
       { label: 'Payment Methods', href: '/admin/payment-methods', icon: CreditCard },
       { label: 'Branding Studio', href: '/admin/branding', icon: Paintbrush },
       { label: 'Receipt Studio', href: '/admin/receipt-editor', icon: ReceiptText },

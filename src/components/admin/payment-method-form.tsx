@@ -47,6 +47,7 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
     qr_code_url: paymentMethod?.qr_code_url || '',
     is_active: paymentMethod?.is_active ?? true,
     require_payment_proof: paymentMethod?.require_payment_proof ?? false,
+    skip_payment_details: paymentMethod?.skip_payment_details ?? false,
   })
 
   const [selectedOrderTypes, setSelectedOrderTypes] = useState<string[]>(
@@ -114,6 +115,7 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
             qr_code_url: formData.qr_code_url || undefined,
             is_active: formData.is_active,
             require_payment_proof: formData.require_payment_proof,
+            skip_payment_details: formData.skip_payment_details,
           }
         )
 
@@ -164,7 +166,8 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
           formData.qr_code_url || undefined,
           formData.is_active,
           selectedOrderTypes,
-          formData.require_payment_proof
+          formData.require_payment_proof,
+          formData.skip_payment_details
         )
 
         if (!result.success) {
@@ -283,7 +286,13 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
               id="require_payment_proof"
               checked={formData.require_payment_proof}
               onCheckedChange={(checked) =>
-                setFormData({ ...formData, require_payment_proof: checked as boolean })
+                setFormData({
+                  ...formData,
+                  require_payment_proof: checked as boolean,
+                  // Proof is collected on the payment screen, so the two settings
+                  // cannot both hold. Requiring proof clears the skip.
+                  skip_payment_details: checked ? false : formData.skip_payment_details,
+                })
               }
             />
             <div className="grid gap-1 leading-none">
@@ -293,6 +302,28 @@ export function PaymentMethodForm({ paymentMethod, orderTypes, tenantId, tenantS
               <p className="text-sm text-gray-500">
                 Customers must upload a screenshot or enter a reference number before they can place
                 the order with this method. Leave off for cash / cash on delivery.
+              </p>
+            </div>
+          </div>
+
+          {/* Skip the payment-details step */}
+          <div className="flex items-start space-x-2 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+            <Checkbox
+              id="skip_payment_details"
+              checked={formData.skip_payment_details}
+              disabled={formData.require_payment_proof}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, skip_payment_details: checked as boolean })
+              }
+            />
+            <div className="grid gap-1 leading-none">
+              <Label htmlFor="skip_payment_details" className="cursor-pointer">
+                Skip the payment screen at checkout
+              </Label>
+              <p className="text-sm text-gray-500">
+                {formData.require_payment_proof
+                  ? 'Unavailable while payment proof is required — the screenshot is collected on that screen.'
+                  : 'Choosing this method places the order straight away, with no payment screen in between. Best for cash and cash on delivery, where there is no account number or QR code to show.'}
               </p>
             </div>
           </div>

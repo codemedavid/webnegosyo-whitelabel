@@ -20,6 +20,7 @@ import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { assertSubscriptionActive } from '@/lib/billing/subscription-gate'
 import { fetchSubscription } from '@/lib/billing/subscription-repository'
 import { z } from 'zod'
+import { isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-icon-catalog'
 
 // ============================================
 // Types & Schemas
@@ -28,8 +29,12 @@ import { z } from 'zod'
 export const categorySchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().optional(),
-  icon: z.string().optional(),
-  icon_color: z.string().optional(),
+  // A Lucide icon must be one the storefront can render (curated catalog);
+  // anything else is treated as a raw emoji. See category-icon-catalog.ts.
+  icon: z.string().refine(isKnownCategoryIcon, {
+    message: 'Unknown icon. Use "lucide:<name>" from the curated catalog (list_category_icons) or a single emoji.',
+  }).optional(),
+  icon_color: z.string().refine(isValidCategoryIconColor, { message: 'icon_color must be a 6-digit hex color like #FF6B00' }).optional(),
   order: z.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
   display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).default('grid'),
@@ -41,6 +46,30 @@ export const categorySchema = z.object({
     price: z.number().min(0, 'Price must be non-negative'),
   })).optional().default([]),
 })
+
+/**
+ * Partial category edit, written out WITHOUT defaults: zod keeps `.default()`
+ * through `.partial()`, so deriving this from categorySchema would reset
+ * order / is_active / display_layout / default_addons on an icon-only edit.
+ */
+export const categoryPatchSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  description: z.string().optional(),
+  icon: z.string().refine(isKnownCategoryIcon, {
+    message: 'Unknown icon. Use "lucide:<name>" from the curated catalog (list_category_icons) or a single emoji.',
+  }).optional(),
+  icon_color: z.string().refine(isValidCategoryIconColor, { message: 'icon_color must be a 6-digit hex color like #FF6B00' }).optional(),
+  order: z.number().int().min(0).optional(),
+  is_active: z.boolean().optional(),
+  display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).optional(),
+  card_template: z.string().nullable().optional(),
+  default_addons: z.array(z.object({
+    id: z.string(),
+    name: z.string().min(1, 'Add-on name is required'),
+    price: z.number().min(0, 'Price must be non-negative'),
+  })).optional(),
+})
+export type CategoryPatch = z.infer<typeof categoryPatchSchema>
 
 // New variation type schema
 export const variationOptionSchema = z.object({
@@ -358,11 +387,11 @@ export async function createCategory(tenantId: string, input: CategoryInput, ctx
   return data as unknown as Category
 }
 
-export async function updateCategory(categoryId: string, tenantId: string, input: CategoryInput) {
-  await verifyTenantPermission(tenantId, 'menu')
-  
+export async function updateCategory(categoryId: string, tenantId: string, input: CategoryInput, ctx?: ProvisioningCtx) {
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+
   const validated = categorySchema.parse(input)
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
 
   const query = supabase
     .from('categories')
@@ -374,6 +403,31 @@ export async function updateCategory(categoryId: string, tenantId: string, input
     .single()
 
   const { data, error } = await query
+
+  if (error) throw error
+  return data as unknown as Category
+}
+
+/**
+ * Partial category update. `updateCategory` parses the FULL schema, whose
+ * defaults would reset order/is_active/display_layout/default_addons on a
+ * payload that only names an icon — this is the safe path for field edits.
+ */
+export async function updateCategoryFields(categoryId: string, tenantId: string, patch: CategoryPatch, ctx?: ProvisioningCtx) {
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+
+  const validated = categoryPatchSchema.parse(patch)
+  if (Object.keys(validated).length === 0) throw new Error('No category fields to update')
+  const supabase = ctx?.client ?? (await createClient())
+
+  const { data, error } = await supabase
+    .from('categories')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(validated as any)
+    .eq('id', categoryId)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single()
 
   if (error) throw error
   return data as unknown as Category
@@ -726,7 +780,7 @@ export async function listCategoriesForProvisioning(tenantId: string, ctx?: Prov
 
   const { data, error } = await supabase
     .from('categories')
-    .select('id, name, order, is_active')
+    .select('id, name, description, icon, icon_color, order, is_active, display_layout, card_template')
     .eq('tenant_id', tenantId)
     .order('order', { ascending: true })
 

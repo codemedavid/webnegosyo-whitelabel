@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Trash2, Eye, EyeOff, Settings, Users, ChevronUp, ChevronDown, CalendarClock, Globe, Monitor } from 'lucide-react'
+import { Plus, Trash2, Eye, EyeOff, Settings, Users, ChevronUp, ChevronDown, CalendarClock, Globe, Monitor, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,12 @@ import { toast } from 'sonner'
 import { useEffect } from 'react'
 import type { OrderType, CustomerFormField } from '@/types/database'
 import { ORDER_TYPE_KIND_LABELS, type OrderTypeKind } from '@/lib/order-types/order-type-kinds'
+import {
+  readClientEnvironment,
+  runServerAction,
+  shouldDeferRefresh,
+  type ServerActionOutcome,
+} from '@/components/admin/server-action-safety'
 
 interface OrderTypesListProps {
   orderTypes: (OrderType & { customer_form_fields: CustomerFormField[] })[]
@@ -56,6 +62,11 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
   const [orderTypeToDelete, setOrderTypeToDelete] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isInitializing, setIsInitializing] = useState(false)
+  /**
+   * The last write that never reached the server. Shown inline with a retry so
+   * a dropped request costs the merchant one tap, not a crash screen.
+   */
+  const [failure, setFailure] = useState<{ message: string; retry: () => void } | null>(null)
   const [sortedOrderTypes, setSortedOrderTypes] = useState(
     [...orderTypes].sort((a, b) => a.order_index - b.order_index)
   )
@@ -65,14 +76,65 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
     setSortedOrderTypes([...orderTypes].sort((a, b) => a.order_index - b.order_index))
   }, [orderTypes])
 
-  const handleToggleEnabled = async (orderTypeId: string, currentEnabled: boolean) => {
-    const result = await toggleOrderTypeEnabledAction(orderTypeId, tenantId, tenantSlug, !currentEnabled)
+  /*
+   * A `router.refresh()` is an RSC fetch. Started while the tab is hidden — an
+   * iPhone merchant switching apps mid-toggle — iOS kills the request, the
+   * half-decoded flight stream throws above every route error boundary, and the
+   * merchant comes back to a full crash screen for what was only a
+   * backgrounding. Hold the refresh until the tab is visible instead.
+   */
+  const isRefreshPendingRef = useRef(false)
 
-    if (result.success) {
-      toast.success(`Order type ${!currentEnabled ? 'enabled' : 'disabled'}`)
+  const requestRefresh = useCallback(() => {
+    if (shouldDeferRefresh(readClientEnvironment().visibility)) {
+      isRefreshPendingRef.current = true
+      return
+    }
+    router.refresh()
+  }, [router])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const flushPendingRefresh = () => {
+      if (!isRefreshPendingRef.current) return
+      if (shouldDeferRefresh(readClientEnvironment().visibility)) return
+      isRefreshPendingRef.current = false
       router.refresh()
+    }
+    document.addEventListener('visibilitychange', flushPendingRefresh)
+    return () => document.removeEventListener('visibilitychange', flushPendingRefresh)
+  }, [router])
+
+  /**
+   * Run one order-type write. Returns the action's own result when it landed,
+   * and otherwise records a retryable failure banner — never a rejection, so a
+   * dropped request can never reach the global error boundary as a crash.
+   */
+  const runWrite = useCallback(
+    async <T,>(
+      invoke: () => Promise<T>,
+      retry: () => void,
+    ): Promise<ServerActionOutcome<T>> => {
+      const outcome = await runServerAction(invoke)
+      if (!outcome.ok) setFailure({ message: outcome.message, retry })
+      else setFailure(null)
+      return outcome
+    },
+    [],
+  )
+
+  const handleToggleEnabled = async (orderTypeId: string, currentEnabled: boolean) => {
+    const outcome = await runWrite(
+      () => toggleOrderTypeEnabledAction(orderTypeId, tenantId, tenantSlug, !currentEnabled),
+      () => void handleToggleEnabled(orderTypeId, currentEnabled),
+    )
+    if (!outcome.ok) return
+
+    if (outcome.value.success) {
+      toast.success(`Order type ${!currentEnabled ? 'enabled' : 'disabled'}`)
+      requestRefresh()
     } else {
-      toast.error(result.error || 'Failed to update order type')
+      toast.error(outcome.value.error || 'Failed to update order type')
     }
   }
 
@@ -84,48 +146,66 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
       prev.map(ot => (ot.id === orderTypeId ? { ...ot, advance_order_enabled: nextEnabled } : ot))
     )
 
-    const result = await toggleOrderTypeAdvanceOrderAction(orderTypeId, tenantId, tenantSlug, nextEnabled)
-
-    if (result.success) {
-      toast.success(`Pre-order ${nextEnabled ? 'enabled' : 'disabled'}`)
-      router.refresh()
-    } else {
-      // Revert optimistic update on failure
+    const revert = () =>
       setSortedOrderTypes(prev =>
         prev.map(ot => (ot.id === orderTypeId ? { ...ot, advance_order_enabled: currentEnabled } : ot))
       )
-      toast.error(result.error || 'Failed to update pre-order')
+
+    const outcome = await runWrite(
+      () => toggleOrderTypeAdvanceOrderAction(orderTypeId, tenantId, tenantSlug, nextEnabled),
+      () => void handleToggleAdvanceOrder(orderTypeId, currentEnabled),
+    )
+    if (!outcome.ok) {
+      revert()
+      return
+    }
+
+    if (outcome.value.success) {
+      toast.success(`Pre-order ${nextEnabled ? 'enabled' : 'disabled'}`)
+      requestRefresh()
+    } else {
+      revert()
+      toast.error(outcome.value.error || 'Failed to update pre-order')
     }
   }
 
   const handleInitializeDefaults = async () => {
     setIsInitializing(true)
-    const result = await initializeDefaultOrderTypesAction(tenantId, tenantSlug)
-
-    if (result.success) {
-      toast.success('Default order types created')
-      router.refresh()
-    } else {
-      toast.error(result.error || 'Failed to create default order types')
-    }
+    const outcome = await runWrite(
+      () => initializeDefaultOrderTypesAction(tenantId, tenantSlug),
+      () => void handleInitializeDefaults(),
+    )
     setIsInitializing(false)
+    if (!outcome.ok) return
+
+    if (outcome.value.success) {
+      toast.success('Default order types created')
+      requestRefresh()
+    } else {
+      toast.error(outcome.value.error || 'Failed to create default order types')
+    }
   }
 
   const handleDelete = async () => {
     if (!orderTypeToDelete) return
+    const targetId = orderTypeToDelete
 
     setIsDeleting(true)
-    const result = await deleteOrderTypeAction(orderTypeToDelete, tenantId, tenantSlug)
+    const outcome = await runWrite(
+      () => deleteOrderTypeAction(targetId, tenantId, tenantSlug),
+      () => void handleDelete(),
+    )
+    setIsDeleting(false)
+    if (!outcome.ok) return
 
-    if (result.success) {
+    if (outcome.value.success) {
       toast.success('Order type deleted successfully')
       setDeleteDialogOpen(false)
       setOrderTypeToDelete(null)
-      router.refresh()
+      requestRefresh()
     } else {
-      toast.error(result.error || 'Failed to delete order type')
+      toast.error(outcome.value.error || 'Failed to delete order type')
     }
-    setIsDeleting(false)
   }
 
   const handleMove = async (orderTypeId: string, direction: 'up' | 'down') => {
@@ -142,19 +222,50 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
     // Update order_index for all order types
     const orderTypeIds = newOrder.map(ot => ot.id)
 
-    const result = await reorderOrderTypesAction(orderTypeIds, tenantId, tenantSlug)
+    const outcome = await runWrite(
+      () => reorderOrderTypesAction(orderTypeIds, tenantId, tenantSlug),
+      () => void handleMove(orderTypeId, direction),
+    )
+    if (!outcome.ok) return
 
-    if (result.success) {
+    if (outcome.value.success) {
       setSortedOrderTypes(newOrder)
       toast.success('Order type order updated')
-      router.refresh()
+      requestRefresh()
     } else {
-      toast.error(result.error || 'Failed to reorder order types')
+      toast.error(outcome.value.error || 'Failed to reorder order types')
     }
   }
 
+  const failureBanner = failure && (
+    <div
+      role="alert"
+      className="mb-4 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <span className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        {failure.message}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        className="shrink-0 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+        onClick={() => {
+          const { retry } = failure
+          setFailure(null)
+          retry()
+        }}
+      >
+        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+        Try again
+      </Button>
+    </div>
+  )
+
   if (orderTypes.length === 0) {
     return (
+      <>
+      {failureBanner}
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Plus className="h-12 w-12 text-muted-foreground mb-4" />
@@ -178,11 +289,13 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
           </div>
         </CardContent>
       </Card>
+      </>
     )
   }
 
   return (
     <>
+      {failureBanner}
       <div className="flex items-center justify-end mb-4">
         <Button onClick={() => router.push(`/${tenantSlug}/admin/order-types/new`)}>
           <Plus className="mr-2 h-4 w-4" />

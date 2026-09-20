@@ -36,6 +36,7 @@ export function resolvePaymentSubmitPlan({
   isAfterBillingPayment,
   requiresPaymentProof = false,
   isQrHandoff = false,
+  skipsPaymentDetails = false,
 }: {
   hasPaymentMethods: boolean
   hasSelectedPaymentMethod: boolean
@@ -47,10 +48,13 @@ export function resolvePaymentSubmitPlan({
   /** QR-handoff skips the details step (the vendor rings them up) unless
    *  the chosen method still requires a screenshot. */
   isQrHandoff?: boolean
+  /** The chosen method has the details step switched off (cash and the like:
+   *  nothing to copy, nothing to scan). Proof still overrides it. */
+  skipsPaymentDetails?: boolean
 }): PaymentSubmitPlan {
   if (!hasPaymentMethods) return 'submit-order'
   if (!hasSelectedPaymentMethod) return isQrHandoff ? 'submit-order' : 'blocked-no-method'
   if (requiresPaymentProof) return 'payment-details'
-  if (isQrHandoff || isAfterBillingPayment) return 'submit-order'
+  if (isQrHandoff || isAfterBillingPayment || skipsPaymentDetails) return 'submit-order'
   return 'payment-details'
 }

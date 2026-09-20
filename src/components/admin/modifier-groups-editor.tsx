@@ -173,7 +173,9 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
                 recipeContext={recipeContext}
                 optionRecipeCosts={optionRecipeCosts}
                 linkableItems={linkableItems}
-                onSaveToLibrary={onSaveGroupToLibrary ? () => onSaveGroupToLibrary(group) : undefined}
+                // The promise is deliberately dropped — the handler owns its own
+                // failure reporting and is contracted never to reject.
+                onSaveToLibrary={onSaveGroupToLibrary ? () => { void onSaveGroupToLibrary(group) } : undefined}
                 onRemoveGroup={() => removeGroup(groupIndex)}
                 onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
                 onUpdateMode={(mode) => updateGroupField(groupIndex, 'selection_mode', mode)}

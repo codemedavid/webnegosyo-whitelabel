@@ -77,6 +77,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { runLoyaltyForOrder } = await import('@/lib/loyalty/lifecycle')
 
   const admin = createAdminClient()
+
+  // The staff activity log rides on this post: it is the one place every
+  // register surface already reports a status move WITH the actor's token.
+  // Best-effort and before the ledger sync, so a `not_found` (anonymous
+  // guest) still leaves the confirm on record.
+  if (event.status) {
+    const { createSupabaseOrderEventStore, recordOrderEventBestEffort } = await import(
+      '@/lib/staff-activity/record-order-event'
+    )
+    const { readPlatformOrderFacts } = await import('@/lib/staff-activity/platform-order-facts')
+    // The app's mutation carries only the id and the status. For platform
+    // stores the order is one read away, so the event gets its total and
+    // branch; Convex stores keep whatever the caller sent.
+    const facts =
+      event.backend === 'platform_supabase'
+        ? await readPlatformOrderFacts(admin, event.tenantId, event.externalOrderId)
+        : null
+    const sentTotal = typeof body?.orderTotal === 'number' && body.orderTotal >= 0 ? body.orderTotal : null
+    await recordOrderEventBestEffort(createSupabaseOrderEventStore(admin), {
+      tenantId: event.tenantId,
+      outletId: event.outletId ?? facts?.outletId ?? null,
+      backend: event.backend,
+      externalOrderId: event.externalOrderId,
+      event: 'status_changed',
+      status: event.status,
+      source: event.source ?? facts?.source ?? null,
+      orderTotal: sentTotal ?? facts?.orderTotal ?? null,
+      actorUserId: user.id,
+      actorName: user.email ?? 'Staff',
+    })
+  }
+
   const result = await syncOrderLifecycle(event, createSupabaseLifecycleDeps(admin))
 
   // Loyalty runs on every event the ledger knows about — including a replay

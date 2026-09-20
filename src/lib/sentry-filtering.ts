@@ -45,6 +45,15 @@ export const sentryEnvironment =
 export const SENTRY_IGNORE_ERRORS: (string | RegExp)[] = [
   // --- Benign browser noise ---
   /ResizeObserver loop/i,
+
+  // --- Scripts the browser itself injects into our pages ---
+  // Firefox for iOS injects its reader-mode bridge and then races its own
+  // teardown ("window.__firefox__.reader" / "Can't find variable: __firefox__").
+  // No file in this repo references that global, so any mention of it is theirs.
+  /__firefox__/,
+  // iOS WKWebView hosts (in-app browsers) inject a native message bridge the
+  // same way. We never call window.webkit, so this is never our failure.
+  /window\.webkit\.messageHandlers/,
 ];
 
 /**
@@ -91,10 +100,12 @@ export const filterSentryEvent = <T extends MinimalSentryEvent>(event: T): T | n
   const values = event.exception?.values ?? [];
   for (const ex of values) {
     // Facebook injects this performance bridge into its Android WebView. It
-    // races native teardown on unload; require both the exact error and its
+    // races native teardown on unload — reported as "Java object is gone" or
+    // "Java exception was raised during method invocation" depending on how far
+    // the teardown got. Require both the bridge's own error shape and its
     // injected frame so application postMessage failures remain visible.
     if (
-      ex.value === 'Error invoking postMessage: Java object is gone' &&
+      /^Error invoking postMessage: /.test(ex.value ?? '') &&
       ex.stacktrace?.frames?.some(frame =>
         /^app:\/\/navigation_performance_logger_android(?:[/?#]|$)/.test(frame.filename ?? frame.abs_path ?? '')
       )

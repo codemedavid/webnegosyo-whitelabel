@@ -67,7 +67,9 @@ import { extractSelectionIds, extractBundleSlotSelectionIds } from '@/lib/invent
 import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
+import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { resolveActiveOrderType } from '@/lib/checkout-order-type'
+import { clearLinkedTable, preferDineInOrderType, readLinkedTable, seedTableField } from '@/lib/table-qr-param'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { createQuotationAction } from '@/app/actions/lalamove'
@@ -452,6 +454,13 @@ export function useCheckout(tenantSlug: string) {
         let activeOrderType = orderType
         if (!hasInitializedOrderType.current) {
           activeOrderType = resolveActiveOrderType(orderType, enabledOrderTypes)
+          // A guest who scanned a table code is dining in, whatever the
+          // browser last remembered.
+          activeOrderType = preferDineInOrderType(
+            enabledOrderTypes,
+            activeOrderType,
+            readLinkedTable(window.localStorage, tenantSlug, Date.now()) !== null
+          )
           if (activeOrderType !== orderType) {
             setOrderType(activeOrderType)
           }
@@ -472,7 +481,7 @@ export function useCheckout(tenantSlug: string) {
             setFormFields(fields)
             const initialData: Record<string, string> = {}
             fields.forEach(field => { initialData[field.field_name] = '' })
-            setCustomerData(initialData)
+            setCustomerData(seedTableField(initialData, fields, readLinkedTable(window.localStorage, tenantSlug, Date.now())))
           } else {
             console.error('Failed to load form fields:', fieldsResult.reason)
             toast.error('Failed to load form fields')
@@ -531,7 +540,7 @@ export function useCheckout(tenantSlug: string) {
           setFormFields(fields)
           const initialData: Record<string, string> = {}
           fields.forEach(field => { initialData[field.field_name] = '' })
-          setCustomerData(initialData)
+          setCustomerData(seedTableField(initialData, fields, readLinkedTable(window.localStorage, tenantSlug, Date.now())))
         } else {
           console.error('Failed to load form fields:', fieldsResult.reason)
           toast.error('Failed to load form fields')
@@ -1049,6 +1058,8 @@ export function useCheckout(tenantSlug: string) {
       // Set ref synchronously BEFORE clearCart to prevent race with cart-empty useEffect
       checkoutCompleteRef.current = true
       clearCart()
+      // The table was for this order; the next scan names the next one.
+      clearLinkedTable(window.localStorage, tenantSlug)
       toast.success('Order ready! Show the QR to the vendor.')
       router.push(`/${tenantSlug}/order/qr/${payload.cid}`)
     } catch (error) {
@@ -1112,8 +1123,8 @@ export function useCheckout(tenantSlug: string) {
     }
 
     // One decision: block until a method is chosen, open the payment-details
-    // step (including QR-handoff / after-billing when the method requires a
-    // screenshot), or submit directly.
+    // step (including QR-handoff / after-billing / skip-details methods when the
+    // method requires a screenshot), or submit directly.
     const selectedMethodForPlan = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
     const submitPlan = resolvePaymentSubmitPlan({
       hasPaymentMethods: paymentMethods.length > 0,
@@ -1121,6 +1132,7 @@ export function useCheckout(tenantSlug: string) {
       isAfterBillingPayment: isAfterBillingPaymentEnabled(selectedOrderTypeData),
       requiresPaymentProof: isPaymentProofRequired(selectedMethodForPlan),
       isQrHandoff: !!tenant?.qr_handoff_enabled,
+      skipsPaymentDetails: isPaymentDetailsStepSkipped(selectedMethodForPlan),
     })
 
     if (submitPlan === 'blocked-no-method') {
@@ -1209,8 +1221,9 @@ export function useCheckout(tenantSlug: string) {
     if (isOrderingClosed()) return
 
     // Enforce per-method payment-proof requirement (screenshot OR reference).
-    // After-billing still honours this: a proof-required method opens the
-    // details step, so checkout is never blocked by a UI that was skipped.
+    // After-billing and skip-details methods still honour this: a proof-required
+    // method opens the details step either way, so checkout is never blocked by
+    // a UI that was skipped.
     const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
     const proofError = getPaymentProofError(selectedMethodForProof, {
       screenshotUrl: paymentProofUrl,
@@ -1370,6 +1383,8 @@ export function useCheckout(tenantSlug: string) {
       // Set ref synchronously BEFORE clearCart to prevent race with cart-empty useEffect
       checkoutCompleteRef.current = true
       clearCart()
+      // The table was for this order; the next scan names the next one.
+      clearLinkedTable(window.localStorage, tenantSlug)
       setCheckoutComplete(true)
       setIsProcessing(false)
       toast.success('Order placed! 🎉')

@@ -86,6 +86,7 @@ export async function createPaymentMethod(
   isActive: boolean = true,
   orderTypes: string[] = [],
   requirePaymentProof: boolean = false,
+  skipPaymentDetails: boolean = false,
   ctx?: ProvisioningCtx
 ) {
   if (!ctx) await verifyTenantPermission(tenantId, 'store_setup')
@@ -114,6 +115,7 @@ export async function createPaymentMethod(
       is_active: isActive,
       order_index: orderIndex,
       require_payment_proof: requirePaymentProof,
+      skip_payment_details: skipPaymentDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
@@ -150,6 +152,7 @@ export async function updatePaymentMethod(
     qr_code_url?: string
     is_active?: boolean
     require_payment_proof?: boolean
+    skip_payment_details?: boolean
   }
 ) {
   await verifyTenantPermission(tenantId, 'store_setup')

@@ -25,6 +25,7 @@ import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { formatPrice } from '@/lib/cart-utils'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
+import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { isPaymentProofRequired } from '@/lib/payment-proof'
 import { formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
@@ -499,6 +500,7 @@ export function CheckoutCTA({ checkout, className = '' }: { checkout: UseCheckou
     isMessengerEnabled: messengerEnabled,
     isAfterBillingPayment: isAfterBillingPaymentEnabled(checkout.selectedOrderTypeData),
     requiresPaymentProof: isPaymentProofRequired(selectedMethod),
+    skipsPaymentDetails: isPaymentDetailsStepSkipped(selectedMethod),
   })
 
   return (

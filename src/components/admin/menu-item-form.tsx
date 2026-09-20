@@ -25,6 +25,7 @@ import { serializeGroups, splitGroupsToLegacyColumns, omitUnchangedOptionStock }
 import { attachEntriesToAddons } from '@/lib/addon-library-utils'
 import { attachEntriesToGroups, buildLibraryDraftFromGroup } from '@/lib/modifier-library-utils'
 import { createModifierGroupLibraryEntryAction } from '@/app/actions/modifier-library'
+import { describeActionError, runServerAction } from '@/components/admin/server-action-safety'
 import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -310,7 +311,10 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
         }
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'An unexpected error occurred')
+      // Includes Next's own "unexpected response" rejection, which says nothing
+      // a merchant can act on. `describeActionError` turns it into the real
+      // instruction — reload and sign in again — without hiding other errors.
+      toast.error(describeActionError(error))
     } finally {
       setIsSubmitting(false)
     }
@@ -389,9 +393,18 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
       toast.error('Add at least one option before saving to the library')
       return
     }
-    const result = await createModifierGroupLibraryEntryAction(tenantId, tenantSlug, draft)
-    if (!result.success) {
-      toast.error(result.error ?? 'Failed to save group to library')
+    // The editor calls this from an onClick and drops the promise, so a
+    // rejected Server Action here would reach the window's unhandled-rejection
+    // handler instead of the merchant. It must not be able to reject.
+    const outcome = await runServerAction(() =>
+      createModifierGroupLibraryEntryAction(tenantId, tenantSlug, draft)
+    )
+    if (!outcome.ok) {
+      toast.error(outcome.message)
+      return
+    }
+    if (!outcome.value.success) {
+      toast.error(outcome.value.error ?? 'Failed to save group to library')
       return
     }
     toast.success(`"${draft.name}" saved to your modifier library`)

@@ -248,12 +248,42 @@ async function runLoyaltyForPlatformOrder(orderId: string, tenantId: string): Pr
   })
 }
 
+/** Best-effort, service-role: the order has already moved when this runs. */
+async function recordWebStatusEvent(input: {
+  tenantId: string
+  orderId: string
+  status: string
+  previousStatus: string | null
+  existingOrder: unknown
+  actorUserId: string
+  actorName: string
+}): Promise<void> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const { createSupabaseOrderEventStore, recordOrderEventBestEffort } = await import(
+    '@/lib/staff-activity/record-order-event'
+  )
+  const order = (input.existingOrder ?? null) as { outlet_id?: string | null; source?: string; total?: number } | null
+  await recordOrderEventBestEffort(createSupabaseOrderEventStore(createAdminClient()), {
+    tenantId: input.tenantId,
+    outletId: order?.outlet_id ?? null,
+    backend: 'platform_supabase',
+    externalOrderId: input.orderId,
+    event: 'status_changed',
+    status: input.status,
+    previousStatus: input.previousStatus,
+    source: order?.source === 'pos' ? 'pos' : 'online',
+    orderTotal: typeof order?.total === 'number' ? order.total : null,
+    actorUserId: input.actorUserId,
+    actorName: input.actorName,
+  })
+}
+
 export async function updateOrderStatus(
   orderId: string,
   tenantId: string,
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
 ) {
-  await verifyTenantPermission(tenantId, 'orders')
+  const { user: actor } = await verifyTenantPermission(tenantId, 'orders')
 
   const supabase = await createClient()
 
@@ -277,6 +307,21 @@ export async function updateOrderStatus(
   const { data, error } = await query
 
   if (error) throw error
+
+  // Leave the mover's name on the order. The permission check above already
+  // identified them; until now that identity was verified and then discarded,
+  // so no staff page could say who confirmed or cancelled anything.
+  if (actor?.id) {
+    await recordWebStatusEvent({
+      tenantId,
+      orderId,
+      status,
+      previousStatus: (existingOrder as unknown as Order | null)?.status ?? null,
+      existingOrder,
+      actorUserId: actor.id,
+      actorName: actor.email ?? 'Staff',
+    })
+  }
 
   // A cancelled order's ingredients go back on the shelf. Written as reversing
   // 'void' movements through the same ledger, so the history shows the sale and

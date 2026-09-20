@@ -24,7 +24,7 @@ import { useOrderStamps, type OrderStampsState } from '@/hooks/use-order-stamps'
 import { shouldRingForTransition } from '@/lib/order-ready-alert'
 import { describePrepPromise } from '@/lib/prep-time'
 import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
-import { formatOrderTrackingTime } from '@/lib/order-tracking-time'
+import { formatOrderTrackingTime, ORDER_TRACKING_TIME_ZONE } from '@/lib/order-tracking-time'
 
 export interface OrderTrackingBrand {
   storeName: string
@@ -155,16 +155,28 @@ export function OrderTrackingClient({
     return () => clearInterval(interval)
   }, [fetchStatus, alertsEnabled])
 
+  // The device clock is adopted only AFTER mount. Reading `Date.now()` during
+  // render would diverge between the server HTML and hydration, which is a
+  // hydration error on the customer's tracking page.
+  const [deviceNowMs, setDeviceNowMs] = useState<number | null>(null)
+  useEffect(() => {
+    setDeviceNowMs(Date.now())
+  }, [])
+
   // The kitchen's promise, counted from the SERVER's clock: a device set
   // twenty minutes fast would otherwise show a nonsense estimate for an order
   // that is perfectly on time. Falls back to the device clock only when an
   // older deployment sends no server time.
-  const serverNowMs = trackingData.serverNowMs ?? Date.now()
-  const prepPromise = describePrepPromise({
+  const nowMs = trackingData.serverNowMs ?? deviceNowMs
+  const prepPromise = nowMs === null ? null : describePrepPromise({
     promisedReadyAt: trackingData.promisedReadyAt,
     status: trackingData.status,
-    nowMs: serverNowMs,
+    nowMs,
     orderTypeKind: trackingData.orderTypeKind,
+    // Pinned, never the runtime default: the server renders in UTC and the
+    // phone renders in Manila, so an unpinned clock prints two different
+    // times for the same instant — server HTML then never matches hydration.
+    timeZone: ORDER_TRACKING_TIME_ZONE,
   })
 
   const currentIndex = getStatusIndex(trackingData.status)

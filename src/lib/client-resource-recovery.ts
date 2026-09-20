@@ -38,3 +38,17 @@ export function recoverChunkLoad(error: Error, options?: RecoveryOptions): boole
     return false
   }
 }
+
+/**
+ * A resource load that failed while the tab was backgrounded or offline is an
+ * interruption, not a defect: iOS suspends in-flight fetches when the tab hides,
+ * which surfaces as WebKit's generic `Load failed`. Treating those as crashes
+ * both floods Sentry and shows an error screen for a page that is perfectly fine.
+ */
+export function isInterruptedLoad(
+  error: Error,
+  environment: { visibility: DocumentVisibilityState; online: boolean }
+): boolean {
+  if (!isResourceLoadError(error)) return false
+  return environment.visibility === 'hidden' || !environment.online
+}

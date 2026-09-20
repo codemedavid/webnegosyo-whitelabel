@@ -5,6 +5,13 @@ import { MapPin, LocateFixed, Map, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useMapboxStylesheet } from '@/hooks/use-mapbox-stylesheet'
+import { reverseGeocodeAddress } from '@/lib/geocoding/mapbox-geocoding'
+import {
+  createSessionToken,
+  retrieveSuggestionCoordinates,
+  suggestAddresses,
+  type SearchBoxSuggestion,
+} from '@/lib/geocoding/mapbox-search-box'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +19,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+
+// Metro Manila — the map's opening view and the default bias for address search.
+const DEFAULT_MAP_CENTER = { lat: 14.5995, lng: 120.9842 }
+const DEFAULT_MAP_ZOOM = 13
+// Keystrokes within one Search Box session are free, so autocomplete can feel immediate;
+// the old 500ms wait existed only to respect Nominatim's 1 req/sec cap. Debouncing still
+// earns its keep — Mapbox starts a second billable session past 50 suggests in one.
+const SEARCH_DEBOUNCE_MS = 250
+const MARKER_DRAG_DEBOUNCE_MS = 500
 
 interface MapboxAddressAutocompleteProps {
   value: string
@@ -37,9 +53,9 @@ export function MapboxAddressAutocomplete({
   const [isGettingLocation, setIsGettingLocation] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
   const [mapSearchQuery, setMapSearchQuery] = useState('')
-  const [mapSearchResults, setMapSearchResults] = useState<Array<{ place_name: string; coordinates: [number, number] }>>([])
+  const [mapSearchResults, setMapSearchResults] = useState<SearchBoxSuggestion[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [mainSearchResults, setMainSearchResults] = useState<Array<{ place_name: string; coordinates: [number, number] }>>([])
+  const [mainSearchResults, setMainSearchResults] = useState<SearchBoxSuggestion[]>([])
   const [showMainSearchResults, setShowMainSearchResults] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -72,6 +88,36 @@ export function MapboxAddressAutocomplete({
     setLocalValue(value)
   }, [value])
 
+  // Mirrored into a ref so the geocoding callbacks below keep a stable identity and
+  // don't force the map (initialized once) to re-create its event handlers.
+  const accessTokenRef = useRef<string | null>(null)
+  useEffect(() => {
+    accessTokenRef.current = accessToken
+  }, [accessToken])
+
+  // Search Box bills per session, not per request: every keystroke sharing this token is
+  // free, and the session is charged once. Held across a search, replaced after a pick.
+  const sessionTokenRef = useRef<string | null>(null)
+  const getSessionToken = useCallback((): string => {
+    if (!sessionTokenRef.current) {
+      sessionTokenRef.current = createSessionToken()
+    }
+    return sessionTokenRef.current
+  }, [])
+  const endSearchSession = useCallback(() => {
+    sessionTokenRef.current = null
+  }, [])
+
+  // Bias search results toward what the user is currently looking at. Proximity is the
+  // single biggest accuracy lever for local search.
+  const getSearchProximity = useCallback((): { lat: number; lng: number } => {
+    const center = mapRef.current?.getCenter?.()
+    if (center && Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+      return { lat: center.lat, lng: center.lng }
+    }
+    return DEFAULT_MAP_CENTER
+  }, [])
+
   // Cleanup debounce timers on unmount
   useEffect(() => {
     return () => {
@@ -89,8 +135,8 @@ export function MapboxAddressAutocomplete({
     onChange(address, coordinates)
   }, [onChange])
 
-  // Handle main search box autocomplete using Nominatim (OpenStreetMap)
-  // With debouncing to respect Nominatim's 1 req/sec rate limit
+  // Handle main search box autocomplete using the Mapbox Search Box API, which (unlike
+  // the Geocoding API) indexes points of interest — what customers actually type.
   const handleMainSearch = useCallback((query: string) => {
     // Clear any pending search
     if (searchDebounceRef.current) {
@@ -103,51 +149,37 @@ export function MapboxAddressAutocomplete({
       return
     }
 
-    // Debounce: Wait 500ms after user stops typing
     searchDebounceRef.current = setTimeout(async () => {
-      try {
-        // Use Nominatim (OpenStreetMap) - Better Philippine POI coverage
-        const nominatimResponse = await fetch(
-          `https://nominatim.openstreetmap.org/search?` +
-          `q=${encodeURIComponent(query)}&` +
-          `countrycodes=ph&` +
-          `format=json&` +
-          `limit=10&` +
-          `addressdetails=1`,
-          {
-            headers: {
-              'User-Agent': 'WhitelabelDeliveryApp/1.0'
-            }
-          }
-        )
-        const nominatimData = await nominatimResponse.json()
-        
-        if (Array.isArray(nominatimData) && nominatimData.length > 0) {
-          const results = nominatimData.map((place) => ({
-            place_name: place.display_name,
-            coordinates: [parseFloat(place.lon), parseFloat(place.lat)] as [number, number],
-          }))
-          
-          setMainSearchResults(results)
-          setShowMainSearchResults(true)
-        } else {
-          setMainSearchResults([])
-          setShowMainSearchResults(false)
-        }
-      } catch (error) {
-        console.error('Search error:', error)
-        setMainSearchResults([])
-        setShowMainSearchResults(false)
-      }
-    }, 500) // 500ms delay to respect Nominatim rate limits
-  }, [])
+      const results = await suggestAddresses(
+        query,
+        accessTokenRef.current ?? '',
+        getSessionToken(),
+        { proximity: getSearchProximity() }
+      )
 
-  const handleMainSearchResultSelect = useCallback((result: { place_name: string; coordinates: [number, number] }) => {
-    const [lng, lat] = result.coordinates
-    handleAddressSelect(result.place_name, { lat, lng })
+      setMainSearchResults(results)
+      setShowMainSearchResults(results.length > 0)
+    }, SEARCH_DEBOUNCE_MS)
+  }, [getSearchProximity, getSessionToken])
+
+  const handleMainSearchResultSelect = useCallback(async (result: SearchBoxSuggestion) => {
+    // Show the chosen address immediately; the coordinates arrive a round-trip later.
+    handleAddressSelect(result.place_name)
     setMainSearchResults([])
     setShowMainSearchResults(false)
-  }, [handleAddressSelect])
+
+    const coordinates = await retrieveSuggestionCoordinates(
+      result.mapbox_id,
+      accessTokenRef.current ?? '',
+      getSessionToken()
+    )
+    endSearchSession()
+
+    if (coordinates) {
+      const [lng, lat] = coordinates
+      handleAddressSelect(result.place_name, { lat, lng })
+    }
+  }, [handleAddressSelect, getSessionToken, endSearchSession])
 
   // Use ref to store the latest handleAddressSelect to avoid dependency issues
   const handleAddressSelectRef = useRef(handleAddressSelect)
@@ -160,51 +192,18 @@ export function MapboxAddressAutocomplete({
     return `${lat.toFixed(4)}_${lng.toFixed(4)}`
   }, [])
 
-  // Cached reverse geocoding function using Nominatim
+  // Cached reverse geocoding via the Mapbox Geocoding API. Never rejects — it resolves
+  // to readable coordinates when the lookup fails, so a dropped pin still yields a value.
   const reverseGeocode = useCallback(async (lat: number, lng: number): Promise<string> => {
-    // Check cache first
     const cacheKey = getCacheKey(lat, lng)
     const cached = geocodeCacheRef.current[cacheKey]
     if (cached) {
-      console.log('Using cached geocode for', cacheKey)
       return cached
     }
 
-    // Use Nominatim for reverse geocoding
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?` +
-        `lat=${lat}&` +
-        `lon=${lng}&` +
-        `format=json&` +
-        `addressdetails=1`,
-        {
-          headers: {
-            'User-Agent': 'WhitelabelDeliveryApp/1.0'
-          }
-        }
-      )
-      const data = await response.json()
-      
-      let address: string
-      if (data && data.display_name) {
-        address = data.display_name
-      } else {
-        address = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`
-      }
-      
-      // Store in cache
-      geocodeCacheRef.current[cacheKey] = address
-      console.log('Cached new geocode for', cacheKey, ':', address)
-      
-      return address
-    } catch (error) {
-      console.error('Reverse geocoding error:', error)
-      const fallback = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`
-      // Cache the fallback too
-      geocodeCacheRef.current[cacheKey] = fallback
-      return fallback
-    }
+    const address = await reverseGeocodeAddress(lat, lng, accessTokenRef.current ?? '')
+    geocodeCacheRef.current[cacheKey] = address
+    return address
   }, [getCacheKey])
 
   const handleUseCurrentLocation = useCallback(async (centerMap = false) => {
@@ -263,8 +262,8 @@ export function MapboxAddressAutocomplete({
       mapboxgl.accessToken = accessToken
 
       // Get initial coordinates from current value or default to Manila
-      let initialLng = 120.9842
-      let initialLat = 14.5995
+      let initialLng = DEFAULT_MAP_CENTER.lng
+      let initialLat = DEFAULT_MAP_CENTER.lat
 
       // Try to parse coordinates from value or use last saved location
       const currentValue = localValue
@@ -280,7 +279,7 @@ export function MapboxAddressAutocomplete({
         container: mapContainerRef.current,
         style: 'mapbox://styles/mapbox/streets-v12',
         center: [initialLng, initialLat],
-        zoom: 13,
+        zoom: DEFAULT_MAP_ZOOM,
         attributionControl: true,
       })
 
@@ -381,7 +380,7 @@ export function MapboxAddressAutocomplete({
           handleAddressSelectRef.current(address, { lat, lng })
           
           dragTimeout = null
-        }, 500) // 500ms debounce to prevent rapid updates and map refreshes
+        }, MARKER_DRAG_DEBOUNCE_MS)
       })
 
       mapRef.current = map
@@ -409,52 +408,42 @@ export function MapboxAddressAutocomplete({
     // Debounce: Wait 500ms after user stops typing
     mapSearchDebounceRef.current = setTimeout(async () => {
       try {
-        // Use Nominatim (OpenStreetMap) - Better Philippine POI coverage
-        const nominatimResponse = await fetch(
-          `https://nominatim.openstreetmap.org/search?` +
-          `q=${encodeURIComponent(query)}&` +
-          `countrycodes=ph&` +
-          `format=json&` +
-          `limit=10&` +
-          `addressdetails=1`,
-          {
-            headers: {
-              'User-Agent': 'WhitelabelDeliveryApp/1.0'
-            }
-          }
+        const results = await suggestAddresses(
+          query,
+          accessTokenRef.current ?? '',
+          getSessionToken(),
+          { proximity: getSearchProximity() }
         )
-        const nominatimData = await nominatimResponse.json()
-        
-        if (Array.isArray(nominatimData) && nominatimData.length > 0) {
-          const results = nominatimData.map((place) => ({
-            place_name: place.display_name,
-            coordinates: [parseFloat(place.lon), parseFloat(place.lat)] as [number, number],
-          }))
-          
-          setMapSearchResults(results)
-        } else {
-          setMapSearchResults([])
-        }
-      } catch (error) {
-        console.error('Map search error:', error)
-        setMapSearchResults([])
+        setMapSearchResults(results)
       } finally {
         setIsSearching(false)
       }
-    }, 500) // 500ms delay to respect Nominatim rate limits
-  }, [])
+    }, SEARCH_DEBOUNCE_MS)
+  }, [getSearchProximity, getSessionToken])
 
-  const handleSearchResultSelect = useCallback(async (result: { place_name: string; coordinates: [number, number] }) => {
-    const [lng, lat] = result.coordinates
-    
-    console.log('Search result selected:', result, 'Coordinates:', { lng, lat })
-    
-    // Update address first (this updates the main input)
-    handleAddressSelectRef.current(result.place_name, { lat, lng })
-    
-    // Clear search UI
+  const handleSearchResultSelect = useCallback(async (result: SearchBoxSuggestion) => {
+    // Clear search UI straight away so the pick feels immediate
     setMapSearchQuery('')
     setMapSearchResults([])
+
+    // `suggest` returns no coordinates, so resolve them before moving the pin.
+    const coordinates = await retrieveSuggestionCoordinates(
+      result.mapbox_id,
+      accessTokenRef.current ?? '',
+      getSessionToken()
+    )
+    endSearchSession()
+
+    if (!coordinates) {
+      // Keep the chosen address; leaving the pin put is better than moving it wrongly.
+      handleAddressSelectRef.current(result.place_name)
+      return
+    }
+
+    const [lng, lat] = coordinates
+
+    // Update address first (this updates the main input)
+    handleAddressSelectRef.current(result.place_name, { lat, lng })
     
     // Center map on selected location and update marker
     if (mapRef.current) {
@@ -676,7 +665,7 @@ export function MapboxAddressAutocomplete({
         console.error('Error flying to location:', error)
       }
     }
-  }, []) // No dependencies needed - uses ref for handleAddressSelect to avoid re-initialization
+  }, [getSessionToken, endSearchSession]) // handleAddressSelect stays behind a ref to avoid re-initialization
 
   useEffect(() => {
     if (showMapPicker && accessToken && isClient && !mapRef.current) {
@@ -765,9 +754,9 @@ export function MapboxAddressAutocomplete({
             {/* Main Search Results Dropdown */}
             {showMainSearchResults && mainSearchResults.length > 0 && (
               <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {mainSearchResults.map((result, index) => (
+                {mainSearchResults.map((result) => (
                   <button
-                    key={index}
+                    key={result.mapbox_id}
                     type="button"
                     onClick={() => {
                       handleMainSearchResultSelect(result)
@@ -855,9 +844,9 @@ export function MapboxAddressAutocomplete({
               {/* Search Results Dropdown */}
               {mapSearchResults.length > 0 && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {mapSearchResults.map((result, index) => (
+                  {mapSearchResults.map((result) => (
                     <button
-                      key={index}
+                      key={result.mapbox_id}
                       type="button"
                       onClick={() => handleSearchResultSelect(result)}
                       className="w-full px-4 py-2 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"

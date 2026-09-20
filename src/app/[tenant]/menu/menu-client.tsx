@@ -5,6 +5,7 @@ import { useBrandingPreviewDraft, useBrandingPreviewTenant } from '@/hooks/use-b
 import { applyCategoryDraft, type CategoryStudioDraft } from '@/lib/category-studio'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { OutletGate } from '@/components/customer/outlet-gate'
+import { TableLinkCapture } from '@/components/customer/table-link-capture'
 import { useStorefrontMenu } from '@/storefront/catalog/use-storefront-menu'
 import { LegacyMenuStorefront } from '@/storefront/packs/legacy/menu-storefront'
 import type { StorefrontMenuInput } from '@/storefront/contracts'
@@ -41,6 +42,7 @@ function MenuEntry(props: StorefrontMenuInput) {
 function ReadyMenu({ isWelcomePreview, ...props }: StorefrontMenuInput & { isWelcomePreview: boolean }) {
   const menu = useStorefrontMenu(props)
   return <>
+    <TableLinkCapture tenantSlug={props.tenantSlug} />
     <OutletGate tenant={props.tenant} tenantSlug={props.tenantSlug} outlets={props.outlets} isPreview={isWelcomePreview} />
     <LegacyMenuStorefront menu={menu} />
   </>

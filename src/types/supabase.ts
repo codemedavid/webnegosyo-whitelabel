@@ -2945,6 +2945,72 @@ export type Database = {
           },
         ]
       }
+      order_status_events: {
+        Row: {
+          actor_name: string
+          actor_user_id: string | null
+          backend: string
+          created_at: string
+          event: string
+          external_order_id: string
+          id: string
+          occurred_at: string
+          order_total: number | null
+          outlet_id: string | null
+          previous_status: string | null
+          source: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_name: string
+          actor_user_id?: string | null
+          backend: string
+          created_at?: string
+          event: string
+          external_order_id: string
+          id?: string
+          occurred_at?: string
+          order_total?: number | null
+          outlet_id?: string | null
+          previous_status?: string | null
+          source?: string | null
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          actor_name?: string
+          actor_user_id?: string | null
+          backend?: string
+          created_at?: string
+          event?: string
+          external_order_id?: string
+          id?: string
+          occurred_at?: string
+          order_total?: number | null
+          outlet_id?: string | null
+          previous_status?: string | null
+          source?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_status_events_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_types: {
         Row: {
           advance_order_allow_asap: boolean
@@ -3565,6 +3631,7 @@ export type Database = {
           order_index: number
           qr_code_url: string | null
           require_payment_proof: boolean
+          skip_payment_details: boolean
           tenant_id: string
           updated_at: string
         }
@@ -3578,6 +3645,7 @@ export type Database = {
           order_index?: number
           qr_code_url?: string | null
           require_payment_proof?: boolean
+          skip_payment_details?: boolean
           tenant_id: string
           updated_at?: string
         }
@@ -3591,6 +3659,7 @@ export type Database = {
           order_index?: number
           qr_code_url?: string | null
           require_payment_proof?: boolean
+          skip_payment_details?: boolean
           tenant_id?: string
           updated_at?: string
         }
@@ -4667,6 +4736,139 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "sms_suppressions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dining_tables: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          outlet_id: string | null
+          pos_x: number
+          pos_y: number
+          rotation: number
+          seats: number
+          shape: string
+          size: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+          zone: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          outlet_id?: string | null
+          pos_x?: number
+          pos_y?: number
+          rotation?: number
+          seats?: number
+          shape?: string
+          size?: string
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+          zone?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          outlet_id?: string | null
+          pos_x?: number
+          pos_y?: number
+          rotation?: number
+          seats?: number
+          shape?: string
+          size?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+          zone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dining_tables_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dining_tables_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      table_seatings: {
+        Row: {
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          id: string
+          note: string | null
+          outlet_id: string | null
+          party_size: number
+          seated_at: string
+          seated_by: string | null
+          table_id: string
+          tenant_id: string
+        }
+        Insert: {
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          party_size: number
+          seated_at?: string
+          seated_by?: string | null
+          table_id: string
+          tenant_id: string
+        }
+        Update: {
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          outlet_id?: string | null
+          party_size?: number
+          seated_at?: string
+          seated_by?: string | null
+          table_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_seatings_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_seatings_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "dining_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_seatings_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

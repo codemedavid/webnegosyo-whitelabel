@@ -23,6 +23,7 @@ import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { VoucherField } from './voucher-field'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
 import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
+import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { isPaymentProofRequired } from '@/lib/payment-proof'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
@@ -65,6 +66,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     isMessengerEnabled: messengerEnabled,
     isAfterBillingPayment: isAfterBillingPaymentEnabled(checkout.selectedOrderTypeData),
     requiresPaymentProof: isPaymentProofRequired(selectedMethod),
+    skipsPaymentDetails: isPaymentDetailsStepSkipped(selectedMethod),
   })
   const accentColor = typeof checkout.tenant?.checkout_accent_color === 'string' && checkout.tenant.checkout_accent_color ? checkout.tenant.checkout_accent_color : undefined
 

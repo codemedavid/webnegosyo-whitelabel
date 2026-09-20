@@ -1,7 +1,18 @@
 import { filterSentryClientEvent, filterSentryEvent, SENTRY_DENY_URLS, SENTRY_IGNORE_ERRORS } from '@/lib/sentry-filtering'
 
 describe('Sentry production crash visibility', () => {
-  it('drops only the disposed Facebook Android performance bridge error', () => {
+  it.each([
+    'Error invoking postMessage: Java object is gone',
+    'Error invoking postMessage: Java exception was raised during method invocation',
+  ])('drops the disposed Facebook Android performance bridge error: %s', (value) => {
+    const bridgeEvent = { exception: { values: [{
+      value,
+      stacktrace: { frames: [{ filename: 'app://navigation_performance_logger_android' }] },
+    }] } }
+    expect(filterSentryEvent(bridgeEvent)).toBeNull()
+  })
+
+  it('keeps a postMessage failure raised by our own code', () => {
     const bridgeEvent = { exception: { values: [{
       value: 'Error invoking postMessage: Java object is gone',
       stacktrace: { frames: [{ filename: 'app://navigation_performance_logger_android' }] },
@@ -37,6 +48,24 @@ describe('Sentry production crash visibility', () => {
   it('still drops ResizeObserver loop notifications and extension script URLs', () => {
     expect(filterSentryEvent({ message: 'ResizeObserver loop limit exceeded' })).toBeNull()
     expect(SENTRY_DENY_URLS.some(pattern => pattern.test('chrome-extension://extension/content.js'))).toBe(true)
+  })
+
+  it.each([
+    "TypeError: undefined is not an object (evaluating 'window.__firefox__.reader')",
+    "ReferenceError: Can't find variable: __firefox__",
+    "TypeError: undefined is not an object (evaluating 'window.webkit.messageHandlers')",
+  ])('drops scripts the browser injects into our pages: %s', (value) => {
+    const [type, ...rest] = value.split(': ')
+    expect(filterSentryEvent({ exception: { values: [{ type, value: rest.join(': ') }] } })).toBeNull()
+  })
+
+  it.each([
+    'Hydration failed because the server rendered HTML did not match the client',
+    "Text content does not match server-rendered HTML",
+    'There was an error while hydrating this Suspense boundary',
+  ])('never hides a hydration mismatch: %s', (value) => {
+    const event = { exception: { values: [{ type: 'Error', value }] } }
+    expect(filterSentryEvent(event)).toBe(event)
   })
 })
 
