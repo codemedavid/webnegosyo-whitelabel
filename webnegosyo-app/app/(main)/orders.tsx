@@ -130,7 +130,9 @@ export default function OrdersScreen() {
   );
   const { data: exportItems, refetch: refetchExportItems } = useSafeQuery<ExportOrderItemInput[]>(
     getAllOrderItemsRef,
-    isExportOpen ? {} : "skip"
+    isExportOpen && exportOrders !== undefined
+      ? { orderIds: exportOrders.map((order) => order._id) }
+      : "skip"
   );
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { patchOrderStatus } = useOptimisticOrderCache();

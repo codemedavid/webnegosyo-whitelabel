@@ -1,10 +1,13 @@
 import {
   DISCONNECTED_POLL_MS,
+  MAX_FAILURE_POLL_MS,
   REALTIME_FALLBACK_POLL_MS,
   buildOrderSubscription,
   isOrderChangeForTenant,
   isOrderChangeInScope,
   isRefRealtimeBacked,
+  NO_FAILURES,
+  countConsecutiveFailures,
   resolvePollMs,
   resolveRealtimeStatus,
 } from "./supabase-realtime";
@@ -274,5 +277,59 @@ describe("isRefRealtimeBacked — order line items", () => {
    */
   it("refreshes the tenant's line items on an order change", () => {
     expect(isRefRealtimeBacked("orders:getAllOrderItems")).toBe(true);
+  });
+});
+
+describe("resolvePollMs — backing off while reads fail", () => {
+  // A failing read must not be re-issued every 15 s by every device: that is
+  // the loop that turned a slow database into a saturated one on 2026-09-20.
+  const exact = () => 0.5;
+
+  it("keeps the base interval while nothing has failed", () => {
+    expect(resolvePollMs("disconnected", 0, exact)).toBe(DISCONNECTED_POLL_MS);
+    expect(resolvePollMs("connected", 0, exact)).toBe(REALTIME_FALLBACK_POLL_MS);
+  });
+
+  it("doubles the interval per consecutive failure", () => {
+    expect(resolvePollMs("disconnected", 1, exact)).toBe(DISCONNECTED_POLL_MS * 2);
+    expect(resolvePollMs("disconnected", 2, exact)).toBe(DISCONNECTED_POLL_MS * 4);
+  });
+
+  it("never waits longer than the failure ceiling", () => {
+    expect(resolvePollMs("disconnected", 10, exact)).toBe(MAX_FAILURE_POLL_MS);
+    expect(resolvePollMs("connected", 10, exact)).toBe(MAX_FAILURE_POLL_MS);
+    expect(MAX_FAILURE_POLL_MS).toBe(120_000);
+  });
+
+  it("spreads retries with up to twenty percent jitter so devices do not stampede", () => {
+    expect(resolvePollMs("disconnected", 1, () => 0)).toBe(DISCONNECTED_POLL_MS * 2 * 0.8);
+    expect(resolvePollMs("disconnected", 1, () => 1)).toBe(DISCONNECTED_POLL_MS * 2 * 1.2);
+  });
+
+  it("applies no jitter to a healthy poll", () => {
+    expect(resolvePollMs("disconnected", 0, () => 1)).toBe(DISCONNECTED_POLL_MS);
+  });
+});
+
+describe("countConsecutiveFailures", () => {
+  it("counts errors since the last success, not since the query was born", () => {
+    // Two errors, then a success at t=100, then one more error.
+    const afterSuccess = countConsecutiveFailures({ dataUpdatedAt: 100, errorUpdateCount: 2 }, NO_FAILURES);
+    expect(afterSuccess.failures).toBe(0);
+
+    const afterOneMore = countConsecutiveFailures({ dataUpdatedAt: 100, errorUpdateCount: 3 }, afterSuccess.streak);
+    expect(afterOneMore.failures).toBe(1);
+  });
+
+  it("counts every error before the first success", () => {
+    expect(countConsecutiveFailures({ dataUpdatedAt: 0, errorUpdateCount: 3 }, NO_FAILURES).failures).toBe(3);
+  });
+
+  it("starts over on a query with fresh counters instead of going negative", () => {
+    const stale = { dataUpdatedAt: 500, errorsAtLastSuccess: 4 };
+    expect(countConsecutiveFailures({ dataUpdatedAt: 0, errorUpdateCount: 0 }, stale)).toEqual({
+      streak: { dataUpdatedAt: 0, errorsAtLastSuccess: 0 },
+      failures: 0,
+    });
   });
 });

@@ -9,7 +9,7 @@ let mockLedgerError: string | null = null;
 const mockPayments = [{ orderId: "order", kind: "charge", amount: 25, paymentMethodName: "Cash", recordedBy: "cashier", _creationTime: Date.parse("2026-01-01T10:00:00Z") }];
 jest.mock("expo-router", () => ({ useFocusEffect: (effect: React.EffectCallback) => { const { useEffect } = jest.requireActual<typeof React>("react"); useEffect(effect, [effect]); } }));
 jest.mock("../stores/auth-store", () => ({ useAuthStore: Object.assign((select: (state: typeof mockSession) => unknown) => select(mockSession), { getState: () => mockSession }) }));
-jest.mock("../lib/hooks", () => ({ useSafeQuery: () => ({ data: mockLedgerError ? undefined : mockPayments, error: mockLedgerError, isMissingFunction: false }) }));
+jest.mock("../lib/hooks", () => ({ useSafeQuery: () => ({ data: mockLedgerError ? undefined : mockPayments, error: mockLedgerError, isMissingFunction: false }), useRefRoute: () => "platform" }));
 jest.mock("../lib/supabase", () => ({ supabase: { auth: { getUser: jest.fn() } } }));
 jest.mock("../lib/shift-service", () => ({ loadOpenShift: jest.fn(), closeShift: jest.fn(), openShift: jest.fn() }));
 

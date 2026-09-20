@@ -4,7 +4,7 @@ import { FunctionReference } from "convex/server";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../stores/auth-store";
 import { isStaleBundleError } from "./stale-backend";
-import { resolveRefRoute } from "./backends/route";
+import { resolveRefRoute, type RefRoute } from "./backends/route";
 import { runPlatformAction, runPlatformMutation } from "./backends/supabase-adapter";
 import { withPlatformTimeout } from "./backends/platform-call";
 import { invalidatePlatformQueries } from "./backends/query-invalidation";
@@ -40,6 +40,18 @@ function useScopedTenantId(): string | null {
   const tenantId = useAuthStore((s) => s.tenantId);
   const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
   return impersonatedTenantId ?? tenantId;
+}
+
+/**
+ * Which backend answers `refName` for the signed-in store. A component that
+ * has a cheaper shape on one backend than the other reads this and picks —
+ * without ever calling a hook conditionally.
+ */
+export function useRefRoute(refName: string): RefRoute {
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const tenantId = useScopedTenantId();
+  return resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
 }
 
 export function useSafeQuery<T>(

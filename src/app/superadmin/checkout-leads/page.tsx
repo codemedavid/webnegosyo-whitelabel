@@ -9,6 +9,10 @@ import { CheckoutLeadAnalytics } from './components/checkout-lead-analytics'
 import { CheckoutLeadPipeline } from './components/checkout-lead-pipeline'
 import { CheckoutLeadsTable } from './components/checkout-leads-table'
 
+// Operational lead data behind superadmin auth: render per request so the
+// production build never has to reach Supabase to prerender this page.
+export const dynamic = 'force-dynamic'
+
 export default async function CheckoutLeadsPage() {
   const [stats, leadsResult] = await Promise.all([
     getCheckoutLeadStats(),

@@ -87,6 +87,32 @@ const QUEUE_LIMIT = 200;
 const OPEN_STATUSES = ["pending", "confirmed", "preparing", "ready"];
 
 /**
+ * How many order ids one `in (...)` request names. A uuid is 36 characters, so
+ * 200 of them keep the query string near 8 KB — under every gateway's URL cap
+ * — while a 2000-order export is still only ten reads.
+ */
+export const ORDER_ID_CHUNK_SIZE = 200;
+
+/** The ids this database can hold, in bounded runs, ready for `in (...)`. */
+function chunkOrderIds(value: unknown): string[][] {
+  const ids = Array.isArray(value) ? value.filter(isUuid) : [];
+  const chunks: string[][] = [];
+  for (let start = 0; start < ids.length; start += ORDER_ID_CHUNK_SIZE) {
+    chunks.push(ids.slice(start, start + ORDER_ID_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+/** One bounded read per run of ids, answered in order and flattened. */
+async function readByOrderIds<Row>(
+  chunks: readonly string[][],
+  read: (ids: readonly string[]) => Promise<Row[] | null>
+): Promise<Row[]> {
+  const pages = await Promise.all(chunks.map((ids) => read(ids)));
+  return pages.flatMap((page) => page ?? []);
+}
+
+/**
  * The order id a write is allowed to name, or a refusal.
  *
  * `orders.id` is a uuid, and supabase-js serialises whatever it is handed into
@@ -109,6 +135,7 @@ const SUPPORTED_QUERY_REFS = [
   "orders:getOrderById",
   "orders:getAllOrderItems",
   "orders:getOrderPayments",
+  "orders:getOrderPaymentsForOrders",
   "orders:getOrderRevisions",
   "orders:getRealtimeQueue",
   "orders:getDashboardStats",
@@ -239,32 +266,47 @@ async function getOrderById(
 }
 
 /**
- * Every line item for the tenant, mirroring Convex `orders:getAllOrderItems`.
- * Product analytics joins these back to their order's date, so fetching them in
- * one bounded read avoids an N+1 (one getOrderById per order).
+ * Line items, mirroring Convex `orders:getAllOrderItems`.
+ *
+ * Every live screen already holds the orders it shows, so it names them in
+ * `orderIds` and the read is a few index lookups. Without ids this is the
+ * tenant's every line item — a 10k-row sorted join that, polled by every
+ * device on every screen, was the single heaviest read during the 2026-09-20
+ * saturation. That form is kept only for a caller that genuinely has no order
+ * list yet; nothing in the app sends it today.
  */
 async function getAllOrderItems(
   client: PlatformClient,
   tenantId: string,
+  args: Record<string, unknown>,
   scope: BranchScope
 ) {
-  const rows = await unwrap<PlatformOrderItemRow[] | null>(
-    scopeToBranch(
+  const itemsFor = (ids?: readonly string[]) => {
+    let builder = scopeToBranch(
       client
         .from("order_items")
         .select(ORDER_ITEM_COLUMNS)
         .eq("orders.tenant_id", tenantId),
       scope,
       "orders.outlet_id"
-    )
-      // Newest parent order first, so the STATS_LIMIT cap drops history rather
-      // than letting the database pick which rows survive — unordered, it is
-      // the NEWEST orders' items that silently vanish past 10k line items.
-      .order("orders(created_at)", { ascending: false })
-      .limit(STATS_LIMIT)
-  );
+    );
+    if (ids) builder = builder.in("order_id", ids);
+    return unwrap<PlatformOrderItemRow[] | null>(
+      builder
+        // Newest parent order first, so the STATS_LIMIT cap drops history rather
+        // than letting the database pick which rows survive — unordered, it is
+        // the NEWEST orders' items that silently vanish past 10k line items.
+        .order("orders(created_at)", { ascending: false })
+        .limit(STATS_LIMIT)
+    );
+  };
 
-  return (rows ?? []).map((row) => toOrderItemDto(row));
+  const rows =
+    args.orderIds === undefined
+      ? ((await itemsFor()) ?? [])
+      : await readByOrderIds(chunkOrderIds(args.orderIds), itemsFor);
+
+  return rows.map((row) => toOrderItemDto(row));
 }
 
 /**
@@ -309,6 +351,43 @@ async function getOrderPayments(
   );
 
   return (rows ?? []).map(toOrderPaymentDto);
+}
+
+/**
+ * The settlement ledgers of many orders in one read, oldest settlement first.
+ *
+ * A shift card or leaderboard used to mount one `getOrderPayments` per order,
+ * each of them polling — 200 sales meant 200 polling requests, the busiest
+ * endpoint of the 2026-09-20 saturation. Each request is capped at the
+ * per-order ceiling times the orders it names. That cap is shared across the
+ * chunk, so a request that fills it may have dropped rows from ANY of its
+ * orders — it is refused outright rather than returned short, because a
+ * drawer reconciled against a trimmed ledger is worse than no drawer.
+ */
+export const TRUNCATED_LEDGER_MESSAGE =
+  "Settlement history may be incomplete. This drawer cannot be reconciled safely.";
+
+async function getOrderPaymentsForOrders(
+  client: PlatformClient,
+  tenantId: string,
+  args: Record<string, unknown>
+) {
+  const rows = await readByOrderIds(chunkOrderIds(args.orderIds), async (ids) => {
+    const cap = ORDER_LEDGER_LIMIT * ids.length;
+    const page = await unwrap<PlatformOrderPaymentRow[] | null>(
+      client
+        .from("order_payments")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .in("order_id", ids)
+        .order("created_at", { ascending: true })
+        .limit(cap)
+    );
+    if ((page?.length ?? 0) >= cap) throw new Error(TRUNCATED_LEDGER_MESSAGE);
+    return page;
+  });
+
+  return rows.map(toOrderPaymentDto);
 }
 
 /** An order's edit history, newest first, mirroring Convex `getOrderRevisions`. */
@@ -640,11 +719,13 @@ export async function runPlatformQuery(
     case "orders:getOrders":
       return getOrders(client, tenant, params, scope);
     case "orders:getAllOrderItems":
-      return getAllOrderItems(client, tenant, scope);
+      return getAllOrderItems(client, tenant, params, scope);
     case "orders:getOrderById":
       return getOrderById(client, tenant, params, scope);
     case "orders:getOrderPayments":
       return getOrderPayments(client, tenant, params);
+    case "orders:getOrderPaymentsForOrders":
+      return getOrderPaymentsForOrders(client, tenant, params);
     case "orders:getOrderRevisions":
       return getOrderRevisions(client, tenant, params);
     case "orders:getRealtimeQueue":

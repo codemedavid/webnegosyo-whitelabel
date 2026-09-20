@@ -13,6 +13,7 @@ import {
   bindQueryManagersToAppState,
   createAppQueryClient,
   resolveStaleMs,
+  shouldKeepPreviousData,
 } from "./query-client";
 
 describe("createAppQueryClient", () => {
@@ -82,5 +83,18 @@ describe("bindQueryManagersToAppState", () => {
 
     bindQueryManagersToAppState({ addEventListener: jest.fn() }, "active");
     expect(focusManager.isFocused()).toBe(true);
+  });
+});
+
+describe("shouldKeepPreviousData", () => {
+  it("keeps the last line items on screen while a new order set is read", () => {
+    // The read is keyed on the visible order ids, which change with every new
+    // order. Without this, each change blanks the kitchen board for a poll.
+    expect(shouldKeepPreviousData("orders:getAllOrderItems")).toBe(true);
+  });
+
+  it("lets every other ref show a loading state on a key change", () => {
+    expect(shouldKeepPreviousData("orders:getDashboardStatsByPeriod")).toBe(false);
+    expect(shouldKeepPreviousData("orders:getOrders")).toBe(false);
   });
 });

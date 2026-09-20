@@ -80,7 +80,10 @@ function ReceiptAutoPrintWatcher() {
   const { data: orders } = useSafeQuery<ReceiptOrder[]>(getOrdersRef, {
     limit: ORDERS_FETCH_LIMIT,
   });
-  const { data: allItems } = useSafeQuery<ReceiptItem[]>(getAllOrderItemsRef, {});
+  const { data: allItems } = useSafeQuery<ReceiptItem[]>(
+    getAllOrderItemsRef,
+    orders === undefined ? "skip" : { orderIds: orders.map((order) => order._id) },
+  );
   const scope = useBranchScope();
   const { printOrder } = useOrderPrint();
 

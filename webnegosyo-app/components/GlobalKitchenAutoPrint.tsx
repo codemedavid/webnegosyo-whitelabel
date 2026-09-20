@@ -60,7 +60,10 @@ function KitchenAutoPrintWatcher() {
   const { data: orders } = useSafeQuery<KitchenOrderLike[]>(getOrdersRef, {
     limit: ORDERS_FETCH_LIMIT,
   });
-  const { data: allItems } = useSafeQuery<KitchenItemLike[]>(getAllOrderItemsRef, {});
+  const { data: allItems } = useSafeQuery<KitchenItemLike[]>(
+    getAllOrderItemsRef,
+    orders === undefined ? "skip" : { orderIds: orders.map((order) => order._id) },
+  );
   const scope = useBranchScope();
 
   // The shared printed ledger guards two gaps: the remount gap (unmounting
@@ -75,8 +78,8 @@ function KitchenAutoPrintWatcher() {
   const isPrintingRef = useRef(false);
 
   // Joined once per change of the underlying rows. The cache keeps row
-  // identity across unchanged polls, so a quiet 15 s poll neither re-runs the
-  // 10k-row join nor re-runs the scan below.
+  // identity across unchanged polls, so a quiet poll neither re-runs the
+  // join nor re-runs the scan below.
   const tickets = useMemo(() => {
     if (orders === undefined) return undefined;
     const scopedOrders = filterOrdersToScope(scope, orders) as KitchenOrderLike[];

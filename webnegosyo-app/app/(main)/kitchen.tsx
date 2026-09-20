@@ -86,7 +86,11 @@ export default function KitchenScreen() {
   const { data: orders, isLoading, error } = useSafeQuery<KitchenOrder[]>(getOrdersRef, {
     limit: ORDERS_FETCH_LIMIT,
   });
-  const { data: allItems } = useSafeQuery<KitchenItemLike[]>(getAllOrderItemsRef, {});
+  // Only the orders on the board — never the tenant's whole history.
+  const { data: allItems } = useSafeQuery<KitchenItemLike[]>(
+    getAllOrderItemsRef,
+    orders === undefined ? "skip" : { orderIds: orders.map((order) => order._id) },
+  );
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const setPrepTime = useSafeMutation(setPrepTimeRef);
   // A deployment without the prep-time bundle has no mutation to call, so the
