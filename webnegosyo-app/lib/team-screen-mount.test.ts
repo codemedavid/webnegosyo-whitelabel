@@ -22,10 +22,12 @@ describe("Team screen mounting", () => {
     expect(registration).toMatch(/href:\s*null/);
   });
 
-  it("is reachable from the Account screen, gated on canOpenTeam", () => {
-    const account = read("app", "(main)", "account.tsx");
-    expect(account).toMatch(/canOpenTeam/);
-    expect(account).toMatch(/\/\(main\)\/team/);
+  it("is reachable from the Manage hub, gated on canOpenTeam", () => {
+    // Team is setup, not account: it lives under Manage with the printer and
+    // the store's products, and the gate is asked there.
+    const manage = read("app", "(main)", "menu.tsx");
+    expect(manage).toMatch(/canOpenTeam/);
+    expect(manage).toMatch(/\/\(main\)\/team/);
   });
 });
 
@@ -48,14 +50,34 @@ describe("Team screen gates", () => {
     // collapses every failure into "Failed to send a request to the Edge
     // Function" — the alert merchants saw with no matching edge log, because
     // the request never left the phone. See lib/manage-staff-transport.ts.
-    const src = screen();
-    expect(src).toMatch(/createManageStaffInvoke/);
-    expect(src).not.toMatch(/functions\.invoke/);
+    // Both staff screens share one client, so this is asserted where it lives.
+    const client = read("lib", "manage-staff-client.ts");
+    expect(client).toMatch(/createManageStaffInvoke/);
+    expect(client).not.toMatch(/functions\.invoke/);
+    expect(screen()).not.toMatch(/functions\.invoke/);
+    expect(read("app", "(main)", "staff", "[userId].tsx")).not.toMatch(/functions\.invoke/);
   });
 
   it("offers the shared permission and screen registries, not private lists", () => {
-    const src = screen();
-    expect(src).toMatch(/PERMISSION_OPTIONS/);
-    expect(src).toMatch(/PINNABLE_SCREENS/);
+    // The forms moved off the screen; the registries moved with them.
+    const forms =
+      read("components", "staff", "AddStaffSheet.tsx") +
+      read("components", "staff", "StaffAccessPanel.tsx");
+    expect(forms).toMatch(/PERMISSION_OPTIONS/);
+    expect(forms).toMatch(/PINNABLE_SCREENS/);
+  });
+
+  it("opens one person's own screen rather than expanding a row in the list", () => {
+    expect(screen()).toMatch(/\/\(main\)\/staff\//);
+    const layout = read("app", "(main)", "_layout.tsx");
+    const registration = layout.match(/name="staff\/\[userId\]"[\s\S]{0,120}/)?.[0] ?? "";
+    expect(registration).toMatch(/href:\s*null/);
+  });
+
+  it("gates the person's own screen on the same rule as the roster", () => {
+    const profile = read("app", "(main)", "staff", "[userId].tsx");
+    expect(profile).toMatch(/canOpenTeam/);
+    expect(profile).toMatch(/from "\.\.\/\.\.\/\.\.\/lib\/staff-service"/);
+    expect(profile).not.toMatch(/from\(["']app_users["']\)/);
   });
 });

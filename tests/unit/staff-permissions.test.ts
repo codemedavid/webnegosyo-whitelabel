@@ -39,6 +39,9 @@ describe('staff permission registry', () => {
       // Kitchen display: see active tickets and bump them, without the full
       // order queue that 'orders' grants.
       'kitchen',
+      // Tables: the floor plan — seat parties, clear tables, see each
+      // table's bill — without the full order queue.
+      'tables',
       'loyalty_manage',
       'loyalty_redeem',
     ])

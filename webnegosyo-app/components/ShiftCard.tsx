@@ -12,6 +12,8 @@ import { useBranchContextStore } from "../stores/branch-context-store";
 import { resolveRegisterOutlet } from "../lib/register-outlet";
 import type { CounterSale } from "../lib/pos-sales";
 import { formatPeso } from "../lib/format";
+import { listOrderActivity } from "../lib/staff-activity/activity-service";
+import { describeActivity, summarizeActorActivity, type OrderActivityEvent } from "../lib/staff-activity/activity";
 import { colors, radius, spacing, typography } from "../theme/colors";
 
 /**
@@ -44,6 +46,10 @@ function ShiftCardContent({ orders, payments, historyReady, historyError }: {
   const [countText, setCountText] = useState("");
   const [isClosing, setIsClosing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // What this person did to web orders during the shift. Read separately
+  // from the drawer and never added to it: a confirmed web order is the
+  // store's money, not this drawer's (shift-drawer.ts).
+  const [activity, setActivity] = useState<OrderActivityEvent[] | null>(null);
 
   const reload = useCallback(async () => {
     if (!tenantId || !userId) {
@@ -53,6 +59,16 @@ function ShiftCardContent({ orders, payments, historyReady, historyError }: {
     const open = await loadOpenShift(tenantId, userId);
     setShift(open);
     setChecked(true);
+    if (!open) {
+      setActivity(null);
+      return;
+    }
+    try {
+      setActivity(await listOrderActivity(tenantId, { sinceIso: open.openedAt, actorUserId: userId }));
+    } catch (error) {
+      console.warn("[shift] activity unavailable", error);
+      setActivity(null);
+    }
   }, [tenantId, userId]);
 
   useFocusEffect(
@@ -60,6 +76,14 @@ function ShiftCardContent({ orders, payments, historyReady, historyError }: {
       void reload();
     }, [reload]),
   );
+
+  const activitySummary = useMemo(() => {
+    if (!shift || !userId || !activity) return null;
+    return summarizeActorActivity(activity, userId, {
+      startMs: Date.parse(shift.openedAt),
+      endMs: shift.closedAt ? Date.parse(shift.closedAt) : Date.now(),
+    });
+  }, [shift, userId, activity]);
 
   const drawer = useMemo(() => {
     if (!shift || !userId || !historyReady) return null;
@@ -208,6 +232,12 @@ function ShiftCardContent({ orders, payments, historyReady, historyError }: {
         </Text>
       </View>
       {!historyReady && <Text style={styles.meta}>{historyError ?? "Loading settlement history…"}</Text>}
+      {activitySummary && (
+        <Text style={styles.meta} accessibilityLabel="Web orders handled this shift">
+          {describeActivity(activitySummary)}
+          {activitySummary.confirmedTotal > 0 ? ` (${formatPeso(activitySummary.confirmedTotal)} confirmed, not in drawer)` : ""}
+        </Text>
+      )}
       {drawer && (
         <>
           <Text style={styles.meta}>

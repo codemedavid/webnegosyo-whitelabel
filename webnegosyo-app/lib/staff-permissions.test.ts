@@ -108,7 +108,12 @@ describe("allowedWorkspaces", () => {
     expect(products).toBeDefined();
     // The daily report rides the same `menu` grant as the shelf it reconciles,
     // so it survives this filter alongside inventory.
-    expect(products!.tabs).toEqual(["product-management", "inventory", "daily-report"]);
+    expect(products!.tabs).toEqual([
+      "product-management",
+      "categories",
+      "inventory",
+      "daily-report",
+    ]);
     expect(products!.defaultTab).toBe("product-management");
   });
 });

@@ -36,6 +36,10 @@ export const STAFF_PERMISSION_KEYS = [
   // Its own key (not "orders") so a cook's tablet can show the board without
   // also granting the full order queue, payments, and cancellations.
   "kitchen",
+  // The floor plan — seats parties, clears tables, and shows each table's
+  // open orders and bill. Its own key (not "orders") so a host stand can run
+  // the floor without the full order queue, payments, and cancellations.
+  "tables",
   // Loyalty programs: creating one, changing its rules, pausing it, and
   // correcting a customer's balance. Its own key rather than 'customers'
   // because a balance correction moves value, and 'vouchers' because a staffer
@@ -93,6 +97,10 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // an unmapped tab defaults to ALLOWED.
   "customer-hub": "customers",
   "product-management": "menu",
+  // Renaming, hiding or rearranging a section rewrites the public menu's
+  // shape. An unmapped tab defaults to ALLOWED, which would let a cashier
+  // empty the storefront's navigation mid-service.
+  categories: "menu",
   // Deciding which branches carry a dish is a menu decision, so it rides the
   // menu key. An unmapped tab defaults to ALLOWED, which would let anyone with
   // only the POS grant take a dish off another branch's board.
@@ -112,6 +120,9 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // unmapped tab defaults to ALLOWED, which would put the board — and its
   // bump button — in front of every staffer with any grant at all.
   kitchen: "kitchen",
+  // The floor plan shows every seated party's bill and can clear a table.
+  // Mapped explicitly because an unmapped tab defaults to ALLOWED.
+  tables: "tables",
   // The scheduled agenda is the order queue re-sorted by requested time, so it
   // rides the orders grant. Mapped explicitly because an unmapped tab defaults
   // to ALLOWED, which would show every pre-order to a pos-only cashier.

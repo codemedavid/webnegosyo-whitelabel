@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { KeyRound, MonitorPlay, Shuffle, Trash2, UserPlus, Wrench } from 'lucide-react'
+import { IdCard, KeyRound, MonitorPlay, Shuffle, Trash2, UserPlus, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,10 +35,8 @@ import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import {
   DEFAULT_SCREEN_OPTIONS,
   selectableDefaultScreens,
-  validateDefaultTab,
 } from '@/lib/staff-default-screen'
 import {
-  createStaffAction,
   removeStaffAction,
   resetStaffPasswordAction,
   updateStaffBranchAction,
@@ -52,6 +51,7 @@ import {
   togglePermission,
   type StaffOutlet,
 } from './staff-fields'
+import { AddStaffDialog } from './add-staff-dialog'
 
 export interface StaffRosterProps {
   tenantId: string
@@ -74,17 +74,6 @@ export interface StaffRosterProps {
   seatsRemaining: number
   seatsLabel: string
   seatsTestId: string
-}
-
-const EMPTY_FORM = {
-  displayName: '',
-  email: '',
-  password: '',
-  permissions: [] as string[],
-  /** '' means the whole store; `resolveStaffOutletId` reads it as null. */
-  outletId: '',
-  /** '' means no preference — the app opens where it always has. */
-  defaultTab: '',
 }
 
 /** How a pinned screen is named on the roster row. */
@@ -128,7 +117,6 @@ export function StaffRoster({
   const [isSaving, setIsSaving] = useState(false)
 
   const [isAddOpen, setIsAddOpen] = useState(false)
-  const [addForm, setAddForm] = useState(EMPTY_FORM)
 
   const [editTarget, setEditTarget] = useState<RosterStaff | null>(null)
   const [editPermissions, setEditPermissions] = useState<string[]>([])
@@ -143,27 +131,6 @@ export function StaffRoster({
   const [screenTab, setScreenTab] = useState('')
 
   const [removeTarget, setRemoveTarget] = useState<RosterStaff | null>(null)
-
-  const handleCreate = async () => {
-    setIsSaving(true)
-    const result = await createStaffAction(tenantId, tenantSlug, {
-      ...addForm,
-      // On a branch page the branch is not a question the owner should be asked
-      // twice; the page they are standing on is the answer.
-      outletId: scopeOutlet ? scopeOutlet.id : addForm.outletId,
-      // '' is the "No preference" option; the service takes null for it.
-      defaultTab: addForm.defaultTab === '' ? null : addForm.defaultTab,
-    })
-    setIsSaving(false)
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    toast.success(`${addForm.displayName} added`)
-    setAddForm(EMPTY_FORM)
-    setIsAddOpen(false)
-    router.refresh()
-  }
 
   const handleUpdatePermissions = async () => {
     if (!editTarget) return
@@ -304,6 +271,14 @@ export function StaffRoster({
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
+                {/* The profile is where this person's shifts and order history
+                    live; the row keeps the quick edits. */}
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/${tenantSlug}/admin/staff/${member.user_id}`}>
+                    <IdCard className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -368,107 +343,15 @@ export function StaffRoster({
         </p>
       )}
 
-      {/* Add */}
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {scopeOutlet ? `Add someone to ${scopeOutlet.name}` : 'Add staff member'}
-            </DialogTitle>
-            <DialogDescription>
-              They log in with this email and password on the web admin, merchant app, and POS.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="staff-name">Name</Label>
-              <Input
-                id="staff-name"
-                value={addForm.displayName}
-                onChange={(e) => setAddForm({ ...addForm, displayName: e.target.value })}
-                placeholder="e.g. Maria Santos"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="staff-email">Email</Label>
-              <Input
-                id="staff-email"
-                type="email"
-                value={addForm.email}
-                onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                placeholder="staff@example.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="staff-password">Password</Label>
-              <Input
-                id="staff-password"
-                type="password"
-                value={addForm.password}
-                onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                placeholder="At least 8 characters"
-              />
-            </div>
-            {scopeOutlet === null && outlets.length > 0 && (
-              <div className="space-y-2">
-                <Label>Works at</Label>
-                <BranchRadioGroup
-                  idPrefix="add-staff"
-                  outlets={outlets}
-                  value={addForm.outletId}
-                  onChange={(outletId) => setAddForm({ ...addForm, outletId })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  A branch account sees only that branch&apos;s orders and sales.
-                </p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Can access</Label>
-              <PermissionCheckboxes
-                idPrefix="add-staff"
-                selected={addForm.permissions}
-                onToggle={(key) => {
-                  const permissions = togglePermission(addForm.permissions, key)
-                  setAddForm({
-                    ...addForm,
-                    permissions,
-                    // Dropping a permission drops any screen it was the key to.
-                    // Left alone, the form would submit a choice the service is
-                    // about to reject, and the owner would never learn it did
-                    // not stick.
-                    defaultTab: validateDefaultTab(addForm.defaultTab, permissions) ?? '',
-                  })
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Opens on</Label>
-              <DefaultScreenRadioGroup
-                idPrefix="add-staff"
-                options={selectableDefaultScreens({
-                  permissions: addForm.permissions,
-                  isBranchScoped: Boolean(scopeOutlet) || addForm.outletId !== '',
-                  branchCount: outlets.length,
-                })}
-                value={addForm.defaultTab}
-                onChange={(defaultTab) => setAddForm({ ...addForm, defaultTab })}
-              />
-              <p className="text-xs text-muted-foreground">
-                The screen this account sees first in the merchant app.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={isSaving}>
-              {isSaving ? 'Adding…' : 'Add staff'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AddStaffDialog
+        tenantId={tenantId}
+        tenantSlug={tenantSlug}
+        open={isAddOpen}
+        onOpenChange={setIsAddOpen}
+        outlets={outlets}
+        scopeOutlet={scopeOutlet}
+        onCreated={() => router.refresh()}
+      />
 
       {/* Permissions */}
       <Dialog open={editTarget !== null} onOpenChange={(open) => !open && setEditTarget(null)}>

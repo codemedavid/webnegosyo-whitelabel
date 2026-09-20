@@ -1,90 +1,64 @@
-import { StaffPerformancePanel } from "../../components/StaffPerformancePanel";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { router } from "expo-router";
 
-import { supabase, supabaseAnonKey, supabaseUrl } from "../../lib/supabase";
-import { useAuthStore } from "../../stores/auth-store";
-import { useOutlets } from "../../lib/use-outlets";
-import {
-  canOpenTeam,
-  createStaff,
-  listStaff,
-  removeStaff,
-  resetStaffPassword,
-  updateStaffBranch,
-  updateStaffDefaultScreen,
-  updateStaffPermissions,
-  withTenantScope,
-  type ManageStaffInvoke,
-  type StaffMember,
-} from "../../lib/staff-service";
-import { createManageStaffInvoke } from "../../lib/manage-staff-transport";
-import { isTabAllowed } from "../../lib/staff-permissions";
-import {
-  effectivePermissions,
-  toggleEffectivePermission,
-  togglePermission,
-} from "../../lib/team-permissions";
 import { BackHeader } from "../../components/BackHeader";
+import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { SegmentedControl } from "../../components/SegmentedControl";
+import { AddStaffSheet, type NewStaffDraft } from "../../components/staff/AddStaffSheet";
+import { StaffCard } from "../../components/staff/StaffCard";
+import { StaffSalesLeaderboard } from "../../components/staff/StaffSalesLeaderboard";
+import { StaffStatStrip } from "../../components/staff/StaffStatStrip";
+import { formatPeso } from "../../lib/format";
+import { useManageStaff } from "../../lib/manage-staff-client";
+import { listShifts, type ShiftRecord } from "../../lib/shift-service";
+import { canOpenTeam, createStaff, listStaff, type StaffMember } from "../../lib/staff-service";
+import { isTabAllowed } from "../../lib/staff-permissions";
+import { listOrderActivity } from "../../lib/staff-activity/activity-service";
+import type { OrderActivityEvent } from "../../lib/staff-activity/activity";
 import {
-  PERMISSION_OPTIONS,
-  PINNABLE_SCREENS,
-  describePermissions,
-} from "../../lib/team-roster";
-import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
-import { Card } from "../../components/Card";
+  buildStaffDirectory,
+  summarizeTeam,
+} from "../../lib/staff-activity/staff-directory";
+import { formatShiftLength } from "../../lib/staff-format";
+import { useOutlets } from "../../lib/use-outlets";
+import { useAuthStore } from "../../stores/auth-store";
+import { colors, radius, spacing, typography } from "../../theme/colors";
 
-// Team management: the owner's roster on the phone. Every write goes through
-// the manage-staff edge function (lib/staff-service.ts) — the phone never
-// holds the service-role key, and the server re-derives the caller's tenant
-// and authority from the JWT, so this screen is presentation only.
+/**
+ * The team, as people you can walk up to.
+ *
+ * This screen used to be a roster of expandable rows: every account's
+ * permissions, branch, pinned screen and password reset lived inside the list,
+ * so scrolling past four colleagues meant scrolling past forty switches, and
+ * nothing on it answered the question an owner actually opens it with — who
+ * is on the counter right now, and what did they do today.
+ *
+ * Now the roster IS the report. Each card carries that person's own figures
+ * and opens their screen, where their shifts, their day-by-day history and
+ * everything that can be changed about their account live together.
+ *
+ * Every write still goes through the manage-staff edge function
+ * (lib/staff-service.ts via lib/manage-staff-client.ts) — the phone never
+ * holds the service-role key, and the server re-derives the caller's tenant
+ * and authority from the JWT, so this screen is presentation only.
+ */
 
-// Deliberately NOT the supabase-js functions client: its fetch wrapper awaits
-// the session with no deadline and reports every failure — hung session read,
-// dropped socket, dead network — as the same "Failed to send a request to the
-// Edge Function". See lib/manage-staff-transport.ts.
-const invokeManageStaffRaw: ManageStaffInvoke = createManageStaffInvoke({
-  functionsUrl: `${supabaseUrl.replace(/\/$/, "")}/functions/v1`,
-  anonKey: supabaseAnonKey,
-  getSession: () => supabase.auth.getSession(),
-  fetchImpl: fetch,
-});
+const PERIODS = [
+  { label: "Today", value: 1 },
+  { label: "7 days", value: 7 },
+  { label: "30 days", value: 30 },
+] as const;
 
-const MIN_PASSWORD_LENGTH = 8;
+const VIEWS = [
+  { label: "Team", value: "team" as const },
+  { label: "Sales", value: "sales" as const },
+];
 
-interface NewStaffForm {
-  email: string;
-  password: string;
-  displayName: string;
-  permissions: string[];
-  outletId: string | null;
-  defaultTab: string | null;
-}
-
-const EMPTY_FORM: NewStaffForm = {
-  email: "",
-  password: "",
-  displayName: "",
-  permissions: [],
-  outletId: null,
-  defaultTab: null,
-};
-
-/** Screens the picker should offer for this grant list. */
-function pinnableFor(permissions: string[] | null) {
-  const holder = { role: "admin", isOwner: false, permissions };
-  return PINNABLE_SCREENS.filter((screen) => isTabAllowed(holder, screen.tab));
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function TeamScreen() {
   const role = useAuthStore((s) => s.role);
@@ -93,54 +67,64 @@ export default function TeamScreen() {
   const myOutletId = useAuthStore((s) => s.outletId);
   const isDemo = useAuthStore((s) => s.isDemo);
   const myUserId = useAuthStore((s) => s.userId);
-  const impersonatedTenantId = useAuthStore((s) => s.impersonatedTenantId);
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
 
-  // A superadmin viewing a store has no store of its own, so the viewed one
-  // has to travel with each request or the function has no tenant to act on.
-  const invokeManageStaff = useMemo(
-    () => withTenantScope(invokeManageStaffRaw, impersonatedTenantId),
-    [impersonatedTenantId]
-  );
-
-  const allowed = canOpenTeam({
-    role,
-    isOwner,
-    permissions,
-    outletId: myOutletId,
-    isDemo,
-  });
+  const invokeManageStaff = useManageStaff();
+  const allowed = canOpenTeam({ role, isOwner, permissions, outletId: myOutletId, isDemo });
+  const canSeeSales = isTabAllowed({ role, isOwner, permissions }, "analytics");
 
   const { outlets } = useOutlets();
+  const [view, setView] = useState<"team" | "sales">("team");
+  const [days, setDays] = useState<number>(7);
+  const [query, setQuery] = useState("");
+  const [showFormer, setShowFormer] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [shifts, setShifts] = useState<ShiftRecord[]>([]);
+  const [events, setEvents] = useState<OrderActivityEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState<NewStaffForm>(EMPTY_FORM);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
-
   const outletName = useCallback(
     (outletId: string | null) =>
-      outletId
-        ? outlets.find((o) => o.id === outletId)?.name ?? "Unknown branch"
-        : "Whole store",
-    [outlets]
+      outletId ? outlets.find((o) => o.id === outletId)?.name ?? "Unknown branch" : "Whole store",
+    [outlets],
+  );
+
+  const nowMs = Date.now();
+  const window = useMemo(
+    () => ({ startMs: Date.now() - days * DAY_MS, endMs: Date.now() }),
+    [days],
   );
 
   const reload = useCallback(async () => {
     try {
       setLoadError(null);
-      setStaff(await listStaff(invokeManageStaff));
+      const roster = await listStaff(invokeManageStaff);
+      setStaff(roster);
     } catch (error) {
-      setLoadError(
-        error instanceof Error ? error.message : "Could not load your team"
-      );
-    } finally {
+      setLoadError(error instanceof Error ? error.message : "Could not load your team");
       setIsLoading(false);
+      return;
     }
-  }, [invokeManageStaff]);
+
+    // Shifts and activity are supporting detail: a store whose log cannot be
+    // read still gets a roster it can manage, rather than an error screen.
+    const sinceIso = new Date(window.startMs).toISOString();
+    const outletId = isOwner ? undefined : myOutletId ?? undefined;
+    if (tenantId && !isDemo) {
+      const [shiftRows, activityRows] = await Promise.all([
+        listShifts(tenantId, { outletId, sinceIso }).catch(() => [] as ShiftRecord[]),
+        listOrderActivity(tenantId, { outletId, sinceIso }).catch(() => [] as OrderActivityEvent[]),
+      ]);
+      setShifts(shiftRows);
+      setEvents(activityRows);
+    }
+    setIsLoading(false);
+  }, [invokeManageStaff, tenantId, isDemo, isOwner, myOutletId, window.startMs]);
 
   useEffect(() => {
     if (!allowed) {
@@ -150,91 +134,54 @@ export default function TeamScreen() {
     void reload();
   }, [allowed, reload]);
 
-  /** Runs a mutation, reports failure to the merchant, and refreshes the roster. */
-  const run = useCallback(
-    async (work: () => Promise<void>) => {
-      setBusy(true);
+  const entries = useMemo(
+    () => buildStaffDirectory({ members: staff, events, shifts, window, nowMs: Date.now() }),
+    [staff, events, shifts, window],
+  );
+  const stats = useMemo(() => summarizeTeam(entries), [entries]);
+  const formerCount = entries.filter((entry) => entry.isFormer).length;
+  const visible = entries.filter((entry) => {
+    if (entry.isFormer !== showFormer) return false;
+    if (query.trim() === "") return true;
+    const needle = query.trim().toLowerCase();
+    return (
+      entry.name.toLowerCase().includes(needle) ||
+      (entry.email ?? "").toLowerCase().includes(needle)
+    );
+  });
+
+  const handleCreate = (draft: NewStaffDraft) => {
+    setBusy(true);
+    void (async () => {
       try {
-        await work();
+        await createStaff(invokeManageStaff, {
+          ...draft,
+          // A branch admin may only fill its own branch; the server enforces
+          // this too, so the lock here is honesty, not the boundary.
+          outletId: isOwner ? draft.outletId : myOutletId,
+        });
+        setIsAddOpen(false);
         await reload();
       } catch (error) {
         Alert.alert(
-          "Could not save",
-          error instanceof Error ? error.message : "The staff request failed"
+          "Could not add them",
+          error instanceof Error ? error.message : "The staff request failed",
         );
       } finally {
         setBusy(false);
       }
-    },
-    [reload]
-  );
-
-  const handleCreate = () => {
-    if (form.permissions.length === 0) {
-      Alert.alert("Pick permissions", "Select at least one permission for this account.");
-      return;
-    }
-    void run(async () => {
-      await createStaff(invokeManageStaff, {
-        email: form.email,
-        password: form.password,
-        displayName: form.displayName,
-        permissions: form.permissions,
-        // A branch admin may only fill its own branch; the server enforces
-        // this too, so the lock here is honesty, not the boundary.
-        outletId: isOwner ? form.outletId : myOutletId,
-        defaultTab: form.defaultTab,
-      });
-      setForm(EMPTY_FORM);
-      setShowAddForm(false);
-    });
+    })();
   };
-
-  const handleRemove = (member: StaffMember) => {
-    Alert.alert(
-      "Remove staff account?",
-      `${member.displayName ?? member.email ?? "This account"} will lose access immediately. This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: () => void run(() => removeStaff(invokeManageStaff, member.userId)),
-        },
-      ]
-    );
-  };
-
-  const handleResetPassword = (member: StaffMember) => {
-    const draft = passwordDrafts[member.userId] ?? "";
-    if (draft.length < MIN_PASSWORD_LENGTH) {
-      Alert.alert(
-        "Password too short",
-        `Use at least ${MIN_PASSWORD_LENGTH} characters.`
-      );
-      return;
-    }
-    void run(async () => {
-      await resetStaffPassword(invokeManageStaff, member.userId, draft);
-      setPasswordDrafts((drafts) => ({ ...drafts, [member.userId]: "" }));
-      Alert.alert("Password updated", "Share the new password with your staff member.");
-    });
-  };
-
-  const formScreens = useMemo(
-    () => pinnableFor(form.permissions.length ? form.permissions : null),
-    [form.permissions]
-  );
 
   if (!allowed) {
     return (
       <View style={styles.screen}>
         <BackHeader title="Team" />
-        <View style={styles.center}>
-          <Text style={styles.sub}>
-            Only the store owner or a branch admin can manage staff.
-          </Text>
-        </View>
+        <EmptyState
+          icon="account"
+          title="Not your roster"
+          message="Only the store owner or a branch admin can manage staff."
+        />
       </View>
     );
   }
@@ -243,414 +190,185 @@ export default function TeamScreen() {
     <View style={styles.screen}>
       <BackHeader
         title="Team"
-        subtitle={
-          isOwner
-            ? "Add staff accounts and choose what each one can do"
-            : `Staff for ${outletName(myOutletId)}`
-        }
+        subtitle={isOwner ? "Who works here, and what each of them did" : `Staff for ${outletName(myOutletId)}`}
       />
-      <ScrollView contentContainerStyle={styles.content}>
-      {isTabAllowed({ role, isOwner, permissions }, "analytics") && <StaffPerformancePanel staff={staff} />}
 
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => setShowAddForm((open) => !open)}
-        activeOpacity={0.8}
-        disabled={busy}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          // Its own flag, not `isLoading`: a pull must spin the control, never
+          // replace the list the merchant is looking at with a loader.
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void reload().finally(() => setIsRefreshing(false));
+            }}
+            tintColor={colors.accent}
+          />
+        }
       >
-        <Text style={styles.addButtonText}>
-          {showAddForm ? "Cancel" : "+ Add Staff Account"}
-        </Text>
-      </TouchableOpacity>
+        {canSeeSales ? (
+          <View style={styles.pad}>
+            <SegmentedControl
+              options={VIEWS}
+              value={view}
+              onChange={setView}
+              accessibilityPrefix="Show"
+            />
+          </View>
+        ) : null}
 
-      {showAddForm && (
-        <Card title="New staff account" style={styles.section}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={form.email}
-            onChangeText={(email) => setForm((f) => ({ ...f, email }))}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder={`Password (min ${MIN_PASSWORD_LENGTH} characters)`}
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="none"
-            value={form.password}
-            onChangeText={(password) => setForm((f) => ({ ...f, password }))}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Display name"
-            placeholderTextColor={colors.textSecondary}
-            value={form.displayName}
-            onChangeText={(displayName) => setForm((f) => ({ ...f, displayName }))}
-          />
-
-          <Text style={styles.groupLabel}>Permissions</Text>
-          {PERMISSION_OPTIONS.map((option) => (
-            <View key={option.key} style={styles.toggleRow}>
-              <View style={styles.toggleCopy}>
-                <Text style={styles.toggleLabel}>{option.label}</Text>
-                <Text style={styles.toggleDescription}>{option.description}</Text>
-              </View>
-              <Switch
-                value={form.permissions.includes(option.key)}
-                onValueChange={() =>
-                  setForm((f) => ({
-                    ...f,
-                    permissions: togglePermission(f.permissions, option.key),
-                  }))
-                }
+        {view === "sales" && canSeeSales ? (
+          <View style={styles.pad}>
+            <StaffSalesLeaderboard staff={staff} />
+          </View>
+        ) : isLoading ? (
+          <LoadingState message="Loading your team…" />
+        ) : loadError ? (
+          <ErrorState title="Couldn't load your team" message={loadError} onRetry={() => void reload()} />
+        ) : (
+          <>
+            <View style={styles.pad}>
+              <SegmentedControl
+                options={PERIODS}
+                value={days}
+                onChange={setDays}
+                accessibilityPrefix="Count"
               />
             </View>
-          ))}
 
-          {isOwner && outlets.length > 0 && (
-            <>
-              <Text style={styles.groupLabel}>Branch</Text>
-              <View style={styles.chipRow}>
-                <Chip
-                  label="Whole store"
-                  selected={form.outletId === null}
-                  onPress={() => setForm((f) => ({ ...f, outletId: null }))}
-                />
-                {outlets.map((outlet) => (
-                  <Chip
-                    key={outlet.id}
-                    label={outlet.name}
-                    selected={form.outletId === outlet.id}
-                    onPress={() => setForm((f) => ({ ...f, outletId: outlet.id }))}
-                  />
-                ))}
-              </View>
-            </>
-          )}
-
-          <Text style={styles.groupLabel}>Opens on</Text>
-          <View style={styles.chipRow}>
-            <Chip
-              label="Let the app decide"
-              selected={form.defaultTab === null}
-              onPress={() => setForm((f) => ({ ...f, defaultTab: null }))}
+            <StaffStatStrip
+              stats={[
+                { label: "Team", value: String(stats.headcount), hint: `${formerCount} past` },
+                {
+                  label: "On shift",
+                  value: String(stats.onShift),
+                  tone: stats.onShift > 0 ? "positive" : "default",
+                  hint: stats.onShift === 0 ? "No drawer open" : "Drawer open now",
+                },
+                {
+                  label: "Rang up",
+                  value: formatPeso(stats.posSalesTotal, 0),
+                  hint: `${stats.posSales} counter sales`,
+                },
+                {
+                  label: "Handled",
+                  value: String(stats.ordersHandled),
+                  tone: stats.cancelled > 0 ? "warning" : "default",
+                  hint: stats.cancelled === 0 ? "None cancelled" : `${stats.cancelled} cancelled`,
+                },
+                {
+                  label: "Variance",
+                  value: stats.netVariance === null ? "—" : formatPeso(stats.netVariance, 0),
+                  tone: stats.netVariance !== null && stats.netVariance !== 0 ? "warning" : "default",
+                  hint:
+                    stats.netVariance === null
+                      ? "No drawer counted"
+                      : `${formatShiftLength(stats.workedMs)} on the floor`,
+                },
+              ]}
             />
-            {formScreens.map((screen) => (
-              <Chip
-                key={screen.tab}
-                label={screen.label}
-                selected={form.defaultTab === screen.tab}
-                onPress={() => setForm((f) => ({ ...f, defaultTab: screen.tab }))}
+
+            <View style={styles.pad}>
+              <TextInput
+                style={styles.search}
+                placeholder="Search by name or email"
+                placeholderTextColor={colors.textSecondary}
+                accessibilityLabel="Search staff"
+                autoCapitalize="none"
+                value={query}
+                onChangeText={setQuery}
               />
-            ))}
-          </View>
+            </View>
 
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleCreate}
-            disabled={busy}
-            activeOpacity={0.8}
-          >
-            {busy ? (
-              <ActivityIndicator color={colors.textOnDark} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Create Account</Text>
-            )}
-          </TouchableOpacity>
-        </Card>
-      )}
+            <View style={[styles.pad, styles.actions]}>
+              <Button
+                label="Add staff"
+                icon="plus"
+                size="sm"
+                onPress={() => setIsAddOpen(true)}
+                disabled={busy}
+              />
+              {formerCount > 0 ? (
+                <Button
+                  label={showFormer ? "Current staff" : `Past staff (${formerCount})`}
+                  tone="ghost"
+                  size="sm"
+                  onPress={() => setShowFormer((current) => !current)}
+                />
+              ) : null}
+            </View>
 
-      {isLoading ? (
-        <ActivityIndicator style={styles.loader} color={colors.primary} />
-      ) : loadError ? (
-        <Card style={styles.section}>
-          <Text style={styles.errorText}>{loadError}</Text>
-          <TouchableOpacity onPress={() => void reload()}>
-            <Text style={styles.retryText}>Try again</Text>
-          </TouchableOpacity>
-        </Card>
-      ) : (
-        staff.map((member) => {
-          const isExpanded = expandedId === member.userId;
-          const isSelf = member.userId === myUserId;
-          const manageable = !member.isOwner;
-          return (
-            <Card key={member.userId} style={styles.section}>
-              <TouchableOpacity
-                onPress={() =>
-                  manageable && setExpandedId(isExpanded ? null : member.userId)
-                }
-                activeOpacity={manageable ? 0.7 : 1}
-              >
-                <View style={styles.memberHeader}>
-                  <View style={styles.memberCopy}>
-                    <Text style={styles.memberName}>
-                      {member.displayName ?? member.email ?? "Staff"}
-                      {member.isOwner ? " 👑" : isSelf ? " (you)" : ""}
-                    </Text>
-                    <Text style={styles.memberMeta}>{member.email ?? "—"}</Text>
-                    <Text style={styles.memberMeta}>
-                      {outletName(member.outletId)} ·{" "}
-                      {member.isOwner ? "Owner" : describePermissions(member.permissions)}
-                    </Text>
-                  </View>
-                  {manageable && (
-                    <Text style={styles.memberChevron}>{isExpanded ? "▾" : "▸"}</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-
-              {isExpanded && manageable && (
-                <View style={styles.manageBlock}>
-                  <Text style={styles.groupLabel}>Permissions</Text>
-                  {PERMISSION_OPTIONS.map((option) => {
-                    // null = full access: every switch is on, and a flip must
-                    // send the whole list minus this key, not just this key.
-                    const held = effectivePermissions(member.permissions).includes(option.key);
-                    return (
-                      <View key={option.key} style={styles.toggleRow}>
-                        <View style={styles.toggleCopy}>
-                          <Text style={styles.toggleLabel}>{option.label}</Text>
-                        </View>
-                        <Switch
-                          value={held}
-                          disabled={busy}
-                          onValueChange={() => {
-                            const next = toggleEffectivePermission(
-                              member.permissions,
-                              option.key
-                            );
-                            if (next.length === 0) {
-                              Alert.alert(
-                                "Keep one permission",
-                                "An account needs at least one permission. Remove the account instead."
-                              );
-                              return;
-                            }
-                            void run(() =>
-                              updateStaffPermissions(invokeManageStaff, member.userId, next)
-                            );
-                          }}
-                        />
-                      </View>
-                    );
-                  })}
-
-                  {isOwner && outlets.length > 0 && (
-                    <>
-                      <Text style={styles.groupLabel}>Branch</Text>
-                      <View style={styles.chipRow}>
-                        <Chip
-                          label="Whole store"
-                          selected={member.outletId === null}
-                          onPress={() =>
-                            void run(() =>
-                              updateStaffBranch(invokeManageStaff, member.userId, null)
-                            )
-                          }
-                        />
-                        {outlets.map((outlet) => (
-                          <Chip
-                            key={outlet.id}
-                            label={outlet.name}
-                            selected={member.outletId === outlet.id}
-                            onPress={() =>
-                              void run(() =>
-                                updateStaffBranch(invokeManageStaff, member.userId, outlet.id)
-                              )
-                            }
-                          />
-                        ))}
-                      </View>
-                    </>
-                  )}
-
-                  <Text style={styles.groupLabel}>Opens on</Text>
-                  <View style={styles.chipRow}>
-                    <Chip
-                      label="Let the app decide"
-                      selected={member.defaultTab === null}
-                      onPress={() =>
-                        void run(() =>
-                          updateStaffDefaultScreen(invokeManageStaff, member.userId, null)
-                        )
-                      }
-                    />
-                    {pinnableFor(member.permissions).map((screen) => (
-                      <Chip
-                        key={screen.tab}
-                        label={screen.label}
-                        selected={member.defaultTab === screen.tab}
-                        onPress={() =>
-                          void run(() =>
-                            updateStaffDefaultScreen(
-                              invokeManageStaff,
-                              member.userId,
-                              screen.tab
-                            )
-                          )
-                        }
-                      />
-                    ))}
-                  </View>
-
-                  <Text style={styles.groupLabel}>Reset password</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={`New password (min ${MIN_PASSWORD_LENGTH} characters)`}
-                    placeholderTextColor={colors.textSecondary}
-                    autoCapitalize="none"
-                    value={passwordDrafts[member.userId] ?? ""}
-                    onChangeText={(draft) =>
-                      setPasswordDrafts((drafts) => ({
-                        ...drafts,
-                        [member.userId]: draft,
-                      }))
-                    }
+            <View style={[styles.pad, styles.list]}>
+              {visible.length === 0 ? (
+                <EmptyState
+                  icon="account"
+                  title={query.trim() === "" ? "Nobody here yet" : "No one matches that search"}
+                  message={
+                    query.trim() === ""
+                      ? showFormer
+                        ? "Nobody has left this store yet."
+                        : "Add an account so your staff can ring up sales and take orders."
+                      : undefined
+                  }
+                  inset
+                />
+              ) : (
+                visible.map((entry) => (
+                  <StaffCard
+                    key={entry.userId}
+                    entry={entry}
+                    branchName={outlets.length > 0 ? outletName(entry.outletId) : undefined}
+                    isSelf={entry.userId === myUserId}
+                    nowMs={nowMs}
+                    onPress={() => router.push(`/(main)/staff/${entry.userId}`)}
                   />
-                  <TouchableOpacity
-                    style={styles.secondaryButton}
-                    onPress={() => handleResetPassword(member)}
-                    disabled={busy}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.secondaryButtonText}>Set New Password</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleRemove(member)}
-                    disabled={busy}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.removeButtonText}>Remove Account</Text>
-                  </TouchableOpacity>
-                </View>
+                ))
               )}
-            </Card>
-          );
-        })
-      )}
+            </View>
+
+            <Text style={styles.footnote}>
+              Counter sales are credited to whoever rang them up. Web orders count as work handled,
+              never as drawer cash.
+            </Text>
+          </>
+        )}
       </ScrollView>
+
+      <AddStaffSheet
+        visible={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+        onCreate={handleCreate}
+        busy={busy}
+        outlets={outlets}
+        canAssignBranch={isOwner}
+        branchName={outletName(myOutletId)}
+      />
     </View>
-  );
-}
-
-interface ChipProps {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}
-
-function Chip({ label, selected, onPress }: ChipProps) {
-  return (
-    <TouchableOpacity
-      style={[styles.chip, selected && styles.chipSelected]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.xl },
-  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
-  sub: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.lg, textAlign: "center" },
-  addButton: {
-    backgroundColor: colors.card,
-    borderRadius: radius.full,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.separator,
-    marginBottom: spacing.lg,
-    ...shadow.sm,
-  },
-  addButtonText: { ...typography.heading, color: colors.textPrimary },
-  section: { marginBottom: spacing.lg },
-  loader: { marginTop: spacing.xl },
-  errorText: { ...typography.body, color: colors.danger, marginBottom: spacing.sm },
-  retryText: { ...typography.body, color: colors.primary, fontWeight: "600" },
-  input: {
-    borderWidth: 1,
+  content: { paddingBottom: spacing.xxl, gap: spacing.md },
+  pad: { paddingHorizontal: spacing.xl },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  list: { gap: spacing.sm },
+  search: {
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.separator,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    marginBottom: spacing.md,
+    paddingVertical: spacing.md,
     color: colors.textPrimary,
-    ...typography.body,
-  },
-  groupLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 6,
-  },
-  toggleCopy: { flex: 1, paddingRight: spacing.md },
-  toggleLabel: { ...typography.body, color: colors.textPrimary },
-  toggleDescription: { ...typography.caption, color: colors.textSecondary },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
     backgroundColor: colors.card,
   },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textPrimary },
-  chipTextSelected: { color: colors.textOnDark, fontWeight: "700" },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: spacing.lg,
-  },
-  primaryButtonText: { ...typography.heading, color: colors.textOnDark },
-  secondaryButton: {
-    backgroundColor: colors.card,
-    borderRadius: radius.full,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.separator,
-  },
-  secondaryButtonText: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
-  memberHeader: { flexDirection: "row", alignItems: "center" },
-  memberCopy: { flex: 1 },
-  memberName: { ...typography.heading, color: colors.textPrimary },
-  memberMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  memberChevron: { ...typography.heading, color: colors.textSecondary },
-  manageBlock: {
-    marginTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.separator,
+  footnote: {
+    ...typography.small,
+    color: colors.textTertiary,
+    paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
   },
-  removeButton: {
-    backgroundColor: colors.danger,
-    borderRadius: radius.full,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: spacing.lg,
-  },
-  removeButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "800" },
 });

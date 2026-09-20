@@ -60,6 +60,13 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     permission: 'kitchen',
   },
   {
+    tab: 'tables',
+    label: 'Tables',
+    description: 'The floor plan — who is seated where, and what they ordered',
+    workspace: 'operations',
+    permission: 'tables',
+  },
+  {
     tab: 'scheduled',
     label: 'Scheduled Orders',
     description: 'Pre-orders sorted by the time they were asked for',
@@ -135,6 +142,13 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     tab: 'product-management',
     label: 'Manage Products',
     description: 'Edit the menu, prices, and availability',
+    workspace: 'products',
+    permission: 'menu',
+  },
+  {
+    tab: 'categories',
+    label: 'Categories',
+    description: 'Menu sections, their order and icons',
     workspace: 'products',
     permission: 'menu',
   },

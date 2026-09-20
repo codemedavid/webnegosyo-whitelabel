@@ -7,29 +7,13 @@ import {
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
 import type { DefaultScreenOption } from '@/lib/staff-default-screen'
+import { ALL_BRANCHES_LABEL, branchLabel, type StaffOutlet } from '@/lib/outlets/branch-label'
 
-/** A branch as the staff surfaces need to show and offer it. */
-export interface StaffOutlet {
-  id: string
-  name: string
-}
+// Re-exported so the client forms that already import from here keep working;
+// the definitions live in lib because server pages call them too.
+export { ALL_BRANCHES_LABEL, branchLabel }
+export type { StaffOutlet }
 
-export const ALL_BRANCHES_LABEL = 'All branches'
-
-/**
- * The branch a member covers, named rather than identified.
- *
- * A branch that no longer exists still has to render as words: deleting a
- * branch sets the column to NULL, but between that write and the next fetch a
- * stale row would otherwise print a raw uuid into the merchant's staff list.
- */
-export function branchLabel(
-  outletId: string | null | undefined,
-  outlets: readonly StaffOutlet[]
-): string {
-  if (!outletId) return ALL_BRANCHES_LABEL
-  return outlets.find((outlet) => outlet.id === outletId)?.name ?? 'Unknown branch'
-}
 
 /** Adds or drops one permission key, never mutating the list it was given. */
 export function togglePermission(list: readonly string[], key: StaffPermissionKey): string[] {

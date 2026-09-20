@@ -25,6 +25,8 @@ export const STAFF_PERMISSION_KEYS = [
   'vouchers',
   // The kitchen display — sees every active ticket and bumps orders to ready.
   'kitchen',
+  // The floor plan — seat parties, clear tables, see each table's bill.
+  'tables',
   // Loyalty programs: creating one, changing its rules, pausing it, and
   // correcting a customer's balance. Its own key rather than 'customers'
   // because a balance correction moves value, and 'vouchers' because a staffer

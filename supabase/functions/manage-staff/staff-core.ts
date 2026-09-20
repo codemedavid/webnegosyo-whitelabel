@@ -30,6 +30,7 @@ export const STAFF_PERMISSION_KEYS = [
   'order_refund',
   'vouchers',
   'kitchen',
+  'tables',
   'loyalty_manage',
   'loyalty_redeem',
 ] as const
@@ -128,6 +129,7 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   dashboard: null,
   orders: 'orders',
   kitchen: 'kitchen',
+  tables: 'tables',
   scheduled: 'orders',
   pos: 'pos',
   'pos-sales': 'pos',
@@ -138,6 +140,7 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   trends: 'analytics',
   'product-analytics': 'analytics',
   'product-management': 'menu',
+  categories: 'menu',
   inventory: 'menu',
   'daily-report': 'menu',
   payments: 'store_setup',

@@ -57,11 +57,21 @@ describe("withTenantScope", () => {
   });
 });
 
-describe("Team screen wiring", () => {
-  const source = readFileSync(join(__dirname, "../app/(main)/team.tsx"), "utf8");
+describe("Staff screen wiring", () => {
+  // The scoping lives in the shared client both staff screens build their
+  // invoke from, so neither can forget it (and a third screen cannot either).
+  const client = readFileSync(join(__dirname, "manage-staff-client.ts"), "utf8");
 
   it("scopes its transport to the impersonated store", () => {
-    expect(source).toMatch(/withTenantScope\(/);
-    expect(source).toMatch(/impersonatedTenantId/);
+    expect(client).toMatch(/withTenantScope\(/);
+    expect(client).toMatch(/impersonatedTenantId/);
   });
+
+  it.each(["team.tsx", "staff/[userId].tsx"])(
+    "%s reaches the function through that one client",
+    (screen) => {
+      const source = readFileSync(join(__dirname, "..", "app", "(main)", screen), "utf8");
+      expect(source).toMatch(/useManageStaff/);
+    },
+  );
 });

@@ -70,6 +70,10 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
     label: "Kitchen Display",
     description: "The kitchen board — see tickets and bump orders",
   },
+  tables: {
+    label: "Tables",
+    description: "The floor plan — seat parties, clear tables, see each table's bill",
+  },
 };
 
 /** Every grantable permission, in registry order, labelled for the owner. */
@@ -86,6 +90,7 @@ const SCREEN_LABELS: Record<string, string> = {
   dashboard: "Home",
   orders: "Orders",
   kitchen: "Kitchen Display",
+  tables: "Tables",
   scheduled: "Scheduled Orders",
   pos: "POS",
   "pos-sales": "Drawer",
@@ -94,7 +99,7 @@ const SCREEN_LABELS: Record<string, string> = {
   customers: "Customers",
   trends: "Trends",
   "product-analytics": "Product Performance",
-  "product-management": "Manage Products",
+  "product-management": "Products",
   inventory: "Stock",
   "daily-report": "Daily Report",
   payments: "Payment Methods",

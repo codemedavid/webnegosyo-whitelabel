@@ -19,6 +19,10 @@ export const STAFF_PERMISSION_KEYS = [
   // Its own key (not 'orders') so a cook's tablet can show the board without
   // also granting the full order queue, payments, and cancellations.
   'kitchen',
+  // The floor plan — seats parties, clears tables, and shows each table's
+  // open orders and bill. Its own key (not 'orders') so a host stand can run
+  // the floor without the full order queue, payments, and cancellations.
+  'tables',
   // Loyalty programs: creating one, changing its rules, pausing it, and
   // correcting a customer's balance. Its own key rather than 'customers'
   // because a balance correction moves value, and 'vouchers' because a staffer
@@ -81,6 +85,10 @@ export const STAFF_PERMISSION_LABELS: Record<
   kitchen: {
     label: 'Kitchen Display',
     description: 'See active tickets on the kitchen display and mark them ready',
+  },
+  tables: {
+    label: 'Tables',
+    description: 'See the floor plan, seat parties and clear tables',
   },
   loyalty_manage: {
     label: 'Loyalty Programs',
@@ -168,6 +176,9 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   customers: 'customers',
   vouchers: 'vouchers',
   loyalty: 'loyalty_manage',
+  // The roster plus who confirmed, cancelled and rang what: the owner's, or a
+  // branch admin's for their own branch.
+  staff: 'branch_staff',
 }
 
 /**
@@ -204,6 +215,9 @@ const MOBILE_TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   trends: 'analytics',
   'product-analytics': 'analytics',
   'product-management': 'menu',
+  // Renaming, hiding or rearranging a menu section rewrites the storefront's
+  // navigation, so it rides the same grant the product list does.
+  categories: 'menu',
 }
 
 export function permissionForMobileTab(tab: string): StaffPermissionKey | null {
