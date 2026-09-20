@@ -161,8 +161,39 @@ interface Window {
   endMs?: number;
 }
 
+/**
+ * An explicit `[startMs, endMs)` from the screen, or `null` when the screen
+ * sent none and the rolling `daysBack` behaviour applies.
+ *
+ * Refused loudly rather than coerced: `Number(undefined)` is NaN and
+ * `new Date(NaN).toISOString()` throws a bare RangeError with no clue which
+ * screen sent it — the same reasoning `getDashboardStatsByPeriod` already
+ * applies in the orders adapter.
+ */
+function explicitWindow(args: Record<string, unknown>): Window | null {
+  if (args.startMs === undefined && args.endMs === undefined) return null;
+
+  const startMs = Number(args.startMs);
+  const endMs = Number(args.endMs);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    throw new Error(
+      "Invalid report window — startMs and endMs must both be epoch milliseconds."
+    );
+  }
+  if (endMs <= startMs) {
+    throw new Error("Invalid report window — endMs must be after startMs.");
+  }
+  if (endMs - startMs > MAX_DAYS_BACK * DAY_MS) {
+    throw new Error(`Report windows are limited to ${MAX_DAYS_BACK} days.`);
+  }
+  return { startMs, endMs };
+}
+
 /** `daysBack` as Convex reads it: a rolling window ending now. */
 function rollingWindow(args: Record<string, unknown>, defaultDays: number): Window {
+  const explicit = explicitWindow(args);
+  if (explicit) return explicit;
+
   const days = boundedInt(args.daysBack, defaultDays, 1, MAX_DAYS_BACK);
   return { startMs: Date.now() - days * DAY_MS };
 }
@@ -175,6 +206,9 @@ function previousWindow(window: Window): Window {
 
 /** Inclusive N-day window ending on the current LOCAL day, as `getTrends` uses. */
 function localDayWindow(args: Record<string, unknown>, defaultDays: number): Window {
+  const explicit = explicitWindow(args);
+  if (explicit) return explicit;
+
   const days = boundedInt(args.daysBack, defaultDays, 1, MAX_DAYS_BACK);
   return { startMs: localDayStartMs(Date.now()) - (days - 1) * DAY_MS };
 }
@@ -206,7 +240,7 @@ async function fetchOrders(
   ).gte("created_at", new Date(window.startMs).toISOString());
 
   if (window.endMs !== undefined) {
-    builder = builder.lte("created_at", new Date(window.endMs).toISOString());
+    builder = builder.lt("created_at", new Date(window.endMs).toISOString());
   }
   // Pushed to PostgREST rather than filtered after the cap: on a busy store a
   // post-filter would let cancelled rows crowd real sales out of the window.
@@ -227,19 +261,26 @@ async function fetchItems(
   scope: BranchScope,
   window: Window
 ): Promise<AnalyticsItem[]> {
+  let builder = scopeToBranch(
+    client
+      .from("order_items")
+      .select(ANALYTICS_ITEM_COLUMNS)
+      .eq("orders.tenant_id", tenantId)
+      .gte("orders.created_at", new Date(window.startMs).toISOString())
+      .neq("orders.status", "cancelled"),
+    scope,
+    "orders.outlet_id"
+  );
+
+  // The upper bound belongs on the JOINED order, not on the item: an item has
+  // no date of its own, so without this a window asking for one day would take
+  // that day's first item and every item sold since.
+  if (window.endMs !== undefined) {
+    builder = builder.lt("orders.created_at", new Date(window.endMs).toISOString());
+  }
+
   const rows = await unwrap<AnalyticsItemRow[] | null>(
-    scopeToBranch(
-      client
-        .from("order_items")
-        .select(ANALYTICS_ITEM_COLUMNS)
-        .eq("orders.tenant_id", tenantId)
-        .gte("orders.created_at", new Date(window.startMs).toISOString())
-        .neq("orders.status", "cancelled"),
-      scope,
-      "orders.outlet_id"
-    )
-      .order("orders(created_at)", { ascending: false })
-      .limit(STATS_LIMIT)
+    builder.order("orders(created_at)", { ascending: false }).limit(STATS_LIMIT)
   );
   return (rows ?? []).map(toAnalyticsItem);
 }
@@ -260,11 +301,16 @@ async function fetchEvents(
     const id = JSON.stringify(scope.outletId);
     builder = builder.or(`metadata->>outlet_id.eq.${id},and(metadata->>outlet_id.is.null,metadata->>outletId.eq.${id})`);
   }
+  builder = builder
+    .in("type", types)
+    .gte("created_at", new Date(window.startMs).toISOString());
+
+  if (window.endMs !== undefined) {
+    builder = builder.lt("created_at", new Date(window.endMs).toISOString());
+  }
+
   const rows = await unwrap<AnalyticsEventRow[] | null>(
-    builder.in("type", types)
-      .gte("created_at", new Date(window.startMs).toISOString())
-      .order("created_at", { ascending: false })
-      .limit(STATS_LIMIT)
+    builder.order("created_at", { ascending: false }).limit(STATS_LIMIT)
   );
   return (rows ?? []).map(toAnalyticsEvent);
 }

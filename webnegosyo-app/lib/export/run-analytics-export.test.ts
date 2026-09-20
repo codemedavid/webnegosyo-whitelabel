@@ -13,7 +13,7 @@ describe("runAnalyticsExport", () => {
     });
 
     await runAnalyticsExport({
-      daysBack: 30,
+      periodLabel: "Last 30 days",
       nowMs: NOW_MS,
       sales: null,
       revenueBreakdown: null,
@@ -28,7 +28,7 @@ describe("runAnalyticsExport", () => {
     });
 
     expect(share).toHaveBeenCalledTimes(1);
-    expect(shared[0].fileName).toBe("analytics_30d_2026-08-19.csv");
+    expect(shared[0].fileName).toBe("analytics_last-30-days_2026-08-19.csv");
     expect(shared[0].csv).toContain("Analytics Report");
     expect(shared[0].csv).toContain("Last 30 days");
   });

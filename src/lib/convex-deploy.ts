@@ -108,7 +108,7 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // app falls back to those two channels rather than showing a split that
 // silently excludes the register.
 // v30 scopes sales, funnel and product analytics by outlet before aggregation.
-const CURRENT_SCHEMA_VERSION = 31;
+const CURRENT_SCHEMA_VERSION = 32;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

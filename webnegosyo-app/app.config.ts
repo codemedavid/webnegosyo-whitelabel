@@ -43,8 +43,21 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 1.0.6 (build 41) was still WAITING_FOR_REVIEW on 2026-09-10 when the
   // Modern receipt theme + per-printer paper width shipped; a new binary under
   // a version that may be approved any minute would strand it, so 1.0.7.
-  version: "1.0.7",
-  orientation: "portrait",
+  //
+  // 1.0.6 went READY_FOR_SALE on its own, closing that train. Builds 42-44
+  // were uploaded under 1.0.7 but no 1.0.7 App Store version record was ever
+  // created, so they sit unreleased in TestFlight. Re-verified against
+  // /v1/apps/6761642956/appStoreVersions on 2026-09-20 before bumping. Hence
+  // 1.0.8 — a clean train for this release, distinct from those three stale
+  // 1.0.7 binaries.
+  version: "1.0.8",
+  // "default" hands the decision to the OS, which is the only way a tablet can
+  // ever be used sideways — locking it here is what merchants reported as the
+  // app "only working portrait" on a counter stand. Handsets are NOT set loose
+  // by this: iPhones are pinned upright by the per-idiom Info.plist keys below,
+  // and Android handsets by the runtime lock in app/_layout.tsx, which sizes
+  // the decision off the window (lib/screen-size.ts).
+  orientation: "default",
   icon: "./assets/icon.png",
   splash: {
     image: "./assets/splash-icon.png",
@@ -58,6 +71,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "com.webnegosyo.admin",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      // iOS reads orientation PER IDIOM: the plain key governs iPhone, the
+      // "~ipad" key governs iPad. Spelling both out is what lets one binary
+      // keep every handset upright while letting every tablet turn — the
+      // top-level `orientation: "default"` alone would unlock both.
+      UISupportedInterfaceOrientations: ["UIInterfaceOrientationPortrait"],
+      "UISupportedInterfaceOrientations~ipad": [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationPortraitUpsideDown",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+      ],
       NSCameraUsageDescription: "Scan customer order QR codes",
       NSBluetoothAlwaysUsageDescription:
         "This app uses Bluetooth to connect to thermal receipt printers for printing customer orders.",

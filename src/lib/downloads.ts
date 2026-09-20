@@ -59,7 +59,7 @@ export interface MobileDownload {
 /**
  * Android is not on Google Play yet, so it ships as a sideloaded APK.
  *
- * The APK is hosted off-repo: at ~111 MB it exceeds GitHub's 100 MB *file*
+ * The APK is hosted off-repo: at ~112 MB it exceeds GitHub's 100 MB *file*
  * limit, so it cannot be committed to `public/downloads/`.
  *
  * `href` points at a **GitHub Release asset**, not an EAS artifact URL. EAS
@@ -89,9 +89,9 @@ export const mobileDownloads: MobileDownload[] = [
     label: "WebNegosyo for Android",
     store: "Direct download",
     kind: "apk",
-    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.7/WebNegosyo-1.0.7-build34.apk",
+    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.8/WebNegosyo-1.0.8-build37.apk",
     available: true,
-    version: "1.0.7",
-    size: "111 MB",
+    version: "1.0.8",
+    size: "112 MB",
   },
 ];

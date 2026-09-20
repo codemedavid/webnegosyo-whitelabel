@@ -9,7 +9,7 @@ const NOW_MS = Date.UTC(2026, 7, 19, 8, 0, 0);
 
 function fullInput(): AnalyticsReportInput {
   return {
-    daysBack: 7,
+    periodLabel: "Last 7 days",
     nowMs: NOW_MS,
     sales: {
       totalRevenue: 12500,
@@ -165,5 +165,28 @@ describe("buildAnalyticsReportCsv", () => {
     const csv = buildAnalyticsReportCsv(fullInput());
 
     expect(csv).toContain("1,Spanish Latte,18,2700");
+  });
+});
+
+/**
+ * The exported file has to say which days it covers.
+ *
+ * "Last 7 days" was true while that was the only thing a report could be
+ * about. Now that a merchant can export one picked day, a file headed
+ * "Last 7 days" is a file that lies about its own contents — and a CSV
+ * outlives the screen it came from.
+ */
+describe("buildAnalyticsReportCsv — period heading", () => {
+  it("names the picked dates rather than a rolling day count", () => {
+    const csv = buildAnalyticsReportCsv({ ...fullInput(), periodLabel: "Sep 3" });
+
+    expect(csv).toContain("Period,Sep 3");
+    expect(csv).not.toContain("Last 7 days");
+  });
+
+  it("names a range", () => {
+    const csv = buildAnalyticsReportCsv({ ...fullInput(), periodLabel: "Sep 1 – Sep 14" });
+
+    expect(csv).toContain("Sep 1 – Sep 14");
   });
 });

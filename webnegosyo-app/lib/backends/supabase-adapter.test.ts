@@ -53,7 +53,8 @@ function fakeClient(responses: Record<string, TableResponse[]>) {
       "eq",
       "in",
       "gte",
-      "lte",
+      "lte",      "gte",
+      "lt",
       "order",
       "limit",
       "insert",
@@ -1333,5 +1334,67 @@ describe("runPlatformMutation — orders:createOrder partial failure", () => {
     await expect(
       runPlatformMutation(client, TENANT, "orders:createOrder", args)
     ).rejects.toThrow(ORDER_ID);
+  });
+});
+
+/**
+ * A date-ranged Orders screen.
+ *
+ * The queue read is a "most recent N" page, so narrowing it AFTER the fetch
+ * would answer "which of the last 50 orders fell on Sep 3?" — on a busy store
+ * that is nearly always none, and an empty list is indistinguishable from a
+ * day that took no orders. The window has to reach PostgREST.
+ */
+describe("runPlatformQuery — orders:getOrders over a date window", () => {
+  const START = Date.parse("2026-09-02T16:00:00.000Z"); // Manila midnight, Sep 3
+  const END = START + 24 * 60 * 60 * 1000;
+
+  /** Every window bound pushed to the orders query, as ISO strings. */
+  function windowBounds(calls: RecordedCall[]): unknown[] {
+    return [...opsOf(calls, "gte"), ...opsOf(calls, "lt"), ...opsOf(calls, "lte")].map(
+      (args) => args[1]
+    );
+  }
+
+  it("pushes both bounds to the query, not to a post-filter", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    // Act
+    await runPlatformQuery(client, TENANT, "orders:getOrders", { startMs: START, endMs: END });
+
+    // Assert
+    const bounds = windowBounds(calls);
+    expect(bounds).toContain(new Date(START).toISOString());
+    expect(bounds).toContain(new Date(END).toISOString());
+  });
+
+  it("still reads the recent queue when no window is sent", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {});
+
+    expect(windowBounds(calls)).toHaveLength(0);
+  });
+
+  it("keeps the status filter alongside the window", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {
+      startMs: START,
+      endMs: END,
+      status: "delivered",
+    });
+
+    expect(opsOf(calls, "eq")).toContainEqual(["status", "delivered"]);
+    expect(windowBounds(calls)).toHaveLength(2);
+  });
+
+  it("refuses a window that is not a pair of finite instants", async () => {
+    const { client } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrders", { startMs: "sep 3", endMs: END })
+    ).rejects.toThrow(/epoch milliseconds/i);
   });
 });

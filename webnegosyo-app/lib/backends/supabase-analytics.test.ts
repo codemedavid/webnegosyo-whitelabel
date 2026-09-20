@@ -267,3 +267,116 @@ describe('branch funnel events', () => {
     expect(opsOf(calls, 'or')).toContainEqual(['metadata->>outlet_id.eq."north",and(metadata->>outlet_id.is.null,metadata->>outletId.eq."north")']);
   });
 });
+
+/**
+ * Bounded windows: a report asked for ONE DAY or a custom RANGE, not the
+ * rolling "since N days ago" every analytics query used to assume.
+ *
+ * What matters here is that the upper bound reaches PostgREST on every table a
+ * query reads. An unbounded read still returns the right FIRST day and then
+ * every day after it, so a merchant looking at Sep 3 would be shown Sep 3
+ * onwards and told it was Sep 3 — a wrong figure that looks authoritative.
+ */
+describe("runPlatformAnalyticsQuery — bounded windows", () => {
+  const START = Date.parse("2026-09-02T16:00:00.000Z"); // Manila midnight, Sep 3
+  const END = START + 24 * 60 * 60 * 1000;
+
+  /** The window a table was read with, as [gte, lte-or-lt] ISO strings. */
+  function boundsOn(
+    calls: readonly { table: string; ops: readonly { method: string; args: readonly unknown[] }[] }[],
+    table: string
+  ) {
+    const ops = calls.filter((c) => c.table === table).flatMap((c) => c.ops);
+    return {
+      lower: ops.filter((o) => o.method === "gte").map((o) => o.args[1]),
+      upper: ops.filter((o) => o.method === "lte" || o.method === "lt").map((o) => o.args[1]),
+    };
+  }
+
+  it("bounds the orders read at BOTH ends for a picked day", async () => {
+    const { client, calls } = fakePlatformClient({ orders: [{ data: [orderRow()], error: null }] });
+
+    await runPlatformAnalyticsQuery(client, TENANT, "analytics:getPaymentMethodAnalytics", {
+      startMs: START,
+      endMs: END,
+    });
+
+    const bounds = boundsOn(calls, "orders");
+    expect(bounds.lower).toContain(new Date(START).toISOString());
+    expect(bounds.upper).toContain(new Date(END).toISOString());
+  });
+
+  it("bounds the ITEMS read at both ends, so a picked day cannot count later days", async () => {
+    const { client, calls } = fakePlatformClient({ order_items: [{ data: [], error: null }] });
+
+    await runPlatformAnalyticsQuery(client, TENANT, "analytics:getTopItems", {
+      startMs: START,
+      endMs: END,
+    });
+
+    const bounds = boundsOn(calls, "order_items");
+    expect(bounds.lower).toContain(new Date(START).toISOString());
+    expect(bounds.upper).toContain(new Date(END).toISOString());
+  });
+
+  it("bounds the EVENTS read at both ends", async () => {
+    const { client, calls } = fakePlatformClient({ analytics_events: [{ data: [], error: null }] });
+
+    await runPlatformAnalyticsQuery(client, TENANT, "analytics:getUpsellAnalytics", {
+      startMs: START,
+      endMs: END,
+    });
+
+    const bounds = boundsOn(calls, "analytics_events");
+    expect(bounds.lower).toContain(new Date(START).toISOString());
+    expect(bounds.upper).toContain(new Date(END).toISOString());
+  });
+
+  it("compares a bounded window against the window of equal length before it", async () => {
+    const { client, calls } = fakePlatformClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformAnalyticsQuery(client, TENANT, "analytics:getSalesAnalytics", {
+      startMs: START,
+      endMs: END,
+    });
+
+    // Two reads: the picked day, and the day before it.
+    const bounds = boundsOn(calls, "orders");
+    expect(bounds.lower).toContain(new Date(START - (END - START)).toISOString());
+    expect(bounds.upper).toContain(new Date(START).toISOString());
+  });
+
+  it("keeps the rolling window when only daysBack is sent", async () => {
+    const { client, calls } = fakePlatformClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformAnalyticsQuery(client, TENANT, "analytics:getPaymentMethodAnalytics", {
+      daysBack: 7,
+    });
+
+    const bounds = boundsOn(calls, "orders");
+    expect(bounds.lower).toContain(new Date(NOW - 7 * 24 * 60 * 60 * 1000).toISOString());
+    expect(bounds.upper).toHaveLength(0);
+  });
+
+  it("refuses a window that is not a pair of finite instants", async () => {
+    const { client } = fakePlatformClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformAnalyticsQuery(client, TENANT, "analytics:getTrends", {
+        startMs: "yesterday",
+        endMs: END,
+      })
+    ).rejects.toThrow(/epoch milliseconds/i);
+  });
+
+  it("refuses a window whose end precedes its start", async () => {
+    const { client } = fakePlatformClient({ orders: [{ data: [], error: null }] });
+
+    await expect(
+      runPlatformAnalyticsQuery(client, TENANT, "analytics:getTrends", {
+        startMs: END,
+        endMs: START,
+      })
+    ).rejects.toThrow();
+  });
+});

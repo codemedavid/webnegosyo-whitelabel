@@ -149,6 +149,30 @@ export function isPlatformRefSupported(ref: string): boolean {
 
 // --- queries --------------------------------------------------------------
 
+/**
+ * The half-open `[startMs, endMs)` a report asked for, or `null` for the plain
+ * recent queue every live screen still reads.
+ *
+ * Refused rather than coerced, for the reason `getDashboardStatsByPeriod`
+ * already documents: `new Date(NaN).toISOString()` throws a bare RangeError
+ * with no clue which screen sent it.
+ */
+function orderWindow(args: Record<string, unknown>): { startMs: number; endMs: number } | null {
+  if (args.startMs === undefined && args.endMs === undefined) return null;
+
+  const startMs = Number(args.startMs);
+  const endMs = Number(args.endMs);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    throw new Error(
+      "Invalid order window — startMs and endMs must both be epoch milliseconds."
+    );
+  }
+  if (endMs <= startMs) {
+    throw new Error("Invalid order window — endMs must be after startMs.");
+  }
+  return { startMs, endMs };
+}
+
 async function getOrders(
   client: PlatformClient,
   tenantId: string,
@@ -162,6 +186,17 @@ async function getOrders(
 
   if (typeof args.status === "string") {
     builder = builder.eq("status", args.status);
+  }
+
+  // A report asking for one day or a custom range. Pushed to PostgREST rather
+  // than filtered after the limit: this is a most-recent-N page, so a
+  // post-filter would answer "which of the last N orders fell on that day?"
+  // and return nothing at all on a store that has traded since.
+  const window = orderWindow(args);
+  if (window) {
+    builder = builder
+      .gte("created_at", new Date(window.startMs).toISOString())
+      .lt("created_at", new Date(window.endMs).toISOString());
   }
 
   const rows = await unwrap<PlatformOrderRow[] | null>(

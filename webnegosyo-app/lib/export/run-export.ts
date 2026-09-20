@@ -11,6 +11,11 @@ import {
 } from "./analytics-export";
 import { buildCustomersCsv, type ExportCustomerInput } from "./customers-export";
 import { exportFileName, formatExportDay } from "./dates";
+
+/** A period label reduced to something safe in a file name ("Sep 1 – Sep 14" -> "sep-1-sep-14"). */
+function slugForFileName(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "report";
+}
 import {
   buildOrdersCsv,
   filterOrdersForExport,
@@ -117,7 +122,7 @@ export async function runAnalyticsExport({
 }: RunAnalyticsExportInput): Promise<void> {
   const csv = buildAnalyticsReportCsv(report);
   await share({
-    fileName: `analytics_${report.daysBack}d_${formatExportDay(report.nowMs)}.csv`,
+    fileName: `analytics_${slugForFileName(report.periodLabel)}_${formatExportDay(report.nowMs)}.csv`,
     csv,
   });
 }
