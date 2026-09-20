@@ -1520,16 +1520,11 @@ describe("runPlatformQuery — orders:getOrderPaymentsForOrders", () => {
     expect(opsOf(calls, "limit")).toEqual([[ORDER_LEDGER_LIMIT * 2]]);
   });
 
-  it("reads nothing for an empty or entirely foreign id list", async () => {
+  it("reads nothing for an explicitly empty id list", async () => {
     const { client, calls } = fakeClient({});
 
     expect(
       await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [] })
-    ).toEqual([]);
-    expect(
-      await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {
-        orderIds: [CONVEX_ORDER_ID],
-      })
     ).toEqual([]);
     expect(calls).toHaveLength(0);
   });
@@ -1575,5 +1570,39 @@ describe("runPlatformQuery — orders:getOrderPaymentsForOrders", () => {
     await expect(
       runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [ORDER_ID] })
     ).rejects.toThrow("statement timeout");
+  });
+});
+
+describe("runPlatformQuery — orders:getOrderPaymentsForOrders refuses a malformed ask", () => {
+  // An empty ledger reads on screen as "this shift is reconciled". A caller
+  // that forgets `orderIds`, or hands over ids this database cannot hold,
+  // must not be answered with silence — the drawer's own doctrine is that no
+  // drawer beats a drawer reconciled against a ledger that isn't all there.
+  it("refuses when orderIds is missing entirely", async () => {
+    const { client } = fakeClient({});
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {})
+    ).rejects.toThrow(/orderIds/i);
+  });
+
+  it("refuses when every id given is one this database cannot hold", async () => {
+    const { client } = fakeClient({});
+
+    await expect(
+      runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", {
+        orderIds: [CONVEX_ORDER_ID],
+      })
+    ).rejects.toThrow(/orderIds/i);
+  });
+
+  it("still answers an explicitly empty shift with an empty ledger", async () => {
+    // Nothing was asked about, so nothing is the complete answer.
+    const { client, calls } = fakeClient({});
+
+    expect(
+      await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [] })
+    ).toEqual([]);
+    expect(calls).toHaveLength(0);
   });
 });

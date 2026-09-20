@@ -13,15 +13,6 @@ const bulkRef = "orders:getOrderPaymentsForOrders" as unknown as FunctionReferen
 const MISSING_FUNCTION_MESSAGE = "Update this store's backend to read settlement history.";
 const TRUNCATED_MESSAGE = TRUNCATED_LEDGER_MESSAGE;
 
-/** Whether any one order's ledger reached the per-order ceiling and may be cut short. */
-function hasTruncatedLedger(payments: readonly StaffPayment[]): boolean {
-  const counts = new Map<string, number>();
-  for (const payment of payments) {
-    counts.set(payment.orderId, (counts.get(payment.orderId) ?? 0) + 1);
-  }
-  return [...counts.values()].some((count) => count >= ORDER_LEDGER_LIMIT);
-}
-
 function OrderLedger({ id, report }: { id: string; report: (id: string, read: LedgerRead) => void }) {
   const { data, error, isMissingFunction } = useSafeQuery<StaffPayment[]>(perOrderRef, { orderId: id });
   useEffect(() => {
@@ -69,9 +60,13 @@ export function OrderSettlementReader({ ids, children }: {
   if (!isBulk) return <PerOrderReader ids={ids}>{children}</PerOrderReader>;
 
   const payments = bulk.data ?? [];
-  const error =
-    bulk.error ??
-    (bulk.isMissingFunction ? MISSING_FUNCTION_MESSAGE : hasTruncatedLedger(payments) ? TRUNCATED_MESSAGE : null);
+  // No truncation check here. The bulk read is capped at the per-order ceiling
+  // times the orders it names, and the adapter REFUSES a request that fills
+  // that cap rather than returning it short — so anything that arrives is
+  // whole, and it arrives as `bulk.error` when it is not. Counting rows per
+  // order here as well would strand a busy shift whose one big order
+  // legitimately carries a ceiling's worth of settlements.
+  const error = bulk.error ?? (bulk.isMissingFunction ? MISSING_FUNCTION_MESSAGE : null);
   const ready = !error && bulk.data !== undefined;
   return <>{children(payments, ready, error)}</>;
 }

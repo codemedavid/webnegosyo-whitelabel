@@ -372,7 +372,18 @@ async function getOrderPaymentsForOrders(
   tenantId: string,
   args: Record<string, unknown>
 ) {
-  const rows = await readByOrderIds(chunkOrderIds(args.orderIds), async (ids) => {
+  const chunks = chunkOrderIds(args.orderIds);
+  // An empty ledger reads on screen as "this shift is reconciled", so silence
+  // is the one answer this must never give to a malformed ask: a caller that
+  // omitted `orderIds`, or sent ids this database cannot hold. An explicitly
+  // empty shift is a different thing — nothing was asked about, so nothing is
+  // the complete answer.
+  const isEmptyAsk = Array.isArray(args.orderIds) && args.orderIds.length === 0;
+  if (chunks.length === 0 && !isEmptyAsk) {
+    throw new Error("orders:getOrderPaymentsForOrders needs orderIds this database can hold");
+  }
+
+  const rows = await readByOrderIds(chunks, async (ids) => {
     const cap = ORDER_LEDGER_LIMIT * ids.length;
     const page = await unwrap<PlatformOrderPaymentRow[] | null>(
       client

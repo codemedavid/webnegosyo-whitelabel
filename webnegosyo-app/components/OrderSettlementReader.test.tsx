@@ -2,7 +2,7 @@ import React from "react";
 import { render } from "@testing-library/react-native";
 import { Text } from "react-native";
 import { OrderSettlementReader, type StaffPayment } from "./OrderSettlementReader";
-import { ORDER_LEDGER_LIMIT } from "../lib/backends/supabase-adapter";
+import { ORDER_LEDGER_LIMIT, TRUNCATED_LEDGER_MESSAGE } from "../lib/backends/supabase-adapter";
 
 /**
  * The reader used to mount one ledger read PER ORDER. On the platform backend
@@ -86,10 +86,26 @@ describe("on the platform backend", () => {
     expect(outputOf(screen)).toEqual({ n: 0, ready: false, error: null });
   });
 
-  it("refuses to reconcile when one order's ledger hit the ceiling", () => {
+  it("trusts a busy order's complete ledger instead of guessing at truncation", () => {
+    // The bulk read is capped at the per-order ceiling times the orders it
+    // names, and the adapter REFUSES a request that fills that cap. So a
+    // single order carrying a ceiling's worth of rows inside a multi-order
+    // read is complete data, and refusing it here would strand a busy shift.
     mockUseSafeQuery.mockReturnValue({
       data: Array.from({ length: ORDER_LEDGER_LIMIT }, (_, i) => payment(A, `p${i}`)),
       error: null,
+      isMissingFunction: false,
+    });
+
+    const screen = render(<Probe ids={[A, B]} />);
+
+    expect(outputOf(screen)).toEqual({ n: ORDER_LEDGER_LIMIT, ready: true, error: null });
+  });
+
+  it("surfaces the adapter's refusal when the read really was cut short", () => {
+    mockUseSafeQuery.mockReturnValue({
+      data: undefined,
+      error: TRUNCATED_LEDGER_MESSAGE,
       isMissingFunction: false,
     });
 
