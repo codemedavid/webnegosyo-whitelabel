@@ -101,7 +101,7 @@ describe('createPaymentMethod with an injected ProvisioningCtx (MCP path)', () =
     stub.terminalQueue.push({ data: { id: 'pm_1', name: 'GCash' }, error: null })
 
     const ctx: ProvisioningCtx = { client: stub.client }
-    const result = await createPaymentMethod(TENANT, 'GCash', 'ref', undefined, true, [], false, ctx)
+    const result = await createPaymentMethod(TENANT, 'GCash', 'ref', undefined, true, [], false, false, ctx)
 
     expect(result).toMatchObject({ id: 'pm_1' })
     expect(stub.from).toHaveBeenCalledWith('payment_methods')

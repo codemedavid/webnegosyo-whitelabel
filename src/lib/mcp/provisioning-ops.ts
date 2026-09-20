@@ -10,13 +10,27 @@ import {
     updateMenuItemFields,
     listMenuItemsForProvisioning,
     listCategoriesForProvisioning,
+    updateCategoryFields,
 } from '@/lib/admin-service'
 import { createAddonLibraryEntry, listAddonLibraryForProvisioning } from '@/lib/addon-library-service'
 import { attachAddonEntriesToItems } from '@/lib/addon-bulk-attach'
-import { createUpsellPair, bulkUpdateBcgClassification, listUpsellPairsForProvisioning } from '@/lib/menu-engineering-service'
+import { createUpsellPair, updateUpsellPair, bulkUpdateBcgClassification, listUpsellPairsForProvisioning } from '@/lib/menu-engineering-service'
 import { classifyMenu } from '@/lib/menu-engineering-classify'
 import { reorderCategoriesForProvisioning, reorderMenuItemsForProvisioning } from '@/lib/menu-arrangement'
-import { createBundle, listBundlesForProvisioning } from '@/lib/bundles-service'
+import { createBundle, updateBundle, updateBundleFields, setBundleImage, listBundlesForProvisioning } from '@/lib/bundles-service'
+import { createTenantOwnerWithClient, listTenantUsersWithClient } from '@/lib/tenant-owner-provisioning'
+import {
+    setTenantImage,
+    addTenantBanner,
+    updateTenantBanner,
+    clearTenantBanner,
+    listTenantBanners,
+    readBrandingSnapshot,
+    resolveTenantSlug,
+} from '@/lib/branding-images'
+import { describeBrandingOptions, listBrandingFieldIds } from '@/lib/branding-options'
+import { CURATED_ICON_GROUPS, LUCIDE_PREFIX, isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-icon-catalog'
+import { assertSingleImageSource, pickImageSource, type ImageSource } from '@/lib/image-source'
 import { withFeatureWarning, type TenantFeatureFlags } from '@/lib/mcp/feature-flag-warnings'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
 import { saveBrandingAction } from '@/app/actions/branding'
@@ -95,14 +109,18 @@ function withoutTenantId(input: Record<string, unknown>): Record<string, unknown
  * about a dead one is how a merchant ends up with promos nobody can see.
  */
 async function readTenantFeatureFlags(tenantId: string, ctx: ProvisioningCtx): Promise<TenantFeatureFlags> {
-    const { data, error } = await ctx.client
-        .from('tenants')
-        .select('bundles_enabled, menu_engineering_enabled, checkout_upsell_enabled')
-        .eq('id', tenantId)
-        .single()
+    try {
+        const { data, error } = await ctx.client
+            .from('tenants')
+            .select('bundles_enabled, menu_engineering_enabled, checkout_upsell_enabled')
+            .eq('id', tenantId)
+            .single()
 
-    if (error || !data) return {}
-    return data as unknown as TenantFeatureFlags
+        if (error || !data) return {}
+        return data as unknown as TenantFeatureFlags
+    } catch {
+        return {}
+    }
 }
 
 // Erase the type parameter when storing in the heterogeneous registry. Each op
@@ -121,8 +139,15 @@ const ops: ProvisioningOp<unknown>[] = [
     }),
     op({
         name: 'add_category',
-        description: 'Add a menu category to a tenant. Envelope: { tenantId, name, order, ... }.',
-        input: tenantScoped(),
+        description: 'Add a menu category to a tenant. Envelope: { tenantId, name, description?, icon?, icon_color?, order?, display_layout? }. icon is "lucide:<name>" from list_category_icons (or a single emoji); icon_color is a hex like #FF6B00.',
+        input: tenantScoped({
+            name: z.string().min(2).describe('Category display name'),
+            description: z.string().optional(),
+            icon: z.string().optional().describe('"lucide:<name>" from list_category_icons, or one emoji'),
+            icon_color: z.string().optional().describe('6-digit hex tint for the icon, e.g. #FF6B00'),
+            order: z.number().int().min(0).optional().describe('Position in the menu (0 = first)'),
+            display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).optional(),
+        }),
         execute: (ctx, input) => createCategory((input as { tenantId: string }).tenantId, withoutTenantId(input as Record<string, unknown>) as never, ctx),
     }),
     op({
@@ -245,7 +270,7 @@ const ops: ProvisioningOp<unknown>[] = [
     }),
     op({
         name: 'add_payment_method',
-        description: 'Add a payment method to a tenant. Envelope: { tenantId, name, details?, qrCodeUrl?, isActive?, orderTypes?, requirePaymentProof? }.',
+        description: 'Add a payment method to a tenant. Envelope: { tenantId, name, details?, qrCodeUrl?, isActive?, orderTypes?, requirePaymentProof?, skipPaymentDetails? }.',
         input: z.object({
             tenantId: UUID,
             name: z.string().min(1),
@@ -254,22 +279,29 @@ const ops: ProvisioningOp<unknown>[] = [
             isActive: z.boolean().optional(),
             orderTypes: z.array(z.string()).optional(),
             requirePaymentProof: z.boolean().optional(),
+            skipPaymentDetails: z.boolean().optional(),
         }),
         execute: (ctx, input) => {
             const i = input as {
                 tenantId: string; name: string; details?: string; qrCodeUrl?: string
                 isActive?: boolean; orderTypes?: string[]; requirePaymentProof?: boolean
+                skipPaymentDetails?: boolean
             }
-            return createPaymentMethod(i.tenantId, i.name, i.details, i.qrCodeUrl, i.isActive ?? true, i.orderTypes ?? [], i.requirePaymentProof ?? false, ctx)
+            return createPaymentMethod(i.tenantId, i.name, i.details, i.qrCodeUrl, i.isActive ?? true, i.orderTypes ?? [], i.requirePaymentProof ?? false, i.skipPaymentDetails ?? false, ctx)
         },
     }),
     op({
         name: 'update_branding',
-        description: 'Partially update a tenant\'s branding (logo, colors, templates, hero, footer). Only include fields that should change. Envelope: { tenantId, tenantSlug, branding: {...} }.',
-        input: z.object({ tenantId: UUID, tenantSlug: z.string().min(1), branding: brandingPatchSchema }),
-        execute: (ctx, input) => {
-            const i = input as { tenantId: string; tenantSlug: string; branding: BrandingPatchInput }
-            return saveBrandingAction(i.tenantId, i.tenantSlug, i.branding, ctx)
+        description: 'Partially update a tenant\'s branding (logo, colors, templates, hero, footer, welcome page). Only include fields that should change. Call get_branding first to see current values and the allowed options for every select field. Envelope: { tenantId, branding: {...} }. For images use set_branding_image / add_banner instead of pasting URLs.',
+        input: z.object({
+            tenantId: UUID,
+            tenantSlug: z.string().min(1).optional().describe('Optional; resolved from tenantId when omitted'),
+            branding: brandingPatchSchema,
+        }),
+        execute: async (ctx, input) => {
+            const i = input as { tenantId: string; tenantSlug?: string; branding: BrandingPatchInput }
+            const slug = i.tenantSlug ?? (await resolveTenantSlug(ctx, i.tenantId))
+            return saveBrandingAction(i.tenantId, slug, i.branding, ctx)
         },
     }),
     op({
@@ -542,6 +574,305 @@ const ops: ProvisioningOp<unknown>[] = [
             const { data, error } = await getTenantBySlugSupabase((input as { slug: string }).slug)
             if (error) throw error
             return data
+        },
+    }),
+    // ---------------------------------------------------------------------
+    // Owner account (superadmin-only; excluded from the merchant surface)
+    // ---------------------------------------------------------------------
+    op({
+        name: 'create_tenant_owner',
+        description:
+            "Create the OWNER login for a tenant: an auth user plus the app_users owner row (full access, can manage staff). A store has exactly one owner; this fails if one exists. Envelope: { tenantId, email, password?, displayName? }. When password is omitted one is generated. THE PASSWORD IS RETURNED ONCE AND NEVER STORED — hand it to the merchant together with loginUrl. Use list_tenant_users first to check for an existing owner.",
+        input: z.object({
+            tenantId: UUID,
+            email: z.string().email().describe("The owner's login email"),
+            password: z.string().min(8).optional().describe('Optional; min 8 chars. Omit to have one generated.'),
+            displayName: z.string().min(1).max(100).optional().describe('Name shown in the merchant app'),
+        }),
+        execute: (ctx, input) => createTenantOwnerWithClient(ctx.client, input as never),
+    }),
+    op({
+        name: 'list_tenant_users',
+        description: 'List the admin/staff accounts of a tenant (email, owner flag, branch, permissions). Envelope: { tenantId }.',
+        readOnly: true,
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listTenantUsersWithClient(ctx.client, (input as { tenantId: string }).tenantId),
+    }),
+
+    // ---------------------------------------------------------------------
+    // Bundles & upsells — editing existing rows
+    // ---------------------------------------------------------------------
+    op({
+        name: 'update_bundle',
+        description:
+            'Update an EXISTING bundle. Partial: only the fields you pass change. Envelope: { tenantId, bundleId, name?, description?, pricing_type?, fixed_price?, discount_percent?, is_active?, show_on_menu?, show_as_upsell?, display_order?, slots? }. If `slots` is present it REPLACES every slot (send the full set, from list_bundles); omit it to leave slots untouched. For the image use set_bundle_image.',
+        input: z.object({
+            tenantId: UUID,
+            bundleId: UUID.describe('Resolve via list_bundles'),
+            name: z.string().min(2).optional(),
+            description: z.string().nullable().optional(),
+            pricing_type: z.enum(['fixed', 'discount']).optional(),
+            fixed_price: z.number().min(0).nullable().optional().describe('Used when pricing_type is fixed'),
+            discount_percent: z.number().min(1).max(100).nullable().optional().describe('Used when pricing_type is discount'),
+            is_active: z.boolean().optional(),
+            show_on_menu: z.boolean().optional(),
+            show_as_upsell: z.boolean().optional(),
+            display_order: z.number().int().min(0).optional(),
+            slots: z.array(z.unknown()).optional().describe('Full replacement slot set: [{ name, category_id, pick_count, sort_order, included_item_ids?, price_overrides? }]'),
+        }),
+        execute: async (ctx, input) => {
+            const record = input as Record<string, unknown>
+            const { tenantId, bundleId } = record as { tenantId: string; bundleId: string }
+            const fields = { ...record }
+            delete fields.tenantId
+            delete fields.bundleId
+            const flagsPromise = readTenantFeatureFlags(tenantId, ctx)
+            if (fields.slots !== undefined) {
+                const current = (await listBundlesForProvisioning(tenantId, ctx) as Array<Record<string, unknown>>).find((b) => b.id === bundleId)
+                if (!current) throw new Error('Bundle not found')
+                const merged: Record<string, unknown> = { ...current, ...fields, image_url: (fields.image_url ?? current.image_url ?? '') as string }
+                delete merged.id
+                const bundle = await updateBundle(bundleId, tenantId, merged as never, ctx)
+                return withFeatureWarning(bundle, 'bundles', await flagsPromise)
+            }
+            const bundle = await updateBundleFields(bundleId, tenantId, fields as never, ctx)
+            return withFeatureWarning(bundle, 'bundles', await flagsPromise)
+        },
+    }),
+    op({
+        name: 'set_bundle_image',
+        description:
+            "Host an image on the platform CDN and set it as a bundle's picture. Envelope: { tenantId, bundleId, imageBase64? | sourceUrl?, fileName? } — exactly one of imageBase64 (bytes you generated) or sourceUrl (a public link / Drive share link).",
+        input: z.object({
+            tenantId: UUID,
+            bundleId: UUID.describe('Resolve via list_bundles'),
+            imageBase64: z.string().min(1).optional().describe('Image bytes as base64 (raw or data: URI)'),
+            sourceUrl: z.string().url().optional().describe('Public image link (direct URL or Drive/Dropbox share link)'),
+            fileName: z.string().min(1).optional().describe('e.g. "meal-deal.png"'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; bundleId: string } & ImageSource
+            const source = pickImageSource(i)
+            assertSingleImageSource(source)
+            return setBundleImage(i.bundleId, i.tenantId, source, ctx)
+        },
+    }),
+    op({
+        name: 'update_upsell_pair',
+        description:
+            'Update an EXISTING upsell pair. Partial: only the fields you pass change. Envelope: { tenantId, pairId, pair_type?, is_active?, display_order?, source_item_id?, target_item_id?, source_label?, target_label?, upgrade_header?, upgrade_display_style?, max_suggestions? }. Resolve pairId via list_upsell_pairs. Pass null for a label to clear it.',
+        input: z.object({
+            tenantId: UUID,
+            pairId: UUID,
+            pair_type: z.enum(['complementary', 'upgrade']).optional(),
+            is_active: z.boolean().optional(),
+            display_order: z.number().int().min(0).optional(),
+            source_item_id: UUID.optional(),
+            target_item_id: UUID.optional(),
+            source_label: z.string().max(50).nullable().optional().describe('Upgrade pairs: label for the current item, e.g. "Ala Carte"'),
+            target_label: z.string().max(50).nullable().optional().describe('Upgrade pairs: label for the upgrade, e.g. "Meal"'),
+            upgrade_header: z.string().max(100).nullable().optional().describe('Upgrade pairs: section header, e.g. "Make it a Meal?"'),
+            upgrade_display_style: z.enum(['inline', 'modal']).optional(),
+            max_suggestions: z.number().int().min(1).max(8).optional(),
+        }),
+        execute: async (ctx, input) => {
+            const record = input as Record<string, unknown>
+            const { tenantId, pairId } = record as { tenantId: string; pairId: string }
+            const fields = { ...record }
+            delete fields.tenantId
+            delete fields.pairId
+            const [pair, flags] = await Promise.all([
+                updateUpsellPair(pairId, tenantId, fields as never, ctx),
+                readTenantFeatureFlags(tenantId, ctx),
+            ])
+            return withFeatureWarning(pair, 'upsells', flags)
+        },
+    }),
+
+    // ---------------------------------------------------------------------
+    // Branding images, banners, design read-back
+    // ---------------------------------------------------------------------
+    op({
+        name: 'get_branding',
+        description:
+            "Read a tenant's current branding/design values (every field update_branding can write) plus `options`: the allowed values for each select field (hero_preset, card_template, page_layout, header_template, font_pair, storefront_palette, footer_theme, …). Call this before designing so you never guess a template name. Envelope: { tenantId }.",
+        readOnly: true,
+        input: z.object({ tenantId: UUID }),
+        execute: async (ctx, input) => {
+            const { tenantId } = input as { tenantId: string }
+            const fieldIds = listBrandingFieldIds()
+            const snapshot = await readBrandingSnapshot(ctx, tenantId, fieldIds)
+            return {
+                tenantId,
+                tenantSlug: snapshot.slug,
+                values: snapshot.values,
+                options: describeBrandingOptions(),
+                imageTargets: ['hero', 'logo', 'footer_logo', 'background', 'flash_screen'],
+                notes: [
+                    'Use set_branding_image for hero/logo/background/flash images and add_banner for promo banners; both host the image on the platform CDN.',
+                    'hero_image_url only renders on the split, collage, minimal or centered hero presets and never while hero_featured_product_id is set.',
+                ],
+            }
+        },
+    }),
+    op({
+        name: 'set_branding_image',
+        description:
+            "Host an image on the platform CDN and attach it to a storefront surface. target: hero (storefront hero image), logo, footer_logo, background (page background), flash_screen. Envelope: { tenantId, target, imageBase64? | sourceUrl?, fileName? } — exactly one of imageBase64 (bytes you generated) or sourceUrl (a public link). Returns the hosted url and a warning when the current hero preset would not show the image.",
+        input: z.object({
+            tenantId: UUID,
+            target: z.enum(['hero', 'logo', 'footer_logo', 'background', 'flash_screen']),
+            imageBase64: z.string().min(1).optional().describe('Image bytes as base64 (raw or data: URI)'),
+            sourceUrl: z.string().url().optional().describe('Public image link (direct URL or Drive/Dropbox share link)'),
+            fileName: z.string().min(1).optional().describe('e.g. "hero-summer.jpg"'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as { tenantId: string; target: 'hero' | 'logo' | 'footer_logo' | 'background' | 'flash_screen' } & ImageSource
+            const source = pickImageSource(i)
+            assertSingleImageSource(source)
+            return setTenantImage(ctx, { tenantId: i.tenantId, target: i.target, source })
+        },
+    }),
+    op({
+        name: 'add_banner',
+        description:
+            "Add a promotional banner image to the website. For 'make me a banner and put it on the site': generate the image, then call this with the bytes (imageBase64) or a public link (sourceUrl). surface: 'menu' (promotion deck at the top of the menu page — landscape ~16:9 works best; the deck is switched on automatically) or 'welcome' (multi-branch welcome page; pass format landscape|portrait|square). Existing banners are kept. Envelope: { tenantId, surface, imageBase64? | sourceUrl?, fileName?, title?, description?, format?, visible? }.",
+        input: z.object({
+            tenantId: UUID,
+            surface: z.enum(['menu', 'welcome']),
+            imageBase64: z.string().min(1).optional().describe('Image bytes as base64 (raw or data: URI)'),
+            sourceUrl: z.string().url().optional().describe('Public image link (direct URL or Drive/Dropbox share link)'),
+            fileName: z.string().min(1).optional().describe('e.g. "summer-promo.png"'),
+            title: z.string().max(200).optional(),
+            description: z.string().max(500).optional(),
+            format: z.enum(['landscape', 'portrait', 'square']).optional().describe('Welcome surface only; defaults to landscape'),
+            visible: z.boolean().optional().describe('Menu surface only: false adds the banner without turning the deck on'),
+        }),
+        execute: (ctx, input) => {
+            const i = input as {
+                tenantId: string; surface: 'menu' | 'welcome'; title?: string; description?: string
+                format?: 'landscape' | 'portrait' | 'square'; visible?: boolean
+            } & ImageSource
+            const source = pickImageSource(i)
+            assertSingleImageSource(source)
+            return addTenantBanner(ctx, {
+                tenantId: i.tenantId, surface: i.surface, source,
+                title: i.title, description: i.description, format: i.format, visible: i.visible,
+            })
+        },
+    }),
+    op({
+        name: 'update_banner',
+        description:
+            'Edit one existing banner (title/description/format, or replace its image with imageBase64 / sourceUrl). Pass null for title/description to clear. Envelope: { tenantId, surface, bannerId, title?, description?, format?, imageBase64?, sourceUrl?, fileName? }. Resolve bannerId via list_banners.',
+        input: z.object({
+            tenantId: UUID,
+            surface: z.enum(['menu', 'welcome']),
+            bannerId: z.string().min(1),
+            title: z.string().max(200).nullable().optional(),
+            description: z.string().max(500).nullable().optional(),
+            format: z.enum(['landscape', 'portrait', 'square']).optional(),
+            imageBase64: z.string().min(1).optional(),
+            sourceUrl: z.string().url().optional(),
+            fileName: z.string().min(1).optional(),
+        }),
+        execute: (ctx, input) => {
+            const i = input as {
+                tenantId: string; surface: 'menu' | 'welcome'; bannerId: string
+                title?: string | null; description?: string | null; format?: 'landscape' | 'portrait' | 'square'
+            } & ImageSource
+            const source = pickImageSource(i)
+            if (source.imageBase64 || source.sourceUrl) assertSingleImageSource(source)
+            return updateTenantBanner(ctx, {
+                tenantId: i.tenantId, surface: i.surface, bannerId: i.bannerId,
+                title: i.title, description: i.description, format: i.format,
+                ...(source.imageBase64 || source.sourceUrl ? { source } : {}),
+            })
+        },
+    }),
+    op({
+        name: 'clear_banner',
+        description: 'Take one banner off a surface (the hosted image is kept). Envelope: { tenantId, surface, bannerId }. Resolve bannerId via list_banners.',
+        input: z.object({ tenantId: UUID, surface: z.enum(['menu', 'welcome']), bannerId: z.string().min(1) }),
+        execute: (ctx, input) => clearTenantBanner(ctx, input as { tenantId: string; surface: 'menu' | 'welcome'; bannerId: string }),
+    }),
+    op({
+        name: 'list_banners',
+        description: "List a tenant's menu promotion banners (with whether the deck is visible) and welcome-page banners, with ids. Envelope: { tenantId }.",
+        readOnly: true,
+        input: z.object({ tenantId: UUID }),
+        execute: (ctx, input) => listTenantBanners(ctx, (input as { tenantId: string }).tenantId),
+    }),
+
+    // ---------------------------------------------------------------------
+    // Category icons
+    // ---------------------------------------------------------------------
+    op({
+        name: 'list_category_icons',
+        description:
+            'The curated icon catalog for menu categories, grouped (Popular, Proteins & Mains, Desserts, Drinks, …). Store an icon as "lucide:<name>" (e.g. "lucide:pizza") via add_category, update_category or set_category_icons. No input.',
+        readOnly: true,
+        input: z.object({}).passthrough(),
+        execute: async () => ({
+            convention: `${LUCIDE_PREFIX}<name>`,
+            groups: CURATED_ICON_GROUPS.map((group) => ({ label: group.label, icons: group.icons })),
+            example: { icon: `${LUCIDE_PREFIX}pizza`, icon_color: '#E63946' },
+        }),
+    }),
+    op({
+        name: 'update_category',
+        description:
+            'Update an EXISTING category. Partial: only the fields you pass change. Envelope: { tenantId, categoryId, name?, description?, icon?, icon_color?, is_active?, display_layout?, card_template? }. icon is "lucide:<name>" from list_category_icons (or one emoji); pass "" to clear. Resolve categoryId via list_categories.',
+        input: z.object({
+            tenantId: UUID,
+            categoryId: UUID,
+            name: z.string().min(2).optional(),
+            description: z.string().optional(),
+            icon: z.string().optional(),
+            icon_color: z.string().optional(),
+            is_active: z.boolean().optional(),
+            display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).optional(),
+            card_template: z.string().nullable().optional(),
+        }),
+        execute: (ctx, input) => {
+            const record = input as Record<string, unknown>
+            const { tenantId, categoryId } = record as { tenantId: string; categoryId: string }
+            const fields = { ...record }
+            delete fields.tenantId
+            delete fields.categoryId
+            return updateCategoryFields(categoryId, tenantId, fields as never, ctx)
+        },
+    }),
+    op({
+        name: 'set_category_icons',
+        description:
+            'Assign icons to many categories at once ("give every category a proper icon"). Every icon is validated against the catalog BEFORE any write, so one typo fails the whole call with nothing changed. Envelope: { tenantId, assignments: [{ categoryId, icon, icon_color? }] }. Use list_categories + list_category_icons first.',
+        input: z.object({
+            tenantId: UUID,
+            assignments: z.array(z.object({
+                categoryId: UUID,
+                icon: z.string().describe('"lucide:<name>" from list_category_icons, or one emoji'),
+                icon_color: z.string().optional().describe('6-digit hex, e.g. #FF6B00'),
+            })).min(1),
+        }),
+        execute: async (ctx, input) => {
+            const { tenantId, assignments } = input as {
+                tenantId: string; assignments: Array<{ categoryId: string; icon: string; icon_color?: string }>
+            }
+            const invalid = assignments.filter((a) => !isKnownCategoryIcon(a.icon) || !isValidCategoryIconColor(a.icon_color))
+            if (invalid.length > 0) {
+                throw new Error(
+                    `Unknown icon or bad color for ${invalid.map((a) => `${a.categoryId} (${a.icon}${a.icon_color ? ` ${a.icon_color}` : ''})`).join(', ')}. Use list_category_icons for valid names; colors are 6-digit hex.`,
+                )
+            }
+            const updated: Array<{ categoryId: string; icon: string; icon_color?: string }> = []
+            for (const a of assignments) {
+                const patch: Record<string, unknown> = { icon: a.icon }
+                if (a.icon_color !== undefined) patch.icon_color = a.icon_color
+                await updateCategoryFields(a.categoryId, tenantId, patch as never, ctx)
+                updated.push(a)
+            }
+            return { updated: updated.length, assignments: updated }
         },
     }),
 ]

@@ -72,6 +72,72 @@ const domainSchema = z
     { message: 'Invalid domain format' }
   )
 
+/**
+ * Distance-based delivery fails OPEN when it is only half-configured: no fee is
+ * charged and the radius is never enforced at checkout. The same rule therefore
+ * guards every boundary that can switch it on — the superadmin tenant form
+ * (`tenantSchema`, below) and the merchant-facing delivery settings action in
+ * `src/actions/tenants.ts` — so it lives here once instead of being maintained
+ * as two copies that can drift apart.
+ *
+ * Only NULLISH values count as missing: `0` is a legitimate latitude, a
+ * legitimate longitude and a legitimate minimum fee, so a falsy check here
+ * would reject real configurations.
+ */
+export interface DistanceDeliveryConfig {
+  distance_delivery_enabled?: boolean | null
+  delivery_price_per_km?: number | null
+  delivery_min_fee?: number | null
+  delivery_radius_km?: number | null
+  restaurant_latitude?: number | null
+  restaurant_longitude?: number | null
+}
+
+export function refineDistanceDelivery(
+  value: DistanceDeliveryConfig,
+  ctx: z.RefinementCtx
+): void {
+  if (!value.distance_delivery_enabled) return
+  if (value.delivery_price_per_km == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_price_per_km'], message: 'Price per km is required when distance-based delivery is enabled' })
+  }
+  if (value.delivery_min_fee == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_min_fee'], message: 'Minimum fee is required when distance-based delivery is enabled' })
+  }
+  if (value.delivery_radius_km == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_radius_km'], message: 'Delivery radius is required when distance-based delivery is enabled' })
+  }
+  if (value.restaurant_latitude == null || value.restaurant_longitude == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message: 'Store location is required when distance-based delivery is enabled' })
+  }
+}
+
+/** Keep a long multi-issue report readable; the rest stay in the log. */
+const MAX_REPORTED_VALIDATION_ISSUES = 3
+
+/**
+ * Turn a `ZodError` into one line a human can act on.
+ *
+ * Server actions must never let a raw `ZodError` escape: Next.js reports it as
+ * an uncaught server-action crash (the client sees a generic digest, Sentry
+ * sees `ZodError: [`) instead of telling the operator which field is wrong.
+ */
+export function describeTenantValidationError(error: z.ZodError): string {
+  const described = error.issues
+    .slice(0, MAX_REPORTED_VALIDATION_ISSUES)
+    .map((issue) => {
+      const field = issue.path.join('.')
+      return field ? `${field}: ${issue.message}` : issue.message
+    })
+
+  if (described.length === 0) return 'Invalid tenant settings'
+
+  const remaining = error.issues.length - described.length
+  return remaining > 0
+    ? `${described.join('; ')} (+${remaining} more)`
+    : described.join('; ')
+}
+
 export const tenantSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(2),
@@ -187,23 +253,7 @@ export const tenantSchema = z.object({
   // Email notifications
   admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
   email_notifications_enabled: z.boolean().default(false),
-}).superRefine((val, ctx) => {
-  // Distance-based delivery must be fully configured when enabled, otherwise it silently
-  // fails open at checkout (no fee + no radius enforcement). Require pricing + store location.
-  if (!val.distance_delivery_enabled) return
-  if (val.delivery_price_per_km == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_price_per_km'], message: 'Price per km is required when distance-based delivery is enabled' })
-  }
-  if (val.delivery_min_fee == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_min_fee'], message: 'Minimum fee is required when distance-based delivery is enabled' })
-  }
-  if (val.delivery_radius_km == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_radius_km'], message: 'Delivery radius is required when distance-based delivery is enabled' })
-  }
-  if (val.restaurant_latitude == null || val.restaurant_longitude == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message: 'Store location is required when distance-based delivery is enabled' })
-  }
-}).superRefine((val, ctx) => {
+}).superRefine(refineDistanceDelivery).superRefine((val, ctx) => {
   // Loyverse must be fully connected when enabled — a half-configured tenant
   // would silently skip every catalog sync and receipt push.
   if (!val.loyverse_enabled) return

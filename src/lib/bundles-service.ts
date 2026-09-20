@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
+import type { ImageSource } from '@/lib/image-source'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { Bundle, BundleWithSlots, MenuItem, Category } from '@/types/database'
 
@@ -48,6 +49,49 @@ export const bundleSchema = z.object({
 })
 
 export type BundleInput = z.infer<typeof bundleSchema>
+
+/**
+ * Row-only fields of a bundle (no slots), all optional and WITHOUT defaults.
+ * Written out rather than derived: zod keeps `.default()` values through
+ * `.partial()`, so a derived patch schema would silently reset is_active /
+ * show_on_menu / display_order on a payload that only renamed the bundle.
+ */
+export const bundleFieldsPatchSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  description: z.string().optional().nullable(),
+  image_url: z.string().url('Must be a valid URL').or(z.literal('')).optional(),
+  pricing_type: z.enum(['fixed', 'discount']).optional(),
+  fixed_price: z.number().min(0).optional().nullable(),
+  discount_percent: z.number().min(1).max(100).optional().nullable(),
+  is_active: z.boolean().optional(),
+  show_on_menu: z.boolean().optional(),
+  show_as_upsell: z.boolean().optional(),
+  display_order: z.number().int().min(0).optional(),
+})
+export type BundleFieldsPatch = z.infer<typeof bundleFieldsPatchSchema>
+
+/**
+ * The `bundles` columns a validated input maps to. Pricing columns that do not
+ * belong to the chosen pricing_type are nulled so a switch from discount to
+ * fixed never leaves a stale percent behind.
+ */
+export function toBundleRow(fields: BundleFieldsPatch): Record<string, unknown> {
+  const row: Record<string, unknown> = {}
+  const assign = (key: keyof BundleFieldsPatch) => {
+    if (fields[key] !== undefined) row[key] = fields[key]
+  }
+  ;(['name', 'description', 'image_url', 'is_active', 'show_on_menu', 'show_as_upsell', 'display_order'] as const).forEach(assign)
+
+  if (fields.pricing_type !== undefined) {
+    row.pricing_type = fields.pricing_type
+    row.fixed_price = fields.pricing_type === 'fixed' ? fields.fixed_price ?? null : null
+    row.discount_percent = fields.pricing_type === 'discount' ? fields.discount_percent ?? null : null
+  } else {
+    assign('fixed_price')
+    assign('discount_percent')
+  }
+  return row
+}
 
 // ============================================
 // Query constant
@@ -182,30 +226,20 @@ export async function createBundle(tenantId: string, input: BundleInput, ctx?: P
 export async function updateBundle(
   bundleId: string,
   tenantId: string,
-  input: BundleInput
+  input: BundleInput,
+  ctx?: ProvisioningCtx
 ): Promise<BundleWithSlots> {
-  await verifyTenantPermission(tenantId, 'menu')
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
   const validated = bundleSchema.parse(input)
-  const supabase = createAdminClient()
+  const supabase = ctx?.client ?? createAdminClient()
 
   const { slots, ...bundleData } = validated
 
   // Update the bundle row
   const { error: bundleError } = await supabase
     .from('bundles')
-    .update({
-      name: bundleData.name,
-      description: bundleData.description,
-      image_url: bundleData.image_url,
-      pricing_type: bundleData.pricing_type,
-      fixed_price: bundleData.pricing_type === 'fixed' ? bundleData.fixed_price : null,
-      discount_percent: bundleData.pricing_type === 'discount' ? bundleData.discount_percent : null,
-      is_active: bundleData.is_active,
-      show_on_menu: bundleData.show_on_menu,
-      show_as_upsell: bundleData.show_as_upsell,
-      display_order: bundleData.display_order,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(toBundleRow(bundleData) as any)
     .eq('id', bundleId)
     .eq('tenant_id', tenantId)
 
@@ -262,6 +296,51 @@ export async function updateBundle(
 }
 
 /**
+ * Partial update of a bundle's own row — never touches slots. The MCP path for
+ * "rename it / change the price / hide it" where re-sending every slot would
+ * be both tedious and a chance to lose one.
+ */
+export async function updateBundleFields(
+  bundleId: string,
+  tenantId: string,
+  patch: BundleFieldsPatch,
+  ctx?: ProvisioningCtx
+): Promise<BundleWithSlots> {
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  const validated = bundleFieldsPatchSchema.parse(patch)
+  const row = toBundleRow(validated)
+  if (Object.keys(row).length === 0) throw new Error('No bundle fields to update')
+
+  const supabase = ctx?.client ?? createAdminClient()
+  const { error } = await supabase
+    .from('bundles')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(row as any)
+    .eq('id', bundleId)
+    .eq('tenant_id', tenantId)
+  if (error) throw error
+
+  return getBundleById(bundleId, tenantId)
+}
+
+/**
+ * Host an image (bytes or link) on ImageKit and set it as the bundle's image.
+ * Upload is awaited first, so a failed ingest leaves the row untouched.
+ */
+export async function setBundleImage(
+  bundleId: string,
+  tenantId: string,
+  source: ImageSource,
+  ctx?: ProvisioningCtx
+): Promise<BundleWithSlots> {
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  // Lazy: keeps the server-only upload chain out of client bundles.
+  const { ingestImage } = await import('@/lib/image-ingest')
+  const { url } = await ingestImage(source, `bundles/${tenantId}`)
+  return updateBundleFields(bundleId, tenantId, { image_url: url }, ctx)
+}
+
+/**
  * Delete a bundle (cascades to bundle_slots and bundle_slot_price_overrides)
  */
 export async function deleteBundle(bundleId: string, tenantId: string): Promise<void> {
@@ -283,10 +362,11 @@ export async function deleteBundle(bundleId: string, tenantId: string): Promise<
 export async function toggleBundleActive(
   bundleId: string,
   tenantId: string,
-  isActive: boolean
+  isActive: boolean,
+  ctx?: ProvisioningCtx
 ): Promise<Bundle> {
-  await verifyTenantPermission(tenantId, 'menu')
-  const supabase = createAdminClient()
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  const supabase = ctx?.client ?? createAdminClient()
 
   const { data, error } = await supabase
     .from('bundles')
@@ -442,7 +522,9 @@ export async function listBundlesForProvisioning(tenantId: string, ctx?: Provisi
 
   const { data, error } = await supabase
     .from('bundles')
-    .select('id, name, description, pricing_type, price, discount_percentage, is_active, show_on_menu, show_as_upsell')
+    .select(
+      'id, name, description, image_url, pricing_type, fixed_price, discount_percent, is_active, show_on_menu, show_as_upsell, display_order, slots:bundle_slots(id, name, category_id, pick_count, sort_order, included_item_ids)'
+    )
     .eq('tenant_id', tenantId)
     .order('display_order', { ascending: true })
 

@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { tenantSchema, type TenantInput } from '@/lib/tenants-service'
+import {
+  tenantSchema,
+  refineDistanceDelivery,
+  describeTenantValidationError,
+  type TenantInput,
+} from '@/lib/tenants-service'
 import type { Database } from '@/types/database'
 import { z } from 'zod'
 import { verifyTenantAdmin } from '@/lib/admin-service'
@@ -92,16 +97,13 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
     // Verify superadmin access before proceeding
     const { supabase } = await verifySuperadmin()
 
-    // Validate input
-    let parsed
-    try {
-      parsed = tenantSchema.parse(input)
-    } catch (error) {
-      if (error instanceof Error) {
-        return { error: `Validation error: ${error.message}` }
-      }
-      return { error: 'Invalid input data' }
+    // Validate input. A raw ZodError must never leave a server action: the
+    // client gets an uncaught-action crash instead of a field to fix.
+    const validation = tenantSchema.safeParse(input)
+    if (!validation.success) {
+      return { error: describeTenantValidationError(validation.error) }
     }
+    const parsed = validation.data
 
     // Check if slug is taken
     const { data: existing, error: checkError } = await supabase
@@ -283,8 +285,16 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   // Verify superadmin access before proceeding
   const { supabase } = await verifySuperadmin()
 
-  // Validate input
-  const parsed = tenantSchema.parse({ ...input, id })
+  // Validate input. `parse` threw the ZodError straight out of the action,
+  // which Next.js surfaces as an uncaught server-action crash (Sentry:
+  // "ZodError: [") — the superadmin saw a broken page rather than the field
+  // that needs fixing. Refuse with the same `{ error }` envelope every other
+  // action in this file uses.
+  const validation = tenantSchema.safeParse({ ...input, id })
+  if (!validation.success) {
+    return { error: describeTenantValidationError(validation.error) }
+  }
+  const parsed = validation.data
 
   // Check if slug is taken by another tenant
   const { data: existing } = await supabase
@@ -527,23 +537,7 @@ const deliveryUpdateSchema = z.object({
   restaurant_address: z.string().optional().or(z.literal('')),
   restaurant_latitude: z.number().nullable(),
   restaurant_longitude: z.number().nullable(),
-}).superRefine((val, ctx) => {
-  // When the feature is ON it must be fully configured, otherwise it silently fails open
-  // (no fee + no radius enforcement at checkout). Require pricing + store location.
-  if (!val.distance_delivery_enabled) return
-  if (val.delivery_price_per_km == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_price_per_km'], message: 'Price per km is required when distance-based delivery is enabled' })
-  }
-  if (val.delivery_min_fee == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_min_fee'], message: 'Minimum fee is required when distance-based delivery is enabled' })
-  }
-  if (val.delivery_radius_km == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['delivery_radius_km'], message: 'Delivery radius is required when distance-based delivery is enabled' })
-  }
-  if (val.restaurant_latitude == null || val.restaurant_longitude == null) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['restaurant_latitude'], message: 'Store location is required when distance-based delivery is enabled' })
-  }
-})
+}).superRefine(refineDistanceDelivery)
 
 export type DeliveryUpdateInput = z.infer<typeof deliveryUpdateSchema>
 

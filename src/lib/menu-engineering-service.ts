@@ -31,6 +31,26 @@ const upsellPairInputSchema = z.object({
 
 export type UpsellPairInput = z.input<typeof upsellPairInputSchema>
 
+/**
+ * Partial edit of an existing pair. Written out WITHOUT defaults (zod keeps
+ * `.default()` through `.partial()`), so an omitted display_order/is_active is
+ * left alone rather than reset to 0/true.
+ */
+export const upsellPairUpdateSchema = z.object({
+  source_item_id: z.string().uuid().optional(),
+  target_item_id: z.string().uuid().optional(),
+  pair_type: z.enum(['complementary', 'upgrade']).optional(),
+  display_order: z.number().int().min(0).optional(),
+  is_active: z.boolean().optional(),
+  source_label: z.string().max(50).nullable().optional(),
+  target_label: z.string().max(50).nullable().optional(),
+  upgrade_header: z.string().max(100).nullable().optional(),
+  upgrade_display_style: z.enum(['inline', 'modal']).optional(),
+  max_suggestions: z.number().int().min(1).max(8).optional(),
+})
+
+export type UpsellPairUpdateInput = z.input<typeof upsellPairUpdateSchema>
+
 const checkoutUpsellSettingsSchema = z.object({
   checkout_upsell_enabled: z.boolean(),
   checkout_upsell_title: z.string().min(1).max(100),
@@ -178,6 +198,47 @@ export async function createUpsellPair(tenantId: string, input: UpsellPairInput,
     if (error.code === '23505') {
       throw new Error('This upsell pair already exists')
     }
+    throw error
+  }
+  return data as unknown as UpsellPair
+}
+
+export async function updateUpsellPair(
+  pairId: string,
+  tenantId: string,
+  patch: UpsellPairUpdateInput,
+  ctx?: ProvisioningCtx
+): Promise<UpsellPair> {
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
+  const validated = upsellPairUpdateSchema.parse(patch)
+  if (Object.keys(validated).length === 0) throw new Error('No upsell pair fields to update')
+
+  const supabase = ctx?.client ?? (await createClient())
+  const { data: current, error: readError } = await supabase
+    .from('upsell_pairs')
+    .select('source_item_id, target_item_id')
+    .eq('id', pairId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (readError) throw readError
+  if (!current) throw new Error('Upsell pair not found')
+
+  const row = current as { source_item_id: string; target_item_id: string }
+  const source = validated.source_item_id ?? row.source_item_id
+  const target = validated.target_item_id ?? row.target_item_id
+  if (source === target) throw new Error('Source and target items must be different')
+
+  const { data, error } = await supabase
+    .from('upsell_pairs')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .update(validated as any)
+    .eq('id', pairId)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === '23505') throw new Error('This upsell pair already exists')
     throw error
   }
   return data as unknown as UpsellPair
@@ -854,7 +915,7 @@ export async function listUpsellPairsForProvisioning(tenantId: string, ctx?: Pro
 
   const { data, error } = await supabase
     .from('upsell_pairs')
-    .select('id, source_item_id, target_item_id, pair_type, is_active, display_order, is_auto_generated')
+    .select('id, source_item_id, target_item_id, pair_type, is_active, display_order, is_auto_generated, source_label, target_label, upgrade_header, upgrade_display_style, max_suggestions')
     .eq('tenant_id', tenantId)
     .order('display_order', { ascending: true })
 

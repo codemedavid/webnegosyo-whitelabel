@@ -16,22 +16,18 @@ import {
   Percent, Crown,
 } from 'lucide-react'
 
-const LUCIDE_PREFIX = 'lucide:'
+import {
+  LUCIDE_PREFIX,
+  isLucideIcon,
+  getLucideIconName,
+  toLucideIconString,
+  CURATED_ICON_GROUPS,
+  ALL_CURATED_ICONS,
+  type IconGroup,
+} from '@/lib/category-icon-catalog'
 
-/** Check if an icon string is a Lucide icon (vs emoji) */
-export function isLucideIcon(icon: string | undefined): boolean {
-  return !!icon && icon.startsWith(LUCIDE_PREFIX)
-}
-
-/** Extract the Lucide icon name from a prefixed string */
-export function getLucideIconName(icon: string): string {
-  return icon.slice(LUCIDE_PREFIX.length)
-}
-
-/** Create a prefixed Lucide icon string for storage */
-export function toLucideIconString(name: string): string {
-  return `${LUCIDE_PREFIX}${name}`
-}
+export { LUCIDE_PREFIX, isLucideIcon, getLucideIconName, toLucideIconString, CURATED_ICON_GROUPS, ALL_CURATED_ICONS }
+export type { IconGroup }
 
 /** Static map of curated icon name → React component (no dynamic imports needed) */
 export const ICON_COMPONENT_MAP: Record<string, LucideIcon> = {
@@ -96,59 +92,3 @@ export const ICON_COMPONENT_MAP: Record<string, LucideIcon> = {
   'crown': Crown,
 }
 
-export interface IconGroup {
-  label: string
-  icons: string[] // Lucide icon names (without prefix)
-}
-
-export const CURATED_ICON_GROUPS: IconGroup[] = [
-  {
-    label: 'Popular',
-    icons: [
-      'utensils', 'pizza', 'coffee', 'beef', 'sandwich', 'salad',
-      'ice-cream-cone', 'cake-slice', 'wine', 'beer', 'soup', 'egg-fried',
-    ],
-  },
-  {
-    label: 'Proteins & Mains',
-    icons: [
-      'ham', 'drumstick', 'fish', 'shrimp', 'popcorn', 'cooking-pot',
-    ],
-  },
-  {
-    label: 'Desserts & Sweets',
-    icons: [
-      'cake', 'cookie', 'candy', 'lollipop', 'donut', 'croissant', 'dessert',
-    ],
-  },
-  {
-    label: 'Drinks',
-    icons: [
-      'cup-soda', 'glass-water', 'martini', 'milk', 'citrus', 'grape', 'wine-off',
-    ],
-  },
-  {
-    label: 'Fruits & Vegetables',
-    icons: [
-      'apple', 'banana', 'cherry', 'carrot', 'leaf', 'wheat', 'nut', 'vegan',
-    ],
-  },
-  {
-    label: 'Restaurant & Kitchen',
-    icons: [
-      'chef-hat', 'flame', 'microwave', 'refrigerator', 'store', 'shopping-bag',
-      'truck', 'clock', 'star', 'heart', 'thumbs-up', 'award',
-    ],
-  },
-  {
-    label: 'Labels & Dietary',
-    icons: [
-      'flame-kindling', 'badge-check', 'sparkles', 'zap', 'tag', 'percent', 'crown',
-    ],
-  },
-]
-
-/** Flat list of all curated icon names (deduplicated) */
-export const ALL_CURATED_ICONS: string[] = [
-  ...new Set(CURATED_ICON_GROUPS.flatMap((g) => g.icons)),
-]

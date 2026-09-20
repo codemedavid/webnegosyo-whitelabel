@@ -28,6 +28,10 @@ export const MERCHANT_EXCLUDED_OPS: ReadonlySet<string> = new Set([
   // SMS campaigns send real messages; keep them operator-gated for now.
   'create_sms_campaign',
   'list_sms_campaigns',
+  // Login accounts are platform-operator authority; merchants manage staff
+  // from the app's Team screen, never from a connector.
+  'create_tenant_owner',
+  'list_tenant_users',
 ])
 
 interface ZodObjectLike {

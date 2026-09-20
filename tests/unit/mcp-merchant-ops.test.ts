@@ -26,6 +26,8 @@ const SUPERADMIN_ONLY = [
   'configure_integration',
   'create_sms_campaign',
   'list_sms_campaigns',
+  'create_tenant_owner',
+  'list_tenant_users',
 ]
 
 describe('listMerchantOps', () => {
@@ -52,6 +54,18 @@ describe('listMerchantOps', () => {
       'reorder_categories',
       'reorder_menu_items',
       'update_branding',
+      'update_bundle',
+      'set_bundle_image',
+      'update_upsell_pair',
+      'get_branding',
+      'set_branding_image',
+      'add_banner',
+      'update_banner',
+      'clear_banner',
+      'list_banners',
+      'list_category_icons',
+      'update_category',
+      'set_category_icons',
     ]) {
       expect(names).toContain(expected)
     }

@@ -85,16 +85,28 @@ Every tool is dispatched through the shared provisioning-ops registry (`src/lib/
 | Tool | What it does | Key input |
 |---|---|---|
 | `create_tenant` | Create a white-labeled tenant | `name, slug, primary_color, secondary_color, messenger_page_id` |
-| `add_category` | Add a menu category | `tenantId, name, order` |
+| `add_category` | Add a menu category | `tenantId, name, icon?, icon_color?, order?` |
 | `add_menu_item` | Add a menu item (variations/addons) | `tenantId, name, price, category_id` |
 | `add_addon_library_entry` | Reusable shared addon group | `tenantId, …` |
 | `create_upsell_pair` | Complementary / upgrade pair | `tenantId, …` |
 | `create_bundle` | Fixed or discount bundle | `tenantId, …` |
 | `add_payment_method` | Payment method + order-type links | `tenantId, name` |
-| `update_branding` | Colors, templates, hero, footer | `tenantId, tenantSlug, branding{…}` |
+| `update_branding` | Colors, templates, hero, footer, welcome page (slug optional) | `tenantId, branding{…}` |
 | `configure_integration` | Lalamove, distance delivery, feature flags, Convex | `tenantId, …tenant fields` |
 | `list_tenants` | List tenants | — |
 | `get_tenant` | Fetch a tenant by slug | `slug` |
+| `create_tenant_owner` | Create the store OWNER login (auth user + owner row); password returned ONCE. Superadmin-only | `tenantId, email, password?, displayName?` |
+| `list_tenant_users` | Admin/staff accounts of a tenant. Superadmin-only | `tenantId` |
+| `update_bundle` | Partial edit of an existing bundle; `slots` (if present) replaces the full slot set | `tenantId, bundleId, …fields, slots?` |
+| `set_bundle_image` | Host bytes or a link on ImageKit, set as the bundle image | `tenantId, bundleId, imageBase64? \| sourceUrl?` |
+| `update_upsell_pair` | Partial edit of an existing pair (labels, header, style, active…) | `tenantId, pairId, …fields` |
+| `get_branding` | Current branding values + allowed options per select field | `tenantId` |
+| `set_branding_image` | Host bytes or a link, attach to hero / logo / footer_logo / background / flash_screen | `tenantId, target, imageBase64? \| sourceUrl?` |
+| `add_banner` | Add a promo banner (menu deck or welcome page); existing banners kept | `tenantId, surface, imageBase64? \| sourceUrl?, title?, format?` |
+| `update_banner` / `clear_banner` / `list_banners` | Edit, take down, or list banners by id | `tenantId, surface, bannerId` |
+| `list_category_icons` | Curated Lucide icon catalog (`lucide:<name>`) | — |
+| `update_category` | Partial edit of a category (name, icon, icon_color, layout…) | `tenantId, categoryId, …fields` |
+| `set_category_icons` | Bulk icon assignment, validated before any write | `tenantId, assignments[]` |
 
 Deep field validation lives in the underlying service writers (single source of truth); each tool's advertised schema guards the envelope shape.
 

@@ -21,14 +21,26 @@ jest.mock('@/lib/admin-service', () => ({
   updateMenuItemFields: jest.fn(),
   listMenuItemsForProvisioning: jest.fn(),
   listCategoriesForProvisioning: jest.fn(),
+  updateCategoryFields: jest.fn(),
+}))
+jest.mock('@/lib/tenant-owner-provisioning', () => ({ __esModule: true, createTenantOwnerWithClient: jest.fn(), listTenantUsersWithClient: jest.fn() }))
+jest.mock('@/lib/branding-images', () => ({
+  __esModule: true,
+  setTenantImage: jest.fn(),
+  addTenantBanner: jest.fn(),
+  updateTenantBanner: jest.fn(),
+  clearTenantBanner: jest.fn(),
+  listTenantBanners: jest.fn(),
+  readBrandingSnapshot: jest.fn(),
+  resolveTenantSlug: jest.fn(),
 }))
 jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
 jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaymentMethod: jest.fn() }))
 jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn(), listAddonLibraryForProvisioning: jest.fn() }))
 jest.mock('@/lib/addon-bulk-attach', () => ({ __esModule: true, attachAddonEntriesToItems: jest.fn() }))
 jest.mock('@/lib/sms-campaigns-service', () => ({ __esModule: true, createSmsCampaign: jest.fn(), listSmsCampaignsForProvisioning: jest.fn() }))
-jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn(), bulkUpdateBcgClassification: jest.fn(), listUpsellPairsForProvisioning: jest.fn() }))
-jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn(), listBundlesForProvisioning: jest.fn() }))
+jest.mock('@/lib/menu-engineering-service', () => ({ __esModule: true, createUpsellPair: jest.fn(), updateUpsellPair: jest.fn(), bulkUpdateBcgClassification: jest.fn(), listUpsellPairsForProvisioning: jest.fn() }))
+jest.mock('@/lib/bundles-service', () => ({ __esModule: true, createBundle: jest.fn(), updateBundle: jest.fn(), updateBundleFields: jest.fn(), setBundleImage: jest.fn(), listBundlesForProvisioning: jest.fn() }))
 jest.mock('@/lib/queries/menu-performance', () => ({ __esModule: true, fetchMenuPerformanceForTenantId: jest.fn() }))
 jest.mock('@/lib/menu-arrangement', () => ({ __esModule: true, reorderCategoriesForProvisioning: jest.fn(), reorderMenuItemsForProvisioning: jest.fn() }))
 
@@ -47,7 +59,11 @@ import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-sc
 // Retrieve the mock handles and require the SUT AFTER the mocks are registered.
 /* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
 const { createTenantSupabase, updateTenantSupabase, listTenantsSupabase } = jest.requireMock('@/lib/tenants-service') as any
-const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning } = jest.requireMock('@/lib/admin-service') as any
+const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning, updateCategoryFields } = jest.requireMock('@/lib/admin-service') as any
+const { createTenantOwnerWithClient, listTenantUsersWithClient } = jest.requireMock('@/lib/tenant-owner-provisioning') as any
+const { setTenantImage, addTenantBanner, updateTenantBanner, clearTenantBanner, listTenantBanners, readBrandingSnapshot, resolveTenantSlug } = jest.requireMock('@/lib/branding-images') as any
+const { updateBundle, updateBundleFields, setBundleImage } = jest.requireMock('@/lib/bundles-service') as any
+const { updateUpsellPair } = jest.requireMock('@/lib/menu-engineering-service') as any
 const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
 const { fetchMenuPerformanceForTenantId } = jest.requireMock('@/lib/queries/menu-performance') as any
@@ -105,6 +121,20 @@ beforeEach(() => {
   listBundlesForProvisioning.mockReset().mockResolvedValue([{ id: 'bundle_1', name: 'Meal Deal' }] as never)
   listUpsellPairsForProvisioning.mockReset().mockResolvedValue([{ id: 'pair_1', pair_type: 'complementary' }] as never)
   createSmsCampaign.mockReset().mockResolvedValue({ id: 'camp_1', status: 'draft', notice: 'Saved as a DRAFT' } as never)
+  updateCategoryFields.mockReset().mockResolvedValue({ id: 'cat_1', icon: 'lucide:pizza' } as never)
+  createTenantOwnerWithClient.mockReset().mockResolvedValue({ userId: 'u1', email: 'owner@acme.ph', password: 'Secret123456', passwordGenerated: true } as never)
+  listTenantUsersWithClient.mockReset().mockResolvedValue([{ user_id: 'u1', is_owner: true }] as never)
+  setTenantImage.mockReset().mockResolvedValue({ target: 'hero', url: 'https://ik.imagekit.io/x/hero.png' } as never)
+  addTenantBanner.mockReset().mockResolvedValue({ surface: 'menu', banner: { id: 'banner-1' }, banners: [] } as never)
+  updateTenantBanner.mockReset().mockResolvedValue({ surface: 'menu', banner: { id: 'banner-1' }, banners: [] } as never)
+  clearTenantBanner.mockReset().mockResolvedValue({ surface: 'menu', banner: null, banners: [] } as never)
+  listTenantBanners.mockReset().mockResolvedValue({ menu: { visible: true, banners: [] }, welcome: { banners: [] } } as never)
+  readBrandingSnapshot.mockReset().mockResolvedValue({ slug: 'acme', values: { hero_preset: 'split' } } as never)
+  resolveTenantSlug.mockReset().mockResolvedValue('acme' as never)
+  updateBundle.mockReset().mockResolvedValue({ id: 'bundle_1', name: 'Meal Deal XL' } as never)
+  updateBundleFields.mockReset().mockResolvedValue({ id: 'bundle_1', name: 'Meal Deal XL' } as never)
+  setBundleImage.mockReset().mockResolvedValue({ id: 'bundle_1', image_url: 'https://ik.imagekit.io/x/b.png' } as never)
+  updateUpsellPair.mockReset().mockResolvedValue({ id: 'pair_1', is_active: false } as never)
   listSmsCampaignsForProvisioning.mockReset().mockResolvedValue([{ id: 'camp_1', name: 'Win-back' }] as never)
 })
 
@@ -684,5 +714,194 @@ describe('SMS campaign ops', () => {
     // provisioning tool could manufacture it, the opt-in record is decoration.
     const names = (listOps() as Array<{ name: string }>).map((o) => o.name)
     expect(names.filter((n) => /consent|opt_?out|suppress/i.test(n))).toEqual([])
+  })
+})
+
+describe('owner account ops', () => {
+  it('create_tenant_owner hands the service-role client and the envelope to the provisioner', async () => {
+    const result = await executeOp('create_tenant_owner', ctx, { tenantId: TENANT, email: 'owner@acme.ph', displayName: 'Ana' }) as Record<string, unknown>
+
+    expect(createTenantOwnerWithClient).toHaveBeenCalledWith(ctx.client, expect.objectContaining({ tenantId: TENANT, email: 'owner@acme.ph', displayName: 'Ana' }))
+    expect(result.password).toBe('Secret123456')
+  })
+
+  it('rejects a malformed email and a short password at the schema', async () => {
+    await expect(executeOp('create_tenant_owner', ctx, { tenantId: TENANT, email: 'nope' })).rejects.toThrow()
+    await expect(executeOp('create_tenant_owner', ctx, { tenantId: TENANT, email: 'a@b.co', password: 'short' })).rejects.toThrow()
+    expect(createTenantOwnerWithClient).not.toHaveBeenCalled()
+  })
+
+  it('list_tenant_users is a read-only tool', async () => {
+    const op = (PROVISIONING_OPS as Record<string, { readOnly?: boolean }>)['list_tenant_users']
+    expect(op.readOnly).toBe(true)
+    await executeOp('list_tenant_users', ctx, { tenantId: TENANT })
+    expect(listTenantUsersWithClient).toHaveBeenCalledWith(ctx.client, TENANT)
+  })
+
+  it('says the password is shown once, so the model relays it', () => {
+    const op = (PROVISIONING_OPS as Record<string, { description: string }>)['create_tenant_owner']
+    expect(op.description).toMatch(/once/i)
+  })
+})
+
+describe('bundle & upsell edit ops', () => {
+  const BUNDLE = '33333333-3333-4333-8333-333333333333'
+  const PAIR = '44444444-4444-4444-8444-444444444444'
+
+  it('update_bundle without slots patches only the row fields', async () => {
+    const result = await executeOp('update_bundle', ctx, { tenantId: TENANT, bundleId: BUNDLE, name: 'Meal Deal XL', is_active: false }) as WriteResult
+
+    expect(updateBundleFields).toHaveBeenCalledWith(BUNDLE, TENANT, { name: 'Meal Deal XL', is_active: false }, ctx)
+    expect(updateBundle).not.toHaveBeenCalled()
+    expect(result.id).toBe('bundle_1')
+  })
+
+  it('update_bundle with slots merges the current row and replaces the slot set', async () => {
+    listBundlesForProvisioning.mockResolvedValue([
+      { id: BUNDLE, name: 'Meal Deal', pricing_type: 'fixed', fixed_price: 199, image_url: 'https://ik/x.png', is_active: true, show_on_menu: true, show_as_upsell: false, display_order: 0 },
+    ] as never)
+    const slots = [{ name: 'Main', category_id: ITEM, pick_count: 1, sort_order: 0 }]
+
+    await executeOp('update_bundle', ctx, { tenantId: TENANT, bundleId: BUNDLE, slots })
+
+    expect(updateBundle).toHaveBeenCalledWith(BUNDLE, TENANT, expect.objectContaining({ name: 'Meal Deal', fixed_price: 199, image_url: 'https://ik/x.png', slots }), ctx)
+    expect(updateBundle.mock.calls[0][2]).not.toHaveProperty('id')
+  })
+
+  it('update_bundle with slots refuses an unknown bundle before writing', async () => {
+    listBundlesForProvisioning.mockResolvedValue([] as never)
+    await expect(executeOp('update_bundle', ctx, { tenantId: TENANT, bundleId: BUNDLE, slots: [] })).rejects.toThrow(/not found/i)
+    expect(updateBundle).not.toHaveBeenCalled()
+  })
+
+  it('set_bundle_image requires exactly one source', async () => {
+    await expect(executeOp('set_bundle_image', ctx, { tenantId: TENANT, bundleId: BUNDLE })).rejects.toThrow(/exactly one/i)
+    await expect(executeOp('set_bundle_image', ctx, { tenantId: TENANT, bundleId: BUNDLE, imageBase64: 'abc', sourceUrl: 'https://x.com/a.png' })).rejects.toThrow(/exactly one/i)
+    expect(setBundleImage).not.toHaveBeenCalled()
+
+    await executeOp('set_bundle_image', ctx, { tenantId: TENANT, bundleId: BUNDLE, sourceUrl: 'https://x.com/a.png', fileName: 'a.png' })
+    expect(setBundleImage).toHaveBeenCalledWith(BUNDLE, TENANT, { sourceUrl: 'https://x.com/a.png', fileName: 'a.png' }, ctx)
+  })
+
+  it('update_upsell_pair forwards a partial patch without the envelope keys', async () => {
+    await executeOp('update_upsell_pair', ctx, { tenantId: TENANT, pairId: PAIR, is_active: false, source_label: null })
+
+    expect(updateUpsellPair).toHaveBeenCalledWith(PAIR, TENANT, { is_active: false, source_label: null }, ctx)
+  })
+
+  it('update_upsell_pair rejects an unknown display style at the schema', async () => {
+    await expect(executeOp('update_upsell_pair', ctx, { tenantId: TENANT, pairId: PAIR, upgrade_display_style: 'popup' })).rejects.toThrow()
+    expect(updateUpsellPair).not.toHaveBeenCalled()
+  })
+})
+
+describe('branding image & banner ops', () => {
+  it('update_branding resolves the slug when the caller omits it', async () => {
+    await executeOp('update_branding', ctx, { tenantId: TENANT, branding: { hero_preset: 'split' } })
+
+    expect(resolveTenantSlug).toHaveBeenCalledWith(ctx, TENANT)
+    expect(saveBrandingAction).toHaveBeenCalledWith(TENANT, 'acme', { hero_preset: 'split' }, ctx)
+  })
+
+  it('set_branding_image forwards target and a single source', async () => {
+    await executeOp('set_branding_image', ctx, { tenantId: TENANT, target: 'hero', imageBase64: 'data:image/png;base64,AAAA', fileName: 'hero.png' })
+
+    expect(setTenantImage).toHaveBeenCalledWith(ctx, { tenantId: TENANT, target: 'hero', source: { imageBase64: 'data:image/png;base64,AAAA', fileName: 'hero.png' } })
+  })
+
+  it('set_branding_image refuses two sources and an unknown target', async () => {
+    await expect(executeOp('set_branding_image', ctx, { tenantId: TENANT, target: 'hero', imageBase64: 'x', sourceUrl: 'https://a.com/b.png' })).rejects.toThrow(/exactly one/i)
+    await expect(executeOp('set_branding_image', ctx, { tenantId: TENANT, target: 'favicon', sourceUrl: 'https://a.com/b.png' })).rejects.toThrow()
+    expect(setTenantImage).not.toHaveBeenCalled()
+  })
+
+  it('add_banner forwards surface, source and copy', async () => {
+    await executeOp('add_banner', ctx, { tenantId: TENANT, surface: 'welcome', sourceUrl: 'https://drive.google.com/file/d/abc/view', title: 'Summer', format: 'portrait' })
+
+    expect(addTenantBanner).toHaveBeenCalledWith(ctx, {
+      tenantId: TENANT, surface: 'welcome', source: { sourceUrl: 'https://drive.google.com/file/d/abc/view' },
+      title: 'Summer', description: undefined, format: 'portrait', visible: undefined,
+    })
+  })
+
+  it('add_banner needs an image', async () => {
+    await expect(executeOp('add_banner', ctx, { tenantId: TENANT, surface: 'menu', title: 'No image' })).rejects.toThrow(/exactly one/i)
+    expect(addTenantBanner).not.toHaveBeenCalled()
+  })
+
+  it('update_banner can edit copy without touching the image, or replace the image', async () => {
+    await executeOp('update_banner', ctx, { tenantId: TENANT, surface: 'menu', bannerId: 'banner-1', title: null })
+    expect(updateTenantBanner).toHaveBeenCalledWith(ctx, { tenantId: TENANT, surface: 'menu', bannerId: 'banner-1', title: null, description: undefined, format: undefined })
+
+    await executeOp('update_banner', ctx, { tenantId: TENANT, surface: 'menu', bannerId: 'banner-1', sourceUrl: 'https://a.com/new.png' })
+    expect(updateTenantBanner).toHaveBeenLastCalledWith(ctx, expect.objectContaining({ bannerId: 'banner-1', source: { sourceUrl: 'https://a.com/new.png' } }))
+  })
+
+  it('clear_banner and list_banners dispatch; clear is not a destructive-named op', async () => {
+    await executeOp('clear_banner', ctx, { tenantId: TENANT, surface: 'welcome', bannerId: 'banner-9' })
+    expect(clearTenantBanner).toHaveBeenCalledWith(ctx, { tenantId: TENANT, surface: 'welcome', bannerId: 'banner-9' })
+
+    await executeOp('list_banners', ctx, { tenantId: TENANT })
+    expect(listTenantBanners).toHaveBeenCalledWith(ctx, TENANT)
+  })
+
+  it('get_branding returns current values AND the option vocabulary', async () => {
+    const result = await executeOp('get_branding', ctx, { tenantId: TENANT }) as { values: Record<string, unknown>; options: Record<string, string[]>; tenantSlug: string }
+
+    expect(readBrandingSnapshot).toHaveBeenCalledWith(ctx, TENANT, expect.arrayContaining(['hero_preset', 'card_template', 'promotion_banners']))
+    expect(result.tenantSlug).toBe('acme')
+    expect(result.values.hero_preset).toBe('split')
+    expect(result.options.hero_preset).toEqual(expect.arrayContaining(['split', 'collage', 'custom']))
+    expect(result.options.card_template).toEqual(expect.arrayContaining(['classic', 'minimal']))
+  })
+})
+
+describe('category icon ops', () => {
+  const CAT = '55555555-5555-4555-8555-555555555555'
+  const CAT2 = '66666666-6666-4666-8666-666666666666'
+
+  it('add_category advertises icon and icon_color so the model can see them', () => {
+    const opSchema = (PROVISIONING_OPS as Record<string, { input: never }>)['add_category']
+    const normalized = normalizeObjectSchema(opSchema.input) as { shape?: Record<string, unknown> } | undefined
+    expect(Object.keys(normalized?.shape ?? {})).toEqual(expect.arrayContaining(['tenantId', 'name', 'icon', 'icon_color']))
+  })
+
+  it('add_category still lets unlisted category fields flow through to the writer', async () => {
+    await executeOp('add_category', ctx, { tenantId: TENANT, name: 'Drinks', icon: 'lucide:coffee', default_addons: [] })
+    expect(createCategory).toHaveBeenCalledWith(TENANT, expect.objectContaining({ name: 'Drinks', icon: 'lucide:coffee', default_addons: [] }), ctx)
+  })
+
+  it('list_category_icons returns the grouped catalog and the storage convention', async () => {
+    const result = await executeOp('list_category_icons', ctx, {}) as { convention: string; groups: Array<{ label: string; icons: string[] }> }
+    expect(result.convention).toBe('lucide:<name>')
+    expect(result.groups.find((g) => g.label === 'Popular')?.icons).toContain('pizza')
+  })
+
+  it('update_category forwards a partial patch', async () => {
+    await executeOp('update_category', ctx, { tenantId: TENANT, categoryId: CAT, icon: 'lucide:pizza', icon_color: '#E63946' })
+    expect(updateCategoryFields).toHaveBeenCalledWith(CAT, TENANT, { icon: 'lucide:pizza', icon_color: '#E63946' }, ctx)
+  })
+
+  it('set_category_icons validates every name before writing any', async () => {
+    await expect(executeOp('set_category_icons', ctx, {
+      tenantId: TENANT,
+      assignments: [{ categoryId: CAT, icon: 'lucide:pizza' }, { categoryId: CAT2, icon: 'lucide:not-a-thing' }],
+    })).rejects.toThrow(/not-a-thing/)
+    expect(updateCategoryFields).not.toHaveBeenCalled()
+  })
+
+  it('set_category_icons applies every valid assignment', async () => {
+    const result = await executeOp('set_category_icons', ctx, {
+      tenantId: TENANT,
+      assignments: [{ categoryId: CAT, icon: 'lucide:pizza', icon_color: '#E63946' }, { categoryId: CAT2, icon: '🍜' }],
+    }) as { updated: number }
+
+    expect(result.updated).toBe(2)
+    expect(updateCategoryFields).toHaveBeenNthCalledWith(1, CAT, TENANT, { icon: 'lucide:pizza', icon_color: '#E63946' }, ctx)
+    expect(updateCategoryFields).toHaveBeenNthCalledWith(2, CAT2, TENANT, { icon: '🍜' }, ctx)
+  })
+
+  it('set_category_icons rejects a bad hex colour', async () => {
+    await expect(executeOp('set_category_icons', ctx, { tenantId: TENANT, assignments: [{ categoryId: CAT, icon: 'lucide:pizza', icon_color: 'red' }] })).rejects.toThrow(/hex/i)
   })
 })

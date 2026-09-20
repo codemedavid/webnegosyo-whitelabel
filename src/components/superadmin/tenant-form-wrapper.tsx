@@ -163,6 +163,47 @@ interface TenantFormData {
 
 type SetFormData = Dispatch<SetStateAction<TenantFormData>>
 
+/**
+ * Merge an address-field change into the form state.
+ *
+ * `MapboxAddressAutocomplete` fires `onChange` on EVERY keystroke and supplies
+ * coordinates only when a suggestion is picked or a pin is dropped. Overwriting
+ * the coordinates unconditionally therefore erased the store location of a
+ * tenant that already had one as soon as anyone touched the address box, and
+ * the save then failed validation with "Store location is required when
+ * distance-based delivery is enabled". Coordinates are replaced only when the
+ * picker actually produces new ones — the same rule the merchant-facing
+ * delivery settings form already follows.
+ */
+export function applyStoreLocationChange(
+  formData: TenantFormData,
+  address: string,
+  coordinates?: { lat: number; lng: number }
+): TenantFormData {
+  if (!coordinates) {
+    return { ...formData, restaurant_address: address }
+  }
+
+  return {
+    ...formData,
+    restaurant_address: address,
+    restaurant_latitude: coordinates.lat.toString(),
+    restaurant_longitude: coordinates.lng.toString(),
+  }
+}
+
+/**
+ * Read a coordinate out of its text input. Blank and unparseable both mean
+ * "not set"; `0` is a real latitude/longitude, so a falsy check would drop it.
+ */
+export function parseCoordinateInput(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (trimmed === '') return undefined
+
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
 // Memoized color input component to prevent unnecessary re-renders
 function ColorInput({
   id,
@@ -1189,12 +1230,7 @@ function RestaurantAddressSection({
           <MapboxAddressAutocomplete
             value={formData.restaurant_address}
             onChange={(address, coordinates) => {
-              setFormData({
-                ...formData,
-                restaurant_address: address,
-                restaurant_latitude: coordinates?.lat.toString() || '',
-                restaurant_longitude: coordinates?.lng.toString() || '',
-              })
+              setFormData((current) => applyStoreLocationChange(current, address, coordinates))
             }}
             placeholder="Enter restaurant address"
             required
@@ -2078,8 +2114,8 @@ export function TenantFormWrapper({
       qr_handoff_enabled: formData.qr_handoff_enabled,
       // Restaurant address
       restaurant_address: formData.restaurant_address || undefined,
-      restaurant_latitude: formData.restaurant_latitude ? parseFloat(formData.restaurant_latitude) : undefined,
-      restaurant_longitude: formData.restaurant_longitude ? parseFloat(formData.restaurant_longitude) : undefined,
+      restaurant_latitude: parseCoordinateInput(formData.restaurant_latitude),
+      restaurant_longitude: parseCoordinateInput(formData.restaurant_longitude),
       // Lalamove configuration
       lalamove_enabled: formData.lalamove_enabled,
       lalamove_api_key: formData.lalamove_api_key || undefined,
