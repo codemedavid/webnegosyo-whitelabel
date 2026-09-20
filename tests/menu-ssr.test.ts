@@ -1,15 +1,18 @@
 /**
- * Unit tests for menu server-side data fetching and ISR
+ * Unit tests for the menu page's server-side data fetching.
+ *
+ * Driven through the cached storefront stack with the cache a pass-through,
+ * so every read reaches the mocked public client.
  */
 
-import { getMenuData } from '@/app/[tenant]/menu/menu-server'
 import type { Tenant, Category, MenuItem } from '@/types/database'
+import { createPublicClient } from '@/lib/supabase/public'
 
-jest.mock('@/lib/supabase/server', () => ({
-  createClient: jest.fn()
-}))
+jest.mock('@/lib/supabase/public', () => ({ ...jest.requireActual('@/lib/supabase/public'), createPublicClient: jest.fn() }))
+jest.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn }))
+jest.mock('@/lib/storefront/brand-admin', () => ({ resolveIsBrandAdmin: jest.fn().mockResolvedValue(false) }))
 
-import { createClient } from '@/lib/supabase/server'
+const getMenuData = async (slug: string) => (await import('@/app/[tenant]/menu/menu-server')).getMenuData(slug)
 
 describe('Menu Server Component - SSR and ISR', () => {
   const mockSupabase = {
@@ -132,7 +135,7 @@ describe('Menu Server Component - SSR and ISR', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    ;(createClient as jest.Mock).mockResolvedValue(mockSupabase)
+    ;(createPublicClient as jest.Mock).mockReturnValue(mockSupabase)
   })
 
   describe('getMenuData function', () => {
@@ -404,8 +407,8 @@ describe('Menu Server Component - SSR and ISR', () => {
     })
 
     it('should be async function for server-side rendering', async () => {
-      const result = getMenuData('test-restaurant')
-      expect(result).toBeInstanceOf(Promise)
+      const { getMenuData: fn } = await import('@/app/[tenant]/menu/menu-server')
+      expect(fn('test-restaurant')).toBeInstanceOf(Promise)
     })
   })
 
@@ -458,12 +461,6 @@ describe('Menu Server Component - SSR and ISR', () => {
         }
       });
 
-      (Promise.all as jest.Mock) = jest.fn().mockResolvedValue([
-        { data: mockCategories, error: null },
-        { data: mockMenuItems, error: null },
-        { data: null, error: null },
-        { data: null, error: null }
-      ])
 
       const result = await getMenuData('test-restaurant')
 
@@ -491,12 +488,6 @@ describe('Menu Server Component - SSR and ISR', () => {
         }
       });
 
-      (Promise.all as jest.Mock) = jest.fn().mockResolvedValue([
-        { data: mockCategories, error: null },
-        { data: mockMenuItems, error: null },
-        { data: null, error: null },
-        { data: null, error: null }
-      ])
 
       const result = await getMenuData('test-restaurant')
 

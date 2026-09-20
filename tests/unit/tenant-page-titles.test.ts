@@ -8,11 +8,14 @@ import { readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 
 const mockedTenant = jest.fn()
-jest.mock('@/lib/supabase/server', () => ({
-  createClient: jest.fn(async () => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: mockedTenant }) }) }) })),
-}))
+jest.mock('@/lib/supabase/public', () => {
+  const builder = { eq: () => builder, maybeSingle: () => mockedTenant() }
+  return { createPublicClient: () => ({ from: () => ({ select: () => builder }) }), describePublicQueryError: (m: string) => m }
+})
+jest.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn }))
 
-import { generateMetadata } from '@/app/[tenant]/menu/layout'
+const generateMetadata = async (args: { params: Promise<{ tenant: string }> }) =>
+  (await import('@/app/[tenant]/menu/layout')).generateMetadata(args)
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {

@@ -1,16 +1,11 @@
-import { describe, test, expect, beforeEach, jest } from '@jest/globals'
+import { describe, test, expect } from '@jest/globals'
 import {
   normalizeDomain,
   extractSubdomain,
   clearDomainCache,
-  clearTenantExistenceCache,
   getRootDomain,
-  validateTenantExists,
+  isPlatformHost,
 } from '@/lib/tenant'
-
-// Use the global mockFrom from jest.setup.js
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockFrom = (global as any).mockFrom
 
 describe('tenant resolution', () => {
   describe('normalizeDomain', () => {
@@ -110,6 +105,11 @@ describe('tenant resolution', () => {
       expect(extractSubdomain('tenant.something.else', null)).toBeNull()
     })
 
+    test('still extracts a production tenant slug when the env root is missing', () => {
+      expect(extractSubdomain('gungjeon-unlimited.webnegosyo.com', null)).toBe('gungjeon-unlimited')
+      expect(extractSubdomain('www.webnegosyo.com', null)).toBeNull()
+    })
+
     test('handles port numbers correctly', () => {
       // extractSubdomain does not strip ports — port stripping happens in getHost()
       // When passed raw host with port, the suffix match fails
@@ -121,22 +121,25 @@ describe('tenant resolution', () => {
     })
   })
 
+  describe('isPlatformHost', () => {
+    test('treats the production platform hosts as platform even without an env root', () => {
+      expect(isPlatformHost('gungjeon-unlimited.webnegosyo.com', null)).toBe(true)
+      expect(isPlatformHost('www.webnegosyo.com', null)).toBe(true)
+      expect(isPlatformHost('webnegosyo.com', null)).toBe(true)
+      expect(isPlatformHost('ligna.cafe', null)).toBe(false)
+    })
+  })
+
   describe('cache functions', () => {
     test('clearDomainCache can be called', () => {
       expect(() => clearDomainCache('example.com')).not.toThrow()
     })
 
-    test('clearTenantExistenceCache can be called', () => {
-      expect(() => clearTenantExistenceCache('tenant-slug')).not.toThrow()
-    })
 
     test('clearDomainCache handles null input', () => {
       expect(() => clearDomainCache(null)).not.toThrow()
     })
 
-    test('clearTenantExistenceCache handles null input', () => {
-      expect(() => clearTenantExistenceCache(null)).not.toThrow()
-    })
   })
 
   describe('getRootDomain', () => {
@@ -154,74 +157,4 @@ describe('tenant resolution', () => {
     })
   })
 
-  describe('validateTenantExists', () => {
-    beforeEach(() => {
-      // Clear tenant existence cache to prevent cross-test cache hits
-      clearTenantExistenceCache('test-tenant')
-      clearTenantExistenceCache('nonexistent')
-    })
-
-    test('returns true for active tenant', async () => {
-      const chain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
-          data: { id: 'tenant-1', slug: 'test-tenant', is_active: true },
-          error: null,
-        }),
-      }
-      mockFrom.mockReturnValue(chain)
-
-      const result = await validateTenantExists('test-tenant')
-      expect(result).toBe(true)
-    })
-
-    test('returns false for inactive tenant', async () => {
-      const chain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
-          data: { id: 'tenant-1', slug: 'inactive-tenant', is_active: false },
-          error: null,
-        }),
-      }
-      mockFrom.mockReturnValue(chain)
-
-      // Use a unique slug to avoid cache from previous test
-      clearTenantExistenceCache('inactive-tenant')
-      const result = await validateTenantExists('inactive-tenant')
-      expect(result).toBe(false)
-    })
-
-    test('returns false when tenant not found', async () => {
-      const chain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
-          data: null,
-          error: null,
-        }),
-      }
-      mockFrom.mockReturnValue(chain)
-
-      const result = await validateTenantExists('nonexistent')
-      expect(result).toBe(false)
-    })
-
-    test('handles database errors gracefully', async () => {
-      const chain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn<() => Promise<unknown>>().mockResolvedValue({
-          data: null,
-          error: { message: 'Database error' },
-        }),
-      }
-      mockFrom.mockReturnValue(chain)
-
-      clearTenantExistenceCache('error-tenant')
-      const result = await validateTenantExists('error-tenant')
-      expect(result).toBe(false)
-    })
-  })
 })

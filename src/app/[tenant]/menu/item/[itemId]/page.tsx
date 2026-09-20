@@ -16,7 +16,7 @@ import { getUpsellBundles } from '@/lib/bundles-service'
 import { collectLinkedItemIds } from '@/lib/modifier-linked-options'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
 import { transformImageUrl as transformCloudinaryUrl, isOptimizableImageUrl as isCloudinaryUrl } from '@/lib/imagekit-utils'
-import { createClient } from '@/lib/supabase/server'
+import { resolveIsBrandAdmin } from '@/lib/storefront/brand-admin'
 import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import type { BundleWithSlots } from '@/types/database'
@@ -162,26 +162,8 @@ export default async function ProductDetailPage({ params }: Props) {
             console.warn('Non-critical data fetch failed:', nonCriticalError)
         }
 
-        // Check if the current user is a brand admin (server-side)
-        let isBrandAdmin = false
-        try {
-            const supabase = await createClient()
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) {
-                const { data: role } = await supabase
-                    .from('app_users')
-                    .select('role, tenant_id')
-                    .eq('user_id', user.id)
-                    .maybeSingle()
-                const userRole = role as { role: string; tenant_id: string | null } | null
-                isBrandAdmin = !!userRole && (
-                    userRole.role === 'superadmin' ||
-                    (userRole.role === 'admin' && userRole.tenant_id === tenant.id)
-                )
-            }
-        } catch {
-            // Non-critical: admin check failed, default to false
-        }
+        // The only per-visitor read on this page; everything above is cached.
+        const isBrandAdmin = await resolveIsBrandAdmin(tenant.id)
 
         // Preload the hero image so it's fetched before the client JS hydrates.
         // Uses 1280px width (matches OptimizedImage: sizes="(max-width:640px) 100vw, …, 800px" → max ~640*2=1280).

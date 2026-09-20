@@ -1,9 +1,8 @@
-import { describe, test, expect, beforeEach } from '@jest/globals'
+import { describe, test, expect } from '@jest/globals'
 import {
   normalizeDomain,
   extractSubdomain,
   clearDomainCache,
-  clearTenantExistenceCache,
   getRootDomain,
 } from '@/lib/tenant'
 
@@ -91,15 +90,6 @@ describe('tenant resolution extended', () => {
     })
   })
 
-  describe('clearTenantExistenceCache', () => {
-    test('does not throw for arbitrary slugs', () => {
-      expect(() => clearTenantExistenceCache('any-slug')).not.toThrow()
-    })
-
-    test('handles empty string', () => {
-      expect(() => clearTenantExistenceCache('')).not.toThrow()
-    })
-  })
 
   describe('getRootDomain', () => {
     const originalEnv = process.env.PLATFORM_ROOT_DOMAIN

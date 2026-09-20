@@ -134,7 +134,8 @@ describe('useBranchMenu', () => {
 })
 
 describe('storefront wiring', () => {
-  const menuServer = read('src/app/[tenant]/menu/menu-server.tsx')
+  // The menu page's query plan lives in the storefront catalog loader.
+  const menuServer = read('src/lib/storefront/storefront-catalog.ts')
   const menuClient = read('src/storefront/catalog/use-storefront-menu.ts')
 
   it('fetches branch overrides on the menu query', () => {
