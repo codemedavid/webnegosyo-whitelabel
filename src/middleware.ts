@@ -10,6 +10,51 @@ import {
 } from '@/lib/queries/fetch-app-user-scope'
 import { isMcpProtocolRoute } from '@/lib/mcp/route-isolation'
 import { rewriteMcpPathWellKnown } from '@/lib/mcp/mcp-path-well-known'
+import { createTimedFetch } from '@/lib/supabase/timed-fetch'
+
+// Routes that authenticate themselves (webhook signatures, OAuth state, cron
+// secrets) and need neither tenant resolution nor a session. Doing zero I/O
+// for them matters most for the crons: `/api/loyalty/maintenance` runs every
+// minute, and it was paying for a tenant lookup and a GoTrue round-trip each
+// time — 16 of the 64 middleware 504s logged during the 2026-09-20 outage.
+const SELF_AUTHENTICATED_API_PREFIXES = [
+  '/api/webhook',
+  '/api/auth/facebook',
+  '/api/facebook',
+  '/api/messenger',
+  '/api/loyalty/maintenance',
+  '/api/loyverse/reconcile',
+]
+
+// Vercel stops an edge middleware that has not answered in 25s. A GoTrue
+// call that has not come back in this long is treated as "no session".
+const AUTH_FETCH_TIMEOUT_MS = 3000
+
+const isSelfAuthenticatedApiRoute = (pathname: string) =>
+  SELF_AUTHENTICATED_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+
+// Supabase's SSR cookies are all `sb-<ref>-…`; a visitor without one has no
+// session to refresh, so GoTrue has nothing to tell us. That is the bulk of
+// storefront traffic. A visitor WITH one must be refreshed on every path, not
+// just admin paths: public pages (menu, item detail) call getUser() from
+// Server Components, which cannot write cookies, and a refresh they trigger
+// but cannot persist burns the rotating refresh token and ends the session.
+const hasSupabaseCookie = (request: NextRequest) =>
+  request.cookies.getAll().some((cookie) => cookie.name.startsWith('sb-'))
+
+async function getSessionUser(supabase: ReturnType<typeof createServerClient>) {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    return user
+  } catch (error) {
+    // A timed-out or failed GoTrue call fails closed for access (the visitor
+    // is bounced to login) but open for the site (no 504).
+    console.error('[Middleware] Session lookup failed:', error)
+    return null
+  }
+}
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -32,23 +77,7 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse
   }
 
-  // Skip all middleware processing for webhook routes (Facebook webhooks don't need auth/tenant resolution)
-  if (pathname.startsWith('/api/webhook')) {
-    return supabaseResponse
-  }
-
-  // Skip all middleware processing for Facebook OAuth routes
-  if (pathname.startsWith('/api/auth/facebook')) {
-    return supabaseResponse
-  }
-
-  // Skip all middleware processing for Facebook API routes
-  if (pathname.startsWith('/api/facebook')) {
-    return supabaseResponse
-  }
-
-  // Skip all middleware processing for Messenger API routes (these endpoints handle their own auth)
-  if (pathname.startsWith('/api/messenger')) {
+  if (isSelfAuthenticatedApiRoute(pathname)) {
     return supabaseResponse
   }
 
@@ -99,6 +128,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // No Supabase cookie means no session to read or refresh. The access gates
+  // below still run — an anonymous hit on /admin must still bounce to login —
+  // they just do so without a round-trip to GoTrue.
+  const shouldConsultSession = hasSupabaseCookie(request)
+
   // Track whether we have a rewrite so setAll can preserve it
   const rewriteUrl = supabaseResponse.headers.get('x-middleware-rewrite')
 
@@ -123,13 +157,13 @@ export async function middleware(request: NextRequest) {
           )
         },
       },
+      global: { fetch: createTimedFetch(AUTH_FETCH_TIMEOUT_MS) },
     }
   )
 
-  // IMPORTANT: DO NOT REMOVE auth.getUser()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // IMPORTANT: DO NOT REMOVE auth.getUser() — it is what refreshes an admin's
+  // session cookie; Server Components cannot write cookies themselves.
+  const user = shouldConsultSession ? await getSessionUser(supabase) : null
 
   // Public routes that don't require authentication
   // Use specific patterns to avoid matching admin paths like /tenant/admin/menu-engineering

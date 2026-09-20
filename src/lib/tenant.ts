@@ -2,6 +2,7 @@
 
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createTimedFetch } from '@/lib/supabase/timed-fetch'
 
 // Reserved subdomains that should never be treated as tenant slugs
 const RESERVED_SUBDOMAINS = new Set([
@@ -11,11 +12,23 @@ const RESERVED_SUBDOMAINS = new Set([
 	'admin',
 ])
 
-// In-memory cache for domain-to-tenant slug mappings
-// Map<domain, { slug: string, expires: number }>
-const domainCache = new Map<string, { slug: string; expires: number }>()
+// In-memory cache for domain-to-tenant slug mappings.
+// A miss is cached too (slug: null): a scanner probing a custom domain, or a
+// host that simply is not a tenant, must not re-run the lookup on every hit.
+// Map<domain, { slug: string | null, expires: number }>
+const domainCache = new Map<string, { slug: string | null; expires: number }>()
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+// A confirmed miss is remembered for less time than a hit so a merchant who
+// just attached a custom domain is not locked out for the full TTL.
+const NEGATIVE_CACHE_TTL = 60 * 1000
+// A failed query (timeout, statement cancelled) is remembered briefly so a
+// struggling database is not hammered by every request until it recovers.
+// Short on purpose: one transient blip should not hide a healthy tenant for long.
+const ERROR_CACHE_TTL = 10 * 1000
 const MAX_CACHE_SIZE = 1000 // Maximum entries per cache to prevent memory leaks
+// The middleware must answer within Vercel's 25s cap; a lookup that has not
+// returned in this long is treated as a miss rather than a wait.
+const RESOLVER_FETCH_TIMEOUT_MS = 3000
 
 // In-memory cache for tenant existence validation
 // Map<slug, { exists: boolean, expires: number }>
@@ -177,6 +190,49 @@ export function extractSubdomain(host: string, rootDomain: string | null): strin
 }
 
 /**
+ * Hosts that can never be a custom domain: the platform root and anything
+ * under it, Vercel preview URLs, and local development hosts. Skipping the
+ * custom-domain lookup for these removes two database queries from every
+ * request on `<slug>.<root>` and from the platform root itself.
+ */
+export function isPlatformHost(host: string, rootDomain: string | null): boolean {
+	const hostClean = host.toLowerCase().trim()
+	if (!hostClean) return false
+	if (hostClean === 'localhost' || hostClean.endsWith('.localhost')) return true
+	if (hostClean.endsWith('.vercel.app')) return true
+	if (!rootDomain) return false
+	const rootLower = rootDomain.toLowerCase().trim()
+	return hostClean === rootLower || hostClean.endsWith(`.${rootLower}`)
+}
+
+/**
+ * Anonymous, cookie-less client for the resolver's two lookups, with a fetch
+ * that gives up instead of holding the middleware open.
+ */
+function createResolverClient() {
+	return createServerClient(
+		process.env.NEXT_PUBLIC_SUPABASE_URL!,
+		process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+		{
+			cookies: {
+				getAll() {
+					return []
+				},
+				setAll() {
+					// No-op for middleware
+				},
+			},
+			global: { fetch: createTimedFetch(RESOLVER_FETCH_TIMEOUT_MS) },
+		}
+	)
+}
+
+function rememberDomain(host: string, slug: string | null, ttl: number): void {
+	domainCache.set(host, { slug, expires: Date.now() + ttl })
+	cleanupCache(domainCache)
+}
+
+/**
  * Resolve tenant slug by custom domain from database
  * Uses in-memory cache to avoid database queries on every request
  */
@@ -210,20 +266,7 @@ async function resolveTenantByCustomDomain(host: string): Promise<string | null>
 
 	// Query database for custom domain
 	try {
-		const supabase = createServerClient(
-			process.env.NEXT_PUBLIC_SUPABASE_URL!,
-			process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-			{
-				cookies: {
-					getAll() {
-						return []
-					},
-					setAll() {
-						// No-op for middleware
-					},
-				},
-			}
-		)
+		const supabase = createResolverClient()
 
 		// Query for exact match or www variant
 		// Try exact match first (using normalized domain)
@@ -246,27 +289,37 @@ async function resolveTenantByCustomDomain(host: string): Promise<string | null>
 			error = wwwResult.error
 		}
 
-		if (error || !data || !data.domain) {
-			debugLog('Custom domain not found in database', { host, normalizedHost, error: error?.message })
+		if (error) {
+			debugLog('Custom domain lookup failed', { host, normalizedHost, error: error.message })
+			rememberDomain(normalizedHost, null, ERROR_CACHE_TTL)
+			return null
+		}
+
+		if (!data || !data.domain) {
+			debugLog('Custom domain not found in database', { host, normalizedHost })
+			rememberDomain(normalizedHost, null, NEGATIVE_CACHE_TTL)
 			return null
 		}
 
 		// Cache the result (cache both normalized and www variant)
-		const expires = Date.now() + CACHE_TTL
-		domainCache.set(normalizedHost, { slug: data.slug, expires })
+		rememberDomain(normalizedHost, data.slug, CACHE_TTL)
 		if (data.domain !== normalizedHost) {
-			domainCache.set(wwwVariant, { slug: data.slug, expires })
+			rememberDomain(wwwVariant, data.slug, CACHE_TTL)
 		}
-		// Cleanup expired entries to prevent memory leaks
-		cleanupCache(domainCache)
 
 		debugLog('Custom domain resolved successfully', { host, normalizedHost, slug: data.slug })
 		return data.slug
 	} catch (error) {
-		// If database query fails, don't block request
+		// If database query fails (or times out), don't block request
 		debugLog('Error resolving tenant by custom domain', { host, normalizedHost, error: error instanceof Error ? error.message : String(error) })
+		rememberDomain(normalizedHost, null, ERROR_CACHE_TTL)
 		return null
 	}
+}
+
+function rememberTenantExists(slug: string, exists: boolean, ttl: number): void {
+	tenantExistenceCache.set(slug, { exists, expires: Date.now() + ttl })
+	cleanupCache(tenantExistenceCache)
 }
 
 /**
@@ -285,20 +338,7 @@ export async function validateTenantExists(slug: string): Promise<boolean> {
 
 	// Query database
 	try {
-		const supabase = createServerClient(
-			process.env.NEXT_PUBLIC_SUPABASE_URL!,
-			process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-			{
-				cookies: {
-					getAll() {
-						return []
-					},
-					setAll() {
-						// No-op for middleware
-					},
-				},
-			}
-		)
+		const supabase = createResolverClient()
 
 		const { data, error } = await supabase
 			.from('tenants')
@@ -309,22 +349,20 @@ export async function validateTenantExists(slug: string): Promise<boolean> {
 
 		if (error) {
 			debugLog(`Error validating tenant existence for slug: ${slug}`, { error: error.message })
+			rememberTenantExists(slug, false, ERROR_CACHE_TTL)
 			return false
 		}
 
 		const exists = !!data && data.is_active
 
-		// Cache the result
-		const expires = Date.now() + TENANT_EXISTENCE_CACHE_TTL
-		tenantExistenceCache.set(slug, { exists, expires })
-		// Cleanup expired entries to prevent memory leaks
-		cleanupCache(tenantExistenceCache)
+		rememberTenantExists(slug, exists, TENANT_EXISTENCE_CACHE_TTL)
 
 		debugLog(`Tenant validation result for slug: ${slug}`, { exists })
 
 		return exists
 	} catch (error) {
 		debugLog(`Exception validating tenant existence for slug: ${slug}`, { error: error instanceof Error ? error.message : String(error) })
+		rememberTenantExists(slug, false, ERROR_CACHE_TTL)
 		return false
 	}
 }
@@ -359,11 +397,14 @@ export async function resolveTenantSlugFromRequest(request: NextRequest): Promis
 
 	debugLog('Starting tenant resolution', { host, rootDomain: rootDomain || 'not configured' })
 
-	// Priority 1: Check custom domain first
-	const customDomainSlug = await resolveTenantByCustomDomain(host)
-	if (customDomainSlug) {
-		debugLog('Tenant resolved via custom domain', { host, slug: customDomainSlug })
-		return customDomainSlug
+	// Priority 1: Check custom domain first — but only for hosts that could be
+	// one. The platform root and its subdomains skip straight to slug parsing.
+	if (!isPlatformHost(host, rootDomain)) {
+		const customDomainSlug = await resolveTenantByCustomDomain(host)
+		if (customDomainSlug) {
+			debugLog('Tenant resolved via custom domain', { host, slug: customDomainSlug })
+			return customDomainSlug
+		}
 	}
 
 	// Priority 2: Fall back to subdomain extraction
@@ -404,14 +445,17 @@ export async function getTenantSlugFromHeaders(): Promise<string | null> {
 
 	if (!host) return null
 
+	const rootDomain = getRootDomain()
+
 	// Priority 1: Check custom domain first (matching resolveTenantSlugFromRequest order)
-	const customDomainSlug = await resolveTenantByCustomDomain(host)
-	if (customDomainSlug) {
-		return customDomainSlug
+	if (!isPlatformHost(host, rootDomain)) {
+		const customDomainSlug = await resolveTenantByCustomDomain(host)
+		if (customDomainSlug) {
+			return customDomainSlug
+		}
 	}
 
 	// Priority 2: Fall back to subdomain extraction
-	const rootDomain = getRootDomain()
 	const sub = extractSubdomain(host, rootDomain)
 
 	if (sub) {

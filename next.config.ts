@@ -60,8 +60,10 @@ const nextConfig: NextConfig = {
 
   // Compiler optimizations
   compiler: {
-    // Remove console logs in production
-    removeConsole: process.env.NODE_ENV === 'production',
+    // Strip console noise in production but keep console.error: the
+    // middleware's catch blocks were the only trace of a failing tenant
+    // lookup, and they were compiled away, so 504s looked causeless in logs.
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
   },
 
   // Enable static optimization where possible
