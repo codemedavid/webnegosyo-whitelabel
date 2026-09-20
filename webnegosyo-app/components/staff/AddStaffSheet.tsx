@@ -2,8 +2,12 @@ import React, { useMemo, useState } from "react";
 import { Modal, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { isTabAllowed } from "../../lib/staff-permissions";
-import { PERMISSION_OPTIONS, PINNABLE_SCREENS } from "../../lib/team-roster";
+import { impliedPermissions, isTabAllowed } from "../../lib/staff-permissions";
+import {
+  containingGrantLabel,
+  PERMISSION_OPTIONS,
+  PINNABLE_SCREENS,
+} from "../../lib/team-roster";
 import { togglePermission } from "../../lib/team-permissions";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
@@ -75,6 +79,10 @@ export function AddStaffSheet({
     return PINNABLE_SCREENS.filter((screen) => isTabAllowed(holder, screen.tab));
   }, [draft.permissions]);
 
+  // Grants the ticked ones already contain — drawn on and locked, so the form
+  // never offers to withhold a screen the account will be able to open.
+  const included = useMemo(() => impliedPermissions(draft.permissions), [draft.permissions]);
+
   const isComplete =
     draft.email.trim().length > 0 &&
     draft.displayName.trim().length > 0 &&
@@ -128,31 +136,39 @@ export function AddStaffSheet({
 
           <View style={styles.card}>
             <SectionHeader title="Can access" hint="Pick at least one. You can change this later." />
-            {PERMISSION_OPTIONS.map((option) => (
-              <View key={option.key} style={styles.row}>
-                <View style={styles.rowCopy}>
-                  <Text style={styles.rowLabel}>{option.label}</Text>
-                  <Text style={styles.rowHint}>{option.description}</Text>
+            {PERMISSION_OPTIONS.map((option) => {
+              const isIncluded = included.includes(option.key);
+              return (
+                <View key={option.key} style={styles.row}>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowLabel}>{option.label}</Text>
+                    <Text style={styles.rowHint}>
+                      {isIncluded
+                        ? `Included with ${containingGrantLabel(option.key)}`
+                        : option.description}
+                    </Text>
+                  </View>
+                  <Switch
+                    accessibilityLabel={option.label}
+                    disabled={isIncluded}
+                    value={isIncluded || draft.permissions.includes(option.key)}
+                    onValueChange={() =>
+                      setDraft((current) => {
+                        const permissions = togglePermission(current.permissions, option.key);
+                        const holder = { role: "admin", isOwner: false, permissions };
+                        const keepsScreen =
+                          current.defaultTab === null || isTabAllowed(holder, current.defaultTab);
+                        return {
+                          ...current,
+                          permissions,
+                          defaultTab: keepsScreen ? current.defaultTab : null,
+                        };
+                      })
+                    }
+                  />
                 </View>
-                <Switch
-                  accessibilityLabel={option.label}
-                  value={draft.permissions.includes(option.key)}
-                  onValueChange={() =>
-                    setDraft((current) => {
-                      const permissions = togglePermission(current.permissions, option.key);
-                      const holder = { role: "admin", isOwner: false, permissions };
-                      const keepsScreen =
-                        current.defaultTab === null || isTabAllowed(holder, current.defaultTab);
-                      return {
-                        ...current,
-                        permissions,
-                        defaultTab: keepsScreen ? current.defaultTab : null,
-                      };
-                    })
-                  }
-                />
-              </View>
-            ))}
+              );
+            })}
           </View>
 
           {canAssignBranch && outlets.length > 0 ? (

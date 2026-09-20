@@ -1,5 +1,6 @@
 import {
   hasPermission,
+  impliedPermissions,
   isTabAllowed,
   allowedWorkspaces,
   type StaffPermissionHolder,
@@ -44,12 +45,49 @@ describe("hasPermission", () => {
     expect(hasPermission(ordersOnly, "orders")).toBe(true);
     expect(hasPermission(ordersOnly, "analytics")).toBe(false);
   });
+
+  // 'kitchen' and 'tables' were carved out of 'orders' after these accounts
+  // were created, and a stored permission list cannot grow on its own — so the
+  // pass and the floor vanished for every staff member already holding the
+  // queue they are slices of.
+  it("grants the pass and the floor through the order queue that contains them", () => {
+    expect(hasPermission(ordersOnly, "kitchen")).toBe(true);
+    expect(hasPermission(ordersOnly, "tables")).toBe(true);
+  });
+
+  it("does not read containment backwards", () => {
+    const host: StaffPermissionHolder = { role: "admin", isOwner: false, permissions: ["tables"] };
+    expect(hasPermission(host, "orders")).toBe(false);
+    expect(hasPermission(host, "kitchen")).toBe(false);
+  });
+
+  it("leaves separate authorities opt-in", () => {
+    expect(hasPermission(ordersOnly, "order_edit")).toBe(false);
+    expect(hasPermission(ordersOnly, "order_refund")).toBe(false);
+    expect(hasPermission(ordersOnly, "loyalty_manage")).toBe(false);
+    expect(hasPermission(ordersOnly, "pos")).toBe(false);
+  });
+});
+
+describe("impliedPermissions", () => {
+  it("names the keys reached only through a broader grant", () => {
+    expect(impliedPermissions(["orders"])).toEqual(["kitchen", "tables"]);
+    expect(impliedPermissions(["orders", "tables"])).toEqual(["kitchen"]);
+    expect(impliedPermissions(["pos"])).toEqual([]);
+    expect(impliedPermissions(null)).toEqual([]);
+  });
 });
 
 describe("isTabAllowed", () => {
   it("always allows the dashboard and utility screens", () => {
     expect(isTabAllowed(ordersOnly, "dashboard")).toBe(true);
     expect(isTabAllowed(ordersOnly, "account")).toBe(true);
+  });
+
+  it("opens the floor plan to an account that holds the order queue", () => {
+    expect(isTabAllowed(ordersOnly, "tables")).toBe(true);
+    expect(isTabAllowed(ordersOnly, "kitchen")).toBe(true);
+    expect(isTabAllowed(cashier, "tables")).toBe(false);
   });
 
   it("gates orders, insights, and product tabs by permission", () => {
@@ -89,8 +127,9 @@ describe("allowedWorkspaces", () => {
   it("drops views with no permitted tabs and filters tabs inside kept views", () => {
     const views = allowedWorkspaces(ordersOnly);
     expect(views.map((w) => w.key)).toEqual(["operations"]);
-    // The scheduled agenda rides the same orders grant as the queue it re-sorts.
-    expect(views[0].tabs).toEqual(["dashboard", "orders", "scheduled"]);
+    // The scheduled agenda rides the same orders grant as the queue it re-sorts,
+    // and the pass and the floor are slices of that queue (IMPLIED_BY).
+    expect(views[0].tabs).toEqual(["dashboard", "orders", "kitchen", "tables", "scheduled"]);
   });
 
   it("gives a pos-only cashier the register view and nothing else", () => {

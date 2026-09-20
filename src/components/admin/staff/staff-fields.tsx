@@ -2,6 +2,8 @@
 
 import { Checkbox } from '@/components/ui/checkbox'
 import {
+  IMPLIED_BY,
+  impliedPermissions,
   STAFF_PERMISSION_KEYS,
   STAFF_PERMISSION_LABELS,
   type StaffPermissionKey,
@@ -131,29 +133,43 @@ export function PermissionCheckboxes({
   onToggle: (key: StaffPermissionKey) => void
   idPrefix: string
 }) {
+  // Grants the ticked ones already contain (IMPLIED_BY). Shown ticked and
+  // locked: a box the owner can clear while the screen stays reachable would
+  // be a lie about who can see what.
+  const included = impliedPermissions(selected)
+
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {STAFF_PERMISSION_KEYS.map((key) => (
-        <label
-          key={key}
-          htmlFor={`${idPrefix}-${key}`}
-          className="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-muted/50"
-        >
-          <Checkbox
-            id={`${idPrefix}-${key}`}
-            checked={selected.includes(key)}
-            onCheckedChange={() => onToggle(key)}
-          />
-          <span className="space-y-1">
-            <span className="block text-sm font-medium leading-none">
-              {STAFF_PERMISSION_LABELS[key].label}
+      {STAFF_PERMISSION_KEYS.map((key) => {
+        const isIncluded = included.includes(key)
+        const parent = IMPLIED_BY[key]
+        return (
+          <label
+            key={key}
+            htmlFor={`${idPrefix}-${key}`}
+            className={`flex items-start gap-3 rounded-md border p-3 ${
+              isIncluded ? 'bg-muted/40' : 'cursor-pointer hover:bg-muted/50'
+            }`}
+          >
+            <Checkbox
+              id={`${idPrefix}-${key}`}
+              checked={isIncluded || selected.includes(key)}
+              disabled={isIncluded}
+              onCheckedChange={() => onToggle(key)}
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium leading-none">
+                {STAFF_PERMISSION_LABELS[key].label}
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                {isIncluded && parent
+                  ? `Included with ${STAFF_PERMISSION_LABELS[parent].label}`
+                  : STAFF_PERMISSION_LABELS[key].description}
+              </span>
             </span>
-            <span className="block text-xs text-muted-foreground">
-              {STAFF_PERMISSION_LABELS[key].description}
-            </span>
-          </span>
-        </label>
-      ))}
+          </label>
+        )
+      })}
     </div>
   )
 }

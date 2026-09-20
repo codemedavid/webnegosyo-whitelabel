@@ -5,6 +5,8 @@ import {
   canManageStaff,
   canAddStaff,
   validatePermissionKeys,
+  IMPLIED_BY,
+  impliedPermissions,
   permissionForAdminPath,
   permissionForMobileTab,
   permissionForPosScreen,
@@ -77,6 +79,61 @@ describe('hasPermission', () => {
     expect(hasPermission(ordersOnlyStaff, 'orders')).toBe(true)
     expect(hasPermission(ordersOnlyStaff, 'analytics')).toBe(false)
     expect(hasPermission(ordersOnlyStaff, 'menu')).toBe(false)
+  })
+
+  // A permission list is a snapshot of the keys that existed when it was
+  // written. 'kitchen' and 'tables' were later carved out of 'orders', which
+  // silently took the pass and the floor away from every staff account already
+  // holding the queue they are slices of.
+  it('grants the pass and the floor to anyone holding the order queue', () => {
+    expect(hasPermission(ordersOnlyStaff, 'kitchen')).toBe(true)
+    expect(hasPermission(ordersOnlyStaff, 'tables')).toBe(true)
+  })
+
+  it('does not read containment backwards', () => {
+    const host = { role: 'admin', is_owner: false, permissions: ['tables'] }
+    expect(hasPermission(host, 'tables')).toBe(true)
+    expect(hasPermission(host, 'orders')).toBe(false)
+    expect(hasPermission(host, 'kitchen')).toBe(false)
+  })
+
+  it('leaves every separate authority opt-in', () => {
+    for (const key of ['order_edit', 'order_refund', 'vouchers', 'branch_staff',
+                       'loyalty_manage', 'loyalty_redeem', 'pos', 'menu'] as const) {
+      expect(hasPermission(ordersOnlyStaff, key)).toBe(false)
+    }
+  })
+})
+
+describe('IMPLIED_BY', () => {
+  it('names only grants that are strict subsets of their parent', () => {
+    expect(IMPLIED_BY).toEqual({ kitchen: 'orders', tables: 'orders' })
+  })
+
+  it('never points a key at itself or at a key outside the registry', () => {
+    for (const [key, parent] of Object.entries(IMPLIED_BY)) {
+      expect(parent).not.toBe(key)
+      expect(STAFF_PERMISSION_KEYS).toContain(parent)
+      expect(STAFF_PERMISSION_KEYS).toContain(key)
+      // One level only: a parent that is itself implied would need recursion
+      // the gate does not do.
+      expect(IMPLIED_BY[parent as keyof typeof IMPLIED_BY]).toBeUndefined()
+    }
+  })
+})
+
+describe('impliedPermissions', () => {
+  it('names the keys a list reaches only through containment', () => {
+    expect(impliedPermissions(['orders'])).toEqual(['kitchen', 'tables'])
+  })
+
+  it('leaves out keys the list already ticks by name', () => {
+    expect(impliedPermissions(['orders', 'kitchen'])).toEqual(['tables'])
+  })
+
+  it('is empty for full access and for a list holding no parent', () => {
+    expect(impliedPermissions(null)).toEqual([])
+    expect(impliedPermissions(['pos'])).toEqual([])
   })
 })
 

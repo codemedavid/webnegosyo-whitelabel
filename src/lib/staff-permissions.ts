@@ -102,6 +102,35 @@ export const STAFF_PERMISSION_LABELS: Record<
 
 export const MAX_STAFF_PER_TENANT = 3
 
+/**
+ * Grants a broader grant already contains: key -> the grant that includes it.
+ *
+ * A staff account's permission list is a snapshot of the keys that existed the
+ * day it was written. So a key carved OUT of an existing grant takes its
+ * screen away from every account already holding the parent — the merchant
+ * ships a feature and their team silently cannot see it, with nothing on
+ * screen to say why. `kitchen` and `tables` were both carved out of `orders`
+ * for exactly that reason (see the registry comments above): the pass and the
+ * floor are the live order queue seen from one station, minus the queue's
+ * payments and cancellations. Anyone holding `orders` could already do strictly
+ * more, so naming the containment here restores them without widening anyone.
+ *
+ * Only strict subsets belong here. A grant that can do something its parent
+ * cannot — a refund, a loyalty balance, another person's account — is a
+ * separate authority and stays opt-in, however adjacent it looks.
+ */
+export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
+  kitchen: 'orders',
+  tables: 'orders',
+}
+
+/** Whether `permissions` grants `key` outright or through its containing grant. */
+function listGrants(permissions: readonly string[], key: StaffPermissionKey): boolean {
+  if (permissions.includes(key)) return true
+  const parent = IMPLIED_BY[key]
+  return parent !== undefined && permissions.includes(parent)
+}
+
 export interface PermissionHolder {
   role: string
   is_owner?: boolean | null
@@ -116,7 +145,17 @@ export interface PermissionHolder {
 export function hasPermission(user: PermissionHolder, key: StaffPermissionKey): boolean {
   if (user.role === 'superadmin' || user.is_owner) return true
   if (user.permissions == null) return true
-  return user.permissions.includes(key)
+  return listGrants(user.permissions, key)
+}
+
+/** The keys `permissions` grants only by containment, for a picker to show as included. */
+export function impliedPermissions(
+  permissions: readonly string[] | null
+): StaffPermissionKey[] {
+  if (permissions === null) return []
+  return (Object.keys(IMPLIED_BY) as StaffPermissionKey[]).filter(
+    (key) => !permissions.includes(key) && permissions.includes(IMPLIED_BY[key] as string)
+  )
 }
 
 /** Only the tenant owner (or a superadmin) may manage staff accounts. */

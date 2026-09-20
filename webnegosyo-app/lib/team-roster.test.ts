@@ -8,6 +8,7 @@ import { WORKSPACES } from "./workspaces";
 import {
   PERMISSION_OPTIONS,
   PINNABLE_SCREENS,
+  containingGrantLabel,
   describePermissions,
 } from "./team-roster";
 
@@ -28,6 +29,18 @@ describe("PINNABLE_SCREENS", () => {
     for (const screen of PINNABLE_SCREENS) {
       expect(screen.label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("containingGrantLabel", () => {
+  it("names the grant that already includes a carved-out screen", () => {
+    expect(containingGrantLabel("kitchen")).toBe("Orders");
+    expect(containingGrantLabel("tables")).toBe("Orders");
+  });
+
+  it("is null for a grant that stands on its own", () => {
+    expect(containingGrantLabel("pos")).toBeNull();
+    expect(containingGrantLabel("loyalty_manage")).toBeNull();
   });
 });
 

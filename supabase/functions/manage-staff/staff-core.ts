@@ -94,10 +94,29 @@ export function resolveStaffCaller(
   return { ok: true, caller: { ...row, tenant_id: row.tenant_id } }
 }
 
+/**
+ * Grants a broader grant already contains: key -> the grant that includes it.
+ * Mirror of `IMPLIED_BY` in src/lib/staff-permissions.ts; see that file for
+ * why carving a key out of an existing grant silently revokes the new screen
+ * from every account already holding the parent, and why only strict subsets
+ * may be listed here.
+ */
+export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
+  kitchen: 'orders',
+  tables: 'orders',
+}
+
+/** Whether `permissions` grants `key` outright or through its containing grant. */
+function listGrants(permissions: readonly string[], key: StaffPermissionKey): boolean {
+  if (permissions.includes(key)) return true
+  const parent = IMPLIED_BY[key]
+  return parent !== undefined && permissions.includes(parent)
+}
+
 function hasPermission(caller: StaffCaller, key: StaffPermissionKey): boolean {
   if (caller.role === 'superadmin' || caller.is_owner) return true
   if (caller.permissions == null) return true
-  return caller.permissions.includes(key)
+  return listGrants(caller.permissions, key)
 }
 
 export function validatePermissionKeys(input: unknown): StaffPermissionKey[] {
@@ -156,7 +175,7 @@ function holdsPermission(
 ): boolean {
   if (required === null) return true
   if (permissions === null) return true
-  return permissions.includes(required)
+  return listGrants(permissions, required)
 }
 
 /** The stored value for a submitted choice, or null for "no preference". */

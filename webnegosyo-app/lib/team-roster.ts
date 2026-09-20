@@ -4,7 +4,7 @@
 // come from the shared registries (staff-permissions.ts, workspaces.ts) and
 // team-roster.test.ts pins full coverage so a new key can never render blank.
 
-import { STAFF_PERMISSION_KEYS, type StaffPermissionKey } from "./staff-permissions";
+import { IMPLIED_BY, STAFF_PERMISSION_KEYS, type StaffPermissionKey } from "./staff-permissions";
 import { WORKSPACES } from "./workspaces";
 
 export interface PermissionOption {
@@ -79,6 +79,17 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
 /** Every grantable permission, in registry order, labelled for the owner. */
 export const PERMISSION_OPTIONS: readonly PermissionOption[] =
   STAFF_PERMISSION_KEYS.map((key) => ({ key, ...PERMISSION_LABELS[key] }));
+
+/**
+ * The name of the grant that already contains `key`, or null when the key
+ * stands alone. The picker draws such a row on and locked while the parent is
+ * held — a switch the owner can turn off while the screen stays reachable is a
+ * lie about who can see what.
+ */
+export function containingGrantLabel(key: StaffPermissionKey): string | null {
+  const parent = IMPLIED_BY[key];
+  return parent === undefined ? null : PERMISSION_LABELS[parent].label;
+}
 
 export interface PinnableScreen {
   /** Route name under app/(main)/. */

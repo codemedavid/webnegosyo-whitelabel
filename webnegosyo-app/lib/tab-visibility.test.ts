@@ -12,6 +12,7 @@ import {
   REPORTS_TAB,
   type TabVisibilityContext,
 } from "./tab-visibility";
+import { subscreensOf } from "./subscreen-links";
 import { WORKSPACES, getWorkspace } from "./workspaces";
 
 const owner: TabVisibilityContext = {
@@ -33,6 +34,37 @@ const posOnlyStaff: TabVisibilityContext = {
 const cook: TabVisibilityContext = {
   ...owner,
   caller: { role: "admin", isOwner: false, permissions: ["kitchen"] },
+};
+
+/**
+ * A branch manager as they exist in the field: role 'admin', not the owner,
+ * confined to one branch, and holding a permission list written before the
+ * floor plan and the kitchen board had keys of their own.
+ */
+const branchManager: TabVisibilityContext = {
+  ...owner,
+  caller: {
+    role: "admin",
+    isOwner: false,
+    permissions: [
+      "orders",
+      "menu",
+      "analytics",
+      "store_setup",
+      "customers",
+      "settings",
+      "pos",
+      "branch_staff",
+      "order_edit",
+      "order_refund",
+      "vouchers",
+    ],
+  },
+  audience: {
+    accountScope: { kind: "branch", outletId: "outlet-1" },
+    activeOutletCount: 3,
+    isDemo: false,
+  },
 };
 
 describe("isTabReachable", () => {
@@ -95,6 +127,23 @@ describe("the bar", () => {
     expect(barTabs(cook)).toEqual(["dashboard", "kitchen", "menu"]);
     expect(isTabOnBar("kitchen", cook)).toBe(true);
     expect(isTabOnBar("orders", cook)).toBe(false);
+  });
+
+  it("gives a branch manager the floor plan and the pass their grant contains", () => {
+    // The list above predates both keys. Without containment the manager gets
+    // the order queue but no Tables and no Kitchen, which is the bug this
+    // covers: a merchant turns on dine-in and only the owner can seat anyone.
+    expect(isTabReachable("tables", branchManager)).toBe(true);
+    expect(isTabReachable("kitchen", branchManager)).toBe(true);
+    expect(subscreensOf("orders", branchManager).map((link) => link.tab)).toEqual([
+      "kitchen",
+      "tables",
+      "scheduled",
+    ]);
+  });
+
+  it("still hides the floor plan from a store that seats nobody", () => {
+    expect(isTabReachable("tables", { ...branchManager, takesDineIn: false })).toBe(false);
   });
 
   it("keeps Kitchen off the bar when Orders is there", () => {

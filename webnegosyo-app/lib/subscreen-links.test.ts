@@ -104,12 +104,24 @@ describe("subscreensOf", () => {
     ]);
   });
 
-  it("drops the Kitchen door from a staffer without the kitchen grant", () => {
+  it("drops the Kitchen and Tables doors from a staffer holding neither the screens nor the queue", () => {
+    const posOnly = {
+      ...owner,
+      caller: { role: "admin", isOwner: false, permissions: ["pos"] },
+    };
+    expect(subscreensOf("orders", posOnly).map((l) => l.tab)).toEqual([]);
+  });
+
+  it("opens both doors for a staffer holding the order queue they are slices of", () => {
     const ordersOnly = {
       ...owner,
       caller: { role: "admin", isOwner: false, permissions: ["orders"] },
     };
-    expect(subscreensOf("orders", ordersOnly).map((l) => l.tab)).toEqual(["scheduled"]);
+    expect(subscreensOf("orders", ordersOnly).map((l) => l.tab)).toEqual([
+      "kitchen",
+      "tables",
+      "scheduled",
+    ]);
   });
 
   it("returns nothing for a screen that has no sub-screens", () => {

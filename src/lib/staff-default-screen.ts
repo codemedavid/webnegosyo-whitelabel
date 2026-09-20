@@ -11,7 +11,7 @@
 //
 // Pure data + lookups; no I/O.
 
-import type { StaffPermissionKey } from '@/lib/staff-permissions'
+import { hasPermission, type StaffPermissionKey } from '@/lib/staff-permissions'
 
 export interface DefaultScreenOption {
   /** Route name under the app's app/(main)/ directory. */
@@ -210,8 +210,9 @@ function holdsPermission(
   required: StaffPermissionKey | null
 ): boolean {
   if (required === null) return true
-  if (permissions === null) return true
-  return permissions.includes(required)
+  // Routed through the shared gate so a screen included in a broader grant
+  // (IMPLIED_BY) can be pinned, not just one ticked by name.
+  return hasPermission({ role: 'admin', permissions: permissions ? [...permissions] : null }, required)
 }
 
 function coversBranchScreens(audience: DefaultScreenAudience): boolean {

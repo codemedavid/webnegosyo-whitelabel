@@ -90,9 +90,17 @@ describe("tables permission", () => {
     expect(keys.indexOf("tables")).toBe(keys.indexOf("kitchen") + 1);
   });
 
-  it("keeps staff without the grant off the floor", () => {
-    const cashier = { role: "admin", isOwner: false, permissions: ["pos", "orders"] };
+  it("keeps staff without the grant, or the queue it belongs to, off the floor", () => {
+    const cashier = { role: "admin", isOwner: false, permissions: ["pos", "menu"] };
     expect(isTabAllowed(cashier, "tables")).toBe(false);
+  });
+
+  it("lets the order queue carry the floor it is a slice of", () => {
+    // 'tables' was carved out of 'orders' after staff lists were written, so
+    // a manager holding the queue must not lose the floor to a key that did
+    // not exist when their account was made.
+    const manager = { role: "admin", isOwner: false, permissions: ["pos", "orders"] };
+    expect(isTabAllowed(manager, "tables")).toBe(true);
   });
 
   it("lets floor staff in", () => {

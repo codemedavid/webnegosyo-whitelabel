@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
-import { isTabAllowed } from "../../lib/staff-permissions";
+import { impliedPermissions, isTabAllowed } from "../../lib/staff-permissions";
 import type { StaffMember } from "../../lib/staff-service";
 import {
+  containingGrantLabel,
   PERMISSION_OPTIONS,
   PINNABLE_SCREENS,
 } from "../../lib/team-roster";
@@ -64,34 +65,44 @@ export function StaffAccessPanel({
 }: StaffAccessPanelProps) {
   const [password, setPassword] = useState("");
   const held = effectivePermissions(member.permissions);
+  // Grants this account reaches through a broader one it holds. Drawn on and
+  // locked, so the switches say the same thing the app does.
+  const included = impliedPermissions(member.permissions);
 
   return (
     <View style={styles.wrap}>
       <View style={styles.card}>
         <SectionHeader title="Can access" hint="Saved as you switch it. Applies next time they open the app." />
-        {PERMISSION_OPTIONS.map((option) => (
-          <View key={option.key} style={styles.row}>
-            <View style={styles.rowCopy}>
-              <Text style={styles.rowLabel}>{option.label}</Text>
-              <Text style={styles.rowHint}>{option.description}</Text>
+        {PERMISSION_OPTIONS.map((option) => {
+          const isIncluded = included.includes(option.key);
+          return (
+            <View key={option.key} style={styles.row}>
+              <View style={styles.rowCopy}>
+                <Text style={styles.rowLabel}>{option.label}</Text>
+                <Text style={styles.rowHint}>
+                  {isIncluded
+                    ? `Included with ${containingGrantLabel(option.key)}`
+                    : option.description}
+                </Text>
+              </View>
+              <Switch
+                value={isIncluded || held.includes(option.key)}
+                disabled={busy || isIncluded}
+                accessibilityLabel={option.label}
+                onValueChange={() => {
+                  // null = full access: every switch is on, and a flip must send
+                  // the whole list minus this key, not just this key.
+                  const next = toggleEffectivePermission(member.permissions, option.key);
+                  if (next.length === 0) {
+                    onRefuseEmptyPermissions();
+                    return;
+                  }
+                  onUpdatePermissions(next);
+                }}
+              />
             </View>
-            <Switch
-              value={held.includes(option.key)}
-              disabled={busy}
-              accessibilityLabel={option.label}
-              onValueChange={() => {
-                // null = full access: every switch is on, and a flip must send
-                // the whole list minus this key, not just this key.
-                const next = toggleEffectivePermission(member.permissions, option.key);
-                if (next.length === 0) {
-                  onRefuseEmptyPermissions();
-                  return;
-                }
-                onUpdatePermissions(next);
-              }}
-            />
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       {canAssignBranch && outlets.length > 0 ? (
