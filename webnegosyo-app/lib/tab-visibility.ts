@@ -1,11 +1,19 @@
 /**
  * One answer to "can this account see this screen, and where?"
  *
- * The tab bar and the Menu hub both need the same four gates — the account's
- * staff grants, whether the store runs several branches, whether it takes
- * pre-orders, and which view is active — and a rule that lives in two places
- * drifts. `isTabReachable` is the account-level answer (the hub lists every
- * reachable screen); `isTabOnBar` adds the view gate the tab bar applies.
+ * The app used to be five "views", each swapping the tab bar for its own
+ * tabs, with a chip in every header to switch between them. Four fifths of
+ * the app was hidden behind that chip at any moment, and the bar changed shape
+ * under the merchant's thumb. It is now one bar that never changes shape:
+ *
+ *   Home · Orders · POS · Reports · Manage
+ *
+ * Every other screen hangs under one of those five — as a sub-screen entered
+ * from its parent (`lib/subscreen-links.ts`), or as a row in the Reports or
+ * Manage hub (`lib/hubs.ts`). The three gates an account carries — its staff
+ * grants, whether the store runs several branches, whether it takes
+ * pre-orders — are asked here, once, and the bar, the hubs, the sub-screen
+ * doors and the tutorial all read the same answer.
  *
  * Pure, so it runs under the node Jest project. The hooks that produce the
  * context (`usePortfolioAudience`, `useAdvanceOrdering`) stay in the callers.
@@ -13,64 +21,107 @@
 
 import { isBusinessTabVisible, type PortfolioAudience } from "./portfolio-landing";
 import { isTabAllowed, type StaffPermissionHolder } from "./staff-permissions";
-import { getWorkspace, isTabInWorkspace, type WorkspaceKey } from "./workspaces";
+import { getWorkspace, type WorkspaceKey } from "./workspaces";
 
-/** The always-visible hub tab; it belongs to no view. */
+/** The hub of everything the merchant sets up: products, stock, payments, people, device, account. */
 export const MENU_TAB = "menu";
+/** The hub of everything the merchant reads: sales, customers, products, branches. */
+export const REPORTS_TAB = "reports";
+/** Hub tabs belong to no view; each lists other screens. */
+export const HUB_TABS: readonly string[] = [REPORTS_TAB, MENU_TAB];
 
 /**
- * Screens registered to a view but kept off the tab bar. They are the
- * storefront's setup rather than a view of a shift, and a merchant reaches
- * them from the Menu hub. Keeping them registered preserves permissions and
- * the switcher's "what's in this view" list.
+ * The bar, left to right. Each slot names its candidates in order and the
+ * first reachable one takes the slot, so the bar keeps its five positions for
+ * every account: a cook whose only grant is the kitchen board sees it where
+ * everyone else sees Orders, instead of a bar with a hole in it.
  */
-export const SETUP_TABS: readonly string[] = ["payments"];
+export const BAR_SLOTS: readonly (readonly string[])[] = [
+  ["dashboard"],
+  ["orders", "kitchen"],
+  ["pos"],
+  [REPORTS_TAB],
+  [MENU_TAB],
+];
 
 /**
- * Screens that belong UNDER another screen rather than beside it.
- *
- * Insights had grown to six tabs and, with the always-on Menu hub, a
- * seven-item bar: every label truncated ("Analyti…", "Guest l…") and the
- * merchant had to read three tabs to answer one question. Three of those six
- * are not peers of the screen they sit next to — Trends plots the same sales
- * Analytics slices, and the guest list and the reward scheme are both things
- * you look at *after* the Customers overview tells you regulars are or are not
- * coming back. So they are entered from their parent (see
- * `lib/subscreen-links.ts`) instead of costing a slot on the bar.
- *
- * They stay registered tabs: permissions, the Menu hub and deep links are all
- * unchanged, exactly as for the setup screens above.
+ * Screens that belong UNDER a bar tab rather than beside it, entered from
+ * their parent (see `lib/subscreen-links.ts`). Kitchen is the one exception
+ * that can also take a bar slot, when the account cannot reach Orders.
  */
-export const SUBSCREEN_TABS: readonly string[] = ["trends", "customers", "loyalty"];
+export const SUBSCREEN_TABS: readonly string[] = [
+  "kitchen",
+  "tables",
+  "scheduled",
+  "pos-sales",
+  "trends",
+  "customers",
+  "loyalty",
+];
 
-/** Every reachable-but-not-a-tab screen, whatever the reason it is off the bar. */
-export const OFF_BAR_TABS: readonly string[] = [...SETUP_TABS, ...SUBSCREEN_TABS];
+/**
+ * Screens the merchant reads, listed in the Reports hub. Order matters only
+ * within `lib/hubs.ts`, which groups them; this flat list is what decides
+ * whether the Reports tab exists for an account at all.
+ */
+export const REPORT_TABS: readonly string[] = [
+  "analytics",
+  "growth",
+  "customer-hub",
+  "product-analytics",
+  "daily-report",
+  "branches",
+];
+
+/** Screens the merchant sets up, listed in the Manage hub. */
+export const SETUP_TABS: readonly string[] = [
+  "product-management",
+  "categories",
+  "inventory",
+  "payments",
+  "portfolio",
+  "branch-menu",
+];
 
 /** The Scheduled agenda only exists for a store that takes pre-orders. */
 const ADVANCE_ORDER_TABS: readonly string[] = ["scheduled"];
+
+/**
+ * The floor plan only exists for a store that seats people. A shop with no
+ * enabled dine-in order type has no tables to draw, and every order it takes
+ * is for somewhere else, so the screen would be an empty room.
+ */
+export const DINE_IN_TABS: readonly string[] = ["tables"];
 
 export interface TabVisibilityContext {
   caller: StaffPermissionHolder;
   audience: PortfolioAudience;
   takesAdvanceOrders: boolean;
+  takesDineIn: boolean;
 }
 
 export function isTabReachable(tab: string, ctx: TabVisibilityContext): boolean {
   if (tab === MENU_TAB) return true;
+  // A hub with nothing in it is not a screen; the tab exists exactly when at
+  // least one report does.
+  if (tab === REPORTS_TAB) return REPORT_TABS.some((report) => isTabReachable(report, ctx));
   if (!isTabAllowed(ctx.caller, tab)) return false;
   if (!isBusinessTabVisible(tab, ctx.audience)) return false;
   if (ADVANCE_ORDER_TABS.includes(tab) && !ctx.takesAdvanceOrders) return false;
+  if (DINE_IN_TABS.includes(tab) && !ctx.takesDineIn) return false;
   return true;
 }
 
-export function isTabOnBar(
-  tab: string,
-  workspace: WorkspaceKey,
-  ctx: TabVisibilityContext,
-): boolean {
-  if (tab === MENU_TAB) return true;
-  if (OFF_BAR_TABS.includes(tab)) return false;
-  return isTabInWorkspace(tab, workspace) && isTabReachable(tab, ctx);
+/** The tabs on the bar for this account, left to right. */
+export function barTabs(ctx: TabVisibilityContext): string[] {
+  return BAR_SLOTS.flatMap((slot) => {
+    const taken = slot.find((tab) => isTabReachable(tab, ctx));
+    return taken === undefined ? [] : [taken];
+  });
+}
+
+export function isTabOnBar(tab: string, ctx: TabVisibilityContext): boolean {
+  return barTabs(ctx).includes(tab);
 }
 
 /** A view's reachable tabs, in registry order. Includes off-bar screens. */

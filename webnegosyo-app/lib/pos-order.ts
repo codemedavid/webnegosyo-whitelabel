@@ -18,6 +18,7 @@ import { cartTotals, type PosCartLine, type ServiceCharge } from "./pos-cart";
 import type { OrderDiscountLine } from "./order-totals";
 import { computeChange } from "./pos-cash";
 import { withOrderOutlet, type OrderOutletContext } from "./order-outlet";
+import { tableCustomerData, type PosTableDetails } from "./pos-table";
 import {
   chargeableDeliveryFee,
   deliveryCustomerData,
@@ -73,6 +74,8 @@ export interface PosOrderContext {
    * optional. Absent on an ordinary counter sale.
    */
   delivery?: PosDeliveryDetails | null;
+  /** The table a dine-in sale is for. Absent on a counter or delivery sale. */
+  table?: PosTableDetails | null;
   /** Any non-POS customerData the caller already assembled. */
   customerData?: Record<string, unknown>;
   /**
@@ -249,6 +252,7 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
       // so a counter sale is always attributable to the till that rang it.
       ...withOrderOutlet(context.customerData, context.outlet),
       ...deliveryBlob,
+      ...tableCustomerData(context.table),
       // Spread before `pos` so a discount can never displace the payment
       // payload — both live in this blob and both are needed to settle a sale.
       ...discountBlob(context.discounts, discountTotal),

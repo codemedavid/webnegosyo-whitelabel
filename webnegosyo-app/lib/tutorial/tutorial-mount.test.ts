@@ -2,8 +2,8 @@
  * Source-level guardrails for the tutorial's wiring. Screens are not rendered
  * under Jest here, so these assert on the files: the two routes are
  * registered off the bar, the greeter is mounted once in the tab layout, and
- * both the Menu hub and Account link to the chapter list — otherwise the tour
- * exists but nobody can reach it.
+ * the Manage hub links to the chapter list — otherwise the tour exists but
+ * nobody can reach it.
  */
 
 import { readFileSync } from "node:fs";
@@ -27,9 +27,8 @@ describe("tutorial wiring", () => {
     expect(layout.match(/<TutorialWelcomePopup \/>/g)).toHaveLength(1);
   });
 
-  it("links to the chapter list from the Menu hub and Account", () => {
+  it("links to the chapter list from the Manage hub", () => {
     expect(read("app/(main)/menu.tsx")).toContain("router.push(TUTORIAL_HUB_ROUTE)");
-    expect(read("app/(main)/account.tsx")).toContain("router.push(TUTORIAL_HUB_ROUTE)");
   });
 
   it("has a route file for each registered tutorial screen", () => {

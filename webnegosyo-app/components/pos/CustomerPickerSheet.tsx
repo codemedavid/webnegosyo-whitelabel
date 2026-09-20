@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
+import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import {
   listCustomers,
@@ -141,10 +142,13 @@ export function CustomerPickerSheet({
   const quickCreateDraft = draftFromSearch(query);
   const canQuickCreate = quickCreateDraft !== null && !isSearching && results.length === 0;
 
+  // A docked sheet becomes a centred dialog once the glass is a tablet's
+  // (components/pos/dialog-layout.ts).
+  const isCentered = useCenteredDialog();
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+      <View style={[styles.backdrop, isCentered && centeredDialog.backdrop]}>
+        <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
             <Text style={styles.title}>Who is this for?</Text>
             <TouchableOpacity onPress={onCancel} accessibilityRole="button">

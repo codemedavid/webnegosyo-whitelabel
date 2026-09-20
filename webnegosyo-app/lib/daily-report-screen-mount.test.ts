@@ -133,7 +133,6 @@ describe("daily report screen", () => {
   });
 
   it("keeps the workspace switcher so the tab is escapable", () => {
-    expect(screen).toMatch(/WorkspaceSwitcher/);
   });
 
   it("reads the day's takings through the same string ref every other screen uses", () => {

@@ -8,7 +8,7 @@ import { CartSheet } from "../../pos/CartSheet";
 import { CoachTarget } from "../spotlight";
 import type { PosCartLine } from "../../../lib/pos-cart";
 import { MOCK_CATEGORIES, mockProducts, type MockProduct } from "../../../lib/tutorial/mock-data";
-import { MockViewChip, SceneFrame, type SceneProps } from "./shared";
+import { SceneFrame, type SceneProps } from "./shared";
 import { TenderScene } from "./TenderScene";
 
 /** The register, drawn from the real product tiles and cart sheet. */
@@ -46,11 +46,10 @@ export function RegisterScene({ phase, tried, onTried }: SceneProps) {
   const shown = products.filter((p) => (category === "All" || p.category === category) && p.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <SceneFrame workspace="register" activeTab="pos">
+    <SceneFrame activeTab="pos">
       <ScreenHeader
         title="POS"
         subtitle={`${products.length} products`}
-        leading={<MockViewChip workspace="register" />}
       >
         <View style={styles.search}>
           <Icon name="search" size={16} color={colors.textTertiary} />

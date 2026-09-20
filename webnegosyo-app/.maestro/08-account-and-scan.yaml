@@ -4,11 +4,12 @@ name: Account identity and order QR scanner
 # As a merchant, I want to see which account and store I am signed in to, and
 # to scan a customer's pickup QR, so that I hand orders to the right person.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Operations
+      TAB: Manage
 
 # --- Account -----------------------------------------------------------------
+# The store card at the top of Manage opens the account.
 - tapOn: "Account"
 - waitForAnimationToEnd
 - assertVisible: "Account"

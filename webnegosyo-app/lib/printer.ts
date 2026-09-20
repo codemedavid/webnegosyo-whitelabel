@@ -72,6 +72,9 @@ const IOS_BLE_WARMUP_MS = 2_000;
 const IOS_SCAN_WINDOW_MS = 6_000;
 const IOS_SCAN_ATTEMPTS = 3;
 
+/** Android 12 (API 31) — where the Bluetooth permissions became runtime ones. */
+const ANDROID_RUNTIME_BLUETOOTH_API = 31;
+
 /** Why a scan ended, so callers can tell a dead radio from an empty room. */
 export type ScanStatus = "ok" | "timeout" | "unavailable";
 
@@ -144,10 +147,23 @@ function getPrinterModule() {
 }
 
 /**
- * Request Bluetooth permissions required for printer scanning/connecting.
- * Android 12+ requires BLUETOOTH_SCAN and BLUETOOTH_CONNECT.
- * iOS permissions are handled via Info.plist entries by the library.
- * Returns true if permissions granted, false otherwise.
+ * Request the runtime permissions the printer list actually needs.
+ *
+ * Android 12+ (API 31+): BLUETOOTH_CONNECT is the one that matters —
+ * getBondedDevices() and the RFCOMM connect both throw SecurityException
+ * without it. BLUETOOTH_SCAN is asked for alongside it because the OS groups
+ * the two in one dialog, but a merchant who grants only CONNECT can still see
+ * and use every paired printer, so it must never block them.
+ *
+ * Android 11 and below: nothing to ask. BLUETOOTH and BLUETOOTH_ADMIN are
+ * install-time permissions, and the native adapter enumerates BONDED devices
+ * (BluetoothAdapter.getBondedDevices) rather than running a BLE scan — the
+ * location permission a scan would require buys nothing here. Asking for it
+ * was worse than pointless: ACCESS_FINE_LOCATION is declared in no manifest in
+ * this app, so the request resolved denied WITHOUT showing a dialog and locked
+ * every pre-Android-12 tablet out of adding a printer at all.
+ *
+ * iOS permissions are declared in Info.plist and prompted by the system.
  */
 export async function requestBluetoothPermissions(): Promise<PrinterResult> {
   if (Platform.OS === "ios") {
@@ -158,40 +174,28 @@ export async function requestBluetoothPermissions(): Promise<PrinterResult> {
   }
 
   if (Platform.OS === "android") {
+    const apiLevel = Platform.Version;
+    // Below API 31 the permissions are install-time and the adapter never
+    // scans, so there is nothing to ask and nothing that can be refused.
+    if (typeof apiLevel !== "number" || apiLevel < ANDROID_RUNTIME_BLUETOOTH_API) {
+      return { success: true };
+    }
+
     try {
-      // Android 12+ (API 31+) requires runtime Bluetooth permissions
-      const apiLevel = Platform.Version;
-      if (typeof apiLevel === "number" && apiLevel >= 31) {
-        const results = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-        ]);
+      const results = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+      ]);
 
-        const scanGranted = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === PermissionsAndroid.RESULTS.GRANTED;
-        const connectGranted = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === PermissionsAndroid.RESULTS.GRANTED;
+      const connectGranted =
+        results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === PermissionsAndroid.RESULTS.GRANTED;
 
-        if (!scanGranted || !connectGranted) {
-          return {
-            success: false,
-            error: "Bluetooth permissions are required to scan for printers. Please grant Bluetooth permissions in Settings.",
-          };
-        }
-      } else {
-        // Android < 12 requires location permission for Bluetooth scanning
-        const locationGranted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: "Location Permission",
-            message: "Location permission is required to scan for Bluetooth printers.",
-            buttonPositive: "OK",
-          }
-        );
-        if (locationGranted !== PermissionsAndroid.RESULTS.GRANTED) {
-          return {
-            success: false,
-            error: "Location permission is required for Bluetooth scanning on this Android version.",
-          };
-        }
+      if (!connectGranted) {
+        return {
+          success: false,
+          error:
+            "Allow Bluetooth for SmartMenu in Settings > Apps > SmartMenu > Permissions, then scan again.",
+        };
       }
 
       return { success: true };
@@ -308,9 +312,10 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
     usePrinterStore.getState().setConnectedAddress(address);
     return { success: true };
   } catch (err: unknown) {
-    console.warn("Printer connection failed:", err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("Printer connection failed:", message);
     usePrinterStore.getState().setConnectedAddress(null);
-    return { success: false, error: err instanceof Error ? err.message : "Connection failed" };
+    return { success: false, error: describePrintFailure(message) || "Connection failed" };
   }
 }
 
@@ -514,6 +519,57 @@ function enqueuePrintJob<T>(job: () => Promise<T>): Promise<T> {
 export type SegmentSource = PrintSegment[] | Promise<PrintSegment[]>;
 
 /**
+ * Tear the native connection down so the next connect rebuilds the socket.
+ *
+ * Android's BluetoothSocket.isConnected() reports the LOCAL socket state only:
+ * a printer that slept, was switched off, or drifted out of range leaves a
+ * socket that still claims to be connected. The write then fails with "Broken
+ * pipe" — and the native side reads that same claim as proof it need not
+ * reconnect (BLEPrinterAdapter.selectDevice returns early, "do not need to
+ * reconnect"), so a plain retry sends the next receipt down the very same dead
+ * socket and fails identically. Closing first is what makes a retry a real
+ * reconnection. The network adapter caches its stream the same way, so this is
+ * not Bluetooth-specific.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resetNativeConnection(instance: any): Promise<void> {
+  usePrinterStore.getState().setConnectedAddress(null);
+  try {
+    await instance.closeConn();
+  } catch {
+    // Already gone — closing a dead connection is the point, not a failure.
+  }
+}
+
+/**
+ * Native print errors reach the merchant verbatim in an Alert, and "failed to
+ * print data: Broken pipe" tells a cashier nothing they can act on. Every one
+ * of these means the same thing on the counter: the printer is not reachable
+ * right now.
+ */
+const DROPPED_CONNECTION_PATTERNS = [
+  /broken pipe/i,
+  /connection is not built/i,
+  /forgot to connectprinter/i,
+  /socket (is )?closed/i,
+  /outputstream is null/i,
+];
+
+const DROPPED_CONNECTION_MESSAGE =
+  "The printer dropped the connection. Check it is switched on, has paper, and is in range, then print again.";
+
+export function describePrintFailure(message: string): string {
+  if (!message) return "Print failed";
+  if (DROPPED_CONNECTION_PATTERNS.some((pattern) => pattern.test(message))) {
+    return DROPPED_CONNECTION_MESSAGE;
+  }
+  if (/bluetooth (adapter )?is not enabled/i.test(message)) {
+    return "Bluetooth is off. Turn it on, then print again.";
+  }
+  return message;
+}
+
+/**
  * Bring the connection to `printer` up if it is not the live one. Shared by
  * the print path and the launch-time warm-up.
  */
@@ -596,18 +652,22 @@ export function printToPrinter(
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn("Print failed, reconnecting for one retry:", message);
-      usePrinterStore.getState().setConnectedAddress(null);
+      // Drop the native socket BEFORE reconnecting — see resetNativeConnection.
+      // Without this the reconnect is a no-op and the retry repeats the failure.
+      await resetNativeConnection(instance);
 
       const reconnected = await connectPrinter(printer.type, printer.address);
-      if (!reconnected.success) return { success: false, error: message || "Print failed" };
+      if (!reconnected.success) {
+        return { success: false, error: describePrintFailure(message) };
+      }
       try {
         await runSegmentsOnInstance(instance, segments, printer.paperWidth, printer.qrMode);
         return { success: true };
       } catch (retryErr: unknown) {
         const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
         console.warn("Print retry failed:", retryMessage);
-        usePrinterStore.getState().setConnectedAddress(null);
-        return { success: false, error: retryMessage || "Print failed" };
+        await resetNativeConnection(instance);
+        return { success: false, error: describePrintFailure(retryMessage) };
       }
     }
   });

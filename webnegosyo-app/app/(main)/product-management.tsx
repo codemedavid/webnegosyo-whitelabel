@@ -142,7 +142,7 @@ export default function ProductManagementScreen() {
   return (
     <View style={styles.screen}>
       <ScreenHeader
-        title="Manage products"
+        title="Products"
         subtitle="Create, edit, and price your menu"
         actions={
           <IconButton icon="plus" label="Add product" tone="primary" onPress={handleCreate} />

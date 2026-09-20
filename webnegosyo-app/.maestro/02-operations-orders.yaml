@@ -4,11 +4,10 @@ name: Operations - order list, status filters, and order detail
 # As a merchant, I want to filter the order list by status and open a single
 # order, so that I can find and work the order a customer is asking about.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Operations
+      TAB: Orders
 
-- tapOn: "Orders, tab.*"
 - waitForAnimationToEnd
 - assertVisible: "Orders"
 

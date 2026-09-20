@@ -32,6 +32,7 @@ const owner = (overrides: Partial<TabVisibilityContext> = {}): TabVisibilityCont
   caller: { role: "admin", isOwner: true, permissions: null },
   audience: { accountScope: { kind: "all" }, activeOutletCount: 1, isDemo: false },
   takesAdvanceOrders: false,
+  takesDineIn: false,
   ...overrides,
 });
 

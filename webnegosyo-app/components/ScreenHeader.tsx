@@ -2,21 +2,16 @@ import React from "react";
 import { View, Text, StyleSheet, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, typography, spacing } from "../theme/colors";
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /**
  * The header every tab screen shares.
  *
- * Before this, seventeen screens each drew their own: some put the view
- * switcher above the title, some beside it, some below; actions were words in
- * one place and pills in another; and every one of them hard-coded a 60pt top
- * gap that was wrong on any phone whose notch was not the one it was drawn on.
+ * One large title with the screen's actions beside it, one line of context
+ * under it, and an optional toolbar. Nothing else: the view-switcher chip that
+ * used to sit above the title is gone with the views themselves, so the first
+ * thing on every screen is its name.
  *
- * The shape is the native one — a small bar (where am I, what can I do here)
- * over a large title — so a merchant never has to re-learn a screen:
- *
- *   [ ▦ Operations ▾ ]                          ( ⌕ ) ( ⎙ ) ( ◯ )
- *   Orders
+ *   Orders                                        ( ⎙ ) ( ◯ )
  *   Live queue · Main branch
  *   [ optional toolbar: search, filters, segmented controls ]
  *
@@ -27,15 +22,8 @@ interface ScreenHeaderProps {
   title: string;
   /** One line of context under the title: a branch name, a period, a count. */
   subtitle?: string;
-  /** Right side of the bar. Use `IconButton`s; two or three at most. */
+  /** Right side of the title row. Use `IconButton`s; three at most. */
   actions?: React.ReactNode;
-  /** Hidden on the Menu hub, which has nothing to switch away from. */
-  showSwitcher?: boolean;
-  /**
-   * Replaces the switcher on the left of the bar. The guided tour uses it to
-   * draw a view chip that looks identical but never navigates.
-   */
-  leading?: React.ReactNode;
   /** Search fields and filter controls that belong to the header. */
   children?: React.ReactNode;
   /** Set when a full-bleed banner above the header already cleared the notch. */
@@ -52,8 +40,6 @@ export function ScreenHeader({
   title,
   subtitle,
   actions,
-  showSwitcher = true,
-  leading,
   children,
   ignoreTopInset,
   tone = "light",
@@ -61,20 +47,19 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   const isDark = tone === "dark";
   const insets = useSafeAreaInsets();
-  const paddingTop = (ignoreTopInset ? 0 : insets.top) + spacing.sm;
+  const paddingTop = (ignoreTopInset ? 0 : insets.top) + spacing.md;
   return (
     <View style={[styles.wrap, { paddingTop }, style]}>
-      <View style={styles.bar}>
-        {leading ?? (showSwitcher ? <WorkspaceSwitcher /> : <View />)}
+      <View style={styles.titleRow}>
+        <Text
+          style={[styles.title, isDark && styles.titleDark]}
+          numberOfLines={1}
+          accessibilityRole="header"
+        >
+          {title}
+        </Text>
         {actions ? <View style={styles.actions}>{actions}</View> : null}
       </View>
-      <Text
-        style={[styles.title, isDark && styles.titleDark]}
-        numberOfLines={1}
-        accessibilityRole="header"
-      >
-        {title}
-      </Text>
       {subtitle ? (
         <Text style={[styles.subtitle, isDark && styles.subtitleDark]} numberOfLines={1}>
           {subtitle}
@@ -91,16 +76,22 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     backgroundColor: colors.background,
   },
-  bar: {
+  titleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: spacing.md,
     minHeight: 44,
-    marginBottom: spacing.sm,
   },
-  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  title: { fontSize: 28, fontWeight: "800", letterSpacing: -0.4, color: colors.textPrimary },
+  title: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+    color: colors.textPrimary,
+  },
   titleDark: { color: colors.heroInkText },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   subtitleDark: { color: colors.heroInkMuted },
   toolbar: { marginTop: spacing.md },

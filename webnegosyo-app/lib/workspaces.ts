@@ -1,7 +1,9 @@
-// Workspace (view) registry for the merchant app. The app is split into five
-// focused views — Operations, Register, Insights, Products, Business — and the
-// tab bar only shows the tabs owned by the active view. Pure data + lookups;
-// the active view lives in stores/workspace-store.ts and the tab bar reads both.
+// Section registry for the merchant app. Every tab screen belongs to exactly
+// one of five sections — Operations, Register, Insights, Products, Business —
+// which is what staff permissions, the landing rule and the tutorial reason
+// about. The tab bar itself no longer follows these sections: it is one fixed
+// bar (lib/tab-visibility.ts BAR_SLOTS) and everything else hangs under it.
+// Pure data + lookups.
 //
 // Business is the odd one out: the other four are views of a shift, and every
 // account has them. Business is the view of the company — which branches exist,
@@ -35,7 +37,10 @@ export const WORKSPACES: readonly Workspace[] = [
     // same live orders, one for the counter, one for the pass. Scheduled is
     // that same queue re-sorted by when the customer asked for it; the layout
     // additionally hides it for stores that never enabled pre-orders.
-    tabs: ["dashboard", "orders", "kitchen", "scheduled"],
+    // Tables is the same floor seen from the host stand: which party sits
+    // where and what they have ordered. It sits after the pass because a
+    // table's state is read off the tickets the kitchen is working.
+    tabs: ["dashboard", "orders", "kitchen", "tables", "scheduled"],
     defaultTab: "dashboard",
   },
   {
@@ -75,9 +80,13 @@ export const WORKSPACES: readonly Workspace[] = [
     // Insights: it carries no revenue on the phone, and the merchant who
     // counts the flour and the one asking whether the count matched are the
     // same person standing in the same place.
+    // Categories sits right after the products it groups: the merchant who
+    // adds a dish and the merchant who decides which section it lands in are
+    // the same person, one tap apart.
     tabs: [
       "product-analytics",
       "product-management",
+      "categories",
       "inventory",
       "daily-report",
       "payments",
@@ -92,7 +101,7 @@ export const WORKSPACES: readonly Workspace[] = [
     // with no route file breaks the tab bar for every account.
     // The cross-branch menu belongs here rather than beside the store-wide
     // product list: it is a decision about which branch sells what, which only
-    // exists for an account that runs several, and the Business view is the one
+    // exists for an account that runs several, and the Business section is the one
     // place already gated on exactly that.
     tabs: ["portfolio", "branches", "branch-menu"],
     defaultTab: "portfolio",

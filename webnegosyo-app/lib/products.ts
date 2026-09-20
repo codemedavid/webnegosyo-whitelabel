@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { listManagedCategories, type ManagedCategory } from "./categories";
 import {
   buildOutletMenuIndex,
   resolveMenuForOutlet,
@@ -30,11 +31,15 @@ export interface Product {
   updated_at?: string;
 }
 
-export interface Category {
-  id: string;
-  tenant_id: string;
-  name: string;
-}
+/**
+ * A category, as every screen in this app sees one.
+ *
+ * The same row the category management screens edit — there is one read of the
+ * `categories` table in this app, in `lib/categories.ts`, so a screen that only
+ * needs the name and a screen that draws the icon can never disagree about what
+ * a category is.
+ */
+export type Category = ManagedCategory;
 
 export interface ProductInput {
   name: string;
@@ -312,13 +317,11 @@ export async function toggleProductAvailability(
   return data as unknown as Product;
 }
 
-export async function listCategories(tenantId: string): Promise<Category[]> {
-  const { data, error } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .order("order", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as unknown as Category[];
-}
+/**
+ * The store's categories in menu order.
+ *
+ * Kept as a name here because the register, the analytics screen and the
+ * product editor have always imported it from this module; the read itself
+ * lives with the rest of the category service.
+ */
+export const listCategories = listManagedCategories;

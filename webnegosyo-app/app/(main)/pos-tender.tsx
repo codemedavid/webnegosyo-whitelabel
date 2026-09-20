@@ -39,6 +39,7 @@ import { buildPosStockItems } from "../../lib/pos-stock";
 import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
 import { notifyLoyversePosSale, posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
+import { notifyPosSaleActivity } from "../../lib/staff-activity/report-pos-sale";
 import { burnPosRedemptions } from "../../lib/voucher-service";
 import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
 import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
@@ -460,6 +461,8 @@ export default function PosTenderScreen() {
         // Read at tender time for the same reason as the discount lines: the
         // fee the customer is charged is whatever the sale holds NOW.
         delivery: usePosCartStore.getState().delivery,
+        // The table, likewise, is whatever the sale holds at tender.
+        table: usePosCartStore.getState().table,
         // Keep the branch that supplied the cart's prices and stock.
         outlet: saleOutlet,
       });
@@ -542,6 +545,20 @@ export default function PosTenderScreen() {
           // the only places customer capture is wired, so without this a POS
           // sale is invisible to the Regulars list. Skips itself for an
           // anonymous walk-in.
+          // Put the cashier's name on the sale in the platform's activity
+          // log, so "sales rung by Ana" reads from the same table as "orders
+          // Ana confirmed". Anonymous walk-ins never reach customer capture,
+          // so that post cannot carry this.
+          notifyPosSaleActivity(tenantId, {
+            backend: resolveOrderBackend({
+              order_backend: orderBackend,
+              convex_deployment_url: convexUrl,
+            }),
+            orderId: String(orderId),
+            total: args.total,
+            outletId,
+          }),
+
           notifyCustomerCapture(tenantId, {
             backend: resolveOrderBackend({
               order_backend: orderBackend,

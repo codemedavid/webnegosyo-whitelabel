@@ -245,6 +245,23 @@ export default function PaymentMethodEditorScreen() {
             trackColor={{ false: colors.separator, true: colors.primary }}
           />
         </View>
+
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text style={styles.label}>Skip the payment screen</Text>
+            <Text style={styles.hint}>
+              {form.require_payment_proof
+                ? "Unavailable while proof is required — the screenshot is collected on that screen"
+                : "Online orders are placed straight away, with no payment screen. Best for cash"}
+            </Text>
+          </View>
+          <Switch
+            value={form.skip_payment_details}
+            disabled={form.require_payment_proof}
+            onValueChange={(v) => updateField("skip_payment_details", v)}
+            trackColor={{ false: colors.separator, true: colors.primary }}
+          />
+        </View>
       </Card>
 
       <Card title="Offered for" style={styles.card}>

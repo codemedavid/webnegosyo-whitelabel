@@ -28,9 +28,6 @@ import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { PeriodSelector } from "../../components/PeriodSelector";
-// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { FilterChipsRow } from "../../components/FilterChipsRow";
@@ -564,7 +561,6 @@ export default function ProductAnalyticsScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader title="Performance" subtitle="What sells, and what doesn't" />
 
       {viewMode === "lifetime" ? (

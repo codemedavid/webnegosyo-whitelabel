@@ -11,14 +11,12 @@ import { canChooseBranch } from "../lib/branch-context";
 import { useAccountBranchScope } from "../lib/use-branch-scope";
 import { useAuthStore } from "../stores/auth-store";
 import { useBranchContextStore } from "../stores/branch-context-store";
-import { useWorkspaceStore } from "../stores/workspace-store";
 import { goTo, type TabAwareRouter } from "../lib/tab-navigation";
 
 export function BranchContextBar() {
   const accountScope = useAccountBranchScope();
   const selectedOutletName = useBranchContextStore((s) => s.selectedOutletName);
   const clearBranch = useBranchContextStore((s) => s.clearBranch);
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
   // A branch account's own branch, which it cannot leave.
   const accountOutletName = useAuthStore((s) => s.outletName);
 
@@ -31,7 +29,6 @@ export function BranchContextBar() {
 
   const exit = () => {
     clearBranch();
-    setWorkspace("business");
     goTo(router as TabAwareRouter<`/(main)/${string}`>, "/(main)/portfolio");
   };
 

@@ -5,9 +5,9 @@ name: Printer settings - roles, transports, auto-print, receipt timing
 # when each one fires, so that the counter gets a receipt and the pass gets a
 # ticket without anyone pressing print.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Operations
+      TAB: Home
 
 - tapOn: "Printer"
 - waitForAnimationToEnd

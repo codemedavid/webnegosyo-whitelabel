@@ -17,7 +17,7 @@ import {
   describeShiftSales,
   drawerBreakdown,
 } from "../../../lib/drawer-view";
-import { MockToast, MockViewChip, SceneFrame, type SceneProps } from "./shared";
+import { MockToast, SceneFrame, type SceneProps } from "./shared";
 
 /** The Drawer, after the sale the tour just rang up. */
 const SALES = [
@@ -40,11 +40,10 @@ export function DrawerScene({ phase, tried, onTried }: SceneProps) {
   const sales = includesOnline ? SALES : SALES.filter((s) => s.tag === null);
 
   return (
-    <SceneFrame workspace="register" activeTab="pos-sales">
+    <SceneFrame activeTab="pos-sales">
       <ScreenHeader
         title="Drawer"
         subtitle="What this shift has taken in"
-        leading={<MockViewChip workspace="register" />}
       >
         <CoachTarget active={phase === "summary" && !tried}>
           <SegmentedControl

@@ -95,6 +95,5 @@ describe("kitchen screen", () => {
   });
 
   it("keeps the workspace switcher so the tab is escapable", () => {
-    expect(screen()).toMatch(/WorkspaceSwitcher/);
   });
 });

@@ -5,9 +5,13 @@ name: Insights - analytics, growth coach, customers, trends
 # plan built from my own numbers, my guest list, and a daily trend line, so
 # that I can tell what is working and what to do next.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Insights
+      TAB: Reports
+
+# Analytics is the first row of the Reports hub.
+- tapOn: "Analytics.*"
+- waitForAnimationToEnd
 
 # --- Analytics (the view's default tab) -------------------------------------
 - assertVisible: "SALES OVERVIEW"

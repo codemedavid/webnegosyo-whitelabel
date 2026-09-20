@@ -3,26 +3,27 @@ import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from "re
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/auth-store";
-import { canOpenTeam } from "../../lib/staff-service";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { BackHeader } from "../../components/BackHeader";
 import { ListRow } from "../../components/ListRow";
 import { Button } from "../../components/Button";
 import { SectionHeader } from "../../components/SectionHeader";
-import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
 
 const SUPPORT_EMAIL = "support@webnegosyo.com";
 
+/**
+ * The account, and only the account: who is signed in, how to sign out, and
+ * how to delete it. Team, the guided tour and What's New used to be listed
+ * here too; they are setup and help, so they live under Manage now, and this
+ * screen no longer doubles as a second, smaller hub.
+ */
 export default function AccountScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
+  const outletName = useAuthStore((s) => s.outletName);
   const isDemo = useAuthStore((s) => s.isDemo);
-  const clear = useAuthStore((s) => s.clear);
-  const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
-  const permissions = useAuthStore((s) => s.permissions);
-  const outletId = useAuthStore((s) => s.outletId);
-
-  const showTeamEntry = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
+  const role = useAuthStore((s) => s.role);
+  const clear = useAuthStore((s) => s.clear);
 
   const [email, setEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -39,6 +40,14 @@ export default function AccountScreen() {
       active = false;
     };
   }, [isDemo]);
+
+  const roleLabel = isDemo
+    ? "Demo session, no account"
+    : isOwner
+      ? "Owner"
+      : role === "superadmin"
+        ? "Superadmin"
+        : "Staff";
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -116,78 +125,61 @@ export default function AccountScreen() {
     <View style={styles.screen}>
       <BackHeader title="Account" />
       <ScrollView contentContainerStyle={styles.content}>
-      <View style={styles.group}>
-        <ListRow
-          icon="account"
-          title={tenantName ?? "Your store"}
-          subtitle={isDemo ? "Demo session, no account" : email ?? "Signed in"}
-          accessibilityLabel={`Signed in as ${tenantName ?? "your store"}`}
-        />
-      </View>
-
-      <View style={styles.group}>
-        <ListRow
-          icon="info"
-          tone="accent"
-          title="Learn the app"
-          subtitle="Guided tour of every screen, with examples you can tap"
-          onPress={() => router.push(TUTORIAL_HUB_ROUTE)}
-          grouped
-        />
-        <ListRow
-          icon="info"
-          title="What's New"
-          subtitle="Release notes and announcements from WebNegosyo"
-          onPress={() => router.push("/(main)/whats-new")}
-          grouped
-        />
-        {showTeamEntry && (
+        <View style={styles.group}>
           <ListRow
-            icon="customers"
-            title="Team"
-            subtitle="Add staff accounts and choose what each one can do"
-            onPress={() => router.push("/(main)/team")}
+            icon="account"
+            title={tenantName ?? "Your store"}
+            subtitle={isDemo ? roleLabel : email ?? "Signed in"}
+            accessibilityLabel={`Signed in as ${tenantName ?? "your store"}`}
             grouped
           />
-        )}
-        <ListRow
-          icon="logout"
-          title="Sign Out"
-          subtitle={signingOut ? "Signing out…" : "Return to the sign-in screen"}
-          accessibilityLabel="Sign Out"
-          onPress={signingOut || deleting ? undefined : handleSignOut}
-          trailing={signingOut ? <ActivityIndicator color={colors.primary} /> : undefined}
-        />
-      </View>
-
-      {isDemo && (
-        <View style={styles.demoNote}>
-          <Text style={styles.demoNoteText}>
-            You&apos;re exploring the demo. Sign in with a merchant account to
-            manage account settings and deletion.
-          </Text>
+          <ListRow
+            icon="storefront"
+            title={outletName ?? "All branches"}
+            subtitle={roleLabel}
+            accessibilityLabel={`${roleLabel}${outletName ? ` at ${outletName}` : ""}`}
+          />
         </View>
-      )}
 
-      {!isDemo && (
-        <>
-          <SectionHeader title="Delete account" />
-          <View style={styles.dangerZone}>
-            <Text style={styles.dangerBody}>
-              Permanently delete your sign-in account and remove your access to
-              this store. Your store&apos;s orders and menu are preserved. This
-              cannot be undone.
+        <View style={styles.group}>
+          <ListRow
+            icon="logout"
+            title="Sign Out"
+            subtitle={signingOut ? "Signing out…" : "Return to the sign-in screen"}
+            accessibilityLabel="Sign Out"
+            onPress={signingOut || deleting ? undefined : handleSignOut}
+            trailing={signingOut ? <ActivityIndicator color={colors.primary} /> : undefined}
+          />
+        </View>
+
+        {isDemo && (
+          <View style={styles.demoNote}>
+            <Text style={styles.demoNoteText}>
+              You&apos;re exploring the demo. Sign in with a merchant account to
+              manage account settings and deletion.
             </Text>
-            <Button
-              label="Delete Account"
-              tone="danger"
-              onPress={confirmDelete}
-              isLoading={deleting}
-              fullWidth
-            />
           </View>
-        </>
-      )}
+        )}
+
+        {!isDemo && (
+          <>
+            <SectionHeader title="Delete account" />
+            <View style={styles.dangerZone}>
+              <Text style={styles.dangerBody}>
+                Permanently delete your sign-in account and remove your access to
+                this store. Your store&apos;s orders and menu are preserved. This
+                cannot be undone.
+              </Text>
+              <Button
+                label="Delete Account"
+                tone="danger"
+                onPress={confirmDelete}
+                isLoading={deleting}
+                fullWidth
+              />
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );

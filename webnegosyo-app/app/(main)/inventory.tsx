@@ -22,8 +22,6 @@ import { colors, typography, spacing, radius, shadow } from "../../theme/colors"
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { InventoryStockCard } from "../../components/InventoryStockCard";
 import { StockMovementSheet } from "../../components/StockMovementSheet";
@@ -311,7 +309,6 @@ export default function InventoryScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader title="Stock" subtitle="Tap an ingredient to record stock" />
 
       <ScrollView

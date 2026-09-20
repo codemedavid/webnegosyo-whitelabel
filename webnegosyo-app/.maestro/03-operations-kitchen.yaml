@@ -4,11 +4,12 @@ name: Operations - kitchen display board
 # As a chef, I want the open tickets on one board with their line items and how
 # long they have been waiting, so that I can cook the oldest order first.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Operations
+      TAB: Orders
 
-- tapOn: "Kitchen, tab.*"
+# Kitchen hangs under Orders: a round button in its header.
+- tapOn: "Kitchen"
 - waitForAnimationToEnd
 - assertVisible: "Kitchen"
 

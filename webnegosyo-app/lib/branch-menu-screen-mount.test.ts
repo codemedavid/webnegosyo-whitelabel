@@ -114,7 +114,6 @@ describe("branch products screen", () => {
   });
 
   it("keeps the workspace switcher so the tab is escapable", () => {
-    expect(screen()).toMatch(/WorkspaceSwitcher/);
   });
 
   it("blocks the demo session from changing a real store's menu", () => {

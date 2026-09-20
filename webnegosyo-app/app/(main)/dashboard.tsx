@@ -1,32 +1,37 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
 import { FunctionReference } from "convex/server";
+import { router } from "expo-router";
+
 import { useSafeQuery } from "../../lib/hooks";
 import { filterQueueToScope, deriveStatsForScope, type StatOrderLike } from "../../lib/branch-dashboard";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { useBranchScope } from "../../lib/use-branch-scope";
+import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
+import { isPortfolioAvailable } from "../../lib/portfolio-landing";
+import { isTabReachable } from "../../lib/tab-visibility";
+import { quickActionsFor } from "../../lib/home-quick-actions";
+import { revenueDelta, todayRange, yesterdayRange } from "../../lib/home-period";
+import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
+import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useAuthStore } from "../../stores/auth-store";
 import { usePrinterStore } from "../../stores/printer-store";
-import { router } from "expo-router";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
-import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-import { PeriodSelector } from "../../components/PeriodSelector";
 import { HeroRevenueCard } from "../../components/HeroRevenueCard";
+import { QuickActions } from "../../components/QuickActions";
 import { StatusPipeline } from "../../components/StatusPipeline";
 import { OrderCard } from "../../components/OrderCard";
-// Rendered by <ScreenHeader>; the import stays so the guardrail that every
-// tab is escapable keeps reading it here.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { SectionHeader } from "../../components/SectionHeader";
 import { IconButton } from "../../components/IconButton";
-import { goTo } from "../../lib/tab-navigation";
-import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
+import { ListRow } from "../../components/ListRow";
+import { ShiftStatusStrip } from "../../components/ShiftStatusStrip";
 
 const getDashboardStatsRef = "orders:getDashboardStats" as unknown as FunctionReference<"query">;
+const getDashboardStatsByPeriodRef = "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 
@@ -38,11 +43,8 @@ const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">
  */
 const BRANCH_STATS_ORDER_WINDOW = 2000;
 
-type BranchStatOrder = StatOrderLike;
-// TODO: Replace double type assertion with proper Convex-generated function reference type
-// when the codegen pipeline is set up. This pattern is used throughout the app as a workaround
-// for the template architecture where generated types aren't available in the mobile app.
-const getDashboardStatsByPeriodRef = "orders:getDashboardStatsByPeriod" as unknown as FunctionReference<"query">;
+/** The oldest pending orders shown on Home before "See all" takes over. */
+const ATTENTION_LIMIT = 5;
 
 interface DashboardStats {
   totalOrders: number;
@@ -61,42 +63,6 @@ interface QueueOrder {
   status: string;
 }
 
-const DASHBOARD_PERIODS = [
-  { label: "Today", value: "today" },
-  { label: "Yesterday", value: "yesterday" },
-  { label: "This Week", value: "this_week" },
-  { label: "This Month", value: "this_month" },
-  { label: "This Year", value: "this_year" },
-];
-
-function getDateRange(period: string): { startDate: number; endDate: number } {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
-
-  switch (period) {
-    case "yesterday": {
-      const start = todayStart - 24 * 60 * 60 * 1000;
-      return { startDate: start, endDate: todayStart - 1 };
-    }
-    case "this_week": {
-      const dayOfWeek = now.getDay();
-      const start = todayStart - dayOfWeek * 24 * 60 * 60 * 1000;
-      return { startDate: start, endDate: todayEnd };
-    }
-    case "this_month": {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-      return { startDate: start, endDate: todayEnd };
-    }
-    case "this_year": {
-      const start = new Date(now.getFullYear(), 0, 1).getTime();
-      return { startDate: start, endDate: todayEnd };
-    }
-    default:
-      return { startDate: todayStart, endDate: todayEnd };
-  }
-}
-
 function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -113,12 +79,20 @@ function HeaderActions({ isConnected }: { isConnected: boolean }) {
         dot={isConnected ? colors.success : colors.textTertiary}
         onPress={() => router.push("/(main)/printer-settings")}
       />
-      <IconButton icon="account" label="Account" onPress={() => router.push("/(main)/account")} />
       <IconButton icon="qr" label="Scan QR" tone="primary" onPress={() => router.push("/(main)/scan")} />
     </>
   );
 }
 
+/**
+ * Home: today's money first, then the things the merchant does most, then
+ * the orders that need a hand.
+ *
+ * It answers one question — how is today going? — and points at everything
+ * else. Other periods live in Reports; other screens are a tab or a quick
+ * action away. Nothing here needs the merchant to know which section a
+ * screen belongs to.
+ */
 export default function DashboardScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const outletName = useAuthStore((s) => s.outletName);
@@ -129,14 +103,24 @@ export default function DashboardScreen() {
   const isConnected = usePrinterStore((s) => s.isConnected);
   const loadSaved = usePrinterStore((s) => s.loadSaved);
 
-  const [period, setPeriod] = useState("today");
-  const dateRange = useMemo(() => getDateRange(period), [period]);
+  const ctx = useTabVisibilityContext();
+  const quickActions = useMemo(() => quickActionsFor(ctx), [ctx]);
+  const showBranches = isPortfolioAvailable(ctx.audience);
+  // The drawer's own screen is the only place the shift can be opened or
+  // closed, so an account that cannot reach it has no shift to report.
+  const showShift = isTabReachable("pos-sales", ctx);
+
   const [refreshing, setRefreshing] = useState(false);
+  // Spread into a fresh literal: the query hook wants an indexable record,
+  // and the interface deliberately is not one.
+  const yesterday = useMemo(() => ({ ...yesterdayRange(new Date()) }), []);
+  const today = useMemo(() => todayRange(new Date()), []);
 
   const { data: stats, isLoading, error: statsError, refetch: refetchStats } =
     useSafeQuery<DashboardStats>(getDashboardStatsRef);
-  const { data: periodStats, isLoading: periodLoading, refetch: refetchPeriodStats } =
-    useSafeQuery<DashboardStats>(getDashboardStatsByPeriodRef, period !== "today" ? dateRange : "skip");
+  // Yesterday is the comparison every takings figure needs to mean anything.
+  const { data: yesterdayStats, refetch: refetchYesterday } =
+    useSafeQuery<DashboardStats>(getDashboardStatsByPeriodRef, yesterday);
   const { data: rawQueue, error: queueError, refetch: refetchQueue } =
     useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
 
@@ -149,7 +133,7 @@ export default function DashboardScreen() {
   // the two always describe the same set. Store-wide accounts skip this query
   // entirely and keep using the cheaper server-side aggregate.
   const { data: scopedOrders, isLoading: scopedOrdersLoading, refetch: refetchScopedOrders } =
-    useSafeQuery<BranchStatOrder[]>(
+    useSafeQuery<StatOrderLike[]>(
       getOrdersRef,
       isBranchScoped ? { limit: BRANCH_STATS_ORDER_WINDOW } : "skip"
     );
@@ -160,31 +144,31 @@ export default function DashboardScreen() {
   const onRefresh = useCallback(
     () =>
       refreshWithMinSpinner(
-        [refetchStats, refetchPeriodStats, refetchQueue, refetchScopedOrders],
+        [refetchStats, refetchYesterday, refetchQueue, refetchScopedOrders],
         setRefreshing
       ),
-    [refetchStats, refetchPeriodStats, refetchQueue, refetchScopedOrders]
+    [refetchStats, refetchYesterday, refetchQueue, refetchScopedOrders]
   );
 
   const queue = useMemo(() => filterQueueToScope(scope, rawQueue), [scope, rawQueue]);
 
-  const todayRange = useMemo(() => getDateRange("today"), []);
-  const branchStats = useMemo(() => {
-    if (!isBranchScoped) return null;
-    return deriveStatsForScope(scope, scopedOrders, period === "today" ? todayRange : dateRange);
-  }, [isBranchScoped, scope, scopedOrders, period, todayRange, dateRange]);
+  const branchToday = useMemo(
+    () => (isBranchScoped ? deriveStatsForScope(scope, scopedOrders, today) : null),
+    [isBranchScoped, scope, scopedOrders, today]
+  );
+  const branchYesterday = useMemo(
+    () => (isBranchScoped ? deriveStatsForScope(scope, scopedOrders, yesterday) : null),
+    [isBranchScoped, scope, scopedOrders, yesterday]
+  );
 
-  const displayStats = branchStats ?? (period === "today" ? stats : periodStats);
-  const isStatsLoading = isBranchScoped
-    ? scopedOrdersLoading
-    : period === "today"
-      ? isLoading
-      : periodLoading;
-  const periodLabel = DASHBOARD_PERIODS.find((p) => p.value === period)?.label ?? "Today";
+  const displayStats = branchToday ?? stats;
+  const comparison = branchYesterday ?? yesterdayStats;
+  const isStatsLoading = isBranchScoped ? scopedOrdersLoading : isLoading;
+  const delta = revenueDelta(displayStats?.totalRevenue, comparison?.totalRevenue);
 
   useEffect(() => {
-    loadSaved();
-  }, []);
+    void loadSaved();
+  }, [loadSaved]);
 
   const error = statsError || queueError;
 
@@ -192,10 +176,11 @@ export default function DashboardScreen() {
   // must never mistake one branch's numbers for another's.
   const subtitle = outletName ? `${getGreeting()} · ${outletName}` : getGreeting();
 
+  const tabRouter = router as TabAwareRouter<`/(main)/${string}`>;
+
   if (!hasBackend || error) {
     return (
       <View style={styles.screen}>
-        {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
         <ScreenHeader
           title={tenantName ?? "Home"}
           subtitle={subtitle}
@@ -214,128 +199,145 @@ export default function DashboardScreen() {
   const preparingCount = queue?.preparing?.length ?? 0;
   const readyCount = queue?.ready?.length ?? 0;
   const activeCount = pendingCount + confirmCount + preparingCount + readyCount;
-  const deliveredCount = displayStats?.statusCounts?.delivered ?? 0;
 
   // Oldest pending first — those are the orders most at risk of a wait complaint.
   const needsAttention = [...(queue?.pending ?? [])]
     .sort((a, b) => a._creationTime - b._creationTime)
-    .slice(0, 5);
+    .slice(0, ATTENTION_LIMIT);
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader
         title={tenantName ?? "Home"}
         subtitle={subtitle}
         actions={<HeaderActions isConnected={isConnected} />}
       />
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-      }
-    >
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
+        {/* New-order alerts (ringtone + notification) are mounted once at the
+            (main) tab layout via <GlobalOrderAlerts>, so they fire on every tab. */}
 
-      {/* New-order alerts (ringtone + notification) are mounted once at the
-          (main) tab layout via <GlobalOrderAlerts>, so they fire on every tab. */}
-
-      {isDemo && (
-        <View style={styles.demoBanner}>
-          <Text style={styles.demoBannerTitle}>You&apos;re viewing a demo store</Text>
-          <Text style={styles.demoBannerBody}>
-            Browse real-time orders and analytics with sample data. To manage
-            your own store, sign out and tap &quot;Create your store.&quot;
-          </Text>
-        </View>
-      )}
-
-      <PeriodSelector periods={DASHBOARD_PERIODS} selected={period} onSelect={setPeriod} />
-
-      {isStatsLoading ? (
-        <LoadingState message="Loading dashboard..." />
-      ) : (
-        <>
-          <HeroRevenueCard
-            revenue={displayStats?.totalRevenue ?? 0}
-            orderCount={displayStats?.totalOrders ?? 0}
-            avgOrder={displayStats?.avgOrderValue ?? 0}
-            periodLabel={periodLabel}
-            isLive={period === "today"}
-          />
-
-          <View style={styles.statsRow}>
-            <StatCard value={activeCount} label="Active now" hint="In the queue" />
-            <StatCard value={deliveredCount} label="Delivered" hint={periodLabel} />
+        {isDemo && (
+          <View style={styles.demoBanner}>
+            <Text style={styles.demoBannerTitle}>You&apos;re viewing a demo store</Text>
+            <Text style={styles.demoBannerBody}>
+              Browse real-time orders and analytics with sample data. To manage
+              your own store, sign out and tap &quot;Create your store.&quot;
+            </Text>
           </View>
+        )}
 
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Order Queue</Text>
-            <TouchableOpacity onPress={() => router.push("/(main)/orders")}>
-              <Text style={styles.sectionLink}>View all</Text>
-            </TouchableOpacity>
-          </View>
-          <StatusPipeline
-            stages={[
-              { key: "pending", label: "Pending", count: pendingCount },
-              { key: "confirmed", label: "Confirmed", count: confirmCount },
-              { key: "preparing", label: "Preparing", count: preparingCount },
-              { key: "ready", label: "Ready", count: readyCount },
-            ]}
-            onStagePress={(key) => router.push(`/(main)/orders?status=${key}`)}
-          />
+        {/* Above the takings and outside their loading gate: whether a drawer
+            is open is the cashier's first question of the day, and it must not
+            wait on an order query to be answered. */}
+        {showShift && <ShiftStatusStrip onPress={() => goTo(tabRouter, "/(main)/pos-sales")} />}
 
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Needs Attention</Text>
-            {pendingCount > 0 && (
-              <View style={styles.attentionBadge}>
-                <Text style={styles.attentionBadgeText}>{pendingCount}</Text>
-              </View>
+        {isStatsLoading ? (
+          <LoadingState message="Loading today..." />
+        ) : (
+          <>
+            <HeroRevenueCard
+              revenue={displayStats?.totalRevenue ?? 0}
+              orderCount={displayStats?.totalOrders ?? 0}
+              avgOrder={displayStats?.avgOrderValue ?? 0}
+              periodLabel="Today"
+              isLive
+              delta={delta}
+              comparisonLabel="yesterday"
+            />
+
+            <QuickActions
+              actions={quickActions}
+              onPress={(action) => goTo(tabRouter, action.href as `/(main)/${string}`)}
+            />
+
+            <SectionHeader
+              title="Orders now"
+              hint={activeCount === 0 ? "Nothing in the queue" : `${activeCount} in the queue`}
+              actionLabel="See all"
+              onAction={() => goTo(tabRouter, "/(main)/orders")}
+              style={styles.firstSection}
+            />
+            <StatusPipeline
+              stages={[
+                { key: "pending", label: "Pending", count: pendingCount },
+                { key: "confirmed", label: "Confirmed", count: confirmCount },
+                { key: "preparing", label: "Preparing", count: preparingCount },
+                { key: "ready", label: "Ready", count: readyCount },
+              ]}
+              onStagePress={(key) => router.push(`/(main)/orders?status=${key}`)}
+            />
+
+            <SectionHeader
+              title="Needs attention"
+              hint="Oldest pending orders first"
+              trailing={
+                pendingCount > 0 ? (
+                  <View style={styles.attentionBadge}>
+                    <Text style={styles.attentionBadgeText}>{pendingCount}</Text>
+                  </View>
+                ) : undefined
+              }
+            />
+            {needsAttention.length === 0 ? (
+              <EmptyState message="You're all caught up — no pending orders" />
+            ) : (
+              needsAttention.map((order) => (
+                <OrderCard
+                  key={order._id}
+                  order={order}
+                  compact
+                  onPress={() => router.push(`/(main)/order/${order._id}`)}
+                />
+              ))
             )}
-          </View>
-          {needsAttention.length === 0 ? (
-            <EmptyState message="You're all caught up — no pending orders" />
-          ) : (
-            needsAttention.map((order) => (
-              <OrderCard
-                key={order._id}
-                order={order}
-                compact
-                onPress={() => router.push(`/(main)/order/${order._id}`)}
-              />
-            ))
-          )}
-        </>
-      )}
-    </ScrollView>
+
+            {showBranches ? (
+              <>
+                <SectionHeader title="Your branches" hint="Every branch at a glance" />
+                <View style={styles.group}>
+                  <ListRow
+                    icon="storefront"
+                    title="Branches"
+                    subtitle="Today's takings per branch — tap one to run it"
+                    onPress={() => goTo(tabRouter, "/(main)/portfolio")}
+                    grouped
+                  />
+                  <ListRow
+                    icon="compare"
+                    title="Compare branches"
+                    subtitle="Branch against branch, over longer periods"
+                    onPress={() => goTo(tabRouter, "/(main)/branches")}
+                  />
+                </View>
+              </>
+            ) : null}
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl },
+  content: { padding: spacing.xl, paddingTop: 0, paddingBottom: spacing.xxl, gap: spacing.md },
   demoBanner: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.separator,
     padding: spacing.lg,
-    marginBottom: spacing.md,
     ...shadow.sm,
   },
   demoBannerTitle: { ...typography.body, color: colors.accent, fontWeight: "700" },
   demoBannerBody: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  statsRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.md },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  sectionTitle: { ...typography.eyebrow, color: colors.textSecondary },
-  sectionLink: { ...typography.caption, color: colors.accent, fontWeight: "700" },
+  firstSection: { marginTop: spacing.sm },
   attentionBadge: {
     minWidth: 22,
     paddingHorizontal: 6,
@@ -345,4 +347,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   attentionBadgeText: { fontSize: 12, fontWeight: "800", color: colors.statusPending.text },
+  group: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    ...shadow.sm,
+  },
 });

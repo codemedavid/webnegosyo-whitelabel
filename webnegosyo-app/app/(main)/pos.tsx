@@ -11,7 +11,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery } from "../../lib/hooks";
@@ -44,25 +46,23 @@ import {
   type PosStockCeilings,
 } from "../../lib/pos-stock-warning";
 import { formatPeso } from "../../lib/format";
+import { resolvePosLayout } from "../../lib/pos-layout";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
 import { DiscountSheet } from "../../components/pos/DiscountSheet";
 import { DeliverySheet } from "../../components/pos/DeliverySheet";
+import { PosTablePickerSheet } from "../../components/pos/PosTablePickerSheet";
+import { useDiningTables } from "../../lib/tables/use-dining-tables";
 import { IncomingOrdersSheet } from "../../components/pos/IncomingOrdersSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
-// Rendered by <ScreenHeader>; the import stays so the guardrail that every
-// tab is escapable keeps reading it here.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { Icon } from "../../components/Icon";
 
-/** Tiles per grid row. Rows are pre-chunked so every column is the same width. */
-const COLUMNS = 3;
-
-/** The app has no safe-area provider; every screen pads the notch by hand. */
+/** Height of the notch pad on the full-bleed edit banner, which sits above
+ *  <ScreenHeader> and so cannot use its inset. */
 const TOP_INSET = 60;
 
 /** Rows rendered before the first scroll — roughly two screens' worth. */
@@ -118,8 +118,25 @@ export default function PosScreen() {
   const delivery = usePosCartStore((s) => s.delivery);
   const setDelivery = usePosCartStore((s) => s.setDelivery);
   const setEditDeliveryFee = usePosCartStore((s) => s.setEditDeliveryFee);
+  const saleTable = usePosCartStore((s) => s.table);
+  const setTable = usePosCartStore((s) => s.setTable);
+  // The floor, for the dine-in table picker; empty for a store without one.
+  const floor = useDiningTables();
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
+  const [isTableOpen, setIsTableOpen] = useState(false);
+
+  // The register's shape, recomputed on every rotation and split-screen resize
+  // (lib/pos-layout.ts). A tablet gets the sale as a column beside the grid; a
+  // phone keeps the bottom sheet it has always had.
+  const windowSize = useWindowDimensions();
+  const layout = useMemo(
+    () => resolvePosLayout({ width: windowSize.width, height: windowSize.height }),
+    [windowSize.width, windowSize.height],
+  );
+  // The sale column draws its own notch pad — <ScreenHeader> only covers the
+  // grid column beside it.
+  const insets = useSafeAreaInsets();
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -316,7 +333,10 @@ export default function PosScreen() {
     });
   }, [items, activeCategory, search]);
 
-  const rows = useMemo(() => toRows(visibleItems, COLUMNS), [visibleItems]);
+  const rows = useMemo(
+    () => toRows(visibleItems, layout.columns),
+    [visibleItems, layout.columns],
+  );
 
   const addToCart = (item: RegisterItem, selections: PosCartSelection[], quantity: number) => {
     // Both at the store price: the store derives `basePrice` from
@@ -370,51 +390,18 @@ export default function PosScreen() {
     );
   }
 
-  return (
-    <View style={styles.screen}>
-      {edit && editContext && (
-        <View style={styles.editBanner}>
-          <View style={styles.editBannerMain}>
-            <Text style={styles.editBannerTitle}>
-              {editContext.mode === "append"
-                ? "Adding to a placed order"
-                : "Editing a placed order"}
-            </Text>
-            <Text style={styles.editBannerTotals}>
-              {formatPeso(editContext.originalTotal)} → {formatPeso(edit.newTotal)}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              endEdit();
-              router.back();
-            }}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel the edit"
-          >
-            <Text style={styles.editBannerCancel}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+  // ── The two halves of the register, composed once and then arranged ──
+  // Both layouts render exactly these pieces; only where they sit changes.
 
-      {editWarnings.length > 0 && (
-        <View style={styles.editWarnings}>
-          {editWarnings.map((warning) => (
-            <Text key={warning} style={styles.editWarningText}>
-              {warning}
-            </Text>
-          ))}
-        </View>
-      )}
-
-      {/* The banner already clears the notch, so the header must not re-pad it.
-          <ScreenHeader> mounts <WorkspaceSwitcher /> */}
+  const productColumn = (
+    <>
+      {/* The banner already clears the notch, so the header must not re-pad it. */}
       <ScreenHeader
         title="POS"
         subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}
         ignoreTopInset={!!edit}
         style={styles.header}
+        actions={<SubScreenLinks parent="pos" variant="actions" />}
       >
         <View style={styles.searchRow}>
           <Icon name="search" size={18} color={colors.textTertiary} />
@@ -505,7 +492,7 @@ export default function PosScreen() {
               />
             ))}
             {/* Keep the final row's columns aligned with the rows above it. */}
-            {Array.from({ length: COLUMNS - row.length }).map((_, index) => (
+            {Array.from({ length: layout.columns - row.length }).map((_, index) => (
               <View key={`filler-${index}`} style={styles.filler} />
             ))}
           </View>
@@ -521,108 +508,187 @@ export default function PosScreen() {
           </View>
         }
       />
+    </>
+  );
 
-      {(isCartExpanded || isIncomingExpanded) && (
-        <Pressable
-          style={styles.backdrop}
-          onPress={() => {
-            setIsCartExpanded(false);
-            setIsIncomingExpanded(false);
-          }}
-          accessibilityLabel="Collapse the sale"
-        />
-      )}
+  // Dims whatever the open drawer is covering. Mounted INSIDE the column that
+  // owns that drawer, so on a tablet it dims the grid and leaves the sale
+  // panel beside it readable.
+  const backdrop = (isCartExpanded || isIncomingExpanded) && (
+    <Pressable
+      style={styles.backdrop}
+      onPress={() => {
+        setIsCartExpanded(false);
+        setIsIncomingExpanded(false);
+      }}
+      accessibilityLabel="Collapse the sale"
+    />
+  );
 
-      {/*
-        Hidden while editing: accepting a new order would push it into the cart
-        that is currently holding someone else's bill.
-      */}
-      {!edit && (
-        <IncomingOrdersSheet
-          orders={incomingOrders}
-          unseenCount={unseenCount}
-          isExpanded={isIncomingExpanded}
-          onToggle={toggleIncoming}
-          onSelect={openIncomingOrder}
-        />
-      )}
+  /*
+    Hidden while editing: accepting a new order would push it into the cart
+    that is currently holding someone else's bill.
+  */
+  const incomingSheet = !edit && (
+    <IncomingOrdersSheet
+      orders={incomingOrders}
+      unseenCount={unseenCount}
+      isExpanded={isIncomingExpanded}
+      onToggle={toggleIncoming}
+      onSelect={openIncomingOrder}
+    />
+  );
 
-      {/*
-        Sits above the cart, where the cashier is already looking before they
-        charge. Deliberately not a modal and not a blocker — it informs the
-        person who can see the shelf, and they ring the sale anyway if they
-        have the stock.
-      */}
-      {stockWarning && (
-        <View style={styles.stockWarning}>
-          <Text style={styles.stockWarningText}>{stockWarning}</Text>
+  /*
+    Sits above the cart, where the cashier is already looking before they
+    charge. Deliberately not a modal and not a blocker — it informs the
+    person who can see the shelf, and they ring the sale anyway if they
+    have the stock.
+  */
+  const stockBanner = stockWarning ? (
+    <View style={styles.stockWarning}>
+      <Text style={styles.stockWarningText}>{stockWarning}</Text>
+    </View>
+  ) : null;
+
+  const sale = (
+    <CartSheet
+      // Bottom sheet on a phone, permanent column on a tablet. Same
+      // props and the same money either way — only the arrangement
+      // differs (components/pos/CartSheet.tsx).
+      variant={layout.isTwoPane ? "panel" : "sheet"}
+      lines={lines}
+      // In edit mode the fees live on the edit context, not the counter sale
+      // — shown here so the rows the cashier reads reflect what the revision
+      // will actually charge. The service charge is the figure the order was
+      // PLACED with; the register cannot recompute it (the order type's rate
+      // may have moved since) and must not try.
+      totals={
+        editContext
+          ? {
+              ...totals,
+              deliveryFee: editContext.deliveryFee,
+              serviceCharge: editContext.serviceCharge,
+            }
+          : totals
+      }
+      // Whatever the placed bill held beyond items, service and delivery.
+      // Named `Adjustment` rather than left invisible — see CartSheet.
+      adjustment={editContext ? editContext.carriedCharges : 0}
+      // The order type is fixed for the life of a placed order: switching it
+      // mid-edit would swap the service charge and invalidate the basis the
+      // delivery fee was quoted under. Passing none renders no chips.
+      orderTypes={edit ? [] : orderTypes}
+      orderTypeId={orderTypeId}
+      isExpanded={isCartExpanded}
+      onToggle={toggleCart}
+      onSelectOrderType={(type) =>
+        setOrderType(type.id, type.name, type.serviceCharge, pricingFor(type), type.type)
+      }
+      onChangeQty={setQty}
+      onClear={() => {
+        reset();
+        setIsCartExpanded(false);
+      }}
+      onCharge={() => router.push("/(main)/pos-tender")}
+      discountLines={discountLines}
+      // Offered on an edit too. The order's own discount is re-priced by
+      // `repriceEditDiscount` and a code added here is a second line on top
+      // of it, capped against the bill by `editModeTotals` — so a customer
+      // who produces a voucher after ordering no longer needs the order
+      // cancelled and re-rung.
+      onAddDiscount={() => setIsDiscountOpen(true)}
+      onEditDelivery={() => setIsDeliveryOpen(true)}
+      onEditTable={edit ? undefined : () => setIsTableOpen(true)}
+      tableLabel={saleTable.label}
+      onRemoveDiscount={(line) => {
+        if (line.code) removeVoucher(line.code);
+        else clearManualDiscount();
+      }}
+      chargeLabel={
+        !edit
+          ? undefined
+          : edit.intent === "collect"
+            ? "Save · collect"
+            : edit.intent === "refund"
+              ? "Save · refund"
+              : "Save changes"
+      }
+      // The difference to settle, not the order's total — the rest is paid.
+      chargeTotal={edit ? Math.abs(edit.balance) : undefined}
+      blockedReason={
+        edit && !edit.canSave
+          ? (edit.blockedReason ?? "Change something to save this order.")
+          : undefined
+      }
+    />
+  );
+
+  return (
+    <View style={styles.screen}>
+      {edit && editContext && (
+        <View style={styles.editBanner}>
+          <View style={styles.editBannerMain}>
+            <Text style={styles.editBannerTitle}>
+              {editContext.mode === "append"
+                ? "Adding to a placed order"
+                : "Editing a placed order"}
+            </Text>
+            <Text style={styles.editBannerTotals}>
+              {formatPeso(editContext.originalTotal)} → {formatPeso(edit.newTotal)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => {
+              endEdit();
+              router.back();
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel the edit"
+          >
+            <Text style={styles.editBannerCancel}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      <CartSheet
-        lines={lines}
-        // In edit mode the fees live on the edit context, not the counter sale
-        // — shown here so the rows the cashier reads reflect what the revision
-        // will actually charge. The service charge is the figure the order was
-        // PLACED with; the register cannot recompute it (the order type's rate
-        // may have moved since) and must not try.
-        totals={
-          editContext
-            ? {
-                ...totals,
-                deliveryFee: editContext.deliveryFee,
-                serviceCharge: editContext.serviceCharge,
-              }
-            : totals
-        }
-        // Whatever the placed bill held beyond items, service and delivery.
-        // Named `Adjustment` rather than left invisible — see CartSheet.
-        adjustment={editContext ? editContext.carriedCharges : 0}
-        // The order type is fixed for the life of a placed order: switching it
-        // mid-edit would swap the service charge and invalidate the basis the
-        // delivery fee was quoted under. Passing none renders no chips.
-        orderTypes={edit ? [] : orderTypes}
-        orderTypeId={orderTypeId}
-        isExpanded={isCartExpanded}
-        onToggle={toggleCart}
-        onSelectOrderType={(type) =>
-          setOrderType(type.id, type.name, type.serviceCharge, pricingFor(type))
-        }
-        onChangeQty={setQty}
-        onClear={() => {
-          reset();
-          setIsCartExpanded(false);
-        }}
-        onCharge={() => router.push("/(main)/pos-tender")}
-        discountLines={discountLines}
-        // Offered on an edit too. The order's own discount is re-priced by
-        // `repriceEditDiscount` and a code added here is a second line on top
-        // of it, capped against the bill by `editModeTotals` — so a customer
-        // who produces a voucher after ordering no longer needs the order
-        // cancelled and re-rung.
-        onAddDiscount={() => setIsDiscountOpen(true)}
-        onEditDelivery={() => setIsDeliveryOpen(true)}
-        onRemoveDiscount={(line) => {
-          if (line.code) removeVoucher(line.code);
-          else clearManualDiscount();
-        }}
-        chargeLabel={
-          !edit
-            ? undefined
-            : edit.intent === "collect"
-              ? "Save · collect"
-              : edit.intent === "refund"
-                ? "Save · refund"
-                : "Save changes"
-        }
-        // The difference to settle, not the order's total — the rest is paid.
-        chargeTotal={edit ? Math.abs(edit.balance) : undefined}
-        blockedReason={
-          edit && !edit.canSave
-            ? (edit.blockedReason ?? "Change something to save this order.")
-            : undefined
-        }
-      />
+      {editWarnings.length > 0 && (
+        <View style={styles.editWarnings}>
+          {editWarnings.map((warning) => (
+            <Text key={warning} style={styles.editWarningText}>
+              {warning}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {/*
+        Tablet: products on the left, the sale stacked down its own column on
+        the right. Phone: one column, with the sale docked to the bottom as a
+        collapsible sheet. `resolvePosLayout` picks between them from the live
+        window size, so rotating a tablet re-arranges the register.
+      */}
+      {layout.isTwoPane ? (
+        <View style={styles.panes}>
+          <View style={styles.gridColumn}>
+            {productColumn}
+            {backdrop}
+            {incomingSheet}
+          </View>
+          <View style={[styles.saleColumn, { width: layout.panelWidth, paddingTop: edit ? 0 : insets.top }]}>
+            {stockBanner}
+            {sale}
+          </View>
+        </View>
+      ) : (
+        <>
+          {productColumn}
+          {backdrop}
+          {incomingSheet}
+          {stockBanner}
+          {sale}
+        </>
+      )}
 
       {sheetFor && (
         <ModifierSheet
@@ -653,6 +719,17 @@ export default function PosScreen() {
         onRemoveManual={clearManualDiscount}
       />
 
+      <PosTablePickerSheet
+        visible={isTableOpen}
+        onClose={() => setIsTableOpen(false)}
+        table={saleTable}
+        tables={floor.tables}
+        seatings={floor.seatings}
+        onSave={(table) => {
+          setTable(table);
+          setIsTableOpen(false);
+        }}
+      />
       <DeliverySheet
         visible={isDeliveryOpen}
         onClose={() => setIsDeliveryOpen(false)}
@@ -746,6 +823,10 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { ...typography.caption, fontWeight: "600", color: colors.textSecondary },
   chipTextActive: { color: colors.textOnDark },
+  // Two columns on a tablet: the grid takes whatever the sale column leaves.
+  panes: { flex: 1, flexDirection: "row" },
+  gridColumn: { flex: 1 },
+  saleColumn: { backgroundColor: colors.card },
   gridScroll: { flex: 1 },
   grid: {
     paddingHorizontal: spacing.xl,

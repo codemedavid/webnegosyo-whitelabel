@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
+import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import {
   clearedSaleDelivery,
   parseDeliveryFee,
@@ -83,10 +84,13 @@ export function DeliverySheet({
   const hasExisting =
     delivery.fee !== null || delivery.address !== "" || delivery.phone !== "";
 
+  // A docked sheet becomes a centred dialog once the glass is a tablet's
+  // (components/pos/dialog-layout.ts).
+  const isCentered = useCenteredDialog();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        style={styles.backdrop}
+        style={[styles.backdrop, isCentered && centeredDialog.backdrop]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <TouchableOpacity
@@ -96,7 +100,7 @@ export function DeliverySheet({
           accessibilityLabel="Dismiss delivery details"
         />
 
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
             <Text style={styles.title}>Delivery details</Text>
             <TouchableOpacity onPress={onClose} accessibilityRole="button">

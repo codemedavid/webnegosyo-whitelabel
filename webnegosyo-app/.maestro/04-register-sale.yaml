@@ -8,9 +8,9 @@ name: Register - ring up a cash sale end to end
 # there is no undo from the app. Point it at a demo tenant unless you actually
 # intend to move the till.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Register
+      TAB: POS
 
 - assertVisible: "Tap a product to start the sale"
 - assertVisible: "\\d+ products"

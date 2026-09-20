@@ -1,36 +1,25 @@
 appId: com.webnegosyo.admin
-name: Operations - dashboard KPIs and period filters
+name: Home - today's takings, quick actions and the live queue
 ---
 # As a merchant, I want the dashboard to show today's takings and the live
 # queue, so that I can see how the shift is going at a glance.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Operations
+      TAB: Home
 
 # The revenue card and its two derived KPIs.
 - assertVisible: "REVENUE · TODAY"
 - assertVisible: "ORDERS"
 - assertVisible: "AVG ORDER"
 
-# Live-queue counters.
-- assertVisible: "ACTIVE NOW"
-- assertVisible: "DELIVERED"
-- assertVisible: "ORDER QUEUE"
+# The shift line — open drawer or not — sits above the takings so it never
+# waits on an order query.
+- assertVisible: "On shift|Not clocked in"
 
-# Every period filter re-scopes the revenue card without dropping it.
-- tapOn: "Yesterday"
-- waitForAnimationToEnd
-- assertVisible: "REVENUE · YESTERDAY"
+# The shortcuts row and the live queue. Scanning a pickup is the header's QR
+# button, not a tile, so the row never repeats it.
+- assertVisible: "New sale"
+- assertVisible: "Orders now"
+- assertVisible: "Needs attention"
 
-- tapOn: "This Week"
-- waitForAnimationToEnd
-- assertVisible: "REVENUE.*"
-
-- tapOn: "This Month"
-- waitForAnimationToEnd
-- assertVisible: "REVENUE.*"
-
-- tapOn: "Today"
-- waitForAnimationToEnd
-- assertVisible: "REVENUE · TODAY"

@@ -34,9 +34,6 @@ import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-// Kept for the mount guardrail tests; <ScreenHeader> renders the switcher.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 
 const getTrendsRef = "analytics:getTrends" as unknown as FunctionReference<"query">;
@@ -212,7 +209,6 @@ export default function GrowthScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader title="Growth" subtitle={`Last ${daysBack} days`} />
     <ScrollView
       style={styles.screen}

@@ -10,9 +10,9 @@ import { Icon } from "../../Icon";
 import { CoachTarget } from "../spotlight";
 import { formatPeso } from "../../../lib/format";
 import { MOCK_CATEGORIES, mockProducts, type MockProduct } from "../../../lib/tutorial/mock-data";
-import { MockAlert, MockViewChip, SceneFrame, type SceneProps } from "./shared";
+import { MockAlert, SceneFrame, type SceneProps } from "./shared";
 
-/** Manage products (the list with its switches) and the product editor. */
+/** Products (the list with its switches) and the product editor. */
 export function ProductsScene({ phase, tried, onTried }: SceneProps) {
   if (phase === "edit" || phase === "margin") return <EditorScene phase={phase} tried={tried} onTried={onTried} />;
   return <ListScene phase={phase} tried={tried} onTried={onTried} />;
@@ -34,11 +34,10 @@ function ListScene({ phase, tried, onTried }: SceneProps) {
   const soldOut = products.find((p) => p.id === target && !p.isAvailable);
 
   return (
-    <SceneFrame workspace="products" activeTab="product-management">
+    <SceneFrame activeTab="product-management">
       <ScreenHeader
-        title="Manage products"
+        title="Products"
         subtitle="Create, edit, and price your menu"
-        leading={<MockViewChip workspace="products" />}
         actions={<IconButton icon="plus" label="Add product" tone="primary" onPress={() => {}} />}
       >
         <View style={styles.search}>
@@ -111,7 +110,7 @@ function EditorScene({ phase, tried, onTried }: SceneProps) {
   const margin = cost ? Math.round(((Number(price) - Number(cost)) / Number(price)) * 100) : null;
 
   return (
-    <SceneFrame workspace="products" activeTab="product-management">
+    <SceneFrame activeTab="product-management">
       <BackHeader title="Edit Product" subtitle="Iced Latte" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.photoRow}>

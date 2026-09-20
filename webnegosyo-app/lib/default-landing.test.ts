@@ -8,10 +8,9 @@ import type { StaffPermissionHolder } from "./staff-permissions";
  * The rule this file pins is the one a merchant feels every single launch, so
  * it is written from its negative cases first: an account with no chosen
  * screen, a chosen screen that no longer exists, and a chosen screen the staff
- * may no longer open all have to land exactly where the app landed before any
- * of this was configurable. A default screen is a convenience; losing the app
- * to a blank tab bar because one was set months ago is not a trade worth
- * making.
+ * may no longer open all have to land on Home. A default screen is a
+ * convenience; losing the app to a screen that refuses you because one was
+ * set months ago is not a trade worth making.
  */
 
 const ALL: BranchScope = { kind: "all" };
@@ -29,26 +28,18 @@ const SINGLE_BRANCH = { accountScope: ALL, activeOutletCount: 1 };
 /** A store with enough branches for the portfolio to exist. */
 const MULTI_BRANCH = { accountScope: ALL, activeOutletCount: 3 };
 
-describe("resolveLanding — no default chosen", () => {
-  it("leaves a single-location owner on the screen the app already opens", () => {
-    const landing = resolveLanding({
-      defaultTab: null,
-      user: OWNER,
-      audience: SINGLE_BRANCH,
-    });
+/** Home: the app already opens here, so there is nowhere to go. */
+const HOME = { href: null };
 
-    expect(landing).toEqual({ workspace: "operations", href: null });
+describe("resolveLanding — no default chosen", () => {
+  it("leaves a single-location owner on Home", () => {
+    expect(resolveLanding({ defaultTab: null, user: OWNER, audience: SINGLE_BRANCH })).toEqual(HOME);
   });
 
-  it("still opens a multi-branch owner on the portfolio", () => {
-    // The automatic rule is unchanged for everyone who never set a screen.
-    const landing = resolveLanding({
-      defaultTab: null,
-      user: OWNER,
-      audience: MULTI_BRANCH,
-    });
-
-    expect(landing).toEqual({ workspace: "business", href: "/(main)/portfolio" });
+  it("leaves a multi-branch owner on Home too", () => {
+    // Home carries a Branches section for them; the portfolio is one tap away
+    // rather than the first screen, so the app opens the same way for everyone.
+    expect(resolveLanding({ defaultTab: null, user: OWNER, audience: MULTI_BRANCH })).toEqual(HOME);
   });
 
   it("treats an absent value the same as an explicit null", () => {
@@ -58,135 +49,82 @@ describe("resolveLanding — no default chosen", () => {
   });
 
   it("treats a blank string as no choice at all", () => {
-    // An empty text column is what a cleared radio group writes.
-    expect(resolveLanding({ defaultTab: "   ", user: OWNER, audience: SINGLE_BRANCH })).toEqual({
-      workspace: "operations",
-      href: null,
-    });
+    expect(resolveLanding({ defaultTab: "   ", user: OWNER, audience: MULTI_BRANCH })).toEqual(HOME);
   });
 });
 
 describe("resolveLanding — a screen was chosen", () => {
-  it("opens a cashier on the register", () => {
-    const landing = resolveLanding({
-      defaultTab: "pos",
-      user: staffWith("pos"),
-      audience: SINGLE_BRANCH,
+  it("opens the chosen screen", () => {
+    expect(resolveLanding({ defaultTab: "pos", user: OWNER, audience: SINGLE_BRANCH })).toEqual({
+      href: "/(main)/pos",
     });
-
-    expect(landing).toEqual({ workspace: "register", href: "/(main)/pos" });
   });
 
-  it("switches to the view that owns the chosen screen, so its tabs are the ones shown", () => {
-    const landing = resolveLanding({
-      defaultTab: "inventory",
-      user: staffWith("menu"),
-      audience: SINGLE_BRANCH,
+  it("trims whitespace around the stored value", () => {
+    expect(resolveLanding({ defaultTab: " orders ", user: OWNER, audience: SINGLE_BRANCH })).toEqual({
+      href: "/(main)/orders",
     });
-
-    expect(landing.workspace).toBe("products");
   });
 
-  it("navigates nowhere when the chosen screen is already the one the app opens on", () => {
-    // A redirect to the screen you are standing on is a wasted frame at best,
-    // and a remount of the tab navigator at worst.
-    expect(
-      resolveLanding({ defaultTab: "dashboard", user: OWNER, audience: SINGLE_BRANCH }),
-    ).toEqual({ workspace: "operations", href: null });
+  it("stays put when Home itself was chosen", () => {
+    // Redirecting onto the screen you are standing on remounts the navigator.
+    expect(resolveLanding({ defaultTab: "dashboard", user: OWNER, audience: SINGLE_BRANCH })).toEqual(
+      HOME,
+    );
   });
 
-  it("beats the automatic portfolio rule for a multi-branch owner", () => {
-    // The owner picked this screen on purpose; the branch-count heuristic is a
-    // guess at the same question and must lose to a stated answer.
-    const landing = resolveLanding({
-      defaultTab: "orders",
-      user: OWNER,
-      audience: MULTI_BRANCH,
+  it("opens a Business screen for a multi-branch owner", () => {
+    expect(resolveLanding({ defaultTab: "portfolio", user: OWNER, audience: MULTI_BRANCH })).toEqual({
+      href: "/(main)/portfolio",
     });
-
-    expect(landing).toEqual({ workspace: "operations", href: "/(main)/orders" });
-  });
-
-  it("honours a portfolio default for an owner who runs several branches", () => {
-    expect(
-      resolveLanding({ defaultTab: "branches", user: OWNER, audience: MULTI_BRANCH }),
-    ).toEqual({ workspace: "business", href: "/(main)/branches" });
   });
 });
 
 describe("resolveLanding — the choice is no longer usable", () => {
-  it("falls back when the staff member lacks the permission the screen needs", () => {
-    // The grant was revoked after the screen was chosen. Landing there anyway
-    // means an account staring at a tab bar with nothing on it.
-    const landing = resolveLanding({
-      defaultTab: "analytics",
-      user: staffWith("pos"),
-      audience: SINGLE_BRANCH,
-    });
-
-    expect(landing).toEqual({ workspace: "operations", href: null });
+  it("falls back to Home for a screen that does not exist", () => {
+    expect(resolveLanding({ defaultTab: "reports-v2", user: OWNER, audience: SINGLE_BRANCH })).toEqual(
+      HOME,
+    );
   });
 
-  it("falls back when a business screen is chosen but the store has one branch", () => {
-    // A store can drop back to a single location long after the choice.
-    const landing = resolveLanding({
-      defaultTab: "portfolio",
-      user: OWNER,
-      audience: SINGLE_BRANCH,
-    });
-
-    expect(landing).toEqual({ workspace: "operations", href: null });
+  it("falls back to Home for a detail screen, which is not a place to land", () => {
+    expect(resolveLanding({ defaultTab: "account", user: OWNER, audience: SINGLE_BRANCH })).toEqual(
+      HOME,
+    );
   });
 
-  it("falls back when a branch manager was given a store-wide business screen", () => {
-    const landing = resolveLanding({
-      defaultTab: "portfolio",
-      user: OWNER,
-      audience: { accountScope: NORTH, activeOutletCount: 4 },
-    });
-
-    expect(landing).toEqual({ workspace: "operations", href: null });
-  });
-
-  it("falls back on a screen name the app no longer has", () => {
-    // Renaming or retiring a route must not strand the accounts pointed at it.
+  it("falls back to Home when the grant behind the screen was revoked", () => {
     expect(
-      resolveLanding({ defaultTab: "reports-v1", user: OWNER, audience: SINGLE_BRANCH }),
-    ).toEqual({ workspace: "operations", href: null });
+      resolveLanding({ defaultTab: "analytics", user: staffWith("pos"), audience: SINGLE_BRANCH }),
+    ).toEqual(HOME);
   });
 
-  it("refuses a value that is not a screen name at all", () => {
-    // The column is free text, so anything can arrive here.
+  it("falls back to Home for a Business screen once the store has one branch", () => {
+    expect(resolveLanding({ defaultTab: "portfolio", user: OWNER, audience: SINGLE_BRANCH })).toEqual(
+      HOME,
+    );
+  });
+
+  it("falls back to Home for a Business screen chosen for a branch manager", () => {
     expect(
       resolveLanding({
-        defaultTab: "../../(auth)/login" as string,
+        defaultTab: "branches",
         user: OWNER,
-        audience: SINGLE_BRANCH,
+        audience: { accountScope: NORTH, activeOutletCount: 3 },
       }),
-    ).toEqual({ workspace: "operations", href: null });
+    ).toEqual(HOME);
   });
 
-  it("keeps the automatic portfolio landing when an unusable choice falls back", () => {
-    // Falling back means "as if nothing was chosen", not "operations always".
-    const landing = resolveLanding({
-      defaultTab: "not-a-screen",
-      user: OWNER,
-      audience: MULTI_BRANCH,
-    });
-
-    expect(landing).toEqual({ workspace: "business", href: "/(main)/portfolio" });
-  });
-
-  it("ignores a chosen screen during the demo tour", () => {
-    // Demo sessions carry no staff row, but the guard is cheap and the tour is
-    // scripted around the screen it opens on.
-    const landing = resolveLanding({
-      defaultTab: "pos",
-      user: OWNER,
-      audience: { ...SINGLE_BRANCH, isDemo: true },
-      isDemo: true,
-    });
-
-    expect(landing).toEqual({ workspace: "operations", href: null });
+  it("ignores any choice during the demo tour", () => {
+    expect(
+      resolveLanding({
+        defaultTab: "pos",
+        user: OWNER,
+        audience: { ...MULTI_BRANCH, isDemo: true },
+      }),
+    ).toEqual(HOME);
+    expect(
+      resolveLanding({ defaultTab: "pos", user: OWNER, audience: MULTI_BRANCH, isDemo: true }),
+    ).toEqual(HOME);
   });
 });

@@ -11,7 +11,7 @@ import { SegmentedControl } from "../../SegmentedControl";
 import { CoachTarget } from "../spotlight";
 import { formatPeso } from "../../../lib/format";
 import { MOCK_GUESTS } from "../../../lib/tutorial/mock-data";
-import { MockSheet, MockViewChip, SceneFrame, type SceneProps } from "./shared";
+import { MockSheet, SceneFrame, type SceneProps } from "./shared";
 
 /** Analytics, Growth and Customers, sharing one month of the store's trade. */
 const WINDOWS = [
@@ -30,8 +30,8 @@ function AnalyticsScene({ phase, tried, onTried }: SceneProps) {
   const [days, setDays] = useState(7);
   const w = WINDOWS.find((x) => x.days === days) ?? WINDOWS[0];
   return (
-    <SceneFrame workspace="insights" activeTab="analytics">
-      <ScreenHeader title="Analytics" subtitle={`Last ${days} days`} leading={<MockViewChip workspace="insights" />} actions={<IconButton icon="export" label="Export" onPress={() => {}} />}>
+    <SceneFrame activeTab="analytics">
+      <ScreenHeader title="Analytics" subtitle={`Last ${days} days`} actions={<IconButton icon="export" label="Export" onPress={() => {}} />}>
         <CoachTarget active={phase === "analytics" && !tried} padding={4}>
           <View style={styles.pills}>
             {WINDOWS.map((x) => (
@@ -85,8 +85,8 @@ function GrowthScene({ phase, tried, onTried }: SceneProps) {
     return () => clearInterval(id);
   }, [tried]);
   return (
-    <SceneFrame workspace="insights" activeTab="growth">
-      <ScreenHeader title="Growth" subtitle="Last 30 days" leading={<MockViewChip workspace="insights" />} />
+    <SceneFrame activeTab="growth">
+      <ScreenHeader title="Growth" subtitle="Last 30 days" />
       <ScrollView contentContainerStyle={styles.content}>
         <HeroRevenueCard revenue={79_900} orderCount={268} avgOrder={298} periodLabel="Last 30 days" />
         <SectionHeader title="Growth engine" />
@@ -130,8 +130,8 @@ function CustomersScene({ phase, tried, onTried }: SceneProps) {
   const [tab, setTab] = useState<"guests" | "campaigns">("guests");
   const [isComposing, setIsComposing] = useState(false);
   return (
-    <SceneFrame workspace="insights" activeTab="customer-hub">
-      <ScreenHeader title="Customers" subtitle={`${MOCK_GUESTS.length} guests`} leading={<MockViewChip workspace="insights" />} actions={<IconButton icon="export" label="Export" onPress={() => {}} />}>
+    <SceneFrame activeTab="customer-hub">
+      <ScreenHeader title="Customers" subtitle={`${MOCK_GUESTS.length} guests`} actions={<IconButton icon="export" label="Export" onPress={() => {}} />}>
         <SegmentedControl options={[{ label: `Guests ${MOCK_GUESTS.length}`, value: "guests" }, { label: "Campaigns 0", value: "campaigns" }]} value={tab} onChange={setTab} accessibilityPrefix="Show" />
       </ScreenHeader>
       <ScrollView contentContainerStyle={styles.content}>

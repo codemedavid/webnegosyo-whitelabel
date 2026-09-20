@@ -1,7 +1,8 @@
 /**
  * Home is where the tour's order arrives on its own — the merchant waits,
  * the queue chimes, the card lands. Pins that nothing is there before the
- * delay, the real card is there after it, and tapping it is the step.
+ * delay, the real card is there after it, and tapping it is the step; and
+ * that the bar step really is a tap on the bar, not on a chip.
  */
 
 import "./jest-scene-mocks";
@@ -21,8 +22,16 @@ describe("HomeScene", () => {
   afterEach(() => jest.useRealTimers());
 
   it("is set in the merchant's own store", () => {
-    render(<HomeScene phase="views" tried={false} onTried={jest.fn()} />);
+    render(<HomeScene phase="bar" tried={false} onTried={jest.fn()} />);
     expect(screen.getByText("Maria's Kitchen")).toBeTruthy();
+  });
+
+  it("draws the fixed five-tab bar with no view chip", () => {
+    render(<HomeScene phase="bar" tried={false} onTried={jest.fn()} />);
+    for (const label of ["Home", "Orders", "POS", "Reports", "Manage"]) {
+      expect(screen.getAllByLabelText(label).length).toBeGreaterThan(0);
+    }
+    expect(screen.queryByLabelText(/Current view/)).toBeNull();
   });
 
   it("lets a new order arrive, then opens it on tap", () => {
@@ -40,13 +49,23 @@ describe("HomeScene", () => {
     expect(onTried).toHaveBeenCalledTimes(1);
   });
 
-  it("switches the bar to the Register view from the view chip", () => {
+  it("opens the register from the POS tab on the bar", () => {
     const onTried = jest.fn();
-    render(<HomeScene phase="views" tried={false} onTried={onTried} />);
+    render(<HomeScene phase="bar" tried={false} onTried={onTried} />);
 
-    fireEvent.press(screen.getByLabelText("Current view: Operations. Change view"));
-    expect(screen.getByText("Switch view")).toBeTruthy();
-    fireEvent.press(screen.getByText("POS"));
+    // The spotlight re-draws the bar over the frame's, so two POS tabs exist.
+    // The overlay sits inside the frame body, ahead of the frame's own bar in
+    // tree order, and it is the tappable one.
+    fireEvent.press(screen.getAllByLabelText("POS")[0]);
+
+    expect(onTried).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Manage from the bar", () => {
+    const onTried = jest.fn();
+    render(<HomeScene phase="menu" tried={false} onTried={onTried} />);
+
+    fireEvent.press(screen.getAllByLabelText("Manage")[0]);
 
     expect(onTried).toHaveBeenCalledTimes(1);
   });

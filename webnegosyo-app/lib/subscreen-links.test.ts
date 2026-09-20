@@ -1,49 +1,25 @@
 /**
- * The Insights bar was seven items wide and every label truncated. Three of its
- * screens were demoted to sub-screens; these tests hold the two halves of that
- * change together — the bar really is shorter, and nothing fell off the map.
+ * Six screens hang under a bar tab instead of taking a slot. These tests hold
+ * the two halves of that together — the bar really is five slots, and nothing
+ * fell off the map: every demoted screen has exactly one door, on a screen the
+ * merchant can actually stand on.
  */
 import { subscreensOf, parentOf, isSubscreen, SUBSCREEN_PARENTS } from "./subscreen-links";
 import {
   isTabOnBar,
   isTabReachable,
   SUBSCREEN_TABS,
-  OFF_BAR_TABS,
+  REPORT_TABS,
+  SETUP_TABS,
   type TabVisibilityContext,
 } from "./tab-visibility";
-import { getWorkspace, workspaceForTab } from "./workspaces";
 
 const owner: TabVisibilityContext = {
   caller: { role: "admin", isOwner: true, permissions: null },
   audience: { accountScope: { kind: "all" }, activeOutletCount: 3, isDemo: false },
   takesAdvanceOrders: true,
+  takesDineIn: true,
 };
-
-describe("the Insights bar", () => {
-  it("is three tabs wide, so no label has to truncate", () => {
-    const onBar = getWorkspace("insights").tabs.filter((tab) =>
-      isTabOnBar(tab, "insights", owner),
-    );
-
-    expect(onBar).toEqual(["analytics", "growth", "customer-hub"]);
-  });
-
-  it("keeps every demoted screen reachable", () => {
-    // Off the bar is not gone: the Menu hub lists them, and the parent screens
-    // link to them. A screen an owner cannot open from anywhere is deleted, not
-    // demoted.
-    for (const tab of SUBSCREEN_TABS) {
-      expect(isTabReachable(tab, owner)).toBe(true);
-      expect(isTabOnBar(tab, "insights", owner)).toBe(false);
-    }
-  });
-
-  it("demoted only Insights screens", () => {
-    for (const tab of SUBSCREEN_TABS) {
-      expect(workspaceForTab(tab)).toBe("insights");
-    }
-  });
-});
 
 describe("SUBSCREEN_PARENTS", () => {
   it("gives every demoted screen exactly one door", () => {
@@ -53,35 +29,55 @@ describe("SUBSCREEN_PARENTS", () => {
     expect(new Set(linked).size).toBe(linked.length);
   });
 
-  it("hangs each one under a screen that is itself on the bar", () => {
+  it("hangs each one under a screen that is itself on the bar or in a hub", () => {
     // A door on a screen the merchant cannot get to is not a door.
     for (const parent of Object.keys(SUBSCREEN_PARENTS)) {
-      expect(isTabOnBar(parent, "insights", owner)).toBe(true);
+      expect(isTabOnBar(parent, owner) || isTabReachable(parent, owner)).toBe(true);
+      expect(isSubscreen(parent)).toBe(false);
     }
   });
 
-  it("never names a setup screen — those belong to the Menu hub", () => {
-    const linked = Object.values(SUBSCREEN_PARENTS).flat();
+  it("keeps every demoted screen reachable but off the bar", () => {
+    for (const tab of SUBSCREEN_TABS) {
+      expect(isTabReachable(tab, owner)).toBe(true);
+      if (tab !== "kitchen") expect(isTabOnBar(tab, owner)).toBe(false);
+    }
+  });
 
-    expect(linked).not.toContain("payments");
-    expect(OFF_BAR_TABS).toContain("payments");
+  it("never names a report or a setup screen — those belong to the hubs", () => {
+    const linked = Object.values(SUBSCREEN_PARENTS).flat();
+    for (const tab of [...REPORT_TABS, ...SETUP_TABS]) {
+      expect(linked).not.toContain(tab);
+    }
   });
 });
 
 describe("subscreensOf", () => {
+  it("offers Kitchen, Tables and Schedule under Orders", () => {
+    expect(subscreensOf("orders", owner).map((l) => l.tab)).toEqual([
+      "kitchen",
+      "tables",
+      "scheduled",
+    ]);
+  });
+
+  it("offers the Drawer under POS", () => {
+    expect(subscreensOf("pos", owner).map((l) => l.tab)).toEqual(["pos-sales"]);
+  });
+
   it("offers Trends under Analytics", () => {
-    expect(subscreensOf("analytics", owner.caller).map((l) => l.tab)).toEqual(["trends"]);
+    expect(subscreensOf("analytics", owner).map((l) => l.tab)).toEqual(["trends"]);
   });
 
   it("offers the guest list and Rewards under the Customers overview", () => {
-    expect(subscreensOf("customer-hub", owner.caller).map((l) => l.tab)).toEqual([
+    expect(subscreensOf("customer-hub", owner).map((l) => l.tab)).toEqual([
       "customers",
       "loyalty",
     ]);
   });
 
-  it("carries the label and hint the tab bar and Menu hub already use", () => {
-    const [trends] = subscreensOf("analytics", owner.caller);
+  it("carries the label and hint the bar and hubs already use", () => {
+    const [trends] = subscreensOf("analytics", owner);
 
     expect(trends.label).toBe("Trends");
     expect(trends.hint.length).toBeGreaterThan(0);
@@ -91,31 +87,40 @@ describe("subscreensOf", () => {
   it("drops a screen the account may not open", () => {
     // Analytics staff may read the numbers but not the guest list; offering a
     // row that refuses them is worse than not offering it.
-    const analyticsStaff = { role: "admin", isOwner: false, permissions: ["analytics"] };
+    const analyticsStaff = {
+      ...owner,
+      caller: { role: "admin", isOwner: false, permissions: ["analytics"] },
+    };
 
     expect(subscreensOf("analytics", analyticsStaff).map((l) => l.tab)).toEqual(["trends"]);
     expect(subscreensOf("customer-hub", analyticsStaff)).toEqual([]);
   });
 
-  it("returns nothing for a screen that has no sub-screens", () => {
-    expect(subscreensOf("growth", owner.caller)).toEqual([]);
+  it("drops the Schedule door from a store that never takes pre-orders", () => {
+    // The bar hides Schedule for such a store; the door on Orders must agree.
+    expect(subscreensOf("orders", { ...owner, takesAdvanceOrders: false }).map((l) => l.tab)).toEqual([
+      "kitchen",
+      "tables",
+    ]);
   });
 
-  it("applies no gate beyond staff grants, which is all these screens carry", () => {
-    // subscreensOf takes only the caller. That is safe exactly while no
-    // sub-screen is also gated on branch count or on pre-orders; if one ever
-    // is, this fails and the filter has to grow the full context.
-    const single = { ...owner, audience: { ...owner.audience, activeOutletCount: 1 } };
+  it("drops the Kitchen door from a staffer without the kitchen grant", () => {
+    const ordersOnly = {
+      ...owner,
+      caller: { role: "admin", isOwner: false, permissions: ["orders"] },
+    };
+    expect(subscreensOf("orders", ordersOnly).map((l) => l.tab)).toEqual(["scheduled"]);
+  });
 
-    for (const tab of SUBSCREEN_TABS) {
-      expect(isTabReachable(tab, single)).toBe(true);
-      expect(isTabReachable(tab, { ...owner, takesAdvanceOrders: false })).toBe(true);
-    }
+  it("returns nothing for a screen that has no sub-screens", () => {
+    expect(subscreensOf("growth", owner)).toEqual([]);
   });
 });
 
 describe("parentOf / isSubscreen", () => {
   it("maps a demoted screen back to the screen it hangs under", () => {
+    expect(parentOf("kitchen")).toBe("orders");
+    expect(parentOf("pos-sales")).toBe("pos");
     expect(parentOf("trends")).toBe("analytics");
     expect(parentOf("customers")).toBe("customer-hub");
     expect(parentOf("loyalty")).toBe("customer-hub");

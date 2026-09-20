@@ -13,15 +13,12 @@ import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useOutlets } from "../../lib/use-outlets";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useBranchContextStore } from "../../stores/branch-context-store";
-import { useWorkspaceStore } from "../../stores/workspace-store";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { colors, typography, spacing } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { StoreHeroCard } from "../../components/StoreHeroCard";
 import { BranchPerformanceCard } from "../../components/BranchPerformanceCard";
@@ -39,8 +36,7 @@ const LANDING_PERIOD = PERIOD_CHOICES[0];
  * contributed.
  *
  * Tapping a branch is the point of the screen. It sets the viewing context,
- * which narrows Operations, Register, Insights and Products to that branch until
- * the owner leaves it — so from here the owner runs one branch as if it were the
+ * which narrows every shift screen to that branch until the owner leaves it — so from here the owner runs one branch as if it were the
  * whole store, then comes back and picks another.
  *
  * It renders the *same* card component and the same KPI math as the Branches
@@ -70,7 +66,6 @@ export default function PortfolioScreen() {
   } = useSafeQuery<KpiOrderLike[]>(getOrdersRef, { limit: ORDER_WINDOW });
 
   const selectBranch = useBranchContextStore((s) => s.selectBranch);
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
   const { rows, totals } = useMemo(() => {
     const period = buildKpiPeriod(LANDING_PERIOD.days, Date.now());
@@ -91,12 +86,11 @@ export default function PortfolioScreen() {
   const openBranch = useCallback(
     (outletId: string, outletName: string) => {
       selectBranch(outletId, outletName);
-      setWorkspace("operations");
       // navigate, not replace — replacing into a sibling tab remounts the tab
       // navigator mid-switch and crashes. See lib/tab-navigation.ts.
       goTo(router as TabAwareRouter<`/(main)/${string}`>, "/(main)/dashboard");
     },
-    [selectBranch, setWorkspace],
+    [selectBranch],
   );
 
   if (outletsError) return <ErrorState message={outletsError} />;
@@ -108,7 +102,6 @@ export default function PortfolioScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader title="Your business" subtitle="Tap a branch to run it" />
       <ScrollView
         contentContainerStyle={styles.content}

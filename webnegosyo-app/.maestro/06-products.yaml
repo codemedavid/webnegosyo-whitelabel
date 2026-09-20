@@ -5,9 +5,13 @@ name: Products - performance, menu management, stock, daily report, payments
 # reconcile the day, and manage how customers pay, so that I can run the
 # storefront without opening a laptop.
 - runFlow:
-    file: helpers/switch-view.yaml
+    file: helpers/open-tab.yaml
     env:
-      VIEW: Products
+      TAB: Reports
+
+# Product performance is a row of the Reports hub.
+- tapOn: "Performance.*"
+- waitForAnimationToEnd
 
 # --- Performance (the view's default tab) ------------------------------------
 - assertVisible: "Performance"
@@ -32,7 +36,7 @@ name: Products - performance, menu management, stock, daily report, payments
 # --- Manage ------------------------------------------------------------------
 - tapOn: "Manage, tab.*"
 - waitForAnimationToEnd
-- assertVisible: "Manage products"
+- assertVisible: "Products"
 - assertVisible: "Create, edit, and price your menu"
 - assertVisible: "Add new product"
 # Each menu item exposes an edit affordance.

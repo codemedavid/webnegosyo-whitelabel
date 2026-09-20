@@ -5,7 +5,7 @@ import { ScreenHeader } from "../../ScreenHeader";
 import { TicketCard } from "../../kitchen/TicketCard";
 import { CoachTarget } from "../spotlight";
 import { mockKitchenTicket } from "../../../lib/tutorial/mock-data";
-import { MockViewChip, SceneFrame, type SceneProps } from "./shared";
+import { SceneFrame, type SceneProps } from "./shared";
 
 /** The kitchen board with the tour's order as its one ticket. */
 
@@ -34,13 +34,12 @@ export function KitchenScene({ phase, tried, onTried }: SceneProps) {
   const opacity = fly.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
   return (
-    <SceneFrame workspace="operations" activeTab="kitchen" tone="dark">
+    <SceneFrame activeTab="kitchen" tone="dark">
       <ScreenHeader
         title="Kitchen"
         subtitle={isBumped ? "0 open" : "1 open"}
         tone="dark"
         style={styles.header}
-        leading={<MockViewChip workspace="operations" />}
       />
       <ScrollView contentContainerStyle={styles.content}>
         {isBumped ? (

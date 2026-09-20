@@ -1,6 +1,6 @@
 appId: com.webnegosyo.admin
 ---
-# Switches the merchant app to a workspace view.
+# Opens one of the five fixed tabs of the merchant app.
 #
 # Every flow enters through here, so this is also where per-flow isolation is
 # enforced: relaunching drops whatever screen the previous flow finished on and
@@ -13,12 +13,8 @@ appId: com.webnegosyo.admin
     text: "Continue"
     optional: true
 
-# The switcher chip sits in every tab screen's header; its sheet names each
-# row "Switch to <view>", so rows are addressed by label rather than position.
+# The bar never changes shape: Home · Orders · POS · Reports · Manage. Tabs are
+# addressed by their label; the accessibility role suffix varies by platform.
 - tapOn:
-    text: "Current view.*"
+    text: "${TAB}(, tab.*)?"
 - waitForAnimationToEnd
-- tapOn:
-    text: "Switch to ${VIEW}"
-- waitForAnimationToEnd
-- assertVisible: "Current view: ${VIEW}.*"

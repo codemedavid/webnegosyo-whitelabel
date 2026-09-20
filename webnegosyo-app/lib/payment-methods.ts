@@ -27,6 +27,8 @@ export interface ManagedPaymentMethod {
   is_active: boolean;
   order_index: number;
   require_payment_proof: boolean;
+  /** When true, web checkout places the order without opening the payment screen. */
+  skip_payment_details: boolean;
   /** Flattened from `payment_method_order_types`; empty means offered nowhere. */
   order_type_ids: string[];
 }
@@ -38,6 +40,7 @@ export interface PaymentMethodInput {
   qr_code_url: string;
   is_active: boolean;
   require_payment_proof: boolean;
+  skip_payment_details: boolean;
   order_type_ids: string[];
 }
 
@@ -55,6 +58,7 @@ export const EMPTY_PAYMENT_METHOD_INPUT: PaymentMethodInput = {
   qr_code_url: "",
   is_active: true,
   require_payment_proof: false,
+  skip_payment_details: false,
   order_type_ids: [],
 };
 
@@ -74,6 +78,7 @@ interface PaymentMethodRow {
   is_active: boolean;
   order_index: number;
   require_payment_proof: boolean | null;
+  skip_payment_details: boolean | null;
   payment_method_order_types: JunctionRow[] | null;
 }
 
@@ -108,6 +113,7 @@ export function buildEditorFormState(
       qr_code_url: loaded.qr_code_url ?? "",
       is_active: loaded.is_active ?? true,
       require_payment_proof: loaded.require_payment_proof ?? false,
+      skip_payment_details: loaded.skip_payment_details ?? false,
       order_type_ids: [...(loaded.order_type_ids ?? [])],
     },
   };
@@ -191,14 +197,24 @@ function toRow(input: PaymentMethodInput): Record<string, unknown> {
     qr_code_url: input.qr_code_url.trim() || null,
     is_active: input.is_active,
     require_payment_proof: input.require_payment_proof,
+    // Proof is collected on the payment screen, so the two cannot both hold.
+    skip_payment_details: input.require_payment_proof
+      ? false
+      : input.skip_payment_details,
   };
 }
 
 function toManaged(row: PaymentMethodRow): ManagedPaymentMethod {
-  const { payment_method_order_types, require_payment_proof, ...rest } = row;
+  const {
+    payment_method_order_types,
+    require_payment_proof,
+    skip_payment_details,
+    ...rest
+  } = row;
   return {
     ...rest,
     require_payment_proof: require_payment_proof ?? false,
+    skip_payment_details: skip_payment_details ?? false,
     order_type_ids: (payment_method_order_types ?? []).map(
       (link) => link.order_type_id,
     ),
@@ -212,7 +228,7 @@ export async function listManagedPaymentMethods(
   const { data, error } = await supabase
     .from("payment_methods")
     .select(
-      "id, tenant_id, name, details, qr_code_url, is_active, order_index, require_payment_proof, payment_method_order_types(order_type_id)",
+      "id, tenant_id, name, details, qr_code_url, is_active, order_index, require_payment_proof, skip_payment_details, payment_method_order_types(order_type_id)",
     )
     .eq("tenant_id", tenantId)
     .order("order_index", { ascending: true });
@@ -229,7 +245,7 @@ export async function getPaymentMethod(
   const { data, error } = await supabase
     .from("payment_methods")
     .select(
-      "id, tenant_id, name, details, qr_code_url, is_active, order_index, require_payment_proof, payment_method_order_types(order_type_id)",
+      "id, tenant_id, name, details, qr_code_url, is_active, order_index, require_payment_proof, skip_payment_details, payment_method_order_types(order_type_id)",
     )
     .eq("id", methodId)
     .eq("tenant_id", tenantId)

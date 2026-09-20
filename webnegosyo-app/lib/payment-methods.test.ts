@@ -83,6 +83,7 @@ const VALID_INPUT: PaymentMethodInput = {
   qr_code_url: "https://ik.imagekit.io/x/qr.png",
   is_active: true,
   require_payment_proof: true,
+  skip_payment_details: false,
   order_type_ids: ["ot-1"],
 };
 
@@ -96,6 +97,7 @@ function method(overrides: Partial<ManagedPaymentMethod> = {}): ManagedPaymentMe
     is_active: true,
     order_index: 0,
     require_payment_proof: false,
+    skip_payment_details: false,
     order_type_ids: ["ot-1"],
     ...overrides,
   };
@@ -438,6 +440,40 @@ describe("createPaymentMethod", () => {
     expect(tablesTouched()).toContain("payment_method_order_types");
     const links = argsFor("insert")[1][0] as { order_type_id: string }[];
     expect(links.map((l) => l.order_type_id)).toEqual(["ot-1", "ot-2"]);
+  });
+
+  it("writes the merchant's skip-the-payment-screen choice", async () => {
+    queued = [
+      { data: null, error: null },
+      { data: { id: "pm-new" }, error: null },
+      { data: null, error: null },
+    ];
+
+    await createPaymentMethod("t-1", {
+      ...VALID_INPUT,
+      require_payment_proof: false,
+      skip_payment_details: true,
+    });
+
+    expect(argsFor("insert")[0][0]).toMatchObject({ skip_payment_details: true });
+  });
+
+  it("refuses to skip the payment screen when proof is required", async () => {
+    // The screenshot is collected on that screen, so skipping it would leave
+    // the customer with no way to satisfy the requirement.
+    queued = [
+      { data: null, error: null },
+      { data: { id: "pm-new" }, error: null },
+      { data: null, error: null },
+    ];
+
+    await createPaymentMethod("t-1", {
+      ...VALID_INPUT,
+      require_payment_proof: true,
+      skip_payment_details: true,
+    });
+
+    expect(argsFor("insert")[0][0]).toMatchObject({ skip_payment_details: false });
   });
 });
 

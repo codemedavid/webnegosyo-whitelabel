@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
+import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { validateManualDiscount, type ManualDiscount } from "../../lib/pos-discount";
 import { buildVoucherChoices } from "../../lib/pos-voucher-picker";
 import { hasPermission, type StaffPermissionHolder } from "../../lib/staff-permissions";
@@ -183,10 +184,13 @@ export function DiscountSheet({
     close();
   }
 
+  // A docked sheet becomes a centred dialog once the glass is a tablet's
+  // (components/pos/dialog-layout.ts).
+  const isCentered = useCenteredDialog();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+      <View style={[styles.backdrop, isCentered && centeredDialog.backdrop]}>
+        <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
             <Text style={styles.title}>Add discount</Text>
             <TouchableOpacity onPress={close} accessibilityRole="button">

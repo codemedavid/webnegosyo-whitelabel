@@ -6,7 +6,7 @@ import { create } from "zustand";
  * This is a *viewing* choice, not a permission: an owner drills into a branch
  * from the portfolio and every order surface follows. What that choice is
  * allowed to do lives in `lib/branch-context.ts` — this store only holds it,
- * the same way `workspace-store` only holds the active view.
+ * and nothing about who may view what.
  *
  * Deliberately not persisted. A branch context that outlived the session would
  * quietly narrow the next sign-in — including a different account on a shared

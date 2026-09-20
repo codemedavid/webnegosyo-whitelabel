@@ -18,15 +18,12 @@ import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useOutlets } from "../../lib/use-outlets";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useBranchContextStore } from "../../stores/branch-context-store";
-import { useWorkspaceStore } from "../../stores/workspace-store";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { StoreHeroCard } from "../../components/StoreHeroCard";
 import { BranchPerformanceCard } from "../../components/BranchPerformanceCard";
@@ -87,7 +84,6 @@ export default function BranchesScreen() {
   } = useSafeQuery<KpiOrderLike[]>(getOrdersRef, { limit: ORDER_WINDOW });
 
   const selectBranch = useBranchContextStore((s) => s.selectBranch);
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
   const periodChoice =
     PERIOD_CHOICES.find((choice) => choice.days === periodDays) ?? PERIOD_CHOICES[0];
@@ -114,12 +110,11 @@ export default function BranchesScreen() {
   const openBranch = useCallback(
     (outletId: string, outletName: string) => {
       selectBranch(outletId, outletName);
-      setWorkspace("operations");
       // navigate, not replace — replacing into a sibling tab remounts the tab
       // navigator mid-switch and crashes. See lib/tab-navigation.ts.
       goTo(router as TabAwareRouter<`/(main)/${string}`>, "/(main)/dashboard");
     },
-    [selectBranch, setWorkspace],
+    [selectBranch],
   );
 
   if (outletsError) return <ErrorState message={outletsError} />;
@@ -133,7 +128,6 @@ export default function BranchesScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader title="Compare branches" subtitle="Branch against branch">
         <View style={styles.periodRow}>
           {PERIOD_CHOICES.map((choice) => {

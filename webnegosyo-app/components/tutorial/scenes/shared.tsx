@@ -3,18 +3,17 @@ import { StyleSheet, Text, TouchableOpacity, View, type ViewStyle } from "react-
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radius, shadow, spacing, typography } from "../../../theme/colors";
 import { Icon, TabIcon, type IconName } from "../../Icon";
-import { getWorkspace, type WorkspaceKey } from "../../../lib/workspaces";
-import { OFF_BAR_TABS } from "../../../lib/tab-visibility";
-import { WORKSPACE_ICONS, tabLabel, tabPresentation } from "../../../lib/workspace-presentation";
+import { BAR_SLOTS } from "../../../lib/tab-visibility";
+import { tabLabel, tabPresentation } from "../../../lib/workspace-presentation";
 import { useAuthStore } from "../../../stores/auth-store";
 import { CoachTarget } from "../spotlight";
 
 /**
  * The chrome every simulated screen shares, drawn to the same numbers as the
- * real thing: the dark tab bar the (main) layout draws, the view chip the
- * switcher draws, and the alerts and sheets the real screens raise. A scene
- * built from these plus the app's own cards is indistinguishable from the
- * screen it teaches — except that nothing here talks to a backend.
+ * real thing: the dark tab bar the (main) layout draws, and the alerts and
+ * sheets the real screens raise. A scene built from these plus the app's own
+ * cards is indistinguishable from the screen it teaches — except that nothing
+ * here talks to a backend.
  */
 
 export interface SceneProps {
@@ -36,15 +35,19 @@ export function useMockTabBarHeight(): number {
   return TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, spacing.sm);
 }
 
+/**
+ * The bar as an owner sees it: the first candidate of every slot. The tour is
+ * a showcase, not a permission set, so it never shows the cook's variant.
+ */
+export const MOCK_BAR_TABS: readonly string[] = BAR_SLOTS.map((slot) => slot[0]);
+
 /** Full-screen scene ground with the mock bar pinned to the bottom. */
 export function SceneFrame({
-  workspace,
   activeTab,
   onTab,
   children,
   tone = "light",
 }: {
-  workspace: WorkspaceKey;
   activeTab: string;
   onTab?: (tab: string) => void;
   children: React.ReactNode;
@@ -53,37 +56,26 @@ export function SceneFrame({
   return (
     <View style={[styles.frame, tone === "dark" && styles.frameDark]}>
       <View style={styles.frameBody}>{children}</View>
-      <MockTabBar workspace={workspace} activeTab={activeTab} onTab={onTab} />
+      <MockTabBar activeTab={activeTab} onTab={onTab} />
     </View>
   );
 }
 
 export function MockTabBar({
-  workspace,
   activeTab,
   onTab,
   tabs,
   targetTab,
 }: {
-  workspace: WorkspaceKey;
   activeTab: string;
   onTab?: (tab: string) => void;
-  /** Overrides the view's tabs, e.g. a restricted staff preview. */
+  /** Overrides the bar's tabs, e.g. a restricted staff preview. */
   tabs?: readonly string[];
   /** The one tab the spotlight should sit on. */
   targetTab?: string;
 }) {
   const insets = useSafeAreaInsets();
-  // The simulated bar has to match the real one, so it drops the same off-bar
-  // screens the layout does (OFF_BAR_TABS) plus Scheduled, which the real bar
-  // gates on a store setting the tour has no store to read.
-  const shown = [
-    ...(tabs ??
-      getWorkspace(workspace).tabs.filter(
-        (t) => !OFF_BAR_TABS.includes(t) && t !== "scheduled",
-      )),
-    "menu",
-  ];
+  const shown = tabs ?? MOCK_BAR_TABS;
   return (
     <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       {shown.map((tab) => {
@@ -106,25 +98,6 @@ export function MockTabBar({
         );
       })}
     </View>
-  );
-}
-
-/** The view chip, exactly as the switcher draws it, minus the navigation. */
-export function MockViewChip({ workspace, onPress }: { workspace: WorkspaceKey; onPress?: () => void }) {
-  const active = getWorkspace(workspace);
-  return (
-    <TouchableOpacity
-      style={styles.chip}
-      onPress={onPress}
-      disabled={!onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={`Current view: ${active.label}. Change view`}
-    >
-      <Icon name={WORKSPACE_ICONS[workspace]} size={15} color={colors.textPrimary} />
-      <Text style={styles.chipLabel}>{active.label}</Text>
-      <Icon name="chevron-down" size={13} color={colors.textSecondary} />
-    </TouchableOpacity>
   );
 }
 
@@ -196,18 +169,6 @@ const styles = StyleSheet.create({
   tab: { flex: 1 },
   tabInner: { alignItems: "center", paddingVertical: 2, gap: 2 },
   tabLabel: { fontSize: 11, fontWeight: "600", marginTop: 2 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    height: 36,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.full,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.separator,
-  },
-  chipLabel: { ...typography.caption, fontWeight: "700", color: colors.textPrimary },
   alertBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)", alignItems: "center", justifyContent: "center", padding: spacing.xxl },
   alert: { width: 270, backgroundColor: "#F2F2F2", borderRadius: 14, paddingTop: spacing.lg, alignItems: "center", overflow: "hidden" },
   alertTitle: { fontSize: 17, fontWeight: "600", color: "#000", textAlign: "center", paddingHorizontal: spacing.lg },

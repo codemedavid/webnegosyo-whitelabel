@@ -57,3 +57,15 @@ export const NEW_CAMPAIGN_ID = "new" as const;
 export function campaignHref(campaignId: string): `/(main)/campaign/${string}` {
   return `/(main)/campaign/${encodeURIComponent(campaignId)}`;
 }
+
+/** Sentinel categoryId that puts the category editor into create mode. */
+export const NEW_CATEGORY_ID = "new" as const;
+
+/**
+ * Build the href for the category editor screen.
+ *
+ * @param categoryId an existing category id, or {@link NEW_CATEGORY_ID}.
+ */
+export function categoryHref(categoryId: string): `/(main)/category/${string}` {
+  return `/(main)/category/${encodeURIComponent(categoryId)}`;
+}

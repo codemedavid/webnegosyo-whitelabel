@@ -17,6 +17,7 @@ jest.mock("../../lib/use-portfolio-audience", () => ({
   usePortfolioAudience: () => ({ accountScope: { kind: "all" }, activeOutletCount: 1, isDemo: false }),
 }));
 jest.mock("../../lib/use-advance-ordering", () => ({ useAdvanceOrdering: () => false }));
+jest.mock("../../lib/use-dine-in", () => ({ useDineIn: () => false }));
 
 import { router } from "expo-router";
 import { TutorialWelcomePopup } from "./TutorialWelcomePopup";

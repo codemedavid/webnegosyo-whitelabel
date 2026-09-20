@@ -4,6 +4,7 @@ import { colors, radius, shadow, spacing, typography } from "../../theme/colors"
 import { formatPeso } from "../../lib/format";
 import type { CartTotals, PosCartLine } from "../../lib/pos-cart";
 import type { PosOrderType } from "../../lib/pos-catalog";
+import { isDineInType } from "../../lib/pos-table";
 import type { OrderDiscountLine } from "../../lib/order-totals";
 
 interface CartSheetProps {
@@ -37,6 +38,10 @@ interface CartSheetProps {
   onRemoveDiscount?: (line: OrderDiscountLine) => void;
   /** Opens delivery details entry. Absent (e.g. editing) hides it entirely. */
   onEditDelivery?: () => void;
+  /** Opens the table picker for a dine-in sale. Absent (e.g. editing) hides it. */
+  onEditTable?: () => void;
+  /** The table attached to this sale, as chosen, or null. */
+  tableLabel?: string | null;
   /**
    * The part of an edited order's total that nothing can account for.
    *
@@ -51,15 +56,31 @@ interface CartSheetProps {
    * Absent (a counter sale) or zero renders nothing.
    */
   adjustment?: number;
+  /**
+   * `sheet` (the default) docks the sale to the bottom of a phone register,
+   * collapsed until the cashier opens it. `panel` stands it up as its own
+   * column beside the product grid on a tablet: always open, lines stacked
+   * down the full height, Charge pinned to the bottom. Chosen by the screen
+   * from the window size — see lib/pos-layout.ts.
+   */
+  variant?: "sheet" | "panel";
 }
 
 /**
- * The running sale, docked to the bottom of the register.
+ * The running sale, in whichever shape the glass allows.
  *
- * Collapsed by default so the product grid keeps the screen: the summary row
- * and the Charge total are always readable, and the line detail expands only
- * when the cashier needs to correct something. Charge stays in the same
- * position in both states so muscle memory holds.
+ * As a `sheet` (a phone) it is docked to the bottom and collapsed by default,
+ * so the product grid keeps the screen: the summary row and the Charge total
+ * are always readable, and the line detail expands only when the cashier needs
+ * to correct something. Charge stays in the same position in both states so
+ * muscle memory holds.
+ *
+ * As a `panel` (a tablet) it is a permanent column beside the grid: every line
+ * is stacked down it, the totals sit under them, and Charge is pinned to the
+ * bottom. There is no collapsed state, because a column covers nothing.
+ *
+ * The two share every prop and every money decision — only the arrangement
+ * differs.
  */
 export function CartSheet({
   lines,
@@ -79,18 +100,53 @@ export function CartSheet({
   onAddDiscount,
   onRemoveDiscount,
   onEditDelivery,
+  onEditTable,
+  tableLabel = null,
   adjustment = 0,
+  variant = "sheet",
 }: CartSheetProps) {
   const hasItems = lines.length > 0;
+  const isPanel = variant === "panel";
+  // A panel has the height to stay open, and nothing to gain by closing: the
+  // grid beside it is not covered by it. Only the bottom sheet collapses.
+  const showDetail = isPanel || isExpanded;
   const activeType = orderTypes.find((type) => type.id === orderTypeId);
   // Surfaced more prominently for a delivery-type sale, but never hidden for
   // the rest: a dine-in order type does not stop a customer asking the shop
   // to send the food over.
   const isDeliveryType = activeType?.type === "delivery";
+  const isDineIn = isDineInType(activeType);
 
   return (
-    <View style={styles.sheet}>
-      {hasItems ? (
+    <View style={[styles.sheet, isPanel && styles.panel]}>
+      {/*
+        The panel is a titled column, not a drawer: there is nothing to pull
+        open, so the handle becomes a heading that says what the column is and
+        how much is on it. It stays mounted with no items so the cashier can
+        see the register is ready rather than a blank strip of card.
+      */}
+      {isPanel ? (
+        <View style={styles.panelHeader}>
+          <View style={styles.handleLeft}>
+            <Text style={styles.panelTitle}>Current sale</Text>
+            {hasItems ? (
+              <Text style={styles.handleText}>
+                {totals.itemCount} {totals.itemCount === 1 ? "item" : "items"}
+              </Text>
+            ) : null}
+          </View>
+          {hasItems ? (
+            <TouchableOpacity
+              onPress={onClear}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Clear the sale"
+            >
+              <Text style={styles.clear}>Clear</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : hasItems ? (
         <TouchableOpacity
           style={styles.handle}
           onPress={onToggle}
@@ -115,6 +171,16 @@ export function CartSheet({
         </TouchableOpacity>
       ) : null}
 
+      {/* The column's own empty state; the sheet says this on its Charge bar. */}
+      {isPanel && !hasItems ? (
+        <View style={styles.panelEmpty}>
+          <Text style={styles.panelEmptyTitle}>No items yet</Text>
+          <Text style={styles.panelEmptyBody}>
+            Products you tap appear here, with the running total.
+          </Text>
+        </View>
+      ) : null}
+
       {/*
         The discount entry, reachable without expanding the cart.
         A merchant reported not finding vouchers at all: the only affordance
@@ -123,7 +189,7 @@ export function CartSheet({
         rides here too — a collapsed cart otherwise shows a total that does not
         match its items with nothing explaining the difference.
       */}
-      {hasItems && !isExpanded && (onAddDiscount || discountLines.length > 0) ? (
+      {hasItems && !showDetail && (onAddDiscount || discountLines.length > 0) ? (
         <View style={styles.collapsedDiscount}>
           {discountLines.length > 0 ? (
             <Text style={styles.collapsedDiscountText} numberOfLines={1}>
@@ -148,6 +214,20 @@ export function CartSheet({
           {/* A delivery-type sale gets the fee entry here in the collapsed
               state too — that is the sale most likely to need it, and the
               sheet opens collapsed. */}
+          {/* A dine-in sale names its table here, in the collapsed state too:
+              the server rings it up standing at the table. */}
+          {onEditTable && isDineIn && (
+            <TouchableOpacity
+              onPress={onEditTable}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={tableLabel ? `Change table ${tableLabel}` : "Choose a table"}
+            >
+              <Text style={styles.collapsedDiscountAction}>
+                {tableLabel ? `Table ${tableLabel}` : "+ Table"}
+              </Text>
+            </TouchableOpacity>
+          )}
           {onEditDelivery && isDeliveryType && (
             <TouchableOpacity
               onPress={onEditDelivery}
@@ -163,9 +243,12 @@ export function CartSheet({
         </View>
       ) : null}
 
-      {hasItems && isExpanded ? (
+      {hasItems && showDetail ? (
         <>
-          <ScrollView style={styles.lines} contentContainerStyle={styles.linesContent}>
+          <ScrollView
+            style={[styles.lines, isPanel && styles.linesPanel]}
+            contentContainerStyle={styles.linesContent}
+          >
             {lines.map((line) => (
               <View key={line.key} style={styles.line}>
                 <View style={styles.lineText}>
@@ -290,13 +373,9 @@ export function CartSheet({
         </>
       ) : null}
 
-      {orderTypes.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.typeRow}
-        >
-          {orderTypes.map((type) => {
+      {orderTypes.length > 0 &&
+        (() => {
+          const chips = orderTypes.map((type) => {
             const isActive = orderTypeId === type.id;
             return (
               <TouchableOpacity
@@ -311,9 +390,23 @@ export function CartSheet({
                 </Text>
               </TouchableOpacity>
             );
-          })}
-        </ScrollView>
-      )}
+          });
+
+          // A narrow column would hide the later channels off the right edge of
+          // a horizontal strip, so the panel wraps them and shows them all —
+          // choosing the wrong channel is a mispriced sale.
+          return isPanel ? (
+            <View style={[styles.typeRow, styles.typeRowWrap]}>{chips}</View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.typeRow}
+            >
+              {chips}
+            </ScrollView>
+          );
+        })()}
 
       <TouchableOpacity
         style={[styles.charge, (!hasItems || blockedReason) && styles.chargeDisabled]}
@@ -352,6 +445,31 @@ const styles = StyleSheet.create({
     borderTopColor: colors.separator,
     ...shadow.md,
   },
+  // Square, full height, divided from the grid by its left edge rather than
+  // floating over it: the panel is a column of the screen, not a sheet.
+  panel: {
+    flex: 1,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderTopWidth: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.separator,
+    paddingHorizontal: spacing.lg,
+  },
+  panelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: spacing.md,
+  },
+  panelTitle: { ...typography.heading, color: colors.textPrimary },
+  panelEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.xs },
+  panelEmptyTitle: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
+  panelEmptyBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
   handle: {
     flexDirection: "row",
     alignItems: "center",
@@ -364,6 +482,9 @@ const styles = StyleSheet.create({
   handleHint: { ...typography.caption, color: colors.textSecondary, flex: 1 },
   clear: { ...typography.caption, color: colors.danger, fontWeight: "700" },
   lines: { maxHeight: 240 },
+  // The column has the height a sheet does not: let the sale stack down it and
+  // scroll, instead of capping at the four rows a phone can spare.
+  linesPanel: { maxHeight: undefined, flex: 1 },
   linesContent: { gap: spacing.sm, paddingBottom: spacing.sm },
   line: {
     flexDirection: "row",
@@ -438,6 +559,7 @@ const styles = StyleSheet.create({
   addDiscount: { paddingTop: spacing.xs },
   addDiscountText: { ...typography.caption, fontWeight: "600", color: colors.primary },
   typeRow: { gap: spacing.sm, paddingVertical: spacing.sm },
+  typeRowWrap: { flexDirection: "row", flexWrap: "wrap" },
   typeChip: {
     paddingHorizontal: spacing.lg,
     paddingVertical: 7,

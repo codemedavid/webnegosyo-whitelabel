@@ -57,6 +57,7 @@ import {
   clearedSaleDelivery,
   type PosDeliveryDetails,
 } from "../lib/pos-delivery";
+import { clearedSaleTable, isDineInType, type PosTableDetails } from "../lib/pos-table";
 import type { OrderTypePricing } from "../lib/order-type-pricing";
 import {
   priceLineInputForOrderType,
@@ -105,6 +106,12 @@ interface PosCartState {
    * left behind would be billed to the next stranger at the counter.
    */
   delivery: PosDeliveryDetails;
+  /**
+   * The table a dine-in sale is for. Cleared with the sale, and dropped when
+   * the order type stops being dine-in — a table on a pickup order would put
+   * a takeaway on the floor plan.
+   */
+  table: PosTableDetails;
 
   add: (input: PosLineInput) => void;
   setQty: (key: string, quantity: number) => void;
@@ -115,12 +122,16 @@ interface PosCartState {
     orderTypeName: string,
     serviceCharge: ServiceCharge | undefined,
     pricing?: OrderTypePricing | null,
+    /** The type's machine kind ("dine_in", "pickup"…); anything but dine-in drops the table. */
+    orderTypeKind?: string | null,
   ) => void;
   setCustomerName: (name: string) => void;
   /** Attach a guest to this sale, or pass null to make it a walk-in again. */
   setAttachedCustomer: (customer: AttachedCustomer | null) => void;
   /** Merge a partial update into this sale's delivery details. */
   setDelivery: (patch: Partial<PosDeliveryDetails>) => void;
+  /** Attach, change or (with the cleared shape) remove this sale's table. */
+  setTable: (table: PosTableDetails) => void;
   /**
    * Correct or attach the delivery fee on the order being EDITED. A no-op on
    * an ordinary counter sale — that fee lives in {@link setDelivery}.
@@ -205,6 +216,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   orderTypePricing: null,
   ...clearedSaleCustomer(),
   ...clearedSaleDelivery(),
+  ...clearedSaleTable(),
   discount: EMPTY_POS_DISCOUNT_SESSION,
 
   // A placed order's lines are priced as quoted; the register never marks
@@ -253,6 +265,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       saleOutlet: null,
       ...clearedSaleCustomer(),
       ...clearedSaleDelivery(),
+      ...clearedSaleTable(),
       editContext: null,
       editWarnings: [],
       discount: EMPTY_POS_DISCOUNT_SESSION,
@@ -269,6 +282,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       ...clearedSaleCustomer(),
       // An edit's fee lives on editContext; a counter fee would double-bill.
       ...clearedSaleDelivery(),
+      ...clearedSaleTable(),
       discount: EMPTY_POS_DISCOUNT_SESSION,
     }),
 
@@ -295,6 +309,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       saleOutlet: null,
       ...clearedSaleCustomer(),
       ...clearedSaleDelivery(),
+      ...clearedSaleTable(),
       editContext: null,
       editWarnings: [],
       discount: EMPTY_POS_DISCOUNT_SESSION,
@@ -304,13 +319,14 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   // cashier working a queue of Grab orders should not re-pick the channel.
   // Lines under edit are left by reference — `repriceLinesForOrderType` skips
   // them anyway (no list price), but the edit must not depend on that.
-  setOrderType: (orderTypeId, orderTypeName, serviceCharge, pricing = null) =>
+  setOrderType: (orderTypeId, orderTypeName, serviceCharge, pricing = null, orderTypeKind = null) =>
     set((s) => ({
       orderTypeId,
       orderTypeName,
       serviceCharge,
       orderTypePricing: pricing,
       lines: s.editContext ? s.lines : repriceLinesForOrderType(s.lines, pricing),
+      ...(isDineInType(orderTypeKind ? { type: orderTypeKind } : null) ? {} : clearedSaleTable()),
     })),
 
   setCustomerName: (customerName) => set({ customerName }),
@@ -362,6 +378,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   setAttachedCustomer: (attachedCustomer) => set({ attachedCustomer }),
 
   setDelivery: (patch) => set((s) => ({ delivery: { ...s.delivery, ...patch } })),
+  setTable: (table) => set({ table }),
 
   setEditDeliveryFee: (fee) =>
     set((s) =>

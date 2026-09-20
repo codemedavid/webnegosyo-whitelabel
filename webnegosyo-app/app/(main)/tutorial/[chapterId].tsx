@@ -17,7 +17,6 @@ import { TUTORIAL_HUB_ROUTE, tutorialChapterRoute } from "../../../lib/tutorial/
 import { useTutorialChapters, useTutorialProgress } from "../../../lib/tutorial/use-tutorial";
 import { goTo, type TabAwareRouter } from "../../../lib/tab-navigation";
 import { useTutorialStore } from "../../../stores/tutorial-store";
-import { useWorkspaceStore } from "../../../stores/workspace-store";
 
 /**
  * The chapter player: the real screen, simulated full-screen with the mock
@@ -33,7 +32,6 @@ export default function TutorialChapterScreen() {
   const { progress } = useTutorialProgress();
   const openChapter = useTutorialStore((s) => s.openChapter);
   const completeChapter = useTutorialStore((s) => s.completeChapter);
-  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useMockTabBarHeight();
   const { height: windowHeight } = useWindowDimensions();
@@ -103,7 +101,6 @@ export default function TutorialChapterScreen() {
     const destination = chapter.destination;
     setIsFinished(false);
     if (!destination) return goTo(tabRouter, TUTORIAL_HUB_ROUTE);
-    if (destination.workspace) setWorkspace(destination.workspace);
     goTo(tabRouter, destination.href as `/(main)/${string}`);
   };
   const openNext = () => {

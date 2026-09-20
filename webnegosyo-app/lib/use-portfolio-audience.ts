@@ -15,7 +15,7 @@ import { useBranchContextStore } from "../stores/branch-context-store";
  * consumer would fetch the same rows for the tab bar and the switcher sheet.
  *
  * `null` means the list has not loaded yet, which the rules treat as
- * single-location: the Business view never flashes into the switcher and out
+ * single-location: the branch screens never flash into the hubs and out
  * again on a cold start.
  *
  * The account scope, not the effective one: whether the view *exists* cannot

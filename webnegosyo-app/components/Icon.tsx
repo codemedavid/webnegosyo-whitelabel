@@ -39,10 +39,12 @@ export type IconName =
   | "compare"
   | "list"
   | "kitchen"
+  | "tables"
   // In-screen
   | "search"
   | "check"
   | "plus"
+  | "edit"
   | "chevron"
   | "calendar"
   | "clock"
@@ -62,7 +64,8 @@ export type IconName =
   | "arrow-right"
   | "chevron-left"
   | "minus"
-  | "trash";
+  | "trash"
+  | "rotate";
 
 interface IconProps {
   name: IconName;
@@ -70,11 +73,14 @@ interface IconProps {
   color: string;
   /** Only widen this for oversized marks; the bar's icons all share the default. */
   strokeWidth?: number;
+  /** For the rare icon a test addresses directly, e.g. an empty-state stand-in. */
+  testID?: string;
 }
 
-export function Icon({ name, size = 22, color, strokeWidth = 1.75 }: IconProps) {
+export function Icon({ name, size = 22, color, strokeWidth = 1.75, testID }: IconProps) {
   return (
     <Svg
+      testID={testID}
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -261,6 +267,27 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
     </>
   ),
 
+  // A pencil, for the floor's layout mode.
+  edit: (
+    <>
+      <Path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+      <Line x1={13.5} y1={6.5} x2={17.5} y2={10.5} />
+    </>
+  ),
+
+  // A round table top between two chairs: the floor, seen from the host stand.
+  tables: (
+    <>
+      <Circle cx={12} cy={12} r={4.5} />
+      <Line x1={12} y1={16.5} x2={12} y2={20} />
+      <Line x1={9} y1={20} x2={15} y2={20} />
+      <Path d="M3 9v6" />
+      <Path d="M2 9h2.5v6H2" />
+      <Path d="M21 9v6" />
+      <Path d="M22 9h-2.5v6H22" />
+    </>
+  ),
+
   search: (
     <>
       <Circle cx={10.5} cy={10.5} r={6.5} />
@@ -403,6 +430,15 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
   "chevron-left": <Polyline points="14.5,5.5 8,12 14.5,18.5" />,
 
   minus: <Line x1={5} y1={12} x2={19} y2={12} />,
+
+  // A quarter turn: three quarters of a circle, with the arrowhead that
+  // closes it drawn open so the direction of the turn reads at 16pt.
+  rotate: (
+    <>
+      <Path d="M20 12a8 8 0 1 1-2.5-5.8" />
+      <Polyline points="20,3 20,8.5 14.5,8.5" />
+    </>
+  ),
 
   trash: (
     <>

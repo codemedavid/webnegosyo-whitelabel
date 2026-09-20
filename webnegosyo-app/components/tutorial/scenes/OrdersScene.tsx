@@ -8,7 +8,7 @@ import { OrderCard } from "../../OrderCard";
 import { EmptyState } from "../../EmptyState";
 import { CoachTarget } from "../spotlight";
 import { mockIncomingOrder, mockQueue, type MockOrder } from "../../../lib/tutorial/mock-data";
-import { MockAlert, MockViewChip, SceneFrame, type SceneProps } from "./shared";
+import { MockAlert, SceneFrame, type SceneProps } from "./shared";
 
 /** The Orders queue, drawn from the same cards and filter bar as orders.tsx. */
 const FILTERS = ["all", "pending", "confirmed", "preparing", "ready", "delivered", "cancelled"] as const;
@@ -43,11 +43,10 @@ export function OrdersScene({ phase, tried, onTried }: SceneProps) {
   const targetId = orders[0]._id;
 
   return (
-    <SceneFrame workspace="operations" activeTab="orders">
+    <SceneFrame activeTab="orders">
       <ScreenHeader
         title="Orders"
         subtitle={`${shown.length} shown`}
-        leading={<MockViewChip workspace="operations" />}
         actions={
           <>
             <IconButton icon="export" label="Export" onPress={() => {}} />

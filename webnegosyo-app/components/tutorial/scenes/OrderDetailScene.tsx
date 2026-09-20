@@ -27,7 +27,7 @@ export function OrderDetailScene({ phase, tried, onTried }: SceneProps) {
   };
 
   return (
-    <SceneFrame workspace="operations" activeTab="orders">
+    <SceneFrame activeTab="orders">
       <BackHeader title="Order details" subtitle={order.customerName} actions={<Badge label={status} variant={status} />} />
       <ScrollView contentContainerStyle={styles.content}>
         <StatusStepper currentStatus={status} />

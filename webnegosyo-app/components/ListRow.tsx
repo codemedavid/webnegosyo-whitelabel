@@ -6,7 +6,7 @@ import { Icon, type IconName } from "./Icon";
 /**
  * A navigation row: icon tile, title, one-line hint, chevron.
  *
- * The Menu hub, the Account screen and the view switcher all list places the
+ * The two hubs, the Account screen and the sub-screen doors all list places the
  * merchant can go. They used to draw that list three different ways; this is
  * the one way. Stacked rows share their hairline (`grouped`) so a list reads
  * as one surface rather than a pile of cards.

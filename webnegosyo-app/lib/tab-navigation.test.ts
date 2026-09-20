@@ -245,9 +245,10 @@ describe("no screen replaces into the merchant tab navigator", () => {
 
   const files = [
     ...sourceFiles(join(APP_DIR, "(main)")),
-    // Rendered inside (main) screens, so its navigations land in the tab
+    // Rendered inside (main) screens, so their navigations land in the tab
     // navigator just the same.
-    join(COMPONENTS_DIR, "WorkspaceSwitcher.tsx"),
+    join(COMPONENTS_DIR, "SubScreenLinks.tsx"),
+    join(COMPONENTS_DIR, "BranchContextBar.tsx"),
   ];
 
   it.each(files.map((f) => [f.slice(f.indexOf("webnegosyo-app")), f]))(

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { InteractionManager, Platform } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 import {
   Stack,
@@ -41,6 +42,7 @@ import {
 } from "../lib/push-registration";
 import { CrashFallback } from "../components/CrashFallback";
 import { warnAboutScreensRuntime } from "../lib/native-runtime-parity";
+import { useOrientationLock } from "../lib/use-orientation-lock";
 
 /**
  * Runs at import time, before the first screen commits. Expo Go ships an
@@ -382,6 +384,8 @@ function useAnnouncementPushRouting() {
 
 export default function RootLayout() {
   useGlobalErrorHandler();
+  // Tablets turn, handsets do not — see lib/use-orientation-lock.ts.
+  useOrientationLock();
   useAuthInit();
   useAuthRedirect();
   usePushNotifications();
@@ -396,15 +400,20 @@ export default function RootLayout() {
   // The query cache sits OUTSIDE the Convex provider so the element wrapping
   // the navigation tree is exactly what it was (see lib/convex-provider.tsx).
   return (
-    <QueryProvider>
-      <ConvexAuthProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(main)" />
-          <Stack.Screen name="(superadmin)" />
-        </Stack>
-      </ConvexAuthProvider>
-    </QueryProvider>
+    // react-native-gesture-handler needs this at the root or its handlers
+    // never fire on Android. Nothing needed it until the floor plan's tables
+    // became draggable; it is a plain flex container everywhere else.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryProvider>
+        <ConvexAuthProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(main)" />
+            <Stack.Screen name="(superadmin)" />
+          </Stack>
+        </ConvexAuthProvider>
+      </QueryProvider>
+    </GestureHandlerRootView>
   );
 }

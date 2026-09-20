@@ -1,12 +1,18 @@
 import {
   isTabReachable,
   isTabOnBar,
+  barTabs,
   reachableTabsOf,
+  BAR_SLOTS,
+  SUBSCREEN_TABS,
+  REPORT_TABS,
   SETUP_TABS,
+  HUB_TABS,
   MENU_TAB,
+  REPORTS_TAB,
   type TabVisibilityContext,
 } from "./tab-visibility";
-import { getWorkspace } from "./workspaces";
+import { WORKSPACES, getWorkspace } from "./workspaces";
 
 const owner: TabVisibilityContext = {
   caller: { role: "admin", isOwner: true, permissions: null },
@@ -16,6 +22,7 @@ const owner: TabVisibilityContext = {
     isDemo: false,
   },
   takesAdvanceOrders: true,
+  takesDineIn: true,
 };
 
 const posOnlyStaff: TabVisibilityContext = {
@@ -23,10 +30,15 @@ const posOnlyStaff: TabVisibilityContext = {
   caller: { role: "admin", isOwner: false, permissions: ["pos"] },
 };
 
+const cook: TabVisibilityContext = {
+  ...owner,
+  caller: { role: "admin", isOwner: false, permissions: ["kitchen"] },
+};
+
 describe("isTabReachable", () => {
   it("lets an owner reach every registered tab", () => {
-    for (const workspace of ["operations", "register", "insights", "products", "business"] as const) {
-      for (const tab of getWorkspace(workspace).tabs) {
+    for (const workspace of WORKSPACES) {
+      for (const tab of workspace.tabs) {
         expect(isTabReachable(tab, owner)).toBe(true);
       }
     }
@@ -50,43 +62,96 @@ describe("isTabReachable", () => {
     expect(isTabReachable("customers", posOnlyStaff)).toBe(false);
   });
 
-  it("always lets an account reach the Menu hub", () => {
+  it("always lets an account reach the Manage hub", () => {
     expect(isTabReachable(MENU_TAB, posOnlyStaff)).toBe(true);
+  });
+
+  it("gives an account the Reports hub exactly when it can open at least one report", () => {
+    expect(isTabReachable(REPORTS_TAB, owner)).toBe(true);
+    // A cashier with only the POS grant can read no report, so there is no
+    // hub to open — a tab that lands on an empty list reads as a broken app.
+    expect(isTabReachable(REPORTS_TAB, posOnlyStaff)).toBe(false);
+    const analyst = { ...owner, caller: { ...owner.caller, isOwner: false, permissions: ["analytics"] } };
+    expect(isTabReachable(REPORTS_TAB, analyst)).toBe(true);
   });
 });
 
-describe("isTabOnBar", () => {
-  it("shows only the active view's tabs plus the Menu hub", () => {
-    expect(isTabOnBar("orders", "operations", owner)).toBe(true);
-    expect(isTabOnBar("orders", "insights", owner)).toBe(false);
-    expect(isTabOnBar(MENU_TAB, "operations", owner)).toBe(true);
-    expect(isTabOnBar(MENU_TAB, "products", owner)).toBe(true);
+describe("the bar", () => {
+  it("is five slots, left to right: Home, Orders, POS, Reports, Manage", () => {
+    expect(barTabs(owner)).toEqual(["dashboard", "orders", "pos", "reports", "menu"]);
   });
 
-  it("keeps store-setup screens off the bar even in their own view", () => {
-    // Payments is reachable (through the Menu hub) but never a tab: the
-    // Products bar would otherwise run to six tabs and truncate every label.
-    expect(SETUP_TABS).toContain("payments");
-    expect(isTabReachable("payments", owner)).toBe(true);
-    expect(isTabOnBar("payments", "products", owner)).toBe(false);
+  it("never changes shape for a single-branch store or a store without pre-orders", () => {
+    // The whole point: the bar is the same bar wherever the merchant is, and
+    // whatever the store is configured to do.
+    const single = { ...owner, audience: { ...owner.audience, activeOutletCount: 1 } };
+    expect(barTabs(single)).toEqual(barTabs(owner));
+    expect(barTabs({ ...owner, takesAdvanceOrders: false })).toEqual(barTabs(owner));
   });
 
-  it("never puts a tab on the bar that the account cannot reach", () => {
-    expect(isTabOnBar("orders", "operations", posOnlyStaff)).toBe(false);
-    expect(isTabOnBar("scheduled", "operations", { ...owner, takesAdvanceOrders: false })).toBe(false);
+  it("gives a cook the Kitchen board in the Orders slot", () => {
+    // A cook's tablet holds only the kitchen grant. Orders is out of reach, so
+    // the board takes its slot instead of leaving a hole in the bar.
+    expect(barTabs(cook)).toEqual(["dashboard", "kitchen", "menu"]);
+    expect(isTabOnBar("kitchen", cook)).toBe(true);
+    expect(isTabOnBar("orders", cook)).toBe(false);
+  });
+
+  it("keeps Kitchen off the bar when Orders is there", () => {
+    expect(isTabOnBar("kitchen", owner)).toBe(false);
+  });
+
+  it("drops the slots a cashier cannot open", () => {
+    expect(barTabs(posOnlyStaff)).toEqual(["dashboard", "pos", "menu"]);
+  });
+
+  it("never puts a sub-screen, a report or a setup screen on it", () => {
+    for (const tab of [...SUBSCREEN_TABS, ...REPORT_TABS, ...SETUP_TABS]) {
+      if (tab === "kitchen") continue; // the one slot fallback, covered above
+      expect(isTabOnBar(tab, owner)).toBe(false);
+    }
+  });
+
+  it("lists every slot candidate as a real screen", () => {
+    const known = new Set([...WORKSPACES.flatMap((w) => [...w.tabs]), ...HUB_TABS]);
+    for (const slot of BAR_SLOTS) {
+      for (const tab of slot) expect(known.has(tab)).toBe(true);
+    }
+  });
+});
+
+describe("the map is complete", () => {
+  it("places every registered tab on the bar, under a parent, or in a hub — exactly once", () => {
+    // A screen in the registry but nowhere on the map is a screen nobody can
+    // reach; a screen in two places is two doors that will drift apart.
+    const registered = WORKSPACES.flatMap((w) => [...w.tabs]);
+    const placed = [
+      ...BAR_SLOTS.flatMap((slot) => slot.filter((tab) => !HUB_TABS.includes(tab))),
+      ...SUBSCREEN_TABS.filter((tab) => tab !== "kitchen"), // kitchen is also a slot fallback
+      ...REPORT_TABS,
+      ...SETUP_TABS,
+    ];
+
+    expect([...placed].sort()).toEqual([...registered].sort());
+    expect(new Set(placed).size).toBe(placed.length);
   });
 });
 
 describe("reachableTabsOf", () => {
-  it("lists a view's reachable tabs in registry order", () => {
+  it("lists a section's reachable tabs in registry order", () => {
     expect(reachableTabsOf("operations", { ...owner, takesAdvanceOrders: false })).toEqual([
       "dashboard",
       "orders",
       "kitchen",
+      "tables",
     ]);
-  });
-
-  it("keeps setup screens in the list so the Menu hub can offer them", () => {
-    expect(reachableTabsOf("products", owner)).toContain("payments");
+    // A shop that seats nobody has no floor to show.
+    expect(reachableTabsOf("operations", { ...owner, takesDineIn: false })).toEqual([
+      "dashboard",
+      "orders",
+      "kitchen",
+      "scheduled",
+    ]);
+    expect(reachableTabsOf("products", owner)).toEqual([...getWorkspace("products").tabs]);
   });
 });

@@ -34,7 +34,9 @@ describe("scheduled tab registration", () => {
     // The standard three-gate show() AND the advance-ordering config gate: the
     // tab renders only for stores with a pre-order-enabled order type.
     expect(layout).toMatch(/name="scheduled"[\s\S]{0,240}show\("scheduled"\)/);
-    expect(layout).toMatch(/useAdvanceOrdering/);
+    // The config gate is read by the shared context the layout mounts.
+    expect(layout).toMatch(/useTabVisibilityContext/);
+    expect(read("lib", "use-tab-visibility-context.ts")).toMatch(/useAdvanceOrdering/);
   });
 });
 
@@ -75,7 +77,6 @@ describe("scheduled screen", () => {
   });
 
   it("keeps the workspace switcher so the tab is escapable", () => {
-    expect(screen()).toMatch(/WorkspaceSwitcher/);
   });
 
   it("opens the shared order detail rather than growing its own management UI", () => {

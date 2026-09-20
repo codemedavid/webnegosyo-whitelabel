@@ -16,7 +16,7 @@ import type { TutorialChapter } from "../../../lib/tutorial/chapters";
 /**
  * The tutorial hub: every chapter this account is offered, what is done, and
  * one button that resumes where they left off. Reached from the first-run
- * greeter, the Menu hub's Tools, and Account, so it is never more than two
+ * greeter and the Manage hub, so it is never more than two
  * taps away once the greeter has gone.
  */
 export default function TutorialHubScreen() {

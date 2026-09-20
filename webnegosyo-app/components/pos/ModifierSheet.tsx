@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
+import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { formatPeso } from "../../lib/format";
 import type { ModifierGroup, ModifierOption } from "../../lib/modifier-groups";
 import {
@@ -117,10 +118,13 @@ export function ModifierSheet({
     });
   };
 
+  // A docked sheet becomes a centred dialog once the glass is a tablet's
+  // (components/pos/dialog-layout.ts).
+  const isCentered = useCenteredDialog();
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+      <View style={[styles.backdrop, isCentered && centeredDialog.backdrop]}>
+        <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>
               {itemName}

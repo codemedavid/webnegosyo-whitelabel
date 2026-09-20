@@ -70,7 +70,7 @@ export function TeamScene({ phase, tried, onTried }: SceneProps) {
             </View>
             <SectionHeader title={`What ${name.split(" ")[0]}'s bar will show`} />
             <View style={styles.preview}>
-              <MockTabBar workspace="register" activeTab={onlyRegister ? "pos" : previewTabs[0] ?? "menu"} tabs={previewTabs.length ? previewTabs : []} />
+              <MockTabBar activeTab={onlyRegister ? "pos" : previewTabs[0] ?? "menu"} tabs={previewTabs.length ? previewTabs : []} />
             </View>
             <Text style={styles.note}>{onlyRegister ? "POS only. Everything else is invisible to this account, not just locked." : "Turn everything off except POS to see a cashier's bar."}</Text>
           </>

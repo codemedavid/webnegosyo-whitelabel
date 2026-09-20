@@ -8,9 +8,9 @@ import { Icon } from "../../Icon";
 import { CoachTarget } from "../spotlight";
 import { formatPeso } from "../../../lib/format";
 import { MOCK_BRANCHES, mockQueue } from "../../../lib/tutorial/mock-data";
-import { MockViewChip, SceneFrame, useSceneStoreName, type SceneProps } from "./shared";
+import { SceneFrame, useSceneStoreName, type SceneProps } from "./shared";
 
-/** The Business view: every branch at a glance, and per-branch products. */
+/** The branch screens under Manage: every branch at a glance, and per-branch products. */
 export function BranchesScene({ phase, tried, onTried }: SceneProps) {
   if (phase === "menu") return <BranchMenuScene phase={phase} tried={tried} onTried={onTried} />;
   return <PortfolioScene phase={phase} tried={tried} onTried={onTried} />;
@@ -24,13 +24,13 @@ function PortfolioScene({ phase, tried, onTried }: SceneProps) {
   if (tried && phase === "portfolio") {
     const orders = mockQueue().slice(0, 3);
     return (
-      <SceneFrame workspace="operations" activeTab="orders">
+      <SceneFrame activeTab="orders">
         <View style={styles.contextBar}>
           <Icon name="storefront" size={14} color={colors.textOnDark} />
           <Text style={styles.contextText}>Viewing {target.name}</Text>
           <Text style={styles.contextLink}>Whole store</Text>
         </View>
-        <ScreenHeader title="Orders" subtitle={`${orders.length} shown · ${target.name}`} ignoreTopInset leading={<MockViewChip workspace="operations" />} />
+        <ScreenHeader title="Orders" subtitle={`${orders.length} shown · ${target.name}`} ignoreTopInset />
         <ScrollView contentContainerStyle={styles.content}>
           {orders.map((o) => (
             <OrderCard key={o._id} order={o} onPress={() => {}} />
@@ -41,8 +41,8 @@ function PortfolioScene({ phase, tried, onTried }: SceneProps) {
   }
 
   return (
-    <SceneFrame workspace="business" activeTab="portfolio">
-      <ScreenHeader title="Your business" subtitle={`${storeName} · ${MOCK_BRANCHES.length} branches · today`} leading={<MockViewChip workspace="business" />} />
+    <SceneFrame activeTab="portfolio">
+      <ScreenHeader title="Your business" subtitle={`${storeName} · ${MOCK_BRANCHES.length} branches · today`} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>All branches · today</Text>
@@ -76,8 +76,8 @@ function BranchMenuScene({ phase, tried, onTried }: SceneProps) {
   const [sold, setSold] = useState<Record<string, boolean>>(Object.fromEntries(MOCK_BRANCHES.map((b) => [b.id, true])));
   const target = MOCK_BRANCHES[1];
   return (
-    <SceneFrame workspace="business" activeTab="branch-menu">
-      <ScreenHeader title="Branch products" subtitle="Which branch sells what" leading={<MockViewChip workspace="business" />} />
+    <SceneFrame activeTab="branch-menu">
+      <ScreenHeader title="Branch products" subtitle="Which branch sells what" />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.product}>
           <View style={styles.productPhoto} />

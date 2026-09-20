@@ -12,7 +12,6 @@
  */
 
 import type { IconName } from "../../components/Icon";
-import type { WorkspaceKey } from "../workspaces";
 
 /** Which full-screen simulation a step plays, and which phase of it. */
 export interface TutorialScene {
@@ -37,7 +36,6 @@ export interface TutorialStep {
 }
 
 export interface TutorialDestination {
-  workspace: WorkspaceKey | null;
   href: string;
   label: string;
 }
@@ -60,30 +58,30 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
   {
     id: "basics",
     title: "Getting around",
-    tagline: "Five views, one map, and the shortcuts in every header",
+    tagline: "One bar, two hubs, and the shortcuts in every header",
     icon: "menu",
     gateTab: null,
     minutes: 2,
-    destination: { workspace: null, href: "/(main)/menu", label: "Open the Menu" },
+    destination: { href: "/(main)/menu", label: "Open Manage" },
     steps: [
       {
-        id: "views",
-        title: "Five views, one app",
+        id: "bar",
+        title: "One bar, five tabs",
         body:
-          "The app is split into focused views: Operations, POS, Insights, Products, and Business for multi-branch stores. The chip at the top of every screen names the one you are in.",
-        prompt: "Tap the view chip, then choose POS",
+          "The bar at the bottom never changes: Home for today's money and the live queue, Orders, POS for the register, Reports for everything you read, and Manage for everything you set up.",
+        prompt: "Tap POS on the bar",
         result:
-          "The bottom bar now shows only the POS's tabs. Every view keeps its own, so the bar never gets crowded.",
-        scene: { kind: "home", phase: "views" },
-        coach: "bottom",
+          "The register opens. Every screen in the app is at most two taps from here — a tab, then a row or a button on it.",
+        scene: { kind: "home", phase: "bar" },
+        coach: "top",
       },
       {
         id: "menu",
-        title: "The Menu tab is the map",
+        title: "Manage is where you set things up",
         body:
-          "Whatever view you are in, the Menu tab stays on the bar. It lists every screen in the app, grouped by view, plus your tools and account.",
-        prompt: "Tap Menu on the bar",
-        result: "Everything in the app, on one page. Tapping a row takes you straight there and switches to its view.",
+          "Products, stock, payments, branches, your team, the printer and your account all live under Manage. Reports holds every chart. Neither is a view of a shift, so neither crowds the bar.",
+        prompt: "Tap Manage on the bar",
+        result: "Everything you set up, on one page. Tapping a row takes you straight there.",
         scene: { kind: "home", phase: "menu" },
         coach: "top",
       },
@@ -91,7 +89,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
         id: "header",
         title: "Shortcuts in the header",
         body:
-          "Home keeps three round buttons in its header: Printer (the dot turns green when connected), Account, and Scan QR for confirming pickups.",
+          "Home keeps two round buttons beside its title: Printer (the dot turns green when connected) and Scan QR for confirming pickups. Under the day's takings, the quick actions row holds the things you do most.",
         prompt: "Tap the Scan QR button",
         result: "The scanner opens. Point it at a customer's order QR to confirm a pickup or accept an order.",
         scene: { kind: "home", phase: "header" },
@@ -106,7 +104,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "orders",
     gateTab: "orders",
     minutes: 3,
-    destination: { workspace: "operations", href: "/(main)/orders", label: "Open Orders" },
+    destination: { href: "/(main)/orders", label: "Open Orders" },
     steps: [
       {
         id: "arrive",
@@ -172,7 +170,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "kitchen",
     gateTab: "kitchen",
     minutes: 2,
-    destination: { workspace: "operations", href: "/(main)/kitchen", label: "Open Kitchen" },
+    destination: { href: "/(main)/kitchen", label: "Open Kitchen" },
     steps: [
       {
         id: "ticket",
@@ -205,7 +203,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "register",
     gateTab: "pos",
     minutes: 3,
-    destination: { workspace: "register", href: "/(main)/pos", label: "Open the POS" },
+    destination: { href: "/(main)/pos", label: "Open the POS" },
     steps: [
       {
         id: "pick",
@@ -258,7 +256,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "drawer",
     gateTab: "pos-sales",
     minutes: 1,
-    destination: { workspace: "register", href: "/(main)/pos-sales", label: "Open the Drawer" },
+    destination: { href: "/(main)/pos-sales", label: "Open the Drawer" },
     steps: [
       {
         id: "summary",
@@ -290,7 +288,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "manage",
     gateTab: "product-management",
     minutes: 2,
-    destination: { workspace: "products", href: "/(main)/product-management", label: "Open Manage products" },
+    destination: { href: "/(main)/product-management", label: "Open Products" },
     steps: [
       {
         id: "availability",
@@ -332,7 +330,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "stock",
     gateTab: "inventory",
     minutes: 2,
-    destination: { workspace: "products", href: "/(main)/inventory", label: "Open Stock" },
+    destination: { href: "/(main)/inventory", label: "Open Stock" },
     steps: [
       {
         id: "shelf",
@@ -364,7 +362,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "analytics",
     gateTab: "analytics",
     minutes: 2,
-    destination: { workspace: "insights", href: "/(main)/analytics", label: "Open Analytics" },
+    destination: { href: "/(main)/analytics", label: "Open Analytics" },
     steps: [
       {
         id: "analytics",
@@ -405,7 +403,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "printer",
     gateTab: null,
     minutes: 2,
-    destination: { workspace: null, href: "/(main)/printer-settings", label: "Open Printer settings" },
+    destination: { href: "/(main)/printer-settings", label: "Open Printer settings" },
     steps: [
       {
         id: "printer",
@@ -447,7 +445,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     gateTab: null,
     ownersOnly: true,
     minutes: 2,
-    destination: { workspace: null, href: "/(main)/team", label: "Open Team" },
+    destination: { href: "/(main)/team", label: "Open Team" },
     steps: [
       {
         id: "invite",
@@ -478,13 +476,13 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     icon: "storefront",
     gateTab: "portfolio",
     minutes: 2,
-    destination: { workspace: "business", href: "/(main)/portfolio", label: "Open Branches" },
+    destination: { href: "/(main)/portfolio", label: "Open Branches" },
     steps: [
       {
         id: "portfolio",
         title: "Every branch at a glance",
         body:
-          "The Business view lists each branch with today's takings and a verdict. Tap one to narrow the whole app to that branch.",
+          "Manage → Branches lists each branch with today's takings and a verdict. Tap one to narrow the whole app to that branch.",
         prompt: "Tap a branch",
         result:
           "A bar at the top says which branch you are viewing. Orders, Kitchen, and Stock now show only that branch.",

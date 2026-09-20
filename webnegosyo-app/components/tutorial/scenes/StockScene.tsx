@@ -8,7 +8,7 @@ import { Icon } from "../../Icon";
 import { CoachTarget } from "../spotlight";
 import type { StockItemView, StockLevel } from "../../../lib/inventory-stock";
 import { mockStock } from "../../../lib/tutorial/mock-data";
-import { MockSheet, MockToast, MockViewChip, SceneFrame, type SceneProps } from "./shared";
+import { MockSheet, MockToast, SceneFrame, type SceneProps } from "./shared";
 
 /** Stock: the shelf verdict, its three filters, and recording a delivery. */
 const LEVELS: { key: StockLevel; label: string; color: string; bg: string }[] = [
@@ -43,8 +43,8 @@ export function StockScene({ phase, tried, onTried }: SceneProps) {
   };
 
   return (
-    <SceneFrame workspace="products" activeTab="inventory">
-      <ScreenHeader title="Stock" subtitle="Tap an ingredient to record stock" leading={<MockViewChip workspace="products" />} />
+    <SceneFrame activeTab="inventory">
+      <ScreenHeader title="Stock" subtitle="Tap an ingredient to record stock" />
       <ScrollView contentContainerStyle={styles.content}>
         {isRecorded ? <MockToast text="Espresso beans · 5 kg received" /> : null}
         <View style={styles.hero}>

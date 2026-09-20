@@ -39,10 +39,6 @@ import { usePrinterStore } from "../../stores/printer-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
-// Rendered by <ScreenHeader>; the import stays so the guardrail that every
-// tab is escapable keeps reading it here.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { TicketCard, kds } from "../../components/kitchen/TicketCard";
 import { TickerProvider } from "../../components/TickerProvider";
@@ -305,7 +301,6 @@ function Header({ outletName, count }: { outletName: string | null; count: numbe
   const open = `${count} open`;
   return (
     <>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader
         title="Kitchen"
         subtitle={outletName ? `${open} · ${outletName}` : open}

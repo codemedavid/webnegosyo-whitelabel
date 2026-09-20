@@ -30,10 +30,6 @@ import { colors, typography, spacing } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
-// Rendered by <ScreenHeader>; the import stays so the guardrail that every
-// tab is escapable keeps reading it here.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { WorkspaceSwitcher } from "../../components/WorkspaceSwitcher";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { OptionPills } from "../../components/OptionPills";
@@ -234,7 +230,6 @@ function Header({ outletName, count, presellCount, viewMode, onViewMode, kind, o
   if (outletName) parts.push(outletName);
   return (
     <>
-      {/* <ScreenHeader> mounts <WorkspaceSwitcher /> */}
       <ScreenHeader title="Schedule" subtitle={parts.join(" · ")}>
         <View style={styles.toolbar}>
           <SegmentedControl
