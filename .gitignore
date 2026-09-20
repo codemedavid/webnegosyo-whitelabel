@@ -21,6 +21,25 @@
 # Cloudinary backup binary blobs (keep scripts + manifest, exclude the images)
 /cloudinary-backup/files/
 
+# Local agent tool configuration (per-machine, not project source)
+/.codex/
+/.grok/
+
+# Scratch inputs kept beside the repo: a supplier spreadsheet, a video subtitle
+# file, a loading clip and an empty handoff tarball. Not referenced by any build.
+/IMM_Items_*.xlsx
+/*.srt
+/mascot-loading.mp4
+/seacook-qa-grok-code-handoff.tar.gz
+
+# Image backup binary blobs (keep scripts + URL list, exclude the images)
+/image-backup/files/
+/image-backup/urls.json
+/image-backup/manifest.json
+/image-backup/failures.json
+/image-backup/restore-result.json
+/image-backup/relink.sql
+
 # testing
 /coverage
 
