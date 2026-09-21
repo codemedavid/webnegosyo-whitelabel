@@ -17,7 +17,6 @@ import { GlobalLoyaltySmsDelivery } from "../../components/GlobalLoyaltySmsDeliv
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
-import { AppUpdateGate } from "../../components/AppUpdateGate";
 import { TutorialWelcomePopup } from "../../components/tutorial/TutorialWelcomePopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
 
@@ -90,10 +89,6 @@ export default function MainLayout() {
       <WhatsNewPopup />
       {/* Offers a first-time merchant the guided tour, once per account. */}
       <TutorialWelcomePopup />
-      {/* Offers the waiting app update; blocks outright below the supported
-          floor. Mounted LAST of the three modals so it presents on top of
-          them — an update the platform is forcing outranks a greeting. */}
-      <AppUpdateGate />
       <Tabs
         screenOptions={{
           headerShown: false,

@@ -17,7 +17,6 @@ import {
   CreditCard,
   Megaphone,
   GraduationCap,
-  Smartphone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -59,7 +58,6 @@ const navGroups: SidebarGroup[] = [
       { label: 'Subscriptions', href: '/superadmin/subscriptions', icon: CreditCard },
       { label: "What's New", href: '/superadmin/whats-new', icon: Megaphone },
       { label: 'University', href: '/superadmin/university', icon: GraduationCap },
-      { label: 'App Releases', href: '/superadmin/app-releases', icon: Smartphone },
     ],
   },
 ]
