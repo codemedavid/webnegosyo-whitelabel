@@ -70,7 +70,9 @@ export function useOutlets(): OutletsResult {
   const resource = useResource<PortfolioOutlet[]>(
     tenantId ? resourceKey(OUTLETS_RESOURCE, tenantId) : null,
     fetcher,
-    { staleTime: OUTLETS_STALE_MS }
+    // Branch landing and the register's branch pick both wait on this read;
+    // without a snapshot an offline launch had no branch to sell from.
+    { staleTime: OUTLETS_STALE_MS, offlineSnapshot: true }
   );
 
   const outlets = resource.data ?? NO_OUTLETS;

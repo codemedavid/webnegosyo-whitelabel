@@ -65,7 +65,9 @@ export function useDiningTables(): DiningTablesResult {
   const tables = useResource<DiningTable[]>(
     tenantId ? resourceKey(DINING_TABLES_RESOURCE, tenantId) : null,
     tablesFetcher,
-    { staleTime: TABLES_STALE_MS },
+    // The floor plan itself is snapshotted so a dine-in sale can still pick a
+    // table offline; open seatings are live state and deliberately are not.
+    { staleTime: TABLES_STALE_MS, offlineSnapshot: true },
   );
   const seatings = useResource<TableSeating[]>(
     tenantId ? resourceKey(TABLE_SEATINGS_RESOURCE, tenantId) : null,

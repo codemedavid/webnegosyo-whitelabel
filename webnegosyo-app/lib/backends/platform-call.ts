@@ -8,6 +8,8 @@
  * screen can show and a cashier can retry instead of a spinner that never ends.
  */
 
+import { reportOutcome } from "../offline/connectivity";
+
 export const PLATFORM_CALL_TIMEOUT_MS = 12000;
 
 export async function withPlatformTimeout<T>(
@@ -17,7 +19,7 @@ export async function withPlatformTimeout<T>(
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       work,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
@@ -29,6 +31,14 @@ export async function withPlatformTimeout<T>(
         }, timeoutMs);
       }),
     ]);
+    // Every platform round trip is a free connectivity sample: the register
+    // learns it is offline from the first read that fails and back from the
+    // first that succeeds, without any probe of its own (lib/offline).
+    reportOutcome(undefined);
+    return result;
+  } catch (error) {
+    reportOutcome(error);
+    throw error;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }

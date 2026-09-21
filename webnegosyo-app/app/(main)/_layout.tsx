@@ -12,10 +12,12 @@ import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
 import { PrinterWarmUp } from "../../components/PrinterWarmUp";
+import { OfflineSalesSync } from "../../components/OfflineSalesSync";
 import { GlobalLoyaltySmsDelivery } from "../../components/GlobalLoyaltySmsDelivery";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
+import { AppUpdateGate } from "../../components/AppUpdateGate";
 import { TutorialWelcomePopup } from "../../components/tutorial/TutorialWelcomePopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
 
@@ -76,6 +78,8 @@ export default function MainLayout() {
       {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
       <GlobalReceiptAutoPrint />
       <PrinterWarmUp />
+      {/* Watches the connection and replays counter sales taken offline. */}
+      <OfflineSalesSync />
       {/* Delivers loyalty OTPs from an enrolled Android handset; gated, Android-only. */}
       <GlobalLoyaltySmsDelivery />
       {/* Renders only while a superadmin is viewing another store. */}
@@ -86,6 +90,10 @@ export default function MainLayout() {
       <WhatsNewPopup />
       {/* Offers a first-time merchant the guided tour, once per account. */}
       <TutorialWelcomePopup />
+      {/* Offers the waiting app update; blocks outright below the supported
+          floor. Mounted LAST of the three modals so it presents on top of
+          them — an update the platform is forcing outranks a greeting. */}
+      <AppUpdateGate />
       <Tabs
         screenOptions={{
           headerShown: false,

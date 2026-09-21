@@ -64,7 +64,10 @@ export function usePosCatalog(
   );
   return useResource<PosCatalog>(
     tenantId ? resourceKey(POS_CATALOG_RESOURCE, tenantId, outletId ?? STORE_WIDE) : null,
-    fetcher
+    fetcher,
+    // The register must open without a connection: sell from the last menu
+    // this device saw. Keyed per branch, so a branch never sells store prices.
+    { offlineSnapshot: true }
   );
 }
 

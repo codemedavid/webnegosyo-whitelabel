@@ -35,7 +35,14 @@ describe("the tender screen", () => {
   it("reports the captured sale to the platform", () => {
     // Without this the attachment is cosmetic: the guest is linked to an order
     // the profile system never hears about, so their totals never move.
-    expect(tender).toMatch(/notifyCustomerCapture/);
+    // The tender screen hands the sale's facts to the shared bookkeeping
+    // runner (also used to replay sales taken offline), and THAT is where the
+    // capture must be wired — so both halves are pinned.
+    expect(tender).toMatch(/runPosSaleBookkeeping\(/);
+    expect(tender).toMatch(/customerName: args\.customerName/);
+    expect(tender).toMatch(/customerContact: args\.customerContact/);
+    const bookkeeping = read("lib", "offline", "pos-sale-bookkeeping.ts");
+    expect(bookkeeping).toMatch(/notifyCustomerCapture/);
   });
 
   it("opens a picker rather than relying on the free-text name box", () => {

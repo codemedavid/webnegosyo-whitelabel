@@ -12,6 +12,7 @@ import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/query-core";
 import { RESOURCE_KEY_ROOT, keyTenant, type ResourceQueryKey } from "../backends/query-keys";
+import { resourceSnapshotKey, withOfflineSnapshot } from "../offline/resource-snapshot";
 
 export interface ResourceResult<T> {
   data: T | undefined;
@@ -25,6 +26,13 @@ export interface ResourceResult<T> {
 
 export interface ResourceOptions {
   staleTime?: number;
+  /**
+   * Keep the last successful answer on disk and serve it when the read fails,
+   * so the register can open and sell without a connection. Only for reads
+   * the register cannot do without (menu, prices, branches, tables): every
+   * other read keeps failing loudly. See `lib/offline/resource-snapshot.ts`.
+   */
+  offlineSnapshot?: boolean;
 }
 
 /** A key nothing observes with a fetcher: a null key disables the read. */
@@ -36,9 +44,15 @@ export function useResource<T>(
   options: ResourceOptions = {}
 ): ResourceResult<T> {
   const isEnabled = key !== null;
+  const wantsSnapshot = options.offlineSnapshot === true && key !== null;
+  const storageKey = wantsSnapshot ? resourceSnapshotKey(key) : null;
+  const queryFn = useCallback(
+    () => (storageKey === null ? fetcher() : withOfflineSnapshot(storageKey, fetcher)),
+    [storageKey, fetcher]
+  );
   const query = useQuery({
     queryKey: key ?? IDLE_RESOURCE_KEY,
-    queryFn: fetcher,
+    queryFn,
     enabled: isEnabled,
     staleTime: options.staleTime,
   });
