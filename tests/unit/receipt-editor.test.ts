@@ -146,3 +146,34 @@ describe('table number block in the studio', () => {
     expect(addBlock([], 'tableNumber')).toEqual([{ kind: 'tableNumber' }])
   })
 })
+
+describe('checkout answers in the studio', () => {
+  it('offers the address and catch-all blocks under Order details', () => {
+    for (const kind of ['deliveryAddress', 'customerDetails'] as const) {
+      const entry = BLOCK_PALETTE.find((e) => e.kind === kind)
+      expect(entry?.group).toBe('Order details')
+      expect(entry?.description.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('names the address block so a merchant looking for "address" finds it', () => {
+    expect(BLOCK_PALETTE.find((e) => e.kind === 'deliveryAddress')?.label).toMatch(/address/i)
+  })
+
+  it('seeds both as plain blocks — the address label is editable later', () => {
+    expect(addBlock([], 'deliveryAddress')).toEqual([{ kind: 'deliveryAddress' }])
+    expect(addBlock([], 'customerDetails')).toEqual([{ kind: 'customerDetails' }])
+  })
+
+  it('saves a layout that prints them', () => {
+    expect(
+      sanitizeLayoutForSave({
+        version: 1,
+        blocks: [{ kind: 'deliveryAddress', label: 'Deliver to' }, { kind: 'customerDetails' }],
+      }),
+    ).toEqual({
+      version: 1,
+      blocks: [{ kind: 'deliveryAddress', label: 'Deliver to' }, { kind: 'customerDetails' }],
+    })
+  })
+})

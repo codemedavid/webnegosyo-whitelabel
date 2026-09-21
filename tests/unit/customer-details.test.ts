@@ -1,11 +1,14 @@
 /**
- * The Customer Details card on the order screen renders whatever extra fields
+ * Web mirror of webnegosyo-app/lib/customer-details.test.ts — the two modules
+ * are hand-kept copies, so both suites pin the same rules.
+ *
+ * The receipt's "Checkout answers" block, and the order dialog, render whatever extra fields
  * an order carries in `customerData`. That blob is also where the platform
  * stashes structured internals — the discount breakdown, the POS tender, the
  * advance-order schedule — so a naive `String(value)` renders "[object Object]"
  * to the merchant.
  */
-import { buildCustomerDetailRows } from "./customer-details";
+import { buildCustomerDetailRows } from "@/lib/customer-details";
 
 describe("buildCustomerDetailRows", () => {
   it("drops structured blobs that would render as [object Object]", () => {

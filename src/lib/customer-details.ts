@@ -1,5 +1,5 @@
 /**
- * Rows for the "Customer Details" card on the order screen — and for the
+ * Rows for the extra details a customer filled in at checkout — and for the
  * receipt's "Checkout answers" block, which prints the same rows on paper.
  *
  * `customerData` is a free-form blob: checkout writes the extra fields a
@@ -10,7 +10,8 @@
  * into "[object Object]".
  *
  * Mirror (deliberate duplication, like `receipt-layout.ts`) of
- * `src/lib/customer-details.ts` on the web. Keep the two in sync.
+ * `webnegosyo-app/lib/customer-details.ts` in the merchant app. Keep the two
+ * in sync.
  */
 
 /**
@@ -20,7 +21,7 @@
  */
 export const DELIVERY_ADDRESS_FIELD_NAME = 'delivery_address';
 
-/** Fields rendered elsewhere on the screen, or never meant for merchant eyes. */
+/** Fields rendered elsewhere on the surface, or never meant for merchant eyes. */
 const HIDDEN_FIELDS = new Set([
   'messenger_psid',
   'delivery_lat',

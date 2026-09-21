@@ -38,6 +38,8 @@ export const BLOCK_PALETTE: BlockPaletteEntry[] = [
   { kind: 'orderType', label: 'Order type', description: 'Dine-in / pickup / delivery, when set', group: 'Order details' },
   { kind: 'tableNumber', label: 'Table number', description: 'The table a dine-in customer entered, when set — label is editable', group: 'Order details' },
   { kind: 'contact', label: 'Customer contact', description: 'Phone/handle when the order has one', group: 'Order details' },
+  { kind: 'deliveryAddress', label: 'Delivery address', description: 'The address the customer typed at checkout — label is editable', group: 'Order details' },
+  { kind: 'customerDetails', label: 'Checkout answers', description: 'Every other detail they filled in — landmark, email, notes', group: 'Order details' },
   { kind: 'fillIn', label: 'Fill-in line', description: 'A label with a blank line to write on', group: 'Order details' },
   { kind: 'items', label: 'Items', description: 'Full item list with prices', group: 'Items & totals' },
   { kind: 'itemsSummary', label: 'Item count', description: 'Just "Items: N"', group: 'Items & totals' },

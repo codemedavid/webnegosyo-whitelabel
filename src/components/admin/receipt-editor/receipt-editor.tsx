@@ -98,8 +98,16 @@ const SAMPLE_ORDER = {
   customerName: 'Maria',
   customerContact: '09171234567',
   orderType: 'Dine-in',
-  // A seated sample so the Table block previews with a value, not silence.
-  customerData: { table_number: '12' },
+  // A seated sample carrying the answers a checkout collects, so the table,
+  // address and checkout-answer blocks all preview with values rather than
+  // silence — a merchant arranging a block that renders nothing cannot tell
+  // an empty sample from a broken layout.
+  customerData: {
+    table_number: '12',
+    delivery_address: '24 Rizal Street, Barangay San Jose, Quezon City',
+    landmark: 'Beside the blue gate',
+    email: 'maria@example.com',
+  },
   // Both fees are on the sample deliberately. A merchant arranging their
   // totals block has to SEE where a service charge and a delivery fee land;
   // without them the preview jumped from the items straight to TOTAL and the

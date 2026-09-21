@@ -1,6 +1,11 @@
+import {
+  DELIVERY_ADDRESS_FIELD_NAME,
+  buildCustomerDetailRows,
+  type CustomerDetailRow,
+} from "./customer-details";
 import { readOrderDiscount } from "./order-discount";
 import { orderSummaryRows, type OrderSummaryRowKind } from "./order-summary-rows";
-import { getOrderTableNumber } from "./order-table-number";
+import { TABLE_NUMBER_FIELD_NAME, getOrderTableNumber } from "./order-table-number";
 
 /**
  * Block-based receipt rendering.
@@ -91,6 +96,8 @@ export type ReceiptBlock =
   | { kind: "customerName"; label?: string }
   | { kind: "orderType"; label?: string }
   | { kind: "tableNumber"; label?: string }
+  | { kind: "deliveryAddress"; label?: string }
+  | { kind: "customerDetails" }
   | { kind: "fillIn"; label: string }
   | { kind: "items" }
   | { kind: "itemsSummary" }
@@ -421,6 +428,79 @@ function tableNumberLines(order: ReceiptOrder, label: string, w: number): string
   return table ? [truncate(`${label}: ${table}`, w)] : [];
 }
 
+// ---------------------------------------------------------------------------
+// What the customer filled in at checkout
+//
+// The extra fields a merchant's checkout asks for live in the order's free-form
+// blob, keyed by the field's internal name. `buildCustomerDetailRows` — shared
+// with the app's order screen — is what decides which of them a human should
+// ever read: the platform's own carrier keys (the branch id, the raw schedule
+// instant, the map coordinates) are dropped there, once, for both surfaces.
+// ---------------------------------------------------------------------------
+
+/** Continuation indent for a wrapped answer, so it reads under its label. */
+const DETAIL_INDENT = "  ";
+
+function customerDetailRows(order: ReceiptOrder): CustomerDetailRow[] {
+  const blob = order.customerData ?? order.customer_data;
+  if (typeof blob !== "object" || blob === null) return [];
+  return buildCustomerDetailRows(blob as Record<string, unknown>);
+}
+
+/**
+ * The address row, or null when the order has none.
+ *
+ * The reserved `delivery_address` name is the platform's own (the checkout
+ * hangs its map widget and delivery-fee logic off it), but a merchant is free
+ * to have built their address field under another name — so a field merely
+ * *named* like an address is taken rather than printing a rider a slip with
+ * no address on it.
+ */
+function addressRow(rows: CustomerDetailRow[]): CustomerDetailRow | null {
+  return (
+    rows.find((row) => row.key === DELIVERY_ADDRESS_FIELD_NAME) ??
+    rows.find((row) => row.key.toLowerCase().includes("address")) ??
+    null
+  );
+}
+
+function detailLines(label: string, value: string, w: number): string[] {
+  const [first, ...rest] = wrapText(`${label}: ${value}`, w, w - DETAIL_INDENT.length);
+  return [first ?? "", ...rest.map((part) => `${DETAIL_INDENT}${part}`)];
+}
+
+function modernDetailLines(label: string, value: string, w: number): string[] {
+  return wrapText(`${label}: ${value}`, w, w).map((line) => centered(line, w));
+}
+
+function renderDetailRow(row: CustomerDetailRow, w: number, isModern: boolean): string[] {
+  return isModern
+    ? modernDetailLines(row.label, row.value, w)
+    : detailLines(row.label, row.value, w);
+}
+
+/**
+ * Keys `customerDetails` must stay off: a detail another block in this layout
+ * is already printing. Without this a layout with both an address block and
+ * the catch-all printed the address twice.
+ */
+function coveredDetailKeys(
+  layout: ReceiptLayout,
+  isModern: boolean,
+  addressKey: string | null,
+): Set<string> {
+  const covered = new Set<string>();
+  const has = (kind: ReceiptBlockKind) => layout.blocks.some((block) => block.kind === kind);
+
+  // Modern folds the table into the order-type line; classic gives it its own.
+  if (has("orderMeta") || has("tableNumber") || (isModern && has("orderType"))) {
+    covered.add(TABLE_NUMBER_FIELD_NAME);
+  }
+  if (addressKey && has("deliveryAddress")) covered.add(addressKey);
+
+  return covered;
+}
+
 /** "Label: ______" — a rule the customer writes on, out to the paper edge. */
 function fillInLine(label: string, w: number): string {
   const prefix = truncate(`${label}: `, w);
@@ -707,6 +787,9 @@ export function renderReceiptSegments(
   const w = layout.width ?? config.width ?? 32;
   const isModern = resolveReceiptTheme(layout) === "modern";
   const ctx = buildContext(order);
+  const detailRows = customerDetailRows(order);
+  const address = addressRow(detailRows);
+  const covered = coveredDetailKeys(layout, isModern, address?.key ?? null);
   const segments: ReceiptSegment[] = [];
   let lines: string[] = [];
 
@@ -787,6 +870,17 @@ export function renderReceiptSegments(
           lines.push(...tableNumberLines(order, block.label ?? "Table", w));
         }
         break;
+      case "deliveryAddress":
+        if (address) {
+          lines.push(...renderDetailRow({ ...address, label: block.label ?? "Address" }, w, isModern));
+        }
+        break;
+      case "customerDetails":
+        for (const row of detailRows) {
+          if (covered.has(row.key)) continue;
+          lines.push(...renderDetailRow(row, w, isModern));
+        }
+        break;
       case "fillIn":
         lines.push(fillInLine(block.label, w));
         break;
@@ -861,6 +955,7 @@ const SIMPLE_BLOCK_KINDS: readonly ReceiptBlockKind[] = [
   "storeAddress",
   "logo",
   "orderMeta",
+  "customerDetails",
   "items",
   "itemsSummary",
   "totals",
@@ -876,6 +971,7 @@ const LABELED_DETAIL_KINDS = [
   "customerName",
   "orderType",
   "tableNumber",
+  "deliveryAddress",
 ] as const;
 const MAX_LABEL_LENGTH = 32;
 
