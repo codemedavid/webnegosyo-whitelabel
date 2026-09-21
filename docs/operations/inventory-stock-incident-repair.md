@@ -71,5 +71,6 @@ orders mean.
 `prebuild` runs the stock contract guard when `VERCEL_ENV=production`. It fails
 closed when the platform URL/service key is unavailable or PostgREST does not
 expose both ledger tables and `/rpc/apply_simple_option_order_stock` to the
-service role. Non-production builds skip it; `npm run db:check-stock-contract`
-runs it explicitly anywhere.
+service role. The guard probes those resources with cheap GETs (not the full
+OpenAPI document, which can 504 on a large schema). Non-production builds skip
+it; `npm run db:check-stock-contract` runs it explicitly anywhere.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { config } from 'dotenv'
-import { missingPlatformStockContractPaths } from '@/lib/inventory/platform-stock-contract'
+import { probePlatformStockContract } from '@/lib/inventory/platform-stock-contract'
 
 config({ path: '.env.local' })
 config()
@@ -18,11 +18,10 @@ async function main(): Promise<void> {
     throw new Error('Production deployment requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for the stock contract guard.')
   }
 
-  const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/`, {
-    headers: { apikey: key, authorization: `Bearer ${key}`, accept: 'application/openapi+json' },
+  const missing = await probePlatformStockContract({
+    restUrl: `${url.replace(/\/$/, '')}/rest/v1`,
+    apiKey: key,
   })
-  if (!response.ok) throw new Error(`Platform stock contract check failed with HTTP ${response.status}.`)
-  const missing = missingPlatformStockContractPaths(await response.json())
   if (missing.length > 0) throw new Error(`Platform stock contract is incomplete: ${missing.join(', ')}`)
   console.log('Platform stock contract OK.')
 }
