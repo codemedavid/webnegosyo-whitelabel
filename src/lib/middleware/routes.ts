@@ -6,9 +6,10 @@
 /**
  * Routes that authenticate themselves (webhook signatures, OAuth state, cron
  * secrets) and need neither tenant resolution nor a session. Doing zero I/O
- * for them matters most for the crons: `/api/loyalty/maintenance` runs every
- * minute, and it was paying for a tenant lookup and a GoTrue round-trip each
- * time — 16 of the 64 middleware 504s logged during the 2026-09-20 outage.
+ * for them matters most for the crons: `/api/loyalty/maintenance` was running
+ * every minute, and it was paying for a tenant lookup and a GoTrue round-trip
+ * each time — 16 of the 64 middleware 504s logged during the 2026-09-20
+ * outage. It now runs every five minutes, and still does no I/O here.
  */
 const SELF_AUTHENTICATED_API_PREFIXES = [
   '/api/webhook',

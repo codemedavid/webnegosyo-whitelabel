@@ -59,6 +59,16 @@ export const TENANT_STOREFRONT_SELECT = `
   menu_cart_badge_background_color, menu_cart_badge_text_color,
   cart_background_color, cart_card_background_color, cart_text_color, cart_muted_text_color,
   cart_accent_color, cart_button_color, cart_button_text_color, cart_border_color, cart_summary_background_color,
+  restaurant_address,
+  footer_enabled, footer_theme, footer_business_name, footer_tagline, footer_logo_url,
+  footer_about_us, footer_address, footer_phone, footer_email, footer_whatsapp, footer_viber,
+  footer_facebook_url, footer_facebook_name, footer_instagram_url, footer_instagram_name,
+  footer_tiktok_url, footer_tiktok_name, footer_twitter_url, footer_twitter_name,
+  footer_youtube_url, footer_youtube_name,
+  footer_terms_of_service, footer_privacy_policy, footer_refund_policy,
+  footer_copyright_text, footer_show_powered_by, footer_powered_by_text,
+  footer_background_color, footer_text_color, footer_heading_color, footer_muted_color,
+  footer_link_color, footer_border_color, footer_icon_color, footer_icon_background_color,
   checkout_background_color, checkout_card_background_color, checkout_text_color, checkout_muted_text_color,
   checkout_accent_color, checkout_button_color, checkout_button_text_color, checkout_border_color, checkout_summary_background_color
 `

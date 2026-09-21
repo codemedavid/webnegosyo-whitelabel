@@ -34,6 +34,40 @@ const NETWORK_ERROR_NAMES: ReadonlySet<string> = new Set([
   "AuthRetryableFetchError",
 ]);
 
+/**
+ * Failures that quote a network reason but are NOT an outage.
+ *
+ * Checked before the patterns below, because these messages deliberately embed
+ * whatever the database or the connection said — and a quoted "Network request
+ * failed" must not turn a sale the cashier has to repair into a silent retry.
+ */
+const NEVER_NETWORK_ERROR_NAMES: ReadonlySet<string> = new Set([
+  "PartialOrderWriteError",
+]);
+
+/**
+ * The order row was written; its line items were not.
+ *
+ * This is the one failure the register must never queue. The order already
+ * exists, so a replay's idempotency guard would return it untouched and the
+ * items would never be written — the sale would sit on the till with nothing on
+ * it, for good. The cashier has to be told, whatever the underlying reason was.
+ */
+export class PartialOrderWriteError extends Error {
+  readonly orderId: string;
+
+  constructor(orderId: string, cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Order ${orderId} was saved but its line items were not (${reason}). ` +
+        "The sale is on the order list with nothing on it — open it and add the items before serving."
+    );
+    this.name = "PartialOrderWriteError";
+    this.orderId = orderId;
+    this.cause = cause;
+  }
+}
+
 interface ErrorLike {
   name?: unknown;
   message?: unknown;
@@ -65,6 +99,7 @@ function nameOf(error: unknown): string {
  */
 export function isNetworkFailure(error: unknown): boolean {
   if (error === null || error === undefined) return false;
+  if (NEVER_NETWORK_ERROR_NAMES.has(nameOf(error))) return false;
   if (NETWORK_ERROR_NAMES.has(nameOf(error))) return true;
   const message = messageOf(error);
   if (!message) return false;
