@@ -155,7 +155,7 @@ describe('content invariants', () => {
       expect(link.href.startsWith('/')).toBe(true)
     })
 
-    const anchors = new Set(NAV_LINKS.map((link) => link.href))
+    const anchors = new Set<string>(NAV_LINKS.map((link) => link.href))
     NAV_PAGE_LINKS.forEach((link) => {
       expect(anchors.has(link.href)).toBe(false)
     })
