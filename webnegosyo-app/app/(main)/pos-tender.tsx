@@ -78,7 +78,10 @@ async function settleSaleInBackground(settle: () => Promise<void>): Promise<void
 }
 
 export default function PosTenderScreen() {
-  const tenantId = useAuthStore((s) => s.tenantId);
+  // The store the sale belongs to, impersonation included: every mutation
+  // and the outbox replay scope the same way, and a superadmin inside a
+  // store has no tenant of their own to fall back on.
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const saleOutlet = usePosCartStore((s) => s.saleOutlet);
   const editing = usePosCartStore((s) => s.editContext);
