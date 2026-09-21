@@ -470,3 +470,12 @@ export const NAV_LINKS = [
   { href: '#pricing', label: 'Pricing' },
   { href: '#faq', label: 'FAQ' },
 ] as const
+
+/**
+ * Header destinations that leave the landing page. Kept apart from NAV_LINKS
+ * because that list is contractually in-page anchors: each entry must match a
+ * section on this page and carry a scroll offset. A route has neither.
+ */
+export const NAV_PAGE_LINKS = [
+  { href: '/university', label: 'University' },
+] as const

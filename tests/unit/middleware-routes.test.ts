@@ -18,6 +18,8 @@ describe('isPublicRoute', () => {
     '/privacy',
     '/support/contact',
     '/download',
+    '/university',
+    '/university/getting-started/welcome',
     '/superadmin/login',
     '/superadmin/mcp/authorize',
   ])('treats %s as public', (path) => {

@@ -23,6 +23,7 @@ import {
   JOURNEY_FEATURES,
   SPONSOR_STRIP,
   NAV_LINKS,
+  NAV_PAGE_LINKS,
   PROBLEMS,
   STATS,
 } from '@/components/landing/landing-theme'
@@ -91,7 +92,7 @@ describe('J7 — the visitor can always buy or reach policy pages', () => {
   it('renders every nav link in the header', () => {
     render(<LandingNav />)
 
-    NAV_LINKS.forEach((link) => {
+    ;[...NAV_LINKS, ...NAV_PAGE_LINKS].forEach((link) => {
       expect(screen.getByRole('link', { name: link.label })).toHaveAttribute('href', link.href)
     })
   })

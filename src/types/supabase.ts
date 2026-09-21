@@ -3699,6 +3699,158 @@ export type Database = {
           },
         ]
       }
+      university_courses: {
+        Row: {
+          category: string | null
+          cover_image_url: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          level: string
+          published_at: string | null
+          slug: string
+          sort_order: number
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          level?: string
+          published_at?: string | null
+          slug: string
+          sort_order?: number
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          level?: string
+          published_at?: string | null
+          slug?: string
+          sort_order?: number
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      university_modules: {
+        Row: {
+          course_id: string
+          created_at: string
+          description: string | null
+          id: string
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "university_modules_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "university_courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      university_lessons: {
+        Row: {
+          blocks: Json
+          course_id: string
+          created_at: string
+          duration_minutes: number | null
+          id: string
+          module_id: string
+          resources: Json
+          slug: string
+          sort_order: number
+          status: string
+          summary: string | null
+          title: string
+          updated_at: string
+          video_url: string | null
+        }
+        Insert: {
+          blocks?: Json
+          course_id: string
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          module_id: string
+          resources?: Json
+          slug: string
+          sort_order?: number
+          status?: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Update: {
+          blocks?: Json
+          course_id?: string
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          module_id?: string
+          resources?: Json
+          slug?: string
+          sort_order?: number
+          status?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "university_lessons_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "university_courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "university_lessons_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "university_modules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_announcements: {
         Row: {
           audience_tenant_ids: string[] | null
@@ -3756,6 +3908,36 @@ export type Database = {
           summary?: string | null
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_app_releases: {
+        Row: {
+          latest_version: string
+          minimum_version: string
+          platform: string
+          release_notes: string | null
+          store_url: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          latest_version: string
+          minimum_version: string
+          platform: string
+          release_notes?: string | null
+          store_url: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          latest_version?: string
+          minimum_version?: string
+          platform?: string
+          release_notes?: string | null
+          store_url?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }

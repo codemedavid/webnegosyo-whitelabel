@@ -57,6 +57,7 @@ export function isPublicRoute(rawPathname: string): boolean {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/support') ||
     pathname.startsWith('/download') ||
+    pathname.startsWith('/university') ||
     pathname === '/superadmin/mcp/authorize' ||
     pathname.startsWith('/superadmin/login')
   )
