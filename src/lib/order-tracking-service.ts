@@ -348,21 +348,76 @@ async function fetchFromConvex(
   }
 }
 
+/** The line items, projected the same way on both attempts. */
+const ORDER_ITEMS_SELECT =
+  'order_items(menu_item_name, quantity, price, subtotal, variation, addons)'
+
+/** The columns the tracking page renders, named explicitly to keep the row small. */
+const ORDER_TRACKING_SELECT = `
+      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, outlet_id, source, payment_status, created_at, daily_number,
+      scheduled_for, customer_data,
+      ${ORDER_ITEMS_SELECT}
+    `
+
+/**
+ * The retry projection. `*` cannot name a column that does not exist, so it
+ * cannot go stale — the same escape `fetch-tenant-by-slug.ts` uses.
+ */
+const ORDER_TRACKING_FALLBACK_SELECT = `*, ${ORDER_ITEMS_SELECT}`
+
+/** PostgREST surfaces Postgres `undefined_column` as SQLSTATE 42703. */
+const UNDEFINED_COLUMN_CODE = '42703'
+
+function isUndefinedColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return error.code === UNDEFINED_COLUMN_CODE || Boolean(error.message?.includes('does not exist'))
+}
+
+function queryPlatformOrder(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string,
+  tenantId: string,
+  projection: string
+) {
+  return supabase
+    .from('orders')
+    .select(projection)
+    .eq('id', orderId)
+    .eq('tenant_id', tenantId)
+    .single()
+}
+
+/**
+ * Read the order row, tolerating a projection the database has not caught up to.
+ *
+ * PostgREST rejects the WHOLE query when a single projected column is absent,
+ * and code is always deployed before its migration is applied — if only for a
+ * moment. Treating that as "no such order" is what told every customer on the
+ * shared platform database that the order they had just placed was still being
+ * processed, for as long as they kept the page open. A column the database
+ * lacks must degrade to a missing FIELD, never to a missing ORDER.
+ */
+async function readPlatformOrderRow(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string,
+  tenantId: string
+) {
+  const attempt = await queryPlatformOrder(supabase, orderId, tenantId, ORDER_TRACKING_SELECT)
+  if (!isUndefinedColumnError(attempt.error)) return attempt
+
+  console.error(
+    '[Order Tracking] Order projection is ahead of the database; retrying with *:',
+    attempt.error?.message
+  )
+  return queryPlatformOrder(supabase, orderId, tenantId, ORDER_TRACKING_FALLBACK_SELECT)
+}
+
 async function fetchFromSupabase(
   supabase: ReturnType<typeof createAdminClient>,
   orderId: string,
   tenantId: string
 ): Promise<TrackingContextData> {
-  const { data: order, error } = await supabase
-    .from('orders')
-    .select(`
-      id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, outlet_id, source, payment_status, created_at, daily_number,
-      scheduled_for, customer_data,
-      order_items(menu_item_name, quantity, price, subtotal, variation, addons)
-    `)
-    .eq('id', orderId)
-    .eq('tenant_id', tenantId)
-    .single()
+  const { data: order, error } = await readPlatformOrderRow(supabase, orderId, tenantId)
 
   if (error || !order) throw new Error('Order not found in Supabase')
 
