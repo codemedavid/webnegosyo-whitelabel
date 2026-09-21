@@ -13,6 +13,7 @@ import {
   parseLessonResources,
   parseModuleInput,
   slugify,
+  slugifyWhileTyping,
 } from '@/lib/university/blocks'
 
 const LOOM = 'https://www.loom.com/share/0281766fa2d04bb788eaf19e65135184'
@@ -144,5 +145,42 @@ describe('lessonKind', () => {
   it('is video when a video url is set, article otherwise', () => {
     expect(lessonKind({ videoUrl: LOOM })).toBe('video')
     expect(lessonKind({ videoUrl: null })).toBe('article')
+  })
+})
+
+describe('slugifyWhileTyping', () => {
+  // `slugify` strips trailing hyphens, which is right for a finished slug and
+  // wrong for one being typed: run on every keystroke it eats the hyphen the
+  // moment it is pressed, so a multi-word slug can never be entered by hand.
+  it('keeps the hyphen the author just typed', () => {
+    expect(slugifyWhileTyping('getting-')).toBe('getting-')
+  })
+
+  it('lets a multi-word slug be typed through to the end', () => {
+    const typed = 'getting-started'
+    let value = ''
+    for (const char of typed) value = slugifyWhileTyping(value + char)
+
+    expect(value).toBe('getting-started')
+  })
+
+  it('still normalises everything else', () => {
+    expect(slugifyWhileTyping('Getting Started')).toBe('getting-started')
+    expect(slugifyWhileTyping('Ünïcode')).toBe('unicode')
+  })
+
+  it('treats any trailing separator as the start of the next word', () => {
+    // The author typed a space or punctuation: they are mid-word, not done.
+    expect(slugifyWhileTyping('Getting Started!')).toBe('getting-started-')
+    expect(slugifyWhileTyping('getting ')).toBe('getting-')
+  })
+
+  it('never emits a run of hyphens', () => {
+    expect(slugifyWhileTyping('a---b')).toBe('a-b')
+    expect(slugifyWhileTyping('a--')).toBe('a-')
+  })
+
+  it('agrees with slugify once the author stops on a real character', () => {
+    expect(slugifyWhileTyping('getting-started')).toBe(slugify('getting-started'))
   })
 })

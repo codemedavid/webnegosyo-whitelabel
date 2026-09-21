@@ -18,7 +18,7 @@ import {
   slugify,
   type CourseInput,
   type CourseLevel,
-} from '@/lib/university/blocks'
+ slugifyWhileTyping } from '@/lib/university/blocks'
 import type { CourseRecord, CourseWithCurriculum } from '@/lib/university/service'
 import { CurriculumPanel } from './curriculum-panel'
 
@@ -266,7 +266,7 @@ export function CourseEditor({ initial, categories }: Props) {
                     value={draft.slug}
                     onChange={(e) => {
                       setIsSlugLocked(true)
-                      patch({ slug: slugify(e.target.value).slice(0, 80) || e.target.value.toLowerCase() })
+                      patch({ slug: slugifyWhileTyping(e.target.value).slice(0, 80) })
                     }}
                     className="min-w-0 flex-1 bg-transparent text-white focus:outline-none"
                     aria-label="Course slug"

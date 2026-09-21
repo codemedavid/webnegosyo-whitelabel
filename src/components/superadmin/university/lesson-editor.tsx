@@ -15,7 +15,7 @@ import {
   type LessonBlock,
   type LessonInput,
   type LessonResource,
-} from '@/lib/university/blocks'
+ slugifyWhileTyping } from '@/lib/university/blocks'
 import type { CourseRecord, LessonRecord } from '@/lib/university/service'
 import { LessonBlockEditor } from './lesson-block-editor'
 import { ResourcePanel } from './resource-panel'
@@ -223,7 +223,7 @@ export function LessonEditor({ course, initial }: Props) {
                     value={draft.slug}
                     onChange={(e) => {
                       setIsSlugLocked(true)
-                      patch({ slug: slugify(e.target.value).slice(0, 80) || e.target.value.toLowerCase() })
+                      patch({ slug: slugifyWhileTyping(e.target.value).slice(0, 80) })
                     }}
                     className="min-w-0 flex-1 bg-transparent text-white focus:outline-none"
                     aria-label="Lesson slug"

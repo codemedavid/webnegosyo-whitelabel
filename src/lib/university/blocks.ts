@@ -62,6 +62,22 @@ export function slugify(input: string): string {
     .replace(/-+$/g, '')
 }
 
+/**
+ * `slugify` for a field the author is still typing into.
+ *
+ * The finished form strips trailing hyphens, which run on every keystroke eats
+ * the separator the moment it is pressed — so `getting-` collapses back to
+ * `getting` and a multi-word slug can never be typed by hand. This keeps a
+ * single trailing hyphen and is otherwise identical; the value is normalised
+ * again by `slugify` on save, and the schema still rejects anything malformed.
+ */
+export function slugifyWhileTyping(input: string): string {
+  const endsWithSeparator = /[^a-z0-9]$/i.test(input)
+  const slug = slugify(input)
+  if (!slug || !endsWithSeparator) return slug
+  return slug.length < MAX_SLUG_LENGTH ? `${slug}-` : slug
+}
+
 const blockSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('heading'), text: nonEmptyText(MAX_TITLE_LENGTH) }),
   z.object({ type: z.literal('paragraph'), text: nonEmptyText(MAX_TEXT_BLOCK_LENGTH) }),
