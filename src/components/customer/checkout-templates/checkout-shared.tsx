@@ -13,18 +13,15 @@
  */
 
 import { addonLabel } from '@/lib/addon-quantity'
-import { ArrowLeft, MessageCircle, CreditCard, QrCode, Copy, Check, CheckCircle2, ExternalLink, Package, CalendarClock, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, QrCode, Copy, CheckCircle2, ExternalLink, Package, CalendarClock, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
 import { computeOrderTotals } from '@/lib/order-totals'
 import type { OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { toast } from 'sonner'
-import { resolveFinalSubmitLabel } from '@/lib/messenger-availability'
 import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
-import { PaymentProofField } from '@/components/customer/payment-proof-field'
-import { isPaymentProofRequired, isPaymentProofSatisfied } from '@/lib/payment-proof'
 import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
 
 /**
@@ -485,218 +482,11 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
   )
 }
 
-/** Payment-details dialog shown after "Proceed to Payment" (shared across designs). */
-export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn }) {
-  const {
-    showPaymentDetails, selectedPaymentMethod, paymentMethods, total, deliveryFee,
-    deliveryFeeAddress, customerData, grandTotal, tenant,
-    serviceChargeAmount, isProcessing, handleCheckout, handleQrHandoff, setShowPaymentDetails,
-    handleCopyText, copiedText,
-    paymentProofUrl, paymentProofReference, setPaymentProofReference,
-    handlePaymentProofUploaded, handleRemovePaymentProof, messengerEnabled,
-  } = checkout
-
-  if (!showPaymentDetails || !selectedPaymentMethod) return null
-
-  const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod) ?? null
-  const proofRequired = isPaymentProofRequired(selectedMethod)
-  const proofSatisfied = isPaymentProofSatisfied(selectedMethod, {
-    screenshotUrl: paymentProofUrl,
-    reference: paymentProofReference,
-  })
-  const isQrHandoff = !!tenant?.qr_handoff_enabled
-
-  return (
-    <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-100 rounded-full mb-4">
-            <CreditCard className="h-8 w-8 text-orange-600" />
-          </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Complete Payment</h2>
-          <p className="text-gray-600">
-            Please complete payment using the details below
-          </p>
-        </div>
-
-        {/* Payment Method Details */}
-        <div className="space-y-6">
-          {/* Payment Method Name */}
-          <div className="text-center">
-            <p className="text-sm text-gray-500 mb-1">Payment Method</p>
-            <h3 className="text-2xl font-bold text-gray-900">
-              {paymentMethods.find(m => m.id === selectedPaymentMethod)?.name}
-            </h3>
-          </div>
-
-          {/* QR Code - Centered and Large */}
-          {(() => {
-            const qrUrl = paymentMethods.find(m => m.id === selectedPaymentMethod)?.qr_code_url
-            if (!qrUrl) return null
-
-            return (
-              <div className="flex flex-col items-center gap-4 py-4 bg-gray-50 rounded-xl">
-                <p className="text-sm font-medium text-gray-700">Scan QR Code to Pay</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={qrUrl}
-                  alt="Payment QR Code"
-                  className="w-64 h-64 object-contain border-4 border-white rounded-xl shadow-lg"
-                />
-                <p className="text-xs text-gray-500">Scan with your payment app</p>
-              </div>
-            )
-          })()}
-
-          {/* Payment Details */}
-          {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details && (
-            <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-6">
-              <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <span className="inline-block w-2 h-2 bg-orange-500 rounded-full"></span>
-                Payment Instructions
-              </h4>
-              <div className="bg-white p-4 rounded-lg border border-orange-200">
-                <div className="space-y-2">
-                  {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details?.split('\n').map((line, index) => {
-                    const trimmedLine = line.trim()
-                    if (!trimmedLine) return null
-                    return (
-                      <button
-                        key={index}
-                        type="button"
-                        onClick={() => handleCopyText(trimmedLine, 'Details')}
-                        className="w-full flex items-center justify-between gap-3 p-3 rounded-lg bg-gray-50 hover:bg-orange-100 transition-colors text-left group"
-                      >
-                        <span className="text-sm text-gray-700 break-all leading-relaxed">{trimmedLine}</span>
-                        {copiedText === trimmedLine ? (
-                          <Check className="h-5 w-5 text-green-500 shrink-0" />
-                        ) : (
-                          <Copy className="h-5 w-5 text-gray-400 group-hover:text-orange-500 shrink-0" />
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-                <p className="text-xs text-gray-500 mt-3 flex items-center justify-center gap-1 pt-2 border-t border-gray-100">
-                  <Copy className="h-3 w-3" /> Tap on any line to copy
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Required proof sits right after the QR/instructions so a phone
-              does not have to scroll past the order summary to find it. */}
-          {proofRequired && (
-            <PaymentProofField
-              required={proofRequired}
-              screenshotUrl={paymentProofUrl}
-              reference={paymentProofReference}
-              onUploaded={handlePaymentProofUploaded}
-              onRemove={handleRemovePaymentProof}
-              onReferenceChange={setPaymentProofReference}
-            />
-          )}
-
-          {/* Order Summary */}
-          <div className="bg-gray-50 rounded-xl p-6">
-            <h4 className="font-semibold text-gray-900 mb-4">Order Summary</h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal</span>
-                <span className="font-medium">{formatPrice(total)}</span>
-              </div>
-              {/* Same staleness guard the summary uses: a fee quoted for a
-                  different address is not billed, so it is not shown either. */}
-              {deliveryFee !== null && deliveryFee > 0 && deliveryFeeAddress === customerData.delivery_address && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Delivery Fee</span>
-                  <span className="font-medium">{formatPrice(deliveryFee)}</span>
-                </div>
-              )}
-              {serviceChargeAmount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Service Charge</span>
-                  <span className="font-medium">{formatPrice(serviceChargeAmount)}</span>
-                </div>
-              )}
-              <Separator className="my-2" />
-              <div className="flex justify-between text-lg font-bold">
-                <span>Total Amount to Pay</span>
-                <span className="text-orange-600">{formatPrice(grandTotal)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Optional proof stays after the summary so it does not crowd the pay step. */}
-          {!proofRequired && (
-            <PaymentProofField
-              required={proofRequired}
-              screenshotUrl={paymentProofUrl}
-              reference={paymentProofReference}
-              onUploaded={handlePaymentProofUploaded}
-              onRemove={handleRemovePaymentProof}
-              onReferenceChange={setPaymentProofReference}
-            />
-          )}
-
-          {/* Important Note */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <div className="text-blue-600 mt-0.5">
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="flex-1 text-sm text-blue-800">
-                <p className="font-medium mb-1">Next Step:</p>
-                <p>
-                  {isQrHandoff
-                    ? 'After completing payment, click the button below to generate your order QR for the cashier.'
-                    : messengerEnabled
-                      ? 'After completing payment, click the button below to send your order confirmation to the restaurant via Messenger.'
-                      : 'After completing payment, click the button below to submit your order to the restaurant.'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3 pt-4">
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => setShowPaymentDetails(false)}
-              disabled={isProcessing}
-              className="flex-1"
-            >
-              Go Back
-            </Button>
-            <Button
-              size="lg"
-              onClick={isQrHandoff ? handleQrHandoff : handleCheckout}
-              disabled={isProcessing || (proofRequired && !proofSatisfied)}
-              className="flex-1 bg-orange-500 hover:bg-orange-600"
-            >
-              {isProcessing ? (
-                <>
-                  <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Processing...
-                </>
-              ) : (
-                <>
-                  {isQrHandoff || !messengerEnabled
-                    ? <CheckCircle2 className="h-5 w-5 mr-2" />
-                    : <MessageCircle className="h-5 w-5 mr-2" />}
-                  {resolveFinalSubmitLabel({ isMessengerEnabled: !isQrHandoff && messengerEnabled })}
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+/**
+ * Payment-details sheet shown after "Proceed to Payment". Lives in its own
+ * module; re-exported here so the page shell's import path is unchanged.
+ */
+export { PaymentDetailsDialog } from './payment-details-dialog'
 
 /** Full-size payment QR dialog (shared across designs). */
 export function QrCodeDialog({ checkout }: { checkout: UseCheckoutReturn }) {

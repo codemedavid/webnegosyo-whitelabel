@@ -32,6 +32,7 @@ const CHECKOUT_TEMPLATE_DIR = 'src/components/customer/checkout-templates'
 const MONEY_BEARING_FILES = [
   `${CHECKOUT_TEMPLATE_DIR}/checkout-primitives.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/checkout-shared.tsx`,
+  `${CHECKOUT_TEMPLATE_DIR}/payment-details-dialog.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/classic-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/modern-checkout.tsx`,
   `${CHECKOUT_TEMPLATE_DIR}/minimal-checkout.tsx`,
