@@ -87,17 +87,20 @@ export const SETUP_TABS: readonly string[] = [
 const ADVANCE_ORDER_TABS: readonly string[] = ["scheduled"];
 
 /**
- * The floor plan only exists for a store that seats people. A shop with no
- * enabled dine-in order type has no tables to draw, and every order it takes
- * is for somewhere else, so the screen would be an empty room.
+ * The floor plan carries no config gate of its own: it is reachable for any
+ * account holding `tables` (which `orders` contains), in every store.
+ *
+ * It was once hidden unless the tenant had an ENABLED order type of kind
+ * dine_in. That asked the online menu a question only the room can answer —
+ * a restaurant that lists delivery and Grab on the web still seats people —
+ * and the stores it got wrong had no door, so no way to draw a first table.
+ * A shop that never draws one sees an empty floor, the same way a shop with
+ * no products sees an empty menu.
  */
-export const DINE_IN_TABS: readonly string[] = ["tables"];
-
 export interface TabVisibilityContext {
   caller: StaffPermissionHolder;
   audience: PortfolioAudience;
   takesAdvanceOrders: boolean;
-  takesDineIn: boolean;
 }
 
 export function isTabReachable(tab: string, ctx: TabVisibilityContext): boolean {
@@ -108,7 +111,6 @@ export function isTabReachable(tab: string, ctx: TabVisibilityContext): boolean 
   if (!isTabAllowed(ctx.caller, tab)) return false;
   if (!isBusinessTabVisible(tab, ctx.audience)) return false;
   if (ADVANCE_ORDER_TABS.includes(tab) && !ctx.takesAdvanceOrders) return false;
-  if (DINE_IN_TABS.includes(tab) && !ctx.takesDineIn) return false;
   return true;
 }
 

@@ -3,11 +3,10 @@ import { useMemo } from "react";
 import { useAuthStore } from "../stores/auth-store";
 import type { TabVisibilityContext } from "./tab-visibility";
 import { useAdvanceOrdering } from "./use-advance-ordering";
-import { useDineIn } from "./use-dine-in";
 import { usePortfolioAudience } from "./use-portfolio-audience";
 
 /**
- * The four gates every "can this account see this screen?" question needs,
+ * The three gates every "can this account see this screen?" question needs,
  * gathered once. The tab bar, both hubs, the sub-screen doors and Home's
  * quick actions all read this so they cannot disagree about what exists.
  *
@@ -20,10 +19,9 @@ export function useTabVisibilityContext(): TabVisibilityContext {
   const permissions = useAuthStore((s) => s.permissions);
   const audience = usePortfolioAudience();
   const takesAdvanceOrders = useAdvanceOrdering();
-  const takesDineIn = useDineIn();
 
   return useMemo(
-    () => ({ caller: { role, isOwner, permissions }, audience, takesAdvanceOrders, takesDineIn }),
-    [role, isOwner, permissions, audience, takesAdvanceOrders, takesDineIn],
+    () => ({ caller: { role, isOwner, permissions }, audience, takesAdvanceOrders }),
+    [role, isOwner, permissions, audience, takesAdvanceOrders],
   );
 }

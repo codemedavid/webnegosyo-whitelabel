@@ -5,7 +5,6 @@ const owner: TabVisibilityContext = {
   caller: { role: "admin", isOwner: true, permissions: null },
   audience: { accountScope: { kind: "all" }, activeOutletCount: 1, isDemo: false },
   takesAdvanceOrders: false,
-  takesDineIn: false,
 };
 
 const keys = (ctx: TabVisibilityContext) => quickActionsFor(ctx).map((a) => a.key);

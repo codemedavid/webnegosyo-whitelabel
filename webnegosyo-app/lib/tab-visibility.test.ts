@@ -23,7 +23,6 @@ const owner: TabVisibilityContext = {
     isDemo: false,
   },
   takesAdvanceOrders: true,
-  takesDineIn: true,
 };
 
 const posOnlyStaff: TabVisibilityContext = {
@@ -142,8 +141,14 @@ describe("the bar", () => {
     ]);
   });
 
-  it("still hides the floor plan from a store that seats nobody", () => {
-    expect(isTabReachable("tables", { ...branchManager, takesDineIn: false })).toBe(false);
+  it("offers the floor plan to every store, however it takes its orders", () => {
+    // The floor used to be gated on an enabled dine-in ORDER TYPE, which is a
+    // poor proxy for "this shop seats people": a restaurant whose online menu
+    // only lists delivery and Grab still has tables, and had no door to draw
+    // its first one. The grant is now the only gate.
+    expect(isTabReachable("tables", branchManager)).toBe(true);
+    expect(isTabReachable("tables", owner)).toBe(true);
+    expect(isTabReachable("tables", cook)).toBe(false);
   });
 
   it("keeps Kitchen off the bar when Orders is there", () => {
@@ -193,13 +198,6 @@ describe("reachableTabsOf", () => {
       "orders",
       "kitchen",
       "tables",
-    ]);
-    // A shop that seats nobody has no floor to show.
-    expect(reachableTabsOf("operations", { ...owner, takesDineIn: false })).toEqual([
-      "dashboard",
-      "orders",
-      "kitchen",
-      "scheduled",
     ]);
     expect(reachableTabsOf("products", owner)).toEqual([...getWorkspace("products").tabs]);
   });
