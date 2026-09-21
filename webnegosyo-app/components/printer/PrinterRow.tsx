@@ -4,6 +4,15 @@ import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Icon } from "../Icon";
 import { SegmentedControl } from "../SegmentedControl";
 import {
+  canScanFor,
+  healthActionLabel,
+  healthNotice,
+  healthSummary,
+  healthTone,
+  shouldTestPrint,
+  type PrinterHealth,
+} from "../../lib/printer-health";
+import {
   PRINTER_ROLES,
   PAPER_WIDTHS,
   DEFAULT_PAPER_WIDTH,
@@ -14,7 +23,11 @@ import {
   type RegisteredPrinter,
 } from "../../lib/printer-registry";
 
-export type TestPrintStatus = "printing" | "sent" | null;
+/**
+ * What the row's action button is doing right now. "busy" covers connecting,
+ * scanning and printing alike — from the counter they are the same wait.
+ */
+export type RowActivity = "busy" | "sent" | null;
 
 const ROLE_LABELS: Record<PrinterRole, string> = {
   cashier: "Receipts",
@@ -43,12 +56,16 @@ export function describePrinter(printer: RegisteredPrinter): string {
 
 interface PrinterRowProps {
   printer: RegisteredPrinter;
-  isConnected: boolean;
+  /** What this device knows about the printer — drives the whole row. */
+  health: PrinterHealth;
   isExpanded: boolean;
-  testStatus: TestPrintStatus;
+  activity: RowActivity;
   isLast: boolean;
   onToggleExpanded: () => void;
-  onTestPrint: () => void;
+  /** Test print when connected, connect or reconnect otherwise. */
+  onAction: () => void;
+  /** Hunt for a Bluetooth printer that stopped answering. */
+  onScan: () => void;
   onToggleRole: (role: PrinterRole) => void;
   onPaperWidth: (width: PaperWidth) => void;
   onQrMode: (mode: QrMode) => void;
@@ -60,21 +77,34 @@ interface PrinterRowProps {
  * away until the row is tapped. Every printer used to show every chip at
  * once — roles, paper, QR, two buttons — which is what made the screen read
  * as a control panel rather than a list.
+ *
+ * The action button follows what the app actually knows about the printer.
+ * Offering "Test" on a printer nobody has reached sends the tap straight into
+ * the connect-then-broken-pipe path and comes back as an error the cashier
+ * can do nothing with; the row asks for a connection first instead.
  */
 export function PrinterRow({
   printer,
-  isConnected,
+  health,
   isExpanded,
-  testStatus,
+  activity,
   isLast,
   onToggleExpanded,
-  onTestPrint,
+  onAction,
+  onScan,
   onToggleRole,
   onPaperWidth,
   onQrMode,
   onRemove,
 }: PrinterRowProps) {
   const printsReceipts = printer.roles.includes("cashier");
+  const tone = healthTone(health.status);
+  const notice = healthNotice(health);
+  const actionLabel = healthActionLabel(health.status);
+  const isBusy = activity === "busy" || health.status === "connecting";
+  const showScan = canScanFor(printer, health.status);
+  // Only a connected printer prints a test page; everything else connects.
+  const isTestAction = shouldTestPrint(health.status);
 
   return (
     <View style={[styles.wrap, !isLast && styles.divider]}>
@@ -84,9 +114,9 @@ export function PrinterRow({
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityState={{ expanded: isExpanded }}
-        accessibilityLabel={`${printer.name}. ${describePrinter(printer)}. ${isConnected ? "Connected" : "Not connected"}`}
+        accessibilityLabel={`${printer.name}. ${describePrinter(printer)}. ${healthSummary(health.status)}`}
       >
-        <View style={[styles.dot, isConnected ? styles.dotOn : styles.dotOff]} />
+        <View style={[styles.dot, tone === "on" ? styles.dotOn : tone === "warn" ? styles.dotWarn : styles.dotOff]} />
         <View style={styles.copy}>
           <Text style={styles.name} numberOfLines={1}>
             {printer.name}
@@ -96,22 +126,51 @@ export function PrinterRow({
           </Text>
         </View>
         <TouchableOpacity
-          style={[styles.testButton, testStatus === "sent" && styles.testButtonSent]}
-          onPress={onTestPrint}
-          disabled={testStatus !== null}
+          style={[
+            styles.actionButton,
+            activity === "sent" && styles.actionButtonSent,
+            !isTestAction && !isBusy && styles.actionButtonConnect,
+          ]}
+          onPress={onAction}
+          disabled={isBusy || activity === "sent"}
           accessibilityRole="button"
-          accessibilityLabel={`Test print on ${printer.name}`}
+          accessibilityLabel={
+            isTestAction ? `Test print on ${printer.name}` : `${actionLabel} ${printer.name}`
+          }
         >
-          {testStatus === "printing" ? (
+          {isBusy ? (
             <ActivityIndicator size="small" color={colors.textPrimary} />
-          ) : testStatus === "sent" ? (
+          ) : activity === "sent" ? (
             <Icon name="check" size={16} color={colors.success} />
           ) : (
-            <Text style={styles.testText}>Test</Text>
+            <Text style={[styles.actionText, !isTestAction && styles.actionTextConnect]}>
+              {actionLabel}
+            </Text>
           )}
         </TouchableOpacity>
         <Icon name="chevron" size={18} color={colors.textTertiary} />
       </TouchableOpacity>
+
+      {notice ? (
+        <View style={styles.notice}>
+          <Icon
+            name={health.status === "unreachable" ? "warning" : "info"}
+            size={14}
+            color={health.status === "unreachable" ? colors.warning : colors.textSecondary}
+          />
+          <Text style={styles.noticeText}>{notice}</Text>
+          {showScan ? (
+            <TouchableOpacity
+              onPress={onScan}
+              disabled={isBusy}
+              accessibilityRole="button"
+              accessibilityLabel={`Scan for ${printer.name}`}
+            >
+              <Text style={styles.noticeAction}>Scan for it</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       {isExpanded ? (
         <View style={styles.detail}>
@@ -181,11 +240,12 @@ const styles = StyleSheet.create({
   summary: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   dot: { width: 10, height: 10, borderRadius: 5 },
   dotOn: { backgroundColor: colors.success },
+  dotWarn: { backgroundColor: colors.warning },
   dotOff: { backgroundColor: colors.textTertiary },
   copy: { flex: 1 },
   name: { ...typography.body, fontWeight: "600", color: colors.textPrimary },
   meta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  testButton: {
+  actionButton: {
     minWidth: 56,
     alignItems: "center",
     paddingVertical: spacing.xs + 2,
@@ -193,8 +253,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.surfaceSubtle,
   },
-  testButtonSent: { backgroundColor: colors.successLight },
-  testText: { ...typography.caption, fontWeight: "600", color: colors.textPrimary },
+  actionButtonSent: { backgroundColor: colors.successLight },
+  actionButtonConnect: { backgroundColor: colors.primary },
+  actionText: { ...typography.caption, fontWeight: "600", color: colors.textPrimary },
+  actionTextConnect: { color: colors.textOnDark },
+  notice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexWrap: "wrap",
+    paddingBottom: spacing.sm,
+    paddingLeft: spacing.md + 10,
+  },
+  noticeText: { ...typography.caption, color: colors.textSecondary, flexShrink: 1 },
+  noticeAction: { ...typography.caption, fontWeight: "700", color: colors.primary },
   detail: { paddingBottom: spacing.md, paddingLeft: spacing.md + 10 },
   fieldLabel: { ...typography.eyebrow, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm },
   fieldHint: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.sm },

@@ -48,6 +48,8 @@ interface MockState {
   connectedAddress: string | null;
   isConnected: boolean;
   setConnectedAddress: (address: string | null) => void;
+  health: Record<string, { status: string; message?: string }>;
+  setPrinterHealth: (address: string, status: string, message?: string) => void;
 }
 
 const mockState: MockState = {
@@ -57,6 +59,10 @@ const mockState: MockState = {
   setConnectedAddress: (address: string | null) => {
     mockState.connectedAddress = address;
     mockState.isConnected = address !== null;
+  },
+  health: {} as Record<string, { status: string; message?: string }>,
+  setPrinterHealth: (address: string, status: string, message?: string) => {
+    mockState.health[address] = message ? { status, message } : { status };
   },
 };
 

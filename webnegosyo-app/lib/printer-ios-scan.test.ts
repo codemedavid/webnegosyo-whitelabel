@@ -65,6 +65,8 @@ jest.mock("../stores/printer-store", () => {
     connectedAddress: null as string | null,
     isConnected: false,
     setConnectedAddress: jest.fn(),
+    health: {} as Record<string, { status: string; message?: string }>,
+    setPrinterHealth: jest.fn(),
   };
   return { usePrinterStore: { getState: () => state } };
 });

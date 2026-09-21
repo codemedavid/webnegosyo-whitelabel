@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { migrateAutoPrint, type PrintTrigger } from "../lib/print-trigger";
+import type { PrinterHealth, PrinterStatus } from "../lib/printer-health";
 import {
   addPrinter as addToList,
   removePrinter as removeFromList,
@@ -18,6 +19,12 @@ interface PrinterState {
   connectedAddress: string | null;
   /** Derived compat flag — the dashboard pill reads it. */
   isConnected: boolean;
+  /**
+   * What this device knows about each printer, keyed by address — the same
+   * identity `connectedAddress` uses. Session-only on purpose: a printer that
+   * answered yesterday says nothing about the one on the counter now.
+   */
+  health: Record<string, PrinterHealth>;
   /** When cashier receipts print. Replaces the old `autoPrint` boolean. */
   printTrigger: PrintTrigger;
   /** Auto-print the kitchen chit the moment a new order lands. Per device. */
@@ -27,6 +34,7 @@ interface PrinterState {
   removePrinter: (id: string) => Promise<void>;
   updatePrinter: (id: string, patch: Partial<Omit<RegisteredPrinter, "id">>) => Promise<void>;
   setConnectedAddress: (address: string | null) => void;
+  setPrinterHealth: (address: string, status: PrinterStatus, message?: string) => void;
   setPrintTrigger: (trigger: PrintTrigger) => Promise<void>;
   setKitchenAutoPrint: (enabled: boolean) => Promise<void>;
   loadSaved: () => Promise<void>;
@@ -56,6 +64,7 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
   printers: [],
   connectedAddress: null,
   isConnected: false,
+  health: {},
   printTrigger: "confirmation",
   kitchenAutoPrint: false,
   addPrinter: async (printer) => {
@@ -69,8 +78,13 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
     return registered;
   },
   removePrinter: async (id) => {
+    const removed = get().printers.find((p) => p.id === id);
     const printers = removeFromList(get().printers, id);
-    set({ printers });
+    // Drop the health entry with the printer: re-adding the same address is a
+    // fresh start, not an inheritance of yesterday's failure.
+    const health = { ...get().health };
+    if (removed) delete health[removed.address];
+    set({ printers, health });
     await persistList(printers);
   },
   updatePrinter: async (id, patch) => {
@@ -80,6 +94,10 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
   },
   setConnectedAddress: (connectedAddress) =>
     set({ connectedAddress, isConnected: connectedAddress !== null }),
+  setPrinterHealth: (address, status, message) =>
+    set((state) => ({
+      health: { ...state.health, [address]: message ? { status, message } : { status } },
+    })),
   setPrintTrigger: async (printTrigger) => {
     set({ printTrigger });
     try {

@@ -13,6 +13,7 @@ import {
   type RegisteredPrinter,
 } from "./printer-registry";
 import { receiptMarkupToEscPos, printerWidthType, escPosQrCode } from "./receipt-escpos";
+import type { PrinterStatus } from "./printer-health";
 import { planPrintJobs, jobsForRole } from "./print-queue";
 
 // ESC/POS commands for text formatting.
@@ -33,6 +34,16 @@ const COMMANDS = {
 export interface PrinterResult {
   success: boolean;
   error?: string;
+}
+
+/**
+ * Record what just happened to a printer, so the printer list can say it.
+ * Every path that reaches (or fails to reach) a head goes through here —
+ * the launch warm-up, a test print, a receipt, a kitchen chit — which is what
+ * lets a row offer "Reconnect" instead of a "Test" that cannot work.
+ */
+function markHealth(address: string, status: PrinterStatus, message?: string): void {
+  usePrinterStore.getState().setPrinterHealth(address, status, message);
 }
 
 // Native module availability flag
@@ -288,6 +299,7 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
     return { success: false, error: NOT_AVAILABLE_MSG };
   }
 
+  markHealth(address, "connecting");
   try {
     if (type === "bluetooth") {
       await withTimeout(mod.BLEPrinter.init(), CONNECT_TIMEOUT_MS, "Bluetooth init");
@@ -310,12 +322,15 @@ export async function connectPrinter(type: "bluetooth" | "network", address: str
       );
     }
     usePrinterStore.getState().setConnectedAddress(address);
+    markHealth(address, "ready");
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn("Printer connection failed:", message);
     usePrinterStore.getState().setConnectedAddress(null);
-    return { success: false, error: describePrintFailure(message) || "Connection failed" };
+    const reason = describeConnectFailure(message);
+    markHealth(address, "unreachable", reason);
+    return { success: false, error: reason };
   }
 }
 
@@ -570,6 +585,27 @@ export function describePrintFailure(message: string): string {
 }
 
 /**
+ * The same job for a connection that never came up. A failed connect says
+ * something different from a failed write — there is nothing to retry until
+ * the printer is switched on or back in range — so it gets its own wording.
+ */
+const NOT_FOUND_PATTERNS = [/not found/i, /no device/i, /unknown device/i, /no printer/i];
+
+export function describeConnectFailure(message: string): string {
+  if (!message) return "Could not reach the printer.";
+  if (/bluetooth (adapter )?is not enabled/i.test(message)) {
+    return "Bluetooth is off. Turn it on, then tap Reconnect.";
+  }
+  if (NOT_FOUND_PATTERNS.some((pattern) => pattern.test(message))) {
+    return "This printer is not nearby. Switch it on, then scan for it again.";
+  }
+  if (/timed out/i.test(message)) {
+    return "The printer did not answer. Check it is switched on and in range, then tap Reconnect.";
+  }
+  return describePrintFailure(message);
+}
+
+/**
  * Bring the connection to `printer` up if it is not the live one. Shared by
  * the print path and the launch-time warm-up.
  */
@@ -613,6 +649,64 @@ export function pickWarmUpTarget(
 }
 
 /**
+ * Bring a printer back deliberately, from the printer list.
+ *
+ * A plain connect is not enough. When the native side still believes in a
+ * socket that has since died, selectDevice returns early ("do not need to
+ * reconnect") and the connection that comes back is the same dead one — which
+ * is exactly how a merchant ends up tapping Test and reading "Broken pipe"
+ * over and over. Closing first is what makes this a real reconnection.
+ *
+ * Runs through the print queue so it can never cut across a receipt mid-write.
+ */
+export function reconnectPrinter(printer: RegisteredPrinter): Promise<PrinterResult> {
+  return enqueuePrintJob(async () => {
+    const mod = getPrinterModule();
+    if (!mod) {
+      markHealth(printer.address, "unreachable", NOT_AVAILABLE_MSG);
+      return { success: false, error: NOT_AVAILABLE_MSG };
+    }
+    const instance = printer.type === "bluetooth" ? mod.BLEPrinter : mod.NetPrinter;
+    await resetNativeConnection(instance);
+    return connectPrinter(printer.type, printer.address);
+  });
+}
+
+/** Why a scan came back without the printer the merchant was looking for. */
+function describeEmptyScan(status: ScanStatus): string {
+  if (status === "unavailable") return NOT_AVAILABLE_MSG;
+  if (status === "timeout") {
+    return "Bluetooth did not answer. Check it is on and allowed for this app, then scan again.";
+  }
+  return "Not found nearby. Switch the printer on and keep it in range, then scan again.";
+}
+
+export interface FindPrinterResult {
+  /** The saved address turned up in the scan. */
+  found: boolean;
+  status: ScanStatus;
+}
+
+/**
+ * Look for a saved Bluetooth printer in range, so "it is gone" and "it is
+ * here but the connection died" stop looking identical to the merchant.
+ * Queued for the same reason as reconnectPrinter: discovery owns the radio.
+ */
+export function findSavedPrinter(printer: RegisteredPrinter): Promise<FindPrinterResult> {
+  return enqueuePrintJob(async () => {
+    const { printers: found, status } = await discoverBluetoothPrinters();
+    const wanted = printer.address.toLowerCase();
+    const isHere = found.some((device) => (device.address ?? "").toLowerCase() === wanted);
+
+    // A printer that turned up says nothing new about the connection — the
+    // caller's reconnect is what settles that, and records its own answer.
+    if (!isHere) markHealth(printer.address, "unreachable", describeEmptyScan(status));
+
+    return { found: isHere, status };
+  });
+}
+
+/**
  * Print segments on one specific saved printer, through the device-wide print
  * queue. Connects (or switches the connection) only when the target differs
  * from the currently connected printer; a failed print drops the connection
@@ -648,6 +742,7 @@ export function printToPrinter(
 
     try {
       await runSegmentsOnInstance(instance, segments, printer.paperWidth, printer.qrMode);
+      markHealth(printer.address, "ready");
       return { success: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -658,16 +753,23 @@ export function printToPrinter(
 
       const reconnected = await connectPrinter(printer.type, printer.address);
       if (!reconnected.success) {
+        // connectPrinter already recorded why it could not come back up.
         return { success: false, error: describePrintFailure(message) };
       }
       try {
         await runSegmentsOnInstance(instance, segments, printer.paperWidth, printer.qrMode);
+        markHealth(printer.address, "ready");
         return { success: true };
       } catch (retryErr: unknown) {
         const retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
         console.warn("Print retry failed:", retryMessage);
         await resetNativeConnection(instance);
-        return { success: false, error: describePrintFailure(retryMessage) };
+        // A write that failed twice on a live socket is the printer itself —
+        // out of paper, asleep, switched off. The row has to say so, or the
+        // next tap is another "Test" into the same broken pipe.
+        const reason = describePrintFailure(retryMessage);
+        markHealth(printer.address, "unreachable", reason);
+        return { success: false, error: reason };
       }
     }
   });

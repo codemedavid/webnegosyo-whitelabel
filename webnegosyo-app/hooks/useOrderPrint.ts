@@ -7,6 +7,8 @@ import { printersForRole, DEFAULT_PAPER_WIDTH } from "../lib/printer-registry";
 import { charsForPaperWidth } from "../lib/receipt-escpos";
 import { buildReceiptSegments, layoutWantsQr } from "../lib/receipt-print";
 import { fetchTrackingUrl, getCachedTrackingUrl } from "../lib/receipt-tracking";
+import { isOffline } from "../lib/offline/connectivity";
+import { isSaleQueued } from "../lib/offline/order-outbox";
 import { prefetchLogo } from "../lib/receipt-logo";
 import { shouldPrintAt, type PrintMoment } from "../lib/print-trigger";
 import type { ReceiptOrder } from "../lib/receipt-layout";
@@ -86,6 +88,10 @@ export function useOrderPrint() {
       const ref = { orderId, tenantId };
       const cached = getCachedTrackingUrl(ref);
       if (cached) return cached;
+      // No connection, or a sale the server has not been told about yet:
+      // there is no tracking page to point at, so the QR block is skipped and
+      // the rest of the receipt prints at once instead of after two timeouts.
+      if (isOffline() || isSaleQueued(orderId)) return null;
       // Bounded on purpose: this sits between the tap and the first line of
       // paper, and an unbounded session read here is the same freeze the
       // tender screen already had (see authorized-post.ts).
