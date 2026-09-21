@@ -9,6 +9,7 @@
 
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme/colors";
 import { useConnectivity } from "../../lib/offline/use-connectivity";
 import { usePendingSaleCounts, type PendingSaleCounts } from "../../lib/offline/use-outbox-sync";
@@ -22,6 +23,9 @@ function toneFor(status: string, counts: PendingSaleCounts): Tone {
 }
 
 export function OfflineBanner() {
+  // This banner renders ABOVE the screen's header, so nothing below it clears
+  // the notch on its behalf — it pads itself, as ImpersonationBanner does.
+  const insets = useSafeAreaInsets();
   const { status } = useConnectivity();
   const counts = usePendingSaleCounts();
   const text = offlineBannerText(status, counts);
@@ -29,7 +33,7 @@ export function OfflineBanner() {
 
   return (
     <View
-      style={[styles.bar, styles[toneFor(status, counts)]]}
+      style={[styles.bar, styles[toneFor(status, counts)], { paddingTop: insets.top + spacing.sm }]}
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
     >

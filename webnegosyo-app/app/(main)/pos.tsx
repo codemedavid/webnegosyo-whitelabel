@@ -398,7 +398,6 @@ export default function PosScreen() {
     <>
       {/* Silent while online with nothing queued; see components/pos/OfflineBanner. */}
       <OfflineBanner />
-      {/* The banner already clears the notch, so the header must not re-pad it. */}
       <ScreenHeader
         title="POS"
         subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}
