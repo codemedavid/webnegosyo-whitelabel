@@ -9,10 +9,8 @@
  */
 
 import { normalizePhoneE164 } from '@/lib/phone'
+import { phoneFieldKeys } from '@/lib/contact-field-keys'
 import type { NormalizableField } from '@/lib/customer-field-normalization'
-
-/** Keys a tenant's own field naming might not cover. Mirrors `resolveCustomerIdentity`. */
-const FALLBACK_KEYS = ['customer_phone', 'phone', 'mobile', 'contact_number'] as const
 
 export interface CheckoutLoyaltyPhoneInput {
   formFields: NormalizableField[]
@@ -29,7 +27,10 @@ export function resolveCheckoutLoyaltyPhone({
     if (e164) return e164
   }
 
-  for (const key of FALLBACK_KEYS) {
+  // Nothing is declared a phone (a merchant may have typed their phone field
+  // as text or number), so fall back to the field NAME — the same rule
+  // `resolveCustomerIdentity` uses to read the stored order.
+  for (const key of phoneFieldKeys(Object.keys(customerData))) {
     const e164 = normalizePhoneE164(customerData[key])
     if (e164) return e164
   }

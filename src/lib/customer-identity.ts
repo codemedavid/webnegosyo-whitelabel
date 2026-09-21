@@ -12,6 +12,7 @@
  * separately-bundled deployment and cannot import from `src/`.
  */
 import { normalizePhoneE164 } from '@/lib/phone'
+import { emailFieldKeys, phoneFieldKeys } from '@/lib/contact-field-keys'
 
 /** Contacts that identify nobody — anonymous POS / walk-in orders. */
 const PLACEHOLDER_CONTACTS = new Set([
@@ -89,6 +90,28 @@ function pickString(data: Record<string, unknown> | null | undefined, keys: stri
   return null
 }
 
+/**
+ * The first value among `keys` that survives `normalize`.
+ *
+ * Tried in order rather than "first non-empty, then normalize": a form with
+ * both a blank `customer_phone` and a filled `Contact Number` must resolve to
+ * the number that is actually there.
+ */
+function firstNormalized(
+  data: Record<string, unknown> | null | undefined,
+  keys: string[],
+  normalize: (raw: string | null) => string | null
+): string | null {
+  if (!data) return null
+  for (const key of keys) {
+    const value = data[key]
+    if (typeof value !== 'string' || value.trim() === '') continue
+    const normalized = normalize(value.trim())
+    if (normalized) return normalized
+  }
+  return null
+}
+
 function normalizeEmail(raw: string | null): string | null {
   if (!raw) return null
   const email = raw.trim().toLowerCase()
@@ -105,16 +128,19 @@ export function resolveCustomerIdentity(input: CustomerIdentityInput): CustomerI
     pickString(input.customerData, ['customer_name', 'name']) ??
     (input.name && input.name.trim() !== '' ? input.name.trim() : null)
 
-  const phoneCandidate =
-    pickString(input.customerData, ['customer_phone', 'phone', 'mobile', 'contact_number']) ??
-    (isIdentifiableContact(input.contact) ? input.contact ?? null : null)
+  // Merchants name their own checkout fields, so the phone/email may sit under
+  // any label the form used — see `contact-field-keys`. A candidate only counts
+  // once it normalizes, so a merchant-named field holding something that is not
+  // a number never becomes an identity.
+  const dataKeys = input.customerData ? Object.keys(input.customerData) : []
 
-  const emailCandidate =
-    pickString(input.customerData, ['customer_email', 'email']) ??
-    (isIdentifiableContact(input.contact) ? input.contact ?? null : null)
+  const phoneE164 =
+    firstNormalized(input.customerData, phoneFieldKeys(dataKeys), normalizePhoneE164) ??
+    normalizePhoneE164(isIdentifiableContact(input.contact) ? input.contact ?? null : null)
 
-  const phoneE164 = normalizePhoneE164(phoneCandidate)
-  const email = normalizeEmail(emailCandidate)
+  const email =
+    firstNormalized(input.customerData, emailFieldKeys(dataKeys), normalizeEmail) ??
+    normalizeEmail(isIdentifiableContact(input.contact) ? input.contact ?? null : null)
 
   const identityKey = phoneE164
     ? `phone:${phoneE164}`
