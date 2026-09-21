@@ -138,6 +138,13 @@ export function LessonBlockEditor({ blocks, onChange }: Props) {
     setFocusIndex(index)
   }
 
+  // An upload and the embed dialog both finish LATER, and `blocks` captured in
+  // their closure is the array as it stood when the author picked the file.
+  // Any paragraph typed meanwhile would be thrown away by the insert, so the
+  // deferred inserts read the newest array instead.
+  const latestBlocks = useRef(blocks)
+  latestBlocks.current = blocks
+
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -145,7 +152,7 @@ export function LessonBlockEditor({ blocks, onChange }: Props) {
     setIsUploading(true)
     try {
       const uploaded = await uploadImageToImageKit(file, { folder: UPLOAD_FOLDER })
-      onChange(insertBlock(blocks, uploadAt, { type: 'image', url: uploaded.url }))
+      onChange(insertBlock(latestBlocks.current, uploadAt, { type: 'image', url: uploaded.url }))
       toast.success('Image added')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Upload failed')
@@ -157,7 +164,7 @@ export function LessonBlockEditor({ blocks, onChange }: Props) {
 
   const addEmbed = (url: string) => {
     if (embedAt === null) return
-    onChange(insertBlock(blocks, embedAt, { type: 'embed', url }))
+    onChange(insertBlock(latestBlocks.current, embedAt, { type: 'embed', url }))
     setEmbedAt(null)
   }
 
