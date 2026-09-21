@@ -60,6 +60,7 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
     deliveryFee !== null && deliveryFee > 0 && deliveryFeeAddress === customerData.delivery_address
   const isBlockedOnProof = proofRequired && !proofSatisfied
   const submitLabel = resolveFinalSubmitLabel({ isMessengerEnabled: !isQrHandoff && messengerEnabled })
+  const bandColor = palette.button ?? palette.accent
 
   const close = () => {
     if (!isProcessing) setShowPaymentDetails(false)
@@ -106,16 +107,19 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
         aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[94dvh] w-full flex-col rounded-t-3xl bg-white shadow-2xl outline-none sm:max-h-[88vh] sm:max-w-md sm:rounded-3xl motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-300 motion-safe:ease-out sm:motion-safe:slide-in-from-bottom-4 sm:motion-safe:fade-in"
+        className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl outline-none sm:max-h-[88vh] sm:max-w-md sm:rounded-3xl motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-300 motion-safe:ease-out sm:motion-safe:slide-in-from-bottom-4 sm:motion-safe:fade-in"
         style={{ ['--checkout-accent' as string]: palette.accent }}
       >
-        {/* Header: what you pay, and to whom. */}
-        <header className="shrink-0 border-b border-gray-100 px-5 pb-4 pt-3 sm:pt-5">
-          <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-200 sm:hidden" aria-hidden="true" />
+        {/* Header: a brand-colored band carrying the amount and the method. */}
+        <header
+          className="shrink-0 px-5 pb-5 pt-3 sm:pt-5"
+          style={{ backgroundColor: bandColor, color: palette.accentText }}
+        >
+          <div className="mx-auto mb-4 h-1.5 w-10 rounded-full opacity-40 sm:hidden" style={{ backgroundColor: palette.accentText }} aria-hidden="true" />
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Paying with</p>
-              <h2 id={titleId} className="truncate text-lg font-semibold leading-tight text-gray-900">
+              <p className="text-xs font-medium uppercase tracking-wider opacity-80">Paying with</p>
+              <h2 id={titleId} className="truncate text-xl font-semibold leading-tight">
                 {method.name}
               </h2>
             </div>
@@ -124,48 +128,44 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
               onClick={close}
               disabled={isProcessing}
               aria-label="Back to checkout"
-              className="-mr-2 -mt-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40"
+              className="-mr-2 -mt-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full opacity-80 transition-opacity hover:opacity-100 disabled:opacity-40"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          <div className="mt-4 flex items-end justify-between gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Total to pay</p>
-              <p className="text-4xl font-bold tracking-tight text-gray-900 tabular-nums">
-                {formatPrice(grandTotal)}
-              </p>
-            </div>
-          </div>
+          <p className="mt-5 text-sm opacity-80">Total to pay</p>
+          <p className="text-[2.75rem] font-bold leading-none tracking-tight tabular-nums">
+            {formatPrice(grandTotal)}
+          </p>
 
-          <details className="group mt-2">
-            <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 [&::-webkit-details-marker]:hidden">
+          <details className="group mt-3">
+            <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-sm font-medium opacity-80 transition-opacity hover:opacity-100 [&::-webkit-details-marker]:hidden">
               Order breakdown
               <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
             </summary>
-            <dl className="mt-2 space-y-1.5 rounded-xl bg-gray-50 px-4 py-3 text-sm">
+            <dl className="mt-2 space-y-1.5 rounded-xl bg-white px-4 py-3 text-sm text-gray-900">
               <div className="flex justify-between">
                 <dt className="text-gray-600">Subtotal</dt>
-                <dd className="font-medium tabular-nums text-gray-900">{formatPrice(total)}</dd>
+                <dd className="font-medium tabular-nums">{formatPrice(total)}</dd>
               </div>
               {/* Same staleness guard the summary uses: a fee quoted for a
                   different address is not billed, so it is not shown either. */}
               {hasDeliveryFee && (
                 <div className="flex justify-between">
                   <dt className="text-gray-600">Delivery fee</dt>
-                  <dd className="font-medium tabular-nums text-gray-900">{formatPrice(deliveryFee ?? 0)}</dd>
+                  <dd className="font-medium tabular-nums">{formatPrice(deliveryFee ?? 0)}</dd>
                 </div>
               )}
               {serviceChargeAmount > 0 && (
                 <div className="flex justify-between">
                   <dt className="text-gray-600">Service charge</dt>
-                  <dd className="font-medium tabular-nums text-gray-900">{formatPrice(serviceChargeAmount)}</dd>
+                  <dd className="font-medium tabular-nums">{formatPrice(serviceChargeAmount)}</dd>
                 </div>
               )}
               <div className="flex justify-between border-t border-gray-200 pt-1.5 font-semibold">
-                <dt className="text-gray-900">Total</dt>
-                <dd className="tabular-nums text-gray-900">{formatPrice(grandTotal)}</dd>
+                <dt>Total</dt>
+                <dd className="tabular-nums">{formatPrice(grandTotal)}</dd>
               </div>
             </dl>
           </details>
@@ -240,7 +240,7 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
             onClick={isQrHandoff ? handleQrHandoff : handleCheckout}
             disabled={isProcessing || isBlockedOnProof}
             className="inline-flex h-14 w-full items-center justify-center gap-2.5 rounded-full text-base font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--checkout-accent)]"
-            style={{ backgroundColor: palette.button ?? palette.accent, color: palette.accentText }}
+            style={{ backgroundColor: bandColor, color: palette.accentText }}
           >
             {isProcessing ? (
               <>

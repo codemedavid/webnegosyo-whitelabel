@@ -10,15 +10,14 @@ import { formatPresellDateLabel } from '@/lib/presell/month-grid'
  */
 
 import dynamic from 'next/dynamic'
-import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, QrCode, Copy, Check, Zap, CalendarClock, CalendarDays, Clock, Bike, ShoppingBag, Store, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, Check, Zap, CalendarClock, CalendarDays, Clock, Bike, ShoppingBag, Store, type LucideIcon } from 'lucide-react'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
-import { SmsOptInCheckbox, MinimumOrderNotice, OrderSummaryLines } from './checkout-primitives'
+import { SmsOptInCheckbox, MinimumOrderNotice, OrderSummaryLines, PaymentMethodList } from './checkout-primitives'
 import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
 import { VoucherField } from './voucher-field'
 import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
@@ -52,7 +51,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     scheduleDates, timeSlots, scheduledForLabel, handleScheduleDateChange, cartPresellDate,
     formFields, customerData, setCustomerData,
     items, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount, grandTotal,
-    paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog, handleCopyText, copiedText,
+    paymentMethods, selectedPaymentMethod,
     isProcessing, handleProceedToPayment, messengerEnabled, orderMinimum,
     voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode,
   } = checkout
@@ -411,167 +410,16 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             <OrderSummaryLines checkout={checkout} variant="classic" />
           </div>
 
-          {/* Payment Method Selection */}
-          {paymentMethods.length > 0 ? (
-            <div className="rounded-2xl bg-white p-8 shadow-sm" data-payment-methods style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3" style={{ color: palette.text }}>
-                <CreditCard className="h-6 w-6 text-orange-500" style={{ color: accentColor }} />
-                Select Payment Method
-                <Badge variant="outline" className="ml-auto bg-red-50 text-red-700 border-red-300">
-                  Required
-                </Badge>
-              </h2>
+          {/* Payment method: the shared wallet-style picker (branded). */}
+          {(paymentMethods.length > 0 || (orderType && tenant)) && (
+            <div className="rounded-2xl bg-white p-6 sm:p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: palette.text }}>Payment</h2>
               <p className="text-gray-600 mb-6" style={{ color: palette.mutedText }}>
-                Choose how you would like to pay for your order
+                Choose how you would like to pay
               </p>
-
-              <div className="space-y-3">
-                {paymentMethods.map((method) => {
-                  const isSelected = selectedPaymentMethod === method.id
-
-                  return (
-                    <label
-                      key={method.id}
-                      className={`flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all hover:border-orange-300 hover:bg-orange-50/50 ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
-                        }`}
-                      onClick={() => setSelectedPaymentMethod(method.id)}
-                    >
-                      {/* Radio Button */}
-                      <div className="flex items-center h-6 mt-0.5">
-                        <input
-                          type="radio"
-                          checked={isSelected}
-                          onChange={() => setSelectedPaymentMethod(method.id)}
-                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 focus:ring-2"
-                        />
-                      </div>
-
-                      {/* QR Code Thumbnail */}
-                      {method.qr_code_url && (
-                        <div
-                          className="shrink-0 cursor-pointer hover:opacity-80"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (method.qr_code_url) {
-                              openQrDialog(method.qr_code_url)
-                            }
-                          }}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={method.qr_code_url}
-                            alt={`${method.name} QR Code`}
-                            className="w-12 h-12 object-cover rounded border"
-                          />
-                          <div className="text-xs text-gray-500 text-center mt-1 flex items-center justify-center gap-1">
-                            <QrCode className="h-3 w-3" />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Payment Method Info */}
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-base mb-1" style={{ color: palette.text }}>{method.name}</h3>
-                        {method.details && (
-                          <p className="text-sm text-gray-600 line-clamp-2" style={{ color: palette.mutedText }}>
-                            {method.details}
-                          </p>
-                        )}
-                      </div>
-                    </label>
-                  )
-                })}
-              </div>
-
-              {/* Selected Payment Method Details */}
-              {selectedPaymentMethod && (
-                <div className="mt-6 p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <CreditCard className="h-5 w-5 text-orange-600 mt-0.5" style={{ color: accentColor }} />
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-orange-900 mb-2" style={{ color: accentColor }}>Selected Payment Method</h3>
-                      <p className="font-medium text-gray-900 mb-2" style={{ color: palette.text }}>
-                        {paymentMethods.find(m => m.id === selectedPaymentMethod)?.name}
-                      </p>
-                      {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details && (
-                        <div className="bg-white p-3 rounded border border-orange-200">
-                          <p className="text-sm font-medium text-gray-700 mb-2" style={{ color: palette.mutedText }}>Payment Details:</p>
-                          <div className="space-y-2">
-                            {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details?.split('\n').map((line, index) => {
-                              const trimmedLine = line.trim()
-                              if (!trimmedLine) return null
-                              return (
-                                <button
-                                  key={index}
-                                  type="button"
-                                  onClick={() => handleCopyText(trimmedLine, 'Details')}
-                                  className="w-full flex items-center justify-between gap-2 p-2 rounded-md bg-gray-50 hover:bg-orange-100 transition-colors text-left group"
-                                >
-                                  <span className="text-sm text-gray-700 break-all" style={{ color: palette.text }}>{trimmedLine}</span>
-                                  {copiedText === trimmedLine ? (
-                                    <Check className="h-4 w-4 text-green-500 shrink-0" />
-                                  ) : (
-                                    <Copy className="h-4 w-4 text-gray-400 group-hover:text-orange-500 shrink-0" />
-                                  )}
-                                </button>
-                              )
-                            })}
-                          </div>
-                          <p className="text-xs text-gray-500 mt-2 flex items-center gap-1" style={{ color: palette.mutedText }}>
-                            <Copy className="h-3 w-3" /> Tap on any line to copy
-                          </p>
-                        </div>
-                      )}
-                      {(() => {
-                        const qrUrl = paymentMethods.find(m => m.id === selectedPaymentMethod)?.qr_code_url
-                        if (!qrUrl) return null
-
-                        return (
-                          <div className="mt-3 flex items-center gap-3">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={qrUrl}
-                              alt="Payment QR Code"
-                              className="w-32 h-32 object-contain border-2 border-orange-300 rounded-lg bg-white p-2 cursor-pointer hover:opacity-80"
-                              onClick={() => openQrDialog(qrUrl)}
-                            />
-                            <div className="flex-1">
-                              <p className="text-sm text-gray-600 mb-2" style={{ color: palette.mutedText }}>Scan this QR code to complete payment</p>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openQrDialog(qrUrl)}
-                                className="border-orange-300 text-orange-700 hover:bg-orange-100"
-                              >
-                                <QrCode className="h-4 w-4 mr-2" />
-                                View Full Size
-                              </Button>
-                            </div>
-                          </div>
-                        )
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              )}
+              <PaymentMethodList checkout={checkout} />
             </div>
-          ) : orderType && tenant ? (
-            <div className="rounded-2xl bg-yellow-50 border-2 border-yellow-200 p-6">
-              <div className="flex items-start gap-3">
-                <div className="text-yellow-600 mt-1">
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-900 mb-1">No Payment Methods Available</h3>
-                  <p className="text-sm text-yellow-800">
-                    No payment methods have been set up for this order type yet. You can still proceed with your order, and payment details will be discussed {messengerEnabled ? 'via Messenger' : 'directly with the store'}.
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : null}
+          )}
 
           <div className="rounded-2xl bg-white p-8 shadow-sm" style={{ backgroundColor: palette.cardBackground, borderColor: palette.border }}>
             <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3" style={{ color: palette.text }}>
