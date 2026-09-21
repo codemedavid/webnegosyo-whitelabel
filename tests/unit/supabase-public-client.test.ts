@@ -49,3 +49,7 @@ describe('describePublicQueryError', () => {
     expect(describePublicQueryError('canceling statement due to statement timeout')).toBe('canceling statement due to statement timeout')
   })
 })
+
+// This file has no imports; without an export it is a global script and its
+// top-level names collide with the sibling client suites.
+export {}
