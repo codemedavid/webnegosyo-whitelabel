@@ -14,8 +14,9 @@
 
 import type { CustomerFormField } from '@/types/database'
 import { TABLE_NUMBER_FIELD_NAME } from '@/lib/order-table-number'
+import { DELIVERY_ADDRESS_FIELD_NAME } from '@/lib/customer-details'
 
-export const DELIVERY_ADDRESS_FIELD_NAME = 'delivery_address'
+export { DELIVERY_ADDRESS_FIELD_NAME }
 export const DELIVERY_ADDRESS_PRESET_ID = 'delivery_address'
 export { TABLE_NUMBER_FIELD_NAME }
 export const TABLE_NUMBER_PRESET_ID = 'table_number'

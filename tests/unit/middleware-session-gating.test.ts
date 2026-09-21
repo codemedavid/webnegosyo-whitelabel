@@ -70,6 +70,16 @@ describe('middleware session gating', () => {
     expect(response.headers.get('location')).toContain('/shop/login')
   })
 
+  it('gates the unprefixed /admin path on a tenant host', async () => {
+    // shop.webnegosyo.com/admin arrives as pathname `/admin`. Gating on that
+    // instead of the rewrite target skipped staff/branch checks and let the
+    // rewrite through.
+    const response = await run('/admin')
+
+    expect(getUser).not.toHaveBeenCalled()
+    expect(response.headers.get('location')).toContain('/shop/login')
+  })
+
   it('calls GoTrue for a signed-in visitor on an admin path', async () => {
     getUser.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
 
@@ -95,8 +105,12 @@ describe('middleware session gating', () => {
   it('builds the auth client with a bounded fetch', async () => {
     await run('/shop/admin', SESSION_COOKIE)
 
-    const options = createServerClient.mock.calls[0][2] as unknown as { global?: { fetch?: unknown } }
+    const options = createServerClient.mock.calls[0][2] as unknown as {
+      global?: { fetch?: unknown }
+      db?: { retry?: boolean }
+    }
     expect(typeof options.global?.fetch).toBe('function')
+    expect(options.db?.retry).toBe(false)
   })
 })
 
@@ -110,4 +124,12 @@ describe('middleware cron bypass', () => {
       expect(createServerClient).not.toHaveBeenCalled()
     }
   )
+})
+
+describe('middleware path hardening', () => {
+  it('gates a doubled-slash admin path', async () => {
+    const response = await run('//shop//admin')
+
+    expect(response.headers.get('location')).toContain('/shop/login')
+  })
 })

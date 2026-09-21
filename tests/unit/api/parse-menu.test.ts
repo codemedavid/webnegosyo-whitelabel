@@ -62,7 +62,7 @@ describe('POST /api/ai/parse-menu', () => {
         originalEnv = { ...process.env }
         process.env.OPENROUTER_API_KEY = 'test-openrouter-key'
 
-        const { createClient } = await import('@/lib/supabase/server') as { createClient: jest.Mock<() => Promise<unknown>> }
+        const { createClient } = await import('@/lib/supabase/server') as unknown as { createClient: jest.Mock<() => Promise<unknown>> }
         mockCreateClient = createClient
 
         // Default: authenticated superadmin

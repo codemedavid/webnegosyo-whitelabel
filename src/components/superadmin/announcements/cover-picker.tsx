@@ -10,16 +10,21 @@ import { uploadImageToImageKit } from '@/lib/imagekit-upload'
 interface Props {
   url: string | null
   onChange: (url: string | null) => void
+  /** ImageKit folder the upload lands in. */
+  folder?: string
+  /** The line under the drop-zone title. */
+  hint?: string
 }
 
 const COVER_FOLDER = '/platform/whats-new/covers'
+const DEFAULT_HINT = 'or click to browse · 16:9 looks best in the app'
 
 /**
  * The post's hero image: a drop zone while empty, a full-bleed 16:9 image with
  * replace/remove controls once set. Uploads go to ImageKit like every other
  * platform asset.
  */
-export function CoverPicker({ url, onChange }: Props) {
+export function CoverPicker({ url, onChange, folder = COVER_FOLDER, hint = DEFAULT_HINT }: Props) {
   const input = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -32,7 +37,7 @@ export function CoverPicker({ url, onChange }: Props) {
     }
     setIsUploading(true)
     try {
-      const uploaded = await uploadImageToImageKit(file, { folder: COVER_FOLDER })
+      const uploaded = await uploadImageToImageKit(file, { folder })
       onChange(uploaded.url)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Upload failed')
@@ -116,7 +121,7 @@ export function CoverPicker({ url, onChange }: Props) {
         {isUploading ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <ImagePlus className="h-5 w-5 text-white" />}
       </span>
       <span className="text-sm font-medium text-white">{isUploading ? 'Uploading cover…' : 'Drop a cover image'}</span>
-      <span className="text-xs text-white/45">or click to browse · 16:9 looks best in the app</span>
+      <span className="text-xs text-white/45">{hint}</span>
       {hiddenInput}
     </button>
   )

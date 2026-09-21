@@ -79,6 +79,10 @@ const mockState = {
     mockState.connectedAddress = address;
     mockState.isConnected = address !== null;
   },
+  health: {} as Record<string, { status: string; message?: string }>,
+  setPrinterHealth: (address: string, status: string, message?: string) => {
+    mockState.health[address] = message ? { status, message } : { status };
+  },
 };
 
 jest.mock("../stores/printer-store", () => ({

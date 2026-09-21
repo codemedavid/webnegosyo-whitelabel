@@ -240,7 +240,7 @@ This checkpoint supersedes the earlier “next slice” lists for setup, wallet,
 
 ### Deployment artifacts
 
-Apply all prerequisite loyalty migrations, then the eight new migrations from `20260914161000_loyalty_program_management.sql` through `20260914172000_loyalty_settlement_earning_snapshot.sql` in order. Deploy destination schema **Convex v29** / **tenant Supabase v2** before permitting redemption; their updated bundles are included. Configure `/api/loyalty/maintenance` (the checked-in Vercel schedule is every minute), both private keys, trusted ingress, the server release flags, and the new app flag `EXPO_PUBLIC_LOYALTY_POS_SETTLEMENT_ENABLED`. See [integration and operations contract](docs/loyalty-claims-integration.md).
+Apply all prerequisite loyalty migrations, then the eight new migrations from `20260914161000_loyalty_program_management.sql` through `20260914172000_loyalty_settlement_earning_snapshot.sql` in order. Deploy destination schema **Convex v29** / **tenant Supabase v2** before permitting redemption; their updated bundles are included. Configure `/api/loyalty/maintenance` (the checked-in Vercel schedule is every five minutes), both private keys, trusted ingress, the server release flags, and the new app flag `EXPO_PUBLIC_LOYALTY_POS_SETTLEMENT_ENABLED`. See [integration and operations contract](docs/loyalty-claims-integration.md).
 
 ### Still unfinished or outside the supported redemption boundary
 

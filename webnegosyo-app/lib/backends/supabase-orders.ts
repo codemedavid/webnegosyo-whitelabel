@@ -20,7 +20,12 @@
 
 import { ORDER_OUTLET_ID_KEY } from "../order-outlet";
 import { toAddonColumn } from "./addon-columns";
-import { toUuidOrNull } from "../uuid";
+import { isUuid, toUuidOrNull } from "../uuid";
+
+/** A full ISO 8601 instant, the only form `created_at` is ever handed. */
+function isIsoTimestamp(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value)) && /^\d{4}-\d{2}-\d{2}T/.test(value);
+}
 
 /** Statuses an order can hold, in pipeline order. */
 export const ORDER_STATUSES = [
@@ -572,10 +577,26 @@ export interface CreateOrderArgs {
   deliveryFee?: number;
   /** The service charge already inside `total`, when one was levied. */
   serviceCharge?: number;
+  /**
+   * The register's own id for the order (a UUID), so the id it printed on the
+   * receipt is the id the row is stored under. Only a well-formed UUID is
+   * honoured; anything else lets the database mint one as before.
+   */
+  id?: string;
+  /**
+   * When the sale was taken, ISO 8601. A sale kept on the device while the
+   * shop was offline is written later, and its daily number and its place in
+   * the day's report must follow the moment the customer paid, not the sync.
+   */
+  createdAt?: string;
   items: CreateOrderItemArgs[];
 }
 
 export interface OrderInsert {
+  /** Present only when the register supplied its own id. */
+  id?: string;
+  /** Present only when the sale predates the write (taken offline). */
+  created_at?: string;
   tenant_id: string;
   /**
    * Branch that took the order. The platform database has a real column for it;
@@ -670,6 +691,10 @@ export function buildCreateOrderRows(
   args: CreateOrderArgs
 ): { order: OrderInsert; items: OrderItemInsert[] } {
   const order: OrderInsert = {
+    // Spread so an absent id/time sends the exact row shape every deployed
+    // reader has always seen; PostgREST would refuse an explicit `undefined`.
+    ...(isUuid(args.id) ? { id: args.id } : {}),
+    ...(isIsoTimestamp(args.createdAt) ? { created_at: args.createdAt } : {}),
     tenant_id: tenantId,
     outlet_id: outletIdFromCustomerData(args.customerData),
     customer_name: args.customerName,

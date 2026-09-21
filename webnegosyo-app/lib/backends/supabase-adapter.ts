@@ -46,6 +46,7 @@ import {
   type PlatformClient,
 } from "./platform-client";
 import { isUuid, toUuidOrNull } from "../uuid";
+import { PartialOrderWriteError } from "../offline/network-error";
 import { isPlatformAnalyticsRef, runPlatformAnalyticsQuery } from "./supabase-analytics";
 import {
   isPlatformProductCostRef,
@@ -467,6 +468,34 @@ async function getStatsBetween(
 
 // --- mutations ------------------------------------------------------------
 
+/**
+ * Write the line items of an order that has none.
+ *
+ * Only ever called on the idempotent replay path, and only writes when the
+ * order is genuinely empty — so a sale that already has its items is left
+ * exactly as it is rather than doubled.
+ */
+async function ensureOrderItems(
+  client: PlatformClient,
+  tenantId: string,
+  orderId: string,
+  createArgs: CreateOrderArgs
+): Promise<void> {
+  const { items } = buildCreateOrderRows(tenantId, createArgs);
+  if (items.length === 0) return;
+
+  const present = await unwrap<{ id: string }[] | null>(
+    client.from("order_items").select("id").eq("order_id", orderId).limit(1)
+  );
+  if (present && present.length > 0) return;
+
+  await unwrap(
+    client
+      .from("order_items")
+      .insert(items.map((item) => ({ ...item, order_id: orderId })))
+  );
+}
+
 async function createOrder(
   client: PlatformClient,
   tenantId: string,
@@ -485,7 +514,14 @@ async function createOrder(
         .eq("client_order_id", createArgs.clientOrderId)
         .maybeSingle()
     );
-    if (existing) return existing.id;
+    if (existing) {
+      // The order is here, but that does not mean it is complete: the first
+      // attempt may have written the row and then lost the response on the way
+      // back, leaving the items unwritten. Returning early on that would make
+      // the loss permanent, so finish the job before reporting success.
+      await ensureOrderItems(client, tenantId, existing.id, createArgs);
+      return existing.id;
+    }
   }
 
   const { order, items } = buildCreateOrderRows(tenantId, createArgs);
@@ -515,11 +551,10 @@ async function createOrder(
       // coerces a blank or Convex-shaped `menu_item_id` to null, so 22P02 is
       // no longer reachable. What remains is a product deleted between building
       // the rows and inserting them (23503) and other check constraints.
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Order ${inserted.id} was saved but its line items were not (${reason}). ` +
-          "The sale is on the order list with nothing on it — open it and add the items before serving."
-      );
+      // Typed, not a bare Error: the message quotes `reason`, and when that
+      // reason is a network blip the offline layer used to regex-match it,
+      // file the sale as "queued" and discard this sentence.
+      throw new PartialOrderWriteError(inserted.id, error);
     }
   }
 

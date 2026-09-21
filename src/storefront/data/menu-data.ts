@@ -1,6 +1,6 @@
 import type { BundleWithSlots, Category, MenuItem, Outlet, OutletMenuOverride, Tenant } from '@/types/database'
 
-type MenuContents = {
+export interface MenuContents {
   categories: Category[]
   menuItems: MenuItem[]
   bundles: BundleWithSlots[]
@@ -8,12 +8,17 @@ type MenuContents = {
   outletsFailed: boolean
   menuOverrides: OutletMenuOverride[]
   overridesFailed: boolean
-  isBrandAdmin: boolean
 }
 
-/** A missing tenant and a failed read require different storefront states. */
-export type MenuData = MenuContents & (
+/**
+ * The public, visitor-independent menu — what the storefront cache stores.
+ * A missing tenant and a failed read require different storefront states.
+ */
+export type MenuSnapshot = MenuContents & (
   | { status: 'ready'; tenant: Tenant; error: null }
   | { status: 'not-found'; tenant: null; error: string }
   | { status: 'error'; tenant: Tenant | null; error: string }
 )
+
+/** The snapshot plus the one per-visitor fact the page renders. */
+export type MenuData = MenuSnapshot & { isBrandAdmin: boolean }

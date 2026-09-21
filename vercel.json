@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/loyalty/maintenance",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -43,7 +43,10 @@ export function useRegisterPricing(tenantId: string | null): ResourceResult<Regi
   const fetcher = useCallback(() => fetchRegisterPricing(tenantId as string), [tenantId]);
   return useResource<RegisterPricing>(
     tenantId ? resourceKey(REGISTER_PRICING_RESOURCE, tenantId) : null,
-    fetcher
+    fetcher,
+    // Snapshotted WITH the catalog: an offline register charges the channel
+    // prices it last saw, never list prices, on the same rule as a live read.
+    { offlineSnapshot: true }
   );
 }
 

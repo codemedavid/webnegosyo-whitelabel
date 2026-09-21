@@ -12,6 +12,7 @@ import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
 import { PrinterWarmUp } from "../../components/PrinterWarmUp";
+import { OfflineSalesSync } from "../../components/OfflineSalesSync";
 import { GlobalLoyaltySmsDelivery } from "../../components/GlobalLoyaltySmsDelivery";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
@@ -76,6 +77,8 @@ export default function MainLayout() {
       {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
       <GlobalReceiptAutoPrint />
       <PrinterWarmUp />
+      {/* Watches the connection and replays counter sales taken offline. */}
+      <OfflineSalesSync />
       {/* Delivers loyalty OTPs from an enrolled Android handset; gated, Android-only. */}
       <GlobalLoyaltySmsDelivery />
       {/* Renders only while a superadmin is viewing another store. */}

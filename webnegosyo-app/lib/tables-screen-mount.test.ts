@@ -67,20 +67,24 @@ describe("tables tab registration", () => {
   });
 });
 
-describe("tables dine-in gate", () => {
-  it("is answered in tab-visibility, never inline in the layout", () => {
-    expect(read("lib", "tab-visibility.ts")).toMatch(/DINE_IN_TABS/);
-    expect(read("lib", "tab-visibility.ts")).toMatch(/takesDineIn/);
-    const layout = read("app", "(main)", "_layout.tsx");
-    expect(layout).not.toMatch(/takesDineIn\s*&&/);
-    expect(layout).not.toMatch(/takesDineIn\s*\?/);
+describe("the floor has no config gate", () => {
+  // The floor was once hidden unless the store had an ENABLED order type of
+  // kind dine_in. That read "does this shop seat people?" off the online
+  // menu, and got it wrong for every restaurant taking web orders for
+  // delivery only: no door, so no way to draw a first table. The grant is the
+  // gate now, and these pin that no config gate creeps back in.
+  it("is asked nowhere — not in tab-visibility, not inline in the layout", () => {
+    const visibility = read("lib", "tab-visibility.ts");
+    expect(visibility).not.toMatch(/DINE_IN_TABS/);
+    expect(visibility).not.toMatch(/takesDineIn/);
+    expect(read("app", "(main)", "_layout.tsx")).not.toMatch(/takesDineIn/);
   });
 
-  it("is asked once, where every surface reads its gates from", () => {
-    // The bar, both hubs, the sub-screen doors and Home's quick actions all
-    // read one context; asking dine-in anywhere else lets them disagree.
-    expect(read("lib", "use-tab-visibility-context.ts")).toMatch(/useDineIn\(\)/);
-    expect(read("lib", "tutorial", "use-tutorial.ts")).toMatch(/useDineIn\(\)/);
+  it("leaves no dine-in read behind in either context constructor", () => {
+    // Two files build a TabVisibilityContext. A gate asked in one and not the
+    // other is a screen the bar offers and the tutorial denies.
+    expect(read("lib", "use-tab-visibility-context.ts")).not.toMatch(/useDineIn/);
+    expect(read("lib", "tutorial", "use-tutorial.ts")).not.toMatch(/useDineIn/);
   });
 });
 

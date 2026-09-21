@@ -1,5 +1,6 @@
 /**
- * Rows for the "Customer Details" card on the order screen.
+ * Rows for the "Customer Details" card on the order screen — and for the
+ * receipt's "Checkout answers" block, which prints the same rows on paper.
  *
  * `customerData` is a free-form blob: checkout writes the extra fields a
  * merchant asked for (address, landmark, table number), but the platform also
@@ -7,7 +8,17 @@
  * tender, the advance-order schedule. Those are rendered by their own cards,
  * so anything that is not a scalar is dropped here rather than stringified
  * into "[object Object]".
+ *
+ * Mirror (deliberate duplication, like `receipt-layout.ts`) of
+ * `src/lib/customer-details.ts` on the web. Keep the two in sync.
  */
+
+/**
+ * The internal field name the checkout's address widget is keyed on: the
+ * address autocomplete, the delivery fee and the radius check all hang off
+ * the NAME, and so does the receipt's address block.
+ */
+export const DELIVERY_ADDRESS_FIELD_NAME = 'delivery_address';
 
 /** Fields rendered elsewhere on the screen, or never meant for merchant eyes. */
 const HIDDEN_FIELDS = new Set([
@@ -21,7 +32,22 @@ const HIDDEN_FIELDS = new Set([
   'payment_proof_reference',
   'payment_proof_url',
   'payment_proof_public_id',
+  // Platform carrier keys: machine values the customer never typed and never
+  // wants to read. Each has a human twin that IS shown — the branch name for
+  // the branch id, the captured label for the raw schedule instant.
+  'outlet_id',
+  'scheduled_for',
+  '_inventory_selections',
 ]);
+
+/**
+ * Labels for keys that do not humanise into anything a customer would
+ * recognise. Everything else is its key with the underscores taken out.
+ */
+const LABEL_OVERRIDES: Record<string, string> = {
+  outlet_name: 'Branch',
+  scheduled_for_label: 'Scheduled For',
+};
 
 export interface CustomerDetailRow {
   key: string;
@@ -30,6 +56,8 @@ export interface CustomerDetailRow {
 }
 
 function formatFieldLabel(key: string): string {
+  const override = LABEL_OVERRIDES[key];
+  if (override) return override;
   return key
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());

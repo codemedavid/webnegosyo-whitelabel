@@ -56,6 +56,10 @@ jest.mock("../stores/printer-store", () => {
       state.connectedAddress = address;
       state.isConnected = address !== null;
     }),
+    health: {} as Record<string, { status: string; message?: string }>,
+    setPrinterHealth: jest.fn((address: string, status: string, message?: string) => {
+      state.health[address] = message ? { status, message } : { status };
+    }),
   };
   return { usePrinterStore: { getState: () => state } };
 });
@@ -98,7 +102,10 @@ describe("lib/printer.ts — timeouts and reconnect resilience", () => {
     await jest.advanceTimersByTimeAsync(120_000);
     const result = await pending;
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/timed out/i);
+    // The raw "timed out after 10s" is translated on its way out: a cashier
+    // needs the next action, not the native string. What this test pins is
+    // that the call SETTLES with a failure rather than hanging forever.
+    expect(result.error).toMatch(/switched on and in range/i);
   });
 
   it("connectPrinter rescans and retries once when a saved printer is unknown to the native side (post-relaunch)", async () => {
@@ -135,6 +142,6 @@ describe("lib/printer.ts — timeouts and reconnect resilience", () => {
     await jest.advanceTimersByTimeAsync(120_000);
     const result = await pending;
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/timed out/i);
+    expect(result.error).toMatch(/switched on and in range/i);
   });
 });

@@ -16,6 +16,7 @@ import {
   KeyRound,
   CreditCard,
   Megaphone,
+  GraduationCap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -56,6 +57,7 @@ const navGroups: SidebarGroup[] = [
       { label: 'MCP Keys', href: '/superadmin/mcp-keys', icon: KeyRound },
       { label: 'Subscriptions', href: '/superadmin/subscriptions', icon: CreditCard },
       { label: "What's New", href: '/superadmin/whats-new', icon: Megaphone },
+      { label: 'University', href: '/superadmin/university', icon: GraduationCap },
     ],
   },
 ]

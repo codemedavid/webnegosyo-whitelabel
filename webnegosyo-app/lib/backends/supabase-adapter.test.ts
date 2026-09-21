@@ -8,6 +8,10 @@ import {
   runPlatformMutation,
   type PlatformClient,
 } from "./supabase-adapter";
+import {
+  PartialOrderWriteError,
+  isNetworkFailure,
+} from "../offline/network-error";
 import type { BranchScope } from "../branch-scope";
 
 /**
@@ -496,9 +500,12 @@ describe("runPlatformMutation — orders:createOrder", () => {
   });
 
   it("returns the existing order when the same submit is retried", async () => {
-    // Arrange: a flaky network retry must not double-charge the customer.
+    // Arrange: a flaky network retry must not double-charge the customer. The
+    // first submit completed, so the items are already there and the replay
+    // only confirms it.
     const { client, calls } = fakeClient({
       orders: [{ data: { id: "already-there" }, error: null }],
+      order_items: [{ data: [{ id: "existing-item" }], error: null }],
     });
 
     // Act
@@ -507,9 +514,8 @@ describe("runPlatformMutation — orders:createOrder", () => {
       clientOrderId: "abc-123",
     });
 
-    // Assert
+    // Assert: no second order, and no second set of items.
     expect(orderId).toBe("already-there");
-    expect(calls.map((c) => c.table)).toEqual(["orders"]);
     expect(opsOf(calls, "insert")).toEqual([]);
   });
 
@@ -526,6 +532,55 @@ describe("runPlatformMutation — orders:createOrder", () => {
       runPlatformMutation(client, TENANT, "orders:createOrder", args)
     ).rejects.toThrow("constraint violation");
   });
+
+  it("reports a half-written sale as a repair, not an outage", async () => {
+    // Arrange: the order row lands, then the network drops before the items do.
+    // The register must show this to the cashier — queueing it would replay
+    // onto an order that already exists and lose the items for good.
+    const { client } = fakeClient({
+      orders: [{ data: { id: "new-order" }, error: null }],
+      order_items: [{ data: null, error: { message: "Network request failed" } }],
+    });
+
+    // Act
+    const failure = await runPlatformMutation(
+      client,
+      TENANT,
+      "orders:createOrder",
+      args
+    ).catch((error: unknown) => error);
+
+    // Assert
+    expect(failure).toBeInstanceOf(PartialOrderWriteError);
+    expect(isNetworkFailure(failure)).toBe(false);
+    expect((failure as PartialOrderWriteError).orderId).toBe("new-order");
+  });
+
+  it("writes the missing items when a replay finds the order already there", async () => {
+    // Arrange: the first attempt saved the order and lost the response, so the
+    // sale was queued and is now replaying. The order exists; it has no items.
+    const { client, calls } = fakeClient({
+      orders: [{ data: { id: "already-there" }, error: null }],
+      order_items: [
+        { data: [], error: null },
+        { data: null, error: null },
+      ],
+    });
+
+    // Act
+    const orderId = await runPlatformMutation(client, TENANT, "orders:createOrder", {
+      ...args,
+      clientOrderId: "abc-123",
+    });
+
+    // Assert
+    expect(orderId).toBe("already-there");
+    const [itemsInsert] = opsOf(calls, "insert").slice(-1);
+    expect(itemsInsert[0]).toEqual([
+      expect.objectContaining({ order_id: "already-there" }),
+    ]);
+  });
+
 });
 
 describe("runPlatformMutation — prep time", () => {

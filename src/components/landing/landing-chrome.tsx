@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { BrandButton } from './landing-ui'
-import { BRAND, CHECKOUT_URL, NAV_LINKS, SMARTMENU, SPONSOR_STRIP } from './landing-theme'
+import { BRAND, CHECKOUT_URL, NAV_LINKS, NAV_PAGE_LINKS, SMARTMENU, SPONSOR_STRIP } from './landing-theme'
 
 export function LandingNav() {
   return (
@@ -34,7 +34,7 @@ export function LandingNav() {
         </Link>
 
         <ul className="hidden items-center gap-7 md:flex">
-          {NAV_LINKS.map((link) => (
+          {[...NAV_LINKS, ...NAV_PAGE_LINKS].map((link) => (
             <li key={link.href}>
               <Link
                 href={link.href}
@@ -87,6 +87,7 @@ export function SponsorStrip() {
 const FOOTER_LINKS = [
   { href: '/privacy', label: 'Privacy Policy' },
   { href: '/support', label: 'Support' },
+  { href: '/university', label: 'University' },
 ] as const
 
 export function LandingFooter() {

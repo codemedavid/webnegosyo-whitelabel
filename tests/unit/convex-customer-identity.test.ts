@@ -98,3 +98,29 @@ describe('customerIdentity existing helpers', () => {
     expect(isIdentifiableCustomer('+639171234567')).toBe(true)
   })
 })
+
+/**
+ * Parity with the web app's `contact-field-keys`: a merchant-named phone field
+ * is a phone field on both sides, so an order groups under the same customer
+ * whichever backend stored it.
+ */
+describe('resolveAnalyticsContact — merchant-named contact fields', () => {
+  it('recovers a phone from a merchant-named field', () => {
+    expect(resolveAnalyticsContact('', { 'Contact Number': '09171234567' })).toBe('+639171234567')
+    expect(resolveAnalyticsContact('', { 'Mobile Number': '0917 123 4567' })).toBe('+639171234567')
+    expect(resolveAnalyticsContact('', { phone_number: '+639171234567' })).toBe('+639171234567')
+  })
+
+  it('recovers an email from a merchant-named field', () => {
+    expect(resolveAnalyticsContact('', { 'Email Address': 'Ana@Example.COM' })).toBe('ana@example.com')
+  })
+
+  it('never reads a table number as a contact', () => {
+    expect(resolveAnalyticsContact('', { table_number: '09171234567' })).toBe('')
+    expect(resolveAnalyticsContact('', { 'Table Number': '09171234567' })).toBe('')
+  })
+
+  it('never mines a free-text note that merely mentions a number', () => {
+    expect(resolveAnalyticsContact('', { 'Special Instructions': 'call 09171234567' })).toBe('')
+  })
+})

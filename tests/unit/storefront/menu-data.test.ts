@@ -1,7 +1,17 @@
-import { getMenuData } from '@/app/[tenant]/menu/menu-server'
-import { createClient } from '@/lib/supabase/server'
+/**
+ * Behaviour of the menu page's data, driven through the cached storefront
+ * stack with the cache itself a pass-through: every read hits the fake
+ * database, so failure carrying and query shapes are observable.
+ */
+import { createPublicClient } from '@/lib/supabase/public'
 
-jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
+jest.mock('@/lib/supabase/public', () => ({ ...jest.requireActual('@/lib/supabase/public'), createPublicClient: jest.fn() }))
+jest.mock('next/cache', () => ({ unstable_cache: (fn: unknown) => fn }))
+// Cookie-bound and irrelevant here: the per-visitor admin flag is proven in
+// storefront-brand-admin.test.ts.
+jest.mock('@/lib/storefront/brand-admin', () => ({ resolveIsBrandAdmin: jest.fn().mockResolvedValue(false) }))
+
+const getMenuData = async (slug: string) => (await import('@/app/[tenant]/menu/menu-server')).getMenuData(slug)
 
 type Row = Record<string, unknown>
 type QueryError = { message: string; code?: string }
@@ -13,7 +23,6 @@ function database(
 ) {
   const queries: Query[] = []
   const client = {
-    auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
     from(table: string) {
       const query: Query = { table, filters: [] }
       queries.push(query)
@@ -40,7 +49,7 @@ function database(
       return builder
     },
   }
-  jest.mocked(createClient).mockResolvedValue(client as unknown as Awaited<ReturnType<typeof createClient>>)
+  jest.mocked(createPublicClient).mockReturnValue(client as unknown as ReturnType<typeof createPublicClient>)
   return { queries }
 }
 

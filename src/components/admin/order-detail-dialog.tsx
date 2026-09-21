@@ -7,6 +7,7 @@ import { format, formatDistance } from 'date-fns'
 import { orderSummaryRows } from '@/lib/order-summary-rows'
 import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { readOrderDiscount } from '@/lib/order-discount'
+import { buildCustomerDetailRows } from '@/lib/customer-details'
 import {
   Package,
   UtensilsCrossed,
@@ -133,6 +134,10 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
   }
 
   const orderTypeConfig = getOrderTypeConfig(order.order_type)
+  // What the customer filled in at checkout, minus the platform's own carrier
+  // keys — resolved by the module the receipt prints from, so the dialog and
+  // the paper never disagree about what an order captured.
+  const customerDetailRows = buildCustomerDetailRows(order.customer_data)
   // Keyed on the order TYPE, not on "has a quotation": a delivery whose
   // quotation was never stored or has been cleared still needs the tab, or
   // there is no way to get a new quote for it.
@@ -367,31 +372,24 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                       )}
                     </div>
 
-                    {/* Additional Info */}
-                    {order.customer_data && Object.keys(order.customer_data).length > 0 && (
+                    {/* Additional Info — the same rows the receipt prints. */}
+                    {customerDetailRows.length > 0 && (
                       <div className="space-y-3">
                         <h4 className="font-medium text-sm text-muted-foreground">Additional Information</h4>
                         <div className="space-y-3">
-                          {Object.entries(order.customer_data)
-                            .filter(([key, value]) =>
-                              // The branch has its own banner above; these are
-                              // the raw carrier keys behind it.
-                              !['_inventory_selections', 'scheduled_for', 'scheduled_for_label', 'delivery_lat', 'delivery_lng', 'messenger_psid', 'outlet_id', 'outlet_name'].includes(key) &&
-                              value !== '' && value != null
-                            )
-                            .map(([key, value]) => {
-                            const isAddress = key.toLowerCase().includes('address')
+                          {customerDetailRows.map((row) => {
+                            const isAddress = row.key.toLowerCase().includes('address')
                             return (
                               <div
-                                key={key}
+                                key={row.key}
                                 className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg"
                               >
                                 {isAddress && <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />}
                                 <div className="flex-1">
-                                  <div className="text-sm text-muted-foreground capitalize mb-1">
-                                    {key.replace(/_/g, ' ')}
+                                  <div className="text-sm text-muted-foreground mb-1">
+                                    {row.label}
                                   </div>
-                                  <div className="font-medium break-words">{String(value)}</div>
+                                  <div className="font-medium break-words">{row.value}</div>
                                 </div>
                               </div>
                             )

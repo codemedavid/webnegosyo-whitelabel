@@ -28,8 +28,9 @@ The entire app is multi-tenant. Tenant resolution happens in `src/middleware.ts`
 - **Priority**: Custom domain > Subdomain > Path-based routing
 - Subdomains use `PLATFORM_ROOT_DOMAIN` env var. Local dev uses `<tenant>.localhost`.
 - Reserved subdomains: `www`, `superadmin`, `app`, `admin`
-- In-memory caches (5 min TTL, max 1000 entries) for domain lookups and tenant existence checks
-- Middleware rewrites subdomain/custom domain requests to path-based routes (`/[tenant]/...`)
+- Custom domains resolve through `src/lib/tenant-domains.ts`: ONE query loads every active custom domain into a per-runtime directory (5 min TTL, stale-on-error, 10s retry back-off). Subdomains are pure parsing (`src/lib/tenant-host.ts`) — the middleware never validates a slug; the storefront's cached tenant read renders "not found".
+- Middleware rewrites subdomain/custom domain requests to path-based routes (`/[tenant]/...`) and gates `/admin` on the SERVED path (the rewrite target). Route classification lives in `src/lib/middleware/routes.ts`.
+- Every Supabase client used on a request path has a bounded fetch (`src/lib/supabase/timed-fetch.ts`). Admin layouts (`superadmin`, `[tenant]/admin`) are `force-dynamic` so a build never renders against the live database.
 
 ### Route Structure
 
@@ -222,3 +223,12 @@ Feature flags are per-tenant boolean columns on the `tenants` table, controlled 
 - Validate with Zod schemas. Forms use React Hook Form + `@hookform/resolvers`.
 - Styling: Tailwind CSS 4, mobile-first. Use Shadcn UI and Radix primitives.
 - Run `npm run lint` before considering a task complete (Vercel deployment will fail on lint errors).
+
+### Logging
+
+Request-path logging goes through `src/lib/logger.ts` (`createLogger(label, flagKey)`) — edge-safe, no dependencies. Do not re-implement the gate inline.
+
+- `log.debug(...)` is **opt-in per namespace** and silent by default, including in development. Middleware re-runs on RSC prefetches and client-side navigations, so unconditional dev tracing prints the same lines many times per page view and buries real errors.
+- `log.error(...)` is **never gated** — middleware catch blocks must stay visible in Vercel logs.
+
+Turn tracing on with an env var: `DEBUG_TENANT_RESOLUTION=true` (tenant resolver), `DEBUG_MIDDLEWARE=true` (middleware rewrites), or `DEBUG_ALL=true` for every namespace. Only the exact string `true` counts. Add new namespaces to `DebugFlagKey` and `readDebugFlags()` in the same file.

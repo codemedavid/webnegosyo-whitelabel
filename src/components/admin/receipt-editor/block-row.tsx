@@ -19,6 +19,7 @@ export const DETAIL_LABEL_DEFAULTS: Partial<Record<ReceiptBlockKind, string>> = 
   customerName: 'Customer',
   orderType: 'Type',
   tableNumber: 'Table',
+  deliveryAddress: 'Address',
 }
 
 const DIVIDER_STYLES = [
@@ -48,7 +49,15 @@ interface DraftBlock {
 
 type RenamableDetailBlock = Extract<
   ReceiptBlock,
-  { kind: 'orderNumber' | 'orderDate' | 'customerName' | 'orderType' | 'tableNumber' }
+  {
+    kind:
+      | 'orderNumber'
+      | 'orderDate'
+      | 'customerName'
+      | 'orderType'
+      | 'tableNumber'
+      | 'deliveryAddress'
+  }
 >
 
 function asRenamableDetail(block: ReceiptBlock): RenamableDetailBlock | null {
@@ -57,7 +66,8 @@ function asRenamableDetail(block: ReceiptBlock): RenamableDetailBlock | null {
     block.kind === 'orderDate' ||
     block.kind === 'customerName' ||
     block.kind === 'orderType' ||
-    block.kind === 'tableNumber'
+    block.kind === 'tableNumber' ||
+    block.kind === 'deliveryAddress'
   ) {
     return block
   }

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import { getCachedTenantBySlug } from '@/lib/cache'
+import { getStorefrontTenant } from '@/lib/storefront/storefront-tenant'
 import { NavigationProgress } from '@/components/shared/navigation-progress'
 import { SiteFooter } from '@/components/customer/site-footer'
 import { TenantFlashProvider } from '@/components/customer/flash-screen-loader'
@@ -16,8 +16,7 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { tenant: tenantSlug } = await params
 
-    // Fetch tenant data
-    const tenant = await getCachedTenantBySlug(tenantSlug)
+    const { tenant } = await getStorefrontTenant(tenantSlug)
 
     if (!tenant) {
         return {
@@ -39,7 +38,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function TenantLayout({ params, children }: Props) {
     const { tenant: tenantSlug } = await params
-    const tenant = await getCachedTenantBySlug(tenantSlug)
+    // Shared with the menu layout and page: one cached read, no per-request
+    // query. A failed read renders the chrome without branding rather than
+    // crashing the route — the page body reports the failure.
+    const { tenant } = await getStorefrontTenant(tenantSlug)
     const primaryColor = (tenant?.primary_color as string) || undefined
     // Resolve the branded flash loading state once (we have the tenant here) so
     // every route-level loading.tsx can pick it up via context without needing

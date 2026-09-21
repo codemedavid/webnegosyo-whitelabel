@@ -23,6 +23,7 @@ import {
   TENANT_SESSION_SELECT,
 } from "../../lib/session-resolve";
 import { colors, typography, radius, spacing, shadow } from "../../theme/colors";
+import { saveSessionSnapshot } from "../../lib/offline/session-snapshot";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -108,6 +109,8 @@ export default function LoginScreen() {
       // params are already consumed, which crashes react-navigation with
       // "Cannot read property 'stale' of undefined".
       setAuth(session.auth);
+      // What an offline launch opens on next time (lib/offline/session-snapshot.ts).
+      void saveSessionSnapshot(session.auth);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Login failed";

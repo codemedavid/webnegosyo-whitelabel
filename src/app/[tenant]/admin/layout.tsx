@@ -6,6 +6,10 @@ import { fetchSubscription } from '@/lib/billing/subscription-repository'
 import { resolveSubscriptionAccess } from '@/lib/billing/subscription-status'
 import type { Tenant } from '@/types/database'
 
+// Authenticated, per-request, never pre-rendered at build time (see the
+// superadmin layout for why this is pinned rather than inferred).
+export const dynamic = 'force-dynamic'
+
 export default async function AdminLayout({ 
   children,
   params,

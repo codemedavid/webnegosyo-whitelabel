@@ -18,7 +18,6 @@ const owner: TabVisibilityContext = {
   caller: { role: "admin", isOwner: true, permissions: null },
   audience: { accountScope: { kind: "all" }, activeOutletCount: 3, isDemo: false },
   takesAdvanceOrders: true,
-  takesDineIn: true,
 };
 
 describe("SUBSCREEN_PARENTS", () => {

@@ -36,11 +36,13 @@ import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
 import { resolveRegisterOutlet } from "../../lib/register-outlet";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { buildPosStockItems } from "../../lib/pos-stock";
-import { notifyPosStockDepletion, notifyOrderStockRevision } from "../../lib/pos-stock-notify";
-import { notifyLoyversePosSale, posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
-import { notifyCustomerCapture } from "../../lib/customers/capture";
-import { notifyPosSaleActivity } from "../../lib/staff-activity/report-pos-sale";
+import { notifyOrderStockRevision } from "../../lib/pos-stock-notify";
+import { posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
 import { burnPosRedemptions } from "../../lib/voucher-service";
+import { placeCounterSale } from "../../lib/offline/place-sale";
+import { newLocalOrderId } from "../../lib/offline/local-id";
+import { runPosSaleBookkeeping } from "../../lib/offline/pos-sale-bookkeeping";
+import { resourceSnapshotKey, withOfflineSnapshot } from "../../lib/offline/resource-snapshot";
 import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
 import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
@@ -76,7 +78,10 @@ async function settleSaleInBackground(settle: () => Promise<void>): Promise<void
 }
 
 export default function PosTenderScreen() {
-  const tenantId = useAuthStore((s) => s.tenantId);
+  // The store the sale belongs to, impersonation included: every mutation
+  // and the outbox replay scope the same way, and a superadmin inside a
+  // store has no tenant of their own to fall back on.
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const saleOutlet = usePosCartStore((s) => s.saleOutlet);
   const editing = usePosCartStore((s) => s.editContext);
@@ -204,9 +209,20 @@ export default function PosTenderScreen() {
     }
     let cancelled = false;
 
-    const load = editContext
-      ? listAllPaymentMethods(tenantId)
-      : listPaymentMethods(tenantId, orderTypeId as string);
+    // Snapshotted like the menu: with no connection the tender screen still
+    // offers the methods it last saw, instead of an empty picker that blocks
+    // the swipe (lib/offline/resource-snapshot.ts).
+    const snapshotKey = resourceSnapshotKey([
+      "resource",
+      "payment-methods",
+      tenantId,
+      editContext ? "all" : (orderTypeId as string),
+    ]);
+    const load = withOfflineSnapshot(snapshotKey, () =>
+      editContext
+        ? listAllPaymentMethods(tenantId)
+        : listPaymentMethods(tenantId, orderTypeId as string)
+    );
 
     load
       .then((rows) => {
@@ -467,11 +483,50 @@ export default function PosTenderScreen() {
         outlet: saleOutlet,
       });
 
+      if (!tenantId) throw new Error("No store selected");
+
       // `buildPosOrder` reports the charge unconditionally; the gate decides
       // whether this particular deployment can be told about it.
       const { serviceCharge: builtCharge, ...rest } = args;
-      const orderId = await createOrder({ ...rest, ...serviceChargeArg(builtCharge) });
+      const backend = resolveOrderBackend({
+        order_backend: orderBackend,
+        convex_deployment_url: convexUrl,
+      });
+      const localId = newLocalOrderId();
       const createdAt = Date.now();
+      // The platform database keeps the id the register prints and the moment
+      // the sale was taken, so a sale written later (offline) still lands on
+      // the right day under the id on the customer's receipt. Convex validates
+      // its arguments strictly and takes neither, so it is told nothing new.
+      const platformFields =
+        backend === "platform"
+          ? { id: localId, createdAt: new Date(createdAt).toISOString() }
+          : {};
+      const orderArgs = { ...rest, ...serviceChargeArg(builtCharge), ...platformFields };
+      // Everything the sale owes the platform after the row exists, computed
+      // NOW from the cart, so a sale replayed after an outage reports exactly
+      // what a live one would (lib/offline/pos-sale-bookkeeping.ts).
+      const bookkeeping = {
+        stockItems: buildPosStockItems(lines),
+        loyverseLines: posLinesToLoyverseOrderLines(lines),
+        discountLines: [...discountLines],
+        outletId,
+        total: args.total,
+        customerName: args.customerName,
+        customerContact: args.customerContact,
+        customerData: args.customerData,
+        channel: args.orderType ?? null,
+        captureItems: lines.map((line) => ({ name: line.name, quantity: line.quantity })),
+      };
+
+      // Server first; kept on this device only when the server cannot be
+      // reached (lib/offline/place-sale.ts). A refusal still throws to the
+      // alert below, exactly as before.
+      const outcome = await placeCounterSale({
+        createOrder,
+        sale: { localId, tenantId, backend, clientOrderId, createdAt, orderArgs, bookkeeping },
+      });
+      const orderId = outcome.kind === "written" ? outcome.orderId : outcome.localId;
 
       // Paper starts NOW — before the paid-status write, the bookkeeping and
       // the navigation. The customer is standing at the counter, and every
@@ -492,11 +547,14 @@ export default function PosTenderScreen() {
       );
 
       // Counter sales are settled at the drawer, so they are paid on creation.
-      // A failure here must not lose the sale — the order already exists.
-      try {
-        await updatePaymentStatus({ orderId, paymentStatus: "paid" });
-      } catch (err) {
-        console.warn("[pos] Could not mark the sale paid:", err);
+      // A failure here must not lose the sale — the order already exists. A
+      // queued sale is marked paid when it is written (lib/offline/sync-outbox.ts).
+      if (outcome.kind === "written") {
+        try {
+          await updatePaymentStatus({ orderId, paymentStatus: "paid" });
+        } catch (err) {
+          console.warn("[pos] Could not mark the sale paid:", err);
+        }
       }
 
       // The sale is saved and paid: hand the till back NOW. Everything below
@@ -511,80 +569,20 @@ export default function PosTenderScreen() {
       goTo(router, "/(main)/pos-sales");
 
       void settleSaleInBackground(async () => {
-      // Everything the sale owes the platform, reported TOGETHER rather than
-      // one after another. None of them can throw and none depends on
-      // another's answer.
-      if (tenantId) {
-        await Promise.all([
-          // Spend the sale's ingredients. The order lives in Convex, so it
-          // never passes through the web app's createOrderAction where
-          // depletion is wired — this is the register's way into that path.
-          notifyPosStockDepletion(
-            tenantId,
-            String(orderId),
-            buildPosStockItems(lines),
-          ),
+        // Everything the sale owes the platform — stock, Loyverse, voucher
+        // burns, the activity line, customer capture — reported together
+        // through the one runner the offline replay also uses. A sale kept on
+        // the device owes it later, once the server holds the order.
+        if (outcome.kind === "written") {
+          await runPosSaleBookkeeping({ tenantId, orderId, backend, createdAt, bookkeeping });
+        }
 
-          // Record the counter sale in Loyverse as a completed receipt. Fires
-          // once per tender; the server no-ops for non-Loyverse tenants. A
-          // missing back-office receipt must not fail a paid sale.
-          notifyLoyversePosSale(
-            tenantId,
-            String(orderId).slice(-6).toUpperCase(),
-            posLinesToLoyverseOrderLines(lines),
-          ),
-
-          // Burn what this sale used. The register cannot call redeem_voucher()
-          // itself — it is service_role only — so this goes through the web app
-          // on the cashier's own token. The customer has already paid, and the
-          // burn is keyed on the order id so a retry is a no-op.
-          burnPosRedemptions(tenantId, String(orderId), discountLines, outletId),
-
-          // Roll the sale into its guest's profile. Same reasoning as depletion:
-          // counter sales reach none of the web app's order actions, which are
-          // the only places customer capture is wired, so without this a POS
-          // sale is invisible to the Regulars list. Skips itself for an
-          // anonymous walk-in.
-          // Put the cashier's name on the sale in the platform's activity
-          // log, so "sales rung by Ana" reads from the same table as "orders
-          // Ana confirmed". Anonymous walk-ins never reach customer capture,
-          // so that post cannot carry this.
-          notifyPosSaleActivity(tenantId, {
-            backend: resolveOrderBackend({
-              order_backend: orderBackend,
-              convex_deployment_url: convexUrl,
-            }),
-            orderId: String(orderId),
-            total: args.total,
-            outletId,
-          }),
-
-          notifyCustomerCapture(tenantId, {
-            backend: resolveOrderBackend({
-              order_backend: orderBackend,
-              convex_deployment_url: convexUrl,
-            }),
-            orderId: String(orderId),
-            name: args.customerName,
-            contact: args.customerContact,
-            customerData: args.customerData,
-            total: args.total,
-            createdAt: new Date().toISOString(),
-            channel: args.orderType ?? null,
-            items: lines.map((line) => ({
-              name: line.name,
-              quantity: line.quantity,
-            })),
-          }),
-        ]);
-      }
-
-      // The print queue serialises against the kitchen chit, and a dead
-      // printer only logs — the sale is already in the drawer. Built from the
-      // arguments the sale was written with, so the paper carries every
-      // figure the order does — delivery fee, service charge and discount
-      // included. See `lib/pos-receipt.ts`.
-      await receiptPrinted;
+        // The print queue serialises against the kitchen chit, and a dead
+        // printer only logs — the sale is already in the drawer. Built from the
+        // arguments the sale was written with, so the paper carries every
+        // figure the order does — delivery fee, service charge and discount
+        // included. See `lib/pos-receipt.ts`.
+        await receiptPrinted;
       });
     } catch (err) {
       // A store several bundles behind rejects `source: "pos"` outright — its

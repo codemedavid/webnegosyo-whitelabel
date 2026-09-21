@@ -16,7 +16,8 @@ import { join } from 'path'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 
 describe('the storefront menu grid', () => {
-  const source = read('src/app/[tenant]/menu/menu-server.tsx')
+  // The grid and slot queries live in the storefront catalog loader.
+  const source = read('src/lib/storefront/storefront-catalog.ts')
 
   /*
    * The grid query and the bundle-slot query are both `from('menu_items')`, so

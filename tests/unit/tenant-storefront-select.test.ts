@@ -1,4 +1,5 @@
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
+import { getFooterConfig } from '@/lib/footer-utils'
 
 /**
  * The storefront (menu page) projection must select every hero element color
@@ -108,5 +109,59 @@ describe('TENANT_STOREFRONT_SELECT welcome page columns', () => {
 
   it.each(WELCOME_COLUMNS)('projects %s', (column) => {
     expect(tokens).toContain(column)
+  })
+})
+
+/**
+ * The footer is rendered from the same tenant row the menu page fetches, so
+ * every column `getFooterConfig` reads must be in the projection. When the
+ * storefront layout moved off `select('*')` onto this projection, none of the
+ * 35 `footer_*` columns came with it: `footer_enabled` read `undefined`, which
+ * is not `false`, so the footer still rendered — emptied. Live storefronts lost
+ * their address, phone, WhatsApp/Viber, every social link and all four policy
+ * pages, while the Branding Studio preview (which merges the full tenant
+ * object) kept looking correct.
+ *
+ * Rather than restate the column list — which would drift the moment the footer
+ * grows a field — this records what the function actually reads and asserts the
+ * projection covers it.
+ */
+describe('TENANT_STOREFRONT_SELECT footer columns', () => {
+  const tokens = TENANT_STOREFRONT_SELECT.split(/[\s,]+/).filter(Boolean)
+
+  /** Every tenant key `getFooterConfig` touches, captured as it reads them. */
+  function columnsReadByFooterConfig(): string[] {
+    const read = new Set<string>()
+    const probe = new Proxy(
+      {},
+      {
+        get(_target, key) {
+          if (typeof key === 'string') read.add(key)
+          return undefined
+        },
+        has(_target, key) {
+          if (typeof key === 'string') read.add(key)
+          return false
+        },
+      },
+    ) as Record<string, unknown>
+
+    getFooterConfig(probe)
+    return [...read]
+  }
+
+  it('reads a non-trivial set of columns (the probe is actually working)', () => {
+    expect(columnsReadByFooterConfig().length).toBeGreaterThan(30)
+  })
+
+  it('projects every column the footer reads', () => {
+    const missing = columnsReadByFooterConfig().filter(
+      (column) => !tokens.includes(column),
+    )
+    expect(missing).toEqual([])
+  })
+
+  it('projects the address the footer falls back to', () => {
+    expect(tokens).toContain('restaurant_address')
   })
 })

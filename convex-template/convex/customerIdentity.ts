@@ -38,6 +38,15 @@ export function isIdentifiableCustomer(contact: string | undefined): boolean {
 // web app's resolveCustomerIdentity (src/lib/customer-identity.ts).
 const PHONE_KEYS = ["customer_phone", "phone", "mobile", "contact_number", "contact"];
 const EMAIL_KEYS = ["customer_email", "email"];
+
+// ...and when none of them matches, the field NAME decides. Mirrors the web
+// app's src/lib/contact-field-keys.ts: a merchant-named "Contact Number" or
+// "Mobile Number" is a phone field, while anything table-shaped never is —
+// customers do type their number into a table field, and a table is not a
+// contact.
+const PHONE_NAME_SHAPE = /(phone|mobile|cell|contact|viber|whats\s*app)/i;
+const EMAIL_NAME_SHAPE = /e-?mail/i;
+const NEVER_A_CONTACT_SHAPE = /table/i;
 const PH_E164 = /^\+63\d{10}$/;
 
 /**
@@ -71,6 +80,19 @@ function pickField(data: unknown, keys: string[]): string {
   return "";
 }
 
+/** First value under a merchant-named field whose NAME reads like `shape`. */
+function pickNamedField(data: unknown, shape: RegExp, known: string[]): string {
+  if (!data || typeof data !== "object") return "";
+  const bag = data as Record<string, unknown>;
+  for (const key of Object.keys(bag)) {
+    if (known.includes(key) || NEVER_A_CONTACT_SHAPE.test(key)) continue;
+    if (!shape.test(key)) continue;
+    const value = bag[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 /**
  * The canonical grouping key for one order in customer analytics.
  *
@@ -93,12 +115,21 @@ export function resolveAnalyticsContact(
   const dataPhone = normalizePhoneE164(pickField(customerData, PHONE_KEYS));
   if (dataPhone) return dataPhone;
 
+  // 2b. ...or from whatever the merchant named their phone field.
+  const namedPhone = normalizePhoneE164(
+    pickNamedField(customerData, PHONE_NAME_SHAPE, PHONE_KEYS)
+  );
+  if (namedPhone) return namedPhone;
+
   // 3. An identifiable, non-phone contact (e.g. an email stored as the contact).
   if (isIdentifiableCustomer(contact)) return customerKey(contact as string);
 
-  // 4. Email recovered from customerData.
+  // 4. Email recovered from customerData, well-known key then merchant-named.
   const dataEmail = pickField(customerData, EMAIL_KEYS).toLowerCase();
   if (dataEmail.includes("@")) return dataEmail;
+
+  const namedEmail = pickNamedField(customerData, EMAIL_NAME_SHAPE, EMAIL_KEYS).toLowerCase();
+  if (namedEmail.includes("@")) return namedEmail;
 
   // 5. Genuinely anonymous — walk-in.
   return "";

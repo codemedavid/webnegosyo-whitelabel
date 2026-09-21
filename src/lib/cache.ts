@@ -7,6 +7,7 @@ import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import { tenantCacheKeys } from '@/lib/tenant-cache-keys'
+import { revalidateStorefront } from '@/lib/storefront/revalidate'
 import {
   asAppUserQueryClient,
   fetchAppUserScope,
@@ -214,6 +215,9 @@ export async function invalidateTenantCache(
   tenantId: string,
   previousSlug?: string | null
 ): Promise<void> {
+  // The public storefront (menu, layouts, product detail) reads through the
+  // Next data cache, not Redis — purge it in the same breath.
+  revalidateStorefront({ slug: tenantSlug, id: tenantId, previousSlug })
   await Promise.all(
     tenantCacheKeys({ slug: tenantSlug, id: tenantId, previousSlug }).map((key) =>
       invalidateCache(key)

@@ -58,6 +58,7 @@ import { IncomingOrdersSheet } from "../../components/pos/IncomingOrdersSheet";
 import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { OfflineBanner } from "../../components/pos/OfflineBanner";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { Icon } from "../../components/Icon";
 
@@ -395,7 +396,8 @@ export default function PosScreen() {
 
   const productColumn = (
     <>
-      {/* The banner already clears the notch, so the header must not re-pad it. */}
+      {/* Silent while online with nothing queued; see components/pos/OfflineBanner. */}
+      <OfflineBanner />
       <ScreenHeader
         title="POS"
         subtitle={`${visibleItems.length} ${visibleItems.length === 1 ? "product" : "products"}`}

@@ -68,3 +68,82 @@ describe("buildCustomerDetailRows", () => {
     expect(buildCustomerDetailRows(undefined)).toEqual([]);
   });
 });
+
+/**
+ * The same rows now feed the receipt's "checkout answers" block, so the blob's
+ * platform carrier keys — the branch id, the raw schedule timestamp, the
+ * inventory picks — must never reach paper (or the card) as raw rows.
+ */
+describe("buildCustomerDetailRows — platform carrier keys", () => {
+  it("drops the branch id but keeps the branch name, relabelled", () => {
+    const rows = buildCustomerDetailRows({
+      outlet_id: "1b9f2c3d-0000-4444-8888-aaaaaaaaaaaa",
+      outlet_name: "Katipunan",
+    });
+
+    expect(rows).toEqual([{ key: "outlet_name", label: "Branch", value: "Katipunan" }]);
+  });
+
+  it("drops the raw schedule instant and keeps the label the customer saw", () => {
+    const rows = buildCustomerDetailRows({
+      scheduled_for: "2026-09-22T07:00:00.000Z",
+      scheduled_for_label: "Sep 22, 3:00 PM",
+    });
+
+    expect(rows).toEqual([
+      { key: "scheduled_for_label", label: "Scheduled For", value: "Sep 22, 3:00 PM" },
+    ]);
+  });
+
+  it("drops the inventory selections carrier key", () => {
+    const rows = buildCustomerDetailRows({
+      _inventory_selections: "batch-7",
+      landmark: "Beside the blue gate",
+    });
+
+    expect(rows).toEqual([
+      { key: "landmark", label: "Landmark", value: "Beside the blue gate" },
+    ]);
+  });
+})
+
+/**
+ * A redaction guard, not a behaviour test.
+ *
+ * These rows now print on a customer's paper receipt, so the hidden list is a
+ * privacy boundary rather than a tidiness preference. Each key below is
+ * written into `customerData` by a real checkout or register path and must
+ * never reach the paper: a messenger id or a map coordinate identifies the
+ * customer, and a payment reference is a claim on money. Deleting one from
+ * HIDDEN_FIELDS is the kind of edit that looks harmless in review, so it
+ * fails here instead.
+ */
+describe("redaction boundary", () => {
+  const MUST_NEVER_PRINT = [
+    "messenger_psid",
+    "delivery_lat",
+    "delivery_lng",
+    "payment_proof_reference",
+    "payment_proof_url",
+    "payment_proof_public_id",
+    "customer_name",
+    "customer_phone",
+    "customer_contact",
+  ];
+
+  it.each(MUST_NEVER_PRINT)("never renders %s", (key) => {
+    const rows = buildCustomerDetailRows({ [key]: "leaked", landmark: "Blue gate" });
+
+    expect(rows.map((row) => row.key)).toEqual(["landmark"]);
+  });
+
+  it("drops a structured internal rather than stringifying it", () => {
+    const rows = buildCustomerDetailRows({
+      pos: { cashierId: "staff-1", cashTendered: 500 },
+      discount: { code: "SAVE10", amount: 10 },
+      landmark: "Blue gate",
+    });
+
+    expect(rows.map((row) => row.key)).toEqual(["landmark"]);
+  });
+});

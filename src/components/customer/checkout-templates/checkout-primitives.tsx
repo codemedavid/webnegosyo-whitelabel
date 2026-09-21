@@ -18,7 +18,7 @@
 import { useId } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  UtensilsCrossed, Package, Truck, Check, CalendarClock, QrCode, Copy, CreditCard, Bike, ShoppingBag, Store,
+  UtensilsCrossed, Package, Truck, Check, CalendarClock, CreditCard, Bike, ShoppingBag, Store,
   type LucideIcon,
 } from 'lucide-react'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
@@ -28,7 +28,7 @@ import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
 import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { isPaymentProofRequired } from '@/lib/payment-proof'
 import { formatOrderMinimumMessage } from '@/lib/order-minimum'
-import { setAlpha, getCheckoutPalette } from '@/lib/branding-utils'
+import { getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { VoucherField } from './voucher-field'
 import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
@@ -316,153 +316,8 @@ export { AdvanceOrderScheduler } from './advance-order-scheduler'
  */
 export { OrderSummaryLines, type OrderSummaryVariant } from './order-summary-lines'
 
-/** Payment-method selector (radio list + selected details + QR). Branded. */
-export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn }) {
-  const { paymentMethods, selectedPaymentMethod, setSelectedPaymentMethod, openQrDialog, handleCopyText, copiedText, orderType, tenant } = checkout
-  const { accent, accentSoft, accentBorder } = useAccent(checkout)
-
-  if (paymentMethods.length === 0) {
-    if (orderType && tenant) {
-      return (
-        <div className="rounded-2xl bg-yellow-50 border-2 border-yellow-200 p-6">
-          <div className="flex items-start gap-3">
-            <div className="text-yellow-600 mt-1">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-yellow-900 mb-1">No Payment Methods Available</h3>
-              <p className="text-sm text-yellow-800">
-                No payment methods have been set up for this order type yet. You can still proceed with your order, and payment details will be discussed via Messenger.
-              </p>
-            </div>
-          </div>
-        </div>
-      )
-    }
-    return null
-  }
-
-  return (
-    <div className="space-y-3" data-payment-methods>
-      {paymentMethods.map((method) => {
-        const isSelected = selectedPaymentMethod === method.id
-        return (
-          <label
-            key={method.id}
-            className="flex items-start gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all"
-            style={{ borderColor: isSelected ? accent : '#e5e7eb', backgroundColor: isSelected ? accentSoft : '#ffffff' }}
-            onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = accentBorder }}
-            onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = '#e5e7eb' }}
-            onClick={() => setSelectedPaymentMethod(method.id)}
-          >
-            <div className="flex items-center h-6 mt-0.5">
-              <input
-                type="radio"
-                checked={isSelected}
-                onChange={() => setSelectedPaymentMethod(method.id)}
-                className="w-4 h-4"
-                style={{ accentColor: accent }}
-              />
-            </div>
-
-            {method.qr_code_url && (
-              <div
-                className="shrink-0 cursor-pointer hover:opacity-80"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (method.qr_code_url) openQrDialog(method.qr_code_url)
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={method.qr_code_url} alt={`${method.name} QR Code`} className="w-12 h-12 object-cover rounded border" />
-                <div className="text-xs text-gray-500 text-center mt-1 flex items-center justify-center gap-1">
-                  <QrCode className="h-3 w-3" />
-                </div>
-              </div>
-            )}
-
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-base mb-1 text-gray-900">{method.name}</h3>
-              {method.details && <p className="text-sm text-gray-600 line-clamp-2">{method.details}</p>}
-            </div>
-          </label>
-        )
-      })}
-
-      {selectedPaymentMethod && (
-        <div className="mt-4 p-4 rounded-xl border-2" style={{ borderColor: accentBorder, backgroundColor: accentSoft }}>
-          <div className="flex items-start gap-3">
-            <CreditCard className="h-5 w-5 mt-0.5" style={{ color: accent }} />
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold mb-2 text-gray-900">Selected Payment Method</h3>
-              <p className="font-medium text-gray-900 mb-2">
-                {paymentMethods.find(m => m.id === selectedPaymentMethod)?.name}
-              </p>
-              {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details && (
-                <div className="bg-white p-3 rounded-lg border" style={{ borderColor: setAlpha(accent, 0.3) }}>
-                  <p className="text-sm font-medium text-gray-700 mb-2">Payment Details:</p>
-                  <div className="space-y-2">
-                    {paymentMethods.find(m => m.id === selectedPaymentMethod)?.details?.split('\n').map((line, index) => {
-                      const trimmedLine = line.trim()
-                      if (!trimmedLine) return null
-                      return (
-                        <button
-                          key={index}
-                          type="button"
-                          onClick={() => handleCopyText(trimmedLine, 'Details')}
-                          className="w-full flex items-center justify-between gap-2 p-2 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors text-left group"
-                        >
-                          <span className="text-sm text-gray-700 break-all">{trimmedLine}</span>
-                          {copiedText === trimmedLine ? (
-                            <Check className="h-4 w-4 text-green-500 shrink-0" />
-                          ) : (
-                            <Copy className="h-4 w-4 text-gray-400 shrink-0" />
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                    <Copy className="h-3 w-3" /> Tap on any line to copy
-                  </p>
-                </div>
-              )}
-              {(() => {
-                const qrUrl = paymentMethods.find(m => m.id === selectedPaymentMethod)?.qr_code_url
-                if (!qrUrl) return null
-                return (
-                  <div className="mt-3 flex items-center gap-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={qrUrl}
-                      alt="Payment QR Code"
-                      className="w-32 h-32 object-contain border-2 rounded-lg bg-white p-2 cursor-pointer hover:opacity-80"
-                      style={{ borderColor: setAlpha(accent, 0.4) }}
-                      onClick={() => openQrDialog(qrUrl)}
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-600 mb-2">Scan this QR code to complete payment</p>
-                      <button
-                        type="button"
-                        onClick={() => openQrDialog(qrUrl)}
-                        className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-                        style={{ borderColor: accentBorder, color: accent }}
-                      >
-                        <QrCode className="h-4 w-4" /> View Full Size
-                      </button>
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+/** Payment-method selector (radio list + in-place details + QR). Branded. */
+export { PaymentMethodList } from './payment-method-list'
 
 /**
  * Primary checkout CTA button (branded). Reflects QR-handoff / payment / messenger

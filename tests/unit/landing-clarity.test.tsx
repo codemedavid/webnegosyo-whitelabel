@@ -22,6 +22,7 @@ import {
   CHECKOUT_URL,
   FAQ_ITEMS,
   NAV_LINKS,
+  NAV_PAGE_LINKS,
   PRICE_LABEL,
   PRICING_FEATURES,
   PRODUCT_ONE_LINER,
@@ -146,6 +147,17 @@ describe('content invariants', () => {
   it('uses in-page anchors for every nav link', () => {
     NAV_LINKS.forEach((link) => {
       expect(link.href.startsWith('#')).toBe(true)
+    })
+  })
+
+  it('keeps cross-page destinations out of the anchor list', () => {
+    NAV_PAGE_LINKS.forEach((link) => {
+      expect(link.href.startsWith('/')).toBe(true)
+    })
+
+    const anchors = new Set<string>(NAV_LINKS.map((link) => link.href))
+    NAV_PAGE_LINKS.forEach((link) => {
+      expect(anchors.has(link.href)).toBe(false)
     })
   })
 

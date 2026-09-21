@@ -6,7 +6,7 @@ import { BackHeader } from "../../components/BackHeader";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { SectionHeader } from "../../components/SectionHeader";
-import { PrinterRow, type TestPrintStatus } from "../../components/printer/PrinterRow";
+import { PrinterRow, type RowActivity } from "../../components/printer/PrinterRow";
 import { AddPrinterPanel } from "../../components/printer/AddPrinterPanel";
 import { AutoPrintCard } from "../../components/printer/AutoPrintCard";
 import { usePrinterStore } from "../../stores/printer-store";
@@ -17,7 +17,14 @@ import {
   type PrinterRole,
   type RegisteredPrinter,
 } from "../../lib/printer-registry";
-import { disconnectPrinter, printToPrinter, isPrinterSupported } from "../../lib/printer";
+import {
+  disconnectPrinter,
+  findSavedPrinter,
+  printToPrinter,
+  reconnectPrinter,
+  isPrinterSupported,
+} from "../../lib/printer";
+import { healthFor, shouldTestPrint } from "../../lib/printer-health";
 
 /** How long the Test button reads "sent" before it is ready again. */
 const TEST_SENT_FEEDBACK_MS = 2_500;
@@ -37,6 +44,7 @@ const TEST_PAGE_TEXT = [
 export default function PrinterSettingsScreen() {
   const printers = usePrinterStore((s) => s.printers);
   const connectedAddress = usePrinterStore((s) => s.connectedAddress);
+  const health = usePrinterStore((s) => s.health);
   const printTrigger = usePrinterStore((s) => s.printTrigger);
   const kitchenAutoPrint = usePrinterStore((s) => s.kitchenAutoPrint);
   const addPrinter = usePrinterStore((s) => s.addPrinter);
@@ -47,7 +55,7 @@ export default function PrinterSettingsScreen() {
 
   const [isAdding, setIsAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [testing, setTesting] = useState<{ id: string; status: TestPrintStatus }>({ id: "", status: null });
+  const [activity, setActivity] = useState<{ id: string; status: RowActivity }>({ id: "", status: null });
   const testTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -74,15 +82,46 @@ export default function PrinterSettingsScreen() {
 
   const handleTestPrint = async (printer: RegisteredPrinter) => {
     if (testTimerRef.current) clearTimeout(testTimerRef.current);
-    setTesting({ id: printer.id, status: "printing" });
+    setActivity({ id: printer.id, status: "busy" });
     const result = await printToPrinter(printer, [{ type: "text", text: TEST_PAGE_TEXT }]);
     if (!result.success) {
-      setTesting({ id: "", status: null });
-      Alert.alert("Test failed", result.error ?? "Could not reach the printer.");
+      // No modal: the print path has already marked the printer unreachable,
+      // so the row itself now says what went wrong and offers Reconnect —
+      // which is the thing the merchant has to do next.
+      setActivity({ id: "", status: null });
       return;
     }
-    setTesting({ id: printer.id, status: "sent" });
-    testTimerRef.current = setTimeout(() => setTesting({ id: "", status: null }), TEST_SENT_FEEDBACK_MS);
+    setActivity({ id: printer.id, status: "sent" });
+    testTimerRef.current = setTimeout(() => setActivity({ id: "", status: null }), TEST_SENT_FEEDBACK_MS);
+  };
+
+  /**
+   * Bring a printer up before anything is printed on it. Silent on both
+   * outcomes on purpose — the row goes green and starts offering Test, or it
+   * goes amber and says why. An alert on top of that is just a second copy.
+   */
+  const handleConnect = async (printer: RegisteredPrinter) => {
+    setActivity({ id: printer.id, status: "busy" });
+    await reconnectPrinter(printer);
+    setActivity({ id: "", status: null });
+  };
+
+  /** Test when there is a connection to test; otherwise get one first. */
+  const handleAction = (printer: RegisteredPrinter) => {
+    const status = healthFor(health, printer.address).status;
+    if (shouldTestPrint(status)) return void handleTestPrint(printer);
+    return void handleConnect(printer);
+  };
+
+  /**
+   * "Scan for it" — the answer to "is it even here?". A printer that turns up
+   * is reconnected straight away; one that does not says so in the row.
+   */
+  const handleScan = async (printer: RegisteredPrinter) => {
+    setActivity({ id: printer.id, status: "busy" });
+    const { found } = await findSavedPrinter(printer);
+    if (found) await reconnectPrinter(printer);
+    setActivity({ id: "", status: null });
   };
 
   const handleRemove = (printer: RegisteredPrinter) => {
@@ -135,12 +174,13 @@ export default function PrinterSettingsScreen() {
                 <PrinterRow
                   key={printer.id}
                   printer={printer}
-                  isConnected={connectedAddress === printer.address}
+                  health={healthFor(health, printer.address)}
                   isExpanded={expandedId === printer.id}
-                  testStatus={testing.id === printer.id ? testing.status : null}
+                  activity={activity.id === printer.id ? activity.status : null}
                   isLast={index === printers.length - 1}
                   onToggleExpanded={() => setExpandedId(expandedId === printer.id ? null : printer.id)}
-                  onTestPrint={() => void handleTestPrint(printer)}
+                  onAction={() => handleAction(printer)}
+                  onScan={() => void handleScan(printer)}
                   onToggleRole={(role) => handleToggleRole(printer, role)}
                   onPaperWidth={(paperWidth) => void updatePrinter(printer.id, { paperWidth })}
                   onQrMode={(qrMode) => void updatePrinter(printer.id, { qrMode })}

@@ -3,65 +3,188 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { resolveTenantSlugFromRequest } from '@/lib/tenant'
 import { hasPermission, permissionForAdminPath } from '@/lib/staff-permissions'
 import { canViewBranchDirectory, isStoreWideAdminPath } from '@/lib/outlets/branch-scope'
-import {
-  asAppUserQueryClient,
-  fetchAppUserScope,
-  type AppUserScopeRow,
-} from '@/lib/queries/fetch-app-user-scope'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 import { isMcpProtocolRoute } from '@/lib/mcp/route-isolation'
 import { rewriteMcpPathWellKnown } from '@/lib/mcp/mcp-path-well-known'
 import { createTimedFetch } from '@/lib/supabase/timed-fetch'
+import { createLogger } from '@/lib/logger'
+import {
+  hasSupabaseCookie,
+  isPublicRoute,
+  isSelfAuthenticatedApiRoute,
+  normalizePathname,
+  tenantAdminSlugFor,
+  tenantRewritePath,
+} from '@/lib/middleware/routes'
 
-// Routes that authenticate themselves (webhook signatures, OAuth state, cron
-// secrets) and need neither tenant resolution nor a session. Doing zero I/O
-// for them matters most for the crons: `/api/loyalty/maintenance` runs every
-// minute, and it was paying for a tenant lookup and a GoTrue round-trip each
-// time — 16 of the 64 middleware 504s logged during the 2026-09-20 outage.
-const SELF_AUTHENTICATED_API_PREFIXES = [
-  '/api/webhook',
-  '/api/auth/facebook',
-  '/api/facebook',
-  '/api/messenger',
-  '/api/loyalty/maintenance',
-  '/api/loyverse/reconcile',
-]
+/**
+ * Edge middleware: tenant rewrite, session refresh, access gates.
+ *
+ * Vercel stops a middleware that has not answered in 25s and the visitor
+ * sees a 504, so nothing here may wait on the database without a bound. Every
+ * Supabase call goes through a fetch that gives up after a few seconds, the
+ * tenant lookup is served from an in-memory directory, and a visitor without
+ * a session cookie never reaches GoTrue at all. When the database is unwell
+ * the site degrades (no session, no tenant) instead of disappearing.
+ */
 
-// Vercel stops an edge middleware that has not answered in 25s. A GoTrue
-// call that has not come back in this long is treated as "no session".
+/** A GoTrue or PostgREST call that has not come back in this long is treated as "no answer". */
 const AUTH_FETCH_TIMEOUT_MS = 3000
 
-const isSelfAuthenticatedApiRoute = (pathname: string) =>
-  SELF_AUTHENTICATED_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+/** `debug` is off unless `DEBUG_MIDDLEWARE=true`; `error` is never gated. */
+const log = createLogger('[Middleware]', 'DEBUG_MIDDLEWARE')
 
-// Supabase's SSR cookies are all `sb-<ref>-…`; a visitor without one has no
-// session to refresh, so GoTrue has nothing to tell us. That is the bulk of
-// storefront traffic. A visitor WITH one must be refreshed on every path, not
-// just admin paths: public pages (menu, item detail) call getUser() from
-// Server Components, which cannot write cookies, and a refresh they trigger
-// but cannot persist burns the rotating refresh token and ends the session.
-const hasSupabaseCookie = (request: NextRequest) =>
-  request.cookies.getAll().some((cookie) => cookie.name.startsWith('sb-'))
+type SupabaseMiddlewareClient = ReturnType<typeof createServerClient>
 
-async function getSessionUser(supabase: ReturnType<typeof createServerClient>) {
+interface SessionContext {
+  supabase: SupabaseMiddlewareClient
+  /** The current response; `setAll` replaces it when a refreshed cookie must be written. */
+  response: () => NextResponse
+}
+
+/**
+ * The Supabase client for this request, wired so a refreshed session cookie
+ * lands on whichever response we end up sending (a rewrite must survive).
+ */
+function createSessionContext(request: NextRequest, initial: NextResponse): SessionContext {
+  let response = initial
+  const rewriteUrl = initial.headers.get('x-middleware-rewrite')
+
+  const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+        response = rewriteUrl ? NextResponse.rewrite(new URL(rewriteUrl), { request }) : NextResponse.next({ request })
+        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+      },
+    },
+    db: { retry: false },
+    global: { fetch: createTimedFetch(AUTH_FETCH_TIMEOUT_MS) },
+  })
+
+  return { supabase, response: () => response }
+}
+
+/**
+ * Rewrite a request on a tenant host (`shop.webnegosyo.com/cart`) to the
+ * unified path route (`/shop/cart`). Never blocks: a failed lookup is logged
+ * with its host and path and the request proceeds un-rewritten.
+ */
+async function rewriteForTenantHost(
+  request: NextRequest
+): Promise<{ response: NextResponse; tenantSlug: string | null }> {
+  const pathname = normalizePathname(request.nextUrl.pathname)
+  const { search } = request.nextUrl
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'unknown'
+
+  try {
+    const tenantSlug = await resolveTenantSlugFromRequest(request)
+    const targetPath = tenantRewritePath(tenantSlug, pathname)
+    if (!targetPath) return { response: NextResponse.next({ request }), tenantSlug }
+
+    const rewrittenUrl = request.nextUrl.clone()
+    rewrittenUrl.pathname = targetPath
+    rewrittenUrl.search = search
+    log.debug(`Rewriting ${host}${pathname} to ${targetPath}`, { tenantSlug, host })
+    return { response: NextResponse.rewrite(rewrittenUrl), tenantSlug }
+  } catch (error) {
+    log.error('Error resolving tenant:', { host, pathname, error: error instanceof Error ? error.message : String(error) })
+    return { response: NextResponse.next({ request }), tenantSlug: null }
+  }
+}
+
+/**
+ * IMPORTANT: DO NOT REMOVE `auth.getUser()` — it is what refreshes an admin's
+ * session cookie; Server Components cannot write cookies themselves. It runs
+ * on every path for a visitor WITH a cookie: public pages read the session
+ * from Server Components, and a refresh they trigger but cannot persist burns
+ * the rotating refresh token and ends the session.
+ *
+ * A timed-out or failed GoTrue call fails closed for access (the visitor is
+ * bounced to login) but open for the site (no 504).
+ */
+async function getSessionUser(supabase: SupabaseMiddlewareClient) {
   try {
     const {
       data: { user },
     } = await supabase.auth.getUser()
     return user
   } catch (error) {
-    // A timed-out or failed GoTrue call fails closed for access (the visitor
-    // is bounced to login) but open for the site (no 504).
-    console.error('[Middleware] Session lookup failed:', error)
+    log.error('Session lookup failed:', error)
     return null
   }
 }
 
-export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+function redirectTo(request: NextRequest, pathname: string, params: Record<string, string> = {}): NextResponse {
+  const url = request.nextUrl.clone()
+  url.pathname = pathname
+  url.search = ''
+  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value))
+  return NextResponse.redirect(url)
+}
 
-  const { pathname, search } = request.nextUrl
+type SessionUser = Awaited<ReturnType<typeof getSessionUser>>
+
+/** `/superadmin/*` requires a signed-in user with the `superadmin` role. */
+async function guardSuperadmin(
+  request: NextRequest,
+  supabase: SupabaseMiddlewareClient,
+  user: SessionUser,
+  pathname: string
+): Promise<NextResponse | null> {
+  if (isPublicRoute(pathname)) return null
+  if (!user) return redirectTo(request, '/superadmin/login')
+
+  const { data: roleRow } = await supabase.from('app_users').select('role').eq('user_id', user.id).maybeSingle()
+  if (roleRow?.role !== 'superadmin') return redirectTo(request, '/superadmin/login', { unauthorized: '1' })
+  return null
+}
+
+/**
+ * `/<slug>/admin/*` requires an admin of that tenant (or a superadmin), and
+ * staff with restricted permissions may only open the sections they were
+ * granted. Store-wide sections are closed to an account that runs one branch;
+ * the nav hides them too, but typing the URL must not be a way around it.
+ */
+async function guardTenantAdmin(
+  request: NextRequest,
+  supabase: SupabaseMiddlewareClient,
+  user: SessionUser,
+  tenantSlug: string,
+  /** The pathname that will be served — the rewrite target on a tenant host. */
+  pathname: string
+): Promise<NextResponse | null> {
+  if (!user) return redirectTo(request, `/${tenantSlug}/login`, { redirect: pathname })
+
+  // The resilient read adds the branch column this gate needs and falls back
+  // to the pre-branch projection rather than 400ing every admin page if the
+  // migration is not applied yet.
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
+  if (appUser?.role === 'superadmin') return null
+
+  const unauthorized = () => redirectTo(request, `/${tenantSlug}/login`, { unauthorized: '1' })
+  if (appUser?.role !== 'admin') return unauthorized()
+
+  const { data: tenant } = await supabase.from('tenants').select('id').eq('slug', tenantSlug).eq('is_active', true).maybeSingle()
+  if (!tenant || appUser.tenant_id !== (tenant as { id: string }).id) return unauthorized()
+
+  const requiredPermission = permissionForAdminPath(pathname)
+  if (requiredPermission && !hasPermission(appUser, requiredPermission)) {
+    return redirectTo(request, `/${tenantSlug}/admin`, { denied: requiredPermission })
+  }
+  if (isStoreWideAdminPath(pathname) && !canViewBranchDirectory(appUser)) {
+    return redirectTo(request, `/${tenantSlug}/admin`, { denied: 'branches' })
+  }
+  return null
+}
+
+export async function middleware(request: NextRequest) {
+  // Classified on the collapsed form so `//shop/admin` and `/shop/admin` are
+  // the same path to every gate below.
+  const pathname = normalizePathname(request.nextUrl.pathname)
 
   // MCP transport, OAuth, and discovery endpoints form a self-contained
   // protocol boundary. They authenticate Bearer credentials or OAuth browser
@@ -69,202 +192,38 @@ export async function middleware(request: NextRequest) {
   // otherwise coupled to the tenant/application middleware.
   if (isMcpProtocolRoute(pathname)) {
     const wellKnownDestination = rewriteMcpPathWellKnown(pathname)
-    if (wellKnownDestination) {
-      const rewrittenUrl = request.nextUrl.clone()
-      rewrittenUrl.pathname = wellKnownDestination
-      return NextResponse.rewrite(rewrittenUrl)
-    }
-    return supabaseResponse
+    if (!wellKnownDestination) return NextResponse.next({ request })
+    const rewrittenUrl = request.nextUrl.clone()
+    rewrittenUrl.pathname = wellKnownDestination
+    return NextResponse.rewrite(rewrittenUrl)
   }
 
-  if (isSelfAuthenticatedApiRoute(pathname)) {
-    return supabaseResponse
-  }
+  if (isSelfAuthenticatedApiRoute(pathname)) return NextResponse.next({ request })
 
-  // Skip tenant resolution for superadmin routes
   const isSuperAdminRoute = pathname.startsWith('/superadmin')
+  const rewritten = isSuperAdminRoute
+    ? { response: NextResponse.next({ request }), tenantSlug: null as string | null }
+    : await rewriteForTenantHost(request)
 
-  // Resolve tenant slug from custom domain or subdomain, and rewrite to path-based route
-  // Priority: 1) Custom domain, 2) Subdomain, 3) Path-based routing
-  // This keeps app routes unified under /[tenant] while supporting both custom domains and subdomains
-  if (!isSuperAdminRoute) {
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'unknown'
+  const session = createSessionContext(request, rewritten.response)
+  // The access gates still run for an anonymous visitor — an anonymous hit on
+  // /admin must still bounce to login — they just do so without GoTrue.
+  const user = hasSupabaseCookie(request.cookies.getAll()) ? await getSessionUser(session.supabase) : null
 
-    try {
-      const tenantSlug = await resolveTenantSlugFromRequest(request)
-
-      // If tenant detected (custom domain or subdomain) and current path isn't already /[tenant]/...
-      // API routes are global (src/app/api) — never rewrite them to /[tenant]/api.
-      if (tenantSlug && !pathname.startsWith(`/${tenantSlug}/`) && !pathname.startsWith('/api/') && pathname !== '/_next/image') {
-        const rewrittenUrl = request.nextUrl.clone()
-        // Redirect tenant root to tenant menu
-        const targetPath = pathname === '/' ? `/${tenantSlug}/menu` : `/${tenantSlug}${pathname}`
-        rewrittenUrl.pathname = targetPath
-        // Maintain query string
-        rewrittenUrl.search = search
-
-        // Log successful rewrite in debug mode
-        if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
-          console.log(`[Middleware] Rewriting ${host}${pathname} to ${targetPath}`, { tenantSlug, host })
-        }
-
-        supabaseResponse = NextResponse.rewrite(rewrittenUrl)
-      } else if (!tenantSlug && pathname === '/') {
-        // Log when tenant resolution fails for root path (this is when landing page shows)
-        if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
-          console.log(`[Middleware] No tenant resolved for ${host}${pathname}, showing landing page`, { host, pathname })
-        }
-      }
-    } catch (error) {
-      // Log errors but don't block the request
-      console.error('[Middleware] Error resolving tenant:', error)
-      if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT_RESOLUTION === 'true') {
-        console.error('[Middleware] Tenant resolution error details:', {
-          host,
-          pathname,
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
-    }
+  if (isSuperAdminRoute) {
+    return (await guardSuperadmin(request, session.supabase, user, pathname)) ?? session.response()
   }
 
-  // No Supabase cookie means no session to read or refresh. The access gates
-  // below still run — an anonymous hit on /admin must still bounce to login —
-  // they just do so without a round-trip to GoTrue.
-  const shouldConsultSession = hasSupabaseCookie(request)
-
-  // Track whether we have a rewrite so setAll can preserve it
-  const rewriteUrl = supabaseResponse.headers.get('x-middleware-rewrite')
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          // Preserve the rewrite if one was set, otherwise create a plain next response
-          if (rewriteUrl) {
-            supabaseResponse = NextResponse.rewrite(new URL(rewriteUrl), { request })
-          } else {
-            supabaseResponse = NextResponse.next({ request })
-          }
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-      global: { fetch: createTimedFetch(AUTH_FETCH_TIMEOUT_MS) },
-    }
-  )
-
-  // IMPORTANT: DO NOT REMOVE auth.getUser() — it is what refreshes an admin's
-  // session cookie; Server Components cannot write cookies themselves.
-  const user = shouldConsultSession ? await getSessionUser(supabase) : null
-
-  // Public routes that don't require authentication
-  // Use specific patterns to avoid matching admin paths like /tenant/admin/menu-engineering
-  const isPublicRoute =
-    (pathname.match(/^\/[^/]+\/menu(\/|$)/) && !pathname.match(/^\/[^/]+\/admin\//)) ||
-    pathname === '/' ||
-    pathname.startsWith('/privacy') ||
-    pathname.startsWith('/support') ||
-    pathname.startsWith('/download') ||
-    (/^\/[^/]+\/login(\/|$)/.test(pathname) && !pathname.includes('/admin/')) ||
-    pathname === '/superadmin/mcp/authorize' ||
-    pathname.startsWith('/superadmin/login')
-
-  // Protect superadmin routes: require auth + role
-  if (!user && isSuperAdminRoute && !isPublicRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/superadmin/login'
-    return NextResponse.redirect(url)
+  // Host-based visits arrive as `/admin`, then get rewritten to `/shop/admin`.
+  // Gate on the rewrite target or a restricted staff URL on a tenant host
+  // would skip the permission check.
+  const servedPathname = tenantRewritePath(rewritten.tenantSlug, pathname) ?? pathname
+  const tenantSlug = tenantAdminSlugFor(servedPathname)
+  if (tenantSlug) {
+    return (await guardTenantAdmin(request, session.supabase, user, tenantSlug, servedPathname)) ?? session.response()
   }
 
-  if (user && isSuperAdminRoute && !pathname.startsWith('/superadmin/login')) {
-    // Verify superadmin role
-    const { data: roleRow } = await supabase
-      .from('app_users')
-      .select('role')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (!roleRow || roleRow.role !== 'superadmin') {
-      const url = request.nextUrl.clone()
-      url.pathname = '/superadmin/login'
-      url.searchParams.set('unauthorized', '1')
-      return NextResponse.redirect(url)
-    }
-  }
-
-  // Protect tenant admin routes - verify tenant ownership
-  const tenantAdminMatch = pathname.match(/^\/([^/]+)\/admin/)
-  if (tenantAdminMatch && !isPublicRoute) {
-    const tenantSlug = tenantAdminMatch[1]
-    const url = request.nextUrl.clone()
-
-    // If not authenticated, redirect to tenant login
-    if (!user) {
-      url.pathname = `/${tenantSlug}/login`
-      url.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(url)
-    }
-
-    // Verify user is admin of this specific tenant or superadmin.
-    // Read through the resilient helper: it adds the branch column this gate
-    // needs, and falls back to the pre-branch projection rather than 400ing
-    // every admin page if the migration is not applied yet.
-    const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-    const userRole: AppUserScopeRow | null = appUser
-
-    // If superadmin, allow access to any tenant admin
-    if (userRole?.role === 'superadmin') {
-      return supabaseResponse
-    }
-
-    // For tenant admin, verify they own this tenant
-    if (userRole?.role === 'admin') {
-      // Get tenant by slug to compare IDs
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('slug', tenantSlug)
-        .eq('is_active', true)
-        .maybeSingle()
-
-      const tenantData = tenant as { id: string } | null
-
-      if (tenantData && userRole.tenant_id === tenantData.id) {
-        // Staff with restricted permissions may only open feature sections
-        // they were granted; everything else bounces to the dashboard.
-        const requiredPermission = permissionForAdminPath(pathname)
-        if (requiredPermission && !hasPermission(userRole, requiredPermission)) {
-          url.pathname = `/${tenantSlug}/admin`
-          url.searchParams.set('denied', requiredPermission)
-          return NextResponse.redirect(url)
-        }
-        // Sections that describe the whole store — the branch directory — are
-        // closed to an account that runs one branch. The nav entry is hidden
-        // too, but typing the URL must not be a way around it.
-        if (isStoreWideAdminPath(pathname) && !canViewBranchDirectory(userRole)) {
-          url.pathname = `/${tenantSlug}/admin`
-          url.searchParams.set('denied', 'branches')
-          return NextResponse.redirect(url)
-        }
-        return supabaseResponse
-      }
-    }
-
-    // Unauthorized - not admin of this tenant
-    url.pathname = `/${tenantSlug}/login`
-    url.searchParams.set('unauthorized', '1')
-    return NextResponse.redirect(url)
-  }
-
-  return supabaseResponse
+  return session.response()
 }
 
 export const config = {

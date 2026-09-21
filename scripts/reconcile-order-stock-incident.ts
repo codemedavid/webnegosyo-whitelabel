@@ -9,7 +9,7 @@ import { buildDepletionItemsFromConvexOrderItems, buildDepletionItemsFromOrderRo
 import { readInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { decideOrderStockRepair } from '@/lib/inventory/order-stock-repair'
 import { applyOrderStockMovements } from '@/lib/inventory/order-stock-service'
-import { missingPlatformStockContractPaths } from '@/lib/inventory/platform-stock-contract'
+import { probePlatformStockContract } from '@/lib/inventory/platform-stock-contract'
 import type { DepletionOrderItem } from '@/lib/inventory/order-depletion'
 
 config({ path: '.env.local' })
@@ -69,11 +69,10 @@ function parseManifest(value: unknown): ManifestEntry[] {
 }
 
 async function assertContract(url: string, key: string): Promise<void> {
-  const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/`, {
-    headers: { apikey: key, authorization: `Bearer ${key}`, accept: 'application/openapi+json' },
+  const missing = await probePlatformStockContract({
+    restUrl: `${url.replace(/\/$/, '')}/rest/v1`,
+    apiKey: key,
   })
-  if (!response.ok) throw new Error(`Platform stock contract check failed with HTTP ${response.status}.`)
-  const missing = missingPlatformStockContractPaths(await response.json())
   if (missing.length) throw new Error(`Platform stock contract is incomplete: ${missing.join(', ')}`)
 }
 

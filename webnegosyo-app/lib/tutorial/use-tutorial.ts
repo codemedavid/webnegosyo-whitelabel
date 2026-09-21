@@ -13,7 +13,6 @@ import { TUTORIAL_CHAPTERS, type TutorialChapter } from "./chapters";
 import { visibleChapters } from "./visibility";
 import { usePortfolioAudience } from "../use-portfolio-audience";
 import { useAdvanceOrdering } from "../use-advance-ordering";
-import { useDineIn } from "../use-dine-in";
 import { useAuthStore } from "../../stores/auth-store";
 import { useTutorialStore } from "../../stores/tutorial-store";
 
@@ -26,16 +25,15 @@ export function useTutorialChapters(): TutorialChapter[] {
   const isDemo = useAuthStore((s) => s.isDemo);
   const audience = usePortfolioAudience();
   const takesAdvanceOrders = useAdvanceOrdering();
-  const takesDineIn = useDineIn();
 
   return useMemo(
     () =>
       visibleChapters(
         TUTORIAL_CHAPTERS,
-        { caller: { role, isOwner, permissions }, audience, takesAdvanceOrders, takesDineIn },
+        { caller: { role, isOwner, permissions }, audience, takesAdvanceOrders },
         { isOwner, isDemo },
       ),
-    [role, isOwner, permissions, audience, takesAdvanceOrders, takesDineIn, isDemo],
+    [role, isOwner, permissions, audience, takesAdvanceOrders, isDemo],
   );
 }
 

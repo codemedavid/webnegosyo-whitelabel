@@ -43,6 +43,10 @@ export const sentryEnvironment =
  * to keep seeing from real production traffic.
  */
 export const SENTRY_IGNORE_ERRORS: (string | RegExp)[] = [
+  // The storefront cache's internal "do not persist this result" signal. It is
+  // caught by its own wrapper (src/lib/storefront/cached-read.ts) and never
+  // reaches a boundary, but a degraded read is routine under load, not an incident.
+  'UncachedResultSignal',
   // --- Benign browser noise ---
   /ResizeObserver loop/i,
 

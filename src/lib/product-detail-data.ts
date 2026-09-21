@@ -1,11 +1,20 @@
 /**
- * Optimized data fetching for product detail pages
- * Uses React cache() for per-request caching
- * Selective column queries to reduce payload size
+ * Data fetching for product detail pages.
+ *
+ * Public reads go through the cookie-free public client and the storefront
+ * data cache (`createCachedRead`), so one visitor's page view populates the
+ * entry every later visitor is served from. `cache()` from React additionally
+ * dedupes the same read within one request (`generateMetadata` + the page).
+ *
+ * Failures are returned as `doNotCache(...)` so a transient timeout never
+ * pins an empty result for the revalidation window.
  */
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { createPublicClient } from '@/lib/supabase/public'
+import { createCachedRead, doNotCache, storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
+import { omitTenantSecrets } from '@/lib/tenant-public'
 import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
 import { MENU_ITEM_DETAIL_SELECT } from '@/lib/queries/menu-item-select'
 import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
@@ -98,43 +107,32 @@ export interface SelectedTenant {
 // CRITICAL DATA - Fetches first, blocks initial paint (but cached)
 // ============================================================================
 
-/**
- * Fetch minimal tenant data for page rendering (cached per request)
- */
-export const getCachedTenantBySlug = cache(async (slug: string): Promise<SelectedTenant | null> => {
-    try {
-        const supabase = await createClient()
-
-        const { tenant, error } = await fetchActiveTenantBySlug<SelectedTenant>(
-            asTenantQueryClient(supabase),
+/** Minimal tenant data for page rendering. Cached across requests by slug. */
+export const getCachedTenantBySlug = cache(
+    createCachedRead(['product-detail-tenant'], async (slug: string) => {
+        const { tenant, error, isDegraded } = await fetchActiveTenantBySlug<SelectedTenant>(
+            asTenantQueryClient(createPublicClient()),
             slug,
             PRODUCT_DETAIL_TENANT_SELECT
         )
 
         if (error) {
             console.error('Error fetching tenant:', error)
-            return null
+            return doNotCache<SelectedTenant | null>(null)
         }
 
+        // The migration-drift fallback is a `*` row: strip credential columns
+        // and never persist it (see storefront-tenant.ts).
+        if (isDegraded) return doNotCache<SelectedTenant | null>(omitTenantSecrets(tenant))
+
         return tenant
-    } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        console.error('Error in getCachedTenantBySlug:', errMsg)
-        return null
-    }
-})
+    }, { tags: (slug) => [storefrontTag(slug)] })
+)
 
-/**
- * Fetch minimal menu item data for rendering (cached per request)
- */
-export const getCachedMenuItemById = cache(async (itemId: string, tenantId: string): Promise<MenuItem | null> => {
-    try {
-        const supabase = await createClient()
-
-        // Fetch menu item with JSONB columns (modifier_groups, variations,
-        // variation_types, addons). These are stored as JSONB in the menu_items
-        // table, not as separate tables.
-        const { data: itemData, error: itemError } = await supabase
+/** The menu item with its JSONB customisation columns. Cached across requests. */
+export const getCachedMenuItemById = cache(
+    createCachedRead(['product-detail-item'], async (itemId: string, tenantId: string) => {
+        const { data: itemData, error: itemError } = await createPublicClient()
             .from('menu_items')
             .select(MENU_ITEM_DETAIL_SELECT)
             .eq('id', itemId)
@@ -142,8 +140,8 @@ export const getCachedMenuItemById = cache(async (itemId: string, tenantId: stri
             .maybeSingle()
 
         if (itemError) {
-            console.error('Error fetching menu item:', itemError?.message || itemError?.code || itemError)
-            return null
+            console.error('Error fetching menu item:', itemError.message || itemError.code)
+            return doNotCache<MenuItem | null>(null)
         }
 
         if (!itemData) {
@@ -163,7 +161,6 @@ export const getCachedMenuItemById = cache(async (itemId: string, tenantId: stri
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const modifier_groups = (itemData as any).modifier_groups as ModifierGroup[] | undefined
 
-        // Combine all data with proper type casting
         const fullItem: MenuItem = {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ...(itemData as any),
@@ -174,21 +171,13 @@ export const getCachedMenuItemById = cache(async (itemId: string, tenantId: stri
         }
 
         return fullItem
-    } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        console.error('Error in getCachedMenuItemById:', errMsg)
-        return null
-    }
-})
+    }, { tags: (_itemId, tenantId) => [storefrontTenantIdTag(tenantId)] })
+)
 
-/**
- * Fetch minimal category data (cached per request)
- */
-export const getCachedCategoryById = cache(async (categoryId: string, tenantId: string): Promise<Category | null> => {
-    try {
-        const supabase = await createClient()
-
-        const { data, error } = await supabase
+/** Minimal category data for breadcrumbs. Cached across requests. */
+export const getCachedCategoryById = cache(
+    createCachedRead(['product-detail-category'], async (categoryId: string, tenantId: string) => {
+        const { data, error } = await createPublicClient()
             .from('categories')
             .select('id, tenant_id, name, description, icon, order, is_active, default_addons, created_at, updated_at')
             .eq('id', categoryId)
@@ -196,32 +185,22 @@ export const getCachedCategoryById = cache(async (categoryId: string, tenantId: 
             .maybeSingle()
 
         if (error) {
-            console.error('Error fetching category:', JSON.stringify(error, null, 2))
-            return null
+            console.error('Error fetching category:', error.message)
+            return doNotCache<Category | null>(null)
         }
 
         return data as unknown as Category | null
-    } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        console.error('Error in getCachedCategoryById:', errMsg)
-        return null
-    }
-})
+    }, { tags: (_categoryId, tenantId) => [storefrontTenantIdTag(tenantId)] })
+)
 
 // ============================================================================
-// NON-CRITICAL DATA - Cached per request (React cache)
-// Note: unstable_cache removed because it conflicts with cookies usage
+// NON-CRITICAL DATA
 // ============================================================================
 
-/**
- * Fetch related items (cached per request)
- * Only select essential columns
- */
-export const getCachedRelatedItems = cache(async (categoryId: string, tenantId: string, excludeItemId: string): Promise<MenuItem[]> => {
-    try {
-        const supabase = await createClient()
-
-        const { data, error } = await supabase
+/** Up to four other available dishes in the same category. Cached across requests. */
+export const getCachedRelatedItems = cache(
+    createCachedRead(['product-detail-related'], async (categoryId: string, tenantId: string, excludeItemId: string) => {
+        const { data, error } = await createPublicClient()
             .from('menu_items')
             .select('id, name, price, discounted_price, image_url, category_id, tenant_id, is_available, description')
             .eq('category_id', categoryId)
@@ -231,30 +210,26 @@ export const getCachedRelatedItems = cache(async (categoryId: string, tenantId: 
             .limit(4)
 
         if (error) {
-            console.error('Error fetching related items:', error?.message || error?.code || error)
-            return []
+            console.error('Error fetching related items:', error.message)
+            return doNotCache<MenuItem[]>([])
         }
 
-        // Map the data to include empty arrays for variations/addons/variation_types
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const itemsWithDefaults = (data || []).map((item: any) => ({
+        return (data || []).map((item: any) => ({
             ...item,
             variations: [],
             variation_types: [],
             addons: []
         })) as MenuItem[]
-
-        return itemsWithDefaults
-    } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        console.error('Error in getCachedRelatedItems:', errMsg)
-        return []
-    }
-})
+    }, { tags: (_categoryId, tenantId) => [storefrontTenantIdTag(tenantId)] })
+)
 
 /**
- * Fetch upsell items for a given menu item (cached per request)
- * Returns complementary and upgrade suggestions separately
+ * Upsell items for a given menu item — complementary and upgrade suggestions.
+ *
+ * Per-request only: `getComplementaryItems` still reads through the
+ * cookie-bound client, which cannot sit inside the storefront cache. Moving
+ * the pairing services onto the public client is the next step.
  */
 export const getCachedUpsellsForItem = cache(async (
     itemId: string,
@@ -323,50 +298,36 @@ export const getCachedUpsellsForItem = cache(async (
     }
 })
 
-/**
- * Fetch product detail settings (cached per request)
- */
-export const getCachedProductDetailSettings = cache(async (tenantId: string): Promise<ProductDetailSettings | null> => {
-    try {
-        const supabase = await createClient()
-
-        const { data, error } = await supabase
+/** Product detail page settings. Cached across requests. */
+export const getCachedProductDetailSettings = cache(
+    createCachedRead(['product-detail-settings'], async (tenantId: string) => {
+        const { data, error } = await createPublicClient()
             .from('product_detail_settings')
             .select('*')
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
         if (error) {
-            console.error('Error fetching product detail settings:', error?.message || error?.code || error)
-            return null
+            console.error('Error fetching product detail settings:', error.message)
+            return doNotCache<ProductDetailSettings | null>(null)
         }
 
         return data as unknown as ProductDetailSettings | null
-    } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        console.error('Error in getCachedProductDetailSettings:', errMsg)
-        return null
-    }
-})
+    }, { tags: (tenantId) => [storefrontTenantIdTag(tenantId)] })
+)
 
 /**
- * Fetch the menu items referenced by linked add-on options (cached per request).
+ * The menu items referenced by linked add-on options.
  *
  * Only the fields a linked option renders are selected. Items that no longer
- * exist simply do not come back; `resolveLinkedOptions` then renders that option
- * as unavailable rather than blank.
+ * exist simply do not come back; `resolveLinkedOptions` then renders that
+ * option as unavailable rather than blank. The cache stores the rows (a `Map`
+ * does not survive JSON); the map is built outside the cache boundary.
  */
-export const getCachedLinkedModifierItems = cache(async (
-    itemIds: readonly string[],
-    tenantId: string
-): Promise<Map<string, LinkedItemSnapshot>> => {
-    if (itemIds.length === 0) {
-        return new Map()
-    }
-
-    try {
-        const supabase = await createClient()
-        const { data, error } = await supabase
+const getCachedLinkedModifierRows = createCachedRead(
+    ['product-detail-linked-items'],
+    async (itemIds: readonly string[], tenantId: string) => {
+        const { data, error } = await createPublicClient()
             .from('menu_items')
             .select('id, name, price, discounted_price, image_url, is_available')
             .eq('tenant_id', tenantId)
@@ -374,14 +335,22 @@ export const getCachedLinkedModifierItems = cache(async (
 
         if (error) {
             console.error('Error fetching linked modifier items:', error.message)
-            return new Map()
+            return doNotCache<LinkedItemSnapshot[]>([])
         }
 
-        const rows = (data ?? []) as unknown as LinkedItemSnapshot[]
-        return new Map(rows.map((row) => [row.id, row]))
-    } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        console.error('Error in getCachedLinkedModifierItems:', errMsg)
+        return (data ?? []) as unknown as LinkedItemSnapshot[]
+    },
+    { tags: (_itemIds, tenantId) => [storefrontTenantIdTag(tenantId)] }
+)
+
+export const getCachedLinkedModifierItems = cache(async (
+    itemIds: readonly string[],
+    tenantId: string
+): Promise<Map<string, LinkedItemSnapshot>> => {
+    if (itemIds.length === 0) {
         return new Map()
     }
+    // Sorted so the cache key is independent of option order.
+    const rows = await getCachedLinkedModifierRows([...itemIds].sort(), tenantId)
+    return new Map(rows.map((row) => [row.id, row]))
 })

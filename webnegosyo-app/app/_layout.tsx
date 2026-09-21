@@ -26,7 +26,22 @@ import {
 import { usePrinterStore } from "../stores/printer-store";
 import { useRegisterSettingsStore } from "../stores/register-settings-store";
 import { supabase } from "../lib/supabase";
-import { classifyLookup, outcomeForThrown } from "../lib/session-bootstrap";
+import {
+  BOOTSTRAP_UNREACHABLE_MESSAGE,
+  classifyLookup,
+  outcomeForThrown,
+} from "../lib/session-bootstrap";
+import {
+  bindSessionSnapshotToAuth,
+  isRetryableSessionError,
+  loadSessionSnapshot,
+  saveSessionSnapshot,
+} from "../lib/offline/session-snapshot";
+import { reportOffline, reportOnline } from "../lib/offline/connectivity";
+
+// Bound once for the life of the process: a sign-out anywhere drops the
+// offline session snapshot, so the next launch cannot open the old store.
+bindSessionSnapshotToAuth(supabase.auth);
 import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
@@ -117,14 +132,32 @@ function useAuthInit() {
   useEffect(() => {
     const signedOut = () => setAuth({ isLoading: false, bootstrapError: null });
     // The stored session stays put: the merchant is asked to try again, not
-    // to sign in again (lib/session-bootstrap.ts).
-    const unreachable = (message: string) => setAuth({ isLoading: false, bootstrapError: message });
+    // to sign in again (lib/session-bootstrap.ts) — unless this device has the
+    // last resolved store on disk, in which case the app opens on it and the
+    // register runs offline (lib/offline/session-snapshot.ts).
+    const unreachable = async (message: string, userId: string | null) => {
+      const snapshot = await loadSessionSnapshot(userId);
+      if (snapshot) {
+        reportOffline();
+        setAuth({ ...snapshot, isLoading: false, bootstrapError: null });
+        return;
+      }
+      setAuth({ isLoading: false, bootstrapError: message });
+    };
 
     supabase.auth.getSession().then(async ({ data, error: sessionError }) => {
+      // An expired access token that could not be refreshed offline comes
+      // back as `session: null` WITH a retryable error — that is "unreachable",
+      // not "signed out", and used to drop an offline merchant on the login.
+      if (isRetryableSessionError(sessionError)) {
+        await unreachable(BOOTSTRAP_UNREACHABLE_MESSAGE, null);
+        return;
+      }
       if (sessionError || !data.session?.user) {
         signedOut();
         return;
       }
+      const userId = data.session.user.id;
 
       try {
         const appUserLookup = classifyLookup<AppUserRow>(
@@ -135,7 +168,7 @@ function useAuthInit() {
             .in("role", ["admin", "superadmin"])
             .single()
         );
-        if (appUserLookup.kind === "unreachable") return unreachable(appUserLookup.message);
+        if (appUserLookup.kind === "unreachable") return unreachable(appUserLookup.message, userId);
         if (appUserLookup.kind === "missing") return signedOut();
         const appUser = appUserLookup.row;
 
@@ -150,7 +183,7 @@ function useAuthInit() {
               .eq("id", appUser.tenant_id)
               .single()
           );
-          if (tenantLookup.kind === "unreachable") return unreachable(tenantLookup.message);
+          if (tenantLookup.kind === "unreachable") return unreachable(tenantLookup.message, userId);
           tenant = tenantLookup.kind === "row" ? tenantLookup.row : null;
         }
 
@@ -161,10 +194,10 @@ function useAuthInit() {
           const outletLookup = classifyLookup<OutletRow>(
             await supabase.from("outlets").select("id, name").eq("id", appUser.outlet_id).single()
           );
-          if (outletLookup.kind === "unreachable") return unreachable(outletLookup.message);
+          if (outletLookup.kind === "unreachable") return unreachable(outletLookup.message, userId);
           outlet = outletLookup.kind === "row" ? outletLookup.row : null;
         }
-        const session = resolveSession(data.session.user.id, appUser, tenant, outlet);
+        const session = resolveSession(userId, appUser, tenant, outlet);
 
         if (session.mode === "denied" || !session.auth) {
           signedOut();
@@ -172,8 +205,12 @@ function useAuthInit() {
         }
 
         setAuth({ ...session.auth, bootstrapError: null });
+        // The server answered, so the register is online — and this resolved
+        // store is what an offline launch will open on next time.
+        reportOnline();
+        void saveSessionSnapshot(session.auth);
       } catch (e: unknown) {
-        unreachable(outcomeForThrown(e).message);
+        await unreachable(outcomeForThrown(e).message, userId);
       }
     });
   }, [setAuth, bootstrapAttempt]);
