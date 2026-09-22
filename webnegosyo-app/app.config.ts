@@ -50,7 +50,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // /v1/apps/6761642956/appStoreVersions on 2026-09-20 before bumping. Hence
   // 1.0.8 — a clean train for this release, distinct from those three stale
   // 1.0.7 binaries.
-  version: "1.0.8",
+  //
+  // 1.0.8 (build 45) went READY_FOR_SALE on 2026-09-19, closing that train.
+  // Re-verified against /v1/apps/6761642956/appStoreVersions on 2026-09-22
+  // before bumping. Hence 1.0.9 — payment proof on platform-backend order
+  // screens, tablet orientation, announcement push reporting, the release-
+  // policy update gate and the rebuilt order types.
+  version: "1.0.9",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the

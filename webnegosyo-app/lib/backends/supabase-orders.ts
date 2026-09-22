@@ -143,6 +143,16 @@ export interface PlatformOrderRow {
   promised_ready_at?: string | null;
   /** Bumped by every saved edit; the optimistic lock is checked against it. */
   revision_number?: number | null;
+  /**
+   * The customer's proof of payment, as checkout captured it: the uploaded
+   * screenshot, its storage id, and the reference number they typed. Real
+   * columns here — Convex tenants carry the same three keys inside
+   * `customer_data` instead, which is where the order screen's Payment card
+   * reads them from, so `toOrderDto` promotes these into that blob.
+   */
+  payment_proof_url?: string | null;
+  payment_proof_public_id?: string | null;
+  payment_proof_reference?: string | null;
   /** Trigger-maintained cache of the `order_payments` ledger. */
   amount_paid?: number | null;
   created_at: string;
@@ -384,6 +394,46 @@ export function toOrderItemDto(row: PlatformOrderItemRow): OrderItemDto {
   };
 }
 
+/** The three proof keys the order screen's Payment card reads. */
+const PAYMENT_PROOF_KEYS = [
+  "payment_proof_url",
+  "payment_proof_public_id",
+  "payment_proof_reference",
+] as const;
+
+/**
+ * Payment proof, moved from the platform's columns into the blob every screen
+ * already reads it from.
+ *
+ * Convex has no proof columns, so web checkout writes the screenshot and the
+ * reference into `customerData` for those tenants. The platform table has real
+ * columns and checkout writes THOSE — so the merchant app's Payment card, which
+ * only ever looked in the blob, found nothing on a platform-backed store and
+ * every screenshot a customer uploaded was unreachable.
+ *
+ * On a platform row the columns are the whole truth: any copy inside the blob
+ * is dropped first, so verifying a payment (which destroys the file and nulls
+ * the url) cannot leave a link to a screenshot that no longer exists.
+ */
+function customerDataWithPaymentProof(
+  row: PlatformOrderRow
+): Record<string, unknown> | undefined {
+  const blob = optional(row.customer_data);
+  const proof: Record<string, string> = {};
+  for (const key of PAYMENT_PROOF_KEYS) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim() !== "") proof[key] = value;
+  }
+
+  const carriesStaleCopy =
+    blob !== undefined && PAYMENT_PROOF_KEYS.some((key) => key in blob);
+  if (Object.keys(proof).length === 0 && !carriesStaleCopy) return blob;
+
+  const rest = { ...(blob ?? {}) };
+  for (const key of PAYMENT_PROOF_KEYS) delete rest[key];
+  return { ...rest, ...proof };
+}
+
 /**
  * `items` is only needed for rows written before `item_count` existed; the
  * count is otherwise read straight off the column.
@@ -404,7 +454,7 @@ export function toOrderDto(
     outlet_id: optional(row.outlet_id),
     customerName: row.customer_name ?? "",
     customerContact: row.customer_contact ?? "",
-    customerData: optional(row.customer_data),
+    customerData: customerDataWithPaymentProof(row),
     total: toNumber(row.total),
     itemCount,
     status: row.status,

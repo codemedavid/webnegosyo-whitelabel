@@ -93,6 +93,96 @@ describe("localDayStartMs", () => {
   });
 });
 
+describe("toOrderDto — payment proof", () => {
+  it("promotes the proof columns into the customerData blob the Payment card reads", () => {
+    // Arrange: Convex has no proof columns, so web checkout writes the
+    // screenshot and the reference into `customerData` for those tenants, and
+    // the order screen's Payment card reads them from there. The platform
+    // table has REAL columns and checkout writes those instead — so the same
+    // card, on a platform-backed store, found nothing and every uploaded
+    // screenshot was unreachable from the merchant app.
+    const row = orderRow({
+      payment_method_name: "GCash",
+      payment_proof_url: "https://ik.imagekit.io/x/payment-proofs/a.jpg",
+      payment_proof_public_id: "payment-proofs/a",
+      payment_proof_reference: "0009988",
+    });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.customerData?.payment_proof_url).toBe(
+      "https://ik.imagekit.io/x/payment-proofs/a.jpg"
+    );
+    expect(dto.customerData?.payment_proof_reference).toBe("0009988");
+    expect(dto.customerData?.payment_proof_public_id).toBe("payment-proofs/a");
+  });
+
+  it("keeps the customer's own checkout answers alongside the promoted proof", () => {
+    // Arrange: the blob is what the merchant's Customer Details card renders.
+    // Promoting the proof must not replace it.
+    const row = orderRow({
+      customer_data: { delivery_address: "Enverga Blvd, Lucena", landmark: "Beside the church" },
+      payment_proof_reference: "0009988",
+    });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.customerData).toEqual({
+      delivery_address: "Enverga Blvd, Lucena",
+      landmark: "Beside the church",
+      payment_proof_reference: "0009988",
+    });
+    expect(dto.deliveryAddress).toBe("Enverga Blvd, Lucena");
+  });
+
+  it("leaves an order without proof exactly as its blob stands", () => {
+    // Arrange: absent must stay absent — an empty string in the blob would
+    // render an empty "Reference #" row on every cash order.
+    const row = orderRow({
+      customer_data: { landmark: "Beside the church" },
+      payment_proof_url: null,
+      payment_proof_reference: null,
+      payment_proof_public_id: null,
+    });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.customerData).toEqual({ landmark: "Beside the church" });
+    expect(dto.customerData?.payment_proof_url).toBeUndefined();
+  });
+
+  it("does not resurrect a purged screenshot from a stale blob copy", () => {
+    // Arrange: verifying a payment nulls `payment_proof_url` and
+    // `payment_proof_public_id` (the file is destroyed) while keeping the
+    // reference. An order whose blob also carried the old url would otherwise
+    // keep offering a link to a file that no longer exists.
+    const row = orderRow({
+      customer_data: {
+        payment_proof_url: "https://ik.imagekit.io/x/payment-proofs/gone.jpg",
+        payment_proof_public_id: "payment-proofs/gone",
+        payment_proof_reference: "0009988",
+      },
+      payment_proof_url: null,
+      payment_proof_public_id: null,
+      payment_proof_reference: "0009988",
+    });
+
+    // Act
+    const dto = toOrderDto(row);
+
+    // Assert
+    expect(dto.customerData?.payment_proof_url).toBeUndefined();
+    expect(dto.customerData?.payment_proof_public_id).toBeUndefined();
+    expect(dto.customerData?.payment_proof_reference).toBe("0009988");
+  });
+});
+
 describe("toOrderDto — prep time", () => {
   it("carries the kitchen's prep promise onto the DTO", () => {
     // `toOrderDto` is an explicit field-by-field projection: a column not named

@@ -881,8 +881,23 @@ export default function OrderDetailScreen() {
               </View>
             )}
             {paymentProofUrl != null && String(paymentProofUrl).trim() !== "" && (
-              <TouchableOpacity onPress={() => void openExternalUrl(String(paymentProofUrl))}>
-                <Text style={styles.proofLink}>View payment proof</Text>
+              /*
+                The screenshot itself, not just a link to it: the merchant is
+                checking a GCash transfer against the bill, and sending them
+                out to a browser to do it is how a proof goes unread. Tapping
+                still opens the full-size original.
+              */
+              <TouchableOpacity
+                onPress={() => void openExternalUrl(String(paymentProofUrl))}
+                activeOpacity={0.85}
+              >
+                <Image
+                  source={{ uri: String(paymentProofUrl) }}
+                  style={styles.proofImage}
+                  resizeMode="contain"
+                  alt="Payment proof the customer uploaded"
+                />
+                <Text style={styles.proofLink}>Tap to open full size</Text>
               </TouchableOpacity>
             )}
             <Text style={styles.sub}>Status: {paymentStatusLabel}</Text>
@@ -1130,6 +1145,15 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: "700",
     textTransform: "uppercase",
+  },
+  proofImage: {
+    width: "100%",
+    height: 260,
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    backgroundColor: colors.surfaceSubtle,
   },
   proofLink: {
     ...typography.body,
