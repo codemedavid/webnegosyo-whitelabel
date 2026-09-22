@@ -11,13 +11,35 @@ const DEFAULT_TIMEOUT_MS = 15_000
 const DEFAULT_RETRIES = 2
 const DEFAULT_RETRY_DELAY_MS = 500
 
+/**
+ * The arguments `simple-option-stock-service.ts` actually calls the RPC with.
+ *
+ * PostgREST resolves a function by name AND argument names, so these are what
+ * make the probe find it — and they make the guard check the signature the
+ * caller depends on, not merely that something of that name exists.
+ */
+const STOCK_RPC_ARGUMENTS = [
+  'p_tenant_id',
+  'p_order_id',
+  'p_action',
+  'p_revision',
+  'p_items',
+  'p_outlet_id',
+] as const
+
 /** Table GET with limit=0 (no assumed PK column), or GET on the VOLATILE RPC. */
 export function platformStockProbeRequest(
   restUrl: string,
   path: PlatformStockContractPath,
 ): { url: string; method: 'GET' } {
   const base = restUrl.replace(/\/$/, '')
-  if (path.startsWith('/rpc/')) return { url: `${base}${path}`, method: 'GET' }
+  if (path.startsWith('/rpc/')) {
+    // Empty values on purpose: the function is VOLATILE, so PostgREST refuses
+    // GET (405), and uuid coercion of "" fails first anyway (400). Both prove
+    // it is there; neither runs it.
+    const args = STOCK_RPC_ARGUMENTS.map((name) => `${name}=`).join('&')
+    return { url: `${base}${path}?${args}`, method: 'GET' }
+  }
   return { url: `${base}${path}?limit=0`, method: 'GET' }
 }
 

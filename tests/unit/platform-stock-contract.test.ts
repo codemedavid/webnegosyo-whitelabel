@@ -17,11 +17,32 @@ describe('platform stock probe requests', () => {
     })
   })
 
-  it('probes the mutating RPC with GET and no arguments', () => {
-    expect(platformStockProbeRequest(REST, '/rpc/apply_simple_option_order_stock')).toEqual({
-      url: `${REST}/rpc/apply_simple_option_order_stock`,
-      method: 'GET',
-    })
+  /**
+   * PostgREST resolves an RPC by name AND argument signature. A GET carrying no
+   * arguments matches no overload, so it answers 404/PGRST202 — the same answer
+   * it gives for a function that does not exist at all. Probing without
+   * arguments therefore cannot tell present from missing, and it reported the
+   * live `apply_simple_option_order_stock` as absent, failing the production
+   * build of a database that had it. The argument names must go on the URL.
+   */
+  it('probes the mutating RPC with its argument names, or it cannot be found', () => {
+    const { url, method } = platformStockProbeRequest(
+      REST,
+      '/rpc/apply_simple_option_order_stock',
+    )
+
+    expect(method).toBe('GET')
+    expect(url.startsWith(`${REST}/rpc/apply_simple_option_order_stock?`)).toBe(true)
+    for (const argument of [
+      'p_tenant_id',
+      'p_order_id',
+      'p_action',
+      'p_revision',
+      'p_items',
+      'p_outlet_id',
+    ]) {
+      expect(url).toContain(argument)
+    }
   })
 })
 
@@ -72,7 +93,7 @@ describe('probePlatformStockContract', () => {
     expect(urls).toEqual([
       `${REST}/simple_option_stock_applications?limit=0`,
       `${REST}/simple_option_stock_movements?limit=0`,
-      `${REST}/rpc/apply_simple_option_order_stock`,
+      platformStockProbeRequest(REST, '/rpc/apply_simple_option_order_stock').url,
     ])
     expect(urls.some((url) => url === `${REST}/` || url === REST)).toBe(false)
   })
