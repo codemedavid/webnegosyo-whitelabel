@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Dimensions, Platform } from "react-native";
 
-import { orientationLockFor } from "./screen-size";
+import { type OrientationLock, orientationLockFor } from "./screen-size";
 
 /**
  * The slice of `expo-screen-orientation` this hook uses.
@@ -11,7 +11,19 @@ import { orientationLockFor } from "./screen-size";
  */
 interface ScreenOrientationModule {
   lockAsync: (lock: number) => Promise<void>;
-  OrientationLock: { PORTRAIT_UP: number };
+  /**
+   * LANDSCAPE, not LANDSCAPE_LEFT: a counter stand can face either way and a
+   * merchant flipping it should not meet a screen that refuses to follow.
+   */
+  OrientationLock: { PORTRAIT_UP: number; LANDSCAPE: number };
+}
+
+/** Our two-value answer, in the package's own vocabulary. */
+function nativeLockFor(
+  lock: OrientationLock,
+  { OrientationLock: native }: ScreenOrientationModule,
+): number {
+  return lock === "landscape" ? native.LANDSCAPE : native.PORTRAIT_UP;
 }
 
 /**
@@ -41,32 +53,33 @@ function loadScreenOrientation(): ScreenOrientationModule | null {
 }
 
 /**
- * Keeps handsets upright while letting tablets turn.
+ * Turns tablets sideways and keeps handsets upright.
  *
  * iOS decides this declaratively — `app.config.ts` ships per-idiom
- * `UISupportedInterfaceOrientations` keys — so this only has work to do on
- * Android, whose manifest has no way to vary orientation by screen size. There
- * the activity is left unlocked and the decision is made here instead.
+ * `UISupportedInterfaceOrientations` keys, iPad landscape-only — so this only
+ * has work to do on Android, whose manifest has no way to vary orientation by
+ * screen size. There the activity is left unlocked and the decision is made
+ * here instead. Change one of the two and half the fleet silently keeps the
+ * old behaviour.
  *
  * Read once at startup from `Dimensions.get("screen")`, not subscribed: the
  * question is what KIND of device this is, and that does not change while the
- * app is running. Subscribing to the window would also feed rotation back into
- * the lock that permitted it.
+ * app is running. Subscribing to the window would also feed each rotation back
+ * into the lock that caused it.
  *
  * Failures are swallowed on purpose, an absent module included. A register
- * that can rotate is untidy, never broken, and is not worth an alert in front
- * of a customer.
+ * that rotates when it should not is untidy, never broken, and is not worth
+ * an alert in front of a customer.
  */
 export function useOrientationLock(): void {
   useEffect(() => {
     if (Platform.OS !== "android") return;
-    if (orientationLockFor(Dimensions.get("screen")) !== "portrait") return;
 
     const screenOrientation = loadScreenOrientation();
     if (!screenOrientation) return;
 
-    screenOrientation
-      .lockAsync(screenOrientation.OrientationLock.PORTRAIT_UP)
-      .catch(() => {});
+    const lock = orientationLockFor(Dimensions.get("screen"));
+
+    screenOrientation.lockAsync(nativeLockFor(lock, screenOrientation)).catch(() => {});
   }, []);
 }

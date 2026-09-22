@@ -1,5 +1,6 @@
 /**
- * The hook that keeps handsets upright, tested for the way it FAILS.
+ * The hook that lays tablets down and stands handsets up, tested for the way
+ * it FAILS.
  *
  * `expo-screen-orientation` resolves its native module the moment the package
  * is imported — `requireNativeModule('ExpoScreenOrientation')` runs at its
@@ -20,8 +21,10 @@ import { Dimensions, Platform } from "react-native";
 import { useOrientationLock } from "./use-orientation-lock";
 
 const HANDSET = { width: 390, height: 844 };
+/** An iPad-sized window held UPRIGHT — the case the lock has to correct. */
 const TABLET = { width: 834, height: 1194 };
 const PORTRAIT_UP = 1;
+const LANDSCAPE = 6;
 
 const mockLockAsync = jest.fn();
 /** Flipped by a test to stand in for a binary without the native module. */
@@ -33,7 +36,10 @@ jest.mock("expo-screen-orientation", () => {
   if (mockNativeModuleMissing) {
     throw new Error("Cannot find native module 'ExpoScreenOrientation'");
   }
-  return { lockAsync: mockLockAsync, OrientationLock: { PORTRAIT_UP: 1 } };
+  return {
+    lockAsync: mockLockAsync,
+    OrientationLock: { PORTRAIT_UP: 1, LANDSCAPE: 6 },
+  };
 });
 
 /**
@@ -70,12 +76,14 @@ describe("useOrientationLock", () => {
     expect(mockLockAsync).toHaveBeenCalledWith(PORTRAIT_UP);
   });
 
-  it("leaves an Android tablet free to turn", () => {
+  it("turns an Android tablet sideways", () => {
     withScreen("android", TABLET);
 
     renderHook(() => useOrientationLock());
 
-    expect(mockLockAsync).not.toHaveBeenCalled();
+    // LANDSCAPE, not LANDSCAPE_LEFT: a counter stand may face either way, and
+    // the merchant should be able to flip it without the screen fighting back.
+    expect(mockLockAsync).toHaveBeenCalledWith(LANDSCAPE);
   });
 
   it("leaves iOS to its declarative per-idiom keys", () => {
@@ -94,7 +102,7 @@ describe("useOrientationLock", () => {
   });
 
   it("swallows a lock the OS refuses", () => {
-    withScreen("android", HANDSET);
+    withScreen("android", TABLET);
     mockLockAsync.mockRejectedValue(new Error("refused"));
 
     expect(() => renderHook(() => useOrientationLock())).not.toThrow();

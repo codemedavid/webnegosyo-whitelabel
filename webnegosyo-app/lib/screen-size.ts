@@ -35,17 +35,24 @@ export function isTabletScreen(size: ScreenSize): boolean {
 }
 
 /** What the app asks the OS to allow. Mapped to the native enum by the hook. */
-export type OrientationLock = "portrait" | "all";
+export type OrientationLock = "portrait" | "landscape";
 
 /**
- * Tablets turn; handsets do not.
+ * Tablets lie down; handsets stand up.
  *
- * Merchants mount a tablet on a counter stand, and a counter stand is
- * landscape — refusing to rotate there wastes half the glass and was reported
- * as the app "only working portrait". A handset stays locked because every
- * screen in the app is drawn as a tall column and nothing is gained by
- * letting a phone lie on its side.
+ * Both are locks, in opposite directions, and neither is a preference the
+ * merchant gets to override. A tablet is a counter terminal: it sits in a
+ * stand, sideways, and the register is drawn for that shape — the two-pane
+ * layout in `pos-layout.ts` puts the sale beside the grid rather than under
+ * it. Leaving the tablet free to turn meant a staff member could knock it
+ * upright mid-sale and re-flow the whole screen between two taps. A handset
+ * is locked the other way for the same reason in reverse: every screen is a
+ * tall column, and a phone on its side only makes that column shorter.
+ *
+ * Note this reads the device's size, NOT its current orientation — an iPad
+ * picked up in portrait still answers "landscape", which is the whole point:
+ * the lock's job is to turn it.
  */
 export function orientationLockFor(size: ScreenSize): OrientationLock {
-  return isTabletScreen(size) ? "all" : "portrait";
+  return isTabletScreen(size) ? "landscape" : "portrait";
 }

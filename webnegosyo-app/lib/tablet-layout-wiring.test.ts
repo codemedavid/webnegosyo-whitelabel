@@ -57,14 +57,27 @@ describe("orientation", () => {
     );
   });
 
-  it("lets iPads turn both ways", () => {
+  it("pins iPads sideways, either way up", () => {
     const config = appConfig();
-    expect(config).toMatch(/"UISupportedInterfaceOrientations~ipad"/);
-    expect(config).toMatch(/UIInterfaceOrientationLandscapeLeft/);
-    expect(config).toMatch(/UIInterfaceOrientationLandscapeRight/);
+    const ipadKey = config.match(
+      /"UISupportedInterfaceOrientations~ipad": \[[^\]]*\]/,
+    )?.[0];
+
+    expect(ipadKey).toMatch(/UIInterfaceOrientationLandscapeLeft/);
+    expect(ipadKey).toMatch(/UIInterfaceOrientationLandscapeRight/);
+    // Portrait in this list is what would let a counter-mounted register be
+    // stood up on its end, which is the arrangement the POS is not drawn for.
+    expect(ipadKey).not.toMatch(/UIInterfaceOrientationPortrait/);
   });
 
-  it("locks Android handsets at runtime, since its manifest cannot", () => {
+  it("opts the iPad out of multitasking, as a non-rotating app must", () => {
+    // Apple requires an iPad app that supports multitasking to accept all
+    // four orientations; the landscape-only list above is honoured only with
+    // this key set. Dropping it silently puts portrait back.
+    expect(appConfig()).toMatch(/UIRequiresFullScreen: true/);
+  });
+
+  it("locks Android at runtime, since its manifest cannot vary by size", () => {
     expect(rootLayout()).toMatch(/useOrientationLock\(\)/);
   });
 });

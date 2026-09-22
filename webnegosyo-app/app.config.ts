@@ -51,12 +51,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // 1.0.8 — a clean train for this release, distinct from those three stale
   // 1.0.7 binaries.
   version: "1.0.8",
-  // "default" hands the decision to the OS, which is the only way a tablet can
-  // ever be used sideways — locking it here is what merchants reported as the
-  // app "only working portrait" on a counter stand. Handsets are NOT set loose
-  // by this: iPhones are pinned upright by the per-idiom Info.plist keys below,
-  // and Android handsets by the runtime lock in app/_layout.tsx, which sizes
-  // the decision off the window (lib/screen-size.ts).
+  // "default" hands the decision to the OS, which is the only way one binary
+  // can hold a phone upright and lay a tablet down. Nothing is actually left
+  // free by this: iPhones are pinned portrait and iPads landscape by the
+  // per-idiom Info.plist keys below, and every Android device by the runtime
+  // lock in app/_layout.tsx, which sizes the decision off the window
+  // (lib/screen-size.ts). Setting "portrait" here is what merchants reported
+  // as the app "only working portrait" on a counter stand.
   orientation: "default",
   icon: "./assets/icon.png",
   splash: {
@@ -73,15 +74,22 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       ITSAppUsesNonExemptEncryption: false,
       // iOS reads orientation PER IDIOM: the plain key governs iPhone, the
       // "~ipad" key governs iPad. Spelling both out is what lets one binary
-      // keep every handset upright while letting every tablet turn — the
+      // keep every handset upright while laying every tablet down — the
       // top-level `orientation: "default"` alone would unlock both.
       UISupportedInterfaceOrientations: ["UIInterfaceOrientationPortrait"],
+      // Landscape ONLY, both ways up: an iPad is a counter terminal and the
+      // register is drawn two-pane for that shape (lib/pos-layout.ts). Adding
+      // either portrait value back lets a stand be stood on its end mid-sale.
       "UISupportedInterfaceOrientations~ipad": [
-        "UIInterfaceOrientationPortrait",
-        "UIInterfaceOrientationPortraitUpsideDown",
         "UIInterfaceOrientationLandscapeLeft",
         "UIInterfaceOrientationLandscapeRight",
       ],
+      // The price of the line above. Apple requires an iPad app that supports
+      // multitasking to accept all four orientations, so without this key the
+      // landscape-only list is ignored and portrait comes back. Opting out
+      // costs Split View and Slide Over, which a full-screen register in a
+      // stand never used.
+      UIRequiresFullScreen: true,
       NSCameraUsageDescription: "Scan customer order QR codes",
       NSBluetoothAlwaysUsageDescription:
         "This app uses Bluetooth to connect to thermal receipt printers for printing customer orders.",

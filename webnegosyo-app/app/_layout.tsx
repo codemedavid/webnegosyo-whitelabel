@@ -421,7 +421,7 @@ function useAnnouncementPushRouting() {
 
 export default function RootLayout() {
   useGlobalErrorHandler();
-  // Tablets turn, handsets do not — see lib/use-orientation-lock.ts.
+  // Tablets lie down, handsets stand up — see lib/use-orientation-lock.ts.
   useOrientationLock();
   useAuthInit();
   useAuthRedirect();

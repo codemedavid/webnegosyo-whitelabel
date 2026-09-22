@@ -42,9 +42,11 @@ describe("isTabletScreen", () => {
 });
 
 describe("orientationLockFor", () => {
-  it("lets a tablet turn", () => {
-    expect(orientationLockFor(IPAD_MINI_PORTRAIT)).toBe("all");
-    expect(orientationLockFor(ANDROID_TABLET_LANDSCAPE)).toBe("all");
+  it("turns a tablet sideways, however it is being held right now", () => {
+    // The portrait iPad is the case that matters: a tablet picked up upright
+    // must still end up in the landscape the register is drawn for.
+    expect(orientationLockFor(IPAD_MINI_PORTRAIT)).toBe("landscape");
+    expect(orientationLockFor(ANDROID_TABLET_LANDSCAPE)).toBe("landscape");
   });
 
   it("keeps a handset upright", () => {
