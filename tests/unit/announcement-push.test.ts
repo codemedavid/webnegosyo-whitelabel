@@ -9,8 +9,12 @@
  */
 import {
   buildAnnouncementPushMessages,
-  collectStalePushTokens,
+  describePushFailures,
   selectAnnouncementRecipients,
+  staleTokensFrom,
+  summarizeFailureCauses,
+  summarizePushReceipts,
+  summarizePushTickets,
 } from '@/lib/push/announcement-push'
 
 const TOKENS = [
@@ -87,23 +91,125 @@ describe('buildAnnouncementPushMessages', () => {
   })
 })
 
-describe('collectStalePushTokens', () => {
-  it('returns the tokens whose ticket says the device is gone', () => {
-    const messages = [
-      { to: 'ExponentPushToken[a]' },
-      { to: 'ExponentPushToken[b]' },
-      { to: 'ExponentPushToken[c]' },
-    ]
+describe('summarizePushTickets', () => {
+  const messages = [
+    { to: 'ExponentPushToken[a]' },
+    { to: 'ExponentPushToken[b]' },
+    { to: 'ExponentPushToken[c]' },
+  ]
+
+  it('hands back a receipt to chase for every device Expo accepted', () => {
     const tickets = [
-      { status: 'ok', id: '1' },
+      { status: 'ok', id: 'r1' },
+      { status: 'ok', id: 'r2' },
       { status: 'error', message: 'gone', details: { error: 'DeviceNotRegistered' } },
-      { status: 'error', message: 'rate', details: { error: 'MessageRateExceeded' } },
     ]
-    expect(collectStalePushTokens(messages, tickets)).toEqual(['ExponentPushToken[b]'])
+    const { receipts, failures } = summarizePushTickets(messages, tickets)
+    expect(receipts).toEqual([
+      { id: 'r1', token: 'ExponentPushToken[a]' },
+      { id: 'r2', token: 'ExponentPushToken[b]' },
+    ])
+    expect(failures).toEqual([
+      { token: 'ExponentPushToken[c]', error: 'DeviceNotRegistered', message: 'gone' },
+    ])
   })
 
-  it('ignores a ticket list that does not line up with the messages', () => {
-    expect(collectStalePushTokens([{ to: 'x' }], [])).toEqual([])
-    expect(collectStalePushTokens([{ to: 'x' }], 'nope')).toEqual([])
+  it('reports the credential refusal that silently drops a whole platform', () => {
+    const tickets = messages.map(() => ({
+      status: 'error',
+      message: 'Unable to retrieve the FCM server key',
+      details: { error: 'InvalidCredentials' },
+    }))
+    const { receipts, failures } = summarizePushTickets(messages, tickets)
+    expect(receipts).toEqual([])
+    expect(failures.map((f) => f.error)).toEqual([
+      'InvalidCredentials',
+      'InvalidCredentials',
+      'InvalidCredentials',
+    ])
+  })
+
+  it('treats a reply that does not line up as unknown rather than delivered', () => {
+    const { receipts, failures } = summarizePushTickets(messages, 'nope')
+    expect(receipts).toEqual([])
+    expect(failures).toHaveLength(3)
+    expect(failures.every((f) => f.error === null)).toBe(true)
+  })
+})
+
+describe('summarizePushReceipts', () => {
+  const chasing = [
+    { id: 'r1', token: 'ExponentPushToken[a]' },
+    { id: 'r2', token: 'ExponentPushToken[b]' },
+    { id: 'r3', token: 'ExponentPushToken[c]' },
+  ]
+
+  it('surfaces the FCM sender mismatch that never reaches the ticket', () => {
+    const { failures, settledIds } = summarizePushReceipts(
+      {
+        r1: { status: 'ok' },
+        r2: {
+          status: 'error',
+          message: 'The recipient is not registered with this FCM sender',
+          details: { error: 'MismatchSenderId' },
+        },
+      },
+      chasing
+    )
+    expect(settledIds).toEqual(['r1', 'r2'])
+    expect(failures).toEqual([
+      {
+        token: 'ExponentPushToken[b]',
+        error: 'MismatchSenderId',
+        message: 'The recipient is not registered with this FCM sender',
+      },
+    ])
+  })
+
+  it('ignores receipts for ids it never asked about, and a malformed body', () => {
+    expect(summarizePushReceipts({ other: { status: 'error' } }, chasing)).toEqual({
+      failures: [],
+      settledIds: [],
+    })
+    expect(summarizePushReceipts('nope', chasing)).toEqual({ failures: [], settledIds: [] })
+  })
+})
+
+describe('staleTokensFrom', () => {
+  it('deletes only the devices Expo says are gone, once each', () => {
+    const failures = [
+      { token: 'ExponentPushToken[a]', error: 'DeviceNotRegistered', message: null },
+      { token: 'ExponentPushToken[a]', error: 'DeviceNotRegistered', message: null },
+      { token: 'ExponentPushToken[b]', error: 'MismatchSenderId', message: null },
+      { token: 'ExponentPushToken[c]', error: null, message: null },
+    ]
+    expect(staleTokensFrom(failures)).toEqual(['ExponentPushToken[a]'])
+  })
+})
+
+describe('summarizeFailureCauses / describePushFailures', () => {
+  const failures = [
+    { token: 't1', error: 'MismatchSenderId', message: null },
+    { token: 't2', error: 'MismatchSenderId', message: null },
+    { token: 't3', error: 'DeviceNotRegistered', message: null },
+    { token: 't4', error: null, message: null },
+  ]
+
+  it('counts the causes, commonest first', () => {
+    expect(summarizeFailureCauses(failures)).toEqual([
+      { error: 'MismatchSenderId', count: 2 },
+      { error: 'DeviceNotRegistered', count: 1 },
+      { error: 'unknown', count: 1 },
+    ])
+  })
+
+  it('reads as one line an operator can act on', () => {
+    expect(describePushFailures(failures)).toBe(
+      '4 failed — MismatchSenderId 2, DeviceNotRegistered 1, unknown 1'
+    )
+  })
+
+  it('says nothing when nothing failed', () => {
+    expect(describePushFailures([])).toBeNull()
   })
 })

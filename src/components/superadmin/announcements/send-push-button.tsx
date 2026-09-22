@@ -18,6 +18,21 @@ import {
   sendAnnouncementPushAction,
 } from '@/app/actions/announcements'
 import type { AnnouncementRecord } from '@/lib/announcements/service'
+import type { AnnouncementSendResult } from '@/lib/push/send-announcement'
+
+/**
+ * What actually happened, in one line. A refusal has to be readable here:
+ * Expo accepts every message and then declines to deliver it when the build's
+ * Firebase project and the FCM key on EAS disagree, so "sent to N devices"
+ * alone can mean nobody was reached.
+ */
+function describeSendResult(result: AnnouncementSendResult): string {
+  const parts = [`${result.deliveredCount} of ${result.recipientCount} devices reached`]
+  if (result.pendingCount > 0) parts.push(`${result.pendingCount} still pending at Expo`)
+  for (const cause of result.failureCauses) parts.push(`${cause.count} refused: ${cause.error}`)
+  if (result.failedChunks > 0) parts.push(`${result.failedChunks} batches failed to send`)
+  return parts.join(' · ')
+}
 
 interface Props {
   announcement: Pick<AnnouncementRecord, 'id' | 'title' | 'status' | 'audienceTenantIds' | 'pushSentAt'>
@@ -55,10 +70,9 @@ export function SendPushButton({ announcement, onSent, size = 'sm' }: Props) {
     startTransition(async () => {
       try {
         const result = await sendAnnouncementPushAction(announcement.id)
-        onSent(result.recipientCount)
+        onSent(result.deliveredCount + result.pendingCount)
         setOpen(false)
-        const suffix = result.failedChunks > 0 ? ` (${result.failedChunks} batches failed)` : ''
-        toast.success(`Notification sent to ${result.recipientCount} devices${suffix}`)
+        toast[result.failureCount > 0 ? 'warning' : 'success'](describeSendResult(result))
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to send')
       }
