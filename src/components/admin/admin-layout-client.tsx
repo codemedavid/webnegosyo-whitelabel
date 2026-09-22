@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar, MobileSidebar, adminSidebarItems, type SidebarEntry } from '@/components/shared/sidebar'
 import { createClient } from '@/lib/supabase/client'
+import { signOutThisDevice } from '@/lib/supabase/sign-out'
 import { toast } from 'sonner'
 import type { Tenant } from '@/types/database'
 import {
@@ -35,7 +36,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
   const handleLogout = async () => {
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
+      const { error } = await signOutThisDevice(supabase)
 
       if (error) {
         toast.error('Failed to logout')

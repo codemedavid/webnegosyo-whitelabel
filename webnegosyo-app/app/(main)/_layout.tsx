@@ -8,6 +8,7 @@ import { isTabOnBar } from "../../lib/tab-visibility";
 import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { tabLabel } from "../../lib/workspace-presentation";
 import { supabase } from "../../lib/supabase";
+import { signOutThisDevice } from "../../lib/sign-out";
 import { GlobalOrderAlerts } from "../../components/GlobalOrderAlerts";
 import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint";
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
@@ -28,7 +29,7 @@ import { useBranchLanding } from "../../lib/use-branch-landing";
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOutThisDevice(supabase);
     } catch {
       // No session (e.g. demo) — ignore.
     }

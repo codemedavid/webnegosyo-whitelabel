@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { router, type Href } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import { signOutThisDevice } from "../../lib/sign-out";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_STORE } from "../../lib/demo";
 import {
@@ -97,7 +98,7 @@ export default function LoginScreen() {
       const session = resolveSession(authData.user.id, appUser ?? null, tenant, outlet);
 
       if (session.mode === "denied" || !session.auth || !session.landingHref) {
-        await supabase.auth.signOut();
+        await signOutThisDevice(supabase);
         throw new Error(session.reason ?? "You do not have admin access");
       }
 

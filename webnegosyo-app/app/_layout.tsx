@@ -26,6 +26,7 @@ import {
 import { usePrinterStore } from "../stores/printer-store";
 import { useRegisterSettingsStore } from "../stores/register-settings-store";
 import { supabase } from "../lib/supabase";
+import { signOutThisDevice } from "../lib/sign-out";
 import {
   BOOTSTRAP_UNREACHABLE_MESSAGE,
   classifyLookup,
@@ -79,7 +80,7 @@ warnAboutScreensRuntime(
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOutThisDevice(supabase);
     } catch {
       // No session to clear (e.g. demo mode) — ignore.
     }

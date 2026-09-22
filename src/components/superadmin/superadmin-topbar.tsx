@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { ChevronDown, LogOut, Search, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { signOutThisDevice } from '@/lib/supabase/sign-out'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +40,7 @@ export function SuperAdminTopbar() {
   const handleLogout = async () => {
     setIsLoggingOut(true)
     const supabase = createClient()
-    await supabase.auth.signOut()
+    await signOutThisDevice(supabase)
     router.replace('/superadmin/login')
   }
 

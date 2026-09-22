@@ -5,6 +5,7 @@ import { colors } from "../../theme/colors";
 import { CrashFallback } from "../../components/CrashFallback";
 import { useAuthStore } from "../../stores/auth-store";
 import { supabase } from "../../lib/supabase";
+import { signOutThisDevice } from "../../lib/sign-out";
 import { getSuperadminTab } from "../../lib/superadmin-nav";
 
 /**
@@ -15,7 +16,7 @@ import { getSuperadminTab } from "../../lib/superadmin-nav";
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOutThisDevice(supabase);
     } catch {
       // No session — ignore.
     }

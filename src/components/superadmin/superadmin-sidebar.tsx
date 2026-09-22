@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { signOutThisDevice } from '@/lib/supabase/sign-out'
 
 interface SidebarItem {
   label: string
@@ -80,7 +81,7 @@ export function SuperAdminSidebar() {
   const handleLogout = async () => {
     setIsLoggingOut(true)
     const supabase = createClient()
-    await supabase.auth.signOut()
+    await signOutThisDevice(supabase)
     router.replace('/superadmin/login')
   }
 

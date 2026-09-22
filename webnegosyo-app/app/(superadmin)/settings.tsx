@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import { signOutThisDevice } from "../../lib/sign-out";
 import { useAuthStore } from "../../stores/auth-store";
 import { ScreenHeader } from "../../components/superadmin/ScreenHeader";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
@@ -45,7 +46,7 @@ export default function SuperadminSettingsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await supabase.auth.signOut();
+            await signOutThisDevice(supabase);
           } catch {
             // No session to clear — fall through to the local reset.
           }

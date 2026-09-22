@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import { signOutThisDevice } from "../../lib/sign-out";
 import { useAuthStore } from "../../stores/auth-store";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { BackHeader } from "../../components/BackHeader";
@@ -52,7 +53,7 @@ export default function AccountScreen() {
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
-      await supabase.auth.signOut();
+      await signOutThisDevice(supabase);
     } catch {
       // No active session (e.g. demo) — ignore.
     }
@@ -90,7 +91,7 @@ export default function AccountScreen() {
       // sign-out would just error. A local-scope sign-out clears the cached
       // token without needing the server; then reset state and return to login.
       try {
-        await supabase.auth.signOut({ scope: "local" });
+        await signOutThisDevice(supabase);
       } catch {
         // Token already cleared — ignore.
       }

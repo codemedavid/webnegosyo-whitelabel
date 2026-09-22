@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
+import { signOutThisDevice } from '@/lib/supabase/sign-out'
 import { cn } from '@/lib/utils'
 import { Shield, Loader2, AlertCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react'
 
@@ -66,7 +67,7 @@ export default function LoginForm() {
 
       if (roleErr || !roleRow || roleRow.role !== 'superadmin') {
         setErrorMessage('This account is not authorized for platform administration.')
-        await supabase.auth.signOut()
+        await signOutThisDevice(supabase)
         return
       }
 

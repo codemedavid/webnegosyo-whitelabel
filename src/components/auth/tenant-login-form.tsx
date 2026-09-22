@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/lib/supabase/client'
+import { signOutThisDevice } from '@/lib/supabase/sign-out'
 import { toast } from 'sonner'
 import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 
@@ -83,7 +84,7 @@ export function TenantLoginForm({ tenantSlug, tenantId, redirect, unauthorized }
         .maybeSingle()
 
       if (roleError || !userRoleData) {
-        await supabase.auth.signOut()
+        await signOutThisDevice(supabase)
         setError('You do not have access to this admin panel.')
         setIsLoading(false)
         return
@@ -97,7 +98,7 @@ export function TenantLoginForm({ tenantSlug, tenantId, redirect, unauthorized }
         (userRole.role === 'admin' && userRole.tenant_id === tenantId)
 
       if (!isAuthorized) {
-        await supabase.auth.signOut()
+        await signOutThisDevice(supabase)
         setError('You are not authorized to access this admin panel.')
         setIsLoading(false)
         return
