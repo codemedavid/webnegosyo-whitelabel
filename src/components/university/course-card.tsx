@@ -1,9 +1,10 @@
-/* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
-import { ArrowRight, BookOpen, Clock, Layers } from 'lucide-react'
+import { BookOpen, Clock, Layers } from 'lucide-react'
 import { SMARTMENU } from '@/components/landing/landing-theme'
 import { COURSE_LEVEL_LABEL } from '@/lib/university/blocks'
 import type { CourseSummary } from '@/lib/university/service'
+import { CourseCardCta } from './course-card-cta'
+import { CourseCover } from './course-cover'
 
 export function formatMinutes(minutes: number): string {
   if (minutes <= 0) return ''
@@ -29,7 +30,11 @@ export function CourseCard({ course }: { course: CourseSummary }) {
     >
       <div className="relative aspect-[16/9] w-full overflow-hidden" style={{ backgroundColor: SMARTMENU.creamDeep }}>
         {course.coverImageUrl ? (
-          <img src={course.coverImageUrl} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <CourseCover
+            url={course.coverImageUrl}
+            sizes="(min-width: 1024px) 360px, (min-width: 640px) 50vw, 100vw"
+            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+          />
         ) : (
           <div className="graph flex h-full w-full items-center justify-center">
             <BookOpen className="h-10 w-10" style={{ color: `${SMARTMENU.ink}33` }} />
@@ -67,10 +72,7 @@ export function CourseCard({ course }: { course: CourseSummary }) {
               {length}
             </span>
           ) : null}
-          <span className="ml-auto inline-flex items-center gap-1 transition-transform group-hover:translate-x-1" style={{ color: SMARTMENU.red }}>
-            Start
-            <ArrowRight className="h-3.5 w-3.5" />
-          </span>
+          <CourseCardCta courseSlug={course.slug} lessonCount={course.publishedLessonCount} />
         </div>
       </div>
     </Link>

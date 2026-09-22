@@ -32,6 +32,17 @@ const UNIVERSITY_STYLES = `
     linear-gradient(90deg, ${SMARTMENU.ink}0A 1px, transparent 1px);
   background-size: 28px 28px;
 }
+/* A lesson pins a bar over the bottom of a phone's screen; the footer then
+   keeps clear of it, so its links are never stuck underneath. */
+@media (max-width: 1023px) {
+  .university-world:has(.lesson-nav-bar) .university-footer {
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+  }
+}
+.university-world .sheet-rise { animation: sheet-rise 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.university-world .sheet-fade { animation: sheet-fade 180ms ease-out; }
+@keyframes sheet-rise { from { transform: translateY(12%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .university-world * { transition: none !important; animation: none !important; }
 }
@@ -55,20 +66,20 @@ function UniversityNav() {
       className="sticky top-0 z-40 border-b"
       style={{ backgroundColor: `${SMARTMENU.cream}F2`, borderColor: `${SMARTMENU.ink}14`, backdropFilter: 'blur(10px)' }}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 md:px-8">
+      <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-5 md:h-16 md:px-8">
         <Link href="/university" className="flex shrink-0 items-center gap-2.5">
-          <Image src={BRAND.logoSrc} alt="SmartMenu logo" width={38} height={38} className="rounded-full" priority />
+          <Image src={BRAND.logoSrc} alt="SmartMenu logo" width={38} height={38} className="h-8 w-8 rounded-full md:h-[38px] md:w-[38px]" priority />
           <span className="leading-tight">
-            <span className="font-display block text-[17px] font-bold" style={{ color: SMARTMENU.ink }}>
+            <span className="font-display block text-[15px] font-bold md:text-[17px]" style={{ color: SMARTMENU.ink }}>
               Smart<span style={{ color: SMARTMENU.red }}>Menu</span> University
             </span>
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: SMARTMENU.cocoa }}>
+            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.14em] sm:block" style={{ color: SMARTMENU.cocoa }}>
               {BRAND.byline}
             </span>
           </span>
         </Link>
 
-        <div className="flex items-center gap-5">
+        <div className="flex shrink-0 items-center gap-5">
           <Link href="/university" className="hidden text-sm font-semibold transition-opacity hover:opacity-70 sm:inline" style={{ color: SMARTMENU.cocoa }}>
             All courses
           </Link>
@@ -77,7 +88,7 @@ function UniversityNav() {
           </Link>
           <Link
             href="/"
-            className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white transition-transform hover:-translate-y-0.5"
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-full px-4 text-sm font-bold text-white transition-transform hover:-translate-y-0.5"
             style={{ backgroundColor: SMARTMENU.red, boxShadow: `0 12px 24px -12px ${SMARTMENU.red}B3` }}
           >
             SmartMenu
@@ -90,8 +101,8 @@ function UniversityNav() {
 
 function UniversityFooter() {
   return (
-    <footer className="mt-20" style={{ backgroundColor: SMARTMENU.ink, color: SMARTMENU.parchment }}>
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-12 md:flex-row md:items-center md:justify-between md:px-8">
+    <footer className="mt-14 md:mt-20" style={{ backgroundColor: SMARTMENU.ink, color: SMARTMENU.parchment }}>
+      <div className="university-footer mx-auto flex max-w-6xl flex-col gap-6 px-5 py-12 md:flex-row md:items-center md:justify-between md:px-8">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: SMARTMENU.amber }}>
             <GraduationCap className="h-5 w-5" style={{ color: SMARTMENU.ink }} />

@@ -108,4 +108,49 @@ describe('university portal reads', () => {
     expect(course?.modules).toHaveLength(1)
     expect(course?.modules[0].lessons.map((lesson) => lesson.slug)).toEqual(['live'])
   })
+
+  it('lists one prerender param per published course', async () => {
+    listCourses.mockResolvedValue([
+      { id: '1', slug: 'menu-engineering', publishedLessonCount: 2 },
+      { id: '2', slug: 'not-live-yet', publishedLessonCount: 0 },
+    ])
+    const { listPublishedCourseParams } = await loadModule()
+
+    await expect(listPublishedCourseParams()).resolves.toEqual([{ course: 'menu-engineering' }])
+  })
+
+  it('lists one prerender param per published lesson, in reading order', async () => {
+    listCourses.mockResolvedValue([{ id: 'c1', slug: 'course-a', publishedLessonCount: 2 }])
+    getCourseBySlug.mockResolvedValue({
+      id: 'c1',
+      slug: 'course-a',
+      modules: [
+        {
+          id: 'm1',
+          lessons: [
+            { id: 'l1', slug: 'one', status: 'published' },
+            { id: 'l2', slug: 'still-writing', status: 'draft' },
+          ],
+        },
+        { id: 'm2', lessons: [{ id: 'l3', slug: 'two', status: 'published' }] },
+      ],
+    })
+    const { listPublishedLessonParams } = await loadModule()
+
+    await expect(listPublishedLessonParams()).resolves.toEqual([
+      { course: 'course-a', lesson: 'one' },
+      { course: 'course-a', lesson: 'two' },
+    ])
+  })
+
+  // A build must never fail because the database was briefly unwell: the
+  // degraded read yields no params, and the pages fall back to rendering on
+  // demand.
+  it('yields no prerender params when the catalog read fails', async () => {
+    listCourses.mockRejectedValue(new Error('statement timeout'))
+    const { listPublishedCourseParams, listPublishedLessonParams } = await loadModule()
+
+    await expect(listPublishedCourseParams()).resolves.toEqual([])
+    await expect(listPublishedLessonParams()).resolves.toEqual([])
+  })
 })

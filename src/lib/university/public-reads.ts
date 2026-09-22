@@ -96,3 +96,31 @@ export const getPublishedCourse = createCachedRead(['university-course'], loadPu
 export const getPublishedLesson = createCachedRead(['university-lesson'], loadPublishedLesson, {
   tags: () => [UNIVERSITY_CACHE_TAG],
 })
+
+/**
+ * The route params to prerender.
+ *
+ * Without these the two dynamic segments are rendered on demand on every
+ * visit — the catalog page was static while every course and lesson under it
+ * paid a full server render. The portal is platform-owned and small, so the
+ * whole set can be built ahead of time and served from the CDN.
+ *
+ * Both read through the cached catalog, so the build makes one round-trip per
+ * course rather than one per page. A degraded read yields no params, which
+ * leaves the pages to render on demand (`dynamicParams` stays on) rather than
+ * failing the build — the same posture the storefront takes.
+ */
+export async function listPublishedCourseParams(): Promise<{ course: string }[]> {
+  const courses = await getPublishedCourses()
+  return courses.map((course) => ({ course: course.slug }))
+}
+
+export async function listPublishedLessonParams(): Promise<{ course: string; lesson: string }[]> {
+  const courses = await getPublishedCourses()
+  const curricula = await Promise.all(courses.map((course) => getPublishedCourse(course.slug)))
+  return curricula.flatMap((course) =>
+    course
+      ? course.modules.flatMap((module) => module.lessons.map((lesson) => ({ course: course.slug, lesson: lesson.slug })))
+      : []
+  )
+}

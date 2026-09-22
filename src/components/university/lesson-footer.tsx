@@ -28,7 +28,8 @@ export function LessonFooter({ courseSlug, lessonSlug, previous, next }: Props) 
         <button
           type="button"
           onClick={() => (isDone ? markIncomplete(lessonSlug) : markComplete(lessonSlug))}
-          className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition-transform hover:-translate-y-0.5"
+          aria-pressed={isDone}
+          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition-transform hover:-translate-y-0.5 sm:w-auto"
           style={
             isDone
               ? { backgroundColor: `${SMARTMENU.green}1A`, color: SMARTMENU.green, border: `1px solid ${SMARTMENU.green}66` }
@@ -36,7 +37,8 @@ export function LessonFooter({ courseSlug, lessonSlug, previous, next }: Props) 
           }
         >
           {isDone ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-          {isDone ? 'Completed · mark as not done' : 'Mark as complete'}
+          {isDone ? 'Completed' : 'Mark as complete'}
+          {isDone ? <span className="hidden sm:inline">· mark as not done</span> : null}
         </button>
         {next && !isDone ? (
           <span className="text-xs" style={{ color: `${SMARTMENU.cocoa}B3` }}>
@@ -56,7 +58,7 @@ export function LessonFooter({ courseSlug, lessonSlug, previous, next }: Props) 
         ) : (
           <Link
             href={`/university/${courseSlug}`}
-            className="flex items-center justify-end gap-3 rounded-2xl border bg-white px-5 py-4 text-right transition-colors hover:border-current"
+            className="flex min-h-[64px] items-center justify-end gap-3 rounded-2xl border bg-white px-5 py-4 text-right transition-colors hover:border-current"
             style={{ borderColor: `${SMARTMENU.ink}14`, color: SMARTMENU.ink }}
           >
             <span>
@@ -78,7 +80,7 @@ function NeighbourLink({ href, label, title, align }: { href: string; label: str
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 rounded-2xl border bg-white px-5 py-4 transition-colors hover:border-current ${isRight ? 'justify-end text-right' : ''}`}
+      className={`flex min-h-[64px] items-center gap-3 rounded-2xl border bg-white px-5 py-4 transition-colors hover:border-current ${isRight ? 'justify-end text-right' : ''}`}
       style={{ borderColor: `${SMARTMENU.ink}14`, color: SMARTMENU.ink }}
     >
       {!isRight ? <ArrowLeft className="h-4 w-4 shrink-0" /> : null}
