@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { mobileDownloads } from "@/lib/downloads";
+import { desktopDownloads, mobileDownloads } from "@/lib/downloads";
 
 /**
  * The merchant app's own version, read from its Expo config.
@@ -95,5 +95,61 @@ describe("mobileDownloads config", () => {
 
     expect(ios?.kind).toBe("store");
     expect(ios?.href).toContain("apps.apple.com");
+  });
+});
+
+describe("desktopDownloads config", () => {
+  test("every OS appears exactly once", () => {
+    // Arrange
+    const targets = desktopDownloads.map((build) => build.os);
+
+    // Act
+    const unique = new Set(targets);
+
+    // Assert
+    expect(targets).toHaveLength(unique.size);
+    expect(unique).toEqual(new Set(["macos", "windows"]));
+  });
+
+  test("an offered build is never served from public/downloads", () => {
+    // `.gitignore` excludes `public/downloads/*.dmg` because the installer is
+    // over GitHub's 100 MB file limit, so the binary never reached the
+    // deployment and both POS buttons 404'd for every merchant who clicked
+    // one. Nothing under `/downloads/` may be offered again.
+    for (const build of desktopDownloads) {
+      expect(build.href ?? "").not.toMatch(/^\/downloads\//);
+    }
+  });
+
+  test("an offered build links to a GitHub Release asset that outlives it", () => {
+    // Same rule the APK lives by: a Release asset is exempt from the file
+    // limit and never expires, so the link cannot rot unattended.
+    const offered = desktopDownloads.filter((build) => build.available);
+
+    for (const build of offered) {
+      expect(build.href).toMatch(/^https:\/\//);
+      expect(build.href).toContain("github.com");
+      expect(build.href).toContain("/releases/download/");
+    }
+  });
+
+  test("an unhosted build has no link, so it renders as Coming soon", () => {
+    // A card with a dead href is worse than no card: it looks like a working
+    // download right up until the 404.
+    const unhosted = desktopDownloads.filter((build) => !build.available);
+
+    for (const build of unhosted) {
+      expect(build.href).toBeNull();
+    }
+  });
+
+  test("every build states the version, size and extension it ships", () => {
+    // A desktop installer gives the user no storefront page to check against.
+    for (const build of desktopDownloads) {
+      expect(build.label).toBeTruthy();
+      expect(build.requirement).toBeTruthy();
+      expect(build.ext).toMatch(/^\./);
+      if (build.available) expect(build.size).toBeTruthy();
+    }
   });
 });

@@ -1,11 +1,16 @@
 /**
  * Central config for the public download page (`/download`).
  *
- * Desktop binaries are served from `public/downloads/`. To ship a new build,
- * drop the artifact in `public/downloads/` and bump the entry below.
+ * Every binary this page offers is hosted as a **GitHub Release asset**, for
+ * both desktop and mobile. Nothing is served out of `public/downloads/`:
+ * `.gitignore` excludes the installers there because they exceed GitHub's
+ * 100 MB *file* limit, so they never reach the deployment and the buttons
+ * pointing at them 404 for every visitor who clicks one. Release assets are
+ * exempt from that limit and never expire, which is why the Android APK
+ * moved to one and why the desktop builds do too.
  *
- * Mobile apps are configured here too; flip `available` to true and fill in the
- * store URLs once the App Store / Play Store listings are live.
+ * A build with no hosted asset is `available: false` with a null `href`: the
+ * card renders as "Coming soon" instead of a button to a 404.
  */
 
 export const DESKTOP_VERSION = "0.1.0";
@@ -15,29 +20,46 @@ export interface DesktopDownload {
   label: string;
   /** e.g. "Apple Silicon", "Windows 10/11" */
   requirement: string;
-  /** Public path under /public */
-  href: string;
-  /** Human-readable file size */
-  size: string;
-  /** File extension shown on the button, e.g. ".dmg" */
+  /** A permanent GitHub Release asset URL, or null while unhosted. */
+  href: string | null;
+  /** A hosted build renders a live button; an unhosted one renders Coming soon. */
+  available: boolean;
+  /** Human-readable file size. Only meaningful for a hosted build. */
+  size?: string;
+  /** File extension shown on the card, e.g. ".dmg" */
   ext: string;
 }
 
+/**
+ * To publish a desktop build, upload the installer to a Release and point
+ * `href` at the asset, then flip `available` to true:
+ *
+ *   gh release create pos-desktop-v0.1.0 \
+ *     "webnegosyo-desktop/release/WebNegosyo POS-0.1.0-arm64.dmg#WebNegosyo-POS-0.1.0-arm64.dmg" \
+ *     --repo codemedavid/webnegosyo-whitelabel --target main \
+ *     --title "WebNegosyo POS 0.1.0"
+ *
+ * macOS asset URL once uploaded:
+ * https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/pos-desktop-v0.1.0/WebNegosyo-POS-0.1.0-arm64.dmg
+ */
 export const desktopDownloads: DesktopDownload[] = [
   {
     os: "macos",
     label: "macOS",
     requirement: "Apple Silicon (M1 or newer)",
-    href: "/downloads/WebNegosyo-POS-0.1.0-arm64.dmg",
-    size: "113 MB",
+    href: null,
+    available: false,
     ext: ".dmg",
   },
   {
+    // The 0.1.0 installer was built once and no longer exists anywhere — only
+    // its `.blockmap` survives in `webnegosyo-desktop/release/`. Rebuild it
+    // before this can be offered again.
     os: "windows",
     label: "Windows",
     requirement: "Windows 10 & 11 (64-bit)",
-    href: "/downloads/WebNegosyo-POS-Setup-0.1.0.exe",
-    size: "91 MB",
+    href: null,
+    available: false,
     ext: ".exe",
   },
 ];
@@ -89,9 +111,9 @@ export const mobileDownloads: MobileDownload[] = [
     label: "WebNegosyo for Android",
     store: "Direct download",
     kind: "apk",
-    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.8/WebNegosyo-1.0.8-build37.apk",
+    href: "https://github.com/codemedavid/webnegosyo-whitelabel/releases/download/merchant-app-v1.0.9/WebNegosyo-1.0.9-build40.apk",
     available: true,
-    version: "1.0.8",
+    version: "1.0.9",
     size: "112 MB",
   },
 ];

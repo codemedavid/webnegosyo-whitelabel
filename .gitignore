@@ -76,8 +76,9 @@ next-env.d.ts
 # Database backups (may contain secrets)
 /backup/
 
-# Desktop binary too large for GitHub (100MB limit) — host .dmg on CDN/Release
-public/downloads/*.dmg
+# Desktop binaries exceed GitHub's 100MB file limit, so they are never served
+# from here — /download links them as Release assets (see src/lib/downloads.ts).
+public/downloads/
 
 # Local Claude Code agent config / session state (machine-local, not product code)
 /.claude/

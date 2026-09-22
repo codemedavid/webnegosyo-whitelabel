@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DesktopDownloads } from "@/components/download/desktop-downloads";
-import { DESKTOP_VERSION, mobileDownloads } from "@/lib/downloads";
+import { DESKTOP_VERSION, desktopDownloads, mobileDownloads } from "@/lib/downloads";
 
 export const metadata: Metadata = {
   title: "Download WebNegosyo",
@@ -10,6 +10,10 @@ export const metadata: Metadata = {
 };
 
 export default function DownloadPage() {
+  // The version line and the download disclaimer only mean something while
+  // there is a build to download; every card reads "Coming soon" otherwise.
+  const hasDesktopBuild = desktopDownloads.some((build) => build.available);
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* subtle grid / glow backdrop */}
@@ -66,20 +70,24 @@ export default function DownloadPage() {
                 The desktop point-of-sale for your store counter.
               </p>
             </div>
-            <span className="text-xs text-white/40">
-              Latest release · v{DESKTOP_VERSION}
-            </span>
+            {hasDesktopBuild && (
+              <span className="text-xs text-white/40">
+                Latest release · v{DESKTOP_VERSION}
+              </span>
+            )}
           </div>
 
           <DesktopDownloads />
 
-          <p className="mt-6 text-center text-xs text-white/35">
-            By downloading, you agree to our{" "}
-            <Link href="/privacy" className="underline hover:text-white/60">
-              Privacy Policy
-            </Link>
-            .
-          </p>
+          {hasDesktopBuild && (
+            <p className="mt-6 text-center text-xs text-white/35">
+              By downloading, you agree to our{" "}
+              <Link href="/privacy" className="underline hover:text-white/60">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+          )}
         </section>
 
         {/* Mobile apps */}
