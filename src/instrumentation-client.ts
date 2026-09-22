@@ -28,8 +28,9 @@ Sentry.init({
     denyUrls: SENTRY_DENY_URLS,
     beforeSend: filterSentryClientEvent,
 
-    // Add optional integrations for additional features
-    integrations: [Sentry.replayIntegration()],
+    // Session Replay is NOT listed here on purpose — see `loadSessionReplay`
+    // below. Naming it as an integration pulls rrweb into the first chunk
+    // every page loads.
 
     // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
     tracesSampleRate: parseFloat(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE || "0.1"),
@@ -52,6 +53,49 @@ Sentry.init({
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+
+/** Wait for the browser to go quiet; `requestIdleCallback` is absent on Safari. */
+const IDLE_FALLBACK_DELAY_MS = 2000;
+
+function whenIdle(run: () => void): void {
+    if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(run, { timeout: IDLE_FALLBACK_DELAY_MS });
+        return;
+    }
+    window.setTimeout(run, IDLE_FALLBACK_DELAY_MS);
+}
+
+/**
+ * Attach Session Replay after the page is interactive, from Sentry's CDN.
+ *
+ * Bundling `replayIntegration()` put rrweb in the chunk shared by every route:
+ * 159 kB of the 382 kB every visitor downloaded, including on pages that are
+ * otherwise static marketing HTML (`/university`, `/download`). Loading it on
+ * idle takes that off the critical path.
+ *
+ * The trade-off is deliberate and worth naming: replay now starts a moment
+ * after load rather than at the first byte, so an error thrown in those first
+ * seconds is reported without a recording. Errors themselves are unaffected —
+ * `Sentry.init` above still runs first thing.
+ */
+function loadSessionReplay(): void {
+    if (typeof window === "undefined" || !isSentryEnabled()) return;
+
+    whenIdle(() => {
+        Sentry.lazyLoadIntegration("replayIntegration")
+            .then((replayIntegration) => {
+                // Defaults unchanged from the bundled integration: all text
+                // masked, all media blocked.
+                Sentry.addIntegration(replayIntegration());
+            })
+            .catch(() => {
+                // The CDN is blocked or offline. Replay is a diagnostic extra;
+                // losing it must never break the page or the error reporting.
+            });
+    });
+}
+
+loadSessionReplay();
 
 // Suppress Convex "function not found" errors that fire asynchronously via
 // WebSocket. These are NOT catchable by React error boundaries because they
