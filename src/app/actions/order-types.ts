@@ -18,6 +18,7 @@ import {
   getAllOrderTypesWithFormFields,
   initializeOrderTypesForTenant,
 } from '@/lib/order-types-service'
+import { getDefaultFormFields } from '@/lib/order-types/default-form-fields'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 
 // ============================================
@@ -73,7 +74,28 @@ export async function createOrderTypeAction(
       is_enabled: input.is_enabled ?? true,
       order_index: input.order_index ?? 0,
     })
+
+    // An order type with no checkout fields collects nothing — not a name, not
+    // a number — and the merchant is given no hint of that on the configure
+    // screen. Seed the same defaults the database seeds for a new tenant; a
+    // failure here is not worth losing the order type over, so it is logged and
+    // the merchant edits the (empty) form themselves.
+    try {
+      await Promise.all(
+        getDefaultFormFields(input.type).map((field) =>
+          createCustomerFormField(tenantId, orderType.id, field)
+        )
+      )
+    } catch (seedError) {
+      console.error('[createOrderTypeAction] Failed to seed default form fields:', {
+        orderTypeId: orderType.id,
+        tenantId,
+        error: seedError instanceof Error ? seedError.message : String(seedError),
+      })
+    }
+
     revalidatePath(`/${tenantSlug}/admin/order-types`)
+    revalidatePath(`/${tenantSlug}/admin/order-types/${orderType.id}`)
     revalidatePath(`/${tenantSlug}/admin`)
     return { success: true, data: orderType }
   } catch (error) {
@@ -115,6 +137,7 @@ export async function updateOrderTypeAction(
       order_index: input.order_index ?? 0,
     })
     revalidatePath(`/${tenantSlug}/admin/order-types`)
+    revalidatePath(`/${tenantSlug}/admin/order-types/${orderTypeId}`)
     revalidatePath(`/${tenantSlug}/admin`)
     return { success: true, data: orderType }
   } catch (error) {
@@ -329,11 +352,14 @@ export async function deleteCustomerFormFieldAction(
 export async function reorderCustomerFormFieldsAction(
   fieldIds: string[],
   tenantId: string,
-  tenantSlug: string
+  tenantSlug: string,
+  /** Optional: the order type whose configure page should be revalidated too. */
+  orderTypeId?: string
 ) {
   try {
     await reorderCustomerFormFields(fieldIds, tenantId)
     revalidatePath(`/${tenantSlug}/admin/order-types`)
+    if (orderTypeId) revalidatePath(`/${tenantSlug}/admin/order-types/${orderTypeId}`)
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to reorder form fields' }

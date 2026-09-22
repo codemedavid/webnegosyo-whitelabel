@@ -1,16 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, GripVertical, Eye, Save, CalendarClock, MessageCircle, ReceiptText, Globe, Monitor, Percent } from 'lucide-react'
 import Link from 'next/link'
+import {
+  ArrowLeft,
+  CalendarClock,
+  Coins,
+  Globe,
+  MessageCircle,
+  Monitor,
+  Percent,
+  ReceiptText,
+  Settings2,
+  Store,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertDialog,
@@ -23,38 +31,36 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
   updateOrderTypeAction,
-  createCustomerFormFieldAction,
-  updateCustomerFormFieldAction,
   deleteCustomerFormFieldAction,
   reorderCustomerFormFieldsAction,
 } from '@/app/actions/order-types'
 import { toast } from 'sonner'
-import { getAdvanceOrderConfig, formatLeadTime } from '@/lib/advance-order-utils'
-import { isMessengerEnabledForOrderType } from '@/lib/messenger-availability'
-import {
-  buildFieldFromPreset,
-  getAvailableFieldPresets,
-  getCheckoutFieldPreset,
-  getFieldBadgeLabel,
-  resolvePresetIdForField,
-} from '@/lib/checkout-field-presets'
-import { ORDER_TYPE_KIND_LABELS, type OrderTypeKind } from '@/lib/order-types/order-type-kinds'
+import { formatLeadTime } from '@/lib/advance-order-utils'
+import { ORDER_TYPE_KIND_LABELS } from '@/lib/order-types/order-type-kinds'
 import {
   applyMarkup,
   MARKUP_PERCENT_MAX,
   MARKUP_PERCENT_MIN,
 } from '@/lib/order-types/order-type-pricing'
+import {
+  buildOrderTypeFormState,
+  orderTypeFormSignature,
+  parseMarkupPercent,
+  toOrderTypeUpdateInput,
+  type OrderTypeFormState,
+} from '@/lib/order-types/order-type-form-state'
+import { ORDER_TYPE_ACCENTS } from '@/lib/order-types/order-type-accents'
 import { OrderTypePricingPanel } from '@/components/admin/order-type-pricing-panel'
+import { SettingsSection, ToggleRow, Field } from '@/components/admin/order-types/settings-section'
+import { CheckoutFieldsSection } from '@/components/admin/order-types/checkout-fields-section'
+import { CheckoutPreview } from '@/components/admin/order-types/checkout-preview'
+import { SaveBar } from '@/components/admin/order-types/save-bar'
+import { FieldDialog } from '@/components/admin/order-types/field-dialog'
 import type { PricingMenuItem } from '@/lib/order-type-pricing-service'
 import type { OrderType, CustomerFormField, OrderTypeItemPrice } from '@/types/database'
+
+export { FieldDialog }
 
 interface OrderTypeDetailProps {
   orderType: OrderType & { customer_form_fields: CustomerFormField[] }
@@ -65,28 +71,10 @@ interface OrderTypeDetailProps {
   initialPrices?: readonly OrderTypeItemPrice[]
 }
 
-const orderTypeColors: Record<OrderTypeKind, string> = {
-  dine_in: 'bg-green-100 text-green-800 border-green-300',
-  pickup: 'bg-blue-100 text-blue-800 border-blue-300',
-  delivery: 'bg-orange-100 text-orange-800 border-orange-300',
-  grab: 'bg-teal-100 text-teal-800 border-teal-300',
-  foodpanda: 'bg-pink-100 text-pink-800 border-pink-300',
-  other: 'bg-gray-100 text-gray-800 border-gray-300',
-}
-
-type AvailabilityChannel = 'available_on_web' | 'available_on_pos'
-
 const MARKUP_PREVIEW_BASE = 100
 const KEEP_ONE_CHANNEL_MESSAGE = 'Keep at least one channel on'
 
-/** Blank → null (store price). Anything unparseable is treated as blank; the range is clamped. */
-function parseMarkupPercent(raw: string): number | null {
-  const trimmed = raw.trim()
-  if (trimmed === '') return null
-  const value = Number(trimmed)
-  if (!Number.isFinite(value)) return null
-  return Math.min(MARKUP_PERCENT_MAX, Math.max(MARKUP_PERCENT_MIN, value))
-}
+type AvailabilityChannel = 'available_on_web' | 'available_on_pos'
 
 function formatPesoShort(amount: number): string {
   return Number.isInteger(amount) ? `₱${amount}` : `₱${amount.toFixed(2)}`
@@ -95,8 +83,20 @@ function formatPesoShort(amount: number): string {
 function describeMarkup(raw: string): string {
   const percent = parseMarkupPercent(raw)
   if (percent === null) return 'Blank — the register charges the store price.'
-  const preview = applyMarkup(MARKUP_PREVIEW_BASE, percent)
-  return `${formatPesoShort(MARKUP_PREVIEW_BASE)} becomes ${formatPesoShort(preview)} on the register.`
+  return `${formatPesoShort(MARKUP_PREVIEW_BASE)} becomes ${formatPesoShort(
+    applyMarkup(MARKUP_PREVIEW_BASE, percent)
+  )} on the register.`
+}
+
+function sortByOrderIndex(fields: readonly CustomerFormField[]): CustomerFormField[] {
+  return [...fields].sort((a, b) => a.order_index - b.order_index)
+}
+
+/** Ids only — enough to know whether the server's field list differs from ours. */
+function fieldsSignature(fields: readonly CustomerFormField[]): string {
+  return JSON.stringify(
+    fields.map((f) => [f.id, f.field_label, f.field_type, f.is_required, f.placeholder ?? '', f.order_index])
+  )
 }
 
 export function OrderTypeDetail({
@@ -107,46 +107,158 @@ export function OrderTypeDetail({
   initialPrices = [],
 }: OrderTypeDetailProps) {
   const router = useRouter()
+  const accent = ORDER_TYPE_ACCENTS[orderType.type]
+
+  // ---- Settings form -------------------------------------------------------
+  //
+  // State is seeded from the server row AND resynced whenever that row actually
+  // changes. Comparing signatures rather than object identity is what makes the
+  // resync safe: an RSC re-render hands back a fresh object every time, so
+  // resetting on identity would wipe whatever the merchant is mid-way through
+  // typing. Without the resync at all — the old behaviour — a save landed on the
+  // server and the screen kept showing the pre-save values forever.
+
+  const serverState = useMemo(() => buildOrderTypeFormState(orderType), [orderType])
+  const serverSignature = orderTypeFormSignature(serverState)
+
+  const [formData, setFormData] = useState<OrderTypeFormState>(serverState)
+  const [savedState, setSavedState] = useState<OrderTypeFormState>(serverState)
+  const appliedSignatureRef = useRef(serverSignature)
+
+  const isDirty = orderTypeFormSignature(formData) !== orderTypeFormSignature(savedState)
+
+  useEffect(() => {
+    if (serverSignature === appliedSignatureRef.current) return
+    // A dirty form is the merchant's unsaved work. Someone else saving this
+    // order type from another tab or device must not silently retype it out
+    // from under them — the ref stays where it is, so the moment they save or
+    // discard, this runs again and they get the current truth.
+    if (isDirty) return
+    appliedSignatureRef.current = serverSignature
+    const next = JSON.parse(serverSignature) as OrderTypeFormState
+    setFormData(next)
+    setSavedState(next)
+  }, [serverSignature, isDirty])
   const [isSaving, setIsSaving] = useState(false)
-  const [deleteFieldDialogOpen, setDeleteFieldDialogOpen] = useState(false)
-  const [fieldToDelete, setFieldToDelete] = useState<string | null>(null)
+
+  const patch = useCallback((changes: Partial<OrderTypeFormState>) => {
+    setFormData((prev) => ({ ...prev, ...changes }))
+  }, [])
+
+  // ---- Checkout fields -----------------------------------------------------
+  //
+  // Same resync, so a field added, edited, or deleted in the dialog shows up the
+  // moment the server confirms it instead of on the next hard reload.
+
+  const serverFields = useMemo(
+    () => sortByOrderIndex(orderType.customer_form_fields),
+    [orderType.customer_form_fields]
+  )
+  const [formFields, setFormFields] = useState<CustomerFormField[]>(serverFields)
+  const appliedFieldsRef = useRef(fieldsSignature(serverFields))
+
+  useEffect(() => {
+    const signature = fieldsSignature(serverFields)
+    if (signature === appliedFieldsRef.current) return
+    appliedFieldsRef.current = signature
+    setFormFields(serverFields)
+  }, [serverFields])
+
+  /*
+   * Field writes are serialised. A reorder sends the WHOLE order as an absolute
+   * array, so two overlapping calls race: whichever lands last wins and silently
+   * undoes part of what the merchant just did, with both calls reporting
+   * success. Serialising also makes the snapshot reverts below correct — a
+   * revert can only ever undo its own operation.
+   */
+  const [isWritingFields, setIsWritingFields] = useState(false)
   const [fieldDialogOpen, setFieldDialogOpen] = useState(false)
   const [editingField, setEditingField] = useState<CustomerFormField | null>(null)
+  // Bumped on every open so the dialog remounts and re-reads the field it was
+  // handed — a mounted-once dialog kept showing the first field it ever saw.
+  const [dialogInstance, setDialogInstance] = useState(0)
+  const [fieldToDelete, setFieldToDelete] = useState<CustomerFormField | null>(null)
 
-  const advanceConfig = getAdvanceOrderConfig(orderType)
+  const openFieldDialog = (field: CustomerFormField | null) => {
+    setEditingField(field)
+    setDialogInstance((n) => n + 1)
+    setFieldDialogOpen(true)
+  }
 
-  const [formData, setFormData] = useState({
-    name: orderType.name,
-    description: orderType.description || '',
-    note: orderType.note || '',
-    is_enabled: orderType.is_enabled,
-    // Rows saved before the availability columns existed arrive undefined and mean "on".
-    available_on_web: orderType.available_on_web !== false,
-    available_on_pos: orderType.available_on_pos !== false,
-    // Kept as text so a blank field can mean "store price" (null) rather than 0.
-    pos_markup_percent:
-      orderType.pos_markup_percent === null || orderType.pos_markup_percent === undefined
-        ? ''
-        : String(orderType.pos_markup_percent),
-    messenger_enabled: isMessengerEnabledForOrderType(orderType),
-    service_charge_enabled: orderType.service_charge_enabled ?? false,
-    service_charge_type: orderType.service_charge_type ?? 'percentage' as 'percentage' | 'fixed',
-    service_charge_value: orderType.service_charge_value ?? 0,
-    // 0 (the column default) means "no minimum" — an order type saved before the
-    // column existed arrives undefined and must behave the same way.
-    minimum_order_amount: orderType.minimum_order_amount ?? 0,
-    // Opt-in: rows saved before the column existed arrive undefined and stay off.
-    after_billing_payment_enabled: orderType.after_billing_payment_enabled ?? false,
-    advance_order_enabled: advanceConfig.enabled,
-    advance_order_allow_asap: advanceConfig.allowAsap,
-    advance_order_lead_time_minutes: advanceConfig.leadTimeMinutes,
-    advance_order_max_days_ahead: advanceConfig.maxDaysAhead,
-    advance_order_slot_interval_minutes: advanceConfig.slotIntervalMinutes,
-  })
+  const handleFieldSaved = (saved?: CustomerFormField) => {
+    setFieldDialogOpen(false)
+    // Show the row straight away; the refresh below only confirms it.
+    if (saved?.id) {
+      setFormFields((prev) => {
+        const without = prev.filter((f) => f.id !== saved.id)
+        return sortByOrderIndex([...without, saved])
+      })
+    }
+    router.refresh()
+  }
 
-  const [formFields, setFormFields] = useState<CustomerFormField[]>(
-    [...orderType.customer_form_fields].sort((a, b) => a.order_index - b.order_index)
-  )
+  const handleDeleteField = async () => {
+    if (!fieldToDelete || isWritingFields) return
+    const target = fieldToDelete
+    const previous = formFields
+
+    // Optimistic: the row disappears on tap, and comes back if the server refuses.
+    setFormFields((prev) => prev.filter((f) => f.id !== target.id))
+    setFieldToDelete(null)
+    setIsWritingFields(true)
+
+    const result = await deleteCustomerFormFieldAction(
+      target.id,
+      tenantId,
+      tenantSlug,
+      orderType.id
+    )
+    setIsWritingFields(false)
+
+    if (result.success) {
+      toast.success(`"${target.field_label}" removed`)
+      router.refresh()
+    } else {
+      setFormFields(previous)
+      toast.error(result.error || 'Failed to delete field')
+    }
+  }
+
+  const handleMoveField = async (fieldId: string, direction: 'up' | 'down') => {
+    if (isWritingFields) return
+    const currentIndex = formFields.findIndex((f) => f.id === fieldId)
+    if (currentIndex === -1) return
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (newIndex < 0 || newIndex >= formFields.length) return
+
+    const previous = formFields
+    const reordered = [...formFields]
+    const [moved] = reordered.splice(currentIndex, 1)
+    reordered.splice(newIndex, 0, moved)
+
+    // Move first, confirm after — an arrow tap that waits on a round trip reads
+    // as a dead button.
+    setFormFields(reordered.map((field, index) => ({ ...field, order_index: index })))
+    setIsWritingFields(true)
+
+    const result = await reorderCustomerFormFieldsAction(
+      reordered.map((f) => f.id),
+      tenantId,
+      tenantSlug,
+      orderType.id
+    )
+    setIsWritingFields(false)
+
+    if (result.success) {
+      router.refresh()
+    } else {
+      setFormFields(previous)
+      toast.error(result.error || 'Failed to reorder fields')
+    }
+  }
+
+  // ---- Save ----------------------------------------------------------------
 
   const handleToggleChannel = (channel: AvailabilityChannel, checked: boolean) => {
     const other: AvailabilityChannel =
@@ -156,10 +268,8 @@ export function OrderTypeDetail({
       toast.warning(KEEP_ONE_CHANNEL_MESSAGE)
       return
     }
-    setFormData({ ...formData, [channel]: checked })
+    patch({ [channel]: checked } as Partial<OrderTypeFormState>)
   }
-
-  const markupPercent = parseMarkupPercent(formData.pos_markup_percent)
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -168,35 +278,16 @@ export function OrderTypeDetail({
         orderType.id,
         tenantId,
         tenantSlug,
-        {
+        toOrderTypeUpdateInput(formData, {
           type: orderType.type,
-          name: formData.name,
-          description: formData.description || undefined,
-          note: formData.note || undefined,
-          is_enabled: formData.is_enabled,
-          available_on_web: formData.available_on_web,
-          available_on_pos: formData.available_on_pos,
-          pos_markup_percent: markupPercent,
-          messenger_enabled: formData.messenger_enabled,
           order_index: orderType.order_index,
-          service_charge_enabled: formData.service_charge_enabled,
-          service_charge_type: formData.service_charge_type,
-          service_charge_value: formData.service_charge_value,
-          // Guard the same way the advance-order fields do, so a blank or negative
-          // field never produces a cryptic Zod save error.
-          minimum_order_amount: Math.max(0, Number(formData.minimum_order_amount) || 0),
-          after_billing_payment_enabled: formData.after_billing_payment_enabled,
-          advance_order_enabled: formData.advance_order_enabled,
-          advance_order_allow_asap: formData.advance_order_allow_asap,
-          // Clamp to the Zod-accepted ranges so a blank/out-of-range field never produces a cryptic save error.
-          advance_order_lead_time_minutes: Math.min(10080, Math.max(0, Math.round(Number(formData.advance_order_lead_time_minutes) || 0))),
-          advance_order_max_days_ahead: Math.min(60, Math.max(0, Math.round(Number(formData.advance_order_max_days_ahead) || 0))),
-          advance_order_slot_interval_minutes: Math.min(240, Math.max(5, Math.round(Number(formData.advance_order_slot_interval_minutes) || 30))),
-        }
+        })
       )
 
       if (result.success) {
-        toast.success('Order type updated successfully')
+        toast.success('Saved')
+        setSavedState(formData)
+        appliedSignatureRef.current = orderTypeFormSignature(formData)
         router.refresh()
       } else {
         toast.error(result.error || 'Failed to update order type')
@@ -208,465 +299,396 @@ export function OrderTypeDetail({
     }
   }
 
-  const handleAddField = () => {
-    setEditingField(null)
-    setFieldDialogOpen(true)
+  const handleDiscard = () => {
+    setFormData(savedState)
   }
 
-  const handleEditField = (field: CustomerFormField) => {
-    setEditingField(field)
-    setFieldDialogOpen(true)
-  }
+  // ---- Derived labels ------------------------------------------------------
 
-  const handleDeleteField = async () => {
-    if (!fieldToDelete) return
+  const markupPercent = parseMarkupPercent(formData.pos_markup_percent)
 
-    const result = await deleteCustomerFormFieldAction(
-      fieldToDelete,
-      tenantId,
-      tenantSlug,
-      orderType.id
-    )
+  const serviceChargeLabel = formData.service_charge_enabled
+    ? formData.service_charge_type === 'percentage'
+      ? `${formData.service_charge_value}%`
+      : formatPesoShort(formData.service_charge_value)
+    : null
 
-    if (result.success) {
-      toast.success('Form field deleted')
-      setDeleteFieldDialogOpen(false)
-      setFieldToDelete(null)
-      router.refresh()
-    } else {
-      toast.error(result.error || 'Failed to delete field')
-    }
-  }
-
-  const handleMoveField = async (fieldId: string, direction: 'up' | 'down') => {
-    const currentIndex = formFields.findIndex(f => f.id === fieldId)
-    if (currentIndex === -1) return
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-    if (newIndex < 0 || newIndex >= formFields.length) return
-
-    const newFields = [...formFields]
-    const [moved] = newFields.splice(currentIndex, 1)
-    newFields.splice(newIndex, 0, moved)
-
-    // Update order_index for all fields
-    const fieldIds = newFields.map(f => f.id)
-
-    const result = await reorderCustomerFormFieldsAction(fieldIds, tenantId, tenantSlug)
-
-    if (result.success) {
-      setFormFields(newFields)
-      toast.success('Field order updated')
-      router.refresh()
-    } else {
-      toast.error(result.error || 'Failed to reorder fields')
-    }
-  }
+  const minimumOrderLabel =
+    formData.minimum_order_amount > 0 ? formatPesoShort(formData.minimum_order_amount) : null
 
   return (
-    <>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Configure Order Type</h1>
-          <p className="text-muted-foreground">Manage order type settings and form fields</p>
+    <div className="pb-4">
+      {/* Header */}
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border text-xl ${accent.tile}`}
+            aria-hidden="true"
+          >
+            {accent.emoji}
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-bold leading-tight sm:text-3xl">
+              {formData.name || 'Untitled order type'}
+            </h1>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className={accent.badge}>
+                {ORDER_TYPE_KIND_LABELS[orderType.type]}
+              </Badge>
+              <Badge variant={formData.is_enabled ? 'secondary' : 'outline'}>
+                {formData.is_enabled ? 'Live' : 'Hidden'}
+              </Badge>
+              {formData.available_on_web && (
+                <Badge variant="outline" className="font-normal">
+                  <Globe className="mr-1 h-3 w-3" />
+                  Web
+                </Badge>
+              )}
+              {formData.available_on_pos && (
+                <Badge variant="outline" className="font-normal">
+                  <Monitor className="mr-1 h-3 w-3" />
+                  Register
+                </Badge>
+              )}
+              {formData.advance_order_enabled && (
+                <Badge variant="outline" className="font-normal">
+                  <CalendarClock className="mr-1 h-3 w-3" />
+                  Pre-order
+                </Badge>
+              )}
+            </div>
+          </div>
         </div>
+
         <Link href={`/${tenantSlug}/admin/order-types`}>
           <Button variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
+            All order types
           </Button>
         </Link>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Order Type Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Order Type Settings</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Badge className={orderTypeColors[orderType.type]} variant="outline">
-                {ORDER_TYPE_KIND_LABELS[orderType.type]}
-              </Badge>
-              <span className="text-sm text-muted-foreground">Type cannot be changed</span>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Settings */}
+        <div className="space-y-6">
+          <SettingsSection
+            id="basics"
+            title="Basics"
+            description="How this option is named and explained at checkout."
+            icon={Settings2}
+          >
+            <Field id="name" label="Name" hint="What customers tap to pick this option.">
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Dine In, Pick Up, Delivery"
+                onChange={(e) => patch({ name: e.target.value })}
+                placeholder="e.g. Dine In"
               />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+            <Field
+              id="description"
+              label="Description"
+              optional
+              hint="One line under the name explaining the option."
+            >
               <Textarea
                 id="description"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Brief description shown to customers"
+                onChange={(e) => patch({ description: e.target.value })}
+                placeholder="e.g. Enjoy your meal at our restaurant"
                 rows={2}
               />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label htmlFor="note">Note <span className="text-xs text-muted-foreground font-normal">(optional)</span></Label>
+            <Field
+              id="note"
+              label="Policy note"
+              optional
+              hint="Highlighted warning shown before the customer commits — extra charges, cut-off times, anything they should not be surprised by."
+            >
               <Textarea
                 id="note"
                 value={formData.note}
-                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                placeholder="e.g., Additional ₱30 box charge applies"
+                onChange={(e) => patch({ note: e.target.value })}
+                placeholder="e.g. Additional ₱30 box charge applies"
                 rows={2}
               />
-              <p className="text-xs text-muted-foreground">
-                Policy note shown to customers (e.g., extra charges, special instructions)
-              </p>
-            </div>
+            </Field>
+          </SettingsSection>
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="enabled">Enabled</Label>
-                <p className="text-sm text-muted-foreground">
-                  {formData.is_enabled ? 'Visible to customers' : 'Hidden from customers'}
-                </p>
+          <SettingsSection
+            id="availability"
+            title="Where it is offered"
+            description="Turn it off entirely, or hide it from one channel. At least one channel stays on."
+            icon={Store}
+          >
+            <ToggleRow
+              id="enabled"
+              label="Enabled"
+              hint={
+                formData.is_enabled
+                  ? 'Customers and cashiers can choose this order type'
+                  : 'Hidden everywhere — nobody can place this kind of order'
+              }
+              checked={formData.is_enabled}
+              onCheckedChange={(checked) => patch({ is_enabled: checked })}
+            />
+
+            <ToggleRow
+              id="available_on_web"
+              label="Available on web"
+              icon={Globe}
+              hint={
+                formData.available_on_web
+                  ? 'Customers can pick it on the online storefront and app'
+                  : 'Hidden from online ordering'
+              }
+              checked={formData.available_on_web}
+              onCheckedChange={(checked) => handleToggleChannel('available_on_web', checked)}
+            />
+
+            <ToggleRow
+              id="available_on_pos"
+              label="Available on POS"
+              icon={Monitor}
+              hint={
+                formData.available_on_pos
+                  ? 'Cashiers can ring it up on the register'
+                  : 'Hidden from the register'
+              }
+              checked={formData.available_on_pos}
+              onCheckedChange={(checked) => handleToggleChannel('available_on_pos', checked)}
+            />
+          </SettingsSection>
+
+          <SettingsSection
+            id="checkout-behaviour"
+            title="Checkout behaviour"
+            description="What happens after the customer taps the final button."
+            icon={MessageCircle}
+          >
+            <ToggleRow
+              id="messenger_enabled"
+              label="Send via Messenger"
+              icon={MessageCircle}
+              hint={
+                formData.messenger_enabled
+                  ? 'Checkout hands the order off to Facebook Messenger'
+                  : 'Checkout completes the order in place — the button reads "Complete Order"'
+              }
+              checked={formData.messenger_enabled}
+              onCheckedChange={(checked) => patch({ messenger_enabled: checked })}
+            />
+
+            <ToggleRow
+              id="after_billing_payment_enabled"
+              label="Pay after billing"
+              icon={ReceiptText}
+              hint={
+                formData.after_billing_payment_enabled
+                  ? 'Customers pick a method and order right away — payment details are skipped and the bill is settled after service'
+                  : 'Customers see payment details (account numbers, QR, proof) before placing the order'
+              }
+              checked={formData.after_billing_payment_enabled}
+              onCheckedChange={(checked) => patch({ after_billing_payment_enabled: checked })}
+            />
+          </SettingsSection>
+
+          <SettingsSection
+            id="charges"
+            title="Charges and limits"
+            description="What this order type adds to the bill, and the smallest order it accepts."
+            icon={Coins}
+          >
+            <ToggleRow
+              id="service_charge_enabled"
+              label="Service charge"
+              hint={
+                formData.service_charge_enabled
+                  ? `${serviceChargeLabel} added to every ${formData.name || 'order'}`
+                  : 'No service charge on this order type'
+              }
+              checked={formData.service_charge_enabled}
+              onCheckedChange={(checked) => patch({ service_charge_enabled: checked })}
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field id="service_charge_type" label="Charge type">
+                  <Select
+                    value={formData.service_charge_type}
+                    onValueChange={(value: 'percentage' | 'fixed') =>
+                      patch({ service_charge_type: value })
+                    }
+                  >
+                    <SelectTrigger id="service_charge_type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="percentage">Percentage (%)</SelectItem>
+                      <SelectItem value="fixed">Fixed amount (₱)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field
+                  id="service_charge_value"
+                  label={formData.service_charge_type === 'percentage' ? 'Percentage (%)' : 'Amount (₱)'}
+                  hint={
+                    formData.service_charge_type === 'percentage'
+                      ? `Added to the subtotal — ₱1,000 becomes ${formatPesoShort(
+                          1000 + (1000 * (Number(formData.service_charge_value) || 0)) / 100
+                        )}`
+                      : 'Added once per order'
+                  }
+                >
+                  <Input
+                    id="service_charge_value"
+                    type="number"
+                    min="0"
+                    max={formData.service_charge_type === 'percentage' ? '100' : undefined}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={formData.service_charge_value}
+                    onChange={(e) =>
+                      patch({ service_charge_value: parseFloat(e.target.value) || 0 })
+                    }
+                    placeholder={formData.service_charge_type === 'percentage' ? 'e.g. 10' : 'e.g. 50'}
+                  />
+                </Field>
               </div>
-              <Switch
-                id="enabled"
-                checked={formData.is_enabled}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_enabled: checked })}
-              />
-            </div>
+            </ToggleRow>
 
-            {/* Messenger */}
-            <div className="flex items-center justify-between border-t pt-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="messenger_enabled" className="flex items-center gap-2">
-                  <MessageCircle className="h-4 w-4" />
-                  Send via Messenger
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {formData.messenger_enabled
-                    ? 'Checkout sends the order to Facebook Messenger'
-                    : 'Checkout completes the order in place — the button reads "Complete Order"'}
-                </p>
-              </div>
-              <Switch
-                id="messenger_enabled"
-                checked={formData.messenger_enabled}
-                onCheckedChange={(checked) => setFormData({ ...formData, messenger_enabled: checked })}
-              />
-            </div>
-
-            {/* Pay After Billing */}
-            <div className="flex items-center justify-between border-t pt-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="after_billing_payment_enabled" className="flex items-center gap-2">
-                  <ReceiptText className="h-4 w-4" />
-                  Pay after billing
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {formData.after_billing_payment_enabled
-                    ? 'Customers pick a payment method and order right away — payment details are skipped; the bill is settled after service'
-                    : 'Customers see payment details (account numbers, QR, proof) before placing the order'}
-                </p>
-              </div>
-              <Switch
-                id="after_billing_payment_enabled"
-                checked={formData.after_billing_payment_enabled}
-                onCheckedChange={(checked) => setFormData({ ...formData, after_billing_payment_enabled: checked })}
-              />
-            </div>
-
-            {/* Service Charge */}
-            <div className="space-y-4 border-t pt-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="service_charge_enabled">Service Charge</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {formData.service_charge_enabled ? 'Applied to orders' : 'No service charge'}
-                  </p>
-                </div>
-                <Switch
-                  id="service_charge_enabled"
-                  checked={formData.service_charge_enabled}
-                  onCheckedChange={(checked) => setFormData({ ...formData, service_charge_enabled: checked })}
-                />
-              </div>
-
-              {formData.service_charge_enabled && (
-                <div className="space-y-4 pl-1">
-                  <div className="space-y-2">
-                    <Label htmlFor="service_charge_type">Charge Type</Label>
-                    <Select
-                      value={formData.service_charge_type}
-                      onValueChange={(value: 'percentage' | 'fixed') => setFormData({ ...formData, service_charge_type: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="percentage">Percentage (%)</SelectItem>
-                        <SelectItem value="fixed">Fixed Amount (₱)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="service_charge_value">
-                      {formData.service_charge_type === 'percentage' ? 'Percentage (%)' : 'Amount (₱)'}
-                    </Label>
-                    <Input
-                      id="service_charge_value"
-                      type="number"
-                      min="0"
-                      max={formData.service_charge_type === 'percentage' ? '100' : undefined}
-                      step="0.01"
-                      value={formData.service_charge_value}
-                      onChange={(e) => setFormData({ ...formData, service_charge_value: parseFloat(e.target.value) || 0 })}
-                      placeholder={formData.service_charge_type === 'percentage' ? 'e.g., 10' : 'e.g., 50'}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {formData.service_charge_type === 'percentage'
-                        ? `${formData.service_charge_value}% will be added to the order subtotal`
-                        : `₱${formData.service_charge_value.toFixed(2)} will be added to every order`}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Minimum Order */}
-            <div className="space-y-2 border-t pt-4">
-              <Label htmlFor="minimum_order_amount">Minimum Order (₱)</Label>
+            <Field
+              id="minimum_order_amount"
+              label="Minimum order (₱)"
+              hint={
+                formData.minimum_order_amount > 0
+                  ? `Customers must reach ${formatPesoShort(
+                      formData.minimum_order_amount
+                    )} before they can check out with ${formData.name || 'this order type'}.`
+                  : '0 means no minimum — customers can check out with any amount.'
+              }
+            >
               <Input
                 id="minimum_order_amount"
                 type="number"
                 min="0"
                 step="0.01"
+                inputMode="decimal"
                 value={formData.minimum_order_amount}
-                onChange={(e) => setFormData({ ...formData, minimum_order_amount: parseFloat(e.target.value) || 0 })}
-                placeholder="e.g., 500"
+                onChange={(e) => patch({ minimum_order_amount: parseFloat(e.target.value) || 0 })}
+                placeholder="e.g. 500"
               />
-              <p className="text-xs text-muted-foreground">
-                {formData.minimum_order_amount > 0
-                  ? `Customers must reach ₱${formData.minimum_order_amount.toFixed(2)} before they can check out with ${formData.name || 'this order type'}.`
-                  : 'Set to 0 for no minimum — customers can check out with any amount.'}
-              </p>
-            </div>
+            </Field>
+          </SettingsSection>
 
-            {/* Advance Orders / Scheduling */}
-            <div className="space-y-4 border-t pt-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="advance_order_enabled" className="flex items-center gap-2">
-                    <CalendarClock className="h-4 w-4" />
-                    Advance Orders
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    Let customers schedule this order type for later
-                  </p>
-                </div>
-                <Switch
-                  id="advance_order_enabled"
-                  checked={formData.advance_order_enabled}
-                  onCheckedChange={(checked) => setFormData({ ...formData, advance_order_enabled: checked })}
-                />
-              </div>
-
-              {formData.advance_order_enabled && (
-                <div className="space-y-4 pl-1">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="advance_order_allow_asap">Allow ASAP (immediate) orders</Label>
-                      <p className="text-sm text-muted-foreground">
-                        {formData.advance_order_allow_asap
-                          ? 'Customers can order now or schedule for later'
-                          : 'Schedule-only — no immediate orders (e.g., catering)'}
-                      </p>
-                    </div>
-                    <Switch
-                      id="advance_order_allow_asap"
-                      checked={formData.advance_order_allow_asap}
-                      onCheckedChange={(checked) => setFormData({ ...formData, advance_order_allow_asap: checked })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="advance_order_lead_time_minutes">Minimum lead time (minutes)</Label>
-                    <Input
-                      id="advance_order_lead_time_minutes"
-                      type="number"
-                      min="0"
-                      max="10080"
-                      step="5"
-                      value={formData.advance_order_lead_time_minutes}
-                      onChange={(e) => setFormData({ ...formData, advance_order_lead_time_minutes: Number(e.target.value) || 0 })}
-                      placeholder="e.g., 30"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Earliest a scheduled order can be picked up: {formatLeadTime(formData.advance_order_lead_time_minutes)} from now
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="advance_order_max_days_ahead">Schedule up to (days ahead)</Label>
-                    <Input
-                      id="advance_order_max_days_ahead"
-                      type="number"
-                      min="0"
-                      max="60"
-                      step="1"
-                      value={formData.advance_order_max_days_ahead}
-                      onChange={(e) => setFormData({ ...formData, advance_order_max_days_ahead: Number(e.target.value) || 0 })}
-                      placeholder="e.g., 7"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      How far in advance customers can book a slot
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="advance_order_slot_interval_minutes">Time-slot interval (minutes)</Label>
-                    <Input
-                      id="advance_order_slot_interval_minutes"
-                      type="number"
-                      min="5"
-                      max="240"
-                      step="5"
-                      value={formData.advance_order_slot_interval_minutes}
-                      onChange={(e) => setFormData({ ...formData, advance_order_slot_interval_minutes: Number(e.target.value) || 0 })}
-                      placeholder="e.g., 30"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Spacing between selectable pickup times
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <Button onClick={handleSave} disabled={isSaving} className="w-full">
-              <Save className="mr-2 h-4 w-4" />
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Form Fields Preview */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Form Preview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4 border rounded-lg p-4 bg-muted/50">
-              {formFields.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No form fields configured. Add fields below.
-                </p>
-              ) : (
-                formFields.map((field) => (
-                  <div key={field.id} className="space-y-2">
-                    <Label className="text-sm">
-                      {field.field_label}
-                      {field.is_required && <span className="text-red-500 ml-1">*</span>}
-                    </Label>
-                    {field.field_type === 'textarea' ? (
-                      <Textarea placeholder={field.placeholder || ''} disabled rows={3} />
-                    ) : field.field_type === 'select' && field.options && field.options.length > 0 ? (
-                      <Select disabled>
-                        <SelectTrigger>
-                          <SelectValue placeholder={field.placeholder || 'Select an option'} />
-                        </SelectTrigger>
-                      </Select>
-                    ) : (
-                      <Input
-                        type={field.field_type === 'number' ? 'number' : 'text'}
-                        placeholder={field.placeholder || ''}
-                        disabled
-                      />
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Availability */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Availability</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Where this order type is offered. At least one channel stays on.
-            </p>
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="available_on_web" className="flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Available on web
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {formData.available_on_web
-                    ? 'Customers can pick it on the online storefront and app'
-                    : 'Hidden from online ordering'}
-                </p>
-              </div>
-              <Switch
-                id="available_on_web"
-                checked={formData.available_on_web}
-                onCheckedChange={(checked) => handleToggleChannel('available_on_web', checked)}
+          <SettingsSection
+            id="scheduling"
+            title="Scheduling"
+            description="Let customers book this order type for a later time."
+            icon={CalendarClock}
+          >
+            <ToggleRow
+              id="advance_order_enabled"
+              label="Advance orders"
+              icon={CalendarClock}
+              hint={
+                formData.advance_order_enabled
+                  ? 'Customers pick a date and time at checkout'
+                  : 'Orders are placed for right now only'
+              }
+              checked={formData.advance_order_enabled}
+              onCheckedChange={(checked) => patch({ advance_order_enabled: checked })}
+            >
+              <ToggleRow
+                id="advance_order_allow_asap"
+                label="Allow ASAP orders"
+                hint={
+                  formData.advance_order_allow_asap
+                    ? 'Customers can order now or schedule for later'
+                    : 'Schedule-only — no immediate orders (e.g. catering)'
+                }
+                checked={formData.advance_order_allow_asap}
+                onCheckedChange={(checked) => patch({ advance_order_allow_asap: checked })}
               />
-            </div>
 
-            <div className="flex items-center justify-between border-t pt-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="available_on_pos" className="flex items-center gap-2">
-                  <Monitor className="h-4 w-4" />
-                  Available on POS
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {formData.available_on_pos
-                    ? 'Cashiers can ring it up on the register'
-                    : 'Hidden from the register'}
-                </p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field
+                  id="advance_order_lead_time_minutes"
+                  label="Lead time"
+                  hint={`Earliest slot: ${formatLeadTime(
+                    formData.advance_order_lead_time_minutes
+                  )} from now`}
+                >
+                  <Input
+                    id="advance_order_lead_time_minutes"
+                    type="number"
+                    min="0"
+                    max="10080"
+                    step="5"
+                    inputMode="numeric"
+                    value={formData.advance_order_lead_time_minutes}
+                    onChange={(e) =>
+                      patch({ advance_order_lead_time_minutes: Number(e.target.value) || 0 })
+                    }
+                  />
+                </Field>
+
+                <Field
+                  id="advance_order_max_days_ahead"
+                  label="Days ahead"
+                  hint="How far out a slot can be booked"
+                >
+                  <Input
+                    id="advance_order_max_days_ahead"
+                    type="number"
+                    min="0"
+                    max="60"
+                    step="1"
+                    inputMode="numeric"
+                    value={formData.advance_order_max_days_ahead}
+                    onChange={(e) =>
+                      patch({ advance_order_max_days_ahead: Number(e.target.value) || 0 })
+                    }
+                  />
+                </Field>
+
+                <Field
+                  id="advance_order_slot_interval_minutes"
+                  label="Slot spacing"
+                  hint="Minutes between selectable times"
+                >
+                  <Input
+                    id="advance_order_slot_interval_minutes"
+                    type="number"
+                    min="5"
+                    max="240"
+                    step="5"
+                    inputMode="numeric"
+                    value={formData.advance_order_slot_interval_minutes}
+                    onChange={(e) =>
+                      patch({ advance_order_slot_interval_minutes: Number(e.target.value) || 0 })
+                    }
+                  />
+                </Field>
               </div>
-              <Switch
-                id="available_on_pos"
-                checked={formData.available_on_pos}
-                onCheckedChange={(checked) => handleToggleChannel('available_on_pos', checked)}
-              />
-            </div>
+            </ToggleRow>
+          </SettingsSection>
 
-            <p className="text-xs text-muted-foreground border-t pt-4">
-              Saved together with the settings above.
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* POS pricing */}
-        <Card>
-          <CardHeader>
-            <CardTitle>POS pricing</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Register-only. Web and app orders always use store prices.
-            </p>
-
-            <div className="space-y-2">
-              <Label htmlFor="pos_markup_percent" className="flex items-center gap-2">
-                <Percent className="h-4 w-4" />
-                POS markup (%)
-              </Label>
+          <SettingsSection
+            id="pos-pricing"
+            title="Register pricing"
+            description="Register only. Web and app orders always use store prices."
+            icon={Percent}
+          >
+            <Field
+              id="pos_markup_percent"
+              label="POS markup (%)"
+              optional
+              hint={`${describeMarkup(
+                formData.pos_markup_percent
+              )} Applies to base prices and add-ons; exact prices below replace the base only.`}
+            >
               <Input
                 id="pos_markup_percent"
                 type="number"
@@ -675,122 +697,52 @@ export function OrderTypeDetail({
                 step="0.01"
                 inputMode="decimal"
                 value={formData.pos_markup_percent}
-                onChange={(e) => setFormData({ ...formData, pos_markup_percent: e.target.value })}
-                placeholder="e.g., 20"
+                onChange={(e) => patch({ pos_markup_percent: e.target.value })}
+                placeholder="Leave blank for store price"
               />
-              <p className="text-xs text-muted-foreground">
-                {describeMarkup(formData.pos_markup_percent)} Applies to base prices and add-ons;
-                exact prices below replace the base only.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+            </Field>
+          </SettingsSection>
+
+          <CheckoutFieldsSection
+            fields={formFields}
+            onAdd={() => openFieldDialog(null)}
+            onEdit={(field) => openFieldDialog(field)}
+            onDelete={(field) => setFieldToDelete(field)}
+            onMove={handleMoveField}
+            isBusy={isWritingFields}
+          />
+
+          <OrderTypePricingPanel
+            tenantId={tenantId}
+            tenantSlug={tenantSlug}
+            orderTypeId={orderType.id}
+            markupPercent={markupPercent}
+            menuItems={menuItems}
+            initialPrices={initialPrices}
+          />
+        </div>
+
+        {/* Live preview */}
+        <div className="lg:sticky lg:top-6">
+          <CheckoutPreview
+            orderTypeName={formData.name}
+            note={formData.note}
+            fields={formFields}
+            serviceChargeLabel={serviceChargeLabel}
+            minimumOrderLabel={minimumOrderLabel}
+          />
+        </div>
       </div>
 
-      <OrderTypePricingPanel
-        tenantId={tenantId}
-        tenantSlug={tenantSlug}
-        orderTypeId={orderType.id}
-        markupPercent={markupPercent}
-        menuItems={menuItems}
-        initialPrices={initialPrices}
+      <SaveBar
+        isDirty={isDirty}
+        isSaving={isSaving}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
       />
 
-      {/* Form Fields Management */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Customer Form Fields</CardTitle>
-            <Button onClick={handleAddField}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Field
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {formFields.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No form fields configured yet.</p>
-              <p className="text-sm mt-2">Click &quot;Add Field&quot; to create a form field for this order type.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {formFields.map((field, index) => (
-                <div
-                  key={field.id}
-                  className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <GripVertical className="h-5 w-5 cursor-move" />
-                    <span className="text-sm font-mono">{index + 1}</span>
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{field.field_label}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {getFieldBadgeLabel(field)}
-                      </Badge>
-                      {field.is_required && (
-                        <Badge variant="outline" className="text-xs bg-red-50 text-red-700">
-                          Required
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {field.field_name} {field.placeholder && `• ${field.placeholder}`}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleMoveField(field.id, 'up')}
-                      disabled={index === 0}
-                      title="Move up"
-                    >
-                      <ArrowLeft className="h-4 w-4 rotate-90" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleMoveField(field.id, 'down')}
-                      disabled={index === formFields.length - 1}
-                      title="Move down"
-                    >
-                      <ArrowLeft className="h-4 w-4 -rotate-90" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEditField(field)}
-                      title="Edit"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive"
-                      onClick={() => {
-                        setFieldToDelete(field.id)
-                        setDeleteFieldDialogOpen(true)
-                      }}
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Field Dialog */}
       <FieldDialog
+        key={`${editingField?.id ?? 'new'}-${dialogInstance}`}
         open={fieldDialogOpen}
         onOpenChange={setFieldDialogOpen}
         field={editingField}
@@ -798,19 +750,19 @@ export function OrderTypeDetail({
         tenantId={tenantId}
         tenantSlug={tenantSlug}
         existingFields={formFields}
-        onSuccess={() => {
-          setFieldDialogOpen(false)
-          router.refresh()
-        }}
+        onSuccess={handleFieldSaved}
       />
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteFieldDialogOpen} onOpenChange={setDeleteFieldDialogOpen}>
+      <AlertDialog
+        open={fieldToDelete !== null}
+        onOpenChange={(open) => !open && setFieldToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Form Field?</AlertDialogTitle>
+            <AlertDialogTitle>Remove &ldquo;{fieldToDelete?.field_label}&rdquo;?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this form field. Customers will no longer see it during checkout.
+              Customers will no longer be asked for this at checkout. Answers already saved on past
+              orders are kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -819,236 +771,11 @@ export function OrderTypeDetail({
               onClick={handleDeleteField}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              Remove field
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }
-
-// Field Dialog Component
-interface FieldDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  field: CustomerFormField | null
-  orderTypeId: string
-  tenantId: string
-  tenantSlug: string
-  existingFields: CustomerFormField[]
-  onSuccess: () => void
-}
-
-export function FieldDialog({
-  open,
-  onOpenChange,
-  field,
-  orderTypeId,
-  tenantId,
-  tenantSlug,
-  existingFields,
-  onSuccess,
-}: FieldDialogProps) {
-  const [isSaving, setIsSaving] = useState(false)
-  const [formData, setFormData] = useState({
-    preset_id: field ? resolvePresetIdForField(field) : 'text',
-    field_name: field?.field_name || '',
-    field_label: field?.field_label || '',
-    field_type: (field?.field_type || 'text') as CustomerFormField['field_type'],
-    is_required: field?.is_required ?? false,
-    placeholder: field?.placeholder || '',
-    options: Array.isArray(field?.options) ? field.options.join(', ') : '',
-  })
-
-  // A reserved preset (delivery address) already exists on this order type is
-  // hidden, unless it is the field currently being edited.
-  const availablePresets = getAvailableFieldPresets(existingFields, field?.field_name)
-  const selectedPreset = getCheckoutFieldPreset(formData.preset_id)
-  const isReservedName = Boolean(selectedPreset?.reservedFieldName)
-
-  const handlePresetChange = (presetId: string) => {
-    const defaults = buildFieldFromPreset(presetId)
-    setFormData((prev) => {
-      const previousPreset = getCheckoutFieldPreset(prev.preset_id)
-      // Leaving a reserved preset frees the name the merchant never typed.
-      const keptName = previousPreset?.reservedFieldName ? '' : prev.field_name
-      return {
-        ...prev,
-        preset_id: presetId,
-        field_type: defaults.field_type,
-        field_name: defaults.field_name || keptName,
-        field_label: prev.field_label || defaults.field_label,
-        placeholder: prev.placeholder || defaults.placeholder,
-      }
-    })
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSaving(true)
-
-    try {
-      const options = formData.field_type === 'select' && formData.options
-        ? formData.options.split(',').map(s => s.trim()).filter(s => s.length > 0)
-        : formData.field_type !== 'select' ? undefined : []
-
-      const input = {
-        field_name: formData.field_name,
-        field_label: formData.field_label,
-        field_type: formData.field_type,
-        is_required: formData.is_required,
-        placeholder: formData.placeholder || undefined,
-        order_index: field?.order_index ?? existingFields.length,
-        options,
-      }
-
-      let result
-      if (field) {
-        result = await updateCustomerFormFieldAction(
-          field.id,
-          tenantId,
-          tenantSlug,
-          orderTypeId,
-          input
-        )
-      } else {
-        result = await createCustomerFormFieldAction(
-          tenantId,
-          tenantSlug,
-          orderTypeId,
-          input
-        )
-      }
-
-      if (result.success) {
-        toast.success(field ? 'Field updated' : 'Field created')
-        onSuccess()
-      } else {
-        toast.error(result.error || 'Failed to save field')
-      }
-    } catch {
-      toast.error('An error occurred')
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{field ? 'Edit Form Field' : 'Add Form Field'}</DialogTitle>
-          <DialogDescription>
-            Configure the form field that customers will see during checkout
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="field_name">Field Name (Internal)</Label>
-              <Input
-                id="field_name"
-                value={formData.field_name}
-                onChange={(e) => setFormData({ ...formData, field_name: e.target.value })}
-                placeholder="e.g., customer_name, delivery_address"
-                required
-                disabled={!!field || isReservedName}
-              />
-              <p className="text-xs text-muted-foreground">
-                {isReservedName
-                  ? 'Reserved identifier — the checkout looks for this exact name'
-                  : 'Internal identifier (cannot be changed after creation)'}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="field_label">Field Label</Label>
-              <Input
-                id="field_label"
-                value={formData.field_label}
-                onChange={(e) => setFormData({ ...formData, field_label: e.target.value })}
-                placeholder="e.g., Full Name, Delivery Address"
-                required
-              />
-              <p className="text-xs text-muted-foreground">Display label for customers</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="field_type">Field Type</Label>
-            <Select
-              value={formData.preset_id}
-              onValueChange={handlePresetChange}
-              disabled={!!field && isReservedName}
-            >
-              <SelectTrigger id="field_type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availablePresets.map((preset) => (
-                  <SelectItem key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedPreset?.description && (
-              <p className="text-xs text-muted-foreground">{selectedPreset.description}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="placeholder">Placeholder Text</Label>
-            <Input
-              id="placeholder"
-              value={formData.placeholder}
-              onChange={(e) => setFormData({ ...formData, placeholder: e.target.value })}
-              placeholder="e.g., Enter your name"
-            />
-          </div>
-
-          {formData.field_type === 'select' && (
-            <div className="space-y-2">
-              <Label htmlFor="options">Options (comma-separated)</Label>
-              <Input
-                id="options"
-                value={formData.options}
-                onChange={(e) => setFormData({ ...formData, options: e.target.value })}
-                placeholder="e.g., Small, Medium, Large"
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter options separated by commas for select dropdown
-              </p>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="required">Required Field</Label>
-              <p className="text-sm text-muted-foreground">
-                Customers must fill this field to complete checkout
-              </p>
-            </div>
-            <Switch
-              id="required"
-              checked={formData.is_required}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_required: checked })}
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? 'Saving...' : field ? 'Update Field' : 'Create Field'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-

@@ -10,7 +10,7 @@
 
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { FieldDialog } from '@/components/admin/order-type-detail'
+import { FieldDialog } from '@/components/admin/order-types/field-dialog'
 
 const createCustomerFormFieldAction = jest.fn()
 
@@ -82,7 +82,7 @@ describe('Add Form Field dialog — delivery address', () => {
     renderDialog()
 
     await pickDeliveryAddress(user)
-    await user.click(screen.getByRole('button', { name: /create field/i }))
+    await user.click(screen.getByRole('button', { name: /add field/i }))
 
     expect(createCustomerFormFieldAction).toHaveBeenCalled()
     const input = createCustomerFormFieldAction.mock.calls[0][3]
@@ -100,7 +100,7 @@ describe('Add Form Field dialog — delivery address', () => {
     await pickDeliveryAddress(user)
 
     // The reserved name is filled in and locked — guessing it was the old trap.
-    const nameInput = screen.getByLabelText(/field name/i) as HTMLInputElement
+    const nameInput = screen.getByLabelText(/internal name/i) as HTMLInputElement
     expect(nameInput.value).toBe('delivery_address')
     expect(nameInput).toBeDisabled()
   })

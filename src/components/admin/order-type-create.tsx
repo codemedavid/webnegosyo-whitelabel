@@ -335,8 +335,10 @@ export function OrderTypeCreate({
                             <div>
                                 <h4 className="font-medium">After creating the order type</h4>
                                 <p className="text-sm text-muted-foreground mt-1">
-                                    You&apos;ll be taken to the configuration page where you can add custom form fields
-                                    that customers will fill out during checkout (like name, phone, address, etc.).
+                                    It starts with the checkout fields this kind normally needs — a name and a
+                                    phone number, plus a table number for dine-in or an address for delivery.
+                                    You&apos;ll land on the configuration page, where you can add, rename, or
+                                    remove any of them.
                                 </p>
                             </div>
                         </div>
