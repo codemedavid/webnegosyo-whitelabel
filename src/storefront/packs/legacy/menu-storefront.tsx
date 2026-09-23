@@ -5,9 +5,8 @@ import dynamic from 'next/dynamic'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { AnnouncementBar } from '@/components/customer/announcement-bar'
 import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
-import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { MenuLayout } from '@/components/customer/layouts'
-import { getTenantBranding, generateBrandingCSS } from '@/lib/branding-utils'
+import { generateBrandingCSS } from '@/lib/branding-utils'
 import { buildHeadingFontCss } from '@/lib/storefront-theme'
 import type { CardTemplate } from '@/lib/card-templates'
 import { MenuHeaderRenderer } from '@/components/customer/header-templates'
@@ -15,40 +14,30 @@ import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/h
 import type { PageLayout } from '@/lib/page-layouts'
 import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
-import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 import { useBrandingPreviewDraft, useIsMobileViewport, useMobileOverrides } from '@/hooks/use-branding-preview'
 import { resolveStorefrontLayout } from '@/lib/storefront-device-layout'
-import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
-import { buildFlashScreenBranding } from '@/lib/flash-loader'
 
 import { shouldUseCustomHero } from '@/lib/hero-mode'
 import { DeferredMount } from '../../runtime/deferred-mount'
-import type { StorefrontMenuController } from '../../contracts'
-
-// Heavy modals — loaded lazily since they are not visible on initial render.
-const BundleWizard = dynamic(
-  () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
-  { ssr: false }
-)
-const ProductDetailSheet = dynamic(
-  () => import('@/components/customer/product-detail-sheet').then((m) => ({ default: m.ProductDetailSheet })),
-  { ssr: false }
-)
+import { useStorefrontRuntime } from '../../runtime/storefront-runtime'
 
 const CartDrawer = dynamic(() => import('@/components/customer/cart-drawer').then(m => ({ default: m.CartDrawer })), { ssr: false })
 
-export function LegacyMenuStorefront({ menu }: { menu: StorefrontMenuController }) {
-  const { tenant, tenantSlug, categories, allMenuItems, categoriesWithBundles, filteredItems,
+/**
+ * The original storefront: a header template, an optional hero, one of the
+ * catalog page layouts and the cart drawer. Shared overlays (product sheet,
+ * bundle wizard, active-order banner...) come from StorefrontRuntime.
+ */
+export function LegacyMenuStorefront() {
+  const { menu, branding } = useStorefrontRuntime()
+  const { tenant, tenantSlug, allMenuItems, categoriesWithBundles, filteredItems,
     searchQuery, setSearchQuery: handleSearchChange, activeCategory, setActiveCategory,
-    itemCount: item_count, openStatus, isCartOpen, selectedBundle, sheetItem, selectItem: handleItemSelect } = menu
-  const previewDraft = useBrandingPreviewDraft()
-  const isFlashPreview = previewDraft?.__previewSurface === 'flash'
-  const isCartPreview = previewDraft?.__previewSurface === 'cart'
+    itemCount: item_count, openStatus, isCartOpen, selectItem: handleItemSelect } = menu
+  const isCartPreview = useBrandingPreviewDraft()?.__previewSurface === 'cart'
   const mobileOverrides = useMobileOverrides(tenant)
   const isMobile = useIsMobileViewport()
-  const branding = useMemo(() => getTenantBranding(tenant), [tenant])
   const [currentSlide, setCurrentSlide] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const deviceLayout = resolveStorefrontLayout(tenant, mobileOverrides)
@@ -122,9 +111,6 @@ export function LegacyMenuStorefront({ menu }: { menu: StorefrontMenuController 
         <style dangerouslySetInnerHTML={{ __html: buildHeadingFontCss('.storefront-themed') }} />
       )}
       <BackgroundOverlayLayer tenant={tenant as Record<string, unknown> | null} />
-      {isFlashPreview && (
-        <FlashScreenLoader branding={buildFlashScreenBranding(tenant)} />
-      )}
 
       <AnnouncementBar tenant={tenant} />
       <StoreClosedBanner status={openStatus} />
@@ -179,43 +165,6 @@ export function LegacyMenuStorefront({ menu }: { menu: StorefrontMenuController 
         checkoutUpsellSubtitle={tenant?.checkout_upsell_subtitle}
         checkoutUpsellMaxItems={tenant?.checkout_upsell_max_items}
       /></DeferredMount>
-
-      {/* Bundle Wizard */}
-      <DeferredMount active={!!selectedBundle}><BundleWizard
-        open={!!selectedBundle}
-        onClose={menu.closeBundle}
-        bundle={selectedBundle}
-        branding={branding}
-        hideCurrencySymbol={tenant?.hide_currency_symbol}
-      /></DeferredMount>
-
-      {/* Product Detail Bottom Sheet (customer fast path — opens instantly from
-          in-memory menu data, lazy-fetches upsells/settings in the background) */}
-      {tenant && <DeferredMount active={!!sheetItem}>
-        <ProductDetailSheet
-          open={!!sheetItem}
-          item={sheetItem}
-          onClose={menu.closeProduct}
-          tenant={tenant}
-          branding={branding}
-          categories={categories}
-          allMenuItems={allMenuItems}
-          menuEngineeringEnabled={tenant.menu_engineering_enabled}
-          pairingRulesEnabled={tenant.pairing_rules_enabled}
-          bundlesEnabled={tenant.bundles_enabled}
-          hideCurrencySymbol={!!(tenant.menu_engineering_enabled && tenant.hide_currency_symbol)}
-        />
-      </DeferredMount>}
-
-      {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}
-      <BrandingInspector />
-
-      {/* Active Order Banner */}
-      <ActiveOrderBanner
-        tenantSlug={tenantSlug}
-        primaryColor={branding.buttonPrimary}
-        primaryTextColor={branding.buttonPrimaryText}
-      />
     </div>
   )
 }

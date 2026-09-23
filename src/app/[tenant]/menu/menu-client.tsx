@@ -8,6 +8,7 @@ import { OutletGate } from '@/components/customer/outlet-gate'
 import { TableLinkCapture } from '@/components/customer/table-link-capture'
 import { useStorefrontMenu } from '@/storefront/catalog/use-storefront-menu'
 import { LegacyMenuStorefront } from '@/storefront/packs/legacy/menu-storefront'
+import { StorefrontRuntime } from '@/storefront/runtime/storefront-runtime'
 import type { StorefrontMenuInput } from '@/storefront/contracts'
 
 /** Route adapter. Customer behavior and visual composition have separate homes. */
@@ -44,6 +45,8 @@ function ReadyMenu({ isWelcomePreview, ...props }: StorefrontMenuInput & { isWel
   return <>
     <TableLinkCapture tenantSlug={props.tenantSlug} />
     <OutletGate tenant={props.tenant} tenantSlug={props.tenantSlug} outlets={props.outlets} isPreview={isWelcomePreview} />
-    <LegacyMenuStorefront menu={menu} />
+    <StorefrontRuntime menu={menu}>
+      <LegacyMenuStorefront />
+    </StorefrontRuntime>
   </>
 }
