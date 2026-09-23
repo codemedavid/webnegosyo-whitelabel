@@ -165,3 +165,13 @@ describe('TENANT_STOREFRONT_SELECT footer columns', () => {
     expect(tokens).toContain('restaurant_address')
   })
 })
+
+describe('TENANT_STOREFRONT_SELECT card style knobs', () => {
+  const tokens = TENANT_STOREFRONT_SELECT.split(/[\s,]+/).filter(Boolean)
+
+  it.each([
+    'card_image_ratio', 'card_image_fit', 'card_add_button', 'card_text_align', 'card_description', 'card_density',
+  ])('projects %s (read by getTenantBranding for the flexible cards)', (column) => {
+    expect(tokens).toContain(column)
+  })
+})

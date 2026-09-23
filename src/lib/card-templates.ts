@@ -18,6 +18,12 @@ export type CardTemplate =
   | 'zen'          // Ultra-minimal borderless design
   | 'neon'         // Dark card with neon glow accents
   | 'storefront'   // Square catalog image with floating add button
+  | 'showcase'     // Shopify-style product card with slide-up quick add
+  | 'atelier'      // Product floating on a tinted panel, quiet editorial type
+  | 'kiosk'        // Color-blocked fast-food kiosk tile with a full-width add bar
+  | 'sticker'      // Promo card with a rotated price sticker
+  | 'menuboard'    // Café menu-board row: thumbnail, dotted leader, price
+  | 'arch'         // Arch-framed photo, centered specialty-café card
 
 export interface CardTemplateDefinition {
   id: CardTemplate
@@ -25,6 +31,8 @@ export interface CardTemplateDefinition {
   description: string
   preview: string // Emoji representation
   features: string[]
+  /** Responds to the Card style knobs (src/lib/card-style.ts). */
+  isFlexible?: boolean
 }
 
 /**
@@ -186,6 +194,54 @@ export const CARD_TEMPLATES: CardTemplateDefinition[] = [
       'Name + price only',
       'Marketplace-style layout'
     ]
+  },
+  {
+    id: 'showcase',
+    name: 'Showcase',
+    description: 'Premium product card with a quick-add bar that slides up',
+    preview: '🛍️',
+    isFlexible: true,
+    features: ['Tall borderless photo', 'Slide-up quick add', 'Sale and sold-out labels', 'Shopify-style catalog']
+  },
+  {
+    id: 'atelier',
+    name: 'Atelier',
+    description: 'Dish floats on a soft tinted panel with quiet editorial type',
+    preview: '🏺',
+    isFlexible: true,
+    features: ['Tinted product panel', 'Hairline details', 'Text-link add', 'Boutique feel']
+  },
+  {
+    id: 'kiosk',
+    name: 'Kiosk',
+    description: 'Color-blocked fast-food tile with a big price and add bar',
+    preview: '🍟',
+    isFlexible: true,
+    features: ['Brand-color tile', 'Spotlight behind the food', 'Big bold price', 'Full-width add bar']
+  },
+  {
+    id: 'sticker',
+    name: 'Sticker',
+    description: 'Promo card with a rotated price sticker on the photo',
+    preview: '🏷️',
+    isFlexible: true,
+    features: ['Price sticker burst', 'Punchy promo energy', 'Sale price on the sticker', 'Round add button']
+  },
+  {
+    id: 'menuboard',
+    name: 'Menu Board',
+    description: 'Café menu-board row with dotted leaders to the price',
+    preview: '☕',
+    isFlexible: true,
+    features: ['Text-first row', 'Dotted price leader', 'Small round photo', 'Great for drinks lists']
+  },
+  {
+    id: 'arch',
+    name: 'Arch',
+    description: 'Arch-framed photo with centered, airy specialty-café type',
+    preview: '⛩️',
+    isFlexible: true,
+    features: ['Arch photo frame', 'Centered layout', 'Soft tinted field', 'Pill add button']
   }
 ]
 

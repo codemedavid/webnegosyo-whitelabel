@@ -24,8 +24,10 @@ import {
   resolveFieldValue,
   buildPublishPayload,
   editsTenantColumn,
+  isFieldVisible,
   type BrandingSurface,
 } from '@/lib/branding-registry'
+import { getTenantBranding } from '@/lib/branding-utils'
 import { saveBrandingAction } from '@/app/actions/branding'
 import type { BrandingInput } from '@/lib/branding-service'
 import {
@@ -38,6 +40,7 @@ import {
 import { saveProductDetailSettings } from '@/app/actions/product-detail-settings'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import {
+  applyMobileOverrides,
   mergeMobileOverrides,
   resolveMobileFieldValue,
   type OverrideMap,
@@ -58,7 +61,8 @@ import { reorderCategoriesAction, updateCategoryAction } from '@/app/actions/cat
 import { FieldRow } from './field-row'
 import { PreviewFrame } from './preview-frame'
 import { CategoryLayoutPanel } from './category-layout-panel'
-import type { Category, Tenant } from '@/types/database'
+import type { GalleryContext } from './template-gallery'
+import type { Category, MenuItem, Tenant } from '@/types/database'
 
 const PUBLISHED_TOAST_MS = 2500
 /** How long a section header pulses after a click-to-inspect jump. */
@@ -77,11 +81,25 @@ interface BrandingStudioProps {
   productSettings?: Partial<ProductDetailSettings> | null
   /** The tenant's menu categories, for the Menu Layout surface. */
   categories?: Category[]
+  /** A real dish (ideally with a photo) the card-template gallery renders. */
+  sampleMenuItem?: MenuItem | null
 }
+
+/** Stand-in dish for the card gallery when the menu is still empty. */
+const PLACEHOLDER_SAMPLE_ITEM = {
+  id: 'gallery-sample',
+  name: 'Your signature dish',
+  description: 'How your menu cards will look with this design.',
+  price: 180,
+  image_url: '',
+  variations: [],
+  addons: [],
+  is_available: true,
+} as unknown as MenuItem
 
 type Draft = Record<string, unknown>
 
-export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettings, products = [], categories = [] }: BrandingStudioProps) {
+export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettings, products = [], categories = [], sampleMenuItem }: BrandingStudioProps) {
   const productOptions = useMemo(
     () => products.map((p) => ({ value: p.id, label: p.name })),
     [products]
@@ -134,6 +152,23 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     () => publishedMobileProduct ?? ((productSettings?.mobile_overrides as OverrideMap) ?? {}),
     [publishedMobileProduct, productSettings]
   )
+
+  // The card gallery previews with the colors and card-style knobs the
+  // merchant is editing right now, on the device they are editing for.
+  const galleryContext = useMemo<GalleryContext>(() => {
+    const desktopTenant = { ...savedTenant, ...draft }
+    const effectiveTenant = isMobile
+      ? applyMobileOverrides(desktopTenant, mergeMobileOverrides(savedMobile, mobileDraft))
+      : desktopTenant
+    return { sampleItem: sampleMenuItem ?? PLACEHOLDER_SAMPLE_ITEM, branding: getTenantBranding(effectiveTenant) }
+  }, [savedTenant, draft, isMobile, savedMobile, mobileDraft, sampleMenuItem])
+
+  // A field's current value as the editor shows it: the mobile layer on the
+  // mobile tab (unless the field always edits its column), else the desktop.
+  const resolveEditorValue = useCallback((fieldId: string) => {
+    const desktopValue = resolveFieldValue(fieldId, draft, savedTenant)
+    return isMobile ? resolveMobileFieldValue(fieldId, mobileDraft, savedMobile, desktopValue) : desktopValue
+  }, [draft, savedTenant, isMobile, mobileDraft, savedMobile])
 
   const savedCategories = publishedCategories ?? categories
 
@@ -581,7 +616,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                 const bag = editsTenantColumn(f, isMobile) ? columnDraft : overrideDraft
                 return Object.prototype.hasOwnProperty.call(bag, f.id)
               })
-              const visibleFields = section.fields.filter((f) => !f.mobileOnly || device === 'mobile')
+              const visibleFields = section.fields.filter((f) =>
+                (!f.mobileOnly || device === 'mobile') &&
+                (isProductSurface || isFieldVisible(f, resolveEditorValue))
+              )
               if (visibleFields.length === 0) return null
               const isFlashing = flashSectionIndex === sectionIndex
               return (
@@ -642,6 +680,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                           <FieldRow
                             field={field}
                             productOptions={productOptions}
+                            gallery={galleryContext}
                             value={
                               usesMobilePath
                                 ? resolveMobileFieldValue(field.id, activeMobileDraft, activeSavedMobile, desktopValue)

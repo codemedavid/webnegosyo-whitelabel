@@ -74,6 +74,33 @@ const StorefrontCard = dynamic(
   { loading: CardSkeleton }
 )
 
+// Flexible templates (src/components/customer/card-templates/flex) — built on
+// the shared card kit and driven by the merchant's Card style knobs.
+const ShowcaseCard = dynamic(
+  () => import('./flex/showcase-card').then((m) => ({ default: m.ShowcaseCard })),
+  { loading: CardSkeleton }
+)
+const AtelierCard = dynamic(
+  () => import('./flex/atelier-card').then((m) => ({ default: m.AtelierCard })),
+  { loading: CardSkeleton }
+)
+const KioskCard = dynamic(
+  () => import('./flex/kiosk-card').then((m) => ({ default: m.KioskCard })),
+  { loading: CardSkeleton }
+)
+const StickerCard = dynamic(
+  () => import('./flex/sticker-card').then((m) => ({ default: m.StickerCard })),
+  { loading: CardSkeleton }
+)
+const MenuboardCard = dynamic(
+  () => import('./flex/menuboard-card').then((m) => ({ default: m.MenuboardCard })),
+  { loading: CardSkeleton }
+)
+const ArchCard = dynamic(
+  () => import('./flex/arch-card').then((m) => ({ default: m.ArchCard })),
+  { loading: CardSkeleton }
+)
+
 interface CardTemplateProps {
   item: MenuItem
   onSelect: (item: MenuItem) => void
@@ -113,6 +140,18 @@ export function getCardTemplateComponent(template: CardTemplate = 'classic') {
       return NeonCard
     case 'storefront':
       return StorefrontCard
+    case 'showcase':
+      return ShowcaseCard
+    case 'atelier':
+      return AtelierCard
+    case 'kiosk':
+      return KioskCard
+    case 'sticker':
+      return StickerCard
+    case 'menuboard':
+      return MenuboardCard
+    case 'arch':
+      return ArchCard
     case 'classic':
     default:
       return ClassicCard

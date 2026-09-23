@@ -47,6 +47,23 @@ const LayoutMosaic = dynamic(
     { loading: LayoutSkeleton }
 )
 
+const LayoutStorefront = dynamic(
+    () => import('./layout-storefront').then((m) => ({ default: m.LayoutStorefront })),
+    { loading: LayoutSkeleton }
+)
+const LayoutKiosk = dynamic(
+    () => import('./layout-kiosk').then((m) => ({ default: m.LayoutKiosk })),
+    { loading: LayoutSkeleton }
+)
+const LayoutRails = dynamic(
+    () => import('./layout-rails').then((m) => ({ default: m.LayoutRails })),
+    { loading: LayoutSkeleton }
+)
+const LayoutLookbook = dynamic(
+    () => import('./layout-lookbook').then((m) => ({ default: m.LayoutLookbook })),
+    { loading: LayoutSkeleton }
+)
+
 export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
     switch (layout) {
         case 'sidebar':
@@ -59,6 +76,16 @@ export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
             return <LayoutList {...props} />
         case 'mosaic':
             return <LayoutMosaic {...props} />
+        // Scroll-based catalogs render every category on one page, so they read
+        // the search matches before any category filter (same as sidebar).
+        case 'storefront':
+            return <LayoutStorefront {...props} filteredItems={props.searchItems ?? props.filteredItems} />
+        case 'kiosk':
+            return <LayoutKiosk {...props} filteredItems={props.searchItems ?? props.filteredItems} />
+        case 'rails':
+            return <LayoutRails {...props} filteredItems={props.searchItems ?? props.filteredItems} />
+        case 'lookbook':
+            return <LayoutLookbook {...props} filteredItems={props.searchItems ?? props.filteredItems} />
         case 'default':
         default:
             return <LayoutDefault isLoading={isLoading} {...props} />

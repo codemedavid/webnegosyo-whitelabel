@@ -1,3 +1,4 @@
+import { CARD_ADD_BUTTONS, CARD_DENSITIES, CARD_DESCRIPTIONS, CARD_IMAGE_FITS, CARD_IMAGE_RATIOS, CARD_TEXT_ALIGNS } from '@/lib/card-style'
 import { z } from 'zod'
 import type { PromotionBanner } from '@/types/database'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -155,6 +156,13 @@ export const brandingSchema = z.object({
     mobile_grid_columns: z.number().min(1).max(4).optional(),
     mobile_page_layout: z.string().optional().nullable(),
     mobile_card_template: z.string().optional().nullable(),
+    // Card style knobs (flexible card templates). 'auto' = template design.
+    card_image_ratio: z.enum(CARD_IMAGE_RATIOS).optional().nullable(),
+    card_image_fit: z.enum(CARD_IMAGE_FITS).optional().nullable(),
+    card_add_button: z.enum(CARD_ADD_BUTTONS).optional().nullable(),
+    card_text_align: z.enum(CARD_TEXT_ALIGNS).optional().nullable(),
+    card_description: z.enum(CARD_DESCRIPTIONS).optional().nullable(),
+    card_density: z.enum(CARD_DENSITIES).optional().nullable(),
     // Header template & customization
     header_template: z.string().optional(),
     mobile_header_template: z.string().optional().nullable(),
@@ -331,6 +339,12 @@ export const ROLLOUT_DEPENDENT_FIELDS = [
     'flash_screen_duration_ms',
     'mobile_page_layout',
     'mobile_card_template',
+    'card_image_ratio',
+    'card_image_fit',
+    'card_add_button',
+    'card_text_align',
+    'card_description',
+    'card_density',
     'mobile_overrides',
     'header_template',
     'mobile_header_template',

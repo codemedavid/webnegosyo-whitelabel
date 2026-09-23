@@ -63,6 +63,13 @@ export interface Tenant {
   search_bar_border?: string | null;
   search_bar_focus_ring?: string | null;
   search_bar_radius?: 'pill' | 'rounded' | 'square';
+  // Card style knobs for the flexible card templates (src/lib/card-style.ts). NULL/'auto' = template design.
+  card_image_ratio?: 'auto' | 'square' | 'portrait' | 'landscape' | 'wide' | null;
+  card_image_fit?: 'auto' | 'cover' | 'contain' | null;
+  card_add_button?: 'auto' | 'icon' | 'pill' | 'bar' | 'hidden' | null;
+  card_text_align?: 'auto' | 'start' | 'center' | null;
+  card_description?: 'auto' | 'show' | 'hide' | null;
+  card_density?: 'auto' | 'compact' | 'comfortable' | 'spacious' | null;
   search_bar_style?: 'filled' | 'outline' | 'ghost';
   success_color?: string;
   warning_color?: string;

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getCategoriesByTenant, getMenuItemsByTenant } from '@/lib/admin-service'
-import type { Category } from '@/types/database'
+import type { Category, MenuItem } from '@/types/database'
 import { getProductDetailSettings } from '@/app/actions/product-detail-settings'
 import { BrandingStudio } from '@/components/admin/branding-studio/branding-studio'
 
@@ -24,10 +24,18 @@ export default async function BrandingStudioPage({
   // Non-critical: fall back to empty (menu page) if the lookup fails.
   let sampleItemId: string | null = null
   let products: { id: string; name: string }[] = []
+  let sampleMenuItem: MenuItem | null = null
   try {
     const items = await getMenuItemsByTenant(tenantData.id)
     sampleItemId = items[0]?.id ?? null
     products = items.map((item) => ({ id: item.id, name: item.name }))
+    // The card gallery previews each design on a real dish — ideally one
+    // with a photo and a description, so every template has content to show.
+    sampleMenuItem =
+      items.find((item) => item.image_url && item.description) ??
+      items.find((item) => item.image_url) ??
+      items[0] ??
+      null
   } catch {
     sampleItemId = null
     products = []
@@ -55,6 +63,7 @@ export default async function BrandingStudioPage({
       productSettings={productSettings}
       products={products}
       categories={categories}
+      sampleMenuItem={sampleMenuItem}
     />
   )
 }
