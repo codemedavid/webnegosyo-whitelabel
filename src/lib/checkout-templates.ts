@@ -87,6 +87,9 @@ export const CHECKOUT_TEMPLATES: CheckoutTemplateDefinition[] = [
   },
 ]
 
+/** Every selectable id, in registry (picker) order. */
+export const CHECKOUT_TEMPLATE_IDS: readonly CheckoutTemplate[] = CHECKOUT_TEMPLATES.map((t) => t.id)
+
 /**
  * Get a checkout template definition by ID (falls back to the first/classic).
  */

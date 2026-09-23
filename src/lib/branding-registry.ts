@@ -9,7 +9,13 @@
  * (src/lib/branding-utils.ts) so the panel's "↳ Inherits" labels are truthful.
  */
 
-import { CARD_TEMPLATES } from '@/lib/card-templates'
+// Design pickers take their options straight from the design registries, so a
+// design is selectable in the Studio exactly when it is registered.
+import { CARD_TEMPLATES, CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE } from '@/lib/card-templates'
+import { PAGE_LAYOUT_IDS, DEFAULT_PAGE_LAYOUT } from '@/lib/page-layouts'
+import { HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE } from '@/lib/header-templates'
+import { CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE } from '@/lib/cart-templates'
+import { CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE } from '@/lib/checkout-templates'
 import { CARD_STYLE_FIELDS } from '@/lib/card-style'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
@@ -90,23 +96,12 @@ const banners = (id: string, label: string, bannerFormats = false): BrandingFiel
 const image = (id: string, label: string, placeholder = 'https://…/photo.jpg'): BrandingField =>
   ({ id, label, type: 'image', default: '', placeholder })
 
-const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'banner', 'stacked'] as const
-const CARD_TEMPLATE_OPTIONS = [
-  'classic', 'minimal', 'modern', 'elegant', 'compact', 'bold', 'glass',
-  'polaroid', 'brutalist', 'magazine', 'zen', 'neon', 'storefront',
-  'showcase', 'atelier', 'kiosk', 'sticker', 'menuboard', 'arch',
-] as const
-const PAGE_LAYOUT_OPTIONS = [
-  'default', 'sidebar', 'magazine', 'grid-focus', 'list', 'mosaic',
-  'storefront', 'kiosk', 'rails', 'lookbook',
-] as const
 const FLEXIBLE_CARD_TEMPLATES = CARD_TEMPLATES.filter((t) => t.isFlexible).map((t) => t.id)
 const WHEN_FLEXIBLE_CARD = { fieldId: 'card_template', values: FLEXIBLE_CARD_TEMPLATES }
 const CARD_STYLE_REGISTRY_FIELDS: BrandingField[] = CARD_STYLE_FIELDS.map((knob) => ({
   ...select(knob.column, knob.label, knob.options, 'auto'),
   showWhen: WHEN_FLEXIBLE_CARD,
 }))
-const CART_CHECKOUT_TEMPLATE_OPTIONS = ['classic', 'modern', 'wizard', 'minimal', 'express'] as const
 
 export const BRANDING_SURFACES: BrandingSurface[] = [
   {
@@ -191,7 +186,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Header',
         fields: [
-          select('header_template', 'Template', HEADER_TEMPLATE_OPTIONS, 'classic'),
+          select('header_template', 'Template', HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE),
           toggle('header_show_logo', 'Show logo', true),
           toggle('header_show_name', 'Show business name', true),
           toggle('header_show_cart', 'Show cart button', true),
@@ -260,8 +255,8 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Layout & menu cards',
         fields: [
-          { ...select('page_layout', 'Page layout', PAGE_LAYOUT_OPTIONS, 'default'), presentation: 'layout-gallery' },
-          { ...select('card_template', 'Card template', CARD_TEMPLATE_OPTIONS, 'classic'), presentation: 'card-gallery' },
+          { ...select('page_layout', 'Page layout', PAGE_LAYOUT_IDS, DEFAULT_PAGE_LAYOUT), presentation: 'layout-gallery' },
+          { ...select('card_template', 'Card template', CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE), presentation: 'card-gallery' },
           { ...number('mobile_grid_columns', 'Grid columns (mobile)', 1, 1, 4), mobileOnly: true, columnBacked: true },
           color('cards_color', 'Card background', '#ffffff'),
           color('cards_border_color', 'Card border', null, 'border_color'),
@@ -362,7 +357,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     sections: [
       {
         title: 'Template',
-        fields: [select('cart_template', 'Layout', CART_CHECKOUT_TEMPLATE_OPTIONS, 'classic')],
+        fields: [select('cart_template', 'Layout', CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE)],
       },
       {
         title: 'Colors',
@@ -388,7 +383,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     sections: [
       {
         title: 'Template',
-        fields: [select('checkout_template', 'Layout', CART_CHECKOUT_TEMPLATE_OPTIONS, 'classic')],
+        fields: [select('checkout_template', 'Layout', CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE)],
       },
       {
         title: 'Colors',

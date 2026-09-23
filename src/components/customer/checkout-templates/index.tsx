@@ -11,7 +11,8 @@
  */
 
 import dynamic from 'next/dynamic'
-import type { CheckoutTemplate } from '@/lib/checkout-templates'
+import { CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE, type CheckoutTemplate } from '@/lib/checkout-templates'
+import { pickDesignId } from '@/lib/design-ids'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { CheckoutLoading } from './checkout-shared'
 
@@ -41,31 +42,29 @@ interface CheckoutDesignProps {
   checkout: UseCheckoutReturn
 }
 
+// Typed against the registry's id union: a registered design without a
+// component here is a compile error.
+const CHECKOUT_COMPONENTS = {
+  classic: ClassicCheckout,
+  modern: ModernCheckout,
+  wizard: WizardCheckout,
+  minimal: MinimalCheckout,
+  express: ExpressCheckout,
+} satisfies Record<CheckoutTemplate, unknown>
+
 /**
  * Resolve the checkout design component for a template id.
  * Unknown/typo'd ids fall back to Classic (matches card-template behaviour).
  */
-export function getCheckoutTemplateComponent(template: CheckoutTemplate = 'classic') {
-  switch (template) {
-    case 'modern':
-      return ModernCheckout
-    case 'wizard':
-      return WizardCheckout
-    case 'minimal':
-      return MinimalCheckout
-    case 'express':
-      return ExpressCheckout
-    case 'classic':
-    default:
-      return ClassicCheckout
-  }
+export function getCheckoutTemplateComponent(template: CheckoutTemplate = DEFAULT_CHECKOUT_TEMPLATE) {
+  return CHECKOUT_COMPONENTS[pickDesignId(template, CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE)]
 }
 
 /**
  * Renders the selected checkout design. Only the chosen design's JS chunk loads.
  */
 export function CheckoutTemplateRenderer({
-  template = 'classic',
+  template = DEFAULT_CHECKOUT_TEMPLATE,
   checkout,
 }: CheckoutDesignProps & { template?: CheckoutTemplate }) {
   const DesignComponent = getCheckoutTemplateComponent(template)
