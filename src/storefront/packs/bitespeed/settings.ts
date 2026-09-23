@@ -29,3 +29,19 @@ export const bitespeedSettingsSchema = z.object({
 })
 
 export type BiteSpeedSettings = z.output<typeof bitespeedSettingsSchema>
+
+/** The settings the Branding Studio shows for BiteSpeed, in editor order. */
+export const BITESPEED_STUDIO_FIELDS: { key: keyof BiteSpeedSettings; label: string }[] = [
+  { key: 'hero_highlight', label: 'Hero accent line (under the hero title)' },
+  { key: 'best_sellers_title', label: 'Best sellers title' },
+  { key: 'best_sellers_subtitle', label: 'Best sellers subtitle' },
+  { key: 'show_how_it_works', label: 'Show "How it works"' },
+  { key: 'how_it_works_title', label: '"How it works" title' },
+  { key: 'how_it_works_subtitle', label: '"How it works" subtitle' },
+  { key: 'step_1_title', label: 'Step 1 title' },
+  { key: 'step_1_body', label: 'Step 1 text' },
+  { key: 'step_2_title', label: 'Step 2 title' },
+  { key: 'step_2_body', label: 'Step 2 text' },
+  { key: 'step_3_title', label: 'Step 3 title' },
+  { key: 'step_3_body', label: 'Step 3 text' },
+]

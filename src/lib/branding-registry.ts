@@ -17,6 +17,8 @@ import { HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE } from '@/lib/header-templ
 import { CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE } from '@/lib/cart-templates'
 import { CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE } from '@/lib/checkout-templates'
 import { CARD_STYLE_FIELDS } from '@/lib/card-style'
+import { STOREFRONT_PACK_IDS, DEFAULT_STOREFRONT_PACK } from '@/lib/storefront-packs'
+import { foldPackSettings, isPackFieldId, packStudioSections } from '@/lib/storefront-pack-studio'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
@@ -63,7 +65,7 @@ export interface BrandingSection {
 }
 
 export interface BrandingSurface {
-  id: 'global' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
+  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
   label: string
   glyph: string
   description: string
@@ -151,6 +153,22 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('button_secondary_text_color', 'Secondary button text', '#111111'),
         ],
       },
+    ],
+  },
+  {
+    id: 'layout',
+    label: 'Site Layout',
+    glyph: 'L',
+    description: 'The whole storefront design: its home page, menu page and checkout. Your colors, fonts and menu carry over to every design.',
+    sections: [
+      {
+        title: 'Storefront design',
+        fields: [
+          { ...select('storefront_pack', 'Design', STOREFRONT_PACK_IDS, DEFAULT_STOREFRONT_PACK), columnBacked: true },
+          note('note_storefront_pack', 'Classic storefront is your current single menu page. Other designs add their own home page and pages — preview them here before you publish.'),
+        ],
+      },
+      ...packStudioSections(),
     ],
   },
   {
@@ -656,12 +674,15 @@ export function buildPublishPayload(
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {}
   for (const fieldId of Object.keys(BRANDING_FIELD_INDEX)) {
+    // Pack settings are virtual fields inside one jsonb column: folded below.
+    if (isPackFieldId(fieldId)) continue
     const value = Object.prototype.hasOwnProperty.call(draft, fieldId)
       ? draft[fieldId]
       : tenant?.[fieldId]
     if (value === undefined || value === null) continue
     payload[fieldId] = value
   }
+  payload.storefront_pack_settings = foldPackSettings(draft, tenant)
   if (isBlank(payload.primary_color)) {
     payload.primary_color = String(BRANDING_FIELD_INDEX.primary_color.default)
   }

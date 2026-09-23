@@ -17,7 +17,7 @@
 import { z } from 'zod'
 import { pickDesignId } from '@/lib/design-ids'
 import { CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE, type CheckoutTemplate } from '@/lib/checkout-templates'
-import { bitespeedSettingsSchema } from '@/storefront/packs/bitespeed/settings'
+import { BITESPEED_STUDIO_FIELDS, bitespeedSettingsSchema } from '@/storefront/packs/bitespeed/settings'
 
 export const STOREFRONT_PACK_IDS = ['legacy', 'bitespeed'] as const
 export type StorefrontPackId = (typeof STOREFRONT_PACK_IDS)[number]
@@ -47,6 +47,8 @@ export interface StorefrontPackDefinition {
    * so a missing or invalid value falls back per field.
    */
   settingsSchema: z.ZodObject<z.ZodRawShape>
+  /** Settings the Branding Studio shows for this pack, in editor order. */
+  studioFields: { key: string; label: string }[]
 }
 
 /** Each pack's settings schema, keyed by id so readers get exact types. */
@@ -65,6 +67,7 @@ export const STOREFRONT_PACKS: StorefrontPackDefinition[] = [
     preview: '🍽️',
     checkoutEntry: 'cart-drawer',
     settingsSchema: PACK_SETTINGS_SCHEMAS.legacy,
+    studioFields: [],
   },
   {
     id: 'bitespeed',
@@ -74,6 +77,7 @@ export const STOREFRONT_PACKS: StorefrontPackDefinition[] = [
     checkoutEntry: 'direct',
     designOverrides: { checkout: 'bitespeed' },
     settingsSchema: PACK_SETTINGS_SCHEMAS.bitespeed,
+    studioFields: BITESPEED_STUDIO_FIELDS,
   },
 ]
 
