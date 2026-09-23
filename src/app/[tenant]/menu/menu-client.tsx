@@ -7,7 +7,8 @@ import { getTenantBranding } from '@/lib/branding-utils'
 import { OutletGate } from '@/components/customer/outlet-gate'
 import { TableLinkCapture } from '@/components/customer/table-link-capture'
 import { useStorefrontMenu } from '@/storefront/catalog/use-storefront-menu'
-import { LegacyMenuStorefront } from '@/storefront/packs/legacy/menu-storefront'
+import { STOREFRONT_PACK_PAGES } from '@/storefront/packs/registry'
+import { resolveStorefrontPack } from '@/lib/storefront-packs'
 import { StorefrontRuntime } from '@/storefront/runtime/storefront-runtime'
 import type { StorefrontMenuInput } from '@/storefront/contracts'
 
@@ -42,11 +43,13 @@ function MenuEntry(props: StorefrontMenuInput) {
 
 function ReadyMenu({ isWelcomePreview, ...props }: StorefrontMenuInput & { isWelcomePreview: boolean }) {
   const menu = useStorefrontMenu(props)
+  // Resolved from the preview-merged tenant, so the Branding Studio can switch packs live.
+  const MenuPage = STOREFRONT_PACK_PAGES[resolveStorefrontPack(props.tenant)].menu
   return <>
     <TableLinkCapture tenantSlug={props.tenantSlug} />
     <OutletGate tenant={props.tenant} tenantSlug={props.tenantSlug} outlets={props.outlets} isPreview={isWelcomePreview} />
     <StorefrontRuntime menu={menu}>
-      <LegacyMenuStorefront />
+      <MenuPage />
     </StorefrontRuntime>
   </>
 }
