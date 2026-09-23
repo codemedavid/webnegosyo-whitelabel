@@ -17,6 +17,17 @@ const DEFAULT_PAGE_LAYOUT = 'default'
 const DEFAULT_CARD_TEMPLATE = 'classic'
 const DEFAULT_HEADER_TEMPLATE = 'classic'
 
+/** Cards per row on a phone when the tenant has not chosen. */
+export const DEFAULT_MOBILE_GRID_COLUMNS = 2
+
+/**
+ * Cards per row on a phone: 1 only when the merchant chose a single column,
+ * otherwise 2 (the column's CHECK constraint allows nothing else).
+ */
+export function resolveMobileGridColumns(value: number | null | undefined): 1 | 2 {
+  return value === 1 ? 1 : DEFAULT_MOBILE_GRID_COLUMNS
+}
+
 /** The tenant columns this resolver reads (a subset of Tenant). */
 interface DeviceLayoutTenant {
   page_layout?: string | null

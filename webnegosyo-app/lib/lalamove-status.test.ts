@@ -11,6 +11,7 @@
 import {
   isLalamoveFinal,
   isActiveLalamoveDelivery,
+  isRebookableLalamoveStatus,
   lalamoveStatusLabel,
   lalamoveBadgeVariant,
 } from "./lalamove-status";
@@ -67,5 +68,19 @@ describe("lalamoveBadgeVariant", () => {
     expect(lalamoveBadgeVariant("DELIVERED")).toBe("delivered");
     expect(lalamoveBadgeVariant("CANCELED")).toBe("cancelled");
     expect(lalamoveBadgeVariant("anything else")).toBe("default");
+  });
+});
+
+describe("isRebookableLalamoveStatus", () => {
+  it("is true for a booking that ended without a delivery — the order still needs a rider", () => {
+    for (const status of ["CANCELED", "CANCELLED", "REJECTED", "EXPIRED", "cancelled"]) {
+      expect(isRebookableLalamoveStatus(status)).toBe(true);
+    }
+  });
+
+  it("is false for live, completed and unknown bookings", () => {
+    for (const status of ["COMPLETED", "DELIVERED", "ON_GOING", "ASSIGNING_DRIVER", "", null, undefined]) {
+      expect(isRebookableLalamoveStatus(status)).toBe(false);
+    }
   });
 });

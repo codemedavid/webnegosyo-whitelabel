@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import { readTenantSlugById } from '@/lib/tenant-revalidation'
 
 /**
  * POST /api/revalidate-menu
@@ -11,17 +12,18 @@ import { revalidatePath } from 'next/cache'
  * instead of waiting out the ISR TTL. Authenticated via the caller's own
  * Supabase access token — same trust level as `verifyTenantAdmin` in
  * `src/lib/admin-service.ts`.
+ *
+ * Only `tenantId` is trusted input, and only after the caller is authorized
+ * for it. The purged slug is read from that tenant's row: a body `tenantSlug`
+ * (still sent by older app builds) is ignored, because `[tenant]` would purge
+ * every storefront.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json().catch(() => null)
-  const tenantId = body?.tenantId
-  const tenantSlug = body?.tenantSlug
+  const tenantId: unknown = body?.tenantId
 
-  if (!tenantId || !tenantSlug) {
-    return NextResponse.json(
-      { error: 'tenantId and tenantSlug are required' },
-      { status: 400 },
-    )
+  if (typeof tenantId !== 'string' || tenantId === '') {
+    return NextResponse.json({ error: 'tenantId is required' }, { status: 400 })
   }
 
   const authHeader = request.headers.get('authorization')
@@ -52,6 +54,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (!isAuthorized) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const tenantSlug = await readTenantSlugById(supabase, tenantId)
+  if (!tenantSlug) {
+    return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
   }
 
   revalidatePath(`/${tenantSlug}/menu`)

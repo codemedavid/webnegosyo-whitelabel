@@ -15,11 +15,8 @@ import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import {
-  PAYMENT_PROOF_FOLDER,
-  PAYMENT_PROOF_MAX_FILE_SIZE,
-} from '@/lib/payment-proof'
-import { uploadImageToImageKit, isImageKitConfigured } from '@/lib/imagekit-upload'
+import { PAYMENT_PROOF_MAX_FILE_SIZE } from '@/lib/payment-proof'
+import { uploadPaymentProofImage, isImageKitConfigured } from '@/lib/imagekit-upload'
 
 interface PaymentProofFieldProps {
   required: boolean
@@ -65,7 +62,8 @@ export function PaymentProofField({
 
     setIsUploading(true)
     try {
-      const result = await uploadImageToImageKit(file, { folder: PAYMENT_PROOF_FOLDER })
+      // Through the server: it picks the folder and name and checks the bytes.
+      const result = await uploadPaymentProofImage(file)
       onUploaded(result.url, result.fileId)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to upload screenshot.')

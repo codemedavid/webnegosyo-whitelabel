@@ -11,6 +11,7 @@
 
 import { CARD_TEMPLATES } from '@/lib/card-templates'
 import { CARD_STYLE_FIELDS } from '@/lib/card-style'
+import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
@@ -262,7 +263,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         fields: [
           { ...select('page_layout', 'Page layout', PAGE_LAYOUT_OPTIONS, 'default'), presentation: 'layout-gallery' },
           { ...select('card_template', 'Card template', CARD_TEMPLATE_OPTIONS, 'classic'), presentation: 'card-gallery' },
-          { ...number('mobile_grid_columns', 'Grid columns (mobile)', 1, 1, 4), mobileOnly: true, columnBacked: true },
+          { ...number('mobile_grid_columns', 'Grid columns (mobile)', DEFAULT_MOBILE_GRID_COLUMNS, 1, 2), mobileOnly: true, columnBacked: true },
           color('cards_color', 'Card background', '#ffffff'),
           color('cards_border_color', 'Card border', null, 'border_color'),
           color('card_title_color', 'Title text', null, 'text_primary_color'),

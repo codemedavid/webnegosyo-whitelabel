@@ -13,6 +13,12 @@
  * would not leak), so the route trusts NOTHING in the payload: it re-reads the
  * order by id with the service role, requires the tenant to match, and claims
  * a once-only row per order so a replayed request cannot ring twice.
+ *
+ * What Expo answers is READ, not assumed. Expo returns HTTP 200 while refusing
+ * every device in the batch, which is how a mismatched Android FCM project
+ * dropped every merchant notification on this platform for months while this
+ * route reported a clean send. So the mock below answers in tickets, the way
+ * the real service does.
  */
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 import { NextRequest } from 'next/server'
@@ -47,6 +53,11 @@ describe('POST /api/push/notify-order', () => {
   let tokenRows: Array<{ token: string; outlet_id: string | null }>
   let claimInserted: boolean
   let fetchMock: jest.Mock
+  let deletedTokens: string[]
+  /** What Expo says about a device at send time; ok by default. */
+  let ticketFor: (token: string) => Record<string, unknown>
+  /** What the push provider says afterwards; ok by default. */
+  let receiptFor: (receiptId: string) => Record<string, unknown>
 
   beforeEach(() => {
     jest.resetModules()
@@ -54,10 +65,26 @@ describe('POST /api/push/notify-order', () => {
     orderRow = { ...ORDER }
     tokenRows = [{ token: 'ExponentPushToken[owner]', outlet_id: null }]
     claimInserted = true
+    ticketFor = (token) => ({ status: 'ok', id: `receipt-${token}` })
+    receiptFor = () => ({ status: 'ok' })
 
-    fetchMock = jest.fn(() =>
-      Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
-    ) as jest.Mock
+    deletedTokens = []
+    // Expo's real shape: one ticket per message, positionally, then receipts
+    // keyed by ticket id. `ticketFor` lets a test refuse a device.
+    fetchMock = jest.fn((url: unknown, init: unknown) => {
+      const body = JSON.parse((init as { body: string }).body) as
+        | Array<{ to: string }>
+        | { ids: string[] }
+      if (Array.isArray(body)) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: body.map((message) => ticketFor(message.to)) }),
+        })
+      }
+      const receipts: Record<string, unknown> = {}
+      for (const id of body.ids) receipts[id] = receiptFor(id)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: receipts }) })
+    }) as jest.Mock
     global.fetch = fetchMock as unknown as typeof fetch
 
     const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as {
@@ -90,6 +117,19 @@ describe('POST /api/push/notify-order', () => {
             select: () => ({
               eq: () => Promise.resolve({ data: tokenRows, error: null }),
             }),
+            delete: () => ({
+              in: (_column: string, tokens: string[]) => {
+                deletedTokens.push(...tokens)
+                return Promise.resolve({ error: null })
+              },
+            }),
+          }
+        }
+        if (table === 'platform_device_tokens') {
+          return {
+            delete: () => ({
+              in: () => Promise.resolve({ error: null }),
+            }),
           }
         }
         throw new Error(`unexpected table ${table}`)
@@ -114,7 +154,6 @@ describe('POST /api/push/notify-order', () => {
 
     expect(response.status).toBe(200)
     expect(data.sent).toBe(1)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0] as [string, { body: string }]
     expect(url).toBe('https://exp.host/--/api/v2/push/send')
     const messages = JSON.parse(init.body) as Array<{ to: string; body: string }>
@@ -161,6 +200,42 @@ describe('POST /api/push/notify-order', () => {
     const [, init] = fetchMock.mock.calls[0] as [string, { body: string }]
     const recipients = (JSON.parse(init.body) as Array<{ to: string }>).map((m) => m.to)
     expect(recipients).toEqual(['ExponentPushToken[owner]', 'ExponentPushToken[north]'])
+  })
+
+  test('a device Expo refuses is not reported as sent', async () => {
+    // The outage shape: HTTP 200, and a refusal inside the ticket. Counting
+    // this as a send is what kept a platform-wide failure invisible.
+    ticketFor = () => ({
+      status: 'error',
+      message: 'Push notifications are not supported',
+      details: { error: 'InvalidCredentials' },
+    })
+
+    const response = await post({ order_id: ORDER_ID, tenant_id: TENANT_ID })
+    const data = (await response.json()) as { sent: number; refused: number }
+
+    expect(response.status).toBe(200)
+    expect(data.sent).toBe(0)
+    expect(data.refused).toBe(1)
+  })
+
+  test('a device the receipt says is gone is forgotten', async () => {
+    // Only DeviceNotRegistered deletes a token. A provider-side refusal such
+    // as MismatchSenderId means the platform is misconfigured, NOT that the
+    // merchant uninstalled — deleting there would erase every live device.
+    receiptFor = () => ({ status: 'error', details: { error: 'DeviceNotRegistered' } })
+
+    await post({ order_id: ORDER_ID, tenant_id: TENANT_ID })
+
+    expect(deletedTokens).toEqual(['ExponentPushToken[owner]'])
+  })
+
+  test('a platform-wide refusal never deletes a live device', async () => {
+    receiptFor = () => ({ status: 'error', details: { error: 'MismatchSenderId' } })
+
+    await post({ order_id: ORDER_ID, tenant_id: TENANT_ID })
+
+    expect(deletedTokens).toEqual([])
   })
 
   test('no registered devices is a success with nothing to do', async () => {

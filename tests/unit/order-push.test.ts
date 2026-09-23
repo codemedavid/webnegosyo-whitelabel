@@ -87,6 +87,9 @@ describe('buildExpoPushMessages', () => {
       // Android must land on the high-importance "orders" channel or the
       // custom ringtone never plays.
       channelId: 'orders',
+      // High priority or Android may hold the message until the phone next
+      // leaves Doze — which on a counter phone is far too late.
+      priority: 'high',
       title: 'New Order!',
       body: 'Ana — ₱249.50 (2 items)',
       data: { orderId: 'order-1' },

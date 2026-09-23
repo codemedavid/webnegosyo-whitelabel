@@ -28,8 +28,13 @@ jest.mock('@/lib/admin-service', () => ({
   verifyTenantPermission: jest.fn(async () => undefined),
 }))
 
-jest.mock('@/lib/rate-limit', () => ({
-  checkRateLimit: jest.fn(() => ({ allowed: true, remaining: 10, resetTime: 0 })),
+// Shared (Redis) counters: the old per-instance Map reset on every cold lambda.
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: jest.fn(async () => ({ allowed: true, remaining: 10, retryAfterSec: 0 })),
+}))
+
+jest.mock('@/lib/action-rate-limit', () => ({
+  checkActionRateLimit: jest.fn(async () => ({ allowed: true, retryAfterSec: 0 })),
 }))
 
 jest.mock('@/lib/lalamove-service', () => ({
@@ -61,6 +66,7 @@ describe('lalamove server actions', () => {
   let updateMock: jest.Mock
   let selectMock: jest.Mock
   let secretsSelectMock: jest.Mock
+  let eqMock: jest.Mock
 
   beforeEach(async () => {
     jest.resetModules()
@@ -71,6 +77,7 @@ describe('lalamove server actions', () => {
     updateMock = jest.fn()
     selectMock = jest.fn()
     secretsSelectMock = jest.fn()
+    eqMock = jest.fn()
 
     const { createAdminClient } = await import('@/lib/supabase/admin')
     ;(createAdminClient as unknown as jest.Mock).mockReturnValue({
@@ -97,7 +104,10 @@ describe('lalamove server actions', () => {
           selectMock(table, columns)
           return builder
         })
-        builder.eq = jest.fn(() => builder)
+        builder.eq = jest.fn((column: unknown, value: unknown) => {
+          eqMock(table, column, value)
+          return builder
+        })
         builder.is = jest.fn(() => builder)
         builder.update = jest.fn((patch: unknown) => {
           updateMock(table, patch)
@@ -226,6 +236,58 @@ describe('lalamove server actions', () => {
       expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
     })
 
+    test('rebooks after a cancelled delivery: retires the dead booking and stores the new quote', async () => {
+      // One accidental Cancel used to strand the order: the dead booking id
+      // stayed on it, and every quote or book refused while it was set.
+      orderRow = {
+        id: 'order-1',
+        lalamove_order_id: 'lala-old',
+        lalamove_status: 'CANCELLED',
+        customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
+      }
+      const service = await import('@/lib/lalamove-service')
+      ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
+        quotationId: 'quote-new',
+        price: 89,
+        currency: 'PHP',
+        expiresAt: new Date('2099-01-01T00:00:00Z'),
+        distance: '0 km',
+        duration: '0 min',
+      })
+
+      const { requoteLalamoveAction } = await import('@/app/actions/lalamove')
+      const result = await requoteLalamoveAction('t1', 'order-1')
+
+      expect(result.success).toBe(true)
+      const [, patch] = updateMock.mock.calls.at(-1) as [string, Record<string, unknown>]
+      expect(patch).toMatchObject({
+        lalamove_quotation_id: 'quote-new',
+        lalamove_order_id: null,
+        lalamove_status: null,
+        lalamove_driver_name: null,
+        lalamove_tracking_url: null,
+      })
+      // Guarded on the SAME dead booking, so a rebook racing another cannot
+      // wipe a booking made a moment ago.
+      expect(eqMock).toHaveBeenCalledWith('orders', 'lalamove_order_id', 'lala-old')
+    })
+
+    test('refuses to rebook a delivery that was completed', async () => {
+      orderRow = {
+        id: 'order-1',
+        lalamove_order_id: 'lala-1',
+        lalamove_status: 'COMPLETED',
+        customer_data: { delivery_address: '12 Mabini St', delivery_lat: 14.7, delivery_lng: 121.05 },
+      }
+
+      const { requoteLalamoveAction } = await import('@/app/actions/lalamove')
+      const result = await requoteLalamoveAction('t1', 'order-1')
+
+      expect(result.success).toBe(false)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+    })
+
     test('refuses when the order has no delivery coordinates', async () => {
       orderRow = {
         id: 'order-1',
@@ -243,12 +305,26 @@ describe('lalamove server actions', () => {
   })
 
   describe('createQuotationAction', () => {
+    function mockQuote() {
+      return import('@/lib/lalamove-service').then((service) => {
+        ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
+          quotationId: 'q1',
+          price: 100,
+          currency: 'PHP',
+          expiresAt: new Date(),
+          distance: '0 km',
+          duration: '0 min',
+        })
+        return service
+      })
+    }
+
     test('refuses when the tenant is over the quotation rate limit', async () => {
-      const { checkRateLimit } = await import('@/lib/rate-limit')
-      ;(checkRateLimit as unknown as jest.Mock).mockReturnValue({
+      const { checkRateLimit } = await import('@/lib/distributed-rate-limit')
+      ;(checkRateLimit as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
         allowed: false,
         remaining: 0,
-        resetTime: 0,
+        retryAfterSec: 30,
       })
 
       const { createQuotationAction } = await import('@/app/actions/lalamove')
@@ -256,21 +332,68 @@ describe('lalamove server actions', () => {
 
       expect(result.success).toBe(false)
       expect(result.error).toMatch(/too many|moment/i)
+      expect((checkRateLimit as unknown as jest.Mock).mock.calls[0][0]).toBe('lalamove-quote:t1')
 
       const service = await import('@/lib/lalamove-service')
       expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
     })
 
-    test('never selects the whole tenant row on the anon-reachable path', async () => {
-      const service = await import('@/lib/lalamove-service')
-      ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
-        quotationId: 'q1',
-        price: 100,
-        currency: 'PHP',
-        expiresAt: new Date(),
-        distance: '0 km',
-        duration: '0 min',
+    test('refuses when the calling client is over its per-IP quotation limit', async () => {
+      const { checkActionRateLimit } = await import('@/lib/action-rate-limit')
+      ;(checkActionRateLimit as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
+        allowed: false,
+        retryAfterSec: 30,
       })
+
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1)
+
+      expect(result.success).toBe(false)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+    })
+
+    test('quotes from the STORE location on the tenant row, ignoring client-sent pickup values', async () => {
+      const service = await mockQuote()
+
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      // A visitor claims the pickup is next door to the drop-off (a near-free
+      // quote the merchant would then be billed the real distance for).
+      const result = await createQuotationAction('t1', 'Fake pickup', 14.7, 121.1, 'Home', 14.7, 121.1)
+
+      expect(result.success).toBe(true)
+      const call = (service.createLalamoveQuotation as unknown as jest.Mock).mock.calls[0]
+      expect(call[1]).toBe(TENANT.restaurant_address)
+      expect(call[2]).toEqual({ lat: TENANT.restaurant_latitude, lng: TENANT.restaurant_longitude })
+      expect(call[3]).toBe('Home')
+      expect(call[4]).toEqual({ lat: 14.7, lng: 121.1 })
+      // Vehicle type is the merchant's setting, not the visitor's pick.
+      expect(call[5]).toBeUndefined()
+    })
+
+    test('refuses when the store pickup location is not configured', async () => {
+      tenantRow = { ...TENANT, restaurant_latitude: null, restaurant_longitude: null }
+      const service = await mockQuote()
+
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1)
+
+      expect(result.success).toBe(false)
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+    })
+
+    test('refuses non-finite delivery coordinates', async () => {
+      const service = await mockQuote()
+
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', Number.NaN, 121.1)
+
+      expect(result.success).toBe(false)
+      expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+    })
+
+    test('never selects the whole tenant row on the anon-reachable path', async () => {
+      await mockQuote()
 
       const { createQuotationAction } = await import('@/app/actions/lalamove')
       const result = await createQuotationAction('t1', 'Store', 14.6, 121.0, 'Home', 14.7, 121.1)

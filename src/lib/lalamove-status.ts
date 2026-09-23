@@ -8,8 +8,9 @@
  * agreed on casing either.
  *
  * NOTE: webnegosyo-app keeps a hand-synced copy of the FINAL statuses in its
- * LalamoveDeliveryCard (React Native cannot import from src/). If the set
- * changes here, change it there too.
+ * lib/lalamove-status.ts (React Native cannot import from src/), and the
+ * Convex deployment one in convex-template/convex/lalamoveStatus.ts. If the
+ * FINAL or REBOOKABLE set changes here, change both.
  */
 
 /** Statuses after which a delivery is over, one way or another. */
@@ -25,6 +26,24 @@ export const LALAMOVE_FINAL_STATUSES: ReadonlySet<string> = new Set([
 export function isLalamoveFinal(status: string | null | undefined): boolean {
   if (!status) return false
   return LALAMOVE_FINAL_STATUSES.has(status.toUpperCase())
+}
+
+/**
+ * Statuses where the booking ended WITHOUT a delivery — cancelled by either
+ * side, rejected, or expired while searching for a driver. The customer is
+ * still waiting, so the order may be booked again. COMPLETED/DELIVERED are
+ * final too, but never rebookable: that food already arrived.
+ */
+const LALAMOVE_REBOOKABLE_STATUSES: ReadonlySet<string> = new Set([
+  'CANCELED',
+  'CANCELLED',
+  'REJECTED',
+  'EXPIRED',
+])
+
+export function isRebookableLalamoveStatus(status: string | null | undefined): boolean {
+  if (!status) return false
+  return LALAMOVE_REBOOKABLE_STATUSES.has(status.toUpperCase())
 }
 
 /**

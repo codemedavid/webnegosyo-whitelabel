@@ -147,3 +147,32 @@ describe('createDomainDirectory', () => {
     expect(calls).toHaveLength(0)
   })
 })
+
+describe('custom-domain collisions', () => {
+  it('maps a domain claimed by two tenants to nobody, in either row order', async () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const rows: DomainRow[] = [
+      { slug: 'owner', domain: 'shared.cafe' },
+      { slug: 'squatter', domain: 'www.Shared.cafe' },
+      { slug: 'ligna', domain: 'ligna.cafe' },
+    ]
+
+    for (const order of [rows, [...rows].reverse()]) {
+      const directory = createDomainDirectory(makeLoader([order]).loader)
+      await expect(directory.lookup('shared.cafe')).resolves.toBeNull()
+      await expect(directory.lookup('www.shared.cafe')).resolves.toBeNull()
+      await expect(directory.lookup('ligna.cafe')).resolves.toBe('ligna')
+    }
+
+    expect(error).toHaveBeenCalled()
+    expect(JSON.stringify(error.mock.calls)).toContain('shared.cafe')
+    error.mockRestore()
+  })
+
+  it('is not a collision when the same tenant appears twice', async () => {
+    const directory = createDomainDirectory(
+      makeLoader([[{ slug: 'ligna', domain: 'ligna.cafe' }, { slug: 'ligna', domain: 'www.ligna.cafe' }]]).loader,
+    )
+    await expect(directory.lookup('ligna.cafe')).resolves.toBe('ligna')
+  })
+})

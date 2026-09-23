@@ -1,6 +1,7 @@
 import 'server-only'
 import { randomUUID } from 'crypto'
 import {
+  buildUploadJwt,
   computeUploadSignature,
   isDeletablePaymentProofPath,
 } from '@/lib/imagekit-signature'
@@ -43,6 +44,14 @@ export interface UploadAuthParams {
 }
 
 const IMAGEKIT_UPLOAD_ENDPOINT = 'https://upload.imagekit.io/api/v1/files/upload'
+/** Upload API v2: authenticated by a JWT that signs the upload parameters. */
+const IMAGEKIT_UPLOAD_V2_ENDPOINT = 'https://upload.imagekit.io/api/v2/files/upload'
+const IMAGEKIT_FILES_API = 'https://api.imagekit.io/v1/files'
+
+function basicAuthHeader(privateKey: string): string {
+  // ImageKit uses HTTP Basic auth with the private key as the username.
+  return `Basic ${Buffer.from(`${privateKey}:`).toString('base64')}`
+}
 
 export interface ImageKitServerUploadResult {
   /** Full delivery URL */
@@ -162,4 +171,169 @@ export async function deleteImageKitAsset(fileId: string): Promise<boolean> {
     console.error('[imagekit] delete threw', { fileId, error })
     return false
   }
+}
+
+/** Short: the client asks for a token immediately before each upload. */
+const SIGNED_UPLOAD_TTL_SECONDS = 10 * 60
+
+export interface SignedUploadToken {
+  /** v2 JWT, sent as the `token` form field. */
+  token: string
+  publicKey: string
+  /** The exact form fields the upload must carry — no more, no fewer. */
+  fields: Readonly<Record<string, string>>
+  uploadUrl: string
+}
+
+/**
+ * Issue an ImageKit upload API v2 token that binds WHERE and HOW the file is
+ * stored. `useUniqueFileName=true` + `overwriteFile=false` are in the signed
+ * payload, so a token holder cannot replace an existing asset (a tenant's
+ * logo, a payment QR) — ImageKit refuses any request whose parameters differ
+ * from the payload. `folder`/`fileName` must already be sanitised by the caller.
+ * Returns null when credentials are not configured.
+ */
+export function createSignedUploadToken({
+  folder,
+  fileName,
+}: {
+  folder: string
+  fileName: string
+}): SignedUploadToken | null {
+  const creds = getCredentials()
+  if (!creds) {
+    console.error('[imagekit] missing credentials; cannot issue upload token')
+    return null
+  }
+
+  const fields = {
+    fileName,
+    folder,
+    useUniqueFileName: 'true',
+    overwriteFile: 'false',
+  }
+  const token = buildUploadJwt(fields, {
+    publicKey: creds.publicKey,
+    privateKey: creds.privateKey,
+    nowSec: Math.floor(Date.now() / 1000),
+    ttlSec: SIGNED_UPLOAD_TTL_SECONDS,
+  })
+
+  return { token, publicKey: creds.publicKey, fields, uploadUrl: IMAGEKIT_UPLOAD_V2_ENDPOINT }
+}
+
+interface BufferUploadOptions {
+  folder: string
+  fileName: string
+  mimeType: string
+}
+
+/**
+ * Server-side upload of raw bytes the server has already validated. Always
+ * unique-named and never overwriting, whatever the caller asked for. Throws on
+ * missing credentials or a failed upload.
+ */
+export async function uploadBufferToImageKit(
+  bytes: Uint8Array,
+  { folder, fileName, mimeType }: BufferUploadOptions,
+): Promise<ImageKitServerUploadResult> {
+  const creds = getCredentials()
+  if (!creds) {
+    throw new Error('Image upload is not configured.')
+  }
+
+  const form = new FormData()
+  form.append('file', new Blob([bytes as BlobPart], { type: mimeType }), fileName)
+  form.append('fileName', fileName)
+  form.append('folder', folder)
+  form.append('useUniqueFileName', 'true')
+  form.append('overwriteFile', 'false')
+
+  const res = await fetch(IMAGEKIT_UPLOAD_ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: basicAuthHeader(creds.privateKey) },
+    body: form,
+  })
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    console.error('[imagekit] server buffer upload failed', { status: res.status, detail })
+    throw new Error(`ImageKit upload failed (${res.status}).`)
+  }
+
+  const json = (await res.json()) as { url?: string; fileId?: string; filePath?: string }
+  if (!json.url || !json.fileId || !json.filePath) {
+    throw new Error('ImageKit upload response was missing required fields.')
+  }
+
+  return { url: json.url, fileId: json.fileId, filePath: json.filePath.replace(/^\//, '') }
+}
+
+/** ImageKit file ids are opaque short tokens; anything else is not one. */
+const FILE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+export type PaymentProofDeleteOutcome = 'deleted' | 'not_found' | 'forbidden' | 'failed'
+
+interface PaymentProofDeleteOptions {
+  /** Refuse files older than this (the pre-submit replace window). */
+  maxAgeMs?: number
+}
+
+interface ImageKitFileDetails {
+  filePath?: string
+  createdAt?: string
+}
+
+/**
+ * Delete a payment-proof screenshot by fileId — but only after asking ImageKit
+ * where that file ACTUALLY lives. A caller-supplied path proves nothing about
+ * the id sent beside it; deleting by id after checking a claimed path let
+ * anyone delete any file (a tenant logo, a menu photo) whose id they knew.
+ * With `maxAgeMs`, also refuses files older than the replace window, so an
+ * anonymous caller cannot destroy proof already attached to a placed order.
+ */
+export async function deletePaymentProofAsset(
+  fileId: string,
+  { maxAgeMs }: PaymentProofDeleteOptions = {},
+): Promise<PaymentProofDeleteOutcome> {
+  if (typeof fileId !== 'string' || !FILE_ID_PATTERN.test(fileId)) return 'forbidden'
+
+  const creds = getCredentials()
+  if (!creds) {
+    console.error('[imagekit] missing credentials; cannot delete', { fileId })
+    return 'failed'
+  }
+
+  let details: ImageKitFileDetails
+  try {
+    const res = await fetch(`${IMAGEKIT_FILES_API}/${encodeURIComponent(fileId)}/details`, {
+      headers: { Authorization: basicAuthHeader(creds.privateKey) },
+    })
+    if (res.status === 404) return 'not_found'
+    if (!res.ok) {
+      console.error('[imagekit] file details lookup failed', { fileId, status: res.status })
+      return 'failed'
+    }
+    details = (await res.json()) as ImageKitFileDetails
+  } catch (error) {
+    console.error('[imagekit] file details lookup threw', { fileId, error })
+    return 'failed'
+  }
+
+  if (!details.filePath || !isDeletablePaymentProofPath(details.filePath)) {
+    console.warn('[imagekit] refused to delete a file outside the payment-proof folder', {
+      fileId,
+      filePath: details.filePath,
+    })
+    return 'forbidden'
+  }
+
+  if (maxAgeMs !== undefined) {
+    const createdAtMs = Date.parse(details.createdAt ?? '')
+    if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs > maxAgeMs) {
+      return 'forbidden'
+    }
+  }
+
+  return (await deleteImageKitAsset(fileId)) ? 'deleted' : 'failed'
 }

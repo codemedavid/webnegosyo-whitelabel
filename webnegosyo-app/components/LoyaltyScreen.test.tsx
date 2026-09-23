@@ -29,6 +29,11 @@ jest.mock("../lib/web-app-url", () => ({
 jest.mock("../components/LoyaltySmsDeviceCard", () => ({
   LoyaltySmsDeviceCard: () => null,
 }));
+// The members half fetches on mount and pulls in expo-router; this test is
+// about the programme editor on the other tab.
+jest.mock("../components/loyalty/LoyaltyMembersPanel", () => ({
+  LoyaltyMembersPanel: () => null,
+}));
 jest.mock("../components/ScreenHeader", () => ({ ScreenHeader: () => null }));
 jest.mock("../components/LoadingState", () => ({ LoadingState: () => null }));
 jest.mock("../components/EmptyState", () => ({ EmptyState: () => null }));
@@ -67,6 +72,11 @@ it("edits an existing reward into a selected free item and preserves its earning
   });
   (reviseLoyaltyProgram as jest.Mock).mockResolvedValue({ ok: true });
   render(<LoyaltyScreen />);
+  // Members is the screen's first half; the programme editor lives behind the
+  // second. Pinned here so a swap of the default tab cannot silently hide it.
+  fireEvent.press(
+    await screen.findByText("Programmes", { includeHiddenElements: true }),
+  );
   fireEvent.press(
     await screen.findByText("Edit reward & rules", {
       includeHiddenElements: true,

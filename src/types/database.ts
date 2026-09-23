@@ -97,7 +97,7 @@ export interface Tenant {
   checkout_template?: string; // Checkout page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
   cart_template?: string; // Cart page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
   page_layout?: string; // 'default' | 'sidebar' | 'magazine' | 'grid-focus' | 'list' | 'mosaic'
-  mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
+  mobile_grid_columns?: number; // 1 or 2 - cards per row on mobile (unset = 2)
   mobile_page_layout?: string | null; // Layout for mobile (<768px), falls back to page_layout
   mobile_card_template?: string | null; // Card template for mobile (<768px), falls back to card_template
   mobile_overrides?: Record<string, unknown>; // Per-device overrides { column: value } overlaid on mobile viewports

@@ -259,3 +259,19 @@ describe('BACKGROUND_OVERLAY_COLUMNS', () => {
     ])
   })
 })
+
+describe('buildBackgroundImageStyle — render-site CSS escaping', () => {
+  // The resolver already filters, but the style builder takes any
+  // BackgroundOverlay (preview drafts, future callers). It must never emit a
+  // value that closes url("…") and starts new declarations.
+  it.each([
+    'https://x.com/a.png");position:fixed;background:url("https://evil.com/p',
+    'https://x.com/a.png)',
+    'javascript:alert(1)',
+    'https://x.com/a\n.png',
+  ])('emits no background image for a hostile url %j', (imageUrl) => {
+    const style = buildBackgroundImageStyle({ ...DEFAULT_BACKGROUND_OVERLAY, hasImage: true, isVisible: true, imageUrl })
+
+    expect(style).toEqual({})
+  })
+})

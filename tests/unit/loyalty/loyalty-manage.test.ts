@@ -1,6 +1,5 @@
 import {
   canTransitionProgram,
-  parseBalanceCorrection,
   parseLoyaltyProgramInput,
   programStatusPatch,
 } from '@/lib/loyalty/manage'
@@ -67,22 +66,5 @@ describe('program status transitions', () => {
       ends_at: NOW.toISOString(),
     })
     expect(programStatusPatch({ status: 'ended', activatesAt: null }, 'active', NOW)).toBeNull()
-  })
-})
-
-describe('parseBalanceCorrection', () => {
-  const VALID = { programId: 'p', customerKey: 'phone:+639171234567', delta: -2, note: 'Cashier stamped twice' }
-
-  it('accepts an auditable correction', () => {
-    expect(parseBalanceCorrection(VALID)).toEqual({ ok: true, value: VALID })
-  })
-
-  it.each([
-    ['no note', { ...VALID, note: '' }],
-    ['a zero delta', { ...VALID, delta: 0 }],
-    ['a raw phone instead of an identity key', { ...VALID, customerKey: '09171234567' }],
-    ['an absurd delta', { ...VALID, delta: 1_000_000 }],
-  ])('refuses %s', (_label, raw) => {
-    expect(parseBalanceCorrection(raw).ok).toBe(false)
   })
 })

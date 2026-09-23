@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { readBody } from '@/lib/loyalty/merchant-http'
 import { validateProgramCatalog } from '@/lib/loyalty/program-catalog'
+import { authorizeLoyaltyMerchant, readTenantId as tenantIdFrom } from '@/lib/loyalty/merchant-auth'
 
 /**
  * /api/loyalty/programs — owner program management for the merchant app.
  *
  *   GET  ?tenantId=…           list programs with their current rules and counts
- *   POST { tenantId, action }  create | revise | set_status | correct_balance
+ *   POST { tenantId, action }  create | revise | set_status
  *
  * Authenticated with the caller's own access token, and the tenant is the
  * CALLER's tenant, never the body's claim alone — the same discipline as the
@@ -16,57 +16,12 @@ import { validateProgramCatalog } from '@/lib/loyalty/program-catalog'
  * `customers` grant that shows the guest list must not be enough to rewrite
  * everyone's stamp card.
  *
- * The write runs service-role because balance corrections go through
- * `apply_loyalty_earning`, which is granted to service_role alone. That is
- * deliberate: a balance can never change without a ledger row explaining it.
+ * Adjusting ONE customer's balance lives on `/api/loyalty/members` instead.
+ * It used to live here too, without an idempotency key and without the
+ * threshold, so a double tap doubled a balance and a hand-completed card
+ * minted nothing. One path, one set of rules.
  */
 
-interface Caller {
-  userId: string
-  tenantId: string
-}
-
-async function authorize(request: NextRequest, tenantId: string): Promise<Caller | NextResponse> {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, permissions, is_owner')
-    .eq('user_id', user.id)
-    .single()
-
-  const isTenantMember =
-    appUser?.role === 'superadmin' || (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
-  if (!isTenantMember) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
-  const { hasPermission } = await import('@/lib/staff-permissions')
-  const permitted = hasPermission(
-    {
-      role: appUser?.role ?? null,
-      is_owner: appUser?.is_owner ?? false,
-      permissions: (appUser?.permissions as string[] | null) ?? null,
-    },
-    'loyalty_manage',
-  )
-  if (!permitted) {
-    return NextResponse.json({ error: 'Forbidden: loyalty_manage is required.' }, { status: 403 })
-  }
-
-  return { userId: user.id, tenantId }
-}
-
-function tenantIdFrom(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
 
 /**
  * Bring the store's loyalty flags up to what an active programme needs.
@@ -97,7 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const tenantId = tenantIdFrom(request.nextUrl.searchParams.get('tenantId'))
   if (!tenantId) return NextResponse.json({ error: 'tenantId is required.' }, { status: 400 })
 
-  const caller = await authorize(request, tenantId)
+  const caller = await authorizeLoyaltyMerchant(request, tenantId)
   if (caller instanceof NextResponse) return caller
 
   const { createAdminClient } = await import('@/lib/supabase/admin')
@@ -124,7 +79,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const tenantId = tenantIdFrom(body?.tenantId)
   if (!tenantId) return NextResponse.json({ error: 'tenantId is required.' }, { status: 400 })
 
-  const caller = await authorize(request, tenantId)
+  const caller = await authorizeLoyaltyMerchant(request, tenantId)
   if (caller instanceof NextResponse) return caller
 
   const { createAdminClient } = await import('@/lib/supabase/admin')
@@ -176,14 +131,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const isLive = patch.status === 'active' ? await goLive(admin, tenantId) : false
         return NextResponse.json({ success: true, status: patch.status, wentLive: isLive })
       }
-      case 'correct_balance': {
-        const parsed = manage.parseBalanceCorrection(body.correction)
-        if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
-        const result = await repo.correctLoyaltyBalance(admin, tenantId, parsed.value, caller.userId)
-        return NextResponse.json({ success: true, ...result })
-      }
       default:
-        return NextResponse.json({ error: 'action must be create, revise, set_status or correct_balance.' }, { status: 400 })
+        return NextResponse.json({ error: 'action must be create, revise or set_status.' }, { status: 400 })
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Loyalty request failed.'

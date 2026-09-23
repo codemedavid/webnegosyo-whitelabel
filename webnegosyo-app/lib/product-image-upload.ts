@@ -1,7 +1,6 @@
 import { getWebAppUrl } from "./web-app-url";
 import { TENANT_LOGO_FOLDER } from "./tenant-logo";
-
-const IMAGEKIT_UPLOAD_ENDPOINT = "https://upload.imagekit.io/api/v1/files/upload";
+import { getAccessTokenBounded } from "./authorized-post";
 
 export interface ImageKitUploadResult {
   url: string;
@@ -9,11 +8,15 @@ export interface ImageKitUploadResult {
   filePath: string;
 }
 
-interface UploadAuth {
+/**
+ * What POST /api/imagekit/auth answers: an ImageKit upload API v2 token whose
+ * signature binds `fields` (folder, file name, unique naming, no overwrite).
+ * ImageKit refuses an upload whose form fields differ from them in any way.
+ */
+interface SignedUpload {
   token: string;
-  expire: number;
-  signature: string;
-  publicKey: string;
+  fields: Record<string, string>;
+  uploadUrl: string;
 }
 
 interface PickedImage {
@@ -22,13 +25,31 @@ interface PickedImage {
   mimeType: string;
 }
 
+/** Same bound the register uses for its other authenticated web calls. */
+const SESSION_READ_TIMEOUT_MS = 8_000;
 
-async function fetchUploadAuth(): Promise<UploadAuth> {
-  const res = await fetch(`${getWebAppUrl()}/api/imagekit/auth`);
+/**
+ * Ask the web app to sign this upload, as the signed-in staff member. The web
+ * app only signs for store admins, and only for a folder it can sanitise.
+ */
+async function fetchSignedUpload(folder: string, fileName: string): Promise<SignedUpload> {
+  const accessToken = await getAccessTokenBounded(SESSION_READ_TIMEOUT_MS);
+  if (!accessToken) {
+    throw new Error("Please sign in again to upload images.");
+  }
+
+  const res = await fetch(`${getWebAppUrl()}/api/imagekit/auth`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ folder, fileName }),
+  });
   if (!res.ok) {
     throw new Error("Could not authorize upload. Please try again.");
   }
-  return (await res.json()) as UploadAuth;
+  return (await res.json()) as SignedUpload;
 }
 
 /** Validates and normalizes the raw ImageKit upload response. */
@@ -68,14 +89,14 @@ export const PAYMENT_PROOF_FOLDER = "payment-proofs";
 export const PAYMENT_QR_FOLDER = "payment-qr-codes";
 
 /**
- * Upload an image to ImageKit via the web app's signed-auth endpoint and
+ * Upload an image to ImageKit via the web app's signed-upload endpoint and
  * return its delivery url + fileId + filePath.
  */
 export async function uploadImage(
   image: PickedImage,
   folder: string
 ): Promise<ImageKitUploadResult> {
-  const auth = await fetchUploadAuth();
+  const signed = await fetchSignedUpload(folder, image.fileName);
 
   const formData = new FormData();
   formData.append("file", {
@@ -83,15 +104,13 @@ export async function uploadImage(
     name: image.fileName,
     type: image.mimeType,
   } as unknown as Blob);
-  formData.append("fileName", image.fileName);
-  formData.append("publicKey", auth.publicKey);
-  formData.append("signature", auth.signature);
-  formData.append("expire", String(auth.expire));
-  formData.append("token", auth.token);
-  formData.append("folder", folder);
-  formData.append("useUniqueFileName", "true");
+  // Exactly the signed fields — nothing added, nothing left out.
+  for (const [key, value] of Object.entries(signed.fields)) {
+    formData.append(key, value);
+  }
+  formData.append("token", signed.token);
 
-  const res = await fetch(IMAGEKIT_UPLOAD_ENDPOINT, {
+  const res = await fetch(signed.uploadUrl, {
     method: "POST",
     body: formData,
   });

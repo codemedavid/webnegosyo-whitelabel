@@ -12,35 +12,33 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
-import { chunkExpoPushMessages } from './order-push'
 import {
   buildAnnouncementPushMessages,
   selectAnnouncementRecipients,
-  staleTokensFrom,
-  summarizeFailureCauses,
-  summarizePushReceipts,
-  summarizePushTickets,
   type PlatformDeviceTokenRow,
-  type PushFailure,
-  type PushFailureCause,
-  type PushReceiptHandle,
   type PushableAnnouncement,
 } from './announcement-push'
+import {
+  chaseExpoReceipts,
+  sendExpoPushMessages,
+  staleTokensFrom,
+  summarizeFailureCauses,
+  type FetchLike,
+  type PushFailure,
+  type PushFailureCause,
+  type SleepLike,
+} from './expo-delivery'
 
-export const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
-export const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts'
-
-/**
- * Expo settles most receipts within seconds, so a short bounded chase catches
- * a platform-wide refusal while the operator is still looking at the dialog.
- * Anything still open after this is reported as pending, never as delivered.
- */
-export const RECEIPT_POLL_ATTEMPTS = 3
-export const RECEIPT_POLL_DELAY_MS = 1500
+// Re-exported: the send URLs and the receipt-chase budget are shared with the
+// order path but named here by the announcement tests and callers.
+export {
+  EXPO_PUSH_URL,
+  EXPO_RECEIPTS_URL,
+  RECEIPT_POLL_ATTEMPTS,
+  RECEIPT_POLL_DELAY_MS,
+} from './expo-delivery'
 
 type Client = SupabaseClient<Database>
-type FetchLike = (input: string, init: RequestInit) => Promise<Response>
-type SleepLike = (ms: number) => Promise<void>
 
 export interface AnnouncementSendOptions {
   fetchImpl?: FetchLike
@@ -81,63 +79,13 @@ export async function countAnnouncementRecipients(
     .length
 }
 
-async function postJson(fetchImpl: FetchLike, url: string, body: unknown): Promise<unknown> {
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'Accept-Encoding': 'gzip, deflate',
-    },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) throw new Error(`Expo responded ${response.status}`)
-  const json = (await response.json()) as { data?: unknown }
-  return json.data
-}
-
-const defaultSleep: SleepLike = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-/**
- * Chases the receipts for accepted devices until they settle or we run out of
- * attempts. Returns the refusals found and the devices still unaccounted for.
- */
-async function chaseReceipts(
-  fetchImpl: FetchLike,
-  sleep: SleepLike,
-  accepted: readonly PushReceiptHandle[]
-): Promise<{ failures: PushFailure[]; pending: number }> {
-  let outstanding = [...accepted]
-  const failures: PushFailure[] = []
-
-  for (let attempt = 0; attempt < RECEIPT_POLL_ATTEMPTS && outstanding.length > 0; attempt += 1) {
-    await sleep(RECEIPT_POLL_DELAY_MS)
-    const settled = new Set<string>()
-    for (const chunk of chunkExpoPushMessages(outstanding)) {
-      try {
-        const body = await postJson(fetchImpl, EXPO_RECEIPTS_URL, {
-          ids: chunk.map((handle) => handle.id),
-        })
-        const summary = summarizePushReceipts(body, chunk)
-        failures.push(...summary.failures)
-        summary.settledIds.forEach((id) => settled.add(id))
-      } catch (receiptError) {
-        console.error('[announcement-push] receipt lookup failed:', receiptError)
-      }
-    }
-    outstanding = outstanding.filter((handle) => !settled.has(handle.id))
-  }
-
-  return { failures, pending: outstanding.length }
-}
-
 export async function sendAnnouncementPush(
   client: Client,
   announcementId: string,
   options: AnnouncementSendOptions = {}
 ): Promise<AnnouncementSendResult> {
-  const fetchImpl = options.fetchImpl ?? fetch
-  const sleep = options.sleep ?? defaultSleep
+  const fetchImpl = options.fetchImpl ?? (fetch as FetchLike)
+  const sleep = options.sleep
 
   const { data: row, error } = await client
     .from('platform_announcements')
@@ -169,22 +117,11 @@ export async function sendAnnouncementPush(
     push_body: announcement.push_body,
   })
 
-  const accepted: PushReceiptHandle[] = []
-  const failures: PushFailure[] = []
-  let failedChunks = 0
-  for (const chunk of chunkExpoPushMessages(messages)) {
-    try {
-      const tickets = await postJson(fetchImpl, EXPO_PUSH_URL, chunk)
-      const summary = summarizePushTickets(chunk, tickets)
-      accepted.push(...summary.receipts)
-      failures.push(...summary.failures)
-    } catch (chunkError) {
-      failedChunks += 1
-      console.error('[announcement-push] chunk failed:', chunkError)
-    }
-  }
+  const sendResult = await sendExpoPushMessages(messages, { fetchImpl })
+  const { accepted, failedChunks } = sendResult
+  const failures: PushFailure[] = [...sendResult.failures]
 
-  const receipts = await chaseReceipts(fetchImpl, sleep, accepted)
+  const receipts = await chaseExpoReceipts(accepted, { fetchImpl, sleep })
   failures.push(...receipts.failures)
 
   const stale = staleTokensFrom(failures)

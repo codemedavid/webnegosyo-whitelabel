@@ -138,3 +138,49 @@ describe('ConvexLalamovePanel', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('ConvexLalamovePanel — rebooking a dead delivery', () => {
+  beforeEach(() => {
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  test('a cancelled delivery can be rebooked: fresh quote, then a new rider', async () => {
+    const order = deliveryOrder({ lalamoveOrderId: 'LM-old', lalamoveStatus: 'CANCELLED' })
+    render(<ConvexLalamovePanel order={order} lalamoveEnabled />)
+    actionMocks['lalamove:requoteLalamove'].mockResolvedValue({ success: true, quotationId: 'Q-new' })
+    actionMocks['lalamove:bookLalamove'].mockResolvedValue({ success: true, lalamoveOrderId: 'LM-2' })
+
+    fireEvent.click(screen.getByRole('button', { name: /rebook delivery/i }))
+
+    await waitFor(() =>
+      expect(actionMocks['lalamove:bookLalamove']).toHaveBeenCalledWith({ orderId: order._id }),
+    )
+    expect(actionMocks['lalamove:requoteLalamove']).toHaveBeenCalledWith({ orderId: order._id })
+    expect(toastMocks.success).toHaveBeenCalled()
+  })
+
+  test('does not book when the fresh quote is refused', async () => {
+    const order = deliveryOrder({ lalamoveOrderId: 'LM-old', lalamoveStatus: 'EXPIRED' })
+    render(<ConvexLalamovePanel order={order} lalamoveEnabled />)
+    actionMocks['lalamove:requoteLalamove'].mockResolvedValue({ success: false, error: 'No pickup pin' })
+
+    fireEvent.click(screen.getByRole('button', { name: /rebook delivery/i }))
+
+    await waitFor(() => expect(toastMocks.error).toHaveBeenCalledWith('No pickup pin'))
+    expect(actionMocks['lalamove:bookLalamove']).not.toHaveBeenCalled()
+  })
+
+  test('offers no rebook for a completed delivery', () => {
+    render(
+      <ConvexLalamovePanel
+        order={deliveryOrder({ lalamoveOrderId: 'LM-1', lalamoveStatus: 'COMPLETED' })}
+        lalamoveEnabled
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /rebook delivery/i })).toBeNull()
+  })
+})

@@ -14,6 +14,7 @@ import { resolveLalamoveRecipient } from '@/lib/lalamove-recipient'
 import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
+import { resolveRequoteGate, retireDeadBookingPatch } from '@/lib/lalamove-rebook'
 import type { Database, Tenant } from '@/types/database'
 
 /**
@@ -228,9 +229,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // stale order bookable again; the customer's delivery_fee is left
       // untouched — the price was agreed at checkout and any fare difference
       // is the merchant's call, never a silent rebill.
-      if (bookedId) {
-        return fail('A delivery is already booked for this order — cancel it before re-quoting')
-      }
+      // A booking that died (cancelled, rejected, expired) is retired here —
+      // that is how a cancelled order gets a rider again.
+      const gate = resolveRequoteGate({
+        lalamoveOrderId: bookedId,
+        lalamoveStatus: order.lalamove_status,
+      })
+      if (!gate.ok) return fail(gate.error)
 
       const deliveryAddress = order.customer_data?.delivery_address
       const deliveryLat = toFiniteNumber(order.customer_data?.delivery_lat)
@@ -259,14 +264,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { lat: deliveryLat, lng: deliveryLng },
       )
 
-      // Guarded on the booking still being absent so a booking racing this
-      // requote cannot end up referencing a quotation it was not made from.
-      await admin
-        .from('orders')
-        .update({ lalamove_quotation_id: quotation.quotationId })
-        .eq('id', orderId)
-        .eq('tenant_id', tenantId)
-        .is('lalamove_order_id', null)
+      // Guarded on the booking still being what the gate saw — absent, or the
+      // same dead booking — so a booking racing this requote is never wiped
+      // nor left referencing a quotation it was not made from.
+      const update = admin.from('orders')
+      if (gate.retiredOrderId) {
+        await update
+          .update(retireDeadBookingPatch(quotation.quotationId))
+          .eq('id', orderId)
+          .eq('tenant_id', tenantId)
+          .eq('lalamove_order_id', gate.retiredOrderId)
+      } else {
+        await update
+          .update({ lalamove_quotation_id: quotation.quotationId })
+          .eq('id', orderId)
+          .eq('tenant_id', tenantId)
+          .is('lalamove_order_id', null)
+      }
 
       return NextResponse.json({
         success: true,

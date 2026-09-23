@@ -105,7 +105,36 @@ describe('buildExternalLedgerRow', () => {
       channel: 'Pickup',
       items: [{ name: 'Latte', quantity: 2 }],
       sms_consent: false,
+      address: null,
     })
+  })
+
+  it('carries the delivery address, so a Convex store has one to show', () => {
+    // The facts ledger is the ONLY order history the platform holds for a
+    // Convex or tenant-Supabase store. Without this, a merchant opening a
+    // customer on one of those stores saw a phone number and nothing else.
+    const row = buildExternalLedgerRow(
+      'tenant-1',
+      'cust-1',
+      convexOrder({ customerData: { delivery_address: '  12 Mabini St  ' } })
+    )
+
+    expect(row.address).toBe('12 Mabini St')
+  })
+
+  it('honours a merchant-built plain address field, and nothing else', () => {
+    expect(
+      buildExternalLedgerRow('t', 'c', convexOrder({ customerData: { address: '99 Rizal Ave' } }))
+        .address
+    ).toBe('99 Rizal Ave')
+    expect(
+      buildExternalLedgerRow('t', 'c', convexOrder({ customerData: { landmark: 'Near church' } }))
+        .address
+    ).toBeNull()
+    expect(
+      buildExternalLedgerRow('t', 'c', convexOrder({ customerData: { delivery_address: '   ' } }))
+        .address
+    ).toBeNull()
   })
 
   it('accepts a Convex epoch-millisecond creation time', () => {

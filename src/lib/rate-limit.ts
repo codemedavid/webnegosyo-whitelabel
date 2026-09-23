@@ -93,29 +93,42 @@ export function checkRateLimit(
  * @returns The client IP address, or null if no IP could be determined
  */
 export function getClientIP(request: Request): string | null {
+    return getClientIpFromHeaders(request.headers)
+}
+
+/** Header reader shared by route handlers (`Request`) and server actions (`headers()`). */
+export interface HeaderReader {
+    get(name: string): string | null
+}
+
+/**
+ * Same priority as `getClientIP`, for callers that hold headers rather than a
+ * Request — server actions read theirs from `next/headers`.
+ */
+export function getClientIpFromHeaders(headers: HeaderReader): string | null {
     // 1. Vercel-specific header (most trusted in Vercel deployments)
-    const vercelIP = request.headers.get('x-vercel-forwarded-for')
+    const vercelIP = headers.get('x-vercel-forwarded-for')
     if (vercelIP) {
         const ip = vercelIP.split(',')[0].trim()
         if (ip) return ip
     }
 
     // 2. Cloudflare header (trusted when using Cloudflare)
-    const cfConnectingIP = request.headers.get('cf-connecting-ip')
+    const cfConnectingIP = headers.get('cf-connecting-ip')
     if (cfConnectingIP) {
         const ip = cfConnectingIP.trim()
         if (ip) return ip
     }
 
     // 3. x-real-ip (commonly set by nginx and other proxies)
-    const realIP = request.headers.get('x-real-ip')
+    const realIP = headers.get('x-real-ip')
     if (realIP) {
         const ip = realIP.trim()
         if (ip) return ip
     }
 
     // 4. Generic x-forwarded-for (last resort, first IP is client)
-    const forwardedFor = request.headers.get('x-forwarded-for')
+    const forwardedFor = headers.get('x-forwarded-for')
     if (forwardedFor) {
         const ip = forwardedFor.split(',')[0].trim()
         if (ip) return ip

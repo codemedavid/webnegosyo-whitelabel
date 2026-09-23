@@ -208,6 +208,11 @@ export default function MainLayout() {
         <Tabs.Screen name="team" options={{ href: null, title: "Team" }} />
         {/* One colleague's shifts, activity and access — pushed from Team. */}
         <Tabs.Screen name="staff/[userId]" options={{ href: null, title: "Staff" }} />
+        {/* One customer's stamp cards, rewards and orders — pushed from Rewards. */}
+        <Tabs.Screen
+          name="loyalty-member/[customerKey]"
+          options={{ href: null, title: "Member" }}
+        />
         {/* Platform "What's New" inbox + post — reached from Manage or a push. */}
         <Tabs.Screen name="whats-new/index" options={{ href: null, title: "What's New" }} />
         <Tabs.Screen name="whats-new/[announcementId]" options={{ href: null, title: "Update" }} />

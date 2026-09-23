@@ -19,7 +19,7 @@ import type { StorefrontMenuInput, StorefrontMenuController } from '../contracts
 export function useStorefrontMenu({ tenant, categories, allMenuItems: storeWideMenuItems, bundles, outlets, outletsFailed, menuOverrides, overridesFailed, tenantSlug, isBrandAdmin }: StorefrontMenuInput): StorefrontMenuController {
   const tenantId = tenant?.id
   const router = useRouter()
-  const { addItem, item_count, setTenantContext } = useCart()
+  const { item_count, setTenantContext } = useCart()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
@@ -140,23 +140,10 @@ export function useStorefrontMenu({ tenant, categories, allMenuItems: storeWideM
       toast.error('This item is currently unavailable')
       return
     }
-    const hasCustomizations =
-      (item.modifier_groups?.length ?? 0) > 0 ||
-      !!item.presell_enabled ||
-      (item.variations?.length ?? 0) > 0 ||
-      (item.variation_types && item.variation_types.length > 0) ||
-      (item.addons?.length ?? 0) > 0
-    // Only skip the sheet for a bare item when NO upsell surface applies — the
-    // sheet is also where pairing-rule and bundle upsells render, so those flags
-    // must keep an otherwise-customization-free item routed through it.
-    const hasUpsellSurface =
-      tenant?.menu_engineering_enabled ||
-      tenant?.pairing_rules_enabled ||
-      tenant?.bundles_enabled
-    if (!hasCustomizations && !hasUpsellSurface) {
-      addItem(item, undefined, [], 1, undefined)
-      toast.success(`Added ${item.name} to cart`)
-    } else if (isBrandAdmin) {
+    // Every item opens its product detail first — even one with no variations or
+    // add-ons — so the customer sees the photo, description and price before it
+    // lands in the cart. There is deliberately no quick-add path from the grid.
+    if (isBrandAdmin) {
       // Brand admins keep navigating to the full page so the inline branding
       // editor and product-detail customizer remain available.
       router.push(`/${tenantSlug}/menu/item/${item.id}`, { scroll: true })
@@ -164,7 +151,7 @@ export function useStorefrontMenu({ tenant, categories, allMenuItems: storeWideM
       // Customers get the instant bottom sheet instead of a route navigation.
       setSheetItem(item)
     }
-  }, [tenant?.menu_engineering_enabled, tenant?.pairing_rules_enabled, tenant?.bundles_enabled, addItem, router, tenantSlug, isBrandAdmin, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, outletAvailability.canOrder, outletAvailability.message])
+  }, [router, tenantSlug, isBrandAdmin, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, outletAvailability.canOrder, outletAvailability.message])
 
   return {
     tenant, tenantSlug, categories, allMenuItems, categoriesWithBundles, filteredItems, searchItems,

@@ -1,13 +1,12 @@
 /**
  * Program management I/O. Runs under the service-role client: programs and
- * versions are admin-writable by RLS, but the balance correction goes through
- * `apply_loyalty_earning`, which only service_role may call — so the whole
- * surface sits behind the route's own permission check rather than half in
- * RLS and half here.
+ * versions are admin-writable by RLS, so the whole surface sits behind the
+ * route's own permission check rather than half in RLS and half here.
+ * Per-customer balance I/O lives in `member-management.ts`.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { BalanceCorrectionInput, LoyaltyProgramInput } from './manage'
+import type { LoyaltyProgramInput } from './manage'
 import type { LoyaltyProgramStatus, LoyaltyRules } from './types'
 import { parseLoyaltyRules } from './rules'
 
@@ -165,33 +164,4 @@ export async function writeLoyaltyProgramStatus(
     p_input: { status: patch.status, expectedStatus }, p_expected_version: null,
   })
   if (error) throw new Error(error.message)
-}
-
-/** An audited balance correction: a ledger row with a note, applied atomically. */
-export async function correctLoyaltyBalance(
-  client: SupabaseClient,
-  tenantId: string,
-  input: BalanceCorrectionInput,
-  actor: string | null,
-): Promise<{ balance: number | null }> {
-  const { data, error } = await client.rpc('apply_loyalty_earning', {
-    p_tenant_id: tenantId,
-    p_program_id: input.programId,
-    p_version_id: null,
-    p_customer_key: input.customerKey,
-    p_customer_id: null,
-    p_kind: 'correction',
-    p_delta: input.delta,
-    p_order_backend: null,
-    p_external_order_id: null,
-    p_threshold: null,
-    p_reward_terms: null,
-    p_reward_expires_at: null,
-    p_shadow: false,
-    p_actor: actor,
-    p_note: input.note,
-  })
-  if (error) throw new Error(`balance correction failed: ${error.message}`)
-  const balance = (data as { balance?: number } | null)?.balance
-  return { balance: typeof balance === 'number' ? balance : null }
 }

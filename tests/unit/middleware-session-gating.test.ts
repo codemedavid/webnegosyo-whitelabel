@@ -133,3 +133,36 @@ describe('middleware path hardening', () => {
     expect(response.headers.get('location')).toContain('/shop/login')
   })
 })
+
+describe('middleware clickjacking headers', () => {
+  const expectFrameGuard = (response: Response) => {
+    expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN')
+    expect(response.headers.get('content-security-policy')).toBe("frame-ancestors 'self'")
+  }
+
+  it('guards the tenant admin on its subdomain (/admin, rewritten to /shop/admin)', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
+    expectFrameGuard(await run('/admin', SESSION_COOKIE))
+  })
+
+  it('guards the path-based tenant admin, including its login redirect', async () => {
+    expectFrameGuard(await run('/shop/admin'))
+  })
+
+  it('guards the tenant login page on a subdomain (/login)', async () => {
+    expectFrameGuard(await run('/login'))
+  })
+
+  it('guards superadmin pages', async () => {
+    expectFrameGuard(await run('/superadmin/login'))
+  })
+
+  it('leaves the public storefront embeddable', async () => {
+    const response = await run('/')
+    expect(response.headers.get('x-frame-options')).toBeNull()
+    expect(response.headers.get('content-security-policy')).toBeNull()
+
+    const menu = await run('/shop/menu')
+    expect(menu.headers.get('x-frame-options')).toBeNull()
+  })
+})

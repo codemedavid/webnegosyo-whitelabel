@@ -101,37 +101,3 @@ export function programStatusPatch(
   if (to === 'ended') patch.ends_at = now.toISOString()
   return patch
 }
-
-export interface BalanceCorrectionInput {
-  programId: string
-  customerKey: string
-  delta: number
-  note: string
-}
-
-export type BalanceCorrectionParse =
-  | { ok: true; value: BalanceCorrectionInput }
-  | { ok: false; error: string }
-
-const MAX_CORRECTION = 10_000
-
-/** A correction is auditable or it is refused: a note is mandatory. */
-export function parseBalanceCorrection(raw: unknown): BalanceCorrectionParse {
-  if (!raw || typeof raw !== 'object') return { ok: false, error: 'A correction object is required.' }
-  const input = raw as Record<string, unknown>
-
-  const programId = text(input.programId)
-  if (!programId) return { ok: false, error: 'programId is required.' }
-  const customerKey = text(input.customerKey)
-  if (!/^(phone:\+\d{6,15}|email:[^\s@]+@[^\s@]+)$/.test(customerKey)) {
-    return { ok: false, error: 'customerKey must be a phone:+… or email:… identity key.' }
-  }
-  const delta = Number(input.delta)
-  if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > MAX_CORRECTION) {
-    return { ok: false, error: 'delta must be a non-zero number within the correction limit.' }
-  }
-  const note = text(input.note)
-  if (!note) return { ok: false, error: 'Say why the balance is being corrected.' }
-
-  return { ok: true, value: { programId, customerKey, delta, note } }
-}
