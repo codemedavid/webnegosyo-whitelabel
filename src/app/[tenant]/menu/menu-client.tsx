@@ -8,7 +8,7 @@ import { OutletGate } from '@/components/customer/outlet-gate'
 import { TableLinkCapture } from '@/components/customer/table-link-capture'
 import { useStorefrontMenu } from '@/storefront/catalog/use-storefront-menu'
 import { STOREFRONT_PACK_PAGES, type StorefrontPackPages } from '@/storefront/packs/registry'
-import { resolveStorefrontPack } from '@/lib/storefront-packs'
+import { getStorefrontPack, resolveStorefrontPack } from '@/lib/storefront-packs'
 import { StorefrontRuntime } from '@/storefront/runtime/storefront-runtime'
 import type { StorefrontMenuInput } from '@/storefront/contracts'
 
@@ -54,12 +54,13 @@ function MenuEntry(props: StorefrontClientProps) {
 function ReadyMenu({ isWelcomePreview, page = 'menu', ...props }: StorefrontClientProps & { isWelcomePreview: boolean }) {
   const menu = useStorefrontMenu(props)
   // Resolved from the preview-merged tenant, so the Branding Studio can switch packs live.
-  const pages: StorefrontPackPages = STOREFRONT_PACK_PAGES[resolveStorefrontPack(props.tenant)]
+  const packId = resolveStorefrontPack(props.tenant)
+  const pages: StorefrontPackPages = STOREFRONT_PACK_PAGES[packId]
   const PackPage = (page === 'home' ? pages.home : undefined) ?? pages.menu
   return <>
     <TableLinkCapture tenantSlug={props.tenantSlug} />
     <OutletGate tenant={props.tenant} tenantSlug={props.tenantSlug} outlets={props.outlets} isPreview={isWelcomePreview} />
-    <StorefrontRuntime menu={menu}>
+    <StorefrontRuntime menu={menu} checkoutEntry={getStorefrontPack(packId).checkoutEntry}>
       <PackPage />
     </StorefrontRuntime>
   </>

@@ -1,6 +1,7 @@
 'use client'
 
 import type { ComponentType } from 'react'
+import dynamic from 'next/dynamic'
 import type { StorefrontPackId } from '@/lib/storefront-packs'
 import { LegacyMenuStorefront } from './legacy/menu-storefront'
 
@@ -18,6 +19,10 @@ export interface StorefrontPackPages {
 // src/lib/storefront-packs.ts without pages here is a compile error.
 // Legacy is imported statically — it is what nearly every tenant renders.
 // New packs should load with next/dynamic so legacy tenants never download them.
+const BiteSpeedHome = dynamic(() => import('./bitespeed/home').then((m) => ({ default: m.BiteSpeedHome })))
+const BiteSpeedMenu = dynamic(() => import('./bitespeed/menu').then((m) => ({ default: m.BiteSpeedMenu })))
+
 export const STOREFRONT_PACK_PAGES = {
   legacy: { menu: LegacyMenuStorefront },
+  bitespeed: { home: BiteSpeedHome, menu: BiteSpeedMenu },
 } satisfies Record<StorefrontPackId, StorefrontPackPages>

@@ -16,10 +16,18 @@
  */
 import { z } from 'zod'
 import { pickDesignId } from '@/lib/design-ids'
+import { CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE, type CheckoutTemplate } from '@/lib/checkout-templates'
+import { bitespeedSettingsSchema } from '@/storefront/packs/bitespeed/settings'
 
-export const STOREFRONT_PACK_IDS = ['legacy'] as const
+export const STOREFRONT_PACK_IDS = ['legacy', 'bitespeed'] as const
 export type StorefrontPackId = (typeof STOREFRONT_PACK_IDS)[number]
 export const DEFAULT_STOREFRONT_PACK: StorefrontPackId = 'legacy'
+
+/**
+ * How a pack reaches checkout: through its own cart drawer (which runs the
+ * checkout gate), or directly from a page (the runtime runs the gate).
+ */
+export type StorefrontCheckoutEntry = 'cart-drawer' | 'direct'
 
 export interface StorefrontPackDefinition {
   id: StorefrontPackId
@@ -27,6 +35,12 @@ export interface StorefrontPackDefinition {
   description: string
   /** Emoji shown in the Studio picker, like the other design registries. */
   preview: string
+  checkoutEntry: StorefrontCheckoutEntry
+  /**
+   * Designs this pack pins for surfaces outside its own pages, overriding the
+   * tenant's choice for that surface (e.g. BiteSpeed's one-page checkout).
+   */
+  designOverrides?: { checkout?: CheckoutTemplate }
   /**
    * The pack's own settings, stored under its id in
    * `tenants.storefront_pack_settings`. Every field must carry a `.default()`
@@ -35,13 +49,31 @@ export interface StorefrontPackDefinition {
   settingsSchema: z.ZodObject<z.ZodRawShape>
 }
 
+/** Each pack's settings schema, keyed by id so readers get exact types. */
+const PACK_SETTINGS_SCHEMAS = {
+  legacy: z.object({}),
+  bitespeed: bitespeedSettingsSchema,
+} satisfies Record<StorefrontPackId, z.ZodObject<z.ZodRawShape>>
+
+export type StorefrontPackSettings<Id extends StorefrontPackId> = z.output<(typeof PACK_SETTINGS_SCHEMAS)[Id]>
+
 export const STOREFRONT_PACKS: StorefrontPackDefinition[] = [
   {
     id: 'legacy',
     name: 'Classic storefront',
     description: 'One menu page with your header, hero and catalog layout of choice.',
     preview: '🍽️',
-    settingsSchema: z.object({}),
+    checkoutEntry: 'cart-drawer',
+    settingsSchema: PACK_SETTINGS_SCHEMAS.legacy,
+  },
+  {
+    id: 'bitespeed',
+    name: 'BiteSpeed',
+    description: 'A fast-food ordering site: a home page with hero, deals and best sellers, a quick menu and a one-page checkout.',
+    preview: '🍔',
+    checkoutEntry: 'direct',
+    designOverrides: { checkout: 'bitespeed' },
+    settingsSchema: PACK_SETTINGS_SCHEMAS.bitespeed,
   },
 ]
 
@@ -57,6 +89,16 @@ export function resolveStorefrontPack(tenant: StorefrontPackTenant | null | unde
 
 export function getStorefrontPack(id: StorefrontPackId): StorefrontPackDefinition {
   return STOREFRONT_PACKS.find((pack) => pack.id === id) ?? STOREFRONT_PACKS[0]
+}
+
+interface CheckoutDesignTenant extends StorefrontPackTenant {
+  checkout_template?: string | null
+}
+
+/** The checkout design to render: the pack's pinned design, else the tenant's own. */
+export function resolveCheckoutTemplate(tenant: CheckoutDesignTenant | null | undefined): CheckoutTemplate {
+  const pinned = getStorefrontPack(resolveStorefrontPack(tenant)).designOverrides?.checkout
+  return pinned ?? pickDesignId(tenant?.checkout_template, CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -81,9 +123,12 @@ export function readSettingsWithFallback<Shape extends z.ZodRawShape>(
 }
 
 /** A pack's settings for this tenant, with defaults for anything unset or invalid. */
-export function readPackSettings(tenant: StorefrontPackTenant | null | undefined, id: StorefrontPackId) {
+export function readPackSettings<Id extends StorefrontPackId>(
+  tenant: StorefrontPackTenant | null | undefined,
+  id: Id
+): StorefrontPackSettings<Id> {
   const all = isPlainObject(tenant?.storefront_pack_settings) ? tenant.storefront_pack_settings : {}
-  return readSettingsWithFallback(getStorefrontPack(id).settingsSchema, all[id])
+  return readSettingsWithFallback(PACK_SETTINGS_SCHEMAS[id], all[id]) as StorefrontPackSettings<Id>
 }
 
 /**

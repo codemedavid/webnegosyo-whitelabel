@@ -29,6 +29,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
+import { CHECKOUT_UPSELL_DEFAULTS } from '@/lib/checkout-upsell-defaults'
 import { ItemDetailModal } from '@/components/customer/item-detail-modal'
 import { getCartPalette, type BrandingColors } from '@/lib/branding-utils'
 import type { Tenant } from '@/types/database'
@@ -58,9 +59,9 @@ export function CartDrawer({
   tenantId,
   menuEngineeringEnabled,
   checkoutUpsellEnabled,
-  checkoutUpsellTitle = 'Before you go...',
-  checkoutUpsellSubtitle = 'You might also enjoy these items',
-  checkoutUpsellMaxItems = 4,
+  checkoutUpsellTitle = CHECKOUT_UPSELL_DEFAULTS.title,
+  checkoutUpsellSubtitle = CHECKOUT_UPSELL_DEFAULTS.subtitle,
+  checkoutUpsellMaxItems = CHECKOUT_UPSELL_DEFAULTS.maxItems,
 }: CartDrawerProps) {
   // Cart page palette: accent is always resolved (falls back to brand colors);
   // the override fields (background/cardBackground/summaryBackground/text/…)

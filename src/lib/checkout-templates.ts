@@ -11,6 +11,7 @@ export type CheckoutTemplate =
   | 'wizard'    // Multi-step: Order → Details → Payment → Review, one focused screen at a time
   | 'minimal'   // Single centered column, generous whitespace, big type, collapsible sections
   | 'express'   // Mobile-first condensed sheet with a sticky pay bar
+  | 'bitespeed' // One-page fast-food checkout: order, details, payment, summary, sticky place-order bar
 
 export interface CheckoutTemplateDefinition {
   id: CheckoutTemplate
@@ -83,6 +84,18 @@ export const CHECKOUT_TEMPLATES: CheckoutTemplateDefinition[] = [
       'Compact sections',
       'Fast mobile ordering',
       'Food-app style',
+    ],
+  },
+  {
+    id: 'bitespeed',
+    name: 'BiteSpeed',
+    description: 'Bold one-page fast-food checkout with a sticky place-order bar',
+    preview: '🍔',
+    features: [
+      'One-page checkout',
+      'Big order cards',
+      'Sticky total + place order',
+      'Fast-food style',
     ],
   },
 ]

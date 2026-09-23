@@ -9,7 +9,10 @@ import {
   DEFAULT_STOREFRONT_PACK,
   STOREFRONT_PACKS,
   STOREFRONT_PACK_IDS,
+  getStorefrontPack,
+  readPackSettings,
   readSettingsWithFallback,
+  resolveCheckoutTemplate,
   resolveStorefrontPack,
 } from '@/lib/storefront-packs'
 import { brandingSchema, ROLLOUT_DEPENDENT_FIELDS } from '@/lib/branding-service'
@@ -96,5 +99,33 @@ describe('TENANT_STOREFRONT_SELECT', () => {
 
   it.each(['storefront_pack', 'storefront_pack_settings'])('projects %s', (column) => {
     expect(tokens).toContain(column)
+  })
+})
+
+describe('resolveCheckoutTemplate', () => {
+  it("uses the tenant's own checkout design on a pack that does not pin one", () => {
+    expect(resolveCheckoutTemplate({ storefront_pack: 'legacy', checkout_template: 'wizard' })).toBe('wizard')
+    expect(resolveCheckoutTemplate({ storefront_pack: 'legacy', checkout_template: 'garbage' })).toBe('classic')
+    expect(resolveCheckoutTemplate(null)).toBe('classic')
+  })
+
+  it('uses the design a pack pins, whatever the tenant column says', () => {
+    expect(resolveCheckoutTemplate({ storefront_pack: 'bitespeed', checkout_template: 'wizard' })).toBe('bitespeed')
+  })
+})
+
+describe('the BiteSpeed pack', () => {
+  it('goes straight to checkout from its pages instead of through a cart drawer', () => {
+    expect(getStorefrontPack('bitespeed').checkoutEntry).toBe('direct')
+  })
+
+  it('has complete default settings and keeps a merchant’s valid ones', () => {
+    const settings = readPackSettings(
+      { storefront_pack_settings: { bitespeed: { best_sellers_title: 'Fan favorites', step_1_title: 'x'.repeat(99) } } },
+      'bitespeed'
+    )
+    expect(settings.best_sellers_title).toBe('Fan favorites')
+    expect(settings.step_1_title).toBe('Choose')
+    expect(settings.show_how_it_works).toBe(true)
   })
 })

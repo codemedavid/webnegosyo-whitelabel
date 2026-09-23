@@ -21,6 +21,7 @@ import { ModernCheckout } from '@/components/customer/checkout-templates/modern-
 import { MinimalCheckout } from '@/components/customer/checkout-templates/minimal-checkout'
 import { WizardCheckout } from '@/components/customer/checkout-templates/wizard-checkout'
 import { ExpressCheckout } from '@/components/customer/checkout-templates/express-checkout'
+import { BiteSpeedCheckout } from '@/components/customer/checkout-templates/bitespeed-checkout'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 
 const SUBTOTAL = 200
@@ -40,6 +41,7 @@ const DESIGNS: ReadonlyArray<readonly [string, CheckoutDesign]> = [
   ['minimal', MinimalCheckout],
   ['wizard', WizardCheckout],
   ['express', ExpressCheckout],
+  ['bitespeed', BiteSpeedCheckout],
 ]
 
 function makeCheckout(overrides: Partial<UseCheckoutReturn> = {}): UseCheckoutReturn {
@@ -65,6 +67,7 @@ function makeCheckout(overrides: Partial<UseCheckoutReturn> = {}): UseCheckoutRe
     formFields: [],
     customerData: {},
     setCustomerData: jest.fn(),
+    bundleItems: [],
     items: [
       {
         id: 'line-1',

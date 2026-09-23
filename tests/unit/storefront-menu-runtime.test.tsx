@@ -21,7 +21,7 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
   useSearchParams: () => new URLSearchParams(),
 }))
-jest.mock('@/hooks/useCart', () => ({ useCart: () => ({ addItem: mockAddItem, item_count: 0, setTenantContext: mockSetTenant }) }))
+jest.mock('@/hooks/useCart', () => ({ useCart: () => ({ addItem: mockAddItem, item_count: 0, items: [], bundleItems: [], setTenantContext: mockSetTenant }) }))
 jest.mock('@/hooks/use-store-open-status', () => ({ useStoreOpenStatus: () => mockStatus }))
 jest.mock('@/hooks/use-outlet-selection', () => ({ useOutletSelection: () => ({ outlet: null }) }))
 jest.mock('@/components/customer/layouts', () => ({ MenuLayout: (props: { layout: string; filteredItems: MenuItem[]; onItemSelect: (item: MenuItem) => void }) => {

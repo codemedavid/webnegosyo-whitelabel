@@ -37,6 +37,10 @@ const ExpressCheckout = dynamic(
   () => import('./express-checkout').then((m) => ({ default: m.ExpressCheckout })),
   { loading: CheckoutLoading },
 )
+const BiteSpeedCheckout = dynamic(
+  () => import('./bitespeed-checkout').then((m) => ({ default: m.BiteSpeedCheckout })),
+  { loading: CheckoutLoading },
+)
 
 interface CheckoutDesignProps {
   checkout: UseCheckoutReturn
@@ -50,6 +54,7 @@ const CHECKOUT_COMPONENTS = {
   wizard: WizardCheckout,
   minimal: MinimalCheckout,
   express: ExpressCheckout,
+  bitespeed: BiteSpeedCheckout,
 } satisfies Record<CheckoutTemplate, unknown>
 
 /**

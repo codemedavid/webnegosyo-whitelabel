@@ -5,9 +5,14 @@ import dynamic from 'next/dynamic'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
 import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
+import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
+import { CHECKOUT_UPSELL_DEFAULTS } from '@/lib/checkout-upsell-defaults'
 import { useBrandingPreviewDraft } from '@/hooks/use-branding-preview'
+import { useCart } from '@/hooks/useCart'
 import { getTenantBranding, type BrandingColors } from '@/lib/branding-utils'
 import { buildFlashScreenBranding } from '@/lib/flash-loader'
+import type { StorefrontCheckoutEntry } from '@/lib/storefront-packs'
+import { useCartCheckout } from '../cart/use-cart-checkout'
 import { DeferredMount } from './deferred-mount'
 import type { StorefrontMenuController } from '../contracts'
 
@@ -24,6 +29,13 @@ const ProductDetailSheet = dynamic(
 export interface StorefrontRuntimeValue {
   menu: StorefrontMenuController
   branding: BrandingColors
+  /**
+   * Go to checkout through the shared gate: refused while the store is closed,
+   * and routed through the checkout upsell interstitial when it is enabled.
+   */
+  requestCheckout: () => void
+  /** True while the checkout route is loading after a request. */
+  isCheckoutPending: boolean
 }
 
 const StorefrontRuntimeContext = createContext<StorefrontRuntimeValue | null>(null)
@@ -36,17 +48,46 @@ export function useStorefrontRuntime(): StorefrontRuntimeValue {
 }
 
 /**
+ * Reserve space at the bottom of a phone screen for a pack's fixed bar (a tab
+ * bar, a "View order" bar), so the active-order banner and the site footer sit
+ * above it instead of underneath. Desktop keeps no inset.
+ */
+export function StorefrontBottomInset({ mobilePx }: { mobilePx: number }) {
+  return <style>{`@media (max-width: 767px){:root{--storefront-bottom-inset:${mobilePx}px}}`}</style>
+}
+
+interface StorefrontRuntimeProps {
+  menu: StorefrontMenuController
+  /**
+   * How the pack reaches checkout. A 'cart-drawer' pack's drawer runs the
+   * checkout gate itself; for a 'direct' pack the runtime runs it (prefetch,
+   * closed-store refusal, upsell interstitial) and hands out requestCheckout.
+   */
+  checkoutEntry?: StorefrontCheckoutEntry
+  children: ReactNode
+}
+
+/**
  * Everything a storefront needs around its pages, whichever pack draws them:
  * the product sheet, the bundle wizard, the active-order banner, the Branding
- * Studio inspector and the flash-screen preview. A pack renders only its own
- * markup (as `children`) and reads the controller from `useStorefrontRuntime`,
- * so a new pack cannot forget one of these.
+ * Studio inspector, the flash-screen preview and — for packs without a cart
+ * drawer — the checkout gate. A pack renders only its own markup (as
+ * `children`) and reads the controller from `useStorefrontRuntime`, so a new
+ * pack cannot forget one of these.
  */
-export function StorefrontRuntime({ menu, children }: { menu: StorefrontMenuController; children: ReactNode }) {
+export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', children }: StorefrontRuntimeProps) {
   const { tenant, tenantSlug, categories, allMenuItems, selectedBundle, sheetItem } = menu
   const branding = useMemo(() => getTenantBranding(tenant), [tenant])
-  const value = useMemo(() => ({ menu, branding }), [menu, branding])
   const isFlashPreview = useBrandingPreviewDraft()?.__previewSurface === 'flash'
+  const isDirectCheckout = checkoutEntry === 'direct'
+  const { items, bundleItems } = useCart()
+  const hasItems = items.length + bundleItems.length > 0
+  const checkout = useCartCheckout({ tenant, tenantSlug, items, hasItems, enabled: isDirectCheckout && hasItems })
+  const { requestCheckout, isNavigating } = checkout
+  const value = useMemo(
+    () => ({ menu, branding, requestCheckout, isCheckoutPending: isNavigating }),
+    [menu, branding, requestCheckout, isNavigating]
+  )
 
   return (
     <StorefrontRuntimeContext.Provider value={value}>
@@ -95,6 +136,19 @@ export function StorefrontRuntime({ menu, children }: { menu: StorefrontMenuCont
           primaryColor={branding.buttonPrimary}
           primaryTextColor={branding.buttonPrimaryText}
         />
+
+        {isDirectCheckout && checkout.showInterstitial && tenant && (
+          <CheckoutUpsellModal
+            open={checkout.showUpsellModal}
+            onContinue={checkout.onUpsellContinue}
+            tenantId={tenant.id}
+            branding={branding}
+            title={tenant.checkout_upsell_title || CHECKOUT_UPSELL_DEFAULTS.title}
+            subtitle={tenant.checkout_upsell_subtitle || CHECKOUT_UPSELL_DEFAULTS.subtitle}
+            maxItems={tenant.checkout_upsell_max_items || CHECKOUT_UPSELL_DEFAULTS.maxItems}
+            prefetchedItems={checkout.prefetchedItems ?? undefined}
+          />
+        )}
       </div>
     </StorefrontRuntimeContext.Provider>
   )
