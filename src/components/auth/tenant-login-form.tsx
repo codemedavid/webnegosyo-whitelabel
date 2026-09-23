@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/lib/supabase/client'
 import { signOutThisDevice } from '@/lib/supabase/sign-out'
+import { resolveTenantLoginRedirect } from '@/lib/login-redirect'
 import { toast } from 'sonner'
 import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 
@@ -16,22 +17,6 @@ interface TenantLoginFormProps {
   tenantId: string
   redirect: string
   unauthorized?: boolean
-}
-
-/**
- * Validates that a redirect URL is a safe, relative path on the same origin.
- * Prevents open redirect attacks by rejecting absolute URLs and protocol-relative URLs.
- */
-function getSafeRedirect(redirect: string, fallback: string): string {
-  // Must start with / and not // (protocol-relative)
-  if (!redirect.startsWith('/') || redirect.startsWith('//')) {
-    return fallback
-  }
-  // Block encoded slashes and backslashes that could bypass the check
-  if (redirect.includes('%2f') || redirect.includes('%2F') || redirect.includes('\\')) {
-    return fallback
-  }
-  return redirect
 }
 
 export function TenantLoginForm({ tenantSlug, tenantId, redirect, unauthorized }: TenantLoginFormProps) {
@@ -104,7 +89,8 @@ export function TenantLoginForm({ tenantSlug, tenantId, redirect, unauthorized }
         return
       }
 
-      const safeRedirect = getSafeRedirect(redirect, `/${tenantSlug}/admin`)
+      // Same origin AND inside this tenant, judged on the browser-resolved URL.
+      const safeRedirect = resolveTenantLoginRedirect(redirect, tenantSlug, window.location.origin)
       toast.success('Login successful!')
       router.push(safeRedirect)
       router.refresh()

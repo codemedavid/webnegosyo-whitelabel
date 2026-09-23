@@ -3,6 +3,7 @@
  * Provides fallback colors and utility functions for consistent branding
  */
 
+import { AUTO_CARD_STYLE, readCardStyleSettings, type CardStyleSettings } from '@/lib/card-style'
 import { resolveFontPair, resolveRoundness, resolvePalette } from '@/lib/storefront-theme'
 
 // Tenant type was removed - function accepts generic Record<string, unknown> instead
@@ -79,6 +80,10 @@ export interface BrandingColors {
   bodyFont: string | null
   radius: string | null
 
+  // Card style knobs for the flexible card templates (src/lib/card-style.ts).
+  // Every knob is 'auto' unless the merchant chose a value; absent = all auto.
+  cardStyle?: CardStyleSettings
+
   // Cart & checkout page accents (resolved with fallback to button/primary).
   // The remaining cart/checkout page colors are applied as explicit overrides,
   // read raw from the tenant via getCartPalette()/getCheckoutPalette().
@@ -150,6 +155,7 @@ export const DEFAULT_BRANDING: BrandingColors = {
   headingWeight: null,
   bodyFont: null,
   radius: null,
+  cardStyle: AUTO_CARD_STYLE,
   cartAccent: '#111111',
   checkoutAccent: '#111111',
   searchBar: {
@@ -237,6 +243,7 @@ export function getTenantBranding(tenant: Record<string, unknown> | null): Brand
     headingWeight: fontPair ? fontPair.headingWeight : null,
     bodyFont: fontPair ? fontPair.body : null,
     radius: roundnessPx === null ? null : `${roundnessPx}px`,
+    cardStyle: readCardStyleSettings(tenant),
     cartAccent: get('cart_accent_color', '') || get('button_primary_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.buttonPrimary,
     checkoutAccent: get('checkout_accent_color', '') || get('button_primary_color', '') || get('primary_color', '') || p?.accent || DEFAULT_BRANDING.buttonPrimary,
     searchBar: {

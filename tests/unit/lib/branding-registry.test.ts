@@ -16,6 +16,7 @@ import {
   buildPublishPayload,
   BRANDING_PRESETS,
   generatePaletteFromColor,
+  isFieldVisible,
 } from '@/lib/branding-registry'
 
 describe('branding registry structure', () => {
@@ -303,5 +304,40 @@ describe('palette presets + generate from logo color', () => {
         'hero_featured_product_id',
       ])
     )
+  })
+})
+
+describe('card style knobs', () => {
+  const knobIds = [
+    'card_image_ratio', 'card_image_fit', 'card_add_button', 'card_text_align', 'card_description', 'card_density',
+  ]
+
+  it('exposes every knob as a select that defaults to the template design', () => {
+    for (const id of knobIds) {
+      expect(BRANDING_FIELD_INDEX[id].type).toBe('select')
+      expect(BRANDING_FIELD_INDEX[id].default).toBe('auto')
+    }
+  })
+
+  it('shows the knobs only while a flexible card template is chosen', () => {
+    const knob = BRANDING_FIELD_INDEX['card_image_ratio']
+
+    expect(isFieldVisible(knob, (id) => (id === 'card_template' ? 'showcase' : undefined))).toBe(true)
+    expect(isFieldVisible(knob, (id) => (id === 'card_template' ? 'classic' : undefined))).toBe(false)
+  })
+
+  it('offers every new template and layout in the pickers, as galleries', () => {
+    expect(BRANDING_FIELD_INDEX['card_template'].options).toEqual(
+      expect.arrayContaining(['showcase', 'atelier', 'kiosk', 'sticker', 'menuboard', 'arch'])
+    )
+    expect(BRANDING_FIELD_INDEX['page_layout'].options).toEqual(
+      expect.arrayContaining(['storefront', 'kiosk', 'rails', 'lookbook'])
+    )
+    expect(BRANDING_FIELD_INDEX['card_template'].presentation).toBe('card-gallery')
+    expect(BRANDING_FIELD_INDEX['page_layout'].presentation).toBe('layout-gallery')
+  })
+
+  it('treats a field with no visibility rule as always visible', () => {
+    expect(isFieldVisible(BRANDING_FIELD_INDEX['cards_color'], () => undefined)).toBe(true)
   })
 })

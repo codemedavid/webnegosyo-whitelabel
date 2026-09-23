@@ -63,6 +63,13 @@ export interface Tenant {
   search_bar_border?: string | null;
   search_bar_focus_ring?: string | null;
   search_bar_radius?: 'pill' | 'rounded' | 'square';
+  // Card style knobs for the flexible card templates (src/lib/card-style.ts). NULL/'auto' = template design.
+  card_image_ratio?: 'auto' | 'square' | 'portrait' | 'landscape' | 'wide' | null;
+  card_image_fit?: 'auto' | 'cover' | 'contain' | null;
+  card_add_button?: 'auto' | 'icon' | 'pill' | 'bar' | 'hidden' | null;
+  card_text_align?: 'auto' | 'start' | 'center' | null;
+  card_description?: 'auto' | 'show' | 'hide' | null;
+  card_density?: 'auto' | 'compact' | 'comfortable' | 'spacious' | null;
   search_bar_style?: 'filled' | 'outline' | 'ghost';
   success_color?: string;
   warning_color?: string;
@@ -90,7 +97,7 @@ export interface Tenant {
   checkout_template?: string; // Checkout page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
   cart_template?: string; // Cart page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
   page_layout?: string; // 'default' | 'sidebar' | 'magazine' | 'grid-focus' | 'list' | 'mosaic'
-  mobile_grid_columns?: number; // 1 or 2 - number of cards per row on mobile
+  mobile_grid_columns?: number; // 1 or 2 - cards per row on mobile (unset = 2)
   mobile_page_layout?: string | null; // Layout for mobile (<768px), falls back to page_layout
   mobile_card_template?: string | null; // Card template for mobile (<768px), falls back to card_template
   mobile_overrides?: Record<string, unknown>; // Per-device overrides { column: value } overlaid on mobile viewports

@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, memo } from 'react'
+import { useState, useCallback, memo } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronLeft,
   ChevronRight,
@@ -55,7 +54,7 @@ import {
   formatRelativeTime,
 } from '@/components/superadmin/tenant-visuals'
 import { useDeleteTenant } from '@/lib/queries/tenants'
-import { fetchTenants, fetchTenantMetrics } from '@/app/actions/tenants'
+import { useTenantList } from '@/components/superadmin/use-tenant-list'
 import {
   bulkSetTenantsActiveAction,
   bulkDeleteTenantsAction,
@@ -68,25 +67,19 @@ import type {
   TenantSort,
   TenantStatusFilter,
   TenantFeatureFilter,
-} from '@/lib/queries/tenants-server'
+} from '@/lib/superadmin/tenant-search'
 
 const PAGE_SIZE = 20
-const SEARCH_DEBOUNCE_MS = 300
 const VIEW_STORAGE_KEY = 'sa-tenant-view'
-
-const ZERO_METRICS: Omit<TenantMetrics, 'tenantId'> = {
-  orders30d: 0,
-  ordersLifetime: 0,
-  gmvLifetime: 0,
-  lastOrderAt: null,
-}
+const EMPTY_SELECTION: ReadonlySet<string> = new Set()
 
 type TenantView = 'table' | 'grid'
 
 interface TenantManagerProps {
   initialTenants: Tenant[]
   initialCount: number
-  initialMetrics: Record<string, TenantMetrics>
+  /** The ?q= the server rendered the first page for. */
+  initialSearch: string
 }
 
 /* -----------------------------------------------------------------------------
@@ -141,14 +134,30 @@ function TenantRowMenu({
   )
 }
 
+/** Placeholder while a row's metrics load, or "—" when they could not. */
+function MetricsPending({ isLoading }: { isLoading: boolean }) {
+  if (!isLoading) {
+    return <span className="text-sm text-white/35">—</span>
+  }
+  return (
+    <span className="flex flex-col gap-1.5" aria-label="Loading order stats">
+      <span className="h-3.5 w-24 animate-pulse rounded bg-white/[0.06]" />
+      <span className="h-3 w-16 animate-pulse rounded bg-white/[0.06]" />
+    </span>
+  )
+}
+
 /** Compact activity readout: "<orders30d> orders · GMV" + health dot + relative. */
 function TenantActivity({
   metrics,
+  isMetricsLoading,
   className,
 }: {
-  metrics: Omit<TenantMetrics, 'tenantId'>
+  metrics: TenantMetrics | undefined
+  isMetricsLoading: boolean
   className?: string
 }) {
+  if (!metrics) return <MetricsPending isLoading={isMetricsLoading} />
   return (
     <div className={cn('flex flex-col gap-0.5', className)}>
       <span className="text-sm text-white/70">
@@ -171,14 +180,15 @@ function TenantActivity({
 ----------------------------------------------------------------------------- */
 interface TenantTableRowProps {
   tenant: Tenant
-  metrics: Omit<TenantMetrics, 'tenantId'>
+  metrics: TenantMetrics | undefined
+  isMetricsLoading: boolean
   selected: boolean
   onToggleSelect: (id: string) => void
   onDelete: (tenant: Tenant) => void
 }
 
 const TenantTableRow = memo(
-  ({ tenant, metrics, selected, onToggleSelect, onDelete }: TenantTableRowProps) => (
+  ({ tenant, metrics, isMetricsLoading, selected, onToggleSelect, onDelete }: TenantTableRowProps) => (
     <div className="group relative flex items-center gap-4 px-4 py-3 transition-colors hover:bg-white/[0.035]">
       {/* Full-row click target */}
       <Link
@@ -224,7 +234,7 @@ const TenantTableRow = memo(
 
       {/* Activity */}
       <div className="relative z-[1] hidden w-[160px] shrink-0 md:block pointer-events-none">
-        <TenantActivity metrics={metrics} />
+        <TenantActivity metrics={metrics} isMetricsLoading={isMetricsLoading} />
       </div>
 
       {/* Feature chips (hidden on small) */}
@@ -263,14 +273,15 @@ TenantTableRow.displayName = 'TenantTableRow'
 ----------------------------------------------------------------------------- */
 interface TenantCardProps {
   tenant: Tenant
-  metrics: Omit<TenantMetrics, 'tenantId'>
+  metrics: TenantMetrics | undefined
+  isMetricsLoading: boolean
   selected: boolean
   onToggleSelect: (id: string) => void
   onDelete: (tenant: Tenant) => void
 }
 
 const TenantCard = memo(
-  ({ tenant, metrics, selected, onToggleSelect, onDelete }: TenantCardProps) => (
+  ({ tenant, metrics, isMetricsLoading, selected, onToggleSelect, onDelete }: TenantCardProps) => (
     <div className="group relative rounded-2xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20 hover:bg-white/[0.04]">
       {/* Full-card click target */}
       <Link
@@ -311,17 +322,23 @@ const TenantCard = memo(
 
       {/* Metrics row */}
       <div className="relative z-[1] mt-3 flex items-center justify-between gap-2 pointer-events-none">
-        <span className="text-sm text-white/70">
-          {metrics.orders30d} {metrics.orders30d === 1 ? 'order' : 'orders'}
-          <span className="text-white/30"> · </span>
-          <span className="text-white/55">
-            {formatCurrencyCompact(metrics.gmvLifetime)}
-          </span>
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-xs text-white/45">
-          <TenantHealthDot lastOrderAt={metrics.lastOrderAt} />
-          {formatRelativeTime(metrics.lastOrderAt)}
-        </span>
+        {metrics ? (
+          <>
+            <span className="text-sm text-white/70">
+              {metrics.orders30d} {metrics.orders30d === 1 ? 'order' : 'orders'}
+              <span className="text-white/30"> · </span>
+              <span className="text-white/55">
+                {formatCurrencyCompact(metrics.gmvLifetime)}
+              </span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-xs text-white/45">
+              <TenantHealthDot lastOrderAt={metrics.lastOrderAt} />
+              {formatRelativeTime(metrics.lastOrderAt)}
+            </span>
+          </>
+        ) : (
+          <MetricsPending isLoading={isMetricsLoading} />
+        )}
       </div>
 
       <div className="relative z-[1] mt-3 flex items-center justify-between gap-2 pointer-events-none">
@@ -342,26 +359,28 @@ TenantCard.displayName = 'TenantCard'
 export function TenantManager({
   initialTenants,
   initialCount,
-  initialMetrics,
+  initialSearch,
 }: TenantManagerProps) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const initialSearch = searchParams.get('q') ?? ''
-
-  const [tenants, setTenants] = useState<Tenant[]>(initialTenants)
-  const [count, setCount] = useState(initialCount)
-  const [metrics, setMetrics] =
-    useState<Record<string, TenantMetrics>>(initialMetrics)
-
-  const [search, setSearch] = useState(initialSearch)
-  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
-  const [page, setPage] = useState(1)
-  const [isLoading, setIsLoading] = useState(false)
-
-  const [status, setStatus] = useState<TenantStatusFilter>('all')
-  const [feature, setFeature] = useState<TenantFeatureFilter>('all')
-  const [sort, setSort] = useState<TenantSort>('recent')
+  const {
+    query,
+    queryKey,
+    search,
+    setSearch,
+    setStatus,
+    setFeature,
+    setSort,
+    goToPage,
+    tenants,
+    count,
+    isLoading,
+    loadError,
+    retry,
+    metrics,
+    isMetricsLoading,
+    updateCurrentPage,
+    invalidateLists,
+  } = useTenantList({ initialTenants, initialCount, initialSearch })
+  const { search: debouncedSearch, page, status, feature, sort } = query
 
   const [view, setView] = useState<TenantView>(() => {
     if (typeof window === 'undefined') return 'table'
@@ -369,7 +388,22 @@ export function TenantManager({
     return stored === 'grid' || stored === 'table' ? stored : 'table'
   })
 
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  /* Selection belongs to one result set: a new search, filter or page starts
+     empty without an effect to clear it. */
+  const [selection, setSelection] = useState<{ key: string; ids: ReadonlySet<string> }>(
+    () => ({ key: queryKey, ids: new Set() }),
+  )
+  const selected = selection.key === queryKey ? selection.ids : EMPTY_SELECTION
+  const setSelected = useCallback(
+    (updater: (prev: ReadonlySet<string>) => ReadonlySet<string>) => {
+      setSelection((prev) => ({
+        key: queryKey,
+        ids: updater(prev.key === queryKey ? prev.ids : EMPTY_SELECTION),
+      }))
+    },
+    [queryKey],
+  )
+
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [isBulkBusy, setIsBulkBusy] = useState(false)
@@ -383,76 +417,22 @@ export function TenantManager({
     }
   }, [])
 
-  /* Debounce search → reset to page 1 */
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search)
-      setPage(1)
-    }, SEARCH_DEBOUNCE_MS)
-    return () => clearTimeout(timer)
-  }, [search])
-
-  /* Mirror the debounced search into ?q= so reload/back restore the filter */
-  useEffect(() => {
-    const current = searchParams.get('q') ?? ''
-    if (current === debouncedSearch) return
-    const query = debouncedSearch
-      ? `?q=${encodeURIComponent(debouncedSearch)}`
-      : ''
-    router.replace(`${pathname}${query}`, { scroll: false })
-  }, [debouncedSearch, pathname, router, searchParams])
-
-  /* Reset to page 1 whenever filters/sort change */
-  useEffect(() => {
-    setPage(1)
-  }, [status, feature, sort])
-
-  const metricsFor = useCallback(
-    (id: string): Omit<TenantMetrics, 'tenantId'> => metrics[id] ?? ZERO_METRICS,
-    [metrics],
-  )
-
-  const loadTenants = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const result = await fetchTenants({
-        search: debouncedSearch || undefined,
-        page,
-        status,
-        feature,
-        sort,
-      })
-      setTenants(result.data)
-      setCount(result.count)
-      setSelected(new Set())
-
-      const ids = result.data.map((t) => t.id)
-      if (ids.length) {
-        const fresh = await fetchTenantMetrics(ids)
-        setMetrics((prev) => ({ ...prev, ...fresh }))
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }, [debouncedSearch, page, status, feature, sort])
-
-  useEffect(() => {
-    loadTenants()
-  }, [loadTenants])
-
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
   const rangeStart = count === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const rangeEnd = Math.min(page * PAGE_SIZE, count)
 
   /* -------- selection -------- */
-  const toggleSelect = useCallback((id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
+  const toggleSelect = useCallback(
+    (id: string) => {
+      setSelected((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    },
+    [setSelected],
+  )
 
   const allSelected =
     tenants.length > 0 && tenants.every((t) => selected.has(t.id))
@@ -464,9 +444,9 @@ export function TenantManager({
       if (everySelected) return new Set()
       return new Set(tenants.map((t) => t.id))
     })
-  }, [tenants])
+  }, [tenants, setSelected])
 
-  const clearSelection = useCallback(() => setSelected(new Set()), [])
+  const clearSelection = useCallback(() => setSelected(() => new Set()), [setSelected])
 
   /* -------- single delete (optimistic + rollback) -------- */
   const handleDelete = useCallback(() => {
@@ -474,8 +454,10 @@ export function TenantManager({
 
     const deletedTenant = tenantToDelete
 
-    setTenants((prev) => prev.filter((t) => t.id !== deletedTenant.id))
-    setCount((prev) => prev - 1)
+    updateCurrentPage((prev) => ({
+      tenants: prev.tenants.filter((t) => t.id !== deletedTenant.id),
+      count: Math.max(0, prev.count - 1),
+    }))
     setSelected((prev) => {
       if (!prev.has(deletedTenant.id)) return prev
       const next = new Set(prev)
@@ -489,14 +471,17 @@ export function TenantManager({
         toast.success(`${deletedTenant.name} has been deleted`)
       },
       onError: (error) => {
-        setTenants((prev) => [...prev, deletedTenant])
-        setCount((prev) => prev + 1)
         const message =
           error instanceof Error ? error.message : 'Failed to delete tenant'
         toast.error(message)
       },
+      // Success or failure, the server is the truth: refetch rather than
+      // splice the row back in at the wrong position.
+      onSettled: () => {
+        void invalidateLists()
+      },
     })
-  }, [tenantToDelete, deleteMutation])
+  }, [tenantToDelete, deleteMutation, updateCurrentPage, setSelected, invalidateLists])
 
   /* -------- bulk activate / deactivate -------- */
   const handleBulkSetActive = useCallback(
@@ -509,15 +494,17 @@ export function TenantManager({
         const result = await bulkSetTenantsActiveAction(ids, isActive)
         if (result.error) {
           toast.error(result.error)
-          router.refresh()
+          void invalidateLists()
           return
         }
         const idSet = new Set(ids)
-        setTenants((prev) =>
-          prev.map((t) =>
+        updateCurrentPage((prev) => ({
+          ...prev,
+          tenants: prev.tenants.map((t) =>
             idSet.has(t.id) ? { ...t, is_active: isActive } : t,
           ),
-        )
+        }))
+        void invalidateLists()
         clearSelection()
         toast.success(
           `${ids.length} ${ids.length === 1 ? 'restaurant' : 'restaurants'} ${
@@ -528,12 +515,12 @@ export function TenantManager({
         const message =
           error instanceof Error ? error.message : 'Failed to update restaurants'
         toast.error(message)
-        router.refresh()
+        void invalidateLists()
       } finally {
         setIsBulkBusy(false)
       }
     },
-    [selected, clearSelection, router],
+    [selected, clearSelection, updateCurrentPage, invalidateLists],
   )
 
   /* -------- bulk delete -------- */
@@ -546,7 +533,7 @@ export function TenantManager({
       const result = await bulkDeleteTenantsAction(ids)
       if (result.error) {
         toast.error(result.error)
-        router.refresh()
+        void invalidateLists()
         return
       }
       const failedIds = new Set(result.failed ?? [])
@@ -554,15 +541,17 @@ export function TenantManager({
       const removedIds = ids.filter((id) => !failedIds.has(id))
       const removedSet = new Set(removedIds)
       const removed = result.deleted ?? removedIds.length
-      setTenants((prev) => prev.filter((t) => !removedSet.has(t.id)))
-      setCount((prev) => Math.max(0, prev - removedIds.length))
+      updateCurrentPage((prev) => ({
+        tenants: prev.tenants.filter((t) => !removedSet.has(t.id)),
+        count: Math.max(0, prev.count - removedIds.length),
+      }))
+      void invalidateLists()
       clearSelection()
       setBulkDeleteOpen(false)
       if (failedIds.size > 0) {
         toast.error(
           `${removed} deleted, ${failedIds.size} could not be deleted`,
         )
-        router.refresh()
       } else {
         toast.success(
           `${removed} ${removed === 1 ? 'restaurant' : 'restaurants'} deleted`,
@@ -572,11 +561,11 @@ export function TenantManager({
       const message =
         error instanceof Error ? error.message : 'Failed to delete restaurants'
       toast.error(message)
-      router.refresh()
+      void invalidateLists()
     } finally {
       setIsBulkBusy(false)
     }
-  }, [selected, clearSelection, router])
+  }, [selected, clearSelection, updateCurrentPage, invalidateLists])
 
   const hasSelection = selected.size > 0
 
@@ -590,7 +579,7 @@ export function TenantManager({
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
             <input
               type="text"
-              placeholder="Search by name or slug..."
+              placeholder="Search by name, slug or domain..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Search tenants"
@@ -702,6 +691,23 @@ export function TenantManager({
         </div>
       </div>
 
+      {loadError ? (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-sm text-red-200"
+        >
+          <span>Couldn’t load restaurants: {loadError}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void retry()}
+            className="shrink-0 border-red-400/30 bg-transparent text-red-100 hover:bg-red-500/10"
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
       {/* Results */}
       {tenants.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-16 text-center">
@@ -714,7 +720,7 @@ export function TenantManager({
                 : 'No restaurants match these filters'}
           </p>
           {!isLoading && debouncedSearch ? (
-            <p className="mt-1 text-xs text-white/40">Try a different name or slug.</p>
+            <p className="mt-1 text-xs text-white/40">Try a different name, slug or domain.</p>
           ) : null}
         </div>
       ) : (
@@ -753,7 +759,8 @@ export function TenantManager({
                   <TenantTableRow
                     key={tenant.id}
                     tenant={tenant}
-                    metrics={metricsFor(tenant.id)}
+                    metrics={metrics[tenant.id]}
+                    isMetricsLoading={isMetricsLoading}
                     selected={selected.has(tenant.id)}
                     onToggleSelect={toggleSelect}
                     onDelete={setTenantToDelete}
@@ -775,7 +782,8 @@ export function TenantManager({
                 <TenantCard
                   key={tenant.id}
                   tenant={tenant}
-                  metrics={metricsFor(tenant.id)}
+                  metrics={metrics[tenant.id]}
+                  isMetricsLoading={isMetricsLoading}
                   selected={selected.has(tenant.id)}
                   onToggleSelect={toggleSelect}
                   onDelete={setTenantToDelete}
@@ -795,7 +803,8 @@ export function TenantManager({
               <TenantCard
                 key={tenant.id}
                 tenant={tenant}
-                metrics={metricsFor(tenant.id)}
+                metrics={metrics[tenant.id]}
+                isMetricsLoading={isMetricsLoading}
                 selected={selected.has(tenant.id)}
                 onToggleSelect={toggleSelect}
                 onDelete={setTenantToDelete}
@@ -823,7 +832,7 @@ export function TenantManager({
               variant="outline"
               size="sm"
               disabled={page <= 1 || isLoading}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage(page - 1)}
             >
               <ChevronLeft className="mr-1 h-4 w-4" />
               Previous
@@ -835,7 +844,7 @@ export function TenantManager({
               variant="outline"
               size="sm"
               disabled={page >= totalPages || isLoading}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage(Math.min(totalPages, page + 1))}
             >
               Next
               <ChevronRight className="ml-1 h-4 w-4" />

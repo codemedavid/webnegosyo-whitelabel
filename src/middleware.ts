@@ -9,7 +9,9 @@ import { rewriteMcpPathWellKnown } from '@/lib/mcp/mcp-path-well-known'
 import { createTimedFetch } from '@/lib/supabase/timed-fetch'
 import { createLogger } from '@/lib/logger'
 import {
+  FRAME_PROTECTION_HEADERS,
   hasSupabaseCookie,
+  isFrameProtectedPath,
   isPublicRoute,
   isSelfAuthenticatedApiRoute,
   normalizePathname,
@@ -128,6 +130,13 @@ function redirectTo(request: NextRequest, pathname: string, params: Record<strin
 
 type SessionUser = Awaited<ReturnType<typeof getSessionUser>>
 
+/** Add anti-clickjacking headers when `servedPathname` is an admin/login page. */
+function withFrameProtection(response: NextResponse, servedPathname: string): NextResponse {
+  if (!isFrameProtectedPath(servedPathname)) return response
+  Object.entries(FRAME_PROTECTION_HEADERS).forEach(([name, value]) => response.headers.set(name, value))
+  return response
+}
+
 /** `/superadmin/*` requires a signed-in user with the `superadmin` role. */
 async function guardSuperadmin(
   request: NextRequest,
@@ -211,7 +220,8 @@ export async function middleware(request: NextRequest) {
   const user = hasSupabaseCookie(request.cookies.getAll()) ? await getSessionUser(session.supabase) : null
 
   if (isSuperAdminRoute) {
-    return (await guardSuperadmin(request, session.supabase, user, pathname)) ?? session.response()
+    const response = (await guardSuperadmin(request, session.supabase, user, pathname)) ?? session.response()
+    return withFrameProtection(response, pathname)
   }
 
   // Host-based visits arrive as `/admin`, then get rewritten to `/shop/admin`.
@@ -220,10 +230,12 @@ export async function middleware(request: NextRequest) {
   const servedPathname = tenantRewritePath(rewritten.tenantSlug, pathname) ?? pathname
   const tenantSlug = tenantAdminSlugFor(servedPathname)
   if (tenantSlug) {
-    return (await guardTenantAdmin(request, session.supabase, user, tenantSlug, servedPathname)) ?? session.response()
+    const response =
+      (await guardTenantAdmin(request, session.supabase, user, tenantSlug, servedPathname)) ?? session.response()
+    return withFrameProtection(response, servedPathname)
   }
 
-  return session.response()
+  return withFrameProtection(session.response(), servedPathname)
 }
 
 export const config = {

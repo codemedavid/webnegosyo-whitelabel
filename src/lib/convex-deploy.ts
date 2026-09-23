@@ -108,7 +108,15 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // app falls back to those two channels rather than showing a split that
 // silently excludes the register.
 // v30 scopes sales, funnel and product analytics by outlet before aggregation.
-const CURRENT_SCHEMA_VERSION = 32;
+// v33 sends new-order pushes at FCM high priority (Android was free to hold a
+// normal-priority message until the phone left Doze) and READS Expo's reply —
+// tickets, then receipts. Expo answers 200 while refusing every device, which
+// is how a mismatched FCM project dropped every Android notification for
+// months with nothing in any log.
+// v34 lets requoteLalamove retire a dead booking (cancelled, rejected,
+// expired) so a cancelled delivery can be rebooked; before it, the stale
+// lalamoveOrderId made the order unquotable and unbookable forever.
+const CURRENT_SCHEMA_VERSION = 34;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

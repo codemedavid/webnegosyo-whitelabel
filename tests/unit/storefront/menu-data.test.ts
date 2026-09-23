@@ -26,7 +26,18 @@ function database(
     from(table: string) {
       const query: Query = { table, filters: [] }
       queries.push(query)
-      let order: string | undefined
+      const orderKeys: string[] = []
+      let range: [number, number] | undefined
+      const compare = (a: Row, b: Row) => {
+        for (const key of orderKeys) {
+          const [left, right] = [a[key], b[key]]
+          const diff = typeof left === 'number' && typeof right === 'number'
+            ? left - right
+            : String(left).localeCompare(String(right))
+          if (diff !== 0) return diff
+        }
+        return 0
+      }
       const result = () => {
         const failureKey = table === 'menu_items' && query.categories ? 'slot_items' : table
         if (failures[failureKey]) return { data: null, error: failures[failureKey] }
@@ -34,14 +45,15 @@ function database(
           query.filters.every(([key, value]) => row[key] === value) &&
           (!query.categories || query.categories.includes(row.category_id as string)),
         )
-        if (order) data.sort((a, b) => Number(a[order!]) - Number(b[order!]))
-        return { data, error: null }
+        data.sort(compare)
+        return { data: range ? data.slice(range[0], range[1] + 1) : data, error: null }
       }
       const builder = {
         select: () => builder,
         eq: (key: string, value: unknown) => { query.filters.push([key, value]); return builder },
         in: (_key: string, values: string[]) => { query.categories = values; return builder },
-        order: (key: string) => { order = key; return builder },
+        order: (key: string) => { orderKeys.push(key); return builder },
+        range: (from: number, to: number) => { range = [from, to]; return builder },
         maybeSingle: async () => { const response = result(); return { ...response, data: response.data?.[0] ?? null } },
         then: (resolve: (value: ReturnType<typeof result>) => unknown, reject?: (reason: unknown) => unknown) =>
           Promise.resolve(result()).then(resolve, reject),

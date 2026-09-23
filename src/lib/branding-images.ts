@@ -2,12 +2,12 @@
  * Tenant-level image writes for provisioning callers (the MCP): hero, logo,
  * background, flash screen, and the two banner decks. Bytes or a link go
  * through `ingestImage` (ImageKit), and every column write goes through
- * `saveBrandingAction` so the tenant cache and storefront routes revalidate —
+ * `saveBrandingWithClient` so the tenant cache and storefront routes revalidate —
  * a direct `tenants` update would leave the live menu showing the old image.
  */
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
-import { saveBrandingAction } from '@/app/actions/branding'
+import { saveBrandingWithClient } from '@/lib/branding-write'
 import type { BrandingPatchInput, SaveBrandingResult } from '@/lib/branding-service'
 import { hasImageSource, type ImageSource } from '@/lib/image-source'
 import { resolveHeroPreset } from '@/lib/storefront-theme'
@@ -38,13 +38,13 @@ const IMAGE_BEARING_HERO_PRESETS: ReadonlySet<string> = new Set(['split', 'colla
 
 export interface BrandingImageDeps {
   ingest: (source: ImageSource, folder: string) => Promise<{ url: string }>
-  save: (tenantId: string, slug: string, patch: BrandingPatchInput, ctx: ProvisioningCtx) => Promise<SaveBrandingResult>
+  save: (ctx: ProvisioningCtx, tenantId: string, patch: BrandingPatchInput) => Promise<SaveBrandingResult>
 }
 
 const defaultDeps: BrandingImageDeps = {
   // Lazy: keeps the server-only upload chain out of any client bundle.
   ingest: async (source, folder) => (await import('@/lib/image-ingest')).ingestImage(source, folder),
-  save: saveBrandingAction,
+  save: (ctx, tenantId, patch) => saveBrandingWithClient(ctx.client, tenantId, patch),
 }
 
 type TenantRow = Record<string, unknown>
@@ -56,7 +56,7 @@ async function readTenantRow(ctx: ProvisioningCtx, tenantId: string, columns: st
   return data as unknown as TenantRow
 }
 
-/** The slug `saveBrandingAction` needs for revalidation, looked up from the id. */
+/** A tenant's slug, looked up from its id. */
 export async function resolveTenantSlug(ctx: ProvisioningCtx, tenantId: string): Promise<string> {
   const row = await readTenantRow(ctx, tenantId, 'id, slug')
   return row.slug as string
@@ -66,10 +66,9 @@ async function commit(
   deps: BrandingImageDeps,
   ctx: ProvisioningCtx,
   tenantId: string,
-  slug: string,
   patch: BrandingPatchInput,
 ): Promise<SaveBrandingResult> {
-  const result = await deps.save(tenantId, slug, patch, ctx)
+  const result = await deps.save(ctx, tenantId, patch)
   if (!result.success) throw new Error(result.error ?? 'Branding save failed')
   return result
 }
@@ -115,7 +114,7 @@ export async function setTenantImage(
   const column = BRANDING_IMAGE_COLUMN[input.target]
   const { url } = await deps.ingest(input.source, `branding/${input.tenantId}`)
 
-  const saved = await commit(deps, ctx, input.tenantId, row.slug as string, { [column]: url } as BrandingPatchInput)
+  const saved = await commit(deps, ctx, input.tenantId, { [column]: url } as BrandingPatchInput)
 
   const warnings = [saved.warning, input.target === 'hero' ? heroImageWarning(row) : null].filter(Boolean) as string[]
   return {
@@ -148,7 +147,7 @@ export interface BannerWriteResult {
 async function readBannerState(ctx: ProvisioningCtx, tenantId: string, surface: BannerSurface) {
   const column = BANNER_COLUMN[surface]
   const row = await readTenantRow(ctx, tenantId, `id, slug, is_promotion_visible, ${column}`)
-  return { row, column, slug: row.slug as string, list: normalizeBannerList(row[column]) }
+  return { row, column, list: normalizeBannerList(row[column]) }
 }
 
 export async function addTenantBanner(
@@ -156,7 +155,7 @@ export async function addTenantBanner(
   input: AddTenantBannerInput,
   deps: BrandingImageDeps = defaultDeps,
 ): Promise<BannerWriteResult> {
-  const { row, column, slug, list } = await readBannerState(ctx, input.tenantId, input.surface)
+  const { row, column, list } = await readBannerState(ctx, input.tenantId, input.surface)
   const { url } = await deps.ingest(input.source, `branding/${input.tenantId}/banners`)
 
   const banner = appendBanner(list, input.surface, {
@@ -166,7 +165,7 @@ export async function addTenantBanner(
 
   const patch: Record<string, unknown> = { [column]: banners }
   if (input.surface === 'menu' && input.visible !== false) patch.is_promotion_visible = true
-  const saved = await commit(deps, ctx, input.tenantId, slug, patch as BrandingPatchInput)
+  const saved = await commit(deps, ctx, input.tenantId, patch as BrandingPatchInput)
 
   const warning = input.surface === 'menu' && input.visible === false && row.is_promotion_visible !== true
     ? 'is_promotion_visible is OFF, so this banner is saved but hidden until update_branding { is_promotion_visible: true }.'
@@ -190,7 +189,7 @@ export async function updateTenantBanner(
   input: UpdateTenantBannerInput,
   deps: BrandingImageDeps = defaultDeps,
 ): Promise<BannerWriteResult> {
-  const { column, slug, list } = await readBannerState(ctx, input.tenantId, input.surface)
+  const { column, list } = await readBannerState(ctx, input.tenantId, input.surface)
   const hasSource = hasImageSource(input.source)
   const imageUrl = hasSource
     ? (await deps.ingest(input.source as ImageSource, `branding/${input.tenantId}/banners`)).url
@@ -199,7 +198,7 @@ export async function updateTenantBanner(
   const banners = patchBanner(list, input.bannerId, {
     imageUrl, title: input.title, description: input.description, format: input.format,
   })
-  const saved = await commit(deps, ctx, input.tenantId, slug, { [column]: banners } as BrandingPatchInput)
+  const saved = await commit(deps, ctx, input.tenantId, { [column]: banners } as BrandingPatchInput)
   const banner = banners.find((b) => b.id === input.bannerId) ?? null
   return { surface: input.surface, banner, banners, ...(saved.warning ? { warning: saved.warning } : {}) }
 }
@@ -209,9 +208,9 @@ export async function clearTenantBanner(
   input: { tenantId: string; surface: BannerSurface; bannerId: string },
   deps: BrandingImageDeps = defaultDeps,
 ): Promise<BannerWriteResult> {
-  const { column, slug, list } = await readBannerState(ctx, input.tenantId, input.surface)
+  const { column, list } = await readBannerState(ctx, input.tenantId, input.surface)
   const banners = withoutBanner(list, input.bannerId)
-  const saved = await commit(deps, ctx, input.tenantId, slug, { [column]: banners } as BrandingPatchInput)
+  const saved = await commit(deps, ctx, input.tenantId, { [column]: banners } as BrandingPatchInput)
   return { surface: input.surface, banner: null, banners, ...(saved.warning ? { warning: saved.warning } : {}) }
 }
 

@@ -26,14 +26,13 @@ import {
     clearTenantBanner,
     listTenantBanners,
     readBrandingSnapshot,
-    resolveTenantSlug,
 } from '@/lib/branding-images'
 import { describeBrandingOptions, listBrandingFieldIds } from '@/lib/branding-options'
 import { CURATED_ICON_GROUPS, LUCIDE_PREFIX, isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-icon-catalog'
 import { assertSingleImageSource, pickImageSource, type ImageSource } from '@/lib/image-source'
 import { withFeatureWarning, type TenantFeatureFlags } from '@/lib/mcp/feature-flag-warnings'
 import { createPaymentMethod } from '@/lib/payment-methods-service'
-import { saveBrandingAction } from '@/app/actions/branding'
+import { saveBrandingWithClient } from '@/lib/branding-write'
 import { brandingPatchSchema, type BrandingPatchInput } from '@/lib/branding-service'
 import { fetchMenuPerformanceForTenantId } from '@/lib/queries/menu-performance'
 import { fetchSalesSummaryForTenantId } from '@/lib/queries/sales-summary'
@@ -295,13 +294,14 @@ const ops: ProvisioningOp<unknown>[] = [
         description: 'Partially update a tenant\'s branding (logo, colors, templates, hero, footer, welcome page). Only include fields that should change. Call get_branding first to see current values and the allowed options for every select field. Envelope: { tenantId, branding: {...} }. For images use set_branding_image / add_banner instead of pasting URLs.',
         input: z.object({
             tenantId: UUID,
-            tenantSlug: z.string().min(1).optional().describe('Optional; resolved from tenantId when omitted'),
+            // Accepted so older clients that still send it are not refused, but
+            // never used: caches are purged under the slug stored for tenantId.
+            tenantSlug: z.string().min(1).optional().describe('Ignored; the slug is read from tenantId'),
             branding: brandingPatchSchema,
         }),
         execute: async (ctx, input) => {
-            const i = input as { tenantId: string; tenantSlug?: string; branding: BrandingPatchInput }
-            const slug = i.tenantSlug ?? (await resolveTenantSlug(ctx, i.tenantId))
-            return saveBrandingAction(i.tenantId, slug, i.branding, ctx)
+            const i = input as { tenantId: string; branding: BrandingPatchInput }
+            return saveBrandingWithClient(ctx.client, i.tenantId, i.branding)
         },
     }),
     op({

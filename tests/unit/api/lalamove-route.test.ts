@@ -108,6 +108,7 @@ describe('POST /api/lalamove', () => {
   let getUserMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let appUserSingleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let adminUpdateMock: jest.Mock
+  let adminEqMock: jest.Mock
   let tenantRow: Record<string, unknown> | null
   let orderRow: Record<string, unknown> | null
 
@@ -142,6 +143,7 @@ describe('POST /api/lalamove', () => {
     })
 
     adminUpdateMock = jest.fn()
+    adminEqMock = jest.fn()
 
     const { createAdminClient } = await import('@/lib/supabase/admin')
     ;(createAdminClient as unknown as jest.Mock).mockReturnValue({
@@ -152,7 +154,10 @@ describe('POST /api/lalamove', () => {
           selectedColumns = typeof columns === 'string' ? columns : null
           return builder
         })
-        builder.eq = jest.fn(() => builder)
+        builder.eq = jest.fn((column: unknown, value: unknown) => {
+          adminEqMock(table, column, value)
+          return builder
+        })
         builder.is = jest.fn(() => builder)
         builder.update = jest.fn((patch: unknown) => {
           adminUpdateMock(table, patch)
@@ -423,6 +428,42 @@ describe('POST /api/lalamove', () => {
     const body = (await res.json()) as { success: boolean; error?: string }
     expect(body.success).toBe(false)
 
+    const service = await import('@/lib/lalamove-service')
+    expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
+  })
+
+  test('rebooks after a cancelled delivery: retires the dead booking and stores the new quote', async () => {
+    // A cancelled booking left its id on the order, and book/requote both
+    // refused while it was set — the order could never get a rider again.
+    orderRow = { ...ORDER, lalamove_order_id: 'lala-old', lalamove_status: 'CANCELED' }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    await expect(res.json()).resolves.toMatchObject({ success: true, quotationId: 'quote-new' })
+    const [, patch] = adminUpdateMock.mock.calls.at(-1) as [string, Record<string, unknown>]
+    expect(patch).toMatchObject({
+      lalamove_quotation_id: 'quote-new',
+      lalamove_order_id: null,
+      lalamove_status: null,
+      lalamove_driver_phone: null,
+      lalamove_tracking_url: null,
+    })
+    expect(adminEqMock).toHaveBeenCalledWith('orders', 'lalamove_order_id', 'lala-old')
+  })
+
+  test('refuses to rebook a completed delivery', async () => {
+    orderRow = { ...ORDER, lalamove_order_id: 'lala-1', lalamove_status: 'COMPLETED' }
+
+    const { POST } = await import('@/app/api/lalamove/route')
+    const res = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    const body = (await res.json()) as { success: boolean; error?: string }
+    expect(body.success).toBe(false)
     const service = await import('@/lib/lalamove-service')
     expect(service.createLalamoveQuotation).not.toHaveBeenCalled()
   })

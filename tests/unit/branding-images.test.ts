@@ -1,6 +1,6 @@
 import { describe, it, expect, jest, beforeAll } from '@jest/globals'
 
-jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
+jest.mock('@/lib/branding-write', () => ({ __esModule: true, saveBrandingWithClient: jest.fn() }))
 
 import type * as BrandingImages from '@/lib/branding-images'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
@@ -59,7 +59,7 @@ describe('setTenantImage', () => {
     const result = await mod.setTenantImage(ctx, { tenantId: TENANT, target: 'logo', source: { sourceUrl: 'https://a.com/logo.png' } }, asDeps(d))
 
     expect(d.ingest).toHaveBeenCalledWith({ sourceUrl: 'https://a.com/logo.png' }, `branding/${TENANT}`)
-    expect(d.save).toHaveBeenCalledWith(TENANT, 'acme', { logo_url: 'https://ik.imagekit.io/x/new.png' }, ctx)
+    expect(d.save).toHaveBeenCalledWith(ctx, TENANT, { logo_url: 'https://ik.imagekit.io/x/new.png' })
     expect(result).toEqual({ target: 'logo', column: 'logo_url', url: 'https://ik.imagekit.io/x/new.png' })
   })
 

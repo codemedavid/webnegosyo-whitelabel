@@ -1,6 +1,13 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Tenant } from '@/types/database'
+import {
+  buildTenantSearchFilter,
+  normalizeTenantSearch,
+  type TenantFeatureFilter,
+  type TenantSort,
+  type TenantStatusFilter,
+} from '@/lib/superadmin/tenant-search'
 
 // Server-side data fetching with React cache for deduplication
 // This runs on the server and benefits from:
@@ -12,9 +19,7 @@ import type { Tenant } from '@/types/database'
 
 const TENANTS_PAGE_SIZE = 20
 
-export type TenantSort = 'recent' | 'oldest' | 'name' | 'status'
-export type TenantStatusFilter = 'all' | 'active' | 'inactive'
-export type TenantFeatureFilter = 'all' | 'menu_engineering' | 'bundles' | 'app' | 'lalamove'
+export type { TenantSort, TenantStatusFilter, TenantFeatureFilter }
 
 const FEATURE_COLUMN: Record<Exclude<TenantFeatureFilter, 'all'>, string> = {
   menu_engineering: 'menu_engineering_enabled',
@@ -30,7 +35,7 @@ export const getTenants = cache(async (options?: {
   status?: TenantStatusFilter
   feature?: TenantFeatureFilter
   sort?: TenantSort
-}): Promise<{ data: Tenant[]; count: number }> => {
+}): Promise<{ data: Tenant[]; count: number; error: string | null }> => {
   const {
     search,
     page = 1,
@@ -48,8 +53,9 @@ export const getTenants = cache(async (options?: {
       { count: 'exact' }
     )
 
-  if (search) {
-    query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`)
+  const term = normalizeTenantSearch(search)
+  if (term) {
+    query = query.or(buildTenantSearchFilter(term))
   }
 
   if (status === 'active') {
@@ -87,10 +93,10 @@ export const getTenants = cache(async (options?: {
 
   if (error) {
     console.error('Error fetching tenants:', error)
-    return { data: [], count: 0 }
+    return { data: [], count: 0, error: 'Could not load restaurants' }
   }
 
-  return { data: (data as unknown as Tenant[]) || [], count: count ?? 0 }
+  return { data: (data as unknown as Tenant[]) || [], count: count ?? 0, error: null }
 })
 
 export const getTenant = cache(async (id: string): Promise<Tenant | null> => {

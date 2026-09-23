@@ -49,6 +49,43 @@ describe('createCachedRead', () => {
     await expect(read()).rejects.toThrow('boom')
   })
 
+  /*
+   * Next's data cache refuses entries over 2 MB: in production it logs and
+   * skips the write (so every view re-runs the query plan), in development it
+   * THROWS into the page. The wrapper measures the entry the way Next stores
+   * it (the result JSON, stringified again as the entry body) and delivers an
+   * oversized result without offering it to the cache at all.
+   */
+  test('delivers an oversized result without offering it to the cache', async () => {
+    const { createCachedRead } = await import('@/lib/storefront/cached-read')
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const big = { rows: 'x'.repeat(500) }
+    const read = createCachedRead(['big'], async () => big, { tags: () => [], maxEntryBytes: 100 })
+
+    await expect(read()).resolves.toEqual(big)
+
+    const boundary = cacheSpy.mock.calls[0]
+    expect(boundary).toBeDefined()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('too large to cache'))
+    warn.mockRestore()
+  })
+
+  test('counts the escaping Next adds when it stores the entry body', async () => {
+    const { measureCacheEntryBytes } = await import('@/lib/storefront/cached-read')
+    // Every quote in the result is escaped again inside the entry body.
+    const value = { a: '"' }
+    expect(measureCacheEntryBytes(value)).toBe(JSON.stringify(JSON.stringify(value)).length)
+    expect(measureCacheEntryBytes(value)).toBeGreaterThan(JSON.stringify(value).length)
+  })
+
+  test('caches a result under the size limit as before', async () => {
+    const { createCachedRead } = await import('@/lib/storefront/cached-read')
+    const loader = jest.fn(async () => ({ small: true }))
+    const read = createCachedRead(['small'], loader, { tags: () => [], maxEntryBytes: 1000 })
+
+    await expect(read()).resolves.toEqual({ small: true })
+  })
+
   test('storefront tags are stable per slug and per tenant id', async () => {
     const { storefrontTag, storefrontTenantIdTag } = await import('@/lib/storefront/cached-read')
     expect(storefrontTag('cafe')).toBe('storefront:cafe')

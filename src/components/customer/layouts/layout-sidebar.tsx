@@ -8,6 +8,7 @@ import { MenuGridGrouped } from '../menu-grid-grouped'
 import { SearchBar } from '../search-bar'
 import { CategoryIcon } from '@/components/shared/category-icon'
 import { StorefrontHero } from '@/components/customer/storefront-hero'
+import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
 
 type LayoutSidebarProps = MenuLayoutContentProps
 
@@ -27,7 +28,7 @@ export const LayoutSidebar = memo(function LayoutSidebar({
     bannerOverride,
     currentSlide,
     setCurrentSlide,
-    mobileGridColumns = 1,
+    mobileGridColumns = DEFAULT_MOBILE_GRID_COLUMNS,
     menuEngineeringEnabled,
     hideCurrencySymbol,
 }: Omit<LayoutSidebarProps, 'activeCategory' | 'setActiveCategory'>) {

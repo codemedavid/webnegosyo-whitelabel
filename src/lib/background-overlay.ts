@@ -10,6 +10,7 @@
  */
 
 import type { CSSProperties } from 'react'
+import { cssUrl } from '@/lib/safe-url'
 
 /** Every tenant column this feature reads. Kept in sync by a guardrail test. */
 export const BACKGROUND_OVERLAY_COLUMNS = [
@@ -165,9 +166,14 @@ export function buildBackgroundRootStyle(background: BackgroundOverlay): CSSProp
 /** Inline style for the image layer. Empty object when there is no image. */
 export function buildBackgroundImageStyle(background: BackgroundOverlay): CSSProperties {
   if (!background.hasImage || !background.imageUrl) return {}
+  // Re-checked here, not only in the resolver: this builder accepts any
+  // BackgroundOverlay, and a value that closes url("…") would inject
+  // declarations into the storefront's inline style.
+  const backgroundImage = cssUrl(background.imageUrl)
+  if (!backgroundImage) return {}
 
   return {
-    backgroundImage: `url("${background.imageUrl}")`,
+    backgroundImage,
     backgroundSize: background.imageSize,
     backgroundRepeat: background.imageRepeat,
     backgroundPosition: background.imagePosition,

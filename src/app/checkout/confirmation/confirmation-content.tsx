@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
 import type { CheckoutLeadWithPaymentMethod } from '@/types/database'
 import { trackMetaEvent } from '@/lib/meta-pixel'
-import { uploadImageToImageKit, isImageKitConfigured } from '@/lib/imagekit-upload'
+import { uploadPaymentProofImage, isImageKitConfigured } from '@/lib/imagekit-upload'
 
 const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 
@@ -66,8 +66,8 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
     setUploadProgress(0)
 
     try {
-      const { url } = await uploadImageToImageKit(file, {
-        folder: 'checkout-proofs',
+      const { url } = await uploadPaymentProofImage(file, {
+        purpose: 'platform-signup',
         onProgress: setUploadProgress,
       })
 

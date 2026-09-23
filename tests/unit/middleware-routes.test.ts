@@ -3,6 +3,7 @@
  */
 import {
   hasSupabaseCookie,
+  isFrameProtectedPath,
   isPublicRoute,
   isSelfAuthenticatedApiRoute,
   tenantAdminSlugFor,
@@ -102,5 +103,37 @@ describe('path hardening', () => {
 
   it('never treats a global API route as a tenant admin path', () => {
     expect(tenantAdminSlugFor('/api/admin/anything')).toBeNull()
+  })
+})
+
+describe('isFrameProtectedPath', () => {
+  it.each([
+    '/shop/admin',
+    '/shop/admin/branding',
+    '/shop/ADMIN/orders',
+    '//shop//admin',
+    '/shop/login',
+    '/shop/login/reset',
+    '/superadmin',
+    '/superadmin/tenants',
+    '/superadmin/login',
+    '/superadmin/mcp/authorize',
+  ])('refuses cross-origin framing of %s', (path) => {
+    expect(isFrameProtectedPath(path)).toBe(true)
+  })
+
+  it.each([
+    '/',
+    '/shop/menu',
+    '/shop/menu/item/abc',
+    '/shop/cart',
+    '/shop/checkout',
+    '/shop/about',
+    '/shop/admin-tips',
+    '/shop/loginx',
+    '/privacy',
+    '/api/revalidate-menu',
+  ])('leaves %s embeddable (merchants embed their storefront)', (path) => {
+    expect(isFrameProtectedPath(path)).toBe(false)
   })
 })

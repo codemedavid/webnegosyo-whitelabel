@@ -5602,10 +5602,16 @@ export type Database = {
           button_primary_text_color: string | null
           button_secondary_color: string | null
           button_secondary_text_color: string | null
+          card_add_button: string | null
+          card_density: string | null
+          card_description: string | null
           card_description_color: string | null
+          card_image_fit: string | null
+          card_image_ratio: string | null
           card_price_color: string | null
           card_roundness: string | null
           card_template: string | null
+          card_text_align: string | null
           card_title_color: string | null
           cards_border_color: string | null
           cards_color: string | null
@@ -5873,10 +5879,16 @@ export type Database = {
           button_primary_text_color?: string | null
           button_secondary_color?: string | null
           button_secondary_text_color?: string | null
+          card_add_button?: string | null
+          card_density?: string | null
+          card_description?: string | null
           card_description_color?: string | null
+          card_image_fit?: string | null
+          card_image_ratio?: string | null
           card_price_color?: string | null
           card_roundness?: string | null
           card_template?: string | null
+          card_text_align?: string | null
           card_title_color?: string | null
           cards_border_color?: string | null
           cards_color?: string | null
@@ -6144,10 +6156,16 @@ export type Database = {
           button_primary_text_color?: string | null
           button_secondary_color?: string | null
           button_secondary_text_color?: string | null
+          card_add_button?: string | null
+          card_density?: string | null
+          card_description?: string | null
           card_description_color?: string | null
+          card_image_fit?: string | null
+          card_image_ratio?: string | null
           card_price_color?: string | null
           card_roundness?: string | null
           card_template?: string | null
+          card_text_align?: string | null
           card_title_color?: string | null
           cards_border_color?: string | null
           cards_color?: string | null

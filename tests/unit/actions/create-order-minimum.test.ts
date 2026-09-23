@@ -16,10 +16,17 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 interface TableRows {
   tenants?: Record<string, unknown> | null
   order_types?: Record<string, unknown> | null
+  menu_items?: Array<Record<string, unknown>> | null
 }
 
 const insertedTables: string[] = []
 let tableRows: TableRows = {}
+
+/**
+ * The dish the carts below order. The minimum is measured against the
+ * SERVER-priced subtotal, so every test needs the menu row to price against.
+ */
+const MENU_ITEMS = [{ id: 'mi-1', name: 'Tapsilog', price: 160, discounted_price: null, is_available: true }]
 
 function makeQuery(table: string) {
   const row = (tableRows as Record<string, unknown>)[table] ?? null
@@ -27,6 +34,7 @@ function makeQuery(table: string) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    in: () => chain,
     order: () => chain,
     limit: () => chain,
     single: async () => result,
@@ -91,6 +99,7 @@ describe('createOrderAction — minimum order enforcement', () => {
   test('rejects an order below the order type minimum', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'delivery', name: 'Delivery', minimum_order_amount: 500 },
     }
 
@@ -104,6 +113,7 @@ describe('createOrderAction — minimum order enforcement', () => {
   test('never reaches the order backend when the minimum is unmet', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'delivery', name: 'Delivery', minimum_order_amount: 500 },
     }
 
@@ -116,6 +126,7 @@ describe('createOrderAction — minimum order enforcement', () => {
   test('tells the customer how much more to add', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'delivery', name: 'Delivery', minimum_order_amount: 500 },
     }
 
@@ -128,6 +139,7 @@ describe('createOrderAction — minimum order enforcement', () => {
   test('lets an order at exactly the minimum through the gate', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'delivery', name: 'Delivery', minimum_order_amount: 320 },
     }
 
@@ -142,6 +154,7 @@ describe('createOrderAction — minimum order enforcement', () => {
   test('does not gate an order type without a minimum', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'pickup', name: 'Pickup', minimum_order_amount: 0 },
     }
 
@@ -154,6 +167,7 @@ describe('createOrderAction — minimum order enforcement', () => {
   test('does not gate a tenant whose order types predate the column', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'delivery', name: 'Delivery' },
     }
 

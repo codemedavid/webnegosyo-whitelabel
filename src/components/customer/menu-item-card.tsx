@@ -41,7 +41,9 @@ export const MenuItemCard = memo(function MenuItemCard({ item, onSelect, brandin
   return (
     // Click-to-inspect tag lives on the card wrapper (not the grid) so every
     // layout — grid-focus, magazine, mosaic, horizontal scroll — is covered.
-    <div style={{ contentVisibility: 'auto' }} data-branding-scope="storefront/cards">
+    // h-full lets designs that fill their grid cell (the flexible templates)
+    // line up row by row; fixed-height designs are unaffected.
+    <div className="h-full" style={{ contentVisibility: 'auto' }} data-branding-scope="storefront/cards">
       <CardTemplateRenderer
         template={template}
         item={item}

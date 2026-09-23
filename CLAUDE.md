@@ -186,7 +186,7 @@ Two-path architecture with graceful degradation:
 - **Upstash Redis**: Caching for webhooks (`src/lib/redis-cache.ts`)
 - **Sentry**: Error tracking and session replay. Server + edge + client instrumentation (`src/instrumentation.ts`, `src/instrumentation-client.ts`, `src/app/global-error.tsx`)
 - **AI Menu Parsing**: `POST /api/ai/parse-menu` — superadmin endpoint that sends raw menu text to OpenRouter (Llama 3.3 70B Instruct) for structured extraction of categories, items, variations, and addons
-- **Expo Push**: Mobile push notifications via `exp.host/--/api/v2/push/send` (triggered from Convex on new orders)
+- **Expo Push**: Mobile push notifications via `exp.host/--/api/v2/push/send` — from Convex for Convex tenants, from `POST /api/push/notify-order` (an `orders` trigger via pg_net) for platform-backend tenants. Expo answers HTTP 200 while refusing devices, so both paths read the **tickets** and then the **receipts** (`src/lib/push/expo-delivery.ts`); `MismatchSenderId` appears only in a receipt and means the APK's Firebase project and the FCM V1 key on EAS disagree — `webnegosyo-app/scripts/check-fcm-credentials.mjs` fails an Android build on exactly that.
 
 ### Component Organization
 
@@ -198,7 +198,9 @@ Two-path architecture with graceful degradation:
 
 ### Tenant Branding
 
-Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/branding-utils.ts`). Card templates: classic, minimal, modern, elegant, compact, bold, glass, polaroid, brutalist, magazine, zen, neon.
+Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/branding-utils.ts`). Card templates: classic, minimal, modern, elegant, compact, bold, glass, polaroid, brutalist, magazine, zen, neon, storefront (fixed designs), plus the **flexible** set — showcase, atelier, kiosk, sticker, menuboard, arch — built on `card-templates/flex/card-kit.tsx` and tuned by six `card_*` knob columns (`src/lib/card-style.ts`; NULL/`auto` = template default, per-device via `mobile_overrides`). A new flexible design is flagged `isFlexible` in `CARD_TEMPLATES` and composes the kit. Page layouts add storefront, kiosk, rails, lookbook — scroll-based catalogs sharing `layouts/layout-parts.tsx` + `useCategoryScrollSpy`.
+
+Dev gotcha: `/_next/static` is served `immutable` even in dev, and dev chunk names don't change, so a browser that already loaded the storefront keeps running stale client code after edits. Load a fresh origin (e.g. `127.0.0.1` instead of `localhost`) when verifying UI changes.
 
 ### Feature Flags
 

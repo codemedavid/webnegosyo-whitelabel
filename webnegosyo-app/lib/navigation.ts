@@ -69,3 +69,14 @@ export const NEW_CATEGORY_ID = "new" as const;
 export function categoryHref(categoryId: string): `/(main)/category/${string}` {
   return `/(main)/category/${encodeURIComponent(categoryId)}`;
 }
+
+/**
+ * Build the href for one loyalty member's profile.
+ *
+ * Keyed by the IDENTITY key (`phone:+63…`), not a customer id: a stamp card
+ * can exist before the customer profile row that would name it, and the
+ * balance tables are keyed by the phone throughout.
+ */
+export function loyaltyMemberHref(customerKey: string): `/(main)/loyalty-member/${string}` {
+  return `/(main)/loyalty-member/${encodeURIComponent(customerKey)}`;
+}

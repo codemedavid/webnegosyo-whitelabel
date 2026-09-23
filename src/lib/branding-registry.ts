@@ -9,6 +9,10 @@
  * (src/lib/branding-utils.ts) so the panel's "↳ Inherits" labels are truthful.
  */
 
+import { CARD_TEMPLATES } from '@/lib/card-templates'
+import { CARD_STYLE_FIELDS } from '@/lib/card-style'
+import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
+
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
 export interface BrandingField {
@@ -38,6 +42,14 @@ export interface BrandingField {
   placeholder?: string
   min?: number
   max?: number
+  /** Select fields only: render as a visual gallery instead of chips. */
+  presentation?: 'card-gallery' | 'layout-gallery'
+  /**
+   * Show the field only while another field's resolved value is (or, with
+   * `negate`, is not) one of `values` — e.g. knobs that only a subset of
+   * templates respond to.
+   */
+  showWhen?: { fieldId: string; values: readonly string[]; negate?: boolean }
 }
 
 export interface BrandingSection {
@@ -83,8 +95,18 @@ const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'ban
 const CARD_TEMPLATE_OPTIONS = [
   'classic', 'minimal', 'modern', 'elegant', 'compact', 'bold', 'glass',
   'polaroid', 'brutalist', 'magazine', 'zen', 'neon', 'storefront',
+  'showcase', 'atelier', 'kiosk', 'sticker', 'menuboard', 'arch',
 ] as const
-const PAGE_LAYOUT_OPTIONS = ['default', 'sidebar', 'magazine', 'grid-focus', 'list', 'mosaic'] as const
+const PAGE_LAYOUT_OPTIONS = [
+  'default', 'sidebar', 'magazine', 'grid-focus', 'list', 'mosaic',
+  'storefront', 'kiosk', 'rails', 'lookbook',
+] as const
+const FLEXIBLE_CARD_TEMPLATES = CARD_TEMPLATES.filter((t) => t.isFlexible).map((t) => t.id)
+const WHEN_FLEXIBLE_CARD = { fieldId: 'card_template', values: FLEXIBLE_CARD_TEMPLATES }
+const CARD_STYLE_REGISTRY_FIELDS: BrandingField[] = CARD_STYLE_FIELDS.map((knob) => ({
+  ...select(knob.column, knob.label, knob.options, 'auto'),
+  showWhen: WHEN_FLEXIBLE_CARD,
+}))
 const CART_CHECKOUT_TEMPLATE_OPTIONS = ['classic', 'modern', 'wizard', 'minimal', 'express'] as const
 
 export const BRANDING_SURFACES: BrandingSurface[] = [
@@ -239,14 +261,24 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Layout & menu cards',
         fields: [
-          select('page_layout', 'Page layout', PAGE_LAYOUT_OPTIONS, 'default'),
-          select('card_template', 'Card template', CARD_TEMPLATE_OPTIONS, 'classic'),
-          { ...number('mobile_grid_columns', 'Grid columns (mobile)', 1, 1, 4), mobileOnly: true, columnBacked: true },
+          { ...select('page_layout', 'Page layout', PAGE_LAYOUT_OPTIONS, 'default'), presentation: 'layout-gallery' },
+          { ...select('card_template', 'Card template', CARD_TEMPLATE_OPTIONS, 'classic'), presentation: 'card-gallery' },
+          { ...number('mobile_grid_columns', 'Grid columns (mobile)', DEFAULT_MOBILE_GRID_COLUMNS, 1, 2), mobileOnly: true, columnBacked: true },
           color('cards_color', 'Card background', '#ffffff'),
           color('cards_border_color', 'Card border', null, 'border_color'),
           color('card_title_color', 'Title text', null, 'text_primary_color'),
           color('card_price_color', 'Price text', null, 'primary_color'),
           color('card_description_color', 'Description text', null, 'text_secondary_color'),
+        ],
+      },
+      {
+        title: 'Card style',
+        fields: [
+          {
+            ...note('note_card_style', 'Card style works with the flexible templates: Showcase, Atelier, Kiosk, Sticker, Menu Board and Arch. Pick one above to fine-tune it here.'),
+            showWhen: { ...WHEN_FLEXIBLE_CARD, negate: true },
+          },
+          ...CARD_STYLE_REGISTRY_FIELDS,
         ],
       },
       {
@@ -594,6 +626,18 @@ export function getInheritSourceLabel(fieldId: string, draft: ValueBag, tenant: 
  */
 export function editsTenantColumn(field: BrandingField, isMobile: boolean): boolean {
   return !isMobile || field.columnBacked === true
+}
+
+/**
+ * Whether a field should show, given a resolver for other fields' current
+ * (draft-aware, device-aware) values. Fields without `showWhen` always show.
+ */
+export function isFieldVisible(field: BrandingField, getValue: (fieldId: string) => unknown): boolean {
+  if (!field.showWhen) return true
+  const { fieldId, values, negate } = field.showWhen
+  const current = getValue(fieldId)
+  const isMatch = typeof current === 'string' && values.includes(current)
+  return negate ? !isMatch : isMatch
 }
 
 /** All editable field ids belonging to one surface. */

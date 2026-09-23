@@ -10,6 +10,7 @@ import { useState } from 'react'
 import type { BrandingField } from '@/lib/branding-registry'
 import type { PromotionBanner } from '@/types/database'
 import { ImageUpload } from '@/components/shared/image-upload'
+import { CardTemplateGallery, PageLayoutGallery, type GalleryContext } from './template-gallery'
 
 export interface FieldRowProps {
   field: BrandingField
@@ -23,6 +24,8 @@ export interface FieldRowProps {
   onClear: () => void
   /** Options for `product`-type fields (the tenant's own menu items). */
   productOptions?: readonly { value: string; label: string }[]
+  /** Sample dish + live branding for `card-gallery` / `layout-gallery` selects. */
+  gallery?: GalleryContext
 }
 
 const HEX_COLOR_PATTERN = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -94,7 +97,13 @@ function ToggleRow({ field, value, onChange }: FieldRowProps) {
   )
 }
 
-function SelectRow({ field, value, onChange }: FieldRowProps) {
+function SelectRow({ field, value, onChange, gallery }: FieldRowProps) {
+  if (field.presentation === 'card-gallery' && gallery) {
+    return <CardTemplateGallery value={value} onChange={onChange} label={field.label} context={gallery} />
+  }
+  if (field.presentation === 'layout-gallery' && gallery) {
+    return <PageLayoutGallery value={value} onChange={onChange} label={field.label} brand={gallery.branding.primary} />
+  }
   return (
     <div>
       <div className="mb-1.5 text-[12.5px] font-semibold">{field.label}</div>

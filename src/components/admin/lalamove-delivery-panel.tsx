@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import {
   isActiveLalamoveDelivery,
   isLalamoveFinal,
+  isRebookableLalamoveStatus,
   lalamoveStatusTone,
   type LalamoveStatusTone,
 } from '@/lib/lalamove-status'
@@ -29,6 +30,9 @@ import type { OrderWithItems } from '@/lib/orders-service'
  * human pressed "Sync Status" — driver assignment was invisible until then.
  */
 const AUTO_SYNC_INTERVAL_MS = 45_000
+
+const REBOOK_CONFIRMATION =
+  'Book a new Lalamove rider for this order? This gets a fresh quote and books it right away.'
 
 const STATUS_BADGE_CLASSES: Record<LalamoveStatusTone, string> = {
   searching: 'bg-orange-100 text-orange-800 border-orange-300',
@@ -50,6 +54,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
   const [creatingLalamove, setCreatingLalamove] = useState(false)
   const [addingPriorityFee, setAddingPriorityFee] = useState(false)
   const [requoting, setRequoting] = useState(false)
+  const [rebooking, setRebooking] = useState(false)
 
   const lalamoveOrderId = order.lalamove_order_id
   const lalamoveStatus = order.lalamove_status
@@ -145,19 +150,8 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
     setSyncingLalamove(false)
   }
 
-  const handleCreateLalamoveOrder = async () => {
-    if (!order.lalamove_quotation_id) {
-      toast.error('No quotation ID found')
-      return
-    }
-
-    if (order.lalamove_order_id && String(order.lalamove_order_id).trim() !== '') {
-      toast.error('Lalamove order already exists')
-      return
-    }
-
-    setCreatingLalamove(true)
-
+  /** Books a rider on `quotationId` and reports the outcome. */
+  const bookOnQuotation = async (quotationId: string): Promise<boolean> => {
     const customerName = order.customer_name || 'Customer'
     // May be '' on a checkout form with no phone field. The action recovers
     // the customer's phone from customer_data, or books with the store's own
@@ -170,7 +164,7 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
     const result = await createLalamoveOrderAction(
       tenantId,
       order.id,
-      order.lalamove_quotation_id,
+      quotationId,
       '',
       '',
       customerName,
@@ -178,17 +172,57 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
       { orderId: order.id, tenantId }
     )
 
-    if (result.success) {
-      toast.success('Lalamove order created successfully!')
-      if (result.recipientPhoneSource === 'store') {
-        toast.info(STORE_PHONE_RECIPIENT_NOTICE)
-      }
-      router.refresh()
-    } else {
+    if (!result.success) {
       toast.error(result.error || 'Failed to create Lalamove order')
+      return false
+    }
+    toast.success('Lalamove order created successfully!')
+    if (result.recipientPhoneSource === 'store') {
+      toast.info(STORE_PHONE_RECIPIENT_NOTICE)
+    }
+    return true
+  }
+
+  const handleCreateLalamoveOrder = async () => {
+    if (!order.lalamove_quotation_id) {
+      toast.error('No quotation ID found')
+      return
     }
 
+    if (order.lalamove_order_id && String(order.lalamove_order_id).trim() !== '') {
+      toast.error('Lalamove order already exists')
+      return
+    }
+
+    setCreatingLalamove(true)
+    if (await bookOnQuotation(order.lalamove_quotation_id)) {
+      router.refresh()
+    }
     setCreatingLalamove(false)
+  }
+
+  /**
+   * Get the customer a rider again after the booking died (cancelled,
+   * rejected, expired). The requote retires the dead booking server-side, then
+   * the rider is booked on the fresh quotation — the one in props is stale.
+   * A failed booking still leaves the order quoted, so Create/Get New Quote
+   * take over after the refresh.
+   */
+  const handleRebook = async () => {
+    if (!confirm(REBOOK_CONFIRMATION)) return
+
+    setRebooking(true)
+    try {
+      const quote = await requoteLalamoveAction(tenantId, order.id)
+      if (!quote.success || !('data' in quote) || !quote.data) {
+        toast.error(quote.error || 'Failed to create a new quotation')
+        return
+      }
+      await bookOnQuotation(quote.data.quotationId)
+      router.refresh()
+    } finally {
+      setRebooking(false)
+    }
   }
 
   const isVisible = shouldShowLalamoveControls({
@@ -290,6 +324,24 @@ export function LalamoveDeliveryPanel({ order, tenantId }: LalamoveDeliveryPanel
                 </div>
               )}
               <div className="flex flex-col gap-1.5 sm:gap-2 pt-1 sm:pt-2">
+                {isRebookableLalamoveStatus(order.lalamove_status) && (
+                  <>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">
+                      This booking ended without a delivery. Rebook to send a new rider — the
+                      customer&apos;s delivery fee stays as it is.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={handleRebook}
+                      disabled={rebooking}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm h-8 sm:h-9"
+                    >
+                      <Truck className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      {rebooking ? 'Rebooking…' : 'Rebook Delivery'}
+                    </Button>
+                  </>
+                )}
                 <Button
                   size="sm"
                   variant="outline"

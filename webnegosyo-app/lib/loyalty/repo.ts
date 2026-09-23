@@ -20,10 +20,21 @@ export type ProgramsResult =
 
 export type ProgramWriteResult = { ok: true } | { ok: false; error: string };
 
-async function call(
+export interface LoyaltyApiResponse {
+  status: number;
+  body: Record<string, unknown> | null;
+}
+
+/**
+ * One fetch discipline for every loyalty route: aborted AND raced, session read
+ * inside the deadline. Exported so the members port cannot drift into a weaker
+ * one — a screen that hangs forever is indistinguishable from a broken store.
+ */
+export async function callLoyaltyApi(
+  path: string,
   method: "GET" | "POST",
   input: { tenantId: string; query?: string; body?: Record<string, unknown> },
-): Promise<{ status: number; body: Record<string, unknown> | null } | { status: 0; body: null }> {
+): Promise<LoyaltyApiResponse> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_, reject) => {
@@ -38,7 +49,7 @@ async function call(
     const token = data.session?.access_token;
     if (!token) return { status: 401, body: null };
 
-    const url = `${getWebAppUrl()}${PROGRAMS_PATH}${input.query ?? ""}`;
+    const url = `${getWebAppUrl()}${path}${input.query ?? ""}`;
     const response = await Promise.race([
       fetch(url, {
         signal: controller.signal,
@@ -58,7 +69,10 @@ async function call(
 }
 
 export async function fetchLoyaltyPrograms(tenantId: string): Promise<ProgramsResult> {
-  const result = await call("GET", { tenantId, query: `?tenantId=${encodeURIComponent(tenantId)}` });
+  const result = await callLoyaltyApi(PROGRAMS_PATH, "GET", {
+    tenantId,
+    query: `?tenantId=${encodeURIComponent(tenantId)}`,
+  });
   if (result.status === 401 || result.status === 403) return { ok: false, reason: "forbidden" };
   if (result.status !== 200 || !result.body || !Array.isArray(result.body.programs)) {
     return { ok: false, reason: "unavailable" };
@@ -73,7 +87,7 @@ export async function fetchLoyaltyPrograms(tenantId: string): Promise<ProgramsRe
 }
 
 async function write(tenantId: string, body: Record<string, unknown>): Promise<ProgramWriteResult> {
-  const result = await call("POST", { tenantId, body });
+  const result = await callLoyaltyApi(PROGRAMS_PATH, "POST", { tenantId, body });
   if (result.status === 200) return { ok: true };
   const error = typeof result.body?.error === "string" ? result.body.error : "Could not reach the platform.";
   return { ok: false, error };

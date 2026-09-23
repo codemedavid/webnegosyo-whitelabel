@@ -37,13 +37,18 @@ export interface ExpoPushMessage {
    * Ignored on iOS.
    */
   channelId: 'orders'
+  /**
+   * A new order is the one thing this app exists to announce, so it is sent at
+   * FCM high priority: Android may hold a normal-priority message until the
+   * device next leaves Doze, which is exactly when a counter phone is sitting
+   * face-down and nobody is watching the screen. On iOS this maps to an
+   * immediate-delivery APNs priority, which is what a pushed order already had.
+   */
+  priority: 'high'
   title: string
   body: string
   data: { orderId: string }
 }
-
-/** The Expo push API accepts at most this many messages per request. */
-export const EXPO_PUSH_CHUNK_SIZE = 100
 
 const notifyOrderPayloadSchema = z.object({
   order_id: z.string().uuid(),
@@ -114,17 +119,16 @@ export function buildExpoPushMessages(
     to: row.token,
     sound: 'default',
     channelId: 'orders',
+    priority: 'high',
     title: 'New Order!',
     body,
     data: { orderId: order.id },
   }))
 }
 
-/** Batches sized for the Expo push API. */
-export function chunkExpoPushMessages<T>(messages: readonly T[]): T[][] {
-  const chunks: T[][] = []
-  for (let i = 0; i < messages.length; i += EXPO_PUSH_CHUNK_SIZE) {
-    chunks.push(messages.slice(i, i + EXPO_PUSH_CHUNK_SIZE))
-  }
-  return chunks
-}
+/**
+ * Chunking, and the reading of what Expo says back, live in
+ * `./expo-delivery.ts` — shared with the announcement path. Re-exported so
+ * existing callers keep one import.
+ */
+export { chunkExpoPushMessages, EXPO_PUSH_CHUNK_SIZE } from './expo-delivery'

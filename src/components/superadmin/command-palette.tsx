@@ -138,7 +138,7 @@ export function CommandPalette({
         hint: 'Open Restaurants filtered by this query',
         icon: Search,
         group: 'Search',
-        onSelect: () => go(`/superadmin/tenants?search=${encodeURIComponent(query.trim())}`),
+        onSelect: () => go(`/superadmin/tenants?q=${encodeURIComponent(query.trim())}`),
       })
     }
 

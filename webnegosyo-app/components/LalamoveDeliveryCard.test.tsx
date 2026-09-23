@@ -295,3 +295,44 @@ describe("what the merchant can see", () => {
     expect(screen.getByText(/dashboard/i)).toBeTruthy();
   });
 });
+
+describe("rebooking after the delivery was cancelled", () => {
+  const CANCELLED = { ...BOOKED, lalamoveStatus: "CANCELED" };
+
+  it("gets a fresh quote and books a new rider after a confirmation", async () => {
+    // One accidental Cancel used to leave only Sync — no way to get the
+    // customer a rider again from the app.
+    render(<LalamoveDeliveryCard order={CANCELLED} />);
+
+    fireEvent.press(screen.getByText(/Rebook Delivery/i));
+    expect(mockRunPlatformLalamoveOp).not.toHaveBeenCalled();
+    pressAlertButton(/^rebook$/i);
+
+    await waitFor(() =>
+      expect(mockRunPlatformLalamoveOp).toHaveBeenCalledWith(
+        expect.objectContaining({ op: "book", orderId: "o1" }),
+      ),
+    );
+    const ops = mockRunPlatformLalamoveOp.mock.calls.map((call) => call[0].op);
+    expect(ops).toEqual(["requote", "book"]);
+  });
+
+  it("does not book when the fresh quote is refused, and says why", async () => {
+    mockRunPlatformLalamoveOp.mockResolvedValueOnce({ success: false, error: "No pickup pin" });
+    render(<LalamoveDeliveryCard order={CANCELLED} />);
+
+    fireEvent.press(screen.getByText(/Rebook Delivery/i));
+    pressAlertButton(/^rebook$/i);
+
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Lalamove", "No pickup pin"));
+    expect(mockRunPlatformLalamoveOp).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no rebook on a live or completed delivery", () => {
+    const { rerender } = render(<LalamoveDeliveryCard order={BOOKED} />);
+    expect(screen.queryByText(/Rebook Delivery/i)).toBeNull();
+
+    rerender(<LalamoveDeliveryCard order={{ ...BOOKED, lalamoveStatus: "COMPLETED" }} />);
+    expect(screen.queryByText(/Rebook Delivery/i)).toBeNull();
+  });
+});

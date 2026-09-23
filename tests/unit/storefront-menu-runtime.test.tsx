@@ -109,10 +109,18 @@ it('keeps unavailable items unorderable through the shared selection command', (
   expect(mockAddItem).not.toHaveBeenCalled()
 })
 
-it('quick-adds a plain available item once', () => {
+it('opens the product detail for a plain item instead of quick-adding', async () => {
   render(<MenuClient {...base} />)
   fireEvent.click(screen.getAllByText(item.name)[0])
-  expect(mockAddItem).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(screen.getByTestId('sheet')).toBeInTheDocument())
+  expect(mockAddItem).not.toHaveBeenCalled()
+})
+
+it('routes a brand admin to the full product page for a plain item', () => {
+  render(<MenuClient {...base} isBrandAdmin />)
+  fireEvent.click(screen.getAllByText(item.name)[0])
+  expect(mockPush).toHaveBeenCalledWith(`/test/menu/item/${item.id}`, { scroll: true })
+  expect(mockAddItem).not.toHaveBeenCalled()
 })
 
 it('blocks product selection when branch data failed', () => {

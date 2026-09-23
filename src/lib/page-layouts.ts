@@ -11,6 +11,10 @@ export type PageLayout =
     | 'grid-focus'  // Photo-forward, no hero, dense photo grid
     | 'list'        // Ultra-minimal single-column horizontal rows
     | 'mosaic'      // Pinterest-style masonry with varied card heights
+    | 'storefront'  // Shopify collection page: sticky chip bar + 4-up sections
+    | 'kiosk'       // Fast-food kiosk: big category tiles + bold section heads
+    | 'rails'       // Café app: featured rail + one swipeable rail per category
+    | 'lookbook'    // Editorial chapters: category covers + bento grids
 
 export interface PageLayoutDefinition {
     id: PageLayout
@@ -95,6 +99,34 @@ export const PAGE_LAYOUTS: PageLayoutDefinition[] = [
             'Discovery-oriented',
             'Artsy feel'
         ]
+    },
+    {
+        id: 'storefront',
+        name: 'Storefront',
+        description: 'Shopify-style collection page with a sticky category bar',
+        preview: '🛒',
+        features: ['Sticky category chips', 'Large section titles', 'Up to 4 products per row', 'Scroll-synced navigation']
+    },
+    {
+        id: 'kiosk',
+        name: 'Kiosk',
+        description: 'Fast-food kiosk with big category tiles',
+        preview: '🍔',
+        features: ['Big category tiles', 'Bold section headers', 'Side rail on desktop', 'Swipe tiles on phones']
+    },
+    {
+        id: 'rails',
+        name: 'Rails',
+        description: 'Café-app rows: swipe each category, expand to see all',
+        preview: '🎞️',
+        features: ['Featured items rail', 'One rail per category', 'See all expands in place', 'Great for many categories']
+    },
+    {
+        id: 'lookbook',
+        name: 'Lookbook',
+        description: 'Editorial chapters with a photo cover per category',
+        preview: '📖',
+        features: ['Category cover photos', 'Quiet chapter index', 'Feature spread per category', 'Brand-led storytelling']
     }
 ]
 

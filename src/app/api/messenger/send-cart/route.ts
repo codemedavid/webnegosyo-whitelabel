@@ -4,7 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActivePageById } from '@/lib/facebook/page-tokens'
 import { sendMessage } from '@/lib/facebook-api'
 import { formatPrice } from '@/lib/cart-utils'
-import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
 
 /**
  * Get CORS headers with origin validation against platform root domain.
@@ -15,9 +16,11 @@ function getCorsHeaders(request: NextRequest): Record<string, string> {
     const rootDomain = process.env.PLATFORM_ROOT_DOMAIN || 'webnegosyo.app'
 
     // Escape dots in domain for regex and build pattern
-    // Matches: https://tenant.webnegosyo.app or https://webnegosyo.app
+    // Matches: https://tenant.webnegosyo.app or https://webnegosyo.app — and
+    // nothing longer. Anchored at the end: an unanchored pattern also matched
+    // https://tenant.webnegosyo.app.attacker.example.
     const escapedDomain = rootDomain.replace(/\./g, '\\.')
-    const originPattern = new RegExp(`^https://([a-z0-9-]+\\.)?${escapedDomain}`, 'i')
+    const originPattern = new RegExp(`^https://([a-z0-9-]+\\.)?${escapedDomain}(:\\d+)?$`, 'i')
 
     const allowedOrigin = originPattern.test(origin) ? origin : ''
 
@@ -58,6 +61,38 @@ interface CartItemForSync {
     quantity: number
     subtotal: number
     variation?: string
+}
+
+/** Payload bounds: this route is public and its text is relayed to Messenger. */
+const MAX_CART_ITEMS = 100
+const MAX_ITEM_NAME_LENGTH = 200
+const MAX_VARIATION_LENGTH = 300
+const MAX_ITEM_QUANTITY = 999
+const MAX_ITEM_SUBTOTAL = 10_000_000
+/** Tenant ids are UUIDs and PSIDs ~17 digits; anything longer is not either. */
+const MAX_ID_LENGTH = 64
+
+const SEND_CART_RATE_LIMIT = { limit: 20, windowSec: 60 }
+
+function isValidCartItem(item: unknown): item is CartItemForSync {
+    if (!item || typeof item !== 'object') return false
+    const candidate = item as Record<string, unknown>
+    const { name, quantity, subtotal, variation } = candidate
+    return (
+        typeof name === 'string' &&
+        name.length <= MAX_ITEM_NAME_LENGTH &&
+        typeof quantity === 'number' &&
+        Number.isFinite(quantity) &&
+        quantity >= 0 &&
+        quantity <= MAX_ITEM_QUANTITY &&
+        typeof subtotal === 'number' &&
+        Number.isFinite(subtotal) &&
+        subtotal >= 0 &&
+        subtotal <= MAX_ITEM_SUBTOTAL &&
+        (variation === undefined ||
+            variation === null ||
+            (typeof variation === 'string' && variation.length <= MAX_VARIATION_LENGTH))
+    )
 }
 
 /**
@@ -110,7 +145,7 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             )
         }
-        const rateLimit = checkRateLimit(clientIP, { maxRequests: 20, windowMs: 60000 })
+        const rateLimit = await checkRateLimit(`send-cart:${clientIP}`, SEND_CART_RATE_LIMIT)
 
         if (!rateLimit.allowed) {
             return corsJson(request,
@@ -118,7 +153,7 @@ export async function POST(request: NextRequest) {
                 {
                     status: 429,
                     headers: {
-                        'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+                        'Retry-After': String(rateLimit.retryAfterSec),
                     },
                 }
             )
@@ -140,55 +175,43 @@ export async function POST(request: NextRequest) {
             throw parseError // Re-throw non-JSON errors for outer catch
         }
 
-        const { tenantId, psid, items, tenantSlug } = body as {
-            tenantId: string
-            psid: string
-            items: CartItemForSync[]
-            tenantSlug: string
+        // `tenantSlug` may still arrive from older clients; it is ignored. The
+        // checkout link is built from the tenant row resolved below, so a caller
+        // cannot make the store's Page message a link to somewhere else.
+        const { tenantId, psid, items } = body as {
+            tenantId: unknown
+            psid: unknown
+            items: unknown
         }
 
         // Validate required fields
-        if (!tenantId || !psid) {
+        if (
+            typeof tenantId !== 'string' || !tenantId || tenantId.length > MAX_ID_LENGTH ||
+            typeof psid !== 'string' || !psid || psid.length > MAX_ID_LENGTH
+        ) {
             return corsJson(request,
                 { error: 'Missing tenantId or psid' },
                 { status: 400 }
             )
         }
 
-        // Validate tenantSlug with strict slug pattern
-        // Trim and validate against regex to prevent malicious URL construction
-        const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
-        const sanitizedTenantSlug = typeof tenantSlug === 'string' ? tenantSlug.trim() : ''
-
-        if (!sanitizedTenantSlug || !slugRegex.test(sanitizedTenantSlug)) {
-            return corsJson(request,
-                { error: 'Invalid tenantSlug: must contain only alphanumeric characters and hyphens' },
-                { status: 400 }
-            )
-        }
-
         // Validate items array
-        if (!items || !Array.isArray(items)) {
+        if (!Array.isArray(items) || items.length > MAX_CART_ITEMS) {
             return corsJson(request,
-                { error: 'Invalid items: must be an array' },
+                { error: `Invalid items: must be an array of at most ${MAX_CART_ITEMS}` },
                 { status: 400 }
             )
         }
 
-        // Validate each item has required properties
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i]
-            if (
-                typeof item.name !== 'string' ||
-                typeof item.quantity !== 'number' ||
-                typeof item.subtotal !== 'number'
-            ) {
-                return corsJson(request,
-                    { error: `Invalid item at index ${ i }: must have name(string), quantity(number), and subtotal(number)` },
-                    { status: 400 }
-                )
-            }
+        // Validate each item has required, bounded properties
+        const invalidIndex = items.findIndex((item) => !isValidCartItem(item))
+        if (invalidIndex !== -1) {
+            return corsJson(request,
+                { error: `Invalid item at index ${ invalidIndex }: must have a short name, a quantity and a subtotal` },
+                { status: 400 }
+            )
         }
+        const cartItems = items as CartItemForSync[]
 
         const supabase = await createClient()
 
@@ -247,7 +270,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Format cart summary message
-        const message = formatCartSummary(items, tenant.name, sanitizedTenantSlug || tenant.slug)
+        const message = formatCartSummary(cartItems, tenant.name, tenant.slug)
 
         const sent = await sendMessage(
             psid,

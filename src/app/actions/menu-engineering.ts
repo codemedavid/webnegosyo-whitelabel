@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import {
   updateBcgClassification,
   bulkUpdateBcgClassification,
@@ -21,6 +21,7 @@ import {
   type CheckoutUpsellSettingsInput,
 } from '@/lib/menu-engineering-service'
 import { invalidateComplementaryPairsCache } from '@/lib/complementary-pairs-service'
+import { storefrontTenantIdTag } from '@/lib/storefront/cached-read'
 import { toggleMenuItemAvailability } from '@/lib/admin-service'
 import type { BcgClassification, MenuItem } from '@/types/database'
 
@@ -155,6 +156,8 @@ export async function createUpsellPairAction(
       invalidateComplementaryPairsCache(tenantId),
       invalidateCheckoutUpsellCache(tenantId),
     ])
+    // Product-page upgrades are served from the storefront data cache
+    revalidateTag(storefrontTenantIdTag(tenantId))
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/boost-sales`)
     revalidatePath(`/${tenantSlug}/menu/item/${input.source_item_id}`)
@@ -176,6 +179,8 @@ export async function deleteUpsellPairAction(
       invalidateComplementaryPairsCache(tenantId),
       invalidateCheckoutUpsellCache(tenantId),
     ])
+    // Product-page upgrades are served from the storefront data cache
+    revalidateTag(storefrontTenantIdTag(tenantId))
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
     revalidatePath(`/${tenantSlug}/admin/boost-sales`)
     revalidatePath(`/${tenantSlug}/menu`)

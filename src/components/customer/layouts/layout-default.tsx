@@ -10,6 +10,7 @@ import { SearchBar } from '../search-bar'
 import { CategoryTabs } from '../category-tabs'
 // CategorySubmenu not currently used in this layout
 import { StorefrontHero } from '@/components/customer/storefront-hero'
+import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
 
 type LayoutDefaultProps = MenuLayoutContentProps
 
@@ -31,7 +32,7 @@ export const LayoutDefault = memo(function LayoutDefault({
     bannerOverride,
     currentSlide,
     setCurrentSlide,
-    mobileGridColumns = 1,
+    mobileGridColumns = DEFAULT_MOBILE_GRID_COLUMNS,
     menuEngineeringEnabled,
     hideCurrencySymbol,
 }: LayoutDefaultProps) {

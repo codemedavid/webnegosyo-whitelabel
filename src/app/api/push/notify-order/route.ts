@@ -11,19 +11,29 @@
  * would not leak), so nothing in the payload is trusted: the order is re-read
  * by id with the service role, the tenant must match, and a once-only claim
  * row per order makes replays silent no-ops.
+ *
+ * What Expo says back is read, not assumed. This route used to count an HTTP
+ * 200 as "sent" — and an HTTP 200 is what Expo returns while refusing every
+ * single device. A whole platform's Android notifications were dropped for
+ * months behind that 200 (mismatched FCM project between the build and the
+ * EAS credential), reported here as a clean send. See `expo-delivery.ts`.
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   buildExpoPushMessages,
-  chunkExpoPushMessages,
   parseNotifyOrderPayload,
   resolveOrderOutletId,
   selectPushRecipients,
   type PushTokenRow,
 } from '@/lib/push/order-push'
-
-const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
+import {
+  chaseExpoReceipts,
+  describePushFailures,
+  sendExpoPushMessages,
+  staleTokensFrom,
+  type PushFailure,
+} from '@/lib/push/expo-delivery'
 
 interface NotifiableOrderRow {
   id: string
@@ -33,6 +43,47 @@ interface NotifiableOrderRow {
   total: number | null
   item_count: number | null
   customer_data: unknown
+}
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+/**
+ * Forgets the devices Expo says no longer have the app, in BOTH token tables:
+ * one physical device that has uninstalled is equally dead for order pushes
+ * and for platform announcements, and a token left behind inflates every
+ * "reached N devices" count from then on.
+ */
+async function pruneStaleTokens(admin: AdminClient, failures: readonly PushFailure[]) {
+  const stale = staleTokensFrom(failures)
+  if (stale.length === 0) return
+
+  const [orderTokens, deviceTokens] = await Promise.all([
+    admin.from('push_tokens').delete().in('token', stale),
+    admin.from('platform_device_tokens').delete().in('token', stale),
+  ])
+  if (orderTokens.error) {
+    console.error('[notify-order] stale push_tokens cleanup failed:', orderTokens.error.message)
+  }
+  if (deviceTokens.error) {
+    console.error(
+      '[notify-order] stale platform_device_tokens cleanup failed:',
+      deviceTokens.error.message
+    )
+  }
+}
+
+/**
+ * Runs follow-up work once the response is on its way. `after` throws when
+ * there is no request scope — a unit test, or any caller outside Next's
+ * server runtime — and the work then runs inline rather than being dropped:
+ * what it finds is the only signal that a whole platform has gone silent.
+ */
+function afterResponse(task: () => Promise<void>): Promise<void> | void {
+  try {
+    after(task)
+  } catch {
+    return task()
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -107,24 +158,30 @@ export async function POST(request: NextRequest) {
     itemCount: order.item_count ?? 1,
   })
 
-  let sent = 0
-  for (const chunk of chunkExpoPushMessages(messages)) {
-    try {
-      const response = await fetch(EXPO_PUSH_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk),
-      })
-      if (response.ok) {
-        sent += chunk.length
-      } else {
-        console.error('[notify-order] Expo push rejected:', response.status)
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
-      console.error('[notify-order] Expo push failed:', message)
-    }
+  const { accepted, failures, failedChunks } = await sendExpoPushMessages(messages)
+
+  const ticketRefusals = describePushFailures(failures)
+  if (ticketRefusals) {
+    console.error(`[notify-order] tenant ${order.tenant_id} ticket refusals: ${ticketRefusals}`)
+  }
+  if (failedChunks > 0) {
+    console.error(`[notify-order] ${failedChunks} chunk(s) never reached Expo`)
   }
 
-  return NextResponse.json({ sent })
+  // The receipts settle seconds later and are the ONLY place a provider-side
+  // refusal (MismatchSenderId, and every other Android-wide failure) appears.
+  // Chased after the response so the trigger is not kept waiting for them.
+  await afterResponse(async () => {
+    const receipts = await chaseExpoReceipts(accepted)
+    const all = [...failures, ...receipts.failures]
+    const refusals = describePushFailures(receipts.failures)
+    if (refusals) {
+      console.error(`[notify-order] tenant ${order.tenant_id} receipt refusals: ${refusals}`)
+    }
+    await pruneStaleTokens(admin, all)
+  })
+
+  // "Accepted", not "delivered": a receipt may still refuse these. Devices
+  // Expo refused outright are excluded, so a total failure reads as 0.
+  return NextResponse.json({ sent: accepted.length, refused: failures.length })
 }

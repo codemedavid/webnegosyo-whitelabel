@@ -13,6 +13,7 @@ import { PaymentProofField } from '@/components/customer/payment-proof-field'
 jest.mock('@/lib/imagekit-upload', () => ({
   isImageKitConfigured: () => true,
   uploadImageToImageKit: jest.fn(),
+  uploadPaymentProofImage: jest.fn(),
 }))
 
 const props = {
@@ -34,5 +35,26 @@ describe('PaymentProofField — upload picker', () => {
     expect(fileInput).toBeTruthy()
     expect(fileInput).not.toHaveClass('hidden')
     expect(fileInput).not.toHaveClass('sr-only')
+  })
+})
+
+describe('PaymentProofField — upload path', () => {
+  it('sends the screenshot through the server upload route, never a direct ImageKit upload', async () => {
+    const { fireEvent, waitFor } = await import('@testing-library/react')
+    const uploads = await import('@/lib/imagekit-upload')
+    jest.mocked(uploads.uploadPaymentProofImage).mockResolvedValue({
+      url: 'https://ik.imagekit.io/demo/payment-proofs/proof.jpg',
+      fileId: 'f1',
+      filePath: 'payment-proofs/proof.jpg',
+    })
+    const onUploaded = jest.fn()
+    render(<PaymentProofField {...props} onUploaded={onUploaded} />)
+
+    const input = screen.getByText(/upload screenshot/i).closest('label')!.querySelector('input[type="file"]')!
+    fireEvent.change(input, { target: { files: [new File(['x'], 'proof.jpg', { type: 'image/jpeg' })] } })
+
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith('https://ik.imagekit.io/demo/payment-proofs/proof.jpg', 'f1'))
+    expect(uploads.uploadPaymentProofImage).toHaveBeenCalled()
+    expect(uploads.uploadImageToImageKit).not.toHaveBeenCalled()
   })
 })

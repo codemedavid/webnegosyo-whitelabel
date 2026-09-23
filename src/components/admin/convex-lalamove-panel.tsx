@@ -11,6 +11,7 @@ import { shouldShowLalamoveControls } from "@/lib/lalamove-order-visibility";
 import {
   isActiveLalamoveDelivery,
   isLalamoveFinal,
+  isRebookableLalamoveStatus,
   lalamoveStatusTone,
   type LalamoveStatusTone,
 } from "@/lib/lalamove-status";
@@ -19,6 +20,8 @@ import { useConvexLalamoveActions, type ConvexLalamoveResult } from "@/hooks/use
 /** Same cadence as the Supabase panel: driver assignment shows up unprompted. */
 const AUTO_SYNC_INTERVAL_MS = 45_000;
 const DEFAULT_PRIORITY_FEE = "50";
+const REBOOK_CONFIRMATION =
+  "Book a new Lalamove rider for this order? This gets a fresh quote and books it right away.";
 
 const STATUS_BADGE_CLASSES: Record<LalamoveStatusTone, string> = {
   searching: "bg-orange-100 text-orange-800 border-orange-300",
@@ -62,7 +65,7 @@ function hasText(value: string | undefined): value is string {
  */
 export function ConvexLalamovePanel({ order, lalamoveEnabled }: ConvexLalamovePanelProps) {
   const actions = useConvexLalamoveActions();
-  const [busy, setBusy] = useState<"book" | "requote" | "sync" | "cancel" | "fee" | null>(null);
+  const [busy, setBusy] = useState<"book" | "requote" | "rebook" | "sync" | "cancel" | "fee" | null>(null);
 
   const lalamoveOrderId = hasText(order.lalamoveOrderId) ? order.lalamoveOrderId : undefined;
   const lalamoveStatus = order.lalamoveStatus;
@@ -104,16 +107,32 @@ export function ConvexLalamovePanel({ order, lalamoveEnabled }: ConvexLalamovePa
     }
   }
 
+  const reportBooked = (result: ConvexLalamoveResult) => {
+    toast.success("Lalamove order created successfully!");
+    if (result.recipientPhoneSource === "store") toast.info(STORE_PHONE_RECIPIENT_NOTICE);
+  };
+
   const handleBook = () =>
-    run(
-      "book",
-      () => actions.book({ orderId }),
-      (result) => {
-        toast.success("Lalamove order created successfully!");
-        if (result.recipientPhoneSource === "store") toast.info(STORE_PHONE_RECIPIENT_NOTICE);
+    run("book", () => actions.book({ orderId }), reportBooked, "Failed to create Lalamove order");
+
+  /**
+   * Get the customer a rider again after the booking died (cancelled,
+   * rejected, expired): the requote retires the dead booking, then the rider
+   * is booked on the fresh quotation. A failed booking leaves the order
+   * quoted, and the live query swaps in the Create/Get New Quote controls.
+   */
+  const handleRebook = () => {
+    if (!confirm(REBOOK_CONFIRMATION)) return;
+    return run(
+      "rebook",
+      async () => {
+        const quote = await actions.requote({ orderId });
+        return quote.success ? actions.book({ orderId }) : quote;
       },
-      "Failed to create Lalamove order",
+      reportBooked,
+      "Failed to rebook the delivery",
     );
+  };
 
   const handleRequote = () =>
     run(
@@ -212,6 +231,18 @@ export function ConvexLalamovePanel({ order, lalamoveEnabled }: ConvexLalamovePa
               </a>
             )}
             <div className="flex flex-col gap-2 pt-2">
+              {isRebookableLalamoveStatus(lalamoveStatus) && (
+                <>
+                  <p className="text-[10px] text-muted-foreground sm:text-xs">
+                    This booking ended without a delivery. Rebook to send a new rider — the
+                    customer&apos;s delivery fee stays as it is.
+                  </p>
+                  <Button size="sm" onClick={handleRebook} disabled={busy !== null} className="w-full bg-blue-600 hover:bg-blue-700">
+                    <Truck className="mr-2 size-3" />
+                    {busy === "rebook" ? "Rebooking…" : "Rebook Delivery"}
+                  </Button>
+                </>
+              )}
               <Button size="sm" variant="outline" onClick={handleSync} disabled={busy !== null} className="w-full">
                 <RefreshCw className={`mr-2 size-3 ${busy === "sync" ? "animate-spin" : ""}`} />
                 {busy === "sync" ? "Syncing…" : "Sync Status"}
