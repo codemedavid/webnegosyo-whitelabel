@@ -61,8 +61,8 @@ describe('isSelfAuthenticatedApiRoute', () => {
 })
 
 describe('tenantRewritePath', () => {
-  it('sends the host root to the menu', () => {
-    expect(tenantRewritePath('shop', '/')).toBe('/shop/menu')
+  it('sends the host root to the tenant home, which each storefront pack draws', () => {
+    expect(tenantRewritePath('shop', '/')).toBe('/shop')
   })
 
   it('prefixes any other page with the tenant', () => {

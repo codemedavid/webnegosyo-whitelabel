@@ -171,3 +171,10 @@ describe('storefront pack selection', () => {
     for (const id of STOREFRONT_PACK_IDS) expect(STOREFRONT_PACK_PAGES[id].menu).toBeDefined()
   })
 })
+
+describe('the tenant home page', () => {
+  it('shows the menu for a pack without a home page', async () => {
+    render(<MenuClient {...base} page="home" />)
+    await waitFor(() => expect(screen.getByTestId('menu-layout')).toBeInTheDocument())
+  })
+})
