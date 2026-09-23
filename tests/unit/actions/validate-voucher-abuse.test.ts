@@ -95,3 +95,6 @@ describe('validateVoucherAction abuse limits', () => {
     expect(buildVoucherPreview.mock.calls[0][0].codes).toEqual(['SAVE10', 'FREESHIP'])
   })
 })
+
+// A module, not a script: without this, top-level helpers collide across test files under tsc.
+export {};

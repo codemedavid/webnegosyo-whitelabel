@@ -130,3 +130,6 @@ describe('product page upgrade upsells', () => {
     expect(mockComplementary).toHaveBeenCalledWith(ITEM, 'cat-1', TENANT, { pairingRulesEnabled: false })
   })
 })
+
+// A module, not a script: without this, top-level helpers collide across test files under tsc.
+export {};

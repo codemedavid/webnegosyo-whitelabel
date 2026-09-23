@@ -128,3 +128,6 @@ describe('checkRateLimit (distributed)', () => {
     expect(second.allowed).toBe(false)
   })
 })
+
+// A module, not a script: without this, top-level helpers collide across test files under tsc.
+export {};

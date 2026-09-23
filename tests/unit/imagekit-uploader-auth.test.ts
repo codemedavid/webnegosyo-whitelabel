@@ -102,3 +102,6 @@ describe('resolveImageKitUploader', () => {
     expect(result.status).toBe('denied')
   })
 })
+
+// A module, not a script: without this, top-level helpers collide across test files under tsc.
+export {};
