@@ -138,10 +138,23 @@ describe('checkout entry for packs without a cart drawer', () => {
     expect(mockUseCartCheckout).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: true, hasItems: true }))
   })
 
-  it('never prefetches for a pack whose cart drawer owns checkout', async () => {
+  it('does not run a second checkout gate for a pack whose cart drawer owns checkout', async () => {
+    // The drawer runs its own gate; a second one here would add another
+    // open-hours poller to every legacy storefront.
     mockCart.items = [{ id: 'line-1' }]
     await renderRuntime(controller(), undefined, 'cart-drawer')
-    expect(mockUseCartCheckout).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+    expect(mockUseCartCheckout).not.toHaveBeenCalled()
+  })
+
+  it('opens the cart drawer when a drawer pack requests checkout', async () => {
+    const openCart = jest.fn()
+    const { useStorefrontRuntime } = await import('@/storefront/runtime/storefront-runtime')
+    function PackPage() {
+      return <button onClick={useStorefrontRuntime().requestCheckout}>Order</button>
+    }
+    await renderRuntime(controller({ openCart }), <PackPage />, 'cart-drawer')
+    screen.getByRole('button', { name: 'Order' }).click()
+    expect(openCart).toHaveBeenCalledTimes(1)
   })
 
   it('shows the checkout upsell interstitial for a direct-checkout pack', async () => {

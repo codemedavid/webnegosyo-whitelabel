@@ -75,22 +75,59 @@ interface StorefrontRuntimeProps {
  * `children`) and reads the controller from `useStorefrontRuntime`, so a new
  * pack cannot forget one of these.
  */
-export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', children }: StorefrontRuntimeProps) {
-  const { tenant, tenantSlug, categories, allMenuItems, selectedBundle, sheetItem } = menu
-  const branding = useMemo(() => getTenantBranding(tenant), [tenant])
-  const isFlashPreview = useBrandingPreviewDraft()?.__previewSurface === 'flash'
-  const isDirectCheckout = checkoutEntry === 'direct'
+/** A drawer pack's "checkout" is its cart drawer, whose own gate takes it from there. */
+function DrawerCheckoutProvider({ menu, branding, children }: { menu: StorefrontMenuController; branding: BrandingColors; children: ReactNode }) {
+  const { openCart } = menu
+  const value = useMemo(
+    () => ({ menu, branding, requestCheckout: openCart, isCheckoutPending: false }),
+    [menu, branding, openCart]
+  )
+  return <StorefrontRuntimeContext.Provider value={value}>{children}</StorefrontRuntimeContext.Provider>
+}
+
+/**
+ * The checkout gate for packs that go straight to checkout: prefetch while the
+ * cart has items, the closed-store refusal and the upsell interstitial.
+ */
+function DirectCheckoutProvider({ menu, branding, children }: { menu: StorefrontMenuController; branding: BrandingColors; children: ReactNode }) {
+  const { tenant, tenantSlug } = menu
   const { items, bundleItems } = useCart()
   const hasItems = items.length + bundleItems.length > 0
-  const checkout = useCartCheckout({ tenant, tenantSlug, items, hasItems, enabled: isDirectCheckout && hasItems })
+  const checkout = useCartCheckout({ tenant, tenantSlug, items, hasItems, enabled: hasItems })
   const { requestCheckout, isNavigating } = checkout
   const value = useMemo(
     () => ({ menu, branding, requestCheckout, isCheckoutPending: isNavigating }),
     [menu, branding, requestCheckout, isNavigating]
   )
-
   return (
     <StorefrontRuntimeContext.Provider value={value}>
+      {children}
+      {checkout.showInterstitial && tenant && (
+        <CheckoutUpsellModal
+          open={checkout.showUpsellModal}
+          onContinue={checkout.onUpsellContinue}
+          tenantId={tenant.id}
+          branding={branding}
+          title={tenant.checkout_upsell_title || CHECKOUT_UPSELL_DEFAULTS.title}
+          subtitle={tenant.checkout_upsell_subtitle || CHECKOUT_UPSELL_DEFAULTS.subtitle}
+          maxItems={tenant.checkout_upsell_max_items || CHECKOUT_UPSELL_DEFAULTS.maxItems}
+          prefetchedItems={checkout.prefetchedItems ?? undefined}
+        />
+      )}
+    </StorefrontRuntimeContext.Provider>
+  )
+}
+
+export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', children }: StorefrontRuntimeProps) {
+  const { tenant, tenantSlug, categories, allMenuItems, selectedBundle, sheetItem } = menu
+  const branding = useMemo(() => getTenantBranding(tenant), [tenant])
+  const isFlashPreview = useBrandingPreviewDraft()?.__previewSurface === 'flash'
+  // Only direct-checkout packs mount a gate here; a drawer pack's drawer runs
+  // its own, and a second one would add another open-hours poller.
+  const CheckoutProvider = checkoutEntry === 'direct' ? DirectCheckoutProvider : DrawerCheckoutProvider
+
+  return (
+    <CheckoutProvider menu={menu} branding={branding}>
       {children}
 
       {/* `display: contents` adds no box, but the overlays still inherit the
@@ -137,19 +174,7 @@ export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', childre
           primaryTextColor={branding.buttonPrimaryText}
         />
 
-        {isDirectCheckout && checkout.showInterstitial && tenant && (
-          <CheckoutUpsellModal
-            open={checkout.showUpsellModal}
-            onContinue={checkout.onUpsellContinue}
-            tenantId={tenant.id}
-            branding={branding}
-            title={tenant.checkout_upsell_title || CHECKOUT_UPSELL_DEFAULTS.title}
-            subtitle={tenant.checkout_upsell_subtitle || CHECKOUT_UPSELL_DEFAULTS.subtitle}
-            maxItems={tenant.checkout_upsell_max_items || CHECKOUT_UPSELL_DEFAULTS.maxItems}
-            prefetchedItems={checkout.prefetchedItems ?? undefined}
-          />
-        )}
       </div>
-    </StorefrontRuntimeContext.Provider>
+    </CheckoutProvider>
   )
 }
