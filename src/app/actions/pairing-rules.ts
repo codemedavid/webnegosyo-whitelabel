@@ -8,6 +8,7 @@ import {
   togglePairingRule,
   deletePairingRule,
 } from '@/lib/pairing-rules-service'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getPairingRulesAction(tenantId: string) {
   try {
@@ -39,7 +40,7 @@ export async function createPairingRuleAction(
   try {
     const data = await createPairingRule(tenantId, input)
     revalidatePath(`/${tenantSlug}/admin/boost-sales`)
-    revalidatePath(`/${tenantSlug}/menu`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true as const, data }
   } catch (error) {
     return { success: false as const, error: error instanceof Error ? error.message : 'Failed to create rule' }
@@ -68,7 +69,7 @@ export async function updatePairingRuleAction(
   try {
     await updatePairingRule(ruleId, tenantId, input)
     revalidatePath(`/${tenantSlug}/admin/boost-sales`)
-    revalidatePath(`/${tenantSlug}/menu`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true as const }
   } catch (error) {
     return { success: false as const, error: error instanceof Error ? error.message : 'Failed to update rule' }
@@ -83,7 +84,7 @@ export async function togglePairingRuleAction(
   try {
     await togglePairingRule(ruleId, isActive)
     revalidatePath(`/${tenantSlug}/admin/boost-sales`)
-    revalidatePath(`/${tenantSlug}/menu`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true as const }
   } catch (error) {
     return { success: false as const, error: error instanceof Error ? error.message : 'Failed to toggle rule' }
@@ -98,7 +99,7 @@ export async function deletePairingRuleAction(
   try {
     await deletePairingRule(ruleId, tenantId)
     revalidatePath(`/${tenantSlug}/admin/boost-sales`)
-    revalidatePath(`/${tenantSlug}/menu`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true as const }
   } catch (error) {
     return { success: false as const, error: error instanceof Error ? error.message : 'Failed to delete rule' }

@@ -16,6 +16,7 @@ jest.mock('@/lib/admin-service', () => ({
 const revalidatePath = jest.fn()
 jest.mock('next/cache', () => ({
   revalidatePath: (path: string, type?: string) => revalidatePath(path, type),
+  revalidateTag: jest.fn(),
 }))
 
 const createAdminClient = jest.fn()

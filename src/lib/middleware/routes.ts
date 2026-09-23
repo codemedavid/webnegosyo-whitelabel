@@ -78,7 +78,7 @@ export function tenantAdminSlugFor(pathname: string): string | null {
  */
 export function tenantRewritePath(tenantSlug: string | null, pathname: string): string | null {
   if (!tenantSlug) return null
-  if (pathname.startsWith(`/${tenantSlug}/`)) return null
+  if (pathname === `/${tenantSlug}` || pathname.startsWith(`/${tenantSlug}/`)) return null
   if (GLOBAL_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null
   if (pathname === IMAGE_OPTIMIZER_PATH) return null
   return pathname === '/' ? `/${tenantSlug}/menu` : `/${tenantSlug}${pathname}`

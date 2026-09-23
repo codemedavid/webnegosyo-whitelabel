@@ -69,6 +69,15 @@ describe('tenantRewritePath', () => {
     expect(tenantRewritePath('shop', '/cart')).toBe('/shop/cart')
   })
 
+  it('leaves the bare tenant root alone so a /{slug} link cannot double-prefix', () => {
+    // Without this, a "Home" link to /shop on the shop host rewrote to /shop/shop — a 404.
+    expect(tenantRewritePath('shop', '/shop')).toBeNull()
+  })
+
+  it('still prefixes a page whose name merely starts with the slug', () => {
+    expect(tenantRewritePath('shop', '/shopping')).toBe('/shop/shopping')
+  })
+
   it('leaves already-prefixed, API and image-optimiser paths alone', () => {
     expect(tenantRewritePath('shop', '/shop/cart')).toBeNull()
     expect(tenantRewritePath('shop', '/api/orders')).toBeNull()

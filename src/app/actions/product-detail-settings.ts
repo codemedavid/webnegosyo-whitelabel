@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { ProductDetailSettings } from '@/lib/product-detail-theme'
 import { DEFAULT_PRODUCT_DETAIL_SETTINGS } from '@/lib/product-detail-theme'
 import { stripToDBColumns } from '@/lib/product-detail-settings-utils'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 interface ActionResult<T = unknown> {
     success: boolean
@@ -94,9 +95,8 @@ export async function saveProductDetailSettings(
             return { success: false, error: error.message }
         }
         
-        revalidatePath(`/${tenantSlug}/menu`, 'layout')
+        revalidateStorefrontMenu(tenantSlug)
         revalidatePath(`/${tenantSlug}/admin`)
-        revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
 
         return { success: true, data }
     } catch (error) {
@@ -130,9 +130,8 @@ export async function resetProductDetailSettings(
             return { success: false, error: error.message }
         }
         
-        revalidatePath(`/${tenantSlug}/menu`, 'layout')
+        revalidateStorefrontMenu(tenantSlug)
         revalidatePath(`/${tenantSlug}/admin`)
-        revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
 
         return { success: true, data: DEFAULT_PRODUCT_DETAIL_SETTINGS }
     } catch (error) {
