@@ -206,6 +206,8 @@ export default function MainLayout() {
         <Tabs.Screen name="printer-settings" options={{ href: null, title: "Printer Settings" }} />
         <Tabs.Screen name="account" options={{ href: null, title: "Account" }} />
         <Tabs.Screen name="team" options={{ href: null, title: "Team" }} />
+        {/* Owner-only order deletion — pushed from Account. */}
+        <Tabs.Screen name="delete-orders" options={{ href: null, title: "Delete orders" }} />
         {/* One colleague's shifts, activity and access — pushed from Team. */}
         <Tabs.Screen name="staff/[userId]" options={{ href: null, title: "Staff" }} />
         {/* One customer's stamp cards, rewards and orders — pushed from Rewards. */}

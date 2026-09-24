@@ -153,6 +153,19 @@ export default function AccountScreen() {
           />
         </View>
 
+        {!isDemo && isOwner && role === "admin" && (
+          <View style={styles.group}>
+            <ListRow
+              icon="trash"
+              tone="danger"
+              title="Delete orders"
+              subtitle="Remove test orders or reset your dashboard"
+              accessibilityLabel="Delete orders"
+              onPress={() => router.push("/(main)/delete-orders")}
+            />
+          </View>
+        )}
+
         {isDemo && (
           <View style={styles.demoNote}>
             <Text style={styles.demoNoteText}>
