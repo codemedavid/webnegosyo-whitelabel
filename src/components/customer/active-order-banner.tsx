@@ -81,7 +81,11 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor, 
   if (!latestOrder) return null
 
   const trackUrl = `/${tenantSlug}/order/${latestOrder.orderId}?t=${latestOrder.trackingToken}`
-  const bottomClass = isRaised ? 'bottom-32' : 'bottom-6'
+  // Both literals stay whole so Tailwind can see them; the inset var is how a
+  // storefront pack lifts floating UI above its own bottom bar.
+  const bottomClass = isRaised
+    ? 'bottom-[calc(8rem+var(--storefront-bottom-inset,0px))]'
+    : 'bottom-[calc(1.5rem+var(--storefront-bottom-inset,0px))]'
   const bgColor = primaryColor || '#2563eb'
   const textColor = primaryTextColor || '#ffffff'
 

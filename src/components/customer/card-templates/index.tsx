@@ -7,10 +7,11 @@
 
 import dynamic from 'next/dynamic'
 import { memo } from 'react'
-import type { CardTemplate } from '@/lib/card-templates'
+import { CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE, type CardTemplate } from '@/lib/card-templates'
 import type { MenuItem } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
+import { pickDesignId } from '@/lib/design-ids'
 
 // Minimal inline skeleton used as the loading fallback for all card templates.
 // Keeps the grid stable while the correct template chunk loads.
@@ -111,51 +112,35 @@ interface CardTemplateProps {
   priority?: boolean
 }
 
+// Typed against the registry's id union: registering a card without a
+// component here is a compile error, not a silent fall back to Classic.
+const CARD_COMPONENTS = {
+  classic: ClassicCard,
+  minimal: MinimalCard,
+  modern: ModernCard,
+  elegant: ElegantCard,
+  compact: CompactCard,
+  bold: BoldCard,
+  glass: GlassCard,
+  polaroid: PolaroidCard,
+  brutalist: BrutalistCard,
+  magazine: MagazineCard,
+  zen: ZenCard,
+  neon: NeonCard,
+  storefront: StorefrontCard,
+  showcase: ShowcaseCard,
+  atelier: AtelierCard,
+  kiosk: KioskCard,
+  sticker: StickerCard,
+  menuboard: MenuboardCard,
+  arch: ArchCard,
+} satisfies Record<CardTemplate, unknown>
+
 /**
- * Get the appropriate card component based on template ID.
+ * Get the card component for a template ID. Unknown ids fall back to Classic.
  */
-export function getCardTemplateComponent(template: CardTemplate = 'classic') {
-  switch (template) {
-    case 'minimal':
-      return MinimalCard
-    case 'modern':
-      return ModernCard
-    case 'elegant':
-      return ElegantCard
-    case 'compact':
-      return CompactCard
-    case 'bold':
-      return BoldCard
-    case 'glass':
-      return GlassCard
-    case 'polaroid':
-      return PolaroidCard
-    case 'brutalist':
-      return BrutalistCard
-    case 'magazine':
-      return MagazineCard
-    case 'zen':
-      return ZenCard
-    case 'neon':
-      return NeonCard
-    case 'storefront':
-      return StorefrontCard
-    case 'showcase':
-      return ShowcaseCard
-    case 'atelier':
-      return AtelierCard
-    case 'kiosk':
-      return KioskCard
-    case 'sticker':
-      return StickerCard
-    case 'menuboard':
-      return MenuboardCard
-    case 'arch':
-      return ArchCard
-    case 'classic':
-    default:
-      return ClassicCard
-  }
+export function getCardTemplateComponent(template: CardTemplate = DEFAULT_CARD_TEMPLATE) {
+  return CARD_COMPONENTS[pickDesignId(template, CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE)]
 }
 
 /**

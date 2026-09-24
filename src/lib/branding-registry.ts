@@ -9,9 +9,17 @@
  * (src/lib/branding-utils.ts) so the panel's "↳ Inherits" labels are truthful.
  */
 
-import { CARD_TEMPLATES } from '@/lib/card-templates'
+// Design pickers take their options straight from the design registries, so a
+// design is selectable in the Studio exactly when it is registered.
+import { CARD_TEMPLATES, CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE } from '@/lib/card-templates'
+import { PAGE_LAYOUT_IDS, DEFAULT_PAGE_LAYOUT } from '@/lib/page-layouts'
+import { HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE } from '@/lib/header-templates'
+import { CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE } from '@/lib/cart-templates'
+import { CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE } from '@/lib/checkout-templates'
 import { CARD_STYLE_FIELDS } from '@/lib/card-style'
 import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
+import { STOREFRONT_PACK_IDS, DEFAULT_STOREFRONT_PACK } from '@/lib/storefront-packs'
+import { foldPackSettings, isPackFieldId, packStudioSections } from '@/lib/storefront-pack-studio'
 
 export type BrandingFieldType = 'color' | 'toggle' | 'select' | 'text' | 'number' | 'note' | 'product' | 'banners' | 'image'
 
@@ -58,7 +66,7 @@ export interface BrandingSection {
 }
 
 export interface BrandingSurface {
-  id: 'global' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
+  id: 'global' | 'layout' | 'storefront' | 'categories' | 'welcome' | 'cart' | 'checkout' | 'upsell' | 'product' | 'footer' | 'flash'
   label: string
   glyph: string
   description: string
@@ -91,23 +99,12 @@ const banners = (id: string, label: string, bannerFormats = false): BrandingFiel
 const image = (id: string, label: string, placeholder = 'https://…/photo.jpg'): BrandingField =>
   ({ id, label, type: 'image', default: '', placeholder })
 
-const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'banner', 'stacked'] as const
-const CARD_TEMPLATE_OPTIONS = [
-  'classic', 'minimal', 'modern', 'elegant', 'compact', 'bold', 'glass',
-  'polaroid', 'brutalist', 'magazine', 'zen', 'neon', 'storefront',
-  'showcase', 'atelier', 'kiosk', 'sticker', 'menuboard', 'arch',
-] as const
-const PAGE_LAYOUT_OPTIONS = [
-  'default', 'sidebar', 'magazine', 'grid-focus', 'list', 'mosaic',
-  'storefront', 'kiosk', 'rails', 'lookbook',
-] as const
 const FLEXIBLE_CARD_TEMPLATES = CARD_TEMPLATES.filter((t) => t.isFlexible).map((t) => t.id)
 const WHEN_FLEXIBLE_CARD = { fieldId: 'card_template', values: FLEXIBLE_CARD_TEMPLATES }
 const CARD_STYLE_REGISTRY_FIELDS: BrandingField[] = CARD_STYLE_FIELDS.map((knob) => ({
   ...select(knob.column, knob.label, knob.options, 'auto'),
   showWhen: WHEN_FLEXIBLE_CARD,
 }))
-const CART_CHECKOUT_TEMPLATE_OPTIONS = ['classic', 'modern', 'wizard', 'minimal', 'express'] as const
 
 export const BRANDING_SURFACES: BrandingSurface[] = [
   {
@@ -160,6 +157,22 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     ],
   },
   {
+    id: 'layout',
+    label: 'Site Layout',
+    glyph: 'L',
+    description: 'The whole storefront design: its home page, menu page and checkout. Your colors, fonts and menu carry over to every design.',
+    sections: [
+      {
+        title: 'Storefront design',
+        fields: [
+          { ...select('storefront_pack', 'Design', STOREFRONT_PACK_IDS, DEFAULT_STOREFRONT_PACK), columnBacked: true },
+          note('note_storefront_pack', 'Classic storefront is your current single menu page. Other designs add their own home page and pages — preview them here before you publish.'),
+        ],
+      },
+      ...packStudioSections(),
+    ],
+  },
+  {
     id: 'storefront',
     label: 'Storefront',
     glyph: 'S',
@@ -200,7 +213,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Header',
         fields: [
-          select('header_template', 'Template', HEADER_TEMPLATE_OPTIONS, 'classic'),
+          select('header_template', 'Template', HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE),
           toggle('header_show_logo', 'Show logo', true),
           toggle('header_show_name', 'Show business name', true),
           toggle('header_show_cart', 'Show cart button', true),
@@ -269,8 +282,8 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       {
         title: 'Layout & menu cards',
         fields: [
-          { ...select('page_layout', 'Page layout', PAGE_LAYOUT_OPTIONS, 'default'), presentation: 'layout-gallery' },
-          { ...select('card_template', 'Card template', CARD_TEMPLATE_OPTIONS, 'classic'), presentation: 'card-gallery' },
+          { ...select('page_layout', 'Page layout', PAGE_LAYOUT_IDS, DEFAULT_PAGE_LAYOUT), presentation: 'layout-gallery' },
+          { ...select('card_template', 'Card template', CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE), presentation: 'card-gallery' },
           { ...number('mobile_grid_columns', 'Grid columns (mobile)', DEFAULT_MOBILE_GRID_COLUMNS, 1, 2), mobileOnly: true, columnBacked: true },
           color('cards_color', 'Card background', '#ffffff'),
           color('cards_border_color', 'Card border', null, 'border_color'),
@@ -371,7 +384,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     sections: [
       {
         title: 'Template',
-        fields: [select('cart_template', 'Layout', CART_CHECKOUT_TEMPLATE_OPTIONS, 'classic')],
+        fields: [select('cart_template', 'Layout', CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE)],
       },
       {
         title: 'Colors',
@@ -397,7 +410,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     sections: [
       {
         title: 'Template',
-        fields: [select('checkout_template', 'Layout', CART_CHECKOUT_TEMPLATE_OPTIONS, 'classic')],
+        fields: [select('checkout_template', 'Layout', CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE)],
       },
       {
         title: 'Colors',
@@ -670,12 +683,15 @@ export function buildPublishPayload(
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {}
   for (const fieldId of Object.keys(BRANDING_FIELD_INDEX)) {
+    // Pack settings are virtual fields inside one jsonb column: folded below.
+    if (isPackFieldId(fieldId)) continue
     const value = Object.prototype.hasOwnProperty.call(draft, fieldId)
       ? draft[fieldId]
       : tenant?.[fieldId]
     if (value === undefined || value === null) continue
     payload[fieldId] = value
   }
+  payload.storefront_pack_settings = foldPackSettings(draft, tenant)
   if (isBlank(payload.primary_color)) {
     payload.primary_color = String(BRANDING_FIELD_INDEX.primary_color.default)
   }

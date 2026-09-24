@@ -23,8 +23,8 @@ import {
 import { CheckoutOutletSummary } from '@/components/customer/checkout-templates/checkout-outlet-section'
 import { CheckoutOutletScreen } from '@/components/customer/checkout-templates/checkout-outlet-screen'
 import { SeniorOrderSteps } from '@/components/customer/senior-mode/senior-order-steps'
-import type { CheckoutTemplate } from '@/lib/checkout-templates'
 import { isOrderSaveFailed } from '@/lib/checkout/order-save-outcome'
+import { resolveCheckoutTemplate } from '@/lib/storefront-packs'
 
 export default function CheckoutPage() {
   const params = useParams()
@@ -64,7 +64,8 @@ export default function CheckoutPage() {
   if (checkout.isLoading) return <CheckoutLoading />
   if (!checkout.tenant) return <CheckoutNotFound />
 
-  const template = (checkout.tenant.checkout_template || 'classic') as CheckoutTemplate
+  // A storefront pack may pin its own checkout (BiteSpeed's one-page design).
+  const template = resolveCheckoutTemplate(checkout.tenant)
 
   return (
     <>

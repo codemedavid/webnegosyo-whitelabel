@@ -73,15 +73,17 @@ export function tenantAdminSlugFor(pathname: string): string | null {
 
 /**
  * Where a request on a tenant host should be served from, or null when the
- * path must be left alone. The host root goes to the menu; every other page
- * is prefixed with the tenant so app routes stay unified under `/[tenant]`.
+ * path must be left alone. The host root goes to the tenant home (which each
+ * storefront pack draws — the menu, for packs without a home page); every
+ * other page is prefixed with the tenant so app routes stay unified under
+ * `/[tenant]`.
  */
 export function tenantRewritePath(tenantSlug: string | null, pathname: string): string | null {
   if (!tenantSlug) return null
-  if (pathname.startsWith(`/${tenantSlug}/`)) return null
+  if (pathname === `/${tenantSlug}` || pathname.startsWith(`/${tenantSlug}/`)) return null
   if (GLOBAL_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null
   if (pathname === IMAGE_OPTIMIZER_PATH) return null
-  return pathname === '/' ? `/${tenantSlug}/menu` : `/${tenantSlug}${pathname}`
+  return pathname === '/' ? `/${tenantSlug}` : `/${tenantSlug}${pathname}`
 }
 
 const TENANT_LOGIN_PATH = /^\/[^/]+\/login(\/|$)/i

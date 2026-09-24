@@ -70,6 +70,10 @@ export interface Tenant {
   card_text_align?: 'auto' | 'start' | 'center' | null;
   card_description?: 'auto' | 'show' | 'hide' | null;
   card_density?: 'auto' | 'compact' | 'comfortable' | 'spacious' | null;
+  // Storefront pack: whole-site design (src/lib/storefront-packs.ts). Unknown/NULL = 'legacy'.
+  storefront_pack?: string | null;
+  // Per-pack settings keyed by pack id, read through readPackSettings (defaults on bad data).
+  storefront_pack_settings?: Record<string, unknown> | null;
   search_bar_style?: 'filled' | 'outline' | 'ghost';
   success_color?: string;
   warning_color?: string;
