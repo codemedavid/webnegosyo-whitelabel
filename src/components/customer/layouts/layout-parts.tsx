@@ -13,6 +13,7 @@ import { MenuItemCard } from '../menu-item-card'
 import { groupMenuItemsByCategory, type GroupedMenuItems } from '@/lib/menu-grouping'
 import { resolveCategoryCardTemplate } from '@/lib/category-card-template'
 import { isAboveTheFold } from '@/lib/above-the-fold'
+import { resolveMobileGridColumns } from '@/lib/storefront-device-layout'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { MenuItem, PromotionBanner, Tenant } from '@/types/database'
@@ -77,7 +78,7 @@ export function CategoryItemsGrid({
 
 /** Mobile column choice → base grid columns for a layout's card grid. */
 export function mobileColumnsClass(mobileGridColumns: number | undefined): string {
-  return mobileGridColumns && mobileGridColumns >= 2 ? 'grid-cols-2' : 'grid-cols-1'
+  return resolveMobileGridColumns(mobileGridColumns) === 1 ? 'grid-cols-1' : 'grid-cols-2'
 }
 
 interface PromoBannerCarouselProps {

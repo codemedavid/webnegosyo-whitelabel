@@ -5,15 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { PageHeader, EmptyState } from '@/components/superadmin/ui/primitives'
 import { getTenants } from '@/lib/queries/tenants-server'
-import {
-  getTenantsOverview,
-  getTenantMetrics,
-} from '@/lib/queries/tenant-metrics-server'
+import { getTenantsOverview } from '@/lib/queries/tenant-metrics-server'
+import { normalizeTenantSearch } from '@/lib/superadmin/tenant-search'
 import { TenantOverview } from '@/components/superadmin/tenant-overview'
 import { TenantManager } from '@/components/superadmin/tenant-manager'
-
-// Cache the tenant list for 60s; mutations already revalidate
-export const revalidate = 60
 
 function OverviewSkeleton() {
   return (
@@ -77,10 +72,15 @@ async function OverviewSection() {
   return <TenantOverview overview={overview} />
 }
 
-async function TenantList() {
-  const { data: tenants, count } = await getTenants()
+/**
+ * First page only. Order metrics are NOT awaited here: they fan out to every
+ * Convex-backed tenant on the page and used to hold the whole list back for
+ * seconds. The client fills them in after the rows are on screen.
+ */
+async function TenantList({ search }: { search: string }) {
+  const { data: tenants, count, error } = await getTenants({ search })
 
-  if (count === 0) {
+  if (count === 0 && !search && !error) {
     return (
       <div className="rounded-2xl border border-white/10 bg-white/[0.02]">
         <EmptyState
@@ -100,18 +100,26 @@ async function TenantList() {
     )
   }
 
-  const metrics = await getTenantMetrics(tenants.map((t) => t.id))
-
   return (
     <TenantManager
+      // A navigation to a new ?q= (e.g. from the command palette) remounts
+      // the manager with that search; typing in the box never navigates.
+      key={search}
       initialTenants={tenants}
       initialCount={count}
-      initialMetrics={metrics}
+      initialSearch={search}
     />
   )
 }
 
-export default function TenantsPage() {
+interface TenantsPageProps {
+  searchParams: Promise<{ q?: string | string[] }>
+}
+
+export default async function TenantsPage({ searchParams }: TenantsPageProps) {
+  const { q } = await searchParams
+  const search = normalizeTenantSearch(Array.isArray(q) ? q[0] : q)
+
   return (
     <div className="space-y-8">
       <Breadcrumbs
@@ -140,7 +148,7 @@ export default function TenantsPage() {
       </Suspense>
 
       <Suspense fallback={<TenantListSkeleton />}>
-        <TenantList />
+        <TenantList search={search} />
       </Suspense>
     </div>
   )

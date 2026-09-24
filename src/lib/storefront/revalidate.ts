@@ -1,5 +1,6 @@
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
+import { isRevalidatableSlug } from '@/lib/tenant-revalidation'
 
 interface StorefrontIdentity {
   slug: string
@@ -34,6 +35,12 @@ export function revalidateStorefront({ slug, id, previousSlug }: StorefrontIdent
  * leave it stale. The data tag is what every reader shares.
  */
 export function revalidateStorefrontMenu(slug: string): void {
+  // Callers pass a client-supplied slug; `revalidatePath` reads a bracketed
+  // segment as the dynamic route, so `[tenant]` would purge every storefront.
+  if (!isRevalidatableSlug(slug)) {
+    console.warn('[revalidateStorefrontMenu] Skipped purge for a non-plain slug')
+    return
+  }
   revalidateTag(storefrontTag(slug))
   revalidatePath(`/${slug}/menu`, 'layout')
   revalidatePath(`/${slug}`)

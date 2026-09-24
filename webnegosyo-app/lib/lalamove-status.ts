@@ -2,7 +2,8 @@
  * The app's Lalamove status vocabulary.
  *
  * Hand-synced mirror of the web's src/lib/lalamove-status.ts — React Native
- * cannot import from src/. If the FINAL set changes there, change it here too.
+ * cannot import from src/. If the FINAL or REBOOKABLE set changes there,
+ * change it here too.
  *
  * Lalamove v3 reports: ASSIGNING_DRIVER, ON_GOING, PICKED_UP, COMPLETED,
  * CANCELED, REJECTED, EXPIRED. Older writers in this codebase also produced
@@ -23,6 +24,24 @@ export const LALAMOVE_FINAL_STATUSES: ReadonlySet<string> = new Set([
 export function isLalamoveFinal(status: string | null | undefined): boolean {
   if (!status) return false;
   return LALAMOVE_FINAL_STATUSES.has(status.toUpperCase());
+}
+
+/**
+ * Ended WITHOUT a delivery — cancelled by either side, rejected, or expired
+ * while searching for a driver. The customer is still waiting, so the order
+ * can be booked again. COMPLETED/DELIVERED are final but never rebookable.
+ * Mirrors the web's `isRebookableLalamoveStatus`.
+ */
+const LALAMOVE_REBOOKABLE_STATUSES: ReadonlySet<string> = new Set([
+  "CANCELED",
+  "CANCELLED",
+  "REJECTED",
+  "EXPIRED",
+]);
+
+export function isRebookableLalamoveStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return LALAMOVE_REBOOKABLE_STATUSES.has(status.toUpperCase());
 }
 
 /**

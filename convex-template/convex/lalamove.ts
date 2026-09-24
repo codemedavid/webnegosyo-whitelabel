@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { isE164Phone, normalizeLalamovePhone, resolveLalamoveRecipient } from "./lalamoveContact";
+import { resolveRequoteGate } from "./lalamoveStatus";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireActionAccess } from "./auth";
@@ -335,6 +336,8 @@ export const bookLalamove = action({
  * than that used to be stuck with an unbookable order. The new quote runs
  * store pin → the order's stored delivery coordinates. The customer's
  * deliveryFee is deliberately NOT changed — the price was agreed at checkout.
+ * A booking that already died (cancelled, rejected, expired) is retired, which
+ * is what makes a cancelled order bookable again.
  */
 export const requoteLalamove = action({
   args: { orderId: v.id("orders") },
@@ -349,11 +352,11 @@ export const requoteLalamove = action({
     if (!order) {
       return { success: false, error: "Order not found" };
     }
-    if (order.lalamoveOrderId && String(order.lalamoveOrderId).trim() !== "") {
-      return {
-        success: false,
-        error: "A delivery is already booked for this order — cancel it before re-quoting",
-      };
+    // A booking that died (cancelled, rejected, expired) is retired below —
+    // that is how a cancelled order gets a rider again. A live one is refused.
+    const gate = resolveRequoteGate(order.lalamoveOrderId, order.lalamoveStatus);
+    if (!gate.ok) {
+      return { success: false, error: gate.error };
     }
     if (
       !order.deliveryAddress ||
@@ -399,10 +402,24 @@ export const requoteLalamove = action({
       return { success: false, error: quote.error ?? "Failed to create quotation" };
     }
 
-    await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, {
-      orderId: args.orderId,
-      lalamoveQuotationId: quote.data.quotationId,
-    });
+    if (gate.retiredOrderId) {
+      const retired = await ctx.runMutation(internal.orders.retireLalamoveBookingInternal, {
+        orderId: args.orderId,
+        expectedLalamoveOrderId: gate.retiredOrderId,
+        lalamoveQuotationId: quote.data.quotationId,
+      });
+      if (!retired) {
+        return {
+          success: false,
+          error: "This delivery changed while re-quoting — refresh the order and try again",
+        };
+      }
+    } else {
+      await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, {
+        orderId: args.orderId,
+        lalamoveQuotationId: quote.data.quotationId,
+      });
+    }
 
     return {
       success: true,

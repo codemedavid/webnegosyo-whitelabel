@@ -38,9 +38,16 @@ import { useOutlets } from "../../lib/use-outlets";
 import { listProducts, type Product } from "../../lib/products";
 import { getWebAppUrl } from "../../lib/web-app-url";
 import { LoyaltySmsDeviceCard } from "../../components/LoyaltySmsDeviceCard";
+import { SegmentedControl } from "../../components/SegmentedControl";
+import { LoyaltyMembersPanel } from "../../components/loyalty/LoyaltyMembersPanel";
 
 /**
- * Rewards: the merchant's loyalty programs.
+ * Rewards: who is collecting, and the programmes they are collecting on.
+ *
+ * Two halves, because a merchant opens this screen for two different reasons.
+ * MEMBERS is the daily one — who can claim now, who is one visit away, who has
+ * gone quiet — so it opens first. PROGRAMMES is the setup, visited once and
+ * then rarely.
  *
  * Every rule lives on the platform (`/api/loyalty/programs`); this screen
  * collects a form, shows what came back, and offers each program the one
@@ -60,6 +67,9 @@ export default function LoyaltyScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [editing, setEditing] = useState<LoyaltyProgramSummary | null>(null);
+  const [section, setSection] = useState<"members" | "programs">("members");
+  // Bumped whenever a programme changes: the member counts hang off the rules.
+  const [membersEpoch, setMembersEpoch] = useState(0);
 
   const [programs, setPrograms] = useState<LoyaltyProgramSummary[]>([]);
   const [flags, setFlags] = useState<LoyaltyFlags>({ isEnabled: false, isShadow: true });
@@ -129,6 +139,7 @@ export default function LoyaltyScreen() {
     setForm(EMPTY_FORM);
     setEditing(null);
     setIsComposing(false);
+    setMembersEpoch((epoch) => epoch + 1);
     await load();
   }, [tenantId, form, load, editing]);
 
@@ -143,6 +154,7 @@ export default function LoyaltyScreen() {
         setActionError(result.error);
         return;
       }
+      setMembersEpoch((epoch) => epoch + 1);
       await load();
     },
     [tenantId, load],
@@ -197,6 +209,21 @@ export default function LoyaltyScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {earningNote ? <Text style={styles.notice}>{earningNote}</Text> : null}
+
+        <SegmentedControl
+          options={[
+            { label: "Members", value: "members" as const },
+            { label: "Programmes", value: "programs" as const },
+          ]}
+          value={section}
+          onChange={setSection}
+          accessibilityPrefix="Show"
+        />
+
+        {section === "members" ? (
+          <LoyaltyMembersPanel tenantId={tenantId} reloadKey={membersEpoch} />
+        ) : (
+          <>
         {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
         <LoyaltySmsDeviceCard />
         {tenantSlug ? <TouchableOpacity accessibilityRole="link" onPress={() => void Linking.openURL(`${getWebAppUrl()}/${tenantSlug}/admin/loyalty`)}><Text style={styles.cardRules}>Manage reward sale syncing on the web ↗</Text></TouchableOpacity> : null}
@@ -369,6 +396,8 @@ export default function LoyaltyScreen() {
           <TouchableOpacity style={styles.button} onPress={() => { setEditing(null); setForm(EMPTY_FORM); setIsComposing(true); }}>
             <Text style={styles.buttonLabel}>New program</Text>
           </TouchableOpacity>
+        )}
+          </>
         )}
       </ScrollView>
     </View>

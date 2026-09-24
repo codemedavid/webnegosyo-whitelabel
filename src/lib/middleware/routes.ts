@@ -86,6 +86,31 @@ export function tenantRewritePath(tenantSlug: string | null, pathname: string): 
   return pathname === '/' ? `/${tenantSlug}` : `/${tenantSlug}${pathname}`
 }
 
+const TENANT_LOGIN_PATH = /^\/[^/]+\/login(\/|$)/i
+const SUPERADMIN_PATH = /^\/superadmin(\/|$)/i
+
+/**
+ * Pages that must not be framed by another site (clickjacking): the tenant
+ * admin, the tenant login, and everything under `/superadmin` (its login and
+ * the MCP OAuth consent page included). Classify the SERVED path — on a tenant
+ * host `/admin` becomes `/<slug>/admin` before this is asked. The public
+ * storefront stays embeddable: merchants put their menu inside their own sites.
+ */
+export function isFrameProtectedPath(rawPathname: string): boolean {
+  const pathname = normalizePathname(rawPathname)
+  return SUPERADMIN_PATH.test(pathname) || TENANT_LOGIN_PATH.test(pathname) || tenantAdminSlugFor(pathname) !== null
+}
+
+/**
+ * Same-origin framing only. SAMEORIGIN (not DENY) because the Branding Studio
+ * iframes same-origin pages; `X-Frame-Options` covers browsers that predate
+ * CSP `frame-ancestors`.
+ */
+export const FRAME_PROTECTION_HEADERS: Readonly<Record<string, string>> = {
+  'Content-Security-Policy': "frame-ancestors 'self'",
+  'X-Frame-Options': 'SAMEORIGIN',
+}
+
 /**
  * Whether the request carries a Supabase session cookie. A visitor without
  * one has no session to refresh, so GoTrue has nothing to tell us — that is

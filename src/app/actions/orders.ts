@@ -1,7 +1,6 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import {
   getOrdersByTenant,
   getOrderById,
@@ -16,10 +15,9 @@ import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client
 import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
 import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backend'
 import { generateTrackingToken } from '@/lib/tracking-token'
-import { getAdvanceOrderConfig } from '@/lib/advance-order-utils'
 import { findCartPresellDate } from '@/lib/presell/availability'
 import { presellAdvanceConfig, withPresellCustomerData, type PresellClaimRecord } from '@/lib/presell/checkout-schedule'
-import { resolveDistanceDeliveryConfig, quoteDistanceDelivery } from '@/lib/delivery-fee'
+import { resolveDistanceDeliveryConfig } from '@/lib/delivery-fee'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import {
   isOrderTypeOrderableOnWeb,
@@ -33,18 +31,21 @@ import { writeOrderDiscount } from '@/lib/order-discount'
 import { resolveOrderContact } from '@/lib/customer-identity'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { requireCheckoutOutlet, withOrderOutlet } from '@/lib/outlets/order-outlet'
+import { parseOrderLines } from '@/lib/checkout/order-line-schema'
+import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
+import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
+import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
 import {
-  resolveOrderLinePrice,
-  type StoreMenuItemPricing,
-} from '@/lib/order-line-price-floor'
-import {
-  buildOutletMenuIndex,
-  findOutletMenuOverride,
-  type OutletMenuIndex,
-  type OutletMenuOverrideRow,
-} from '@/lib/outlets/outlet-menu-overrides'
-import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
+  CHECKOUT_ORDER_TYPE_SELECT,
+  advanceConfigOf,
+  type CheckoutOrderTypeRow,
+} from '@/lib/checkout/checkout-order-type'
+import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
+import { computeServiceCharge } from '@/lib/order-service-charge'
 import type { OrderItem } from '@/types/database'
+
+const INVALID_DELIVERY_FEE_MESSAGE =
+  'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
 
 export async function getOrdersAction(tenantId: string) {
   try {
@@ -201,7 +202,13 @@ export async function createOrderAction(
   paymentMethodName?: string,
   paymentMethodDetails?: string,
   paymentMethodQrCodeUrl?: string,
-  serviceChargeAmount?: number,
+  /**
+   * IGNORED. Kept only so the positional signature the checkout calls stays
+   * stable: the service charge is recomputed from the tenant's own order type
+   * against the server-priced subtotal (see `computeServiceCharge`). A sent
+   * amount — negative, say — used to be stored as-is.
+   */
+  _clientServiceChargeAmount?: number,
   scheduledForISO?: string,
   paymentProof?: {
     url?: string | null
@@ -243,13 +250,34 @@ export async function createOrderAction(
     if (!tenantId || typeof tenantId !== 'string') {
       return { success: false, refused: true, error: 'Invalid tenant ID' }
     }
-    if (!Array.isArray(items) || items.length === 0) {
-      return { success: false, refused: true, error: 'Order must contain at least one item' }
+
+    // ── Boundary validation (this is a public server action) ──
+    // Shape only: a price that passes is still just a claim, floored below.
+    // Nothing the web checkout builds can fail these, so a refusal here never
+    // hides behind the optimistic confirmation screen for a real customer.
+    const parsedLines = parseOrderLines(items)
+    if (!parsedLines.ok) {
+      console.warn('[createOrderAction] Refused malformed order lines', {
+        tenantId,
+        issues: parsedLines.issues.slice(0, 10),
+      })
+      return { success: false, refused: true, error: parsedLines.error }
+    }
+    items = parsedLines.lines
+
+    // Server-owned keys (presell claim, discount, inventory snapshot, …) are
+    // stripped here, so the only copies that can exist are the server's own.
+    const sanitizedCustomerData = sanitizeCustomerData(customerData)
+    if (!sanitizedCustomerData.ok) {
+      return { success: false, refused: true, error: sanitizedCustomerData.error }
+    }
+    const clientCustomerData = sanitizedCustomerData.data
+
+    if (!isValidClientDeliveryFee(deliveryFee)) {
+      return { success: false, refused: true, error: INVALID_DELIVERY_FEE_MESSAGE }
     }
 
-    if (items.some((item) => !validateAddonQuantities(item.addon_quantities, item.addon_ids))) {
-      return { success: false, refused: true, error: 'Invalid add-on quantities' }
-    }
+    const safePaymentProof = sanitizePaymentProof(paymentProof)
 
     // Resolve where this tenant's orders live (Convex / their own Supabase /
     // the shared platform DB) AND that the tenant is active.
@@ -289,43 +317,27 @@ export async function createOrderAction(
       }
     }
 
-    // ── Minimum-order enforcement (authoritative; covers EVERY order backend) ──
-    // Runs before any backend dispatch, because the checkout button is only a
-    // courtesy: the mobile apps, a stale tab, and a direct action call all reach
-    // here without it. Measured against the ITEM subtotal so a delivery fee can
-    // never carry a small cart over a delivery minimum.
+    // ── The order type: ONE tenant-scoped read serves every consumer below ──
+    // (web availability, advance schedule, minimum, delivery kind, service
+    // charge, and the names the backends and the merchant email carry).
+    let orderTypeRow: CheckoutOrderTypeRow | null = null
     if (orderTypeId) {
-      const { data: minRow } = await supabaseAdmin
+      const { data: otRow, error: otError } = await supabaseAdmin
         .from('order_types')
-        .select('name, minimum_order_amount, available_on_web')
+        .select(CHECKOUT_ORDER_TYPE_SELECT)
         .eq('id', orderTypeId)
         .eq('tenant_id', tenantId)
         .maybeSingle()
-
-      const minOrderType = minRow as {
-        name?: string
-        minimum_order_amount?: number | string | null
-        available_on_web?: boolean | null
-      } | null
+      if (otError) {
+        return { success: false, error: 'Failed to verify the order type' }
+      }
+      orderTypeRow = (otRow as CheckoutOrderTypeRow | null) ?? null
 
       // A type the merchant hid from online ordering (POS-only channels such
       // as Grab) is refused outright — the storefront never offers it, so
       // reaching here means a stale tab or a direct call.
-      if (minRow && !isOrderTypeOrderableOnWeb(minOrderType)) {
+      if (orderTypeRow && !isOrderTypeOrderableOnWeb(orderTypeRow)) {
         return { success: false, refused: true, error: WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE }
-      }
-
-      const itemsSubtotal = items.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0)
-      const minimumStatus = checkOrderMinimum(itemsSubtotal, minOrderType)
-
-      if (!minimumStatus.meets) {
-        return {
-          success: false,
-          refused: true,
-          error:
-            formatOrderMinimumMessage(minimumStatus, minOrderType?.name) ??
-            'This order is below the minimum for checkout',
-        }
       }
     }
 
@@ -383,16 +395,10 @@ export async function createOrderAction(
       const when = new Date(scheduledForISO)
       const whenMs = when.getTime()
       if (!Number.isNaN(whenMs)) {
-        const { data: otRow } = await supabaseAdmin
-          .from('order_types')
-          .select('advance_order_enabled, advance_order_allow_asap, advance_order_lead_time_minutes, advance_order_max_days_ahead, advance_order_slot_interval_minutes')
-          .eq('id', orderTypeId)
-          .eq('tenant_id', tenantId)
-          .maybeSingle()
         // A presell cart schedules against its allocated date, which may lie
         // past the order type's horizon (or the type may never schedule at
         // all). The same stretch the checkout hook applied is applied here.
-        const baseCfg = getAdvanceOrderConfig(otRow as Parameters<typeof getAdvanceOrderConfig>[0])
+        const baseCfg = advanceConfigOf(orderTypeRow)
         const cartPresellDate = findCartPresellDate(items)
         const cfg = cartPresellDate ? presellAdvanceConfig(baseCfg, cartPresellDate, new Date()) : baseCfg
         const nowMs = Date.now()
@@ -408,9 +414,9 @@ export async function createOrderAction(
     }
 
     // Reconcile customer_data with the validated schedule.
-    let effectiveCustomerData = customerData
-    if (customerData && typeof customerData === 'object') {
-      const cd = customerData as Record<string, unknown>
+    let effectiveCustomerData = clientCustomerData
+    if (clientCustomerData) {
+      const cd = clientCustomerData
       if (!validatedScheduledISO) {
         if ('scheduled_for' in cd || 'scheduled_for_label' in cd) {
           effectiveCustomerData = { ...cd }
@@ -457,6 +463,39 @@ export async function createOrderAction(
     // branch rides in customer_data for every backend. Returns the very same
     // object when no branch resolved — see withOrderOutlet.
     effectiveCustomerData = withOrderOutlet(effectiveCustomerData, resolvedOutlet)
+
+    // ── SERVER-SIDE PRICE VALIDATION (runs before every backend) ──
+    // Each line is held to the price the customer was shown: the dish's
+    // effective (sale-aware) price at the chosen branch, plus its options and
+    // add-ons priced from the dish's own JSON. The browser's price can only
+    // raise that; its subtotal is never used. Priced before the stock guard and
+    // the presell claim so a refusal here has nothing to hand back.
+    const pricedLines = await loadAndPriceOrderLines(supabaseAdmin, tenantId, items, resolvedOutlet?.id ?? null)
+    if (!pricedLines.ok) {
+      return pricedLines.refused
+        ? { success: false, refused: true, error: pricedLines.error }
+        : { success: false, error: pricedLines.error }
+    }
+    items = pricedLines.lines
+    const itemsSubtotal = pricedLines.itemsSubtotal
+
+    // ── Minimum-order enforcement (authoritative; covers EVERY order backend) ──
+    // The checkout button is only a courtesy: the mobile apps, a stale tab, and
+    // a direct action call all reach here without it. Measured against the
+    // SERVER-PRICED item subtotal, so neither a delivery fee nor a forged line
+    // subtotal can carry a small cart over a minimum.
+    if (orderTypeRow) {
+      const minimumStatus = checkOrderMinimum(itemsSubtotal, orderTypeRow)
+      if (!minimumStatus.meets) {
+        return {
+          success: false,
+          refused: true,
+          error:
+            formatOrderMinimumMessage(minimumStatus, orderTypeRow.name) ??
+            'This order is below the minimum for checkout',
+        }
+      }
+    }
 
     // ── Producible-quantity stock guard (authoritative; every order backend) ──
     // The Loyverse check above, and auto-86, both only ever ask "is this dish
@@ -556,69 +595,41 @@ export async function createOrderAction(
       return { success: false, error }
     }
 
-    // ── Server-side distance-based delivery fee (authoritative) ──
-    // For tenants on the non-Lalamove distance path, recompute the fee from the
-    // store↔customer straight-line distance + tenant config, and reject out-of-range
-    // addresses. The client-sent deliveryFee is never trusted here. Lalamove tenants keep
-    // their quotation-derived fee (it can't be recomputed without re-quoting Lalamove).
-    let effectiveDeliveryFee = deliveryFee
-    const distanceCfg = resolveDistanceDeliveryConfig({
-      enabled: tenantConfig.distance_delivery_enabled === true && tenantConfig.lalamove_enabled !== true,
-      perKm: tenantConfig.delivery_price_per_km,
-      minFee: tenantConfig.delivery_min_fee,
-      radiusKm: tenantConfig.delivery_radius_km,
+    // ── Delivery fee (authoritative) ──
+    // A distance fee is recomputed from coordinates; an order with no fee
+    // source (not a delivery, or neither Lalamove nor distance pricing on)
+    // carries none. A Lalamove fee is range-checked only — see the residual
+    // risk documented in order-delivery-fee.ts.
+    const deliveryDestination = (effectiveCustomerData ?? {}) as Record<string, unknown>
+    const deliveryResolution = resolveOrderDeliveryFee({
+      clientFee: deliveryFee,
+      isDeliveryOrder: orderTypeRow?.type === 'delivery',
+      lalamoveEnabled: tenantConfig.lalamove_enabled === true,
+      distanceConfig: resolveDistanceDeliveryConfig({
+        enabled: tenantConfig.distance_delivery_enabled === true && tenantConfig.lalamove_enabled !== true,
+        perKm: tenantConfig.delivery_price_per_km,
+        minFee: tenantConfig.delivery_min_fee,
+        radiusKm: tenantConfig.delivery_radius_km,
+      }),
+      store: { lat: Number(tenantConfig.restaurant_latitude), lng: Number(tenantConfig.restaurant_longitude) },
+      destination: { lat: Number(deliveryDestination.delivery_lat), lng: Number(deliveryDestination.delivery_lng) },
     })
-    if (distanceCfg && orderTypeId) {
-      const { data: otTypeRow } = await supabaseAdmin
-        .from('order_types')
-        .select('type')
-        .eq('id', orderTypeId)
-        .eq('tenant_id', tenantId)
-        .maybeSingle()
-      const isDeliveryOrder = (otTypeRow as { type?: string } | null)?.type === 'delivery'
-      if (!isDeliveryOrder) {
-        // A distance tenant should never carry a delivery fee on a non-delivery order
-        // (pickup/dine-in). Be fully authoritative — ignore any client-sent fee.
-        effectiveDeliveryFee = undefined
-      } else {
-        const storeLat = Number(tenantConfig.restaurant_latitude)
-        const storeLng = Number(tenantConfig.restaurant_longitude)
-        const cd = (effectiveCustomerData ?? {}) as Record<string, unknown>
-        const destLat = Number(cd.delivery_lat)
-        const destLng = Number(cd.delivery_lng)
-        if (!Number.isFinite(storeLat) || !Number.isFinite(storeLng)) {
-          return await abort('Delivery is unavailable: the store location has not been configured.')
-        }
-        if (!Number.isFinite(destLat) || !Number.isFinite(destLng)) {
-          return await refuse('Please select your delivery address from the suggestions so we can calculate the delivery fee.')
-        }
-        const quote = quoteDistanceDelivery(
-          { lat: storeLat, lng: storeLng },
-          { lat: destLat, lng: destLng },
-          distanceCfg
-        )
-        if (!quote.withinRadius) {
-          return await refuse(`Sorry, this address is outside our delivery area (${distanceCfg.radiusKm} km).`)
-        }
-        effectiveDeliveryFee = quote.fee
-      }
-    }
+    if (deliveryResolution.kind === 'abort') return await abort(deliveryResolution.error)
+    if (deliveryResolution.kind === 'refuse') return await refuse(deliveryResolution.error)
+    const effectiveDeliveryFee = deliveryResolution.fee
+
+    // ── Service charge (authoritative) ──
+    // Recomputed from the tenant's own order type against the server-priced
+    // subtotal, with the formula the checkout displays. The sent figure is
+    // ignored — a negative one used to be stored as a discount.
+    const serviceCharge = computeServiceCharge(orderTypeRow, itemsSubtotal)
 
     // PostHog email notification - awaited to ensure flush completes
     const firePostHogNotification = async (orderId: string, orderItems: typeof items) => {
       if (tenantConfig?.email_notifications_enabled && tenantConfig?.admin_email) {
         try {
           const { captureOrderCreated } = await import('@/lib/posthog')
-          // Resolve order type name from ID
-          let orderTypeName: string | null = null
-          if (orderTypeId) {
-            const { data: otData } = await supabaseAdmin
-              .from('order_types')
-              .select('name')
-              .eq('id', orderTypeId)
-              .single()
-            orderTypeName = (otData as { name: string } | null)?.name ?? null
-          }
+          const orderTypeName = orderTypeRow?.name ?? null
 
           await captureOrderCreated({
             tenantId,
@@ -638,7 +649,7 @@ export async function createOrderAction(
             orderTotal: computeOrderTotals({
               subtotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0),
               deliveryFee: effectiveDeliveryFee,
-              serviceCharge: serviceChargeAmount,
+              serviceCharge,
             }).grandTotal,
             deliveryFee: effectiveDeliveryFee ?? 0,
             orderType: orderTypeName,
@@ -656,68 +667,6 @@ export async function createOrderAction(
         }
       }
     }
-
-    // SERVER-SIDE PRICE VALIDATION (runs before BOTH Supabase and Convex paths)
-    //
-    // The floor each line is held to is decided in `resolveOrderLinePrice`, from
-    // the price the customer was actually shown: the store-wide dish, its sale
-    // price if it has one, and then the chosen branch's override on top. A floor
-    // built from the bare list price overcharges every discounted line and undoes
-    // per-branch pricing in the direction merchants use it most — cheaper here.
-    const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
-    const { data: dbItems, error: priceCheckError } = await supabaseAdmin
-      .from('menu_items')
-      .select('id, price, discounted_price, is_available, name')
-      .eq('tenant_id', tenantId)
-      .in('id', menuItemIds)
-
-    if (priceCheckError) {
-      return await abort('Failed to verify item prices')
-    }
-
-    const storeItems = new Map(
-      ((dbItems ?? []) as unknown as StoreMenuItemPricing[]).map(i => [i.id, i])
-    )
-
-    // Only a branch-carrying order needs overrides, and only for the dishes in
-    // it. A tenant without the feature issues exactly the queries it does today.
-    let branchOverrides: OutletMenuIndex = buildOutletMenuIndex([])
-    if (resolvedOutlet) {
-      const { data: overrideRows, error: overrideError } = await supabaseAdmin
-        .from('outlet_menu_items')
-        .select(OUTLET_MENU_OVERRIDE_SELECT)
-        .eq('tenant_id', tenantId)
-        .eq('outlet_id', resolvedOutlet.id)
-        .in('menu_item_id', menuItemIds)
-
-      // Not swallowed. An empty override set is the specific claim "this branch
-      // sells at the store-wide price", which on a failed query would charge one
-      // branch's customers another branch's prices.
-      if (overrideError) {
-        return await abort('Failed to verify branch prices')
-      }
-      branchOverrides = buildOutletMenuIndex(
-        (overrideRows ?? []) as unknown as OutletMenuOverrideRow[]
-      )
-    }
-
-    // Rebuilt rather than mutated in place: the caller's array is not ours to
-    // rewrite, and a re-priced copy is what every downstream path should use.
-    const pricedItems: typeof items = []
-    for (const item of items) {
-      const result = resolveOrderLinePrice(
-        item,
-        storeItems.get(item.menu_item_id),
-        findOutletMenuOverride(branchOverrides, resolvedOutlet?.id ?? null, item.menu_item_id)
-      )
-
-      if (!result.ok) {
-        return await refuse(result.error)
-      }
-
-      pricedItems.push({ ...item, price: result.price, subtotal: result.subtotal })
-    }
-    items = pricedItems
 
     // ---- Vouchers -------------------------------------------------------
     // Priced here, after the server has re-priced every line and settled the
@@ -745,7 +694,7 @@ export async function createOrderAction(
       tenantId,
       items,
       deliveryFee: effectiveDeliveryFee,
-      serviceCharge: serviceChargeAmount,
+      serviceCharge,
       voucherCodes: requestedCodes,
       channel: 'checkout',
       now: new Date(),
@@ -788,13 +737,13 @@ export async function createOrderAction(
 
     // Convex has no payment-proof columns, so proof rides in customerData (same
     // pattern as advance-order schedule) to stay cross-tenant compatible.
-    const hasProof = Boolean(paymentProof?.url || paymentProof?.reference)
+    const hasProof = Boolean(safePaymentProof?.url || safePaymentProof?.reference)
     const convexCustomerData = hasProof
       ? {
           ...(effectiveCustomerData || {}),
-          payment_proof_url: paymentProof?.url || undefined,
-          payment_proof_public_id: paymentProof?.publicId || undefined,
-          payment_proof_reference: paymentProof?.reference || undefined,
+          payment_proof_url: safePaymentProof?.url || undefined,
+          payment_proof_public_id: safePaymentProof?.publicId || undefined,
+          payment_proof_reference: safePaymentProof?.reference || undefined,
         }
       : effectiveCustomerData
 
@@ -808,16 +757,7 @@ export async function createOrderAction(
 
       // The order type lives on the platform; carry its display name across so
       // the merchant queue doesn't render every order as "N/A".
-      let orderTypeName: string | null = null
-      if (orderTypeId) {
-        const { data: otNameRow } = await supabaseAdmin
-          .from('order_types')
-          .select('name')
-          .eq('id', orderTypeId)
-          .eq('tenant_id', tenantId)
-          .maybeSingle()
-        orderTypeName = (otNameRow as { name?: string } | null)?.name ?? null
-      }
+      const orderTypeName = orderTypeRow?.name ?? null
 
       const tenantClient = createTenantOrderWriteClient(tenantConfig)
       const result = await createOrderTenantSupabase(tenantClient, {
@@ -833,9 +773,9 @@ export async function createOrderAction(
         paymentMethodName,
         paymentMethodDetails,
         paymentMethodQrCodeUrl,
-        serviceChargeAmount,
+        serviceChargeAmount: serviceCharge,
         scheduledForISO: validatedScheduledISO,
-        paymentProof,
+        paymentProof: safePaymentProof,
         discounts: pricing.application.discountLines,
       })
       // The order row exists and carries the claim; the stock is spent for real.
@@ -891,7 +831,7 @@ export async function createOrderAction(
         paymentMethodName,
         paymentMethodDetails,
         paymentMethodQrCodeUrl,
-        serviceChargeAmount,
+        serviceCharge,
         validatedScheduledISO,
         pricing.application.discountLines
       )
@@ -919,9 +859,9 @@ export async function createOrderAction(
       paymentMethodName,
       paymentMethodDetails,
       paymentMethodQrCodeUrl,
-      serviceChargeAmount,
+      serviceCharge,
       validatedScheduledISO,
-      paymentProof,
+      safePaymentProof,
       // Only the platform database has an outlet_id column; the other two
       // backends carry the branch in customer_data (stamped above).
       resolvedOutlet?.id ?? null,

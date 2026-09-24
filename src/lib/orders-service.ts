@@ -23,6 +23,7 @@ import {
 } from '@/lib/order-stats'
 import type { Order } from '@/types/database'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
+import { verifyPricedOrderLines } from '@/lib/order-line-invariants'
 import { convexScheduledForArg } from '@/lib/advance-order-utils'
 import { convexPresellItemFields } from '@/lib/presell/convex-args'
 import { readPresellClaim } from '@/lib/presell/checkout-schedule'
@@ -525,29 +526,30 @@ export async function createOrder(
     throw new Error(`Order cannot contain more than ${MAX_ITEMS} items`)
   }
 
-  // Validate and truncate string fields
-  for (const item of items) {
-    if (item.special_instructions && item.special_instructions.length > MAX_INSTRUCTION_LENGTH) {
-      // Truncate instead of reject to avoid breaking the user experience
-      item.special_instructions = item.special_instructions.substring(0, MAX_INSTRUCTION_LENGTH)
-    }
-  }
-
-  if (customerInfo?.name && customerInfo.name.length > MAX_FIELD_LENGTH) {
-    customerInfo.name = customerInfo.name.substring(0, MAX_FIELD_LENGTH)
-  }
-  if (customerInfo?.contact && customerInfo.contact.length > MAX_FIELD_LENGTH) {
-    customerInfo.contact = customerInfo.contact.substring(0, MAX_FIELD_LENGTH)
-  }
-
-  // Truncate customerData string fields
-  if (customerData) {
-    for (const key of Object.keys(customerData)) {
-      if (typeof customerData[key] === 'string' && (customerData[key] as string).length > MAX_FIELD_LENGTH) {
-        customerData[key] = (customerData[key] as string).substring(0, MAX_FIELD_LENGTH)
+  // Truncate (never reject) over-long strings — into NEW objects, so the
+  // caller's items, contact and customer data are left exactly as passed.
+  const truncate = (value: string | undefined, max: number) =>
+    value && value.length > max ? value.substring(0, max) : value
+  const boundedItems = items.map((item) =>
+    item.special_instructions && item.special_instructions.length > MAX_INSTRUCTION_LENGTH
+      ? { ...item, special_instructions: truncate(item.special_instructions, MAX_INSTRUCTION_LENGTH) }
+      : item
+  )
+  customerInfo = customerInfo
+    ? {
+        ...customerInfo,
+        name: truncate(customerInfo.name, MAX_FIELD_LENGTH),
+        contact: truncate(customerInfo.contact, MAX_FIELD_LENGTH),
       }
-    }
-  }
+    : customerInfo
+  customerData = customerData
+    ? Object.fromEntries(
+        Object.entries(customerData).map(([key, value]) => [
+          key,
+          typeof value === 'string' ? truncate(value, MAX_FIELD_LENGTH) : value,
+        ])
+      )
+    : customerData
 
   const supabase = await createClient()
 
@@ -569,11 +571,12 @@ export async function createOrder(
     throw new Error(closedError)
   }
 
-  // SERVER-SIDE PRICE VALIDATION: Verify prices against database
-  const menuItemIds = [...new Set(items.map(i => i.menu_item_id))]
+  // Every dish must belong to this tenant. Prices are NOT re-derived here —
+  // see the invariant check below.
+  const menuItemIds = [...new Set(boundedItems.map(i => i.menu_item_id))]
   const { data: dbItems, error: priceCheckError } = await supabase
     .from('menu_items')
-    .select('id, price, name')
+    .select('id, name')
     .eq('tenant_id', tenantId)
     .in('id', menuItemIds)
 
@@ -581,7 +584,7 @@ export async function createOrder(
     throw new Error('Failed to verify item prices')
   }
 
-  const priceMap = new Map((dbItems || []).map(i => [i.id, i.price]))
+  const knownMenuItemIds = new Set(((dbItems || []) as Array<{ id: string }>).map(i => i.id))
 
   // IDOR GUARD: Verify orderTypeId belongs to this tenant before using it
   if (orderTypeId) {
@@ -615,52 +618,15 @@ export async function createOrder(
     }
   }
 
-  // SERVER-SIDE PRICE & QUANTITY VALIDATION
-  // Base prices are verified against the DB. Variation/addon modifiers come from the client,
-  // but we enforce that the submitted subtotal must equal price * quantity exactly.
-  // This prevents a client from sending an inflated price (e.g. variation modifier > actual DB value)
-  // or a manipulated subtotal that doesn't match quantity.
-  const MAX_QUANTITY = 99
-  const MAX_PRICE = 1_000_000 // sanity cap: no single item should exceed ₱1,000,000
-  let verifiedTotal = 0
-  for (const item of items) {
-    const dbPrice = priceMap.get(item.menu_item_id)
-    if (dbPrice === undefined) {
-      throw new Error(`Menu item not found: ${item.menu_item_id}`)
-    }
-
-    // Enforce quantity bounds server-side (client allows 1-99 but we re-validate here)
-    if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > MAX_QUANTITY) {
-      throw new Error(`Invalid quantity for ${item.menu_item_name}: must be between 1 and ${MAX_QUANTITY}`)
-    }
-
-    // Enforce that the submitted per-unit price is at least the DB base price.
-    // Variation modifiers legitimately add to the price, so prices above DB price are allowed,
-    // but we cap them to prevent absurd values.
-    if (item.price < dbPrice - 0.01) {
-      console.warn(`[Order] Price below DB price for ${item.menu_item_name}: client=${item.price}, db=${dbPrice}`)
-      // Override with DB price — client submitted a price lower than the DB base price
-      item.price = dbPrice
-    }
-
-    if (item.price > MAX_PRICE) {
-      throw new Error(`Price exceeds maximum allowed value for ${item.menu_item_name}`)
-    }
-
-    // Enforce that subtotal matches price × quantity (tolerance: ₱0.01 for floating-point rounding)
-    const expectedSubtotal = Math.round(item.price * item.quantity * 100) / 100
-    const submittedSubtotal = Math.round(item.subtotal * 100) / 100
-    if (Math.abs(submittedSubtotal - expectedSubtotal) > 0.02) {
-      console.warn(
-        `[Order] Subtotal mismatch for ${item.menu_item_name}: ` +
-        `submitted=${submittedSubtotal}, expected=${expectedSubtotal} (price=${item.price} × qty=${item.quantity})`
-      )
-      // Recalculate subtotal from server-verified price and quantity
-      item.subtotal = expectedSubtotal
-    }
-
-    verifiedTotal += item.subtotal
-  }
+  // SERVER-SIDE PRICE & QUANTITY INVARIANTS
+  // The caller (createOrderAction) already priced every line at the price the
+  // customer was shown: sale price, branch override, options and add-ons. This
+  // used to re-floor against `menu_items.price` — the LIST price — which
+  // silently raised every sale-priced and branch-cheaper line back up, and
+  // waved a NaN price through. Now it only refuses nonsense and derives each
+  // subtotal from price × quantity.
+  const verifiedItems = verifyPricedOrderLines(boundedItems, knownMenuItemIds)
+  const verifiedTotal = verifiedItems.reduce((sum, item) => sum + item.subtotal, 0)
 
   const total = verifiedTotal
   // The persisted amount and the amount the customer was shown come from one
@@ -708,7 +674,7 @@ export async function createOrder(
       order_type: orderTypeId ? await getOrderTypeName(orderTypeId) : null,
       customer_name: customerInfo?.name,
       customer_contact: customerInfo?.contact,
-      customer_data: withInventorySelectionSnapshot(customerData, items),
+      customer_data: withInventorySelectionSnapshot(customerData, verifiedItems),
       scheduled_for: scheduledForValue,
       total: finalTotal,
       delivery_fee: deliveryFee || 0,
@@ -727,7 +693,7 @@ export async function createOrder(
       // Spread rather than `outlet_id: outletId ?? null` so a single-location
       // tenant's INSERT is character-for-character the statement it is today.
       ...(outletId ? { outlet_id: outletId } : {}),
-      ...buildOrderParityColumns(items, parityOptions ?? {}),
+      ...buildOrderParityColumns(verifiedItems, parityOptions ?? {}),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     .select()
@@ -766,7 +732,7 @@ export async function createOrder(
   const orderData = order as any
 
   // Create order items
-  const orderItems = items.map(item => ({
+  const orderItems = verifiedItems.map(item => ({
     order_id: orderData.id,
     menu_item_id: item.menu_item_id,
     menu_item_name: item.menu_item_name,

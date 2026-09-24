@@ -10,6 +10,7 @@ import { runPlatformLalamoveOp } from "../lib/lalamove-service";
 import {
   isActiveLalamoveDelivery,
   isLalamoveFinal,
+  isRebookableLalamoveStatus,
   lalamoveBadgeVariant,
   lalamoveStatusLabel,
 } from "../lib/lalamove-status";
@@ -69,9 +70,9 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const transport = resolveLalamoveTransport({ convexUrl, orderBackend });
 
-  const [busy, setBusy] = React.useState<null | "book" | "sync" | "cancel" | "fee" | "requote">(
-    null,
-  );
+  const [busy, setBusy] = React.useState<
+    null | "book" | "sync" | "cancel" | "fee" | "requote" | "rebook"
+  >(null);
 
   const hasQuotation = !!order.lalamoveQuotationId && String(order.lalamoveQuotationId).trim() !== "";
   // A delivery that was never quoted (the quote call failed at checkout, or
@@ -80,6 +81,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const hasOrder = !!order.lalamoveOrderId && String(order.lalamoveOrderId).trim() !== "";
   const status = order.lalamoveStatus ?? "";
   const isFinal = isLalamoveFinal(status);
+  const isRebookable = isRebookableLalamoveStatus(status);
   const shouldAutoSync =
     hasOrder && isActiveLalamoveDelivery(status) && transport !== "unavailable";
 
@@ -167,32 +169,69 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const runBook = async () => {
     setBusy("book");
     try {
-      const result = await dispatch("book");
-      if (result?.success) {
-        Alert.alert(
-          "Success",
-          result.recipientPhoneSource === "store"
-            ? `Delivery booked. Searching for a driver… ${STORE_PHONE_RECIPIENT_NOTICE}`
-            : "Delivery booked. Searching for a driver…",
-        );
-      } else if (result?.error && /expired|quotation/i.test(result.error)) {
-        Alert.alert("Lalamove", result.error, [
-          { text: "Close", style: "cancel" },
-          {
-            text: "Get New Quote",
-            onPress: () => {
-              void run("requote", "requote", "New quotation created — book the delivery now.");
-            },
-          },
-        ]);
-      } else {
-        Alert.alert("Lalamove", result?.error ?? "Something went wrong");
-      }
+      reportBookResult(await dispatch("book"));
     } catch {
       Alert.alert("Lalamove", "Failed to reach the delivery service");
     } finally {
       setBusy(null);
     }
+  };
+
+  const reportBookResult = (result: ActionResult) => {
+    if (result?.success) {
+      Alert.alert(
+        "Success",
+        result.recipientPhoneSource === "store"
+          ? `Delivery booked. Searching for a driver… ${STORE_PHONE_RECIPIENT_NOTICE}`
+          : "Delivery booked. Searching for a driver…",
+      );
+    } else if (result?.error && /expired|quotation/i.test(result.error)) {
+      Alert.alert("Lalamove", result.error, [
+        { text: "Close", style: "cancel" },
+        {
+          text: "Get New Quote",
+          onPress: () => {
+            void run("requote", "requote", "New quotation created — book the delivery now.");
+          },
+        },
+      ]);
+    } else {
+      Alert.alert("Lalamove", result?.error ?? "Something went wrong");
+    }
+  };
+
+  /**
+   * Get the customer a rider again after the booking died (cancelled,
+   * rejected, expired). The requote retires the dead booking on the server,
+   * then the rider is booked on the fresh quotation. If the booking step
+   * fails, the order is left quoted and the card offers Book again.
+   */
+  const runRebook = async () => {
+    setBusy("rebook");
+    try {
+      const quote = await dispatch("requote");
+      if (!quote?.success) {
+        Alert.alert("Lalamove", quote?.error ?? "Could not get a new quote");
+        return;
+      }
+      reportBookResult(await dispatch("book"));
+    } catch {
+      Alert.alert("Lalamove", "Failed to reach the delivery service");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleRebook = () => {
+    if (guardDemo()) return;
+    Alert.alert(
+      "Rebook delivery",
+      "Book a new Lalamove rider for this order? This gets a fresh quote and books it right away.",
+      [
+        { text: "Not yet", style: "cancel" },
+        { text: "Rebook", onPress: () => void runRebook() },
+      ],
+    );
   };
 
   const handleBook = () => {
@@ -292,6 +331,27 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
               <Text style={styles.link}>{order.lalamoveDriverPhone}</Text>
             </TouchableOpacity>
           )}
+
+          {isRebookable ? (
+            <>
+              <Text style={[styles.muted, styles.rebookNote]}>
+                This booking ended without a delivery. Rebook to send a new rider — the
+                customer&apos;s delivery fee stays as it is.
+              </Text>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={handleRebook}
+                disabled={!!busy}
+                activeOpacity={0.8}
+              >
+                {busy === "rebook" ? (
+                  <ActivityIndicator color={colors.textOnDark} />
+                ) : (
+                  <Text style={styles.primaryText}>Rebook Delivery</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : null}
 
           <View style={styles.actions}>
             {order.lalamoveTrackingUrl && (
@@ -396,6 +456,7 @@ const styles = StyleSheet.create({
   },
   secondaryText: { color: colors.primary, ...typography.body, fontWeight: "600" },
   requoteBtn: { marginTop: spacing.sm },
+  rebookNote: { marginTop: spacing.sm },
   hint: { ...typography.caption, color: colors.textTertiary, marginTop: spacing.sm },
   dangerBtn: {
     borderWidth: 1,

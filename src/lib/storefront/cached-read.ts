@@ -55,10 +55,29 @@ class UncachedResultSignal<T> extends Error {
   }
 }
 
+/**
+ * Next's data cache rejects entries over 2 MiB (`items over 2MB can not be
+ * cached`): production logs and skips the write, so every page view re-runs
+ * the loader; development throws into the page. Stay clear of it with room for
+ * the entry's own wrapper fields.
+ */
+export const MAX_CACHE_ENTRY_BYTES = Math.floor(1.9 * 1024 * 1024)
+
+/**
+ * The size Next measures for an entry: `unstable_cache` stores the result as a
+ * JSON string body, and the incremental cache stringifies that entry again —
+ * so every quote in the result counts twice.
+ */
+export function measureCacheEntryBytes(value: unknown): number {
+  return JSON.stringify(JSON.stringify(value)).length
+}
+
 interface CachedReadOptions<Args extends unknown[]> {
   /** Cache tags for a given call; must be deterministic in the arguments. */
   tags: (...args: Args) => string[]
   revalidate?: number
+  /** Results larger than this are delivered but never offered to the cache. */
+  maxEntryBytes?: number
 }
 
 /**
@@ -74,10 +93,18 @@ export function createCachedRead<Args extends unknown[], T>(
   options: CachedReadOptions<Args>
 ): (...args: Args) => Promise<T> {
   const revalidate = options.revalidate ?? STOREFRONT_REVALIDATE_SECONDS
+  const maxEntryBytes = options.maxEntryBytes ?? MAX_CACHE_ENTRY_BYTES
 
   const boundary = async (...args: Args): Promise<T> => {
     const result = await loader(...args)
     if (isUncached(result)) throw new UncachedResultSignal(result.value)
+    const entryBytes = measureCacheEntryBytes(result)
+    if (entryBytes > maxEntryBytes) {
+      console.warn(
+        `[storefront-cache] ${keyParts.join('/')} result is too large to cache (${entryBytes} bytes > ${maxEntryBytes}); serving it uncached`
+      )
+      throw new UncachedResultSignal(result)
+    }
     return result
   }
 

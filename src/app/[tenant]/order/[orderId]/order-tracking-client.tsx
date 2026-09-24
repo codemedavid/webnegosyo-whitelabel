@@ -25,6 +25,7 @@ import { shouldRingForTransition } from '@/lib/order-ready-alert'
 import { describePrepPromise } from '@/lib/prep-time'
 import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
 import { formatOrderTrackingTime, ORDER_TRACKING_TIME_ZONE } from '@/lib/order-tracking-time'
+import { useVisibilityPoll } from '@/hooks/use-visibility-poll'
 
 export interface OrderTrackingBrand {
   storeName: string
@@ -100,16 +101,16 @@ export function OrderTrackingClient({
     }
   }, [initialData.isTerminal, initialData.status, tenantSlug, orderId, cleanupLocalStorage])
 
-  // Poll for status updates
-  const fetchStatus = useCallback(async () => {
-    if (isTerminalRef.current) return
+  // Poll for status updates. Resolves false on any failure (404, 429, 5xx,
+  // network) so the poller backs off; we already have data from SSR.
+  const fetchStatus = useCallback(async (): Promise<boolean> => {
+    if (isTerminalRef.current) return true
 
     try {
       const params = new URLSearchParams({ orderId, token: trackingToken, tenantId })
       const res = await fetch(`/api/orders/track?${params}`)
 
-      if (res.status === 404 || res.status === 429) return
-      if (!res.ok) return
+      if (!res.ok) return false
 
       const data: TrackingData = await res.json()
 
@@ -142,18 +143,20 @@ export function OrderTrackingClient({
         isTerminalRef.current = true
         setTimeout(cleanupLocalStorage, CLEANUP_DELAY_MS)
       }
+      return true
     } catch {
-      // Silently ignore poll failures — we already have data from SSR
+      // Network failure — the poller backs off; the page keeps its last data.
+      return false
     }
   }, [orderId, trackingToken, tenantId, tenantSlug, cleanupLocalStorage])
 
-  useEffect(() => {
-    if (isTerminalRef.current) return
-
-    // Poll faster once the customer asked to be rung — the alert is the point.
-    const interval = setInterval(fetchStatus, alertsEnabled ? POLL_ALERT_MS : POLL_MS)
-    return () => clearInterval(interval)
-  }, [fetchStatus, alertsEnabled])
+  // Poll faster once the customer asked to be rung — the alert is the point.
+  // Paused while the tab is hidden (refreshes the moment it is shown again)
+  // and stopped once the order reaches a final state.
+  useVisibilityPoll(fetchStatus, {
+    baseMs: alertsEnabled ? POLL_ALERT_MS : POLL_MS,
+    isEnabled: !trackingData.isTerminal,
+  })
 
   // The device clock is adopted only AFTER mount. Reading `Date.now()` during
   // render would diverge between the server HTML and hydration, which is a

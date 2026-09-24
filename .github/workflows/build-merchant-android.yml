@@ -107,6 +107,22 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > google-services.json
           node -e "require('./google-services.json'); console.log('google-services.json restored and parses as JSON')"
 
+      # Android push has two halves that are configured in different places and
+      # never checked against each other: the Firebase project compiled into
+      # the APK, and the FCM V1 key EAS signs pushes with. When they diverge,
+      # FCM drops every Android notification with MismatchSenderId while Expo
+      # still answers 200 — which is how every merchant Android device went
+      # silent for months. One HTTP call makes that unshippable.
+      - name: Verify FCM credentials match the build
+        if: ${{ inputs.runner == 'github-local' }}
+        working-directory: webnegosyo-app
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GOOGLE_SERVICES_JSON: ${{ github.workspace }}/webnegosyo-app/google-services.json
+          # CI has a token, so "could not check" is a failure here, not a shrug.
+          FCM_CHECK_STRICT: 'true'
+        run: node scripts/check-fcm-credentials.mjs
+
       - name: Build APK on this runner
         if: ${{ inputs.runner == 'github-local' }}
         working-directory: webnegosyo-app

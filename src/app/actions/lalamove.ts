@@ -18,7 +18,9 @@ import { resolveLalamoveRecipient } from '@/lib/lalamove-recipient'
 import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { resolveRequoteGate, retireDeadBookingPatch } from '@/lib/lalamove-rebook'
+import { checkRateLimit } from '@/lib/distributed-rate-limit'
+import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { Database, Tenant } from '@/types/database'
 
 /**
@@ -46,39 +48,76 @@ async function withLalamoveKeys(tenant: Tenant): Promise<Tenant> {
 
 /**
  * Quotations are billable calls against the tenant's own Lalamove account and
- * the action is deliberately anonymous (customers quote at checkout). The cap
- * is per tenant: high enough for a busy dinner rush, low enough that a
- * scripted visitor cannot burn a merchant's account.
+ * the action is deliberately anonymous (customers quote at checkout). The
+ * tenant cap bounds what the merchant's account can be billed for; the per-IP
+ * cap stops one visitor from spending that whole budget and locking real
+ * customers out of delivery quotes. Both are counted in Redis, so they hold
+ * across serverless instances.
  */
-const QUOTATION_RATE_LIMIT = { maxRequests: 30, windowMs: 60_000 }
+const QUOTATION_RATE_LIMIT = { limit: 30, windowSec: 60 }
+const QUOTATION_CLIENT_RATE_LIMIT = { limit: 10, windowSec: 60 }
+
+const MAX_DELIVERY_ADDRESS_LENGTH = 500
+
+const QUOTE_RATE_LIMITED = {
+  success: false as const,
+  error: 'Too many delivery quotes requested. Please try again in a moment.',
+}
+
+function isLatitude(value: number): boolean {
+  return Number.isFinite(value) && value >= -90 && value <= 90
+}
+
+function isLongitude(value: number): boolean {
+  return Number.isFinite(value) && value >= -180 && value <= 180
+}
 
 /**
- * Create a Lalamove quotation for delivery
+ * Create a Lalamove quotation for delivery.
+ *
+ * The PICKUP comes from the tenant row, never the caller. A visitor who could
+ * name the pickup could quote a near-zero trip (pickup next to the drop-off),
+ * check out with that fee, and leave the merchant billed for the real distance
+ * when the booking is made against the quotation. The pickup arguments are
+ * kept only so the existing call site keeps compiling; they are ignored. The
+ * vehicle type is no longer a parameter — it is the merchant's
+ * `lalamove_service_type` setting.
+ * This matches `requoteLalamoveAction`, which has always read the store pin.
  */
 export async function createQuotationAction(
   tenantId: string,
-  pickupAddress: string,
-  pickupLat: number,
-  pickupLng: number,
+  _clientPickupAddress: string,
+  _clientPickupLat: number,
+  _clientPickupLng: number,
   deliveryAddress: string,
   deliveryLat: number,
   deliveryLng: number,
-  serviceType?: string
 ) {
   try {
-    const rate = checkRateLimit(`lalamove-quote:${tenantId}`, QUOTATION_RATE_LIMIT)
-    if (!rate.allowed) {
-      return {
-        success: false,
-        error: 'Too many delivery quotes requested. Please try again in a moment.',
-      }
+    if (typeof tenantId !== 'string' || tenantId === '') {
+      return { success: false, error: 'Tenant not found' }
     }
+    if (
+      typeof deliveryAddress !== 'string' ||
+      deliveryAddress.trim() === '' ||
+      deliveryAddress.length > MAX_DELIVERY_ADDRESS_LENGTH ||
+      !isLatitude(deliveryLat) ||
+      !isLongitude(deliveryLng)
+    ) {
+      return { success: false, error: 'Please choose a valid delivery address.' }
+    }
+
+    const clientRate = await checkActionRateLimit('lalamove-quote-client', QUOTATION_CLIENT_RATE_LIMIT)
+    if (!clientRate.allowed) return QUOTE_RATE_LIMITED
+
+    const rate = await checkRateLimit(`lalamove-quote:${tenantId}`, QUOTATION_RATE_LIMIT)
+    if (!rate.allowed) return QUOTE_RATE_LIMITED
 
     // Get tenant data
     const supabase = await createClient()
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select(LALAMOVE_TENANT_COLUMNS)
+      .select(`${LALAMOVE_TENANT_COLUMNS}, restaurant_address, restaurant_latitude, restaurant_longitude`)
       .eq('id', tenantId)
       .single()
 
@@ -92,14 +131,22 @@ export async function createQuotationAction(
       return { success: false, error: 'Lalamove delivery is not enabled for this restaurant' }
     }
 
-    // Create quotation
+    const pickupAddress = tenantTyped.restaurant_address
+    const pickupLat = toFiniteNumber(tenantTyped.restaurant_latitude)
+    const pickupLng = toFiniteNumber(tenantTyped.restaurant_longitude)
+    if (!pickupAddress || pickupLat === undefined || pickupLng === undefined) {
+      return {
+        success: false,
+        error: 'This store has not set its pickup location yet. Please contact the store.',
+      }
+    }
+
     const quotation = await createLalamoveQuotation(
       tenantTyped,
       pickupAddress,
       { lat: pickupLat, lng: pickupLng },
       deliveryAddress,
       { lat: deliveryLat, lng: deliveryLng },
-      serviceType
     )
 
     return {
@@ -380,7 +427,7 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
 
     const { data: orderData } = await supabase
       .from('orders')
-      .select('id, customer_data, lalamove_order_id')
+      .select('id, customer_data, lalamove_order_id, lalamove_status')
       .eq('id', orderId)
       .eq('tenant_id', tenantId)
       .single()
@@ -392,16 +439,20 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
         delivery_lng?: number | string | null
       } | null
       lalamove_order_id: string | null
+      lalamove_status: string | null
     } | null
 
     if (!order) {
       return { success: false, error: 'Order not found' }
     }
-    if (order.lalamove_order_id && String(order.lalamove_order_id).trim() !== '') {
-      return {
-        success: false,
-        error: 'A delivery is already booked for this order — cancel it before re-quoting',
-      }
+    // A booking that died (cancelled, rejected, expired) is retired here —
+    // that is how a cancelled order gets a rider again. A live one is refused.
+    const gate = resolveRequoteGate({
+      lalamoveOrderId: order.lalamove_order_id,
+      lalamoveStatus: order.lalamove_status,
+    })
+    if (!gate.ok) {
+      return { success: false, error: gate.error }
     }
 
     const deliveryAddress = order.customer_data?.delivery_address
@@ -429,14 +480,22 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
       { lat: deliveryLat, lng: deliveryLng },
     )
 
-    // Guarded on the booking still being absent so a booking racing this
-    // requote cannot end up referencing a quotation it was not made from.
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({ lalamove_quotation_id: quotation.quotationId })
-      .eq('id', orderId)
-      .eq('tenant_id', tenantId)
-      .is('lalamove_order_id', null)
+    // Guarded on the booking still being what the gate saw — absent, or the
+    // same dead booking — so a booking racing this requote is never wiped nor
+    // left referencing a quotation it was not made from.
+    const { error: updateError } = gate.retiredOrderId
+      ? await supabase
+          .from('orders')
+          .update(retireDeadBookingPatch(quotation.quotationId))
+          .eq('id', orderId)
+          .eq('tenant_id', tenantId)
+          .eq('lalamove_order_id', gate.retiredOrderId)
+      : await supabase
+          .from('orders')
+          .update({ lalamove_quotation_id: quotation.quotationId })
+          .eq('id', orderId)
+          .eq('tenant_id', tenantId)
+          .is('lalamove_order_id', null)
 
     if (updateError) {
       throw updateError

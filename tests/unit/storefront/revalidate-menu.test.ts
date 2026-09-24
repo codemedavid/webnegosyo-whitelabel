@@ -21,6 +21,20 @@ describe('revalidateStorefrontMenu', () => {
     expect(nextCache.revalidatePath).toHaveBeenCalledWith('/shop/menu', 'layout')
     expect(nextCache.revalidatePath).toHaveBeenCalledWith('/shop')
   })
+
+  it.each(['[tenant]', 'a/b', '..', ''])('never purges for the non-plain slug %p, which would hit every storefront', async (slug) => {
+    const nextCache = await import('next/cache')
+    const { revalidateStorefrontMenu } = await import('@/lib/storefront/revalidate')
+    ;(nextCache.revalidateTag as jest.Mock).mockClear()
+    ;(nextCache.revalidatePath as jest.Mock).mockClear()
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    revalidateStorefrontMenu(slug)
+
+    expect(nextCache.revalidateTag).not.toHaveBeenCalled()
+    expect(nextCache.revalidatePath).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
 })
 
 describe('server actions', () => {

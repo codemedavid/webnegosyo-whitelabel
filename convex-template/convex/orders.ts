@@ -490,6 +490,38 @@ export const updateLalamoveDetailsInternal = internalMutation({
   },
 });
 
+/**
+ * Swap a dead Lalamove booking (cancelled, rejected, expired) for a fresh
+ * quotation, so the order can be booked again. Separate from
+ * updateLalamoveDetailsInternal because that one can only SET fields —
+ * undefined args are dropped at the function boundary — and this must unset
+ * every booking field: a leftover driver or tracking link would show a rider
+ * who is no longer coming.
+ *
+ * Guarded on the booking still being the dead one the caller checked, so a
+ * rebook racing a fresh booking can never wipe it. Returns whether it applied.
+ */
+export const retireLalamoveBookingInternal = internalMutation({
+  args: {
+    orderId: v.id("orders"),
+    expectedLalamoveOrderId: v.string(),
+    lalamoveQuotationId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.lalamoveOrderId !== args.expectedLalamoveOrderId) return false;
+    await ctx.db.patch(args.orderId, {
+      lalamoveQuotationId: args.lalamoveQuotationId,
+      lalamoveOrderId: undefined,
+      lalamoveStatus: undefined,
+      lalamoveTrackingUrl: undefined,
+      lalamoveDriverName: undefined,
+      lalamoveDriverPhone: undefined,
+    });
+    return true;
+  },
+});
+
 // --- QUERIES ---
 
 // Safety cap for queries that load orders — prevents OOM on large datasets

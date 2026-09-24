@@ -32,9 +32,8 @@ jest.mock('@/lib/branding-images', () => ({
   clearTenantBanner: jest.fn(),
   listTenantBanners: jest.fn(),
   readBrandingSnapshot: jest.fn(),
-  resolveTenantSlug: jest.fn(),
 }))
-jest.mock('@/app/actions/branding', () => ({ __esModule: true, saveBrandingAction: jest.fn() }))
+jest.mock('@/lib/branding-write', () => ({ __esModule: true, saveBrandingWithClient: jest.fn() }))
 jest.mock('@/lib/payment-methods-service', () => ({ __esModule: true, createPaymentMethod: jest.fn() }))
 jest.mock('@/lib/addon-library-service', () => ({ __esModule: true, createAddonLibraryEntry: jest.fn(), listAddonLibraryForProvisioning: jest.fn() }))
 jest.mock('@/lib/addon-bulk-attach', () => ({ __esModule: true, attachAddonEntriesToItems: jest.fn() }))
@@ -61,10 +60,10 @@ import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-sc
 const { createTenantSupabase, updateTenantSupabase, listTenantsSupabase } = jest.requireMock('@/lib/tenants-service') as any
 const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning, updateCategoryFields } = jest.requireMock('@/lib/admin-service') as any
 const { createTenantOwnerWithClient, listTenantUsersWithClient } = jest.requireMock('@/lib/tenant-owner-provisioning') as any
-const { setTenantImage, addTenantBanner, updateTenantBanner, clearTenantBanner, listTenantBanners, readBrandingSnapshot, resolveTenantSlug } = jest.requireMock('@/lib/branding-images') as any
+const { setTenantImage, addTenantBanner, updateTenantBanner, clearTenantBanner, listTenantBanners, readBrandingSnapshot } = jest.requireMock('@/lib/branding-images') as any
 const { updateBundle, updateBundleFields, setBundleImage } = jest.requireMock('@/lib/bundles-service') as any
 const { updateUpsellPair } = jest.requireMock('@/lib/menu-engineering-service') as any
-const { saveBrandingAction } = jest.requireMock('@/app/actions/branding') as any
+const { saveBrandingWithClient } = jest.requireMock('@/lib/branding-write') as any
 const { createPaymentMethod } = jest.requireMock('@/lib/payment-methods-service') as any
 const { fetchMenuPerformanceForTenantId } = jest.requireMock('@/lib/queries/menu-performance') as any
 const { bulkUpdateBcgClassification } = jest.requireMock('@/lib/menu-engineering-service') as any
@@ -101,7 +100,7 @@ beforeEach(() => {
   listCategoriesForProvisioning.mockReset().mockResolvedValue([
     { id: 'cat_1', name: 'Drinks', order: 0, is_active: true },
   ] as never)
-  saveBrandingAction.mockReset().mockResolvedValue({ success: true } as never)
+  saveBrandingWithClient.mockReset().mockResolvedValue({ success: true } as never)
   createPaymentMethod.mockReset().mockResolvedValue({ id: 'pm_1' } as never)
   fetchMenuPerformanceForTenantId.mockReset().mockResolvedValue({
     dataSource: 'convex',
@@ -130,7 +129,6 @@ beforeEach(() => {
   clearTenantBanner.mockReset().mockResolvedValue({ surface: 'menu', banner: null, banners: [] } as never)
   listTenantBanners.mockReset().mockResolvedValue({ menu: { visible: true, banners: [] }, welcome: { banners: [] } } as never)
   readBrandingSnapshot.mockReset().mockResolvedValue({ slug: 'acme', values: { hero_preset: 'split' } } as never)
-  resolveTenantSlug.mockReset().mockResolvedValue('acme' as never)
   updateBundle.mockReset().mockResolvedValue({ id: 'bundle_1', name: 'Meal Deal XL' } as never)
   updateBundleFields.mockReset().mockResolvedValue({ id: 'bundle_1', name: 'Meal Deal XL' } as never)
   setBundleImage.mockReset().mockResolvedValue({ id: 'bundle_1', image_url: 'https://ik.imagekit.io/x/b.png' } as never)
@@ -362,12 +360,7 @@ describe('executeOp dispatch', () => {
       tenantSlug: 'acme',
       branding: { header_color: '#8B1A1A' },
     })
-    expect(saveBrandingAction).toHaveBeenCalledWith(
-      TENANT,
-      'acme',
-      { header_color: '#8B1A1A' },
-      ctx,
-    )
+    expect(saveBrandingWithClient).toHaveBeenCalledWith(ctx.client, TENANT, { header_color: '#8B1A1A' })
   })
 
   it('configure_integration routes to updateTenantSupabase with tenantId + ctx', async () => {
@@ -796,11 +789,10 @@ describe('bundle & upsell edit ops', () => {
 })
 
 describe('branding image & banner ops', () => {
-  it('update_branding resolves the slug when the caller omits it', async () => {
-    await executeOp('update_branding', ctx, { tenantId: TENANT, branding: { hero_preset: 'split' } })
+  it('update_branding never forwards a model-supplied slug (the writer reads it from the tenant row)', async () => {
+    await executeOp('update_branding', ctx, { tenantId: TENANT, tenantSlug: '[tenant]', branding: { hero_preset: 'split' } })
 
-    expect(resolveTenantSlug).toHaveBeenCalledWith(ctx, TENANT)
-    expect(saveBrandingAction).toHaveBeenCalledWith(TENANT, 'acme', { hero_preset: 'split' }, ctx)
+    expect(saveBrandingWithClient).toHaveBeenCalledWith(ctx.client, TENANT, { hero_preset: 'split' })
   })
 
   it('set_branding_image forwards target and a single source', async () => {

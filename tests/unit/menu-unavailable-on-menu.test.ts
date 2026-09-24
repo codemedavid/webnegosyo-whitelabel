@@ -27,11 +27,13 @@ describe('the storefront menu grid', () => {
   it('fetches every dish, including the ones that are out of stock', () => {
     // The identifier also appears in the import, which is not a query — anchor
     // on the call itself so the assertion cannot pass by reading the wrong line.
-    const gridQuery = source
-      .split('\n')
-      .find((line) => line.includes('select(MENU_ITEM_LIST_SELECT)'))
+    // The grid query is a multi-line paged chain: read it from its projection
+    // to its `.range(` so a filter anywhere in the chain is caught.
+    const anchor = source.indexOf('.select(MENU_ITEM_LIST_SELECT')
+    expect(anchor).toBeGreaterThan(-1)
+    const gridQuery = source.slice(source.lastIndexOf("from('menu_items')", anchor), source.indexOf('.range(', anchor))
 
-    expect(gridQuery).toBeDefined()
+    expect(gridQuery).toContain('MENU_ITEM_LIST_SELECT')
     expect(gridQuery).not.toContain("eq('is_available', true)")
   })
 

@@ -36,7 +36,6 @@ export const MAX_LINE_PRICE = 1_000_000
 export const MAX_LINE_QUANTITY = 99
 /** Currency rounding slack, so float noise is not read as tampering. */
 const PRICE_EPSILON = 0.01
-const SUBTOTAL_EPSILON = 0.02
 
 /** The submitted line, as the checkout posts it. */
 export interface OrderLinePriceInput {
@@ -67,11 +66,21 @@ const round = (value: number): number => Math.round(value * 100) / 100
  * `storeItem` is undefined when the tenant has no such dish. `override` is the
  * chosen branch's opinion, or null when there is no branch or it has none —
  * which is the single-location case and must behave exactly as it always has.
+ *
+ * `modifierDelta` is what the line's options and add-ons are worth, priced by
+ * the caller from the dish's own JSON (see `order-line-modifier-pricing.ts`).
+ * It may be negative ("No rice −₱10"); the floor never drops below zero.
+ *
+ * The submitted price is only ever a claim that can RAISE the charge. Anything
+ * that is not a finite, non-negative number is refused — `NaN < floor` is
+ * false, which is how a NaN price once walked straight past this check. The
+ * submitted subtotal is never used: it is always `price × quantity`.
  */
 export function resolveOrderLinePrice(
   line: OrderLinePriceInput,
   storeItem: StoreMenuItemPricing | undefined,
-  override: OutletMenuOverrideRow | null
+  override: OutletMenuOverrideRow | null,
+  modifierDelta = 0
 ): OrderLinePriceResult {
   if (!storeItem) {
     return { ok: false, error: `Menu item not found: ${line.menu_item_name}` }
@@ -83,6 +92,10 @@ export function resolveOrderLinePrice(
     line.quantity > MAX_LINE_QUANTITY
   ) {
     return { ok: false, error: `Invalid quantity for ${line.menu_item_name}` }
+  }
+
+  if (!isFiniteNonNegative(line.price)) {
+    return { ok: false, error: `Invalid price for ${line.menu_item_name}` }
   }
 
   if (!isItemListedAtOutlet(override)) {
@@ -99,21 +112,22 @@ export function resolveOrderLinePrice(
   }
 
   // The floor is what the customer was quoted for one unit: the branch's price,
-  // and its sale price when it is running one.
-  const floor = getEffectiveItemPrice(resolved)
+  // its sale price when it is running one, plus the options they chose.
+  const floor = Math.max(0, getEffectiveItemPrice(resolved) + modifierDelta)
+  if (!Number.isFinite(floor)) {
+    return { ok: false, error: `${line.menu_item_name} could not be priced.` }
+  }
 
-  // Above the floor is legitimate — variations and add-ons add to the base.
-  const price = line.price < floor - PRICE_EPSILON ? floor : line.price
+  // Above the floor is accepted — the customer only ever overpays themselves.
+  const price = round(line.price < floor - PRICE_EPSILON ? floor : line.price)
 
   if (price > MAX_LINE_PRICE) {
     return { ok: false, error: `Price exceeds maximum for ${line.menu_item_name}` }
   }
 
-  const expectedSubtotal = round(price * line.quantity)
-  const subtotal =
-    Math.abs(round(line.subtotal) - expectedSubtotal) > SUBTOTAL_EPSILON
-      ? expectedSubtotal
-      : round(line.subtotal)
+  return { ok: true, price, subtotal: round(price * line.quantity) }
+}
 
-  return { ok: true, price, subtotal }
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }

@@ -8,7 +8,7 @@
  * upload service actually said.
  */
 
-import { uploadImageToImageKit } from '@/lib/imagekit-upload'
+import { uploadImageToImageKit, uploadPaymentProofImage } from '@/lib/imagekit-upload'
 
 const ORIGINAL_ENV = process.env
 
@@ -22,6 +22,7 @@ interface FakeXhrResponse {
 class FakeXhr {
   static nextResponse: FakeXhrResponse = { status: 200, responseText: '{}' }
   static lastFields: Record<string, string> = {}
+  static lastUrl = ''
 
   upload = { addEventListener: jest.fn() }
   private listeners: Record<string, (() => void)[]> = {}
@@ -32,7 +33,9 @@ class FakeXhr {
     this.listeners[type] = [...(this.listeners[type] ?? []), handler]
   }
 
-  open() {}
+  open(_method: string, url: string) {
+    FakeXhr.lastUrl = url
+  }
 
   send(body: FormData) {
     FakeXhr.lastFields = Object.fromEntries(
@@ -46,10 +49,22 @@ class FakeXhr {
   }
 }
 
+const SIGNED_FIELDS = {
+  fileName: 'bg.jpg',
+  folder: 'page-backgrounds',
+  useUniqueFileName: 'true',
+  overwriteFile: 'false',
+}
+
 function mockAuthOk() {
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
-    json: async () => ({ token: 't', expire: 1, signature: 's', publicKey: 'pk' }),
+    json: async () => ({
+      token: 'signed.jwt.token',
+      publicKey: 'pk',
+      fields: SIGNED_FIELDS,
+      uploadUrl: 'https://upload.imagekit.io/api/v2/files/upload',
+    }),
   }) as unknown as typeof fetch
 }
 
@@ -93,6 +108,26 @@ describe('uploadImageToImageKit', () => {
     })
   })
 
+  it('asks the server to sign folder + file name, then sends exactly the signed fields (v2)', async () => {
+    FakeXhr.nextResponse = {
+      status: 200,
+      responseText: JSON.stringify({ url: 'u', fileId: 'f', filePath: '/page-backgrounds/bg.jpg' }),
+    }
+
+    await uploadImageToImageKit(makeFile(), { folder: 'page-backgrounds' })
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('/api/imagekit/auth')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ folder: 'page-backgrounds', fileName: 'bg.jpg' })
+    expect(FakeXhr.lastUrl).toBe('https://upload.imagekit.io/api/v2/files/upload')
+    const sentKeys = Object.keys(FakeXhr.lastFields).filter((key) => key !== 'file')
+    expect(Object.fromEntries(sentKeys.map((key) => [key, FakeXhr.lastFields[key]]))).toEqual({
+      ...SIGNED_FIELDS,
+      token: 'signed.jwt.token',
+    })
+  })
+
   it('surfaces the reason ImageKit rejected the upload', async () => {
     FakeXhr.nextResponse = {
       status: 403,
@@ -130,5 +165,50 @@ describe('uploadImageToImageKit', () => {
     await expect(
       uploadImageToImageKit(makeFile(), { folder: 'page-backgrounds' }),
     ).rejects.toThrow(/connection/i)
+  })
+})
+
+describe('uploadPaymentProofImage', () => {
+  it('uploads through the server route — no ImageKit credentials in the browser', async () => {
+    FakeXhr.nextResponse = {
+      status: 200,
+      responseText: JSON.stringify({
+        url: 'https://ik.imagekit.io/demo/payment-proofs/proof_x.jpg',
+        fileId: 'f1',
+        filePath: 'payment-proofs/proof_x.jpg',
+      }),
+    }
+
+    const result = await uploadPaymentProofImage(makeFile())
+
+    expect(result).toEqual({
+      url: 'https://ik.imagekit.io/demo/payment-proofs/proof_x.jpg',
+      fileId: 'f1',
+      filePath: 'payment-proofs/proof_x.jpg',
+    })
+    expect(FakeXhr.lastUrl).toBe('/api/payment-proof/upload')
+    expect(FakeXhr.lastFields.purpose).toBe('order')
+    expect(FakeXhr.lastFields.token).toBeUndefined()
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('tags a platform sign-up proof with its purpose', async () => {
+    FakeXhr.nextResponse = {
+      status: 200,
+      responseText: JSON.stringify({ url: 'u', fileId: 'f', filePath: 'checkout-proofs/x.jpg' }),
+    }
+
+    await uploadPaymentProofImage(makeFile(), { purpose: 'platform-signup' })
+
+    expect(FakeXhr.lastFields.purpose).toBe('platform-signup')
+  })
+
+  it("surfaces the server's reason for refusing", async () => {
+    FakeXhr.nextResponse = {
+      status: 415,
+      responseText: JSON.stringify({ error: 'Please upload a PNG, JPG, or WEBP image.' }),
+    }
+
+    await expect(uploadPaymentProofImage(makeFile())).rejects.toThrow(/PNG, JPG, or WEBP/)
   })
 })

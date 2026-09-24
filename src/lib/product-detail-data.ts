@@ -11,7 +11,6 @@
  */
 
 import { cache } from 'react'
-import { createClient } from '@/lib/supabase/server'
 import { createPublicClient } from '@/lib/supabase/public'
 import { createCachedRead, doNotCache, storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
 import { omitTenantSecrets } from '@/lib/tenant-public'
@@ -231,6 +230,58 @@ export const getCachedRelatedItems = cache(
  * cookie-bound client, which cannot sit inside the storefront cache. Moving
  * the pairing services onto the public client is the next step.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toUpgradeUpsells = (rows: any[]): UpgradeUpsell[] =>
+    rows
+        .filter((row) => row.target_item?.is_available === true)
+        .map((row) => ({
+            targetItem: {
+                ...row.target_item,
+                variations: row.target_item.variations || [],
+                variation_types: row.target_item.variation_types || [],
+                addons: row.target_item.addons || [],
+            } as MenuItem,
+            sourceLabel: row.source_label ?? null,
+            targetLabel: row.target_label ?? null,
+            upgradeHeader: row.upgrade_header ?? null,
+        }))
+
+/**
+ * Upgrade pairs for one product, read through the public client (anon RLS
+ * allows active pairs and available items) so every product view and
+ * quick-view sheet is served from the storefront cache instead of paying an
+ * `upsell_pairs` query. Only purchasable targets are kept.
+ */
+const getCachedUpgradeUpsells = createCachedRead(
+    ['product-detail-upgrades'],
+    async (itemId: string, tenantId: string) => {
+        const { data, error } = await createPublicClient()
+            .from('upsell_pairs')
+            .select(`
+                source_label,
+                target_label,
+                upgrade_header,
+                target_item:menu_items!upsell_pairs_target_item_id_fkey(
+                    id, tenant_id, category_id, name, description, price, discounted_price,
+                    image_url, is_available, is_featured, variations, variation_types, addons
+                )
+            `)
+            .eq('source_item_id', itemId)
+            .eq('tenant_id', tenantId)
+            .eq('pair_type', 'upgrade')
+            .eq('is_active', true)
+            .order('display_order', { ascending: true })
+
+        if (error) {
+            console.error('Error fetching upgrade upsells:', error.message)
+            return doNotCache<UpgradeUpsell[]>([])
+        }
+
+        return toUpgradeUpsells(data ?? [])
+    },
+    { tags: (_itemId, tenantId) => [storefrontTenantIdTag(tenantId)] }
+)
+
 export const getCachedUpsellsForItem = cache(async (
     itemId: string,
     tenantId: string,
@@ -238,59 +289,17 @@ export const getCachedUpsellsForItem = cache(async (
     options?: { pairingRulesEnabled?: boolean }
 ): Promise<{ complementary: MenuItem[]; upgrades: UpgradeUpsell[] }> => {
     try {
-        const supabase = await createClient()
-
-        // Fetch complementary items from new table and upgrades from upsell_pairs in parallel
-        const [complementary, upgradesResult] = await Promise.all([
-            // Complementary pairs from dedicated table (item-level overrides category-level)
+        // Complementary pairs come from their own table (item-level overrides category-level)
+        const [complementary, upgrades] = await Promise.all([
             categoryId
                 ? getComplementaryItems(itemId, categoryId, tenantId, {
                     pairingRulesEnabled: options?.pairingRulesEnabled,
                   })
                 : Promise.resolve([]),
-            // Upgrade pairs still from upsell_pairs
-            supabase
-                .from('upsell_pairs')
-                .select(`
-                    source_label,
-                    target_label,
-                    upgrade_header,
-                    target_item:menu_items!upsell_pairs_target_item_id_fkey(
-                        id, tenant_id, category_id, name, description, price, discounted_price,
-                        image_url, is_available, is_featured, variations, variation_types, addons
-                    )
-                `)
-                .eq('source_item_id', itemId)
-                .eq('tenant_id', tenantId)
-                .eq('pair_type', 'upgrade')
-                .eq('is_active', true)
-                .order('display_order', { ascending: true }),
+            getCachedUpgradeUpsells(itemId, tenantId),
         ])
 
-        if (upgradesResult.error) {
-            console.error('Error fetching upgrade upsells:', upgradesResult.error)
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mapUpgrades = (rows: any[]): UpgradeUpsell[] =>
-            rows
-                .filter((row) => row.target_item?.is_available === true)
-                .map((row) => ({
-                    targetItem: {
-                        ...row.target_item,
-                        variations: row.target_item.variations || [],
-                        variation_types: row.target_item.variation_types || [],
-                        addons: row.target_item.addons || [],
-                    } as MenuItem,
-                    sourceLabel: row.source_label ?? null,
-                    targetLabel: row.target_label ?? null,
-                    upgradeHeader: row.upgrade_header ?? null,
-                }))
-
-        return {
-            complementary,
-            upgrades: mapUpgrades(upgradesResult.data || []),
-        }
+        return { complementary, upgrades }
     } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error)
         console.error('Error in getCachedUpsellsForItem:', errMsg)

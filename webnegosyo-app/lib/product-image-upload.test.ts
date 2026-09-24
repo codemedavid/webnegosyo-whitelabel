@@ -5,6 +5,12 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
+// The signed-upload request carries the staff member's own session token.
+jest.mock("./authorized-post", () => ({
+  getAccessTokenBounded: jest.fn(async () => "access-token"),
+}));
+
+import { getAccessTokenBounded } from "./authorized-post";
 import {
   parseUploadResponse,
   uploadImage,
@@ -41,6 +47,16 @@ describe("parseUploadResponse", () => {
   });
 });
 
+/** What POST /api/imagekit/auth answers: a v2 token plus the exact fields it signed. */
+function signedAuth(folder: string, fileName: string) {
+  return {
+    token: "signed.jwt",
+    publicKey: "pub",
+    fields: { fileName, folder, useUniqueFileName: "true", overwriteFile: "false" },
+    uploadUrl: "https://upload.imagekit.io/api/v2/files/upload",
+  };
+}
+
 describe("uploadProductImage", () => {
   const originalFetch = global.fetch;
 
@@ -53,12 +69,7 @@ describe("uploadProductImage", () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          token: "tok",
-          expire: 123,
-          signature: "sig",
-          publicKey: "pub",
-        }),
+        json: async () => signedAuth("menu-items", "latte.jpg"),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -98,12 +109,7 @@ describe("uploadProductImage", () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          token: "tok",
-          expire: 123,
-          signature: "sig",
-          publicKey: "pub",
-        }),
+        json: async () => signedAuth("menu-items", "latte.jpg"),
       })
       .mockResolvedValueOnce({ ok: false });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -131,12 +137,12 @@ describe("uploadImage folder routing", () => {
   });
 
   /** Mock auth + upload, and hand back the FormData the upload was sent with. */
-  function mockUpload() {
+  function mockUpload(folder: string) {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ token: "tok", expire: 1, signature: "sig", publicKey: "pub" }),
+        json: async () => signedAuth(folder, "proof.jpg"),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -156,7 +162,7 @@ describe("uploadImage folder routing", () => {
   }
 
   it("uploads a payment proof into the payment-proofs folder", async () => {
-    const fetchMock = mockUpload();
+    const fetchMock = mockUpload("payment-proofs");
     const result = await uploadImage(image, PAYMENT_PROOF_FOLDER);
 
     expect(folderSentTo(fetchMock)).toBe("payment-proofs");
@@ -164,10 +170,70 @@ describe("uploadImage folder routing", () => {
   });
 
   it("keeps routing product images to the menu-items folder", async () => {
-    const fetchMock = mockUpload();
+    const fetchMock = mockUpload("menu-items");
     await uploadProductImage(image);
 
     expect(folderSentTo(fetchMock)).toBe("menu-items");
     expect(PRODUCT_IMAGE_FOLDER).toBe("menu-items");
+  });
+});
+
+describe("signed upload request", () => {
+  const originalFetch = global.fetch;
+  const image = { uri: "file:///tmp/latte.jpg", fileName: "latte.jpg", mimeType: "image/jpeg" };
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.mocked(getAccessTokenBounded).mockResolvedValue("access-token");
+  });
+
+  it("asks the web app to sign the folder + file name as the signed-in staff member", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => signedAuth("menu-items", "latte.jpg") })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ url: "u", fileId: "f", filePath: "/menu-items/latte.jpg" }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await uploadProductImage(image);
+
+    const [authUrl, authInit] = fetchMock.mock.calls[0];
+    expect(authUrl).toBe("https://webnegosyo.com/api/imagekit/auth");
+    expect(authInit.method).toBe("POST");
+    expect(authInit.headers.Authorization).toBe("Bearer access-token");
+    expect(JSON.parse(authInit.body)).toEqual({ folder: "menu-items", fileName: "latte.jpg" });
+  });
+
+  it("uploads to the v2 endpoint with exactly the signed fields plus the token", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => signedAuth("menu-items", "latte.jpg") })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ url: "u", fileId: "f", filePath: "/menu-items/latte.jpg" }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await uploadProductImage(image);
+
+    const [uploadUrl, uploadInit] = fetchMock.mock.calls[1];
+    expect(uploadUrl).toBe("https://upload.imagekit.io/api/v2/files/upload");
+    const body = uploadInit.body as FormData;
+    expect(body.get("token")).toBe("signed.jwt");
+    expect(body.get("overwriteFile")).toBe("false");
+    expect(body.get("useUniqueFileName")).toBe("true");
+    expect(body.get("publicKey")).toBeNull();
+    expect(body.get("signature")).toBeNull();
+  });
+
+  it("refuses to upload when the staff session cannot be read", async () => {
+    jest.mocked(getAccessTokenBounded).mockResolvedValue(null);
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(uploadProductImage(image)).rejects.toThrow(/sign in/i);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

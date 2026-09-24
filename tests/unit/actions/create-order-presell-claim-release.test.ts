@@ -209,13 +209,36 @@ describe('createOrderAction — presell claim is never left consumed', () => {
   })
 
   test('still releases exactly once on a deliberate refusal (regression guard)', async () => {
-    // No such dish store-wide → the price floor refuses the line, after the
-    // claim already reserved stock.
-    tableRows = { ...tableRows, menu_items: [] }
+    // A distance-delivery order with no picked coordinates is refused by the
+    // delivery-fee step, after the claim already reserved stock.
+    tableRows = {
+      ...tableRows,
+      tenants: platformTenant({
+        distance_delivery_enabled: true,
+        delivery_price_per_km: 10,
+        delivery_min_fee: 50,
+        delivery_radius_km: 5,
+        restaurant_latitude: 14.5995,
+        restaurant_longitude: 120.9842,
+      }),
+      order_types: { id: ORDER_TYPE_ID, type: 'delivery', name: 'Delivery', available_on_web: true },
+    }
 
     const result = await placeOrder()
 
     expect(result.refused).toBe(true)
     expect(releasePresellForOrder).toHaveBeenCalledTimes(1)
+  })
+
+  test('refuses an unpriceable line before any stock is claimed', async () => {
+    // Lines are priced before the presell claim, so a pricing refusal has
+    // nothing to hand back.
+    tableRows = { ...tableRows, menu_items: [] }
+
+    const result = await placeOrder()
+
+    expect(result.refused).toBe(true)
+    expect(claimPresellForOrder).not.toHaveBeenCalled()
+    expect(releasePresellForOrder).not.toHaveBeenCalled()
   })
 })

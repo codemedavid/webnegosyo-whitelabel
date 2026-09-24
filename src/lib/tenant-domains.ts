@@ -53,11 +53,31 @@ const DIRECTORY_FETCH_TIMEOUT_MS = 3000
 
 const log = createLogger('[Tenant Domains]', 'DEBUG_TENANT_RESOLUTION')
 
+/**
+ * Domain → slug. The query is unordered, so a domain two tenants both claim
+ * would resolve to whichever row came last — a different store per load. Such
+ * a domain maps to NOBODY (and is logged, never gated) until the conflict is
+ * fixed: serving no store is recoverable, serving the wrong one is not.
+ */
 function indexRows(rows: DomainRow[]): ReadonlyMap<string, string> {
-  const entries = rows.flatMap(({ slug, domain }) => {
+  const claimants = new Map<string, ReadonlySet<string>>()
+  for (const { slug, domain } of rows) {
     const key = normalizeDomain(domain)
-    return key ? [[key, slug] as const] : []
-  })
+    if (!key) continue
+    claimants.set(key, new Set([...(claimants.get(key) ?? []), slug]))
+  }
+
+  const entries: Array<readonly [string, string]> = []
+  for (const [domain, slugs] of claimants) {
+    if (slugs.size === 1) {
+      entries.push([domain, [...slugs][0]] as const)
+      continue
+    }
+    log.error('Custom domain claimed by more than one tenant; resolving it to none', {
+      domain,
+      slugs: [...slugs].sort(),
+    })
+  }
   return new Map(entries)
 }
 

@@ -58,3 +58,8 @@ coverage/
 /ios
 /android
 google-services.json
+# Firebase/Google service-account private keys. These are push and admin
+# credentials for a whole Firebase project — they belong in EAS credentials or
+# a GitHub secret, never in the tree.
+*-firebase-adminsdk-*.json
+*service-account*.json

@@ -13,10 +13,21 @@ import {
   resolveBackgroundOverlay,
 } from '@/lib/background-overlay'
 import { TENANT_STOREFRONT_SELECT } from '@/lib/queries/tenant-storefront-select'
+import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenant-select'
 import { brandingSchema, ROLLOUT_DEPENDENT_FIELDS } from '@/lib/branding-service'
 import { BRANDING_SURFACES } from '@/lib/branding-registry'
 
-const selectedColumns = TENANT_STOREFRONT_SELECT.split(',').map((c) => c.trim())
+const toColumns = (select: string) => select.split(',').map((c) => c.trim())
+
+/** Every tenant query that feeds a page mounting BackgroundOverlayLayer. */
+const PAGE_SELECTS = [
+  ['storefront', toColumns(TENANT_STOREFRONT_SELECT)],
+  ['product detail', toColumns(PRODUCT_DETAIL_TENANT_SELECT)],
+] as const
+
+const selectCases = PAGE_SELECTS.flatMap(([page, columns]) =>
+  BACKGROUND_OVERLAY_COLUMNS.map((column) => [column, page, columns] as const)
+)
 
 const registryFieldIds = BRANDING_SURFACES.flatMap((surface) =>
   surface.sections.flatMap((section) => section.fields.map((field) => field.id))
@@ -26,8 +37,8 @@ const registryFieldIds = BRANDING_SURFACES.flatMap((surface) =>
 const BASE_BRANDING = { primary_color: '#111111', secondary_color: '#666666' }
 
 describe('background overlay wiring', () => {
-  it.each([...BACKGROUND_OVERLAY_COLUMNS])('selects %s on the storefront query', (column) => {
-    expect(selectedColumns).toContain(column)
+  it.each(selectCases)('selects %s on the %s query', (column, _page, columns) => {
+    expect(columns).toContain(column)
   })
 
   it.each([...BACKGROUND_OVERLAY_COLUMNS])('exposes %s in the Branding Studio registry', (column) => {

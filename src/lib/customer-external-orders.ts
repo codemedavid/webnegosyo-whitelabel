@@ -50,6 +50,8 @@ export interface ExternalLedgerRow {
   channel: string | null
   items: CustomerOrderItemInput[]
   sms_consent: boolean
+  /** Where it was delivered, when the customer gave an address. */
+  address: string | null
 }
 
 /** Storage port for the ledger, so the orchestration can be faked in tests. */
@@ -82,6 +84,24 @@ function readSmsConsent(customerData: Record<string, unknown> | null | undefined
   return customerData?.sms_consent === true
 }
 
+/**
+ * The delivery address out of the same free-form bag.
+ *
+ * `delivery_address` is the internal field name the checkout's address widget
+ * is keyed on (see `customer-details.ts`), so it is checked first; a merchant
+ * who built their own plain "address" field is honoured second. Anything that
+ * is not a non-empty string is no address at all.
+ */
+export function readOrderAddress(
+  customerData: Record<string, unknown> | null | undefined
+): string | null {
+  for (const key of ['delivery_address', 'address']) {
+    const value = customerData?.[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
+}
+
 /** Map an external order onto its ledger row. Pure — the DB coercion boundary. */
 export function buildExternalLedgerRow(
   tenantId: string,
@@ -98,6 +118,7 @@ export function buildExternalLedgerRow(
     channel: order.channel?.trim() || null,
     items: (order.items ?? []).filter((item) => Boolean(item?.name)),
     sms_consent: readSmsConsent(order.customerData),
+    address: readOrderAddress(order.customerData),
   }
 }
 
@@ -185,7 +206,7 @@ export function createSupabaseExternalOrderLedger(admin: AdminClient): ExternalO
     async listByCustomer(customerId) {
       const { data, error } = await admin
         .from('customer_external_orders')
-        .select('tenant_id, customer_id, backend, external_order_id, total, ordered_at, channel, items, sms_consent')
+        .select('tenant_id, customer_id, backend, external_order_id, total, ordered_at, channel, items, sms_consent, address')
         .eq('customer_id', customerId)
       if (error) throw error
       return ledgerRowsToFacts((data as ExternalLedgerRow[] | null) ?? [])

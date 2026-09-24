@@ -15,7 +15,7 @@ import type { PageLayout } from '@/lib/page-layouts'
 import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
 import type { HeroBlockDesign } from '@/types/hero-block-designer'
 import { useBrandingPreviewDraft, useIsMobileViewport, useMobileOverrides } from '@/hooks/use-branding-preview'
-import { resolveStorefrontLayout } from '@/lib/storefront-device-layout'
+import { resolveMobileGridColumns, resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 
@@ -145,7 +145,7 @@ export function LegacyMenuStorefront() {
           setActiveCategory={setActiveCategory} searchQuery={searchQuery} setSearchQuery={handleSearchChange}
           onItemSelect={handleItemSelect} branding={layoutBranding} cardTemplate={card}
           isLoading={false} currentSlide={currentSlide} setCurrentSlide={setCurrentSlide}
-          mobileGridColumns={tenant?.mobile_grid_columns || 1}
+          mobileGridColumns={resolveMobileGridColumns(tenant?.mobile_grid_columns)}
           menuEngineeringEnabled={tenant?.menu_engineering_enabled}
           hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
         />

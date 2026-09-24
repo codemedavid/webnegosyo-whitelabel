@@ -3,6 +3,7 @@
  * Shared between the SSR page (initial load) and the API route (polling).
  */
 
+import { cache } from 'react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
@@ -112,21 +113,58 @@ export async function fetchOrderTrackingData(
  * Convex — which is how a customer who had just ordered was told, seconds
  * later, that no such order exists.
  *
- * Every column named here exists on `public.tenants`; see the note on
- * `fetchPickupScanEnabled` for why this list is kept deliberately short.
+ * Every column named here exists on `public.tenants`. The pickup switch rides
+ * on the same read (it used to be a second query per poll); because naming a
+ * column a deployment has not migrated yet fails the WHOLE query — and this
+ * query decides whether the order can be found at all — `readTenantRouting`
+ * retries without it on an undefined-column error.
  */
 const TENANT_ROUTING_COLUMNS =
   'order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key'
 
+const TENANT_ROUTING_WITH_PICKUP_COLUMNS = `${TENANT_ROUTING_COLUMNS}, pickup_scan_enabled`
+
+type TenantRoutingRow = OrderBackendTenantFields & { pickup_scan_enabled?: boolean | null }
+
+function queryTenantRouting(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  columns: string
+) {
+  return supabase
+    .from('tenants')
+    .select(columns)
+    .eq('id', tenantId)
+    .eq('is_active', true)
+    .single()
+}
+
+/** The routing row plus the pickup switch, degrading to routing-only on column drift. */
+async function readTenantRouting(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string
+): Promise<TenantRoutingRow | null> {
+  const attempt = await queryTenantRouting(supabase, tenantId, TENANT_ROUTING_WITH_PICKUP_COLUMNS)
+  if (!isUndefinedColumnError(attempt.error)) return attempt.data as TenantRoutingRow | null
+
+  console.error('[Order Tracking] Tenant projection is ahead of the database; retrying without the pickup switch:', attempt.error?.message)
+  const retry = await queryTenantRouting(supabase, tenantId, TENANT_ROUTING_COLUMNS)
+  return retry.data as TenantRoutingRow | null
+}
+
 /**
  * Fetch order tracking data server-side.
+ *
+ * Deduped per server render with React `cache()`: the tracking page and the
+ * stamp-card read (`getOrderStampStatus`) ask for the same order in one
+ * request. Outside a render (the polling route) it is a plain call.
  *
  * Verifies the HMAC token, then reads the order from whichever backend
  * `resolveOrderBackend` names — the SAME resolver checkout writes through and
  * the merchant's order queue reads through, so the three can never disagree
  * about where a given store's orders live.
  */
-export async function fetchOrderTrackingContext(
+export const fetchOrderTrackingContext = cache(async function fetchOrderTrackingContext(
   orderId: string,
   token: string,
   tenantId: string
@@ -138,14 +176,7 @@ export async function fetchOrderTrackingContext(
   try {
     const supabaseAdmin = createAdminClient()
 
-    const { data: tenantConfig } = await supabaseAdmin
-      .from('tenants')
-      .select(TENANT_ROUTING_COLUMNS)
-      .eq('id', tenantId)
-      .eq('is_active', true)
-      .single()
-
-    const config = tenantConfig as OrderBackendTenantFields | null
+    const config = await readTenantRouting(supabaseAdmin, tenantId)
 
     if (!config) {
       return { data: null, error: 'Restaurant not found' }
@@ -177,10 +208,9 @@ export async function fetchOrderTrackingContext(
       result = await fetchFromSupabase(supabaseAdmin, orderId, tenantId)
     }
 
-    // Read after the order, and separately, so the switch can never take the
-    // whole tracking page down with it. Both backends get the same answer
-    // because the flag lives on the platform tenants row either way.
-    const pickupScanEnabled = await fetchPickupScanEnabled(supabaseAdmin, tenantId)
+    // Both backends get the same answer because the flag lives on the
+    // platform tenants row either way. Absent (unmigrated) reads as enabled.
+    const pickupScanEnabled = isPickupScanEnabled(config.pickup_scan_enabled)
 
     return {
       data: { ...result, pickupScanEnabled, serverNowMs: Date.now() },
@@ -190,79 +220,17 @@ export async function fetchOrderTrackingContext(
     console.error('[Order Tracking] Error:', err instanceof Error ? err.message : err)
     return { data: null, error: 'Order not found' }
   }
-}
+})
 
 /**
  * Look up an order type's fixed kind by id.
  *
  * Order types live in the platform Supabase for every tenant, including
- * Convex ones, so this is the single authority for both fetch paths. Returns
- * null on any failure — the caller then falls back to the snapshot string,
- * and an unresolved kind simply hides the pickup QR.
+ * Convex ones, so this is the single authority for the Convex and tenant-
+ * Supabase paths (the platform path embeds the row in its order read).
+ * Returns null on any failure — the caller then falls back to the snapshot
+ * string, and an unresolved kind simply hides the pickup QR.
  */
-/**
- * Read the store's scan-to-collect switch.
- *
- * Kept out of the tenant-config select on purpose: naming a column that a
- * deployment has not migrated yet fails the whole query, and that query is
- * what decides whether the order can be found at all. Here the worst case is
- * an isolated failure that falls back to the column's own default — enabled,
- * which is today's behaviour.
- */
-async function fetchPickupScanEnabled(
-  supabase: ReturnType<typeof createAdminClient>,
-  tenantId: string
-): Promise<boolean> {
-  try {
-    const { data } = await supabase
-      .from('tenants')
-      .select('pickup_scan_enabled')
-      .eq('id', tenantId)
-      .maybeSingle()
-
-    return isPickupScanEnabled(
-      (data as { pickup_scan_enabled?: boolean | null } | null)?.pickup_scan_enabled
-    )
-  } catch {
-    return true
-  }
-}
-
-/** The two prep-time columns, read on their own. */
-const PREP_TIME_COLUMNS = 'prep_minutes, promised_ready_at'
-
-/**
- * Read the kitchen's promise separately from the order itself.
- *
- * Same reasoning as `fetchPickupScanEnabled` above: the order query names an
- * explicit column list, and naming a column a deployment has not migrated yet
- * fails the ENTIRE query — which would take the customer's order page down
- * rather than merely hiding an estimate. Isolated here, the worst case is no
- * estimate, which is exactly what every order looked like yesterday.
- */
-async function fetchPrepPromise(
-  supabase: ReturnType<typeof createAdminClient>,
-  orderId: string,
-  tenantId: string
-): Promise<{ promisedReadyAt: string | null; prepMinutes: number | null }> {
-  try {
-    const { data } = await supabase
-      .from('orders')
-      .select(PREP_TIME_COLUMNS)
-      .eq('id', orderId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle()
-
-    const row = data as { prep_minutes?: number | null; promised_ready_at?: string | null } | null
-    return {
-      promisedReadyAt: row?.promised_ready_at ?? null,
-      prepMinutes: row?.prep_minutes ?? null,
-    }
-  } catch {
-    return { promisedReadyAt: null, prepMinutes: null }
-  }
-}
-
 async function fetchOrderTypeKind(
   supabase: ReturnType<typeof createAdminClient>,
   orderTypeId: string | null | undefined,
@@ -352,10 +320,26 @@ async function fetchFromConvex(
 const ORDER_ITEMS_SELECT =
   'order_items(menu_item_name, quantity, price, subtotal, variation, addons)'
 
-/** The columns the tracking page renders, named explicitly to keep the row small. */
+/**
+ * The order's type row, embedded through `orders_order_type_id_fkey` so the
+ * kind costs no extra query per poll. `tenant_id` rides along so a row from
+ * another store is never trusted (the separate lookup filtered on it too).
+ */
+const ORDER_TYPE_EMBED = 'order_type_row:order_types(type, tenant_id)'
+
+/** The kitchen's promise (see `TrackingData.promisedReadyAt`). */
+const PREP_TIME_COLUMNS = 'prep_minutes, promised_ready_at'
+
+/**
+ * The columns the tracking page renders, named explicitly to keep the row
+ * small. The prep columns used to be a second read of this same row; naming an
+ * unmigrated column here is safe because `readPlatformOrderRow` retries with
+ * `*` on an undefined-column error, which degrades them to a missing estimate.
+ */
 const ORDER_TRACKING_SELECT = `
       id, status, total, delivery_fee, service_charge_amount, order_type, order_type_id, customer_name, customer_contact, outlet_id, source, payment_status, created_at, daily_number,
-      scheduled_for, customer_data,
+      scheduled_for, customer_data, ${PREP_TIME_COLUMNS},
+      ${ORDER_TYPE_EMBED},
       ${ORDER_ITEMS_SELECT}
     `
 
@@ -363,7 +347,19 @@ const ORDER_TRACKING_SELECT = `
  * The retry projection. `*` cannot name a column that does not exist, so it
  * cannot go stale — the same escape `fetch-tenant-by-slug.ts` uses.
  */
-const ORDER_TRACKING_FALLBACK_SELECT = `*, ${ORDER_ITEMS_SELECT}`
+const ORDER_TRACKING_FALLBACK_SELECT = `*, ${ORDER_TYPE_EMBED}, ${ORDER_ITEMS_SELECT}`
+
+interface EmbeddedOrderTypeRow {
+  type?: string | null
+  tenant_id?: string | null
+}
+
+/** The embedded order type's kind, trusted only when it belongs to this store. */
+function embeddedOrderTypeKind(order: { order_type_row?: EmbeddedOrderTypeRow | null }, tenantId: string): string | null {
+  const row = order.order_type_row
+  if (!row || row.tenant_id !== tenantId) return null
+  return row.type ?? null
+}
 
 /** PostgREST surfaces Postgres `undefined_column` as SQLSTATE 42703. */
 const UNDEFINED_COLUMN_CODE = '42703'
@@ -421,17 +417,17 @@ async function fetchFromSupabase(
 
   if (error || !order) throw new Error('Order not found in Supabase')
 
-  const orderTypeFromRow = await fetchOrderTypeKind(
-    supabase,
-    (order as { order_type_id?: string | null }).order_type_id,
-    tenantId
-  )
-  const prepPromise = await fetchPrepPromise(supabase, orderId, tenantId)
+  const row = order as {
+    order_type_row?: EmbeddedOrderTypeRow | null
+    prep_minutes?: number | null
+    promised_ready_at?: string | null
+  }
 
   return mapSupabaseOrderRow(order, {
     backend: 'platform_supabase',
-    orderTypeFromRow,
-    ...prepPromise,
+    orderTypeFromRow: embeddedOrderTypeKind(row, tenantId),
+    promisedReadyAt: row.promised_ready_at ?? null,
+    prepMinutes: row.prep_minutes ?? null,
   })
 }
 

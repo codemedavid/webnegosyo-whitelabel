@@ -23,12 +23,22 @@ let ordersChannelReady = false;
  * a channel does not require notification permission. Both remote pushes and
  * local notifications target this channel via `channelId: "orders"`, so it must
  * exist before the first order arrives. No-op on iOS.
+ *
+ * It is created, never deleted-and-recreated. A previous version deleted the
+ * channel first, meaning to force new sound/vibration settings onto devices
+ * that already had it — which Android does not allow: recreating a channel
+ * under an id that was deleted RESTORES the original settings. So the delete
+ * changed nothing, and it opened a window at every launch where an arriving
+ * order had no "orders" channel to land on. expo-notifications then posts it
+ * to its low-importance fallback channel instead: no ringtone, no heads-up,
+ * on the one notification this app exists to deliver.
+ *
+ * Changing the ringtone or importance for existing installs therefore needs a
+ * NEW channel id here and in every sender (`channelId` in the order push
+ * payload) — not a delete.
  */
 export async function ensureOrdersChannel(): Promise<void> {
   if (Platform.OS !== "android" || ordersChannelReady) return;
-  // Delete first — channels are immutable once created, so sound/vibration
-  // changes from a previous build won't take effect otherwise.
-  await Notifications.deleteNotificationChannelAsync("orders").catch(() => {});
   await Notifications.setNotificationChannelAsync("orders", {
     name: "New Orders",
     importance: Notifications.AndroidImportance.MAX,

@@ -4,29 +4,22 @@ import { z } from 'zod'
 import type { PromotionBanner } from '@/types/database'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
+import { cssColorString } from '@/lib/css-value-schema'
+import { externalLinkField, httpUrlField, siteLinkField } from '@/lib/safe-url'
 
-/**
- * Validates that a string is a plausible CSS color value.
- * Accepts: #rgb, #rrggbb, #rrggbbaa, rgb(...), rgba(...), hsl(...), hsla(...),
- * color-mix(...), named colors, transparent, inherit, initial, and empty string.
- * Rejects values containing <, >, ", ', ;, { or } to prevent CSS injection.
- * This is a defense-in-depth measure — branding values are set by tenant admins,
- * but malicious values could be stored via MITM or compromised accounts and then
- * injected into CSS custom properties or future <style> blocks.
+/*
+ * Colors go through `cssColorString` (rejects the characters that end a CSS
+ * declaration or string) and every URL through `@/lib/safe-url` (http(s) only,
+ * no quote/paren/space) — these values are rendered into inline CSS, `href` and
+ * `src` on the public storefront, so the schema is the injection boundary.
  */
-const CSS_INJECTION_CHARS = /[<>"';{}]/
-function cssColorString() {
-    return z.string().refine(
-        (val) => val === '' || !CSS_INJECTION_CHARS.test(val),
-        { message: 'Color value contains invalid characters' }
-    )
-}
 
-// Schema for all branding fields
-export const brandingSchema = z.object({
+// Every branding column except the per-device override map (defined below,
+// because it validates against these fields).
+const brandingFieldsSchema = z.object({
     // Brand identity. `logo_url` is NOT NULL in the database, so a cleared logo
     // persists as '' — never null — which the `...parsed` spread below preserves.
-    logo_url: z.string().max(1000).optional().or(z.literal('')),
+    logo_url: httpUrlField(1000).optional(),
     // Storefront theme knobs (design-system presets)
     font_pair: z.enum(['theme', 'elegant serif', 'bold display', 'modern sans', 'warm editorial']).optional(),
     card_roundness: z.enum(['theme', 'sharp', 'soft', 'round']).optional(),
@@ -42,7 +35,7 @@ export const brandingSchema = z.object({
     // Custom page background: image + tint overlay. Opacities are 0..100
     // percents (the editor renders sliders); the storefront converts them to
     // 0..1 fractions in src/lib/background-overlay.ts.
-    background_image_url: z.string().url().max(2048).optional().or(z.literal('')),
+    background_image_url: httpUrlField().optional(),
     background_image_opacity: z.number().int().min(0).max(100).optional(),
     background_image_fit: z.enum(['cover', 'contain', 'repeat']).optional(),
     background_image_position: z.enum(['center', 'top', 'bottom']).optional(),
@@ -128,7 +121,7 @@ export const brandingSchema = z.object({
     flash_screen_is_active: z.boolean().optional(),
     flash_screen_title: z.string().max(200).optional().or(z.literal('')),
     flash_screen_subtitle: z.string().max(500).optional().or(z.literal('')),
-    flash_screen_image_url: z.string().optional().or(z.literal('')),
+    flash_screen_image_url: httpUrlField().optional(),
     flash_screen_background_color: cssColorString().optional().or(z.literal('')),
     flash_screen_text_color: cssColorString().optional().or(z.literal('')),
     flash_screen_duration_ms: z.number().min(500).max(15000).optional(),
@@ -140,8 +133,9 @@ export const brandingSchema = z.object({
     hero_cta_primary_label: z.string().max(40).optional().or(z.literal('')),
     hero_cta_secondary_label: z.string().max(40).optional().or(z.literal('')),
     hero_featured_product_id: z.string().uuid().optional().or(z.literal('')),
-    hero_image_url: z.string().url().max(2048).optional().or(z.literal('')),
-    hero_link_url: z.string().max(2048).optional().or(z.literal('')),
+    hero_image_url: httpUrlField().optional(),
+    // Rendered through the hero's own safeHref, which also allows site paths.
+    hero_link_url: siteLinkField().optional(),
     hero_title_color: cssColorString().optional().or(z.literal('')),
     hero_description_color: cssColorString().optional().or(z.literal('')),
     hero_background_color: cssColorString().optional().or(z.literal('')),
@@ -154,7 +148,8 @@ export const brandingSchema = z.object({
     checkout_template: z.string().optional(),
     cart_template: z.string().optional(),
     page_layout: z.string().optional(),
-    mobile_grid_columns: z.number().min(1).max(4).optional(),
+    // Cards per row on a phone. The column's CHECK constraint allows only 1 or 2.
+    mobile_grid_columns: z.number().int().min(1).max(2).optional(),
     mobile_page_layout: z.string().optional().nullable(),
     mobile_card_template: z.string().optional().nullable(),
     // Card style knobs (flexible card templates). 'auto' = template design.
@@ -188,14 +183,14 @@ export const brandingSchema = z.object({
     announcement_text_color: cssColorString().optional().or(z.literal('')),
     is_announcement_visible: z.boolean().optional(),
     // Promotion banners
-    promotion_image_url: z.string().optional().or(z.literal('')),
+    promotion_image_url: httpUrlField().optional(),
     is_promotion_visible: z.boolean().optional(),
     // Accepts '' too so a "Reset section" (which blanks every field) clears the
     // banners to an empty list rather than failing schema validation.
     promotion_banners: z.union([
         z.array(z.object({
             id: z.string(),
-            imageUrl: z.string(),
+            imageUrl: httpUrlField(),
             title: z.string().optional(),
             description: z.string().optional(),
         })),
@@ -215,7 +210,7 @@ export const brandingSchema = z.object({
     welcome_page_banners: z.union([
         z.array(z.object({
             id: z.string(),
-            imageUrl: z.string(),
+            imageUrl: httpUrlField(),
             format: z.enum(['landscape', 'portrait', 'square']),
             title: z.string().optional(),
             description: z.string().optional(),
@@ -233,7 +228,7 @@ export const brandingSchema = z.object({
     // Footer
     footer_enabled: z.boolean().optional(),
     footer_theme: z.enum(['auto', 'light', 'dark', 'brand', 'midnight', 'minimal', 'custom']).optional(),
-    footer_logo_url: z.string().optional().or(z.literal('')),
+    footer_logo_url: httpUrlField().optional(),
     footer_business_name: z.string().max(200).optional().or(z.literal('')),
     footer_tagline: z.string().max(300).optional().or(z.literal('')),
     footer_address: z.string().max(500).optional().or(z.literal('')),
@@ -241,11 +236,11 @@ export const brandingSchema = z.object({
     footer_whatsapp: z.string().max(100).optional().or(z.literal('')),
     footer_viber: z.string().max(100).optional().or(z.literal('')),
     footer_email: z.string().max(200).optional().or(z.literal('')),
-    footer_facebook_url: z.string().max(500).optional().or(z.literal('')),
-    footer_instagram_url: z.string().max(500).optional().or(z.literal('')),
-    footer_tiktok_url: z.string().max(500).optional().or(z.literal('')),
-    footer_twitter_url: z.string().max(500).optional().or(z.literal('')),
-    footer_youtube_url: z.string().max(500).optional().or(z.literal('')),
+    footer_facebook_url: externalLinkField(500).optional(),
+    footer_instagram_url: externalLinkField(500).optional(),
+    footer_tiktok_url: externalLinkField(500).optional(),
+    footer_twitter_url: externalLinkField(500).optional(),
+    footer_youtube_url: externalLinkField(500).optional(),
     footer_facebook_name: z.string().max(100).optional().or(z.literal('')),
     footer_instagram_name: z.string().max(100).optional().or(z.literal('')),
     footer_tiktok_name: z.string().max(100).optional().or(z.literal('')),
@@ -266,9 +261,53 @@ export const brandingSchema = z.object({
     footer_icon_color: cssColorString().optional().or(z.literal('')),
     footer_icon_background_color: cssColorString().optional().or(z.literal('')),
     footer_border_color: cssColorString().optional().or(z.literal('')),
-    // Per-device mobile overrides: { tenant_column_name: value } overlaid on
-    // mobile viewports. Validated as a shallow string/number/bool/null map.
-    mobile_overrides: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+})
+
+type OverrideValue = string | number | boolean | null
+
+/** Real columns that must never ride in the per-device map (arrays, the map itself). */
+const NON_OVERRIDABLE_FIELDS: ReadonlySet<string> = new Set(['mobile_overrides', 'promotion_banners', 'welcome_page_banners'])
+const BRANDING_FIELD_SCHEMAS: Readonly<Record<string, z.ZodType>> = brandingFieldsSchema.shape
+
+function isOverrideValue(value: unknown): value is OverrideValue {
+    return value === null || ['string', 'number', 'boolean'].includes(typeof value)
+}
+
+/**
+ * Per-device mobile overrides: { tenant_column_name: value } overlaid on mobile
+ * viewports at render time. Each value is validated against its OWN field's
+ * schema, so a mobile override cannot smuggle in what the column would refuse
+ * (a `javascript:` link, a CSS breakout in a color). Keys that are not branding
+ * fields at all — keys the old editor wrote, which nothing reads — are dropped
+ * rather than refused, so a tenant carrying them can still publish.
+ */
+const mobileOverridesSchema = z.record(z.string(), z.unknown()).transform((overrides, ctx) => {
+    const clean: Record<string, OverrideValue> = {}
+    for (const [key, value] of Object.entries(overrides)) {
+        if (NON_OVERRIDABLE_FIELDS.has(key)) {
+            ctx.addIssue({ code: 'custom', path: [key], message: 'cannot be overridden per device' })
+            continue
+        }
+        const fieldSchema = Object.prototype.hasOwnProperty.call(BRANDING_FIELD_SCHEMAS, key) ? BRANDING_FIELD_SCHEMAS[key] : null
+        if (!fieldSchema) continue
+        if (value === null) {
+            clean[key] = null
+            continue
+        }
+        const parsed = fieldSchema.safeParse(value)
+        if (!parsed.success || !isOverrideValue(parsed.data)) {
+            const reason = parsed.success ? 'must be a single value' : parsed.error.issues[0]?.message ?? 'is invalid'
+            ctx.addIssue({ code: 'custom', path: [key], message: reason })
+            continue
+        }
+        clean[key] = parsed.data
+    }
+    return clean
+})
+
+// Schema for all branding fields
+export const brandingSchema = brandingFieldsSchema.extend({
+    mobile_overrides: mobileOverridesSchema.optional(),
 })
 
 export type BrandingInput = z.infer<typeof brandingSchema>
@@ -403,6 +442,29 @@ function omitFields<T extends Record<string, unknown>>(payload: T, fields: reado
 }
 
 /**
+ * Settings that already have a dedicated column the storefront reads directly.
+ * A value for one of them inside `mobile_overrides` would save and then never
+ * render (MCP clients put `mobile_grid_columns` there because it is a "mobile"
+ * setting), so it is moved onto the column. An explicit column value wins.
+ */
+const COLUMN_BACKED_OVERRIDE_FIELDS = ['mobile_grid_columns'] as const
+
+function hoistColumnBackedOverrides(parsed: BrandingPatchInput): Partial<BrandingPatchInput> {
+    const overrides = parsed.mobile_overrides
+    if (!overrides) return {}
+
+    const hoisted: Record<string, unknown> = {}
+    for (const field of COLUMN_BACKED_OVERRIDE_FIELDS) {
+        const value = overrides[field]
+        if (parsed[field] === undefined && value !== undefined && value !== null) hoisted[field] = value
+    }
+    const remaining = Object.fromEntries(
+        Object.entries(overrides).filter(([key]) => !(COLUMN_BACKED_OVERRIDE_FIELDS as readonly string[]).includes(key)),
+    )
+    return { ...hoisted, mobile_overrides: remaining }
+}
+
+/**
  * Pure transform: turns validated branding input into the `tenants` update
  * payload. Empty promotion_banners becomes []; empty hero uuid/url fields
  * become NULL so an "unset" value persists as NULL rather than ''.
@@ -410,6 +472,7 @@ function omitFields<T extends Record<string, unknown>>(payload: T, fields: reado
 export function buildBrandingUpdatePayload(parsed: BrandingPatchInput): Record<string, unknown> {
     return {
         ...parsed,
+        ...hoistColumnBackedOverrides(parsed),
         ...(parsed.promotion_banners !== undefined
             ? {
                 promotion_banners:
@@ -434,6 +497,13 @@ export function buildBrandingUpdatePayload(parsed: BrandingPatchInput): Record<s
     }
 }
 
+/** `field: message`, so a refused publish says which setting to fix. */
+function formatIssues(issues: readonly z.ZodIssue[]): string {
+    return issues
+        .map((issue) => (issue.path.length ? `${issue.path.map(String).join('.')}: ${issue.message}` : issue.message))
+        .join(', ')
+}
+
 /**
  * Persists branding for a tenant using the supplied Supabase client. This is
  * cookie-free and caller-agnostic: the web server action passes its
@@ -454,7 +524,7 @@ export async function writeBrandingWithClient(
         parsed = brandingPatchSchema.parse(branding)
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return { success: false, error: `Validation error: ${error.issues.map((e: z.ZodIssue) => e.message).join(', ')}` }
+            return { success: false, error: `Validation error: ${formatIssues(error.issues)}` }
         }
         return { success: false, error: error instanceof Error ? error.message : 'An unexpected error occurred' }
     }

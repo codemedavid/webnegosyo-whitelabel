@@ -21,10 +21,17 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 interface TableRows {
   tenants?: Record<string, unknown> | null
   order_types?: Record<string, unknown> | null
+  menu_items?: Array<Record<string, unknown>> | null
 }
 
 const insertedTables: string[] = []
 let tableRows: TableRows = {}
+
+/**
+ * The dish the carts below order. The minimum is measured against the
+ * SERVER-priced subtotal, so every test needs the menu row to price against.
+ */
+const MENU_ITEMS = [{ id: 'mi-1', name: 'Tapsilog', price: 160, discounted_price: null, is_available: true }]
 
 function makeQuery(table: string) {
   const row = (tableRows as Record<string, unknown>)[table] ?? null
@@ -32,6 +39,7 @@ function makeQuery(table: string) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    in: () => chain,
     order: () => chain,
     limit: () => chain,
     single: async () => result,
@@ -88,6 +96,7 @@ describe('createOrderAction — deterministic refusals are marked', () => {
   test('marks an order type hidden from online ordering', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'grab', name: 'Grab', available_on_web: false },
     }
 
@@ -102,6 +111,7 @@ describe('createOrderAction — deterministic refusals are marked', () => {
   test('marks a below-minimum order', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: {
         id: ORDER_TYPE_ID,
         type: 'delivery',
@@ -140,6 +150,7 @@ describe('createOrderAction — deterministic refusals are marked', () => {
   test('carries a sentence the customer can act on, never a bare flag', async () => {
     tableRows = {
       tenants: platformTenant(),
+      menu_items: MENU_ITEMS,
       order_types: {
         id: ORDER_TYPE_ID,
         type: 'delivery',
@@ -170,6 +181,7 @@ describe('createOrderAction — a lost order is NOT marked refused', () => {
     // lose it on the second channel too.
     tableRows = {
       tenants: platformTenant({ order_backend: 'convex', convex_deployment_url: null }),
+      menu_items: MENU_ITEMS,
       order_types: { id: ORDER_TYPE_ID, type: 'pickup', name: 'Pickup', available_on_web: true },
     }
 

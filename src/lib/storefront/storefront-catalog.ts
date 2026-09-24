@@ -5,6 +5,7 @@ import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
 import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { collectSlotCategoryIds, hydrateBundleSlots } from '@/lib/bundles/slot-hydration'
+import { selectAllPages, type PageRequest } from '@/lib/storefront/paged-select'
 
 /** The subset of a Supabase client the catalog loader needs; injectable for tests. */
 export type CatalogQueryClient = Pick<SupabaseClient<Database>, 'from'>
@@ -57,19 +58,52 @@ async function hydrateBundles(
   const slotCategoryIds = collectSlotCategoryIds(bundles)
   if (slotCategoryIds.length === 0) return bundles
 
-  const { data, error } = await client
-    .from('menu_items')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('is_available', true)
-    .in('category_id', slotCategoryIds)
-    .order('order', { ascending: true })
+  const { data, error } = await selectAllPages<MenuItem>(
+    ({ from, to, withCount }) => client
+      .from('menu_items')
+      .select('*', withCount ? { count: 'exact' } : undefined)
+      .eq('tenant_id', tenantId)
+      .eq('is_available', true)
+      .in('category_id', slotCategoryIds)
+      .order('order', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedRows<MenuItem>>,
+    { label: 'bundle slot menu_items' }
+  )
 
   if (error) {
     console.warn('[storefront-catalog] Bundle slot items query failed:', error.message)
   }
 
-  return hydrateBundleSlots(bundles, (data as unknown as MenuItem[] | null) ?? [])
+  return hydrateBundleSlots(bundles, data)
+}
+
+interface PagedRows<T> {
+  data: T[] | null
+  error: { message: string } | null
+  count?: number | null
+}
+
+/**
+ * Every dish on the menu, paged past PostgREST's 1000-row cap.
+ *
+ * `order` alone is not a total order (one 4066-item store has 3399 duplicate
+ * values), and ranges over a non-unique key skip and repeat rows, so `id`
+ * breaks the ties.
+ */
+function selectMenuItems(client: CatalogQueryClient, tenantId: string) {
+  return selectAllPages<MenuItem>(
+    ({ from, to, withCount }: PageRequest) => client
+      .from('menu_items')
+      // Deliberately unfiltered on `is_available`: an out-of-stock dish stays
+      // on the menu, marked unavailable, rather than vanishing.
+      .select(MENU_ITEM_LIST_SELECT, withCount ? { count: 'exact' } : undefined)
+      .eq('tenant_id', tenantId)
+      .order('order', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedRows<MenuItem>>,
+    { label: `menu_items for tenant ${tenantId}` }
+  )
 }
 
 /**
@@ -113,9 +147,7 @@ export async function loadStorefrontCatalog(client: CatalogQueryClient, tenant: 
 
   const [cats, items, bundleRows, outletRows, overrideRows] = await Promise.all([
     client.from('categories').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('order'),
-    // Deliberately unfiltered on `is_available`: an out-of-stock dish stays on
-    // the menu, marked unavailable, rather than vanishing.
-    client.from('menu_items').select(MENU_ITEM_LIST_SELECT).eq('tenant_id', tenant.id).order('order'),
+    selectMenuItems(client, tenant.id),
     bundlesQuery,
     outletsQuery,
     overridesQuery,
@@ -145,7 +177,7 @@ export async function loadStorefrontCatalog(client: CatalogQueryClient, tenant: 
 
   return {
     categories: (cats.data as unknown as Category[] | null) ?? [],
-    menuItems: (items.data as unknown as MenuItem[] | null) ?? [],
+    menuItems: items.data,
     bundles: hydrated.filter((bundle) => (bundle.slots ?? []).length > 0),
     outlets: (outletRows.data as unknown as Outlet[] | null) ?? [],
     outletsFailed,

@@ -32,6 +32,8 @@ describe('POST /api/revalidate-menu', () => {
   let mockCreateClient: jest.Mock
   let getUserMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
   let singleMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let tenantSlugMock: jest.Mock<(...args: unknown[]) => Promise<unknown>>
+  let tenantEqMock: jest.Mock
 
   beforeEach(async () => {
     jest.resetModules()
@@ -44,23 +46,66 @@ describe('POST /api/revalidate-menu', () => {
 
     getUserMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
     singleMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    tenantSlugMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+    tenantSlugMock.mockResolvedValue({ data: { slug: 'coffee' }, error: null })
+    tenantEqMock = jest.fn(() => ({ maybeSingle: tenantSlugMock }))
 
     mockCreateClient.mockReturnValue({
       auth: { getUser: getUserMock },
-      from: jest.fn(() => ({
-        select: jest.fn(() => ({
-          eq: jest.fn(() => ({
-            single: singleMock,
-          })),
-        })),
-      })),
+      from: jest.fn((table: unknown) =>
+        table === 'tenants'
+          ? { select: jest.fn(() => ({ eq: tenantEqMock })) }
+          : {
+              select: jest.fn(() => ({
+                eq: jest.fn(() => ({
+                  single: singleMock,
+                })),
+              })),
+            },
+      ),
     })
   })
 
-  test('rejects a request with no tenantId or tenantSlug', async () => {
+  test('rejects a request with no tenantId', async () => {
     const { POST } = await import('@/app/api/revalidate-menu/route')
     const res = await POST(makeRequest({}, 'Bearer token-1'))
     expect(res.status).toBe(400)
+  })
+
+  test('purges the slug stored for the authorized tenant, ignoring the slug in the body', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
+    singleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1' }, error: null })
+    const { POST } = await import('@/app/api/revalidate-menu/route')
+    const { revalidatePath } = await import('next/cache')
+
+    const res = await POST(makeRequest({ tenantId: 't1', tenantSlug: '[tenant]' }, 'Bearer token-1'))
+
+    expect(res.status).toBe(200)
+    expect(tenantEqMock).toHaveBeenCalledWith('id', 't1')
+    expect(revalidatePath).toHaveBeenCalledWith('/coffee/menu')
+    const purged = (revalidatePath as unknown as jest.Mock).mock.calls.map((call) => String(call[0]))
+    expect(purged.some((path) => path.startsWith('/[tenant]'))).toBe(false)
+  })
+
+  test('still works for callers that no longer send tenantSlug', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
+    singleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1' }, error: null })
+    const { POST } = await import('@/app/api/revalidate-menu/route')
+
+    const res = await POST(makeRequest({ tenantId: 't1' }, 'Bearer token-1'))
+    expect(res.status).toBe(200)
+  })
+
+  test('answers 404 and purges nothing when the tenant slug cannot be resolved', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
+    singleMock.mockResolvedValue({ data: { role: 'superadmin', tenant_id: null }, error: null })
+    tenantSlugMock.mockResolvedValue({ data: null, error: null })
+    const { POST } = await import('@/app/api/revalidate-menu/route')
+    const { revalidatePath } = await import('next/cache')
+
+    const res = await POST(makeRequest({ tenantId: 'missing' }, 'Bearer token-1'))
+    expect(res.status).toBe(404)
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   test('rejects a request with no Authorization header', async () => {

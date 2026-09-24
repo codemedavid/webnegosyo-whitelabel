@@ -1466,7 +1466,7 @@ export function useCheckout(tenantSlug: string) {
         // Compare against the RAW address the fee was quoted for (deliveryFeeAddress
         // is captured from the un-normalized customerData.delivery_address), so a
         // whitespace-only normalization difference never drops a valid fee.
-        const validDeliveryFeeForOrder = (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
+        const validDeliveryFeeForOrder = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
         const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
 
         // Stable across retries of this attempt — see clientOrderIdRef.

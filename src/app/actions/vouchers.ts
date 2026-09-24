@@ -23,6 +23,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVoucherPreview } from '@/lib/vouchers/preview'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
 import { loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
+import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { VoucherChannel, DiscountLine } from '@/lib/vouchers/types'
 import type { VoucherPreview } from '@/lib/vouchers/preview'
 
@@ -50,6 +51,23 @@ export interface ValidateVoucherResult {
 }
 
 const VALID_CHANNELS: readonly VoucherChannel[] = ['checkout', 'pos', 'admin']
+
+/**
+ * This action is anonymous and answers "is this a real code?", so it is a
+ * guessing oracle. Previews re-run whenever the cart moves, so the cap is per
+ * client IP (shared across instances) and sized for an honest shopper editing
+ * a cart, not for a script walking the code space.
+ */
+const VOUCHER_PREVIEW_RATE_LIMIT = { limit: 30, windowSec: 60 }
+
+/** More codes than any real stack; bounds the lookups one call can trigger. */
+const MAX_CODES_PER_PREVIEW = 5
+
+/** Longer than any code a person types; normalised codes are short. */
+const MAX_CODE_LENGTH = 64
+
+/** Bounds the category lookup a single preview can trigger. */
+const MAX_PREVIEW_LINES = 200
 
 function toFiniteNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -111,9 +129,24 @@ export async function validateVoucherAction(
       }
     }
 
+    if (codes.length > MAX_CODES_PER_PREVIEW) {
+      return { success: false, error: `You can use up to ${MAX_CODES_PER_PREVIEW} codes per order.` }
+    }
+    if (codes.some((code) => code.length > MAX_CODE_LENGTH)) {
+      return { success: false, error: 'That voucher code is not valid.' }
+    }
+
+    const rate = await checkActionRateLimit('voucher-preview', VOUCHER_PREVIEW_RATE_LIMIT)
+    if (!rate.allowed) {
+      return { success: false, error: 'Too many voucher checks. Please wait a moment and try again.' }
+    }
+
     const lines = sanitizeLines(input.lines)
     if (lines.length === 0) {
       return { success: false, error: 'Your cart is empty' }
+    }
+    if (lines.length > MAX_PREVIEW_LINES) {
+      return { success: false, error: 'Your cart has too many items to check a voucher.' }
     }
 
     const channel =

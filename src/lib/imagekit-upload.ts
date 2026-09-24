@@ -1,13 +1,16 @@
 /**
- * Browser-side ImageKit upload helper.
+ * Browser-side ImageKit upload helpers.
  *
- * Replaces the Cloudinary unsigned-preset upload. ImageKit requires a
- * server-signed token, so this first fetches `/api/imagekit/auth`, then POSTs
- * the file to the ImageKit upload endpoint. Uses XHR so callers can show upload
- * progress.
+ * Staff uploads (admin / superadmin): ask `/api/imagekit/auth` (POST, cookie
+ * session) to SIGN the folder + file name, then upload straight to ImageKit's
+ * v2 endpoint with exactly the signed fields. The signature binds
+ * useUniqueFileName=true / overwriteFile=false, so nobody can replace an
+ * existing asset with it.
+ *
+ * Customer payment proofs: posted to `/api/payment-proof/upload`, which checks
+ * the bytes and stores the file server-side — a visitor never holds ImageKit
+ * credentials. Both use XHR so callers can show upload progress.
  */
-
-const IMAGEKIT_UPLOAD_ENDPOINT = 'https://upload.imagekit.io/api/v1/files/upload'
 
 export interface ImageKitUploadResult {
   /** Full delivery URL */
@@ -18,11 +21,10 @@ export interface ImageKitUploadResult {
   filePath: string
 }
 
-interface UploadAuth {
+interface SignedUpload {
   token: string
-  expire: number
-  signature: string
-  publicKey: string
+  fields: Record<string, string>
+  uploadUrl: string
 }
 
 export function isImageKitConfigured(): boolean {
@@ -47,15 +49,20 @@ export function readUploadErrorMessage(body: string): string | null {
   }
 }
 
-async function fetchUploadAuth(): Promise<UploadAuth> {
-  const res = await fetch('/api/imagekit/auth')
+async function fetchSignedUpload(folder: string, fileName: string): Promise<SignedUpload> {
+  const res = await fetch('/api/imagekit/auth', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder, fileName }),
+  })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     const reason = readUploadErrorMessage(body)
     console.error('[imagekit] upload auth failed', { status: res.status, body })
     throw new Error(reason ?? `Could not authorize upload (${res.status}). Please try again.`)
   }
-  return (await res.json()) as UploadAuth
+  return (await res.json()) as SignedUpload
 }
 
 interface UploadOptions {
@@ -65,29 +72,15 @@ interface UploadOptions {
 }
 
 /**
- * Upload a single image file to ImageKit and return its url + fileId + filePath.
- * Throws on auth failure, network error, or a non-2xx upload response.
+ * POST `formData` with progress, resolving the { url, fileId, filePath } an
+ * ImageKit upload (or our proof route, which relays it) answers with. Rejects
+ * with the service's own reason when it refuses.
  */
-export async function uploadImageToImageKit(
-  file: File,
-  { folder, fileName, onProgress }: UploadOptions,
+function sendUpload(
+  url: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void,
 ): Promise<ImageKitUploadResult> {
-  if (!isImageKitConfigured()) {
-    throw new Error('Image upload is not configured.')
-  }
-
-  const auth = await fetchUploadAuth()
-
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('fileName', fileName || file.name || 'upload')
-  formData.append('publicKey', auth.publicKey)
-  formData.append('signature', auth.signature)
-  formData.append('expire', String(auth.expire))
-  formData.append('token', auth.token)
-  formData.append('folder', folder)
-  formData.append('useUniqueFileName', 'true')
-
   return new Promise<ImageKitUploadResult>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
 
@@ -137,7 +130,103 @@ export async function uploadImageToImageKit(
       reject(new Error('Upload failed. Please check your connection.'))
     })
 
-    xhr.open('POST', IMAGEKIT_UPLOAD_ENDPOINT)
+    xhr.open('POST', url)
     xhr.send(formData)
   })
+}
+
+/**
+ * Upload a single image file to ImageKit (staff only) and return its
+ * url + fileId + filePath. Throws on auth failure, network error, or a
+ * non-2xx upload response.
+ */
+export async function uploadImageToImageKit(
+  file: File,
+  { folder, fileName, onProgress }: UploadOptions,
+): Promise<ImageKitUploadResult> {
+  if (!isImageKitConfigured()) {
+    throw new Error('Image upload is not configured.')
+  }
+
+  const signed = await fetchSignedUpload(folder, fileName || file.name || 'upload')
+
+  // v2 refuses any request whose fields differ from the signed payload, so
+  // send the server's (sanitised) fields verbatim — nothing added, nothing left out.
+  const formData = new FormData()
+  formData.append('file', file)
+  for (const [key, value] of Object.entries(signed.fields)) {
+    formData.append(key, value)
+  }
+  formData.append('token', signed.token)
+
+  return sendUpload(signed.uploadUrl, formData, onProgress)
+}
+
+/** Which proof this is: a customer order, or a merchant's platform sign-up. */
+export type PaymentProofPurpose = 'order' | 'platform-signup'
+
+interface PaymentProofUploadOptions {
+  purpose?: PaymentProofPurpose
+  onProgress?: (percent: number) => void
+}
+
+/**
+ * Vercel refuses request bodies over 4.5 MB before our route runs, while the
+ * checkout accepts screenshots up to 5 MB. Anything above this is re-encoded
+ * in the browser first.
+ */
+const PROOF_UPLOAD_TARGET_BYTES = 4_000_000
+const PROOF_MAX_DIMENSION = 2560
+const PROOF_JPEG_QUALITY = 0.85
+
+/**
+ * Re-encode a large photo as a smaller JPEG. Returns the original file when
+ * it is already small enough, when the browser cannot decode it, or when
+ * re-encoding does not help — the server then decides.
+ */
+async function shrinkImageForUpload(file: File): Promise<File> {
+  if (file.size <= PROOF_UPLOAD_TARGET_BYTES) return file
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return file
+
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, PROOF_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    const context = canvas.getContext('2d')
+    if (!context) return file
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', PROOF_JPEG_QUALITY),
+    )
+    if (!blob || blob.size >= file.size) return file
+    const baseName = (file.name || 'payment-proof').replace(/\.[^.]+$/, '')
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' })
+  } catch (error) {
+    console.warn('[imagekit] could not shrink payment proof; sending original', error)
+    return file
+  }
+}
+
+/**
+ * Upload a customer's payment screenshot through the server. Same result shape
+ * as `uploadImageToImageKit`, so the order payload (url + fileId) is unchanged.
+ */
+export async function uploadPaymentProofImage(
+  file: File,
+  { purpose = 'order', onProgress }: PaymentProofUploadOptions = {},
+): Promise<ImageKitUploadResult> {
+  if (!isImageKitConfigured()) {
+    throw new Error('Image upload is not configured.')
+  }
+
+  const upload = await shrinkImageForUpload(file)
+  const formData = new FormData()
+  formData.append('file', upload, upload.name || 'payment-proof')
+  formData.append('purpose', purpose)
+
+  return sendUpload('/api/payment-proof/upload', formData, onProgress)
 }

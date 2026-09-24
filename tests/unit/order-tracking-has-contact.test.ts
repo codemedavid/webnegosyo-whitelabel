@@ -62,9 +62,8 @@ function makeAdminClient() {
 
 function respond(table: string, columns: string) {
   if (table === 'tenants') {
-    return columns.includes('pickup_scan_enabled')
-      ? { data: { pickup_scan_enabled: true }, error: null }
-      : { data: { order_backend: 'platform', convex_deployment_url: null }, error: null }
+    // One read carries both the routing columns and the pickup switch.
+    return { data: { order_backend: 'platform', convex_deployment_url: null, pickup_scan_enabled: true }, error: null }
   }
   if (table === 'orders') return { data: orderRow, error: null }
   return { data: null, error: null }

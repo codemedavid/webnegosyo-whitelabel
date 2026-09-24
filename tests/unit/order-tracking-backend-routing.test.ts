@@ -106,15 +106,14 @@ jest.mock('@/lib/tracking-token', () => ({
 
 /**
  * Point the stubbed platform database at one tenant row. Everything else the
- * service reads (order types, the pickup switch, prep promise) answers null,
- * which is the shape of a store that has not configured those.
+ * service reads (order types) answers null, which is the shape of a store that
+ * has not configured those.
  */
 function arrangeTenant(tenantRow: Record<string, unknown>, orderRow: Record<string, unknown> | null) {
   createAdminClient.mockReturnValue(
-    makeAdminClient((table, columns) => {
-      if (table === 'tenants') {
-        return columns.includes('pickup_scan_enabled') ? { pickup_scan_enabled: true } : tenantRow
-      }
+    makeAdminClient((table) => {
+      // One tenant read carries both the routing columns and the pickup switch.
+      if (table === 'tenants') return { ...tenantRow, pickup_scan_enabled: true }
       if (table === 'orders') return orderRow
       return null
     })

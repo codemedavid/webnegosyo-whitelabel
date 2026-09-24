@@ -48,35 +48,41 @@ async function resolveBrand(tenant: Tenant): Promise<OrderTrackingBrand> {
 }
 
 export default async function OrderTrackingPage({ params, searchParams }: PageProps) {
-  const { tenant: tenantSlug, orderId } = await params
-  const { t: trackingToken } = await searchParams
+  const [{ tenant: tenantSlug, orderId }, { t: trackingToken }] = await Promise.all([params, searchParams])
 
   // Resolve tenant server-side
   const tenant = await getCachedTenantBySlug(tenantSlug)
   if (!tenant) notFound()
 
-  const brand = await resolveBrand(tenant)
+  // The brand (loyalty offer), the order and the stamp card are independent
+  // reads: run them side by side instead of one after another. The stamp read
+  // needs only the offer, so it chains off the brand, not off the order.
+  const brandPromise = resolveBrand(tenant)
+  const [brand, tracking, stamps] = await Promise.all([
+    brandPromise,
+    // If tracking token is in URL, fetch initial data server-side (SSR)
+    trackingToken ? fetchOrderTrackingData(orderId, trackingToken, tenant.id) : null,
+    trackingToken
+      ? brandPromise.then((resolved) =>
+          resolved.loyaltyOffer
+            ? getOrderStampStatus({ orderId, tenantId: tenant.id, token: trackingToken })
+            : null
+        )
+      : null,
+  ])
 
-  // If tracking token is in URL, fetch initial data server-side (SSR)
-  if (trackingToken) {
-    const { data } = await fetchOrderTrackingData(orderId, trackingToken, tenant.id)
-
-    if (data) {
-      const stamps = brand.loyaltyOffer
-        ? await getOrderStampStatus({ orderId, tenantId: tenant.id, token: trackingToken })
-        : null
-      return (
-        <OrderTrackingClient
-          orderId={orderId}
-          tenantSlug={tenantSlug}
-          tenantId={tenant.id}
-          trackingToken={trackingToken}
-          initialData={data}
-          initialStamps={stamps?.ok ? stamps.status : null}
-          brand={brand}
-        />
-      )
-    }
+  if (trackingToken && tracking?.data) {
+    return (
+      <OrderTrackingClient
+        orderId={orderId}
+        tenantSlug={tenantSlug}
+        tenantId={tenant.id}
+        trackingToken={trackingToken}
+        initialData={tracking.data}
+        initialStamps={stamps?.ok ? stamps.status : null}
+        brand={brand}
+      />
+    )
   }
 
   // No token in URL or fetch failed — fall back to client-side localStorage lookup

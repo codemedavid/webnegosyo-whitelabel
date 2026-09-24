@@ -1,8 +1,9 @@
 /**
  * The storefront pack contract. Every pack draws its own menu, but ordering
- * rules are shared: a tap on a dish must go through the menu controller, so a
- * closed store, a sold-out dish or a branch list that failed to load refuses
- * the add in every pack, and every pack must reach checkout. A new pack is
+ * rules are shared: a tap on a dish must go through the menu controller, which
+ * opens the product sheet (there is deliberately no quick-add from the grid),
+ * so a closed store, a sold-out dish or a branch list that failed to load
+ * refuses the tap in every pack, and every pack must reach checkout. A new pack is
  * covered here the moment it is registered.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -14,6 +15,7 @@ import type { MenuItem, Tenant } from '@/types/database'
 const mockAddItem = jest.fn()
 const mockPush = jest.fn()
 const mockCartRender = jest.fn()
+const mockSheetRender = jest.fn()
 const mockStatus = { isOrderingBlocked: false, nextOpenLabel: null }
 const mockCart = { items: [] as unknown[], bundleItems: [] as unknown[], item_count: 0, total: 0 }
 
@@ -49,7 +51,7 @@ jest.mock('@/components/customer/header-templates', () => ({
   MenuHeaderRenderer: (props: { onCartClick: () => void }) => <header><button onClick={props.onCartClick}>Cart</button></header>,
 }))
 jest.mock('@/components/customer/cart-drawer', () => ({ CartDrawer: (props: unknown) => { mockCartRender(props); return null } }))
-jest.mock('@/components/customer/product-detail-sheet', () => ({ ProductDetailSheet: () => null }))
+jest.mock('@/components/customer/product-detail-sheet', () => ({ ProductDetailSheet: (props: unknown) => { mockSheetRender(props); return null } }))
 jest.mock('@/components/customer/bundle-wizard', () => ({ BundleWizard: () => null }))
 jest.mock('@/components/customer/block-hero-renderer', () => ({ BlockHeroRenderer: () => null }))
 jest.mock('@/components/customer/category-submenu', () => ({ CategorySubmenu: () => null }))
@@ -77,6 +79,12 @@ async function renderPack(pack: string, overrides: Partial<Parameters<typeof Men
 
 // A pack's pages are lazy chunks; give the first cold import time to land.
 const LAZY_PAGE_TIMEOUT = { timeout: 4000 }
+/** Ids of the dishes the product sheet has been opened for. */
+const openedDishes = () => mockSheetRender.mock.calls
+  .map(([props]) => props as { open: boolean; item: MenuItem | null })
+  .filter((props) => props.open && props.item)
+  .map((props) => props.item!.id)
+
 const tapDish = async (name: string) => fireEvent.click(await screen.findByRole('button', { name }, LAZY_PAGE_TIMEOUT))
 
 beforeEach(() => {
@@ -87,40 +95,48 @@ beforeEach(() => {
 })
 
 describe.each(STOREFRONT_PACK_IDS)('the %s storefront pack', (pack) => {
-  it('lists the menu and adds a simple dish through the shared controller', async () => {
+  it('lists the menu and opens a dish through the shared controller', async () => {
     await renderPack(pack)
     await tapDish('Classic Burger')
-    expect(mockAddItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'burger' }), undefined, [], 1, undefined)
+    await waitFor(() => expect(openedDishes()).toContain('burger'))
+    expect(mockAddItem).not.toHaveBeenCalled()
   })
 
-  it('refuses to add while the store is closed', async () => {
+  it('refuses a tap while the store is closed', async () => {
     mockStatus.isOrderingBlocked = true
     await renderPack(pack)
     await tapDish('Classic Burger')
+    expect(openedDishes()).toEqual([])
     expect(mockAddItem).not.toHaveBeenCalled()
   })
 
-  it('refuses to add a sold-out dish', async () => {
+  it('refuses a tap on a sold-out dish', async () => {
     await renderPack(pack)
     await tapDish('Loaded Fries')
+    expect(openedDishes()).toEqual([])
     expect(mockAddItem).not.toHaveBeenCalled()
   })
 
-  it('refuses to add when the branch list failed to load', async () => {
+  it('refuses a tap when the branch list failed to load', async () => {
     const tenant = { id: 't1', slug: 'test', name: 'Test', storefront_pack: pack, multi_branch_enabled: true } as Tenant
     await renderPack(pack, { tenant, outletsFailed: true })
     await tapDish('Classic Burger')
+    expect(openedDishes()).toEqual([])
     expect(mockAddItem).not.toHaveBeenCalled()
   })
 
-  it('adds from the home page through the shared controller, and refuses while closed', async () => {
+  it('opens a dish from the home page through the shared controller', async () => {
     await renderPack(pack, { page: 'home' })
     await tapDish('Classic Burger')
-    expect(mockAddItem).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(openedDishes()).toContain('burger'))
+    expect(mockAddItem).not.toHaveBeenCalled()
+  })
 
-    mockAddItem.mockClear()
+  it('refuses a home-page tap while the store is closed', async () => {
     mockStatus.isOrderingBlocked = true
+    await renderPack(pack, { page: 'home' })
     await tapDish('Classic Burger')
+    expect(openedDishes()).toEqual([])
     expect(mockAddItem).not.toHaveBeenCalled()
   })
 
