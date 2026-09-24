@@ -2,8 +2,12 @@ import {
   parseReceiptLayout,
   type ReceiptBlock,
   type ReceiptBlockKind,
+  type ReceiptBlockStyle,
+  type ReceiptTextAlign,
+  type ReceiptTextSize,
   type ReceiptLayout,
   type ReceiptPresetName,
+  type ReceiptTheme,
 } from '@/lib/receipt-layout'
 
 /**
@@ -94,4 +98,116 @@ export function sanitizeLayoutForSave(value: unknown): ReceiptPresetName | Recei
       : null
   }
   return parseReceiptLayout(value)
+}
+
+// ---------------------------------------------------------------------------
+// Styling and arranging
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge a style change into a block. A field set to undefined goes back to
+ * the theme default; a style left with no fields is removed, so an unstyled
+ * block keeps its exact pre-styles rendering. A text block's alignment lives
+ * on the block itself, where app builds that predate styles still read it.
+ */
+export function setBlockStyle(block: ReceiptBlock, patch: ReceiptBlockStyle): ReceiptBlock {
+  if (block.kind === 'text' && 'align' in patch) {
+    const { align, ...others } = patch
+    return setBlockStyle({ ...block, align }, others)
+  }
+  const { style: current, ...rest } = block
+  const merged: ReceiptBlockStyle = { ...current, ...patch }
+  const style = Object.fromEntries(
+    Object.entries(merged).filter(([, value]) => value !== undefined),
+  ) as ReceiptBlockStyle
+  return (Object.keys(style).length > 0 ? { ...rest, style } : rest) as ReceiptBlock
+}
+
+const SIZE_LABELS: Record<ReceiptTextSize, string> = {
+  normal: 'Normal size',
+  tall: 'Tall',
+  large: 'Large',
+}
+
+const ALIGN_LABELS: Record<ReceiptTextAlign, string> = {
+  left: 'Left',
+  center: 'Centered',
+  right: 'Right',
+}
+
+/** "Large · Bold" — what the merchant changed on a block, or null. */
+export function describeBlockStyle(block: ReceiptBlock): string | null {
+  const style = block.style
+  if (!style) return null
+  const parts = [
+    style.size ? SIZE_LABELS[style.size] : null,
+    style.bold === undefined ? null : style.bold ? 'Bold' : 'Regular weight',
+    style.align ? ALIGN_LABELS[style.align] : null,
+  ].filter((part): part is string => part !== null)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+/** A block in the Studio's stack, with the id drag-and-drop and selection use. */
+export interface DraftBlock {
+  id: string
+  block: ReceiptBlock
+}
+
+function draftIndex(drafts: DraftBlock[], id: string | null): number {
+  return id === null ? -1 : drafts.findIndex((draft) => draft.id === id)
+}
+
+/** Insert below the draft `afterId`, or at the end when it is null or gone. */
+export function insertDraftAfter(
+  drafts: DraftBlock[],
+  afterId: string | null,
+  draft: DraftBlock,
+): DraftBlock[] {
+  const index = draftIndex(drafts, afterId)
+  const at = index < 0 ? drafts.length : index + 1
+  return [...drafts.slice(0, at), draft, ...drafts.slice(at)]
+}
+
+/** A deep copy of the draft `id`, style included, right below it. */
+export function duplicateDraft(drafts: DraftBlock[], id: string, newId: string): DraftBlock[] {
+  const index = draftIndex(drafts, id)
+  if (index < 0) return drafts
+  const copy = { id: newId, block: structuredClone(drafts[index]!.block) }
+  return insertDraftAfter(drafts, id, copy)
+}
+
+/** Move the draft `id` one place up (-1) or down (1). */
+export function moveDraft(drafts: DraftBlock[], id: string, offset: -1 | 1): DraftBlock[] {
+  const index = draftIndex(drafts, id)
+  const target = index + offset
+  if (index < 0 || target < 0 || target >= drafts.length) return drafts
+  return drafts.map((draft, i) => {
+    if (i === index) return drafts[target]!
+    if (i === target) return drafts[index]!
+    return draft
+  })
+}
+
+/** The lines `orderMeta` prints, as blocks a merchant can style one by one. */
+// The order each theme's `orderMeta` prints its lines in: Modern puts the
+// order type and table before the customer (see renderModernOrderMeta).
+const ORDER_META_PARTS: Record<ReceiptTheme, readonly ReceiptBlockKind[]> = {
+  classic: ['orderNumber', 'orderDate', 'customerName', 'orderType', 'tableNumber'],
+  modern: ['orderNumber', 'orderDate', 'orderType', 'tableNumber', 'customerName'],
+}
+
+/** How many blocks `splitOrderMetaDraft` mints (the same for every theme). */
+export const ORDER_META_LINE_COUNT = ORDER_META_PARTS.classic.length
+
+/** Replace an all-in-one details block with one block per line it prints. */
+export function splitOrderMetaDraft(
+  drafts: DraftBlock[],
+  id: string,
+  makeId: () => string,
+  theme: ReceiptTheme = 'classic',
+): DraftBlock[] {
+  const index = draftIndex(drafts, id)
+  if (drafts[index]?.block.kind !== 'orderMeta') return drafts
+  const parts = ORDER_META_PARTS[theme].map((kind) => ({ id: makeId(), block: { kind } as ReceiptBlock }))
+  return [...drafts.slice(0, index), ...parts, ...drafts.slice(index + 1)]
 }

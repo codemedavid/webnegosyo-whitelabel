@@ -13,7 +13,11 @@ describe('the bottom inset', () => {
   it('lifts both forms of the active-order banner above a pack bar', () => {
     const source = read('src/components/customer/active-order-banner.tsx')
     expect(source).not.toMatch(/fixed bottom-6/)
-    expect(source.match(/bottom-\[calc\(1\.5rem\+var\(--storefront-bottom-inset,0px\)\)\]/g)).toHaveLength(2)
+    // Both forms share one bottom class, and both of its positions (resting,
+    // and raised above the senior-mode cart bar) carry the inset.
+    expect(source.match(/fixed \$\{bottomClass\}/g)).toHaveLength(2)
+    expect(source).toContain("'bottom-[calc(1.5rem+var(--storefront-bottom-inset,0px))]'")
+    expect(source).toContain("'bottom-[calc(8rem+var(--storefront-bottom-inset,0px))]'")
   })
 
   it('pads the site footer so its last line is not hidden behind a pack bar', () => {

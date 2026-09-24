@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { getReceiptContext } from "@/app/actions/receipt";
-import { renderReceipt, resolveReceiptLayout, type ReceiptOrder } from "@/lib/receipt-layout";
+import { renderReceiptSegments, resolveReceiptLayout, type ReceiptOrder } from "@/lib/receipt-layout";
 import { openReceiptPrintWindow } from "@/lib/receipt-web";
 import {
   Sheet,
@@ -166,12 +166,12 @@ export function ConvexOrderSheet({
     setIsPrintingReceipt(true);
     try {
       const context = await getReceiptContext(tenantId);
-      const text = renderReceipt(
+      const segments = renderReceiptSegments(
         order as unknown as ReceiptOrder,
         { storeName: context?.storeName ?? "Store" },
         resolveReceiptLayout(context?.receiptLayout ?? null),
       );
-      openReceiptPrintWindow(text);
+      openReceiptPrintWindow(segments);
     } finally {
       setIsPrintingReceipt(false);
     }

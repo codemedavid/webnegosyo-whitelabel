@@ -4,6 +4,8 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import { ActiveOrderBanner } from '@/components/customer/active-order-banner'
 import { BrandingInspector } from '@/components/customer/branding-inspector'
+import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
+import { SeniorCartBar } from '@/components/customer/senior-mode/senior-cart-bar'
 import { FlashScreenLoader } from '@/components/customer/flash-screen-loader'
 import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
 import { CHECKOUT_UPSELL_DEFAULTS } from '@/lib/checkout-upsell-defaults'
@@ -122,6 +124,7 @@ export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', childre
   const { tenant, tenantSlug, categories, allMenuItems, selectedBundle, sheetItem } = menu
   const branding = useMemo(() => getTenantBranding(tenant), [tenant])
   const isFlashPreview = useBrandingPreviewDraft()?.__previewSurface === 'flash'
+  const isSeniorMode = useSeniorMode()
   // Only direct-checkout packs mount a gate here; a drawer pack's drawer runs
   // its own, and a second one would add another open-hours poller.
   const CheckoutProvider = checkoutEntry === 'direct' ? DirectCheckoutProvider : DrawerCheckoutProvider
@@ -168,10 +171,20 @@ export function StorefrontRuntime({ menu, checkoutEntry = 'cart-drawer', childre
         {/* Branding Studio click-to-inspect (dormant outside the editor iframe) */}
         <BrandingInspector />
 
+        {/* Senior mode: large labelled cart bar pinned to the bottom */}
+        {isSeniorMode && (
+          <SeniorCartBar
+            tenantSlug={tenantSlug}
+            branding={branding}
+            hideCurrencySymbol={!!(tenant?.menu_engineering_enabled && tenant?.hide_currency_symbol)}
+          />
+        )}
+
         <ActiveOrderBanner
           tenantSlug={tenantSlug}
           primaryColor={branding.buttonPrimary}
           primaryTextColor={branding.buttonPrimaryText}
+          isRaised={isSeniorMode}
         />
 
       </div>

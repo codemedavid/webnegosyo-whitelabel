@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { CategorySubmenu } from '@/components/customer/category-submenu'
 import { AnnouncementBar } from '@/components/customer/announcement-bar'
 import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
@@ -18,8 +19,9 @@ import { useBrandingPreviewDraft, useIsMobileViewport, useMobileOverrides } from
 import { resolveMobileGridColumns, resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
+import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 
-import { shouldUseCustomHero } from '@/lib/hero-mode'
+import { isFullBleedHeroBand, shouldUseCustomHero } from '@/lib/hero-mode'
 import { DeferredMount } from '../../runtime/deferred-mount'
 import { useStorefrontRuntime } from '../../runtime/storefront-runtime'
 
@@ -40,6 +42,11 @@ export function LegacyMenuStorefront() {
   const isMobile = useIsMobileViewport()
   const [currentSlide, setCurrentSlide] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
+  const isSeniorMode = useSeniorMode()
+  // Senior mode sends every cart button to the cart PAGE, where the step
+  // tracker shows "Step 2 of 4" — the side drawer has no such guidance.
+  const handleCartClick = isSeniorMode ? () => router.push(`/${tenantSlug}/cart`) : menu.openCart
   const deviceLayout = resolveStorefrontLayout(tenant, mobileOverrides)
   const layout = (isMobile ? deviceLayout.mobileLayout : deviceLayout.desktopLayout) as PageLayout
   const card = (isMobile ? deviceLayout.mobileCard : deviceLayout.desktopCard) as CardTemplate
@@ -92,7 +99,7 @@ export function LegacyMenuStorefront() {
     <div
       ref={rootRef}
       data-branding-scope="global/palette"
-      className="storefront-themed min-h-screen"
+      className="storefront-themed min-h-screen overflow-x-clip"
       style={{
         // Expose all --brand-* tokens (incl. the storefront theme knobs:
         // --brand-radius / --brand-heading-font / --brand-body-font when set).
@@ -116,7 +123,7 @@ export function LegacyMenuStorefront() {
       <StoreClosedBanner status={openStatus} />
       <MenuHeaderRenderer
         template={header} tenant={tenant} tenantSlug={tenantSlug} branding={branding}
-        config={headerConfig} itemCount={item_count} onCartClick={menu.openCart}
+        config={headerConfig} itemCount={item_count} onCartClick={handleCartClick}
         searchQuery={searchQuery} onSearchChange={handleSearchChange}
       />
       {layout === 'default' && categoriesWithBundles.length > 0 && (
@@ -134,8 +141,11 @@ export function LegacyMenuStorefront() {
         return null
       })()}
 
+      {/* A full-bleed hero (fullscreen custom design or a colored preset band)
+          sits flush under the header, so <main> drops its top padding. */}
       <main className={
-        tenant?.hero_section_enabled !== false && shouldUseCustomHero(tenant) && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).layoutMode === 'fullscreen'
+        (tenant?.hero_section_enabled !== false && shouldUseCustomHero(tenant) && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).layoutMode === 'fullscreen')
+          || isFullBleedHeroBand(tenant)
           ? 'container mx-auto px-4 pb-12'
           : 'container mx-auto px-4 py-12'
       }>

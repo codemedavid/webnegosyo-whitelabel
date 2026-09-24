@@ -179,6 +179,14 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     description: 'Menu page — announcement, header, hero, navigation, search and menu cards.',
     sections: [
       {
+        title: 'Easy ordering',
+        fields: [
+          // columnBacked: one setting for every device, never a mobile override.
+          { ...toggle('senior_friendly_mode', 'Senior-friendly mode', false), columnBacked: true },
+          note('note_senior_friendly_mode', 'For stores with older customers. Makes text and buttons larger, pins a big "View cart" bar to the bottom of the menu, labels the cart and back buttons, shows a clear "Added to your cart" message, and adds step numbers (1 Choose food → 2 Check cart → 3 Your details → 4 Order sent) to the cart and checkout.'),
+        ],
+      },
+      {
         title: 'Page background',
         fields: [
           image('background_image_url', 'Background image'),

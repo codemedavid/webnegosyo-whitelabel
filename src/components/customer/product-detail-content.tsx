@@ -44,6 +44,8 @@ import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } 
 import { BackgroundOverlayLayer } from './background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { motion } from 'framer-motion'
+import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
+import { describeAddedToCart } from '@/lib/senior-mode'
 const InlineUpgradeSection = dynamic(
   () => import('./inline-upgrade-section').then((m) => ({ default: m.InlineUpgradeSection })),
   { ssr: false }
@@ -66,6 +68,13 @@ const BundleWizard = dynamic(
   () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
   { ssr: false }
 )
+
+/**
+ * Senior mode's add-to-cart confirmation: long enough to read a two-line
+ * message, short enough not to linger — the bottom cart bar keeps showing the
+ * count afterwards.
+ */
+const SENIOR_ADDED_TOAST_MS = 3000
 
 interface ProductDetailContentProps {
     tenant: SelectedTenant
@@ -293,6 +302,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         [previewDraft, tenant, brandingProp]
     )
     const { addItem, setTenantContext, items: cartItems } = useCart()
+    const isSeniorMode = useSeniorMode()
     const mainContentRef = useRef<HTMLElement | null>(null)
     const [isPageTransitioning, setIsPageTransitioning] = useState(false)
     const pendingNavigationRef = useRef<string | null>(null)
@@ -639,9 +649,17 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             toast.error(`Your cart is already for ${formatPresellDateLabel(result.committedDate)}. Pre-orders are placed one date at a time.`)
             return false
         }
+        if (isSeniorMode) {
+            // Senior mode: a larger worded confirmation (styled by .senior-toast
+            // in SeniorModeProvider), shown at the TOP so it never covers the
+            // bottom "View cart" bar that is the customer's next tap.
+            const message = describeAddedToCart(item.name, useGroups ? mg.quantity : quantity, presell ? formatPresellDateLabel(presell) : undefined)
+            toast.success(message.title, { description: message.description, duration: SENIOR_ADDED_TOAST_MS, position: 'top-center', className: 'senior-toast' })
+            return true
+        }
         toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
         return true
-    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate])
+    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate, isSeniorMode])
 
     const matchingBundle = useMemo(() => {
         if (!bundlesEnabled || !upsellBundles?.length) return null
@@ -785,17 +803,32 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             {/* Back Navigation */}
             <header data-branding-scope="product/header" className={`${isSheet ? 'absolute' : 'fixed'} top-0 left-0 right-0 z-50 p-3${isSheet ? ' rounded-t-2xl' : ''}`} style={{ backgroundColor: 'var(--pd-header-background)' }}>
                 <div className="flex items-center justify-between gap-2">
-                    <motion.button
-                        onClick={handleGoBack}
-                        className="rounded-full p-2 shadow-md transition-colors"
-                        style={{
-                            backgroundColor: 'var(--pd-header-button-bg)',
-                        }}
-                        aria-label="Go back"
-                        whileTap={{ scale: 0.95 }}
-                    >
-                        <ChevronLeft className="h-6 w-6" style={{ color: 'var(--pd-header-button-icon)' }} />
-                    </motion.button>
+                    {isSeniorMode ? (
+                        // Senior mode: the icon-only chevron was easy to miss —
+                        // say where the button goes, and go there even when
+                        // the dish was opened from a shared link (no history).
+                        <motion.button
+                            onClick={handleGoMenu}
+                            className="flex min-h-12 items-center gap-1.5 rounded-full py-2 pl-3 pr-5 text-lg font-bold shadow-md transition-colors"
+                            style={{ backgroundColor: 'var(--pd-header-button-bg)', color: 'var(--pd-header-button-icon)' }}
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <ChevronLeft className="h-7 w-7" aria-hidden="true" />
+                            Back to menu
+                        </motion.button>
+                    ) : (
+                        <motion.button
+                            onClick={handleGoBack}
+                            className="rounded-full p-2 shadow-md transition-colors"
+                            style={{
+                                backgroundColor: 'var(--pd-header-button-bg)',
+                            }}
+                            aria-label="Go back"
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <ChevronLeft className="h-6 w-6" style={{ color: 'var(--pd-header-button-icon)' }} />
+                        </motion.button>
+                    )}
                     <motion.button
                         onClick={handleShare}
                         className="rounded-full p-2 shadow-md transition-colors"

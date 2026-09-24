@@ -44,3 +44,22 @@ export function shouldUseCustomHero(tenant: HeroModeInput | null | undefined): b
   // Legacy: design saved while the preset stayed at its 'theme'/blank default.
   return true
 }
+
+export interface HeroBandInput extends HeroModeInput {
+  hero_section_enabled?: boolean | null
+  hero_background_color?: string | null
+}
+
+/**
+ * True when the storefront hero renders as a full-bleed colored band (a preset
+ * hero with a background color). The band sits flush under the header, so the
+ * storefront drops <main>'s top padding for it. `banner` is excluded — it is a
+ * self-contained rounded card, never a band.
+ */
+export function isFullBleedHeroBand(tenant: HeroBandInput | null | undefined): boolean {
+  if (!tenant || tenant.hero_section_enabled === false) return false
+  if (shouldUseCustomHero(tenant)) return false
+  const preset = resolveHeroPreset(tenant.hero_preset)
+  if (!preset || preset === 'banner') return false
+  return !!tenant.hero_background_color
+}

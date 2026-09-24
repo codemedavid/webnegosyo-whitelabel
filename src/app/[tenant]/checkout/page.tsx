@@ -22,6 +22,8 @@ import {
 } from '@/components/customer/checkout-templates/checkout-shared'
 import { CheckoutOutletSummary } from '@/components/customer/checkout-templates/checkout-outlet-section'
 import { CheckoutOutletScreen } from '@/components/customer/checkout-templates/checkout-outlet-screen'
+import { SeniorOrderSteps } from '@/components/customer/senior-mode/senior-order-steps'
+import { isOrderSaveFailed } from '@/lib/checkout/order-save-outcome'
 import { resolveCheckoutTemplate } from '@/lib/storefront-packs'
 
 export default function CheckoutPage() {
@@ -31,7 +33,15 @@ export default function CheckoutPage() {
 
   // Order confirmation / thank-you view (shared across all designs)
   if (checkout.checkoutComplete && checkout.completedOrderData) {
-    return <CheckoutConfirmation checkout={checkout} />
+    // Senior mode: "Step 4 of 4: Order sent" — unless the save failed, where
+    // the customer is still at step 3 and the screen below says why.
+    const hasOrderSaved = !isOrderSaveFailed(checkout)
+    return (
+      <>
+        <SeniorOrderSteps current={hasOrderSaved ? 'done' : 'checkout'} branding={checkout.branding} />
+        <CheckoutConfirmation checkout={checkout} />
+      </>
+    )
   }
 
   // Merchants who moved the branch question to checkout: it gets the screen to
@@ -60,6 +70,12 @@ export default function CheckoutPage() {
   return (
     <>
       <div data-branding-scope="checkout/colors">
+        <SeniorOrderSteps
+          current="checkout"
+          branding={checkout.branding}
+          backLabel="Back to cart"
+          onBack={() => checkout.router.push(`/${tenantSlug}/cart`)}
+        />
         <div className="mx-auto max-w-2xl px-4 pt-4">
           <CheckoutOutletSummary outlet={checkout.outlet} />
         </div>

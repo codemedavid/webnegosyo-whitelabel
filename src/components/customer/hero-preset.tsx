@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Pencil } from 'lucide-react'
 import type { HeroPreset } from '@/lib/storefront-theme'
 
@@ -108,6 +109,36 @@ function EditButton({ onEdit }: { onEdit: () => void }) {
     >
       <Pencil className="h-3.5 w-3.5" />
     </button>
+  )
+}
+
+/**
+ * The outer shell of every preset except `banner`. With no background it is
+ * the plain in-flow block the presets always were. With one it becomes a
+ * full-bleed band: it breaks out of the page container to the viewport edges
+ * and carries its own padding and near-viewport height, so the color frames
+ * the content instead of clipping it at the kicker and the CTA.
+ */
+function HeroBand({
+  background,
+  className = '',
+  children,
+}: {
+  background?: string
+  className?: string
+  children: ReactNode
+}) {
+  if (!background) return <div className={`mb-16 ${className}`}>{children}</div>
+  return (
+    <section
+      data-testid="hero-band"
+      className="mb-12 flex min-h-[80svh] items-center py-16 md:py-24"
+      style={{ background, width: '100vw', marginLeft: 'calc(50% - 50vw)' }}
+    >
+      <div className="mx-auto w-full max-w-7xl px-6 md:px-10">
+        <div className={className}>{children}</div>
+      </div>
+    </section>
   )
 }
 
@@ -365,7 +396,6 @@ export function HeroPresetSection({
   const ctaBg = ctaPrimaryColor ?? accentColor
   const ctaFg = ctaPrimaryTextColor ?? accentInkColor
   const ctaSecondaryFg = ctaSecondaryTextColor ?? titleColor
-  const sectionStyle = sectionBackground ? { background: sectionBackground } : undefined
 
   const primary = (
     <Cta
@@ -390,7 +420,7 @@ export function HeroPresetSection({
 
   if (preset === 'editorial') {
     return (
-      <div className="mb-16 text-center" style={sectionStyle}>
+      <HeroBand background={sectionBackground} className="text-center">
         <Kicker text={kicker} color={kickerInk} />
         <div className="inline-flex items-start justify-center gap-2">
           <h1
@@ -414,13 +444,13 @@ export function HeroPresetSection({
           {primary}
           {secondaryOutline}
         </div>
-      </div>
+      </HeroBand>
     )
   }
 
   if (preset === 'split') {
     return (
-      <div className="mb-16 grid items-center gap-10 md:grid-cols-[1.2fr_1fr]" style={sectionStyle}>
+      <HeroBand background={sectionBackground} className="grid items-center gap-10 md:grid-cols-[1.2fr_1fr]">
         <div>
           {kicker && (
             <div
@@ -477,7 +507,7 @@ export function HeroPresetSection({
             accentInkColor={accentInkColor}
           />
         </div>
-      </div>
+      </HeroBand>
     )
   }
 
@@ -539,7 +569,7 @@ export function HeroPresetSection({
 
   if (preset === 'collage') {
     return (
-      <div className="mb-16 grid items-center gap-10 md:grid-cols-2" style={sectionStyle}>
+      <HeroBand background={sectionBackground} className="grid items-center gap-10 md:grid-cols-2">
         <div>
           <Kicker text={kicker} color={kickerInk} />
           <div className="inline-flex items-start gap-2">
@@ -578,13 +608,13 @@ export function HeroPresetSection({
           />
           <Tile initial={initial} tone={tone2} className="mt-7 aspect-square rounded-3xl" />
         </div>
-      </div>
+      </HeroBand>
     )
   }
 
   if (preset === 'minimal') {
     return (
-      <div className="mb-16 max-w-2xl" style={sectionStyle}>
+      <HeroBand background={sectionBackground} className="max-w-2xl">
         <Kicker text={kicker} color={kickerInk} />
         <div className="inline-flex items-start gap-2">
           <h1
@@ -604,13 +634,13 @@ export function HeroPresetSection({
           {description}
         </p>
         <div className="flex flex-wrap gap-3">{primary}</div>
-      </div>
+      </HeroBand>
     )
   }
 
   // 'centered' — big centered heading, single CTA, then a 3-tile image band.
   return (
-    <div className="mb-16 text-center">
+    <HeroBand background={sectionBackground} className="text-center">
       <Kicker text={kicker} color={kickerInk} />
       <div className="inline-flex items-start justify-center gap-2">
         <h1
@@ -645,6 +675,6 @@ export function HeroPresetSection({
         />
         <Tile initial={initial} tone={tone2} className="h-44 rounded-t-3xl" />
       </div>
-    </div>
+    </HeroBand>
   )
 }

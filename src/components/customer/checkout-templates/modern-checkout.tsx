@@ -54,7 +54,7 @@ export function ModernCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   return (
     <div className="min-h-screen bg-[#f8fafc]" style={{ backgroundColor: palette.background }}>
       {/* Sticky header */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <header data-senior-hidden className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
         <div className="container mx-auto flex h-16 items-center gap-3 px-4">
           <button
             type="button"
