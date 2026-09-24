@@ -1,15 +1,14 @@
 /**
  * The inventory table view model.
  *
- * The redesigned inventory screen is a data table — search, sort, paginate,
- * export — and every one of those decisions is a pure function of the rows.
+ * The redesigned inventory screen is a data table — search, sort, paginate —
+ * and every one of those decisions is a pure function of the rows.
  * Keeping them here means the table component only renders, and the merchant
  * app can grow the same table from the same rules.
  */
 
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import {
-  buildInventoryCsv,
   buildInventoryRows,
   filterInventoryRows,
   paginateRows,
@@ -270,41 +269,5 @@ describe('selection', () => {
 
   it('completes a partial selection rather than clearing it', () => {
     expect(toggleAllSelected(['i1'], ['i1', 'i2'])).toEqual(['i1', 'i2'])
-  })
-})
-
-describe('buildInventoryCsv', () => {
-  const rows = buildInventoryRows(
-    [item({ id: 'i1', name: 'Broccoli', current_qty: 10 })],
-    { ...CONTEXT, lastPurchaseAt: new Map([['i1', '2026-05-03T00:00:00.000Z']]) },
-  )
-
-  it('writes a header and one line per row', () => {
-    const csv = buildInventoryCsv(rows)
-
-    expect(csv.split('\n')).toEqual([
-      'SKU,Name,Category,Last Purchase,On Hand',
-      'V01456,Broccoli,Vegetable,2026-05-03,10 kg',
-    ])
-  })
-
-  it('quotes a field containing a comma so the column count survives', () => {
-    const withComma = buildInventoryCsv(
-      buildInventoryRows([item({ name: 'Salt, coarse' })], CONTEXT),
-    )
-
-    expect(withComma).toContain('"Salt, coarse"')
-  })
-
-  it('escapes embedded quotes', () => {
-    const withQuote = buildInventoryCsv(buildInventoryRows([item({ name: 'Beef "prime"' })], CONTEXT))
-
-    expect(withQuote).toContain('"Beef ""prime"""')
-  })
-
-  it('leaves the last purchase cell empty when the item was never received', () => {
-    const csv = buildInventoryCsv(buildInventoryRows([item({ id: 'i9' })], CONTEXT))
-
-    expect(csv.split('\n')[1]).toContain(',,')
   })
 })

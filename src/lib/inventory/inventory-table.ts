@@ -1,8 +1,8 @@
 /**
  * View model for the inventory table.
  *
- * The inventory screen is a data table, and search, sort, pagination, selection
- * and export are all pure functions of the rows. Keeping them out of the
+ * The inventory screen is a data table, and search, sort, pagination and
+ * selection are all pure functions of the rows. Keeping them out of the
  * component means the table only renders, the rules can be tested without a
  * DOM, and the merchant app can grow the same table from the same answers.
  *
@@ -194,31 +194,4 @@ export function toggleAllSelected(
 
   const missing = visibleIds.filter((id) => !selected.includes(id))
   return [...selected, ...missing]
-}
-
-// ── Export ───────────────────────────────────────────────────────────────────
-
-const CSV_HEADER = ['SKU', 'Name', 'Category', 'Last Purchase', 'On Hand']
-
-/** RFC 4180 quoting — a stray comma in an item name must not shift a column. */
-function csvCell(value: string): string {
-  if (!/[",\n]/.test(value)) return value
-  return `"${value.replace(/"/g, '""')}"`
-}
-
-export function buildInventoryCsv(rows: readonly InventoryRow[]): string {
-  const lines = rows.map((row) =>
-    [
-      row.code === NO_CODE ? '' : row.code,
-      row.name,
-      row.group,
-      // Date only: the time a delivery was keyed in is noise in a spreadsheet.
-      row.lastPurchaseAt ? row.lastPurchaseAt.slice(0, 10) : '',
-      row.onHandLabel,
-    ]
-      .map(csvCell)
-      .join(','),
-  )
-
-  return [CSV_HEADER.join(','), ...lines].join('\n')
 }

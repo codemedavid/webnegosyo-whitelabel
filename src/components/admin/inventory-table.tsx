@@ -5,7 +5,10 @@ import Image from 'next/image'
 import {
   ArrowUpDown,
   ChefHat,
+  ChevronDown,
   Download,
+  FileSpreadsheet,
+  FileText,
   MoreHorizontal,
   Package,
   PackagePlus,
@@ -15,13 +18,21 @@ import {
   Search,
   Trash2,
   TriangleAlert,
+  Upload,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import {
-  buildInventoryCsv,
   filterInventoryRows,
   paginateRows,
   sortInventoryRows,
@@ -69,6 +80,11 @@ export interface InventoryTableProps {
   onDelete: (id: string) => void
   /** Opens the units list. Omitted by callers that manage units elsewhere. */
   onManageUnits?: () => void
+  /** Opens the spreadsheet import. */
+  onImport?: () => void
+  /** Downloads these ingredients in the importable template format. */
+  onExport?: (ids: string[], format: 'xlsx' | 'csv') => void
+  onDownloadTemplate?: (format: 'xlsx' | 'csv') => void
   isCreateDisabled?: boolean
 }
 
@@ -91,6 +107,9 @@ export function InventoryTable({
   onRecipe,
   onDelete,
   onManageUnits,
+  onImport,
+  onExport,
+  onDownloadTemplate,
   isCreateDisabled = false,
 }: InventoryTableProps) {
   const [query, setQuery] = useState('')
@@ -128,29 +147,20 @@ export function InventoryTable({
     setPage(1)
   }
 
-  const downloadCsv = (exported: InventoryRow[]) => {
-    const blob = new Blob([buildInventoryCsv(exported)], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
   // Exports what is on screen, not the whole pantry: a merchant who filtered
-  // to "Meat" and hit Export means the meat.
-  const handleExport = () => downloadCsv(visible)
+  // to "Meat" and hit Export means the meat. With no search that is everything.
+  const exportVisible = (format: 'xlsx' | 'csv') => onExport?.(visible.map((row) => row.id), format)
 
   /*
     Selection used to end in a counter and nothing else — the checkboxes were a
     promise the screen never kept, which teaches a merchant that other controls
-    may be decoration too. Export is the payoff the machinery already supported:
-    the rows are in hand and the CSV builder takes any list.
+    may be decoration too. Export is the payoff the machinery already supported.
   */
-  const handleExportSelected = () => {
-    downloadCsv(rows.filter((row) => selected.includes(row.id)))
-  }
+  const handleExportSelected = () => onExport?.(selected, 'xlsx')
+
+  const isFiltered = query.trim() !== ''
+  const exportCount = `${visible.length} ${visible.length === 1 ? 'ingredient' : 'ingredients'}`
+  const exportLabel = isFiltered ? `The ${exportCount} you searched for` : `All ${exportCount}`
 
   return (
     <div className="rounded-xl border bg-card shadow-sm">
@@ -193,15 +203,53 @@ export function InventoryTable({
               Units
             </Button>
           )}
-          <Button
-            type="button"
-            variant="outline"
-            className="max-sm:h-11 max-sm:flex-1"
-            onClick={handleExport}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
+          {onImport && (
+            <Button
+              type="button"
+              variant="outline"
+              className="max-sm:h-11 max-sm:flex-1"
+              onClick={onImport}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Import
+            </Button>
+          )}
+          {onExport && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" className="max-sm:h-11 max-sm:flex-1">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export
+                  <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  {exportLabel}
+                </DropdownMenuLabel>
+                <DropdownMenuItem disabled={visible.length === 0} onSelect={() => exportVisible('xlsx')}>
+                  <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                  Excel (.xlsx)
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={visible.length === 0} onSelect={() => exportVisible('csv')}>
+                  <FileText className="h-4 w-4" />
+                  CSV (.csv)
+                </DropdownMenuItem>
+                {onDownloadTemplate && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => onDownloadTemplate('xlsx')}>
+                      <Download className="h-4 w-4" />
+                      <span className="flex flex-col">
+                        Blank template
+                        <span className="text-xs text-muted-foreground">Fill it in, then import it</span>
+                      </span>
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button
             type="button"
             className="max-sm:h-11 max-sm:flex-1"
@@ -225,16 +273,18 @@ export function InventoryTable({
             {selected.length} {selected.length === 1 ? 'ingredient' : 'ingredients'} selected
           </p>
           <div className="flex flex-wrap items-center gap-2 max-sm:w-full">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="max-sm:h-11 max-sm:flex-1"
-              onClick={handleExportSelected}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export selected
-            </Button>
+            {onExport && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="max-sm:h-11 max-sm:flex-1"
+                onClick={handleExportSelected}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export selected
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
