@@ -1,8 +1,11 @@
 import {
   renderReceipt,
+  renderReceiptSegments,
   resolveReceiptLayout,
   type ReceiptOrder,
+  type ReceiptSegment,
 } from '@/lib/receipt-layout'
+import { receiptSegmentsToHtml } from '@/lib/receipt-markup'
 import type { OrderWithItems } from '@/lib/orders-service'
 
 /**
@@ -57,28 +60,38 @@ export function buildAdminReceiptText(
   )
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+/** Segment form for the browser print — keeps the bold and big type. */
+export function buildAdminReceiptSegments(
+  order: OrderWithItems,
+  storeName: string,
+  savedLayout: unknown,
+): ReceiptSegment[] {
+  return renderReceiptSegments(
+    mapSupabaseOrderToReceipt(order),
+    { storeName },
+    resolveReceiptLayout(savedLayout),
+  )
 }
+
+/** Characters per line on the 58mm roll the browser print imitates. */
+const PRINT_COLUMNS = 32
 
 /**
  * Open the browser print dialog with the receipt in a monospace paper-roll
- * column. Client-side only.
+ * column, bold and double-size lines drawn as the thermal head draws them.
+ * Client-side only.
  */
-export function openReceiptPrintWindow(receiptText: string): boolean {
+export function openReceiptPrintWindow(segments: ReceiptSegment[]): boolean {
   const printWindow = window.open('', '_blank', 'width=420,height=640')
   if (!printWindow) return false
 
   printWindow.document.write(
     '<!doctype html><html><head><title>Receipt</title><style>' +
       'body{margin:0;padding:16px;display:flex;justify-content:center}' +
-      'pre{font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:0}' +
-      '</style></head><body><pre>' +
-      escapeHtml(receiptText) +
-      '</pre></body></html>',
+      `.paper{width:${PRINT_COLUMNS}ch;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;white-space:pre;color:#000}` +
+      '</style></head><body><div class="paper">' +
+      receiptSegmentsToHtml(segments) +
+      '</div></body></html>',
   )
   printWindow.document.close()
   printWindow.focus()

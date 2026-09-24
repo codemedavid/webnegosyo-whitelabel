@@ -85,7 +85,28 @@ export interface ReceiptConfig {
 
 export type ReceiptTextAlign = "left" | "center" | "right";
 
-export type ReceiptBlock =
+/**
+ * How big a styled line prints. `tall` is the printer's double height (same
+ * columns); `large` is double width and height, so a line holds half as many
+ * characters and the engine wraps at half the paper width.
+ */
+export type ReceiptTextSize = "normal" | "tall" | "large";
+
+export const RECEIPT_TEXT_SIZES: readonly ReceiptTextSize[] = ["normal", "tall", "large"];
+
+/**
+ * A merchant's styling for one block. Every field is optional and merges over
+ * what the theme prints by default (`defaultBlockStyle`). A block without a
+ * style renders exactly as it did before styles existed, and an app build that
+ * predates styles drops the field and prints the block unstyled.
+ */
+export interface ReceiptBlockStyle {
+  size?: ReceiptTextSize;
+  bold?: boolean;
+  align?: ReceiptTextAlign;
+}
+
+type ReceiptBlockShape =
   | { kind: "divider"; char?: string }
   | { kind: "businessName" }
   | { kind: "storeAddress" }
@@ -107,6 +128,8 @@ export type ReceiptBlock =
   | { kind: "qr" }
   | { kind: "feed" };
 
+export type ReceiptBlock = ReceiptBlockShape & { style?: ReceiptBlockStyle };
+
 export type ReceiptBlockKind = ReceiptBlock["kind"];
 
 /**
@@ -122,6 +145,8 @@ export interface ReceiptLayout {
   version: 1;
   width?: number;
   theme?: ReceiptTheme;
+  /** Print every line bold — darker on a faint or worn thermal head. */
+  bold?: boolean;
   blocks: ReceiptBlock[];
 }
 
@@ -608,10 +633,16 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
 
 const PLACEHOLDER_CONTACTS = new Set(["", "n/a", "na", "-"]);
 
-function renderContact(order: ReceiptOrder, w: number): string[] {
+/** "Contact: …", or null when the order carries only a placeholder. */
+function contactText(order: ReceiptOrder): string | null {
   const contact = order.customerContact?.trim() ?? "";
-  if (PLACEHOLDER_CONTACTS.has(contact.toLowerCase())) return [];
-  return [truncate(`Contact: ${contact}`, w)];
+  if (PLACEHOLDER_CONTACTS.has(contact.toLowerCase())) return null;
+  return `Contact: ${contact}`;
+}
+
+function renderContact(order: ReceiptOrder, w: number): string[] {
+  const contact = contactText(order);
+  return contact ? [truncate(contact, w)] : [];
 }
 
 function renderText(block: { text: string; align?: ReceiptTextAlign }, w: number): string[] {
@@ -767,6 +798,135 @@ export function resolveReceiptTheme(
 }
 
 // ---------------------------------------------------------------------------
+// Block styles
+//
+// A styled block is rendered as plain content lines, wrapped to the columns
+// its size leaves (half the paper for `large`), and then wrapped in markup.
+// Unstyled blocks never take this path, so their output is unchanged.
+// ---------------------------------------------------------------------------
+
+/** Which sizes a block kind can print at, and whether it can be re-aligned. */
+export interface ReceiptStyleSupport {
+  sizes: readonly ReceiptTextSize[];
+  align: boolean;
+}
+
+const TEXT_STYLE_SUPPORT: ReceiptStyleSupport = { sizes: RECEIPT_TEXT_SIZES, align: true };
+/** A rule the customer writes on spans the paper, so it has nothing to align. */
+const RULE_STYLE_SUPPORT: ReceiptStyleSupport = { sizes: RECEIPT_TEXT_SIZES, align: false };
+/** Column blocks (qty, name, price) keep their width: double height at most. */
+const COLUMN_STYLE_SUPPORT: ReceiptStyleSupport = { sizes: ["normal", "tall"], align: false };
+
+/**
+ * The blocks a merchant can style. Missing kinds (logo, QR, divider, blank
+ * line, and the composite `orderMeta`) print as they always have.
+ */
+export const RECEIPT_STYLE_SUPPORT: Partial<Record<ReceiptBlockKind, ReceiptStyleSupport>> = {
+  businessName: TEXT_STYLE_SUPPORT,
+  storeAddress: TEXT_STYLE_SUPPORT,
+  text: TEXT_STYLE_SUPPORT,
+  orderNumber: TEXT_STYLE_SUPPORT,
+  orderDate: TEXT_STYLE_SUPPORT,
+  customerName: TEXT_STYLE_SUPPORT,
+  orderType: TEXT_STYLE_SUPPORT,
+  tableNumber: TEXT_STYLE_SUPPORT,
+  deliveryAddress: TEXT_STYLE_SUPPORT,
+  customerDetails: TEXT_STYLE_SUPPORT,
+  contact: TEXT_STYLE_SUPPORT,
+  itemsSummary: TEXT_STYLE_SUPPORT,
+  fillIn: RULE_STYLE_SUPPORT,
+  items: COLUMN_STYLE_SUPPORT,
+  totals: COLUMN_STYLE_SUPPORT,
+};
+
+export type ResolvedBlockStyle = Required<ReceiptBlockStyle>;
+
+/** Detail lines the Modern theme centres. */
+const MODERN_CENTRED_KINDS: ReadonlySet<ReceiptBlockKind> = new Set<ReceiptBlockKind>([
+  "storeAddress",
+  "orderDate",
+  "customerName",
+  "orderType",
+  "tableNumber",
+  "deliveryAddress",
+  "customerDetails",
+]);
+
+/**
+ * What a block prints like when the merchant has not styled it — the values
+ * a style merges over, and what the Studio shows as selected.
+ */
+export function defaultBlockStyle(
+  target: ReceiptBlockKind | ReceiptBlock,
+  theme: ReceiptTheme,
+): ResolvedBlockStyle {
+  const kind = typeof target === "string" ? target : target.kind;
+  const isModern = theme === "modern";
+  const plain: ResolvedBlockStyle = { size: "normal", bold: false, align: "left" };
+
+  if (kind === "text") {
+    const align = typeof target === "object" && target.kind === "text" ? target.align : undefined;
+    return { ...plain, align: align ?? "left" };
+  }
+  if (kind === "businessName") {
+    return { size: isModern ? "large" : "normal", bold: isModern, align: "center" };
+  }
+  if (kind === "storeAddress") return { ...plain, align: "center" };
+  if (isModern && kind === "orderNumber") return { size: "tall", bold: true, align: "center" };
+  if (isModern && MODERN_CENTRED_KINDS.has(kind)) return { ...plain, align: "center" };
+  return plain;
+}
+
+function resolveBlockStyle(
+  block: ReceiptBlock,
+  style: ReceiptBlockStyle,
+  support: ReceiptStyleSupport,
+  env: BlockEnv,
+): ResolvedBlockStyle {
+  const defaults = defaultBlockStyle(block, env.isModern ? "modern" : "classic");
+  let size = style.size ?? defaults.size;
+  // Modern's auto hero: a name too wide for double width drops to tall.
+  if (
+    block.kind === "businessName" &&
+    style.size === undefined &&
+    env.isModern &&
+    env.config.storeName.length > Math.floor(env.w / 2)
+  ) {
+    size = "tall";
+  }
+  if (!support.sizes.includes(size)) size = support.sizes[support.sizes.length - 1]!;
+  const align = support.align ? (style.align ?? defaults.align) : defaults.align;
+  return { size, bold: style.bold ?? defaults.bold, align };
+}
+
+/** Columns a line of this size holds — double width halves them. */
+function columnsForSize(size: ReceiptTextSize, w: number): number {
+  return size === "large" ? Math.max(1, Math.floor(w / 2)) : w;
+}
+
+/** Wrap one line in markup. Alignment stays outermost so it opens the line. */
+function styleLine(text: string, style: ResolvedBlockStyle): string {
+  if (text === "") return "";
+  let out = text;
+  if (style.bold) out = `<B>${out}</B>`;
+  if (style.size === "tall") out = `<H>${out}</H>`;
+  if (style.size === "large") out = `<W>${out}</W>`;
+  if (style.align === "center") out = `<C>${out}</C>`;
+  if (style.align === "right") out = `<R>${out}</R>`;
+  return out;
+}
+
+/** Bold a finished line without displacing the alignment tag that opens it. */
+function emboldenLine(line: string): string {
+  if (line === "") return line;
+  const align = /^<([CR])>/.exec(line)?.[1];
+  if (align && line.endsWith(`</${align}>`)) {
+    return `<${align}><B>${line.slice(3, -4)}</B></${align}>`;
+  }
+  return `<B>${line}</B>`;
+}
+
+// ---------------------------------------------------------------------------
 // The renderer
 // ---------------------------------------------------------------------------
 
@@ -780,144 +940,280 @@ export type ReceiptSegment =
   | { type: "qr"; data: string }
   | { type: "image"; url: string };
 
-export function renderReceiptSegments(
-  order: ReceiptOrder,
-  config: ReceiptConfig,
-  layout: ReceiptLayout,
-): ReceiptSegment[] {
-  const w = layout.width ?? config.width ?? 32;
+/** One block's share of the receipt — what the Studio highlights on click. */
+export interface ReceiptBlockRender {
+  index: number;
+  segments: ReceiptSegment[];
+}
+
+/** Everything a block renderer may read, computed once per receipt. */
+interface BlockEnv {
+  order: ReceiptOrder;
+  config: ReceiptConfig;
+  layout: ReceiptLayout;
+  w: number;
+  isModern: boolean;
+  ctx: RenderContext;
+  detailRows: CustomerDetailRow[];
+  address: CustomerDetailRow | null;
+  covered: Set<string>;
+}
+
+function buildEnv(order: ReceiptOrder, config: ReceiptConfig, layout: ReceiptLayout): BlockEnv {
   const isModern = resolveReceiptTheme(layout) === "modern";
-  const ctx = buildContext(order);
   const detailRows = customerDetailRows(order);
   const address = addressRow(detailRows);
-  const covered = coveredDetailKeys(layout, isModern, address?.key ?? null);
+  return {
+    order,
+    config,
+    layout,
+    w: layout.width ?? config.width ?? 32,
+    isModern,
+    ctx: buildContext(order),
+    detailRows,
+    address,
+    covered: coveredDetailKeys(layout, isModern, address?.key ?? null),
+  };
+}
+
+function hasBlock(layout: ReceiptLayout, ...kinds: ReceiptBlockKind[]): boolean {
+  return layout.blocks.some((block) => kinds.includes(block.kind));
+}
+
+function itemCount(order: ReceiptOrder): number {
+  return (order.items ?? []).reduce((sum, item) => sum + item.quantity, 0);
+}
+
+/** The lines an unstyled block prints — the pre-styles output, unchanged. */
+function renderPlainBlockLines(block: ReceiptBlock, env: BlockEnv): string[] {
+  const { order, config, w, isModern, ctx } = env;
+  switch (block.kind) {
+    case "divider":
+      return [rule(block.char ?? "=", w)];
+    case "businessName":
+      return [
+        isModern
+          ? heroLine(config.storeName.toUpperCase(), w)
+          : center(truncate(config.storeName.toUpperCase(), w), w),
+      ];
+    case "storeAddress":
+      if (!config.storeAddress) return [];
+      return [isModern ? centered(config.storeAddress, w) : center(truncate(config.storeAddress, w), w)];
+    case "text":
+      return isModern ? renderModernText(block, w) : renderText(block, w);
+    case "orderMeta":
+      return isModern ? renderModernOrderMeta(order, w) : renderOrderMeta(order, w);
+    case "orderNumber":
+      return [
+        isModern
+          ? headline(modernOrderNumberText(order, block.label ?? "Order #"), w)
+          : orderNumberLine(order, block.label ?? "Order #"),
+      ];
+    case "orderDate":
+      return [
+        isModern
+          ? centered(labelled(block.label, modernDateText(order)), w)
+          : orderDateLine(order, block.label ?? "Date"),
+      ];
+    case "customerName":
+      return [
+        isModern
+          ? centered(`${block.label ?? "Customer"}: ${order.customerName}`, w)
+          : customerNameLine(order, block.label ?? "Customer", w),
+      ];
+    case "orderType":
+      // Modern: the type and the table share one centred line when both are
+      // set; a following tableNumber block then has nothing left to print.
+      return isModern
+        ? modernTypeAndTable(order, block.label).map((line) => centered(line, w))
+        : orderTypeLines(order, block.label ?? "Type", w);
+    case "tableNumber": {
+      if (!isModern) return tableNumberLines(order, block.label ?? "Table", w);
+      const text = modernTableText(block.label, env);
+      return text ? [centered(text, w)] : [];
+    }
+    case "deliveryAddress":
+      return env.address
+        ? renderDetailRow({ ...env.address, label: block.label ?? "Address" }, w, isModern)
+        : [];
+    case "customerDetails":
+      return env.detailRows
+        .filter((row) => !env.covered.has(row.key))
+        .flatMap((row) => renderDetailRow(row, w, isModern));
+    case "fillIn":
+      return [fillInLine(block.label, w)];
+    case "items":
+      return isModern ? renderModernItems(ctx, w) : renderItems(ctx, w);
+    case "itemsSummary":
+      return [`Items: ${itemCount(order)}`];
+    case "totals":
+      return isModern ? renderModernTotals(order, ctx, w) : renderTotals(order, ctx, w);
+    case "contact":
+      return renderContact(order, w);
+    case "feed":
+      return [""];
+    default:
+      // logo and qr are not text; renderBlock handles them.
+      return [];
+  }
+}
+
+/** Modern prints the table on the order-type line when that block exists. */
+function modernTableText(label: string | undefined, env: BlockEnv): string | null {
+  if (hasBlock(env.layout, "orderType", "orderMeta")) return null;
+  const table = getOrderTableNumber(env.order.customerData ?? env.order.customer_data);
+  return table ? labelled(label, `Table ${table}`) : null;
+}
+
+/** A styled text block's content, one entry per logical line, before wrapping. */
+function styledContent(block: ReceiptBlock, env: BlockEnv): string[] {
+  const { order, config, isModern } = env;
+  switch (block.kind) {
+    case "businessName":
+      return [config.storeName.toUpperCase()];
+    case "storeAddress":
+      return config.storeAddress ? [config.storeAddress] : [];
+    case "text":
+      return [block.text];
+    case "orderNumber":
+      return [
+        isModern
+          ? modernOrderNumberText(order, block.label ?? "Order #")
+          : orderNumberLine(order, block.label ?? "Order #"),
+      ];
+    case "orderDate":
+      return [
+        isModern
+          ? labelled(block.label, modernDateText(order))
+          : orderDateLine(order, block.label ?? "Date"),
+      ];
+    case "customerName":
+      return [`${block.label ?? "Customer"}: ${order.customerName}`];
+    case "orderType":
+      if (isModern) return modernTypeAndTable(order, block.label);
+      return order.orderType ? [`${block.label ?? "Type"}: ${order.orderType}`] : [];
+    case "tableNumber": {
+      if (isModern) {
+        const text = modernTableText(block.label, env);
+        return text ? [text] : [];
+      }
+      const table = getOrderTableNumber(order.customerData ?? order.customer_data);
+      return table ? [`${block.label ?? "Table"}: ${table}`] : [];
+    }
+    case "deliveryAddress":
+      return env.address ? [`${block.label ?? "Address"}: ${env.address.value}`] : [];
+    case "customerDetails":
+      return env.detailRows
+        .filter((row) => !env.covered.has(row.key))
+        .map((row) => `${row.label}: ${row.value}`);
+    case "contact": {
+      const contact = contactText(order);
+      return contact ? [contact] : [];
+    }
+    case "itemsSummary":
+      return [`Items: ${itemCount(order)}`];
+    default:
+      return [];
+  }
+}
+
+function renderStyledBlockLines(
+  block: ReceiptBlock,
+  style: ReceiptBlockStyle,
+  support: ReceiptStyleSupport,
+  env: BlockEnv,
+): string[] {
+  const resolved = resolveBlockStyle(block, style, support, env);
+  const { w, isModern, ctx, order } = env;
+
+  if (block.kind === "items" || block.kind === "totals") {
+    const lines =
+      block.kind === "items"
+        ? isModern ? renderModernItems(ctx, w) : renderItems(ctx, w)
+        : isModern ? renderModernTotals(order, ctx, w) : renderTotals(order, ctx, w);
+    return lines.map((line) => styleLine(line, resolved));
+  }
+
+  const columns = columnsForSize(resolved.size, w);
+  if (block.kind === "fillIn") return [styleLine(fillInLine(block.label, columns), resolved)];
+
+  return styledContent(block, env)
+    .flatMap((text) => wrapText(text, columns, columns))
+    .map((line) => styleLine(line, resolved));
+}
+
+/** One block as printer pieces: a text piece per line, or an image / QR. */
+function renderBlock(block: ReceiptBlock, env: BlockEnv): ReceiptSegment[] {
+  const pieces: ReceiptSegment[] = [];
+
+  if (block.kind === "logo") {
+    if (env.config.logoUrl) pieces.push({ type: "image", url: env.config.logoUrl });
+  } else if (block.kind === "qr") {
+    if (env.config.trackingUrl) {
+      const caption = env.isModern
+        ? "<C><B>Scan to track your order</B></C>"
+        : truncate(center("Scan to track your order", env.w), env.w);
+      pieces.push({ type: "text", text: caption }, { type: "qr", data: env.config.trackingUrl });
+    }
+  } else {
+    const support = RECEIPT_STYLE_SUPPORT[block.kind];
+    const lines =
+      block.style && support
+        ? renderStyledBlockLines(block, block.style, support, env)
+        : renderPlainBlockLines(block, env);
+    for (const text of lines) pieces.push({ type: "text", text });
+  }
+
+  if (!env.layout.bold) return pieces;
+  return pieces.map((piece) =>
+    piece.type === "text" ? { type: "text", text: emboldenLine(piece.text) } : piece,
+  );
+}
+
+/** Merge runs of text pieces into single segments, one printer write each. */
+function collapseSegments(pieces: ReceiptSegment[]): ReceiptSegment[] {
   const segments: ReceiptSegment[] = [];
   let lines: string[] = [];
-
   const flushText = () => {
     if (lines.length === 0) return;
     segments.push({ type: "text", text: lines.join("\n") });
     lines = [];
   };
-
-  for (const block of layout.blocks) {
-    switch (block.kind) {
-      case "divider":
-        lines.push(rule(block.char ?? "=", w));
-        break;
-      case "businessName":
-        lines.push(
-          isModern
-            ? heroLine(config.storeName.toUpperCase(), w)
-            : center(truncate(config.storeName.toUpperCase(), w), w),
-        );
-        break;
-      case "storeAddress":
-        if (config.storeAddress) {
-          lines.push(
-            isModern ? centered(config.storeAddress, w) : center(truncate(config.storeAddress, w), w),
-          );
-        }
-        break;
-      case "logo":
-        if (config.logoUrl) {
-          flushText();
-          segments.push({ type: "image", url: config.logoUrl });
-        }
-        break;
-      case "text":
-        lines.push(...(isModern ? renderModernText(block, w) : renderText(block, w)));
-        break;
-      case "orderMeta":
-        lines.push(...(isModern ? renderModernOrderMeta(order, w) : renderOrderMeta(order, w)));
-        break;
-      case "orderNumber":
-        lines.push(
-          isModern
-            ? headline(modernOrderNumberText(order, block.label ?? "Order #"), w)
-            : orderNumberLine(order, block.label ?? "Order #"),
-        );
-        break;
-      case "orderDate":
-        lines.push(
-          isModern
-            ? centered(labelled(block.label, modernDateText(order)), w)
-            : orderDateLine(order, block.label ?? "Date"),
-        );
-        break;
-      case "customerName":
-        lines.push(
-          isModern
-            ? centered(`${block.label ?? "Customer"}: ${order.customerName}`, w)
-            : customerNameLine(order, block.label ?? "Customer", w),
-        );
-        break;
-      case "orderType":
-        if (isModern) {
-          // The type and the table share one centred line when both are set;
-          // a following tableNumber block then has nothing left to print.
-          lines.push(...modernTypeAndTable(order, block.label).map((line) => centered(line, w)));
-        } else {
-          lines.push(...orderTypeLines(order, block.label ?? "Type", w));
-        }
-        break;
-      case "tableNumber":
-        if (isModern) {
-          if (!layout.blocks.some((b) => b.kind === "orderType" || b.kind === "orderMeta")) {
-            const table = getOrderTableNumber(order.customerData ?? order.customer_data);
-            if (table) lines.push(centered(labelled(block.label, `Table ${table}`), w));
-          }
-        } else {
-          lines.push(...tableNumberLines(order, block.label ?? "Table", w));
-        }
-        break;
-      case "deliveryAddress":
-        if (address) {
-          lines.push(...renderDetailRow({ ...address, label: block.label ?? "Address" }, w, isModern));
-        }
-        break;
-      case "customerDetails":
-        for (const row of detailRows) {
-          if (covered.has(row.key)) continue;
-          lines.push(...renderDetailRow(row, w, isModern));
-        }
-        break;
-      case "fillIn":
-        lines.push(fillInLine(block.label, w));
-        break;
-      case "items":
-        lines.push(...(isModern ? renderModernItems(ctx, w) : renderItems(ctx, w)));
-        break;
-      case "itemsSummary": {
-        const count = (order.items ?? []).reduce((sum, item) => sum + item.quantity, 0);
-        lines.push(`Items: ${count}`);
-        break;
-      }
-      case "totals":
-        lines.push(...(isModern ? renderModernTotals(order, ctx, w) : renderTotals(order, ctx, w)));
-        break;
-      case "contact":
-        lines.push(...renderContact(order, w));
-        break;
-      case "qr":
-        if (config.trackingUrl) {
-          lines.push(
-            isModern
-              ? "<C><B>Scan to track your order</B></C>"
-              : truncate(center("Scan to track your order", w), w),
-          );
-          flushText();
-          segments.push({ type: "qr", data: config.trackingUrl });
-        }
-        break;
-      case "feed":
-        lines.push("");
-        break;
+  for (const piece of pieces) {
+    if (piece.type === "text") {
+      lines.push(piece.text);
+    } else {
+      flushText();
+      segments.push(piece);
     }
   }
-
   flushText();
   return segments;
+}
+
+export function renderReceiptSegments(
+  order: ReceiptOrder,
+  config: ReceiptConfig,
+  layout: ReceiptLayout,
+): ReceiptSegment[] {
+  const env = buildEnv(order, config, layout);
+  return collapseSegments(layout.blocks.flatMap((block) => renderBlock(block, env)));
+}
+
+/**
+ * The same receipt, kept apart per block — concatenated, it is exactly
+ * `renderReceiptSegments`. The Studio uses it to map paper back to blocks.
+ */
+export function renderReceiptBlocks(
+  order: ReceiptOrder,
+  config: ReceiptConfig,
+  layout: ReceiptLayout,
+): ReceiptBlockRender[] {
+  const env = buildEnv(order, config, layout);
+  return layout.blocks.map((block, index) => ({
+    index,
+    segments: collapseSegments(renderBlock(block, env)),
+  }));
 }
 
 /**
@@ -980,7 +1276,39 @@ function isValidLabel(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= MAX_LABEL_LENGTH;
 }
 
+/**
+ * An untrusted style: null when invalid (the layout is refused), undefined
+ * when it sets nothing (the block keeps its unstyled rendering).
+ */
+function parseBlockStyle(value: unknown): ReceiptBlockStyle | null | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.size !== undefined && !RECEIPT_TEXT_SIZES.includes(raw.size as ReceiptTextSize)) {
+    return null;
+  }
+  if (raw.bold !== undefined && typeof raw.bold !== "boolean") return null;
+  if (raw.align !== undefined && !TEXT_ALIGNS.includes(raw.align as ReceiptTextAlign)) return null;
+
+  const style: ReceiptBlockStyle = {
+    ...(raw.size !== undefined ? { size: raw.size as ReceiptTextSize } : {}),
+    ...(raw.bold !== undefined ? { bold: raw.bold as boolean } : {}),
+    ...(raw.align !== undefined ? { align: raw.align as ReceiptTextAlign } : {}),
+  };
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/** A block plus its style. A style on a kind that cannot be styled is dropped. */
 function parseBlock(value: unknown): ReceiptBlock | null {
+  const block = parseBlockShape(value);
+  if (!block) return null;
+  const rawStyle = (value as Record<string, unknown>).style;
+  if (rawStyle === undefined || !RECEIPT_STYLE_SUPPORT[block.kind]) return block;
+  const style = parseBlockStyle(rawStyle);
+  if (style === null) return null;
+  return style ? { ...block, style } : block;
+}
+
+function parseBlockShape(value: unknown): ReceiptBlock | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
 
@@ -1043,6 +1371,7 @@ export function parseReceiptLayout(value: unknown): ReceiptLayout | null {
   if (raw.theme !== undefined && !RECEIPT_THEMES.includes(raw.theme as ReceiptTheme)) {
     return null;
   }
+  if (raw.bold !== undefined && typeof raw.bold !== "boolean") return null;
 
   const blocks: ReceiptBlock[] = [];
   for (const entry of raw.blocks) {
@@ -1056,6 +1385,7 @@ export function parseReceiptLayout(value: unknown): ReceiptLayout | null {
     blocks,
     ...(raw.width !== undefined ? { width: raw.width as number } : {}),
     ...(raw.theme !== undefined ? { theme: raw.theme as ReceiptTheme } : {}),
+    ...(raw.bold !== undefined ? { bold: raw.bold as boolean } : {}),
   };
 }
 

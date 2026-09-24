@@ -28,7 +28,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { getReceiptContext } from '@/app/actions/receipt'
-import { buildAdminReceiptText, openReceiptPrintWindow } from '@/lib/receipt-web'
+import { buildAdminReceiptSegments, openReceiptPrintWindow } from '@/lib/receipt-web'
 import {
   Dialog,
   DialogContent,
@@ -118,12 +118,12 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
     setIsPrintingReceipt(true)
     try {
       const context = await getReceiptContext(tenantId)
-      const text = buildAdminReceiptText(
+      const segments = buildAdminReceiptSegments(
         order,
         context?.storeName ?? tenantSlug,
         context?.receiptLayout ?? null,
       )
-      if (!openReceiptPrintWindow(text)) {
+      if (!openReceiptPrintWindow(segments)) {
         toast.error('Allow pop-ups to print the receipt')
       }
     } catch {
