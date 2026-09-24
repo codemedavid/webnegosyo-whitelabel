@@ -2,8 +2,10 @@
 
 import type { MenuLayoutContentProps } from '@/storefront/contracts'
 
+import type { ComponentType } from 'react'
 import dynamic from 'next/dynamic'
-import type { PageLayout } from '@/lib/page-layouts'
+import { DEFAULT_PAGE_LAYOUT, PAGE_LAYOUT_IDS, type PageLayout } from '@/lib/page-layouts'
+import { pickDesignId } from '@/lib/design-ids'
 
 type MenuLayoutProps = MenuLayoutContentProps & { layout: PageLayout }
 
@@ -22,72 +24,83 @@ function LayoutSkeleton() {
 }
 
 // Each layout is loaded lazily — only the active tenant's layout chunk is fetched.
-const LayoutDefault = dynamic(
+const LayoutDefault = dynamic<MenuLayoutContentProps>(
     () => import('./layout-default').then((m) => ({ default: m.LayoutDefault })),
     { loading: LayoutSkeleton }
 )
-const LayoutSidebar = dynamic(
+const LayoutSidebar = dynamic<MenuLayoutContentProps>(
     () => import('./layout-sidebar').then((m) => ({ default: m.LayoutSidebar })),
     { loading: LayoutSkeleton }
 )
-const LayoutMagazine = dynamic(
+const LayoutMagazine = dynamic<MenuLayoutContentProps>(
     () => import('./layout-magazine').then((m) => ({ default: m.LayoutMagazine })),
     { loading: LayoutSkeleton }
 )
-const LayoutGridFocus = dynamic(
+const LayoutGridFocus = dynamic<MenuLayoutContentProps>(
     () => import('./layout-grid-focus').then((m) => ({ default: m.LayoutGridFocus })),
     { loading: LayoutSkeleton }
 )
-const LayoutList = dynamic(
+const LayoutList = dynamic<MenuLayoutContentProps>(
     () => import('./layout-list').then((m) => ({ default: m.LayoutList })),
     { loading: LayoutSkeleton }
 )
-const LayoutMosaic = dynamic(
+const LayoutMosaic = dynamic<MenuLayoutContentProps>(
     () => import('./layout-mosaic').then((m) => ({ default: m.LayoutMosaic })),
     { loading: LayoutSkeleton }
 )
 
-const LayoutStorefront = dynamic(
+const LayoutStorefront = dynamic<MenuLayoutContentProps>(
     () => import('./layout-storefront').then((m) => ({ default: m.LayoutStorefront })),
     { loading: LayoutSkeleton }
 )
-const LayoutKiosk = dynamic(
+const LayoutKiosk = dynamic<MenuLayoutContentProps>(
     () => import('./layout-kiosk').then((m) => ({ default: m.LayoutKiosk })),
     { loading: LayoutSkeleton }
 )
-const LayoutRails = dynamic(
+const LayoutRails = dynamic<MenuLayoutContentProps>(
     () => import('./layout-rails').then((m) => ({ default: m.LayoutRails })),
     { loading: LayoutSkeleton }
 )
-const LayoutLookbook = dynamic(
+const LayoutLookbook = dynamic<MenuLayoutContentProps>(
     () => import('./layout-lookbook').then((m) => ({ default: m.LayoutLookbook })),
     { loading: LayoutSkeleton }
 )
 
-export function MenuLayout({ layout, isLoading, ...props }: MenuLayoutProps) {
-    switch (layout) {
-        case 'sidebar':
-            return <LayoutSidebar {...props} filteredItems={props.searchItems ?? props.filteredItems} />
-        case 'magazine':
-            return <LayoutMagazine {...props} />
-        case 'grid-focus':
-            return <LayoutGridFocus isLoading={isLoading} {...props} />
-        case 'list':
-            return <LayoutList {...props} />
-        case 'mosaic':
-            return <LayoutMosaic {...props} />
-        // Scroll-based catalogs render every category on one page, so they read
-        // the search matches before any category filter (same as sidebar).
-        case 'storefront':
-            return <LayoutStorefront {...props} filteredItems={props.searchItems ?? props.filteredItems} />
-        case 'kiosk':
-            return <LayoutKiosk {...props} filteredItems={props.searchItems ?? props.filteredItems} />
-        case 'rails':
-            return <LayoutRails {...props} filteredItems={props.searchItems ?? props.filteredItems} />
-        case 'lookbook':
-            return <LayoutLookbook {...props} filteredItems={props.searchItems ?? props.filteredItems} />
-        case 'default':
-        default:
-            return <LayoutDefault isLoading={isLoading} {...props} />
-    }
+interface LayoutEntry {
+    Component: ComponentType<MenuLayoutContentProps>
+    /**
+     * Renders every category on one scrolling page, so it reads the search
+     * matches *before* any category filter (`searchItems`).
+     */
+    isScrollCatalog?: boolean
+}
+
+// Typed against the registry's id union: registering a layout without a
+// component here is a compile error, not a silent fall back to Default.
+const LAYOUTS = {
+    default: { Component: LayoutDefault },
+    sidebar: { Component: LayoutSidebar, isScrollCatalog: true },
+    magazine: { Component: LayoutMagazine },
+    'grid-focus': { Component: LayoutGridFocus },
+    list: { Component: LayoutList },
+    mosaic: { Component: LayoutMosaic },
+    storefront: { Component: LayoutStorefront, isScrollCatalog: true },
+    kiosk: { Component: LayoutKiosk, isScrollCatalog: true },
+    rails: { Component: LayoutRails, isScrollCatalog: true },
+    lookbook: { Component: LayoutLookbook, isScrollCatalog: true },
+} satisfies Record<PageLayout, LayoutEntry>
+
+function getLayoutEntry(layout: PageLayout): LayoutEntry {
+    return LAYOUTS[pickDesignId(layout, PAGE_LAYOUT_IDS, DEFAULT_PAGE_LAYOUT)]
+}
+
+/** The component that renders a page layout. Unknown ids fall back to Default. */
+export function getMenuLayoutComponent(layout: PageLayout) {
+    return getLayoutEntry(layout).Component
+}
+
+export function MenuLayout({ layout, ...props }: MenuLayoutProps) {
+    const { Component, isScrollCatalog } = getLayoutEntry(layout)
+    const filteredItems = isScrollCatalog ? props.searchItems ?? props.filteredItems : props.filteredItems
+    return <Component {...props} filteredItems={filteredItems} />
 }

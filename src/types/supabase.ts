@@ -5823,6 +5823,8 @@ export type Database = {
           secondary_color: string
           shadow_color: string | null
           slug: string
+          storefront_pack: string
+          storefront_pack_settings: Json
           storefront_palette: string | null
           success_color: string | null
           supabase_order_anon_key: string | null
@@ -6100,6 +6102,8 @@ export type Database = {
           secondary_color?: string
           shadow_color?: string | null
           slug: string
+          storefront_pack?: string
+          storefront_pack_settings?: Json
           storefront_palette?: string | null
           success_color?: string | null
           supabase_order_anon_key?: string | null
@@ -6377,6 +6381,8 @@ export type Database = {
           secondary_color?: string
           shadow_color?: string | null
           slug?: string
+          storefront_pack?: string
+          storefront_pack_settings?: Json
           storefront_palette?: string | null
           success_color?: string | null
           supabase_order_anon_key?: string | null

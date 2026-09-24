@@ -87,6 +87,9 @@ export const CART_TEMPLATES: CartTemplateDefinition[] = [
   },
 ]
 
+/** Every selectable id, in registry (picker) order. */
+export const CART_TEMPLATE_IDS: readonly CartTemplate[] = CART_TEMPLATES.map((t) => t.id)
+
 /**
  * Get a cart template definition by ID (falls back to the first/classic).
  */

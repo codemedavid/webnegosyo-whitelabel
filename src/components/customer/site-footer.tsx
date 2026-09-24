@@ -337,5 +337,11 @@ export function SiteFooter({ tenant: tenantProp }: SiteFooterProps) {
   }
 
   const config = getFooterConfig(tenant as unknown as Record<string, unknown>)
-  return <FooterView config={config} interactive />
+  // A storefront pack with a fixed bottom bar on phones reserves its height in
+  // --storefront-bottom-inset (0 otherwise), so the footer's last line stays visible.
+  return (
+    <div style={{ paddingBottom: 'var(--storefront-bottom-inset, 0px)' }}>
+      <FooterView config={config} interactive />
+    </div>
+  )
 }

@@ -21,7 +21,7 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
   useSearchParams: () => new URLSearchParams(),
 }))
-jest.mock('@/hooks/useCart', () => ({ useCart: () => ({ addItem: mockAddItem, item_count: 0, setTenantContext: mockSetTenant }) }))
+jest.mock('@/hooks/useCart', () => ({ useCart: () => ({ addItem: mockAddItem, item_count: 0, items: [], bundleItems: [], setTenantContext: mockSetTenant }) }))
 jest.mock('@/hooks/use-store-open-status', () => ({ useStoreOpenStatus: () => mockStatus }))
 jest.mock('@/hooks/use-outlet-selection', () => ({ useOutletSelection: () => ({ outlet: null }) }))
 jest.mock('@/components/customer/layouts', () => ({ MenuLayout: (props: { layout: string; filteredItems: MenuItem[]; onItemSelect: (item: MenuItem) => void }) => {
@@ -165,4 +165,24 @@ it('debounces search and preserves featured ranking without mutating server item
   unmount()
   expect(jest.getTimerCount()).toBe(0)
   jest.useRealTimers()
+})
+
+describe('storefront pack selection', () => {
+  it.each([undefined, '', 'garbage', 'legacy'])('renders the legacy storefront for pack %p', async (pack) => {
+    render(<MenuClient {...base} tenant={{ ...tenant, storefront_pack: pack } as Tenant} />)
+    await waitFor(() => expect(screen.getByTestId('menu-layout')).toBeInTheDocument())
+  })
+
+  it('registers a menu page for every storefront pack', async () => {
+    const { STOREFRONT_PACK_IDS } = await import('@/lib/storefront-packs')
+    const { STOREFRONT_PACK_PAGES } = await import('@/storefront/packs/registry')
+    for (const id of STOREFRONT_PACK_IDS) expect(STOREFRONT_PACK_PAGES[id].menu).toBeDefined()
+  })
+})
+
+describe('the tenant home page', () => {
+  it('shows the menu for a pack without a home page', async () => {
+    render(<MenuClient {...base} page="home" />)
+    await waitFor(() => expect(screen.getByTestId('menu-layout')).toBeInTheDocument())
+  })
 })

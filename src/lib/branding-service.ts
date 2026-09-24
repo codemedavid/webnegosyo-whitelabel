@@ -1,3 +1,4 @@
+import { STOREFRONT_PACK_IDS, storefrontPackSettingsSchema } from '@/lib/storefront-packs'
 import { CARD_ADD_BUTTONS, CARD_DENSITIES, CARD_DESCRIPTIONS, CARD_IMAGE_FITS, CARD_IMAGE_RATIOS, CARD_TEXT_ALIGNS } from '@/lib/card-style'
 import { z } from 'zod'
 import type { PromotionBanner } from '@/types/database'
@@ -158,6 +159,10 @@ const brandingFieldsSchema = z.object({
     card_text_align: z.enum(CARD_TEXT_ALIGNS).optional().nullable(),
     card_description: z.enum(CARD_DESCRIPTIONS).optional().nullable(),
     card_density: z.enum(CARD_DENSITIES).optional().nullable(),
+    // Storefront pack (whole-site design) and its per-pack settings. No DB
+    // CHECK — new packs ship without a migration — so validate here.
+    storefront_pack: z.enum(STOREFRONT_PACK_IDS).optional(),
+    storefront_pack_settings: storefrontPackSettingsSchema.optional(),
     // Header template & customization
     header_template: z.string().optional(),
     mobile_header_template: z.string().optional().nullable(),
@@ -384,6 +389,8 @@ export const ROLLOUT_DEPENDENT_FIELDS = [
     'card_text_align',
     'card_description',
     'card_density',
+    'storefront_pack',
+    'storefront_pack_settings',
     'mobile_overrides',
     'header_template',
     'mobile_header_template',

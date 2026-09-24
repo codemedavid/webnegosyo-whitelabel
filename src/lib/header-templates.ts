@@ -71,6 +71,9 @@ export const HEADER_TEMPLATES: HeaderTemplateDefinition[] = [
   },
 ]
 
+/** Every selectable id, in registry (picker) order. */
+export const HEADER_TEMPLATE_IDS: readonly HeaderTemplate[] = HEADER_TEMPLATES.map((t) => t.id)
+
 /**
  * Get a header template definition by ID (falls back to the first template).
  */

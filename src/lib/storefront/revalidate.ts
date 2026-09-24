@@ -1,5 +1,6 @@
-import { revalidateTag } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { storefrontTag, storefrontTenantIdTag } from '@/lib/storefront/cached-read'
+import { isRevalidatableSlug } from '@/lib/tenant-revalidation'
 
 interface StorefrontIdentity {
   slug: string
@@ -22,4 +23,25 @@ export function revalidateStorefront({ slug, id, previousSlug }: StorefrontIdent
     id ? storefrontTenantIdTag(id) : null,
   ]
   tags.filter((tag): tag is string => Boolean(tag)).forEach((tag) => revalidateTag(tag))
+}
+
+/**
+ * Refresh every storefront surface that shows a tenant's menu after a menu-data
+ * write (items, categories, bundles, pairings, presell, menu engineering...).
+ *
+ * Revalidating only the `/{slug}/menu` path is not enough: an `unstable_cache`
+ * entry carries the implicit path tags of whichever route wrote it, so once a
+ * second route (the tenant home) reads the same menu, a path-only purge can
+ * leave it stale. The data tag is what every reader shares.
+ */
+export function revalidateStorefrontMenu(slug: string): void {
+  // Callers pass a client-supplied slug; `revalidatePath` reads a bracketed
+  // segment as the dynamic route, so `[tenant]` would purge every storefront.
+  if (!isRevalidatableSlug(slug)) {
+    console.warn('[revalidateStorefrontMenu] Skipped purge for a non-plain slug')
+    return
+  }
+  revalidateTag(storefrontTag(slug))
+  revalidatePath(`/${slug}/menu`, 'layout')
+  revalidatePath(`/${slug}`)
 }

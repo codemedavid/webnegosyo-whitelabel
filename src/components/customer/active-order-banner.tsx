@@ -87,7 +87,7 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }
     return (
       <button
         onClick={() => router.push(trackUrl)}
-        className="fixed bottom-6 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95"
+        className="fixed bottom-[calc(1.5rem+var(--storefront-bottom-inset,0px))] right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95"
         style={{ backgroundColor: bgColor, color: textColor }}
         aria-label="Track your order"
       >
@@ -97,7 +97,7 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }
   }
 
   return (
-    <div className="fixed bottom-6 left-4 right-4 z-50 max-w-lg mx-auto">
+    <div className="fixed bottom-[calc(1.5rem+var(--storefront-bottom-inset,0px))] left-4 right-4 z-50 max-w-lg mx-auto">
       <div
         className="flex items-center gap-3 rounded-2xl px-4 py-3 text-white shadow-lg"
         style={{ backgroundColor: bgColor, color: textColor }}

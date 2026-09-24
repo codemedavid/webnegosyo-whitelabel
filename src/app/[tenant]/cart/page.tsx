@@ -19,7 +19,8 @@ import {
   CartUpsellInterstitial,
 } from '@/components/customer/cart-templates/cart-shared'
 import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
-import type { CartTemplate } from '@/lib/cart-templates'
+import { CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE } from '@/lib/cart-templates'
+import { pickDesignId } from '@/lib/design-ids'
 
 export default function CartPage() {
   const cart = useCartView()
@@ -29,7 +30,7 @@ export default function CartPage() {
   if (cart.isLoading) return <TenantFlashLoading fallback={<CartLoading />} />
   if (!cart.tenant) return <CartNotFound />
 
-  const template = (cart.tenant.cart_template || 'classic') as CartTemplate
+  const template = pickDesignId(cart.tenant.cart_template, CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE)
 
   return (
     <>
