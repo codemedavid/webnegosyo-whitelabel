@@ -19,6 +19,7 @@ import {
   CartUpsellInterstitial,
 } from '@/components/customer/cart-templates/cart-shared'
 import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
+import { SeniorOrderSteps } from '@/components/customer/senior-mode/senior-order-steps'
 import type { CartTemplate } from '@/lib/cart-templates'
 
 export default function CartPage() {
@@ -33,6 +34,8 @@ export default function CartPage() {
 
   return (
     <>
+      {/* Senior mode only: "Step 2 of 4" + a labelled back button */}
+      <SeniorOrderSteps current="cart" branding={cart.branding} backLabel="Back to menu" onBack={cart.exitToMenu} />
       <CartTemplateRenderer template={template} cart={cart} />
       {/* Shared overlays — rendered for every design */}
       <CartRemoveDialog cart={cart} />

@@ -115,6 +115,8 @@ export interface Tenant {
   header_show_logo?: boolean;
   header_show_name?: boolean;
   header_show_cart?: boolean;
+  /** Senior-friendly ordering mode (src/lib/senior-mode.ts). */
+  senior_friendly_mode?: boolean;
   header_show_search?: boolean; // Show an inline search bar in the header
   header_tagline?: string; // Optional tagline shown under the restaurant name
   header_tagline_color?: string;

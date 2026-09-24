@@ -165,6 +165,8 @@ const brandingFieldsSchema = z.object({
     header_show_name: z.boolean().optional(),
     header_show_cart: z.boolean().optional(),
     header_show_search: z.boolean().optional(),
+    // Senior-friendly ordering (larger text, labelled cart bar, step tracker)
+    senior_friendly_mode: z.boolean().optional(),
     header_tagline: z.string().max(200).optional().or(z.literal('')),
     header_tagline_color: cssColorString().optional().or(z.literal('')),
     header_sticky: z.boolean().optional(),
@@ -391,6 +393,7 @@ export const ROLLOUT_DEPENDENT_FIELDS = [
     'header_show_name',
     'header_show_cart',
     'header_show_search',
+    'senior_friendly_mode',
     'header_tagline',
     'header_tagline_color',
     'header_sticky',

@@ -35,7 +35,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20" style={{ background: palette.background }}>
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+      <header data-senior-hidden className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
         <div className="container mx-auto flex h-20 items-center gap-4 px-4">
           <Button variant="ghost" size="icon" onClick={exitToMenu} aria-label="Back to menu" className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />
@@ -156,7 +156,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between mt-4">
+                      <div className="flex flex-wrap items-center justify-between gap-y-2 mt-4">
                         <div className="flex items-center gap-3">
                           <Button
                             variant="outline"
@@ -179,7 +179,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
-                        <div className="text-right">
+                        <div className="ml-auto text-right">
                           <span className="text-xl font-bold text-orange-600" style={{ color: accentColor }}>
                             {formatPrice(item.subtotal)}
                           </span>

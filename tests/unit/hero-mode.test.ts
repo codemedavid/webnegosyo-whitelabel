@@ -1,4 +1,4 @@
-import { shouldUseCustomHero, isConcreteHeroPreset } from '@/lib/hero-mode'
+import { shouldUseCustomHero, isConcreteHeroPreset, isFullBleedHeroBand } from '@/lib/hero-mode'
 
 /**
  * The Branding Studio exposes hero styles as a single dropdown. Alongside the
@@ -54,5 +54,34 @@ describe('shouldUseCustomHero', () => {
     expect(shouldUseCustomHero({ hero_preset: 'theme', hero_design: design })).toBe(true)
     expect(shouldUseCustomHero({ hero_preset: null, hero_design: design })).toBe(true)
     expect(shouldUseCustomHero({ hero_design: design })).toBe(true)
+  })
+})
+
+/**
+ * A preset hero with a background color renders as a full-bleed band flush
+ * under the header, so the storefront drops <main>'s top padding for it.
+ */
+describe('isFullBleedHeroBand', () => {
+  const colored = { hero_preset: 'editorial', hero_background_color: '#2A6FDB' }
+
+  it('is true for a concrete preset with a background color', () => {
+    expect(isFullBleedHeroBand(colored)).toBe(true)
+    expect(isFullBleedHeroBand({ ...colored, hero_preset: 'centered' })).toBe(true)
+  })
+
+  it('is false without a background color', () => {
+    expect(isFullBleedHeroBand({ ...colored, hero_background_color: null })).toBe(false)
+    expect(isFullBleedHeroBand({ ...colored, hero_background_color: '' })).toBe(false)
+  })
+
+  it('is false for the banner card, the theme default, and custom designs', () => {
+    expect(isFullBleedHeroBand({ ...colored, hero_preset: 'banner' })).toBe(false)
+    expect(isFullBleedHeroBand({ ...colored, hero_preset: 'theme' })).toBe(false)
+    expect(isFullBleedHeroBand({ ...colored, hero_preset: 'custom', hero_design: { version: 4 } })).toBe(false)
+  })
+
+  it('is false when the hero is disabled or there is no tenant', () => {
+    expect(isFullBleedHeroBand({ ...colored, hero_section_enabled: false })).toBe(false)
+    expect(isFullBleedHeroBand(null)).toBe(false)
   })
 })
