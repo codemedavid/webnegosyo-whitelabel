@@ -120,6 +120,26 @@ describe('SeniorCartBar "Added!" cue', () => {
     act(() => { jest.advanceTimersByTime(3000) })
     expect(screen.queryByText(/added!/i)).toBeNull()
   })
+
+  it('clears "Added!" when the count drops before the cue would have faded', async () => {
+    jest.useFakeTimers()
+    const m = await load()
+    const bar = (count: number) => {
+      mockCart = { item_count: count, total: count * 100 }
+      return <m.SeniorModeProvider isSavedOn><m.SeniorCartBar tenantSlug="acme" branding={branding} /></m.SeniorModeProvider>
+    }
+
+    const { rerender } = render(bar(1))
+    act(() => { jest.advanceTimersByTime(1500) })
+    rerender(bar(2))
+    expect(screen.getByText(/added!/i)).toBeInTheDocument()
+
+    // A cart sync or removal lands inside the cue window: the change cancels
+    // the fade timer, so the drop itself must clear the cue.
+    rerender(bar(1))
+    act(() => { jest.advanceTimersByTime(10_000) })
+    expect(screen.queryByText(/added!/i)).toBeNull()
+  })
 })
 
 describe('SeniorOrderSteps', () => {

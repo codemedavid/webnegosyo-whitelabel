@@ -7,6 +7,7 @@ import {
   type ReceiptTextSize,
   type ReceiptLayout,
   type ReceiptPresetName,
+  type ReceiptTheme,
 } from '@/lib/receipt-layout'
 
 /**
@@ -188,22 +189,25 @@ export function moveDraft(drafts: DraftBlock[], id: string, offset: -1 | 1): Dra
 }
 
 /** The lines `orderMeta` prints, as blocks a merchant can style one by one. */
-const ORDER_META_PARTS: ReceiptBlockKind[] = [
-  'orderNumber',
-  'orderDate',
-  'customerName',
-  'orderType',
-  'tableNumber',
-]
+// The order each theme's `orderMeta` prints its lines in: Modern puts the
+// order type and table before the customer (see renderModernOrderMeta).
+const ORDER_META_PARTS: Record<ReceiptTheme, readonly ReceiptBlockKind[]> = {
+  classic: ['orderNumber', 'orderDate', 'customerName', 'orderType', 'tableNumber'],
+  modern: ['orderNumber', 'orderDate', 'orderType', 'tableNumber', 'customerName'],
+}
+
+/** How many blocks `splitOrderMetaDraft` mints (the same for every theme). */
+export const ORDER_META_LINE_COUNT = ORDER_META_PARTS.classic.length
 
 /** Replace an all-in-one details block with one block per line it prints. */
 export function splitOrderMetaDraft(
   drafts: DraftBlock[],
   id: string,
   makeId: () => string,
+  theme: ReceiptTheme = 'classic',
 ): DraftBlock[] {
   const index = draftIndex(drafts, id)
   if (drafts[index]?.block.kind !== 'orderMeta') return drafts
-  const parts = ORDER_META_PARTS.map((kind) => ({ id: makeId(), block: { kind } as ReceiptBlock }))
+  const parts = ORDER_META_PARTS[theme].map((kind) => ({ id: makeId(), block: { kind } as ReceiptBlock }))
   return [...drafts.slice(0, index), ...parts, ...drafts.slice(index + 1)]
 }
