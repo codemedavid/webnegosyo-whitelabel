@@ -1,6 +1,6 @@
 # SmartMenu 1.0.10 release status — 2026-09-27
 
-Publication is held for a confirmed backend dependency. Both binaries have been built and verified.
+Android 1.0.10 build 41 was published on 2026-09-27 after the production backend dependencies became available. iOS remains prepared for review. The original build and blocker records below are retained as history.
 
 ## Frozen app source
 
@@ -65,3 +65,14 @@ Publication is held for a confirmed backend dependency. Both binaries have been 
 - Download tests: all 12 passed; download lint passed.
 - Android FCM credential check: passed, Firebase project matches EAS push credentials.
 - Both artifact manifests verified; Android signing certificate compared with previous public APK.
+
+## Android publication follow-up — 2026-09-27
+
+- Confirmed production `loyalty_activity` and `loyalty_earning_jobs` tables and their expected columns through authenticated read-only schema checks against `tjcmkstsuhqdwkfdrxan`.
+- Confirmed `claim_loyalty_earning_jobs`, `finish_loyalty_earning_job` and `lookup_loyalty_wallet` in the production API schema. This session did not apply migrations.
+- Live route probes now return validation/authentication responses for activity and earning recovery, and method-not-allowed for a GET to the POST-only order-customers endpoint, rather than 404.
+- Published the existing Android draft release; the permanent APK URL returns HTTP 200 with 117,378,520 bytes. Local artifact SHA-256 matches the uploaded release asset digest recorded above.
+- Updated the public download config and merchant source version to 1.0.10 on top of current main, preserving the newer website changes. The earlier preview was not promoted.
+- Updated the Android release policy to 1.0.10 and the GitHub APK URL; `minimum_version` remains 1.0.0.
+- Validation: existing version-drift test reproduced the stale 1.0.9 link; all 12 download tests passed after the update, and download config lint and diff checks passed.
+- The APK remains the frozen build 41 described above; later merchant source fixes require a subsequent binary. No iOS review submission was made in this follow-up.
