@@ -56,7 +56,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // before bumping. Hence 1.0.9 — payment proof on platform-backend order
   // screens, tablet orientation, announcement push reporting, the release-
   // policy update gate and the rebuilt order types.
-  version: "1.0.9",
+  // Release binaries are built from build/merchant-1.0.10.
+  version: "1.0.10",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the
