@@ -671,6 +671,25 @@ describe('POST /api/lalamove', () => {
     expect(orderRow?.lalamove_status).toBeNull()
   })
 
+  test('keeps an ambiguous booking locked and warns before another rider can be requested', async () => {
+    const service = await import('@/lib/lalamove-service')
+    const { LalamoveBookingError } = await import('@/lib/lalamove-booking-error')
+    ;(service.createLalamoveOrder as jest.Mock<(...args: unknown[]) => Promise<unknown>>)
+      .mockRejectedValue(new LalamoveBookingError('Connection reset', true))
+    const { POST } = await import('@/app/api/lalamove/route')
+
+    const response = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    await expect(response.json()).resolves.toMatchObject({
+      success: false, error: expect.stringMatching(/may.*booked.*check Lalamove/i),
+    })
+    await POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+    expect(service.createLalamoveOrder).toHaveBeenCalledTimes(1)
+    expect(orderRow?.lalamove_status).toBe('BOOKING')
+  })
+
   test('never books against an order belonging to another tenant', async () => {
     // The order is fetched with the service key, which bypasses RLS — the
     // tenant filter here is the only thing standing between a merchant and
