@@ -192,9 +192,15 @@ function SummaryRow({
 export function OrderSummaryLines({
   checkout,
   variant = 'default',
+  showItems = true,
 }: {
   checkout: UseCheckoutReturn
   variant?: OrderSummaryVariant
+  /**
+   * Off for a design that lists the cart lines in their own section (BiteSpeed's
+   * "Your Order"), so the totals below are not preceded by the same lines twice.
+   */
+  showItems?: boolean
 }) {
   const {
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError,
@@ -220,7 +226,7 @@ export function OrderSummaryLines({
 
   return (
     <div className={skin.container}>
-      {items.map((item, index) => (
+      {showItems && items.map((item, index) => (
         <div key={item.id}>
           {index > 0 && skin.itemBreak}
           <SummaryItem
@@ -232,7 +238,7 @@ export function OrderSummaryLines({
         </div>
       ))}
 
-      {skin.itemsBreak}
+      {showItems && skin.itemsBreak}
 
       <SummaryRow
         label="Subtotal"

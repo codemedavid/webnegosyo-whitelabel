@@ -29,6 +29,7 @@ import {
 } from '@/lib/branding-registry'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { saveBrandingAction } from '@/app/actions/branding'
+import { flattenPackSettings, withPackSettingsPreview } from '@/lib/storefront-pack-studio'
 import type { BrandingInput } from '@/lib/branding-service'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -136,10 +137,15 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
 
   const isMobile = device === 'mobile'
 
-  const savedTenant = useMemo(
-    () => ({ ...(tenant as unknown as Record<string, unknown>), ...publishedValues }),
-    [tenant, publishedValues]
-  )
+  const savedTenant = useMemo(() => {
+    const merged = { ...(tenant as unknown as Record<string, unknown>), ...publishedValues }
+    // Storefront pack settings live in one jsonb column; the Studio edits
+    // them as virtual fields, so expose the saved ones under those ids too.
+    return { ...merged, ...flattenPackSettings(merged) }
+  }, [tenant, publishedValues])
+  // The preview's tenant merge is a shallow spread, so pack setting edits
+  // must reach it as the whole folded storefront_pack_settings object.
+  const previewDraft = useMemo(() => withPackSettingsPreview(draft, savedTenant), [draft, savedTenant])
   const savedProduct = useMemo(
     () => ({ ...(productSettings ?? {}), ...publishedProductValues }) as Record<string, unknown>,
     [productSettings, publishedProductValues]
@@ -715,7 +721,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
         <PreviewFrame
           tenantSlug={tenantSlug}
           surfaceId={surface.id}
-          draft={draft}
+          draft={previewDraft}
           productDraft={productDraft}
           categoryDraft={categoryDraft as Record<string, unknown>}
           mobileOverrides={mergeMobileOverrides(savedMobile, mobileDraft)}

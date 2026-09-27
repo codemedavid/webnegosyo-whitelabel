@@ -14,13 +14,13 @@
  * policies on presell_stock exist for defense in depth, not as the boundary.
  */
 
-import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PresellStock } from '@/types/database'
 import { releasePresellForCancelledConvexOrder } from '@/lib/presell/convex-cancel'
 import { MAX_RANGE_DAYS } from '@/lib/presell/month-grid'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
 
@@ -87,8 +87,7 @@ function fail(error: unknown, fallback: string): ActionResult<never> {
  * after which the form navigates away anyway.
  */
 function revalidateMenu(tenantSlug: string): void {
-  revalidatePath(`/${tenantSlug}/menu`)
-  revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+  revalidateStorefrontMenu(tenantSlug)
 }
 
 /**

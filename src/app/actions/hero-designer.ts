@@ -1,12 +1,12 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import { heroDesignSchema } from '@/lib/hero-designer-schemas'
 import { heroBlockDesignSchema } from '@/lib/hero-block-schemas'
 import { z } from 'zod'
 import type { HeroDesign } from '@/types/hero-designer'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,7 +63,7 @@ export async function saveHeroDesignAction(
     }
 
     // Revalidate cached pages for instant updates
-    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+    revalidateStorefrontMenu(tenantSlug)
 
     console.log(`[saveHeroDesignAction] Hero design saved and cache revalidated for ${tenantSlug}`)
 
@@ -112,7 +112,7 @@ export async function updateHeroSectionEnabledAction(
       return { success: false, error: error.message }
     }
 
-    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+    revalidateStorefrontMenu(tenantSlug)
 
     return { success: true }
   } catch (error) {

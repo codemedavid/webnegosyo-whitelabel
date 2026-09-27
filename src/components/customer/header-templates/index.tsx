@@ -10,7 +10,8 @@
  */
 
 import { memo } from 'react'
-import type { HeaderTemplate } from '@/lib/header-templates'
+import { DEFAULT_HEADER_TEMPLATE, HEADER_TEMPLATE_IDS, type HeaderTemplate } from '@/lib/header-templates'
+import { pickDesignId } from '@/lib/design-ids'
 import type { HeaderEditSection, HeaderTemplateProps } from './header-parts'
 import { ClassicHeader } from './classic-header'
 import { CenteredHeader } from './centered-header'
@@ -21,25 +22,22 @@ import { StackedHeader } from './stacked-header'
 
 export type { HeaderTemplateProps, HeaderEditSection } from './header-parts'
 
+// Typed against the registry's id union: a registered header without a
+// component here is a compile error.
+const HEADER_COMPONENTS = {
+  classic: ClassicHeader,
+  centered: CenteredHeader,
+  minimal: MinimalHeader,
+  split: SplitHeader,
+  banner: BannerHeader,
+  stacked: StackedHeader,
+} satisfies Record<HeaderTemplate, unknown>
+
 /**
- * Get the appropriate header component based on the template ID.
+ * Get the header component for a template ID. Unknown ids fall back to Classic.
  */
-export function getHeaderTemplateComponent(template: HeaderTemplate = 'classic') {
-  switch (template) {
-    case 'centered':
-      return CenteredHeader
-    case 'minimal':
-      return MinimalHeader
-    case 'split':
-      return SplitHeader
-    case 'banner':
-      return BannerHeader
-    case 'stacked':
-      return StackedHeader
-    case 'classic':
-    default:
-      return ClassicHeader
-  }
+export function getHeaderTemplateComponent(template: HeaderTemplate = DEFAULT_HEADER_TEMPLATE) {
+  return HEADER_COMPONENTS[pickDesignId(template, HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE)]
 }
 
 /**

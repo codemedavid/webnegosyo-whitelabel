@@ -10,13 +10,19 @@ const LUMINANCE_THRESHOLD = 0.6
  * Black or white text for a background. Accepts any CSS color, but can only
  * measure hex; anything else gets the caller's fallback.
  */
-export function readableOn(background: string | undefined, fallback = '#ffffff'): string {
-  if (!background || !HEX_PATTERN.test(background)) return fallback
-  const hex = background.length === 4
-    ? background.slice(1).split('').map((c) => c + c).join('')
-    : background.slice(1)
+/** Relative luminance (0 = black, 1 = white) of a hex color, or null for anything else. */
+export function luminanceOf(color: string | undefined): number | null {
+  if (!color || !HEX_PATTERN.test(color)) return null
+  const hex = color.length === 4
+    ? color.slice(1).split('').map((c) => c + c).join('')
+    : color.slice(1)
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+export function readableOn(background: string | undefined, fallback = '#ffffff'): string {
+  const luminance = luminanceOf(background)
+  if (luminance === null) return fallback
   return luminance > LUMINANCE_THRESHOLD ? '#111111' : '#ffffff'
 }
 

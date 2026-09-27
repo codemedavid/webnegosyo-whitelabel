@@ -9,6 +9,7 @@ import {
   reorderCategories,
   type CategoryInput,
 } from '@/lib/admin-service'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getCategoriesAction(tenantId: string) {
   try {
@@ -23,7 +24,7 @@ export async function createCategoryAction(tenantId: string, tenantSlug: string,
   try {
     const category = await createCategory(tenantId, input)
     revalidatePath(`/${tenantSlug}/admin/categories`)
-    revalidatePath(`/${tenantSlug}/menu`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true, data: category }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create category' }
@@ -34,8 +35,7 @@ export async function updateCategoryAction(categoryId: string, tenantId: string,
   try {
     const category = await updateCategory(categoryId, tenantId, input)
     revalidatePath(`/${tenantSlug}/admin/categories`)
-    revalidatePath(`/${tenantSlug}/menu`)
-    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true, data: category }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update category' }
@@ -46,8 +46,7 @@ export async function deleteCategoryAction(categoryId: string, tenantId: string,
   try {
     await deleteCategory(categoryId, tenantId)
     revalidatePath(`/${tenantSlug}/admin/categories`)
-    revalidatePath(`/${tenantSlug}/menu`)
-    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete category' }
@@ -58,7 +57,7 @@ export async function reorderCategoriesAction(tenantId: string, tenantSlug: stri
   try {
     await reorderCategories(tenantId, categoryIds)
     revalidatePath(`/${tenantSlug}/admin/categories`)
-    revalidatePath(`/${tenantSlug}/menu`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to reorder categories' }

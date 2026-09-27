@@ -10,6 +10,7 @@ import {
   invalidateComplementaryPairsCache,
 } from '@/lib/complementary-pairs-service'
 import type { MenuItem, ComplementaryPairWithDetails } from '@/types/database'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getComplementaryItemsAction(
   itemId: string,
@@ -37,7 +38,7 @@ export async function createComplementaryPairsAction(
   if (result.success) {
     await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
-    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+    revalidateStorefrontMenu(tenantSlug)
   }
 
   return result
@@ -53,7 +54,7 @@ export async function deleteComplementaryPairAction(
   if (result.success) {
     await invalidateComplementaryPairsCache(tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
-    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+    revalidateStorefrontMenu(tenantSlug)
   }
 
   return result
@@ -74,7 +75,7 @@ export async function updateComplementaryPairsAction(
 
   if (targetItemIds.length === 0) {
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
-    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true }
   }
 
@@ -82,7 +83,7 @@ export async function updateComplementaryPairsAction(
 
   if (createResult.success) {
     revalidatePath(`/${tenantSlug}/admin/menu-engineering`)
-    revalidatePath(`/${tenantSlug}/menu`, 'layout')
+    revalidateStorefrontMenu(tenantSlug)
   }
 
   return createResult

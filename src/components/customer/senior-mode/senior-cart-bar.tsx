@@ -127,7 +127,12 @@ function useJustAdded(count: number): boolean {
   useEffect(() => {
     const hasIncreased = count > previousCount.current
     previousCount.current = count
-    if (!hasIncreased || !isArmed.current) return
+    // Any count change cancels the previous fade timer (effect cleanup), so a
+    // drop inside the cue window must clear the cue itself or it sticks.
+    if (!hasIncreased || !isArmed.current) {
+      setIsJustAdded(false)
+      return
+    }
     setIsJustAdded(true)
     const timer = setTimeout(() => setIsJustAdded(false), JUST_ADDED_MS)
     return () => clearTimeout(timer)

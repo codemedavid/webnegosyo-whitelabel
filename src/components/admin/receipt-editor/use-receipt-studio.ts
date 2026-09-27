@@ -19,6 +19,7 @@ import {
   insertDraftAfter,
   moveDraft,
   splitOrderMetaDraft,
+  ORDER_META_LINE_COUNT,
   type DraftBlock,
 } from '@/lib/receipt-editor'
 import {
@@ -44,8 +45,6 @@ interface StudioDraft {
 }
 
 const PUBLISHED_FLASH_MS = 2500
-/** Lines `orderMeta` prints; see ORDER_META_PARTS in receipt-editor. */
-const ORDER_META_LINE_COUNT = 5
 
 function modeOf(saved: unknown): StudioMode {
   if (saved === null || saved === undefined) return 'modern'
@@ -158,7 +157,7 @@ export function useReceiptStudio(tenantId: string, initialLayout: unknown) {
     const ids = Array.from({ length: ORDER_META_LINE_COUNT }, nextId)
     edit((current) => {
       const queue = [...ids]
-      return { drafts: splitOrderMetaDraft(current.drafts, id, () => queue.shift() ?? nextId()) }
+      return { drafts: splitOrderMetaDraft(current.drafts, id, () => queue.shift() ?? nextId(), current.theme) }
     })
     setSelectedId(ids[0] ?? null)
   }

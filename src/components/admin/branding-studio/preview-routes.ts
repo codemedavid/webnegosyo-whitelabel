@@ -34,6 +34,9 @@ export function getPreviewTarget(
     case 'checkout':
     case 'upsell':
       return { path: `${base}/checkout` }
+    case 'layout':
+      // A storefront pack draws the tenant home (legacy shows its menu there).
+      return { path: base }
     case 'product':
       return {
         path: sampleItemId ? `${base}/menu/item/${sampleItemId}` : `${base}/menu`,

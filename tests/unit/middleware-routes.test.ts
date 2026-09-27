@@ -62,12 +62,21 @@ describe('isSelfAuthenticatedApiRoute', () => {
 })
 
 describe('tenantRewritePath', () => {
-  it('sends the host root to the menu', () => {
-    expect(tenantRewritePath('shop', '/')).toBe('/shop/menu')
+  it('sends the host root to the tenant home, which each storefront pack draws', () => {
+    expect(tenantRewritePath('shop', '/')).toBe('/shop')
   })
 
   it('prefixes any other page with the tenant', () => {
     expect(tenantRewritePath('shop', '/cart')).toBe('/shop/cart')
+  })
+
+  it('leaves the bare tenant root alone so a /{slug} link cannot double-prefix', () => {
+    // Without this, a "Home" link to /shop on the shop host rewrote to /shop/shop — a 404.
+    expect(tenantRewritePath('shop', '/shop')).toBeNull()
+  })
+
+  it('still prefixes a page whose name merely starts with the slug', () => {
+    expect(tenantRewritePath('shop', '/shopping')).toBe('/shop/shopping')
   })
 
   it('leaves already-prefixed, API and image-optimiser paths alone', () => {

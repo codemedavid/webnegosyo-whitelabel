@@ -11,6 +11,7 @@ import {
   toggleMenuItemAvailability,
   type MenuItemInput,
 } from '@/lib/admin-service'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getMenuItemsAction(tenantId: string) {
   try {
@@ -34,8 +35,7 @@ export async function createMenuItemAction(tenantId: string, tenantSlug: string,
   try {
     const item = await createMenuItem(tenantId, input)
     revalidatePath(`/${tenantSlug}/admin/menu`)
-    revalidatePath(`/${tenantSlug}/menu`)
-    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true, data: item }
   } catch (error) {
     // Handle Zod validation errors
@@ -57,8 +57,7 @@ export async function updateMenuItemAction(itemId: string, tenantId: string, ten
     const item = await updateMenuItem(itemId, tenantId, input)
     revalidatePath(`/${tenantSlug}/admin/menu`)
     revalidatePath(`/${tenantSlug}/admin/menu/${itemId}`)
-    revalidatePath(`/${tenantSlug}/menu`)
-    revalidatePath(`/${tenantSlug}/menu/item/${itemId}`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true, data: item }
   } catch (error) {
     // Handle Zod validation errors
@@ -79,8 +78,7 @@ export async function deleteMenuItemAction(itemId: string, tenantId: string, ten
   try {
     await deleteMenuItem(itemId, tenantId)
     revalidatePath(`/${tenantSlug}/admin/menu`)
-    revalidatePath(`/${tenantSlug}/menu`)
-    revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete menu item' }
@@ -91,8 +89,7 @@ export async function toggleAvailabilityAction(itemId: string, tenantId: string,
   try {
     const item = await toggleMenuItemAvailability(itemId, tenantId, isAvailable)
     revalidatePath(`/${tenantSlug}/admin/menu`)
-    revalidatePath(`/${tenantSlug}/menu`)
-    revalidatePath(`/${tenantSlug}/menu/item/${itemId}`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true, data: item }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle availability' }

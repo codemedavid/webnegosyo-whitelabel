@@ -17,6 +17,7 @@ import {
     type BundleInput,
     type BundleWithSlots,
 } from '@/lib/bundles-service'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getBundlesAction(tenantId: string): Promise<{ success: true; data: BundleWithSlots[] } | { success: false; error: string }> {
     try {
@@ -43,7 +44,7 @@ export async function createBundleAction(tenantId: string, tenantSlug: string, i
         const bundle = await createBundle(tenantId, input)
         await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
-        revalidatePath(`/${tenantSlug}/menu`)
+        revalidateStorefrontMenu(tenantSlug)
         return { success: true, data: bundle }
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -70,7 +71,7 @@ export async function updateBundleAction(
         await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
         revalidatePath(`/${tenantSlug}/admin/bundles/${bundleId}`)
-        revalidatePath(`/${tenantSlug}/menu`)
+        revalidateStorefrontMenu(tenantSlug)
         return { success: true, data: bundle }
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -91,7 +92,7 @@ export async function deleteBundleAction(bundleId: string, tenantId: string, ten
         await deleteBundle(bundleId, tenantId)
         await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
-        revalidatePath(`/${tenantSlug}/menu`)
+        revalidateStorefrontMenu(tenantSlug)
         return { success: true }
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Failed to delete bundle' }
@@ -108,7 +109,7 @@ export async function toggleBundleActiveAction(
         await toggleBundleActive(bundleId, tenantId, isActive)
         await invalidateBundlesCache(tenantId)
         revalidatePath(`/${tenantSlug}/admin/bundles`)
-        revalidatePath(`/${tenantSlug}/menu`)
+        revalidateStorefrontMenu(tenantSlug)
         return { success: true }
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Failed to toggle bundle' }

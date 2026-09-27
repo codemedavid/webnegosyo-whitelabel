@@ -18,6 +18,7 @@ import {
 } from '@/lib/loyverse/client'
 import { importLoyverseCatalog, type LoyverseSyncReport } from '@/lib/loyverse/catalog-import'
 import type { Tenant } from '@/types/database'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 async function isSuperadmin(): Promise<boolean> {
   const supabase = await createClient()
@@ -114,7 +115,7 @@ export async function syncLoyverseCatalogAction(tenantId: string): Promise<Loyve
   })
 
   if (report.success && tenantRow.slug) {
-    revalidatePath(`/${tenantRow.slug}/menu`)
+    revalidateStorefrontMenu(tenantRow.slug)
     revalidatePath(`/${tenantRow.slug}/admin/menu`)
   }
   return report

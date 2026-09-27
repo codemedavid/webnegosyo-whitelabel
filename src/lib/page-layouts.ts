@@ -130,8 +130,8 @@ export const PAGE_LAYOUTS: PageLayoutDefinition[] = [
     }
 ]
 
-/** Every page layout id, in picker order. */
-export const PAGE_LAYOUT_IDS = PAGE_LAYOUTS.map((l) => l.id)
+/** Every selectable id, in registry (picker) order. */
+export const PAGE_LAYOUT_IDS: readonly PageLayout[] = PAGE_LAYOUTS.map((t) => t.id)
 
 /**
  * Get layout definition by ID

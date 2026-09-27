@@ -10,6 +10,7 @@ import { DEFAULT_PRODUCT_DETAIL_SETTINGS } from '@/lib/product-detail-theme'
 import { stripToDBColumns } from '@/lib/product-detail-settings-utils'
 import { productDetailSettingsWriteSchema } from '@/lib/product-detail-settings-schema'
 import { readTenantSlugById } from '@/lib/tenant-revalidation'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 interface ActionResult<T = unknown> {
     success: boolean
@@ -29,9 +30,8 @@ async function revalidateProductPages(tenantId: string): Promise<void> {
             console.warn(`[product-detail-settings] Saved for ${tenantId}, but caches were not refreshed (no usable slug)`)
             return
         }
-        revalidatePath(`/${slug}/menu`, 'layout')
+        revalidateStorefrontMenu(slug)
         revalidatePath(`/${slug}/admin`)
-        revalidatePath(`/${slug}/menu/item/[itemId]`, 'page')
     } catch (error) {
         console.warn('[product-detail-settings] Saved, but cache refresh failed:', error)
     }

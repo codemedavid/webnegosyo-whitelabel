@@ -98,6 +98,23 @@ describe('arranging drafts', () => {
     ])
     expect(next[0]!.id).toBe('part-1')
   })
+
+  it('splits a Modern details block in the order Modern prints it (type and table before customer)', () => {
+    let n = 0
+    const next = splitOrderMetaDraft(
+      [{ id: 'x', block: { kind: 'orderMeta' } }],
+      'x',
+      () => `part-${++n}`,
+      'modern',
+    )
+    expect(next.map((d) => d.block.kind)).toEqual([
+      'orderNumber',
+      'orderDate',
+      'orderType',
+      'tableNumber',
+      'customerName',
+    ])
+  })
 })
 
 describe('saving styled layouts', () => {

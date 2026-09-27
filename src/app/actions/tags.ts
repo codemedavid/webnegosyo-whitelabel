@@ -11,6 +11,7 @@ import {
   getPresetTags,
   getItemTags,
 } from '@/lib/tags-service'
+import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getTagDefinitionsAction(tenantId: string) {
   try {
@@ -97,7 +98,7 @@ export async function setItemTagsAction(
   try {
     await setItemTags(itemId, tenantId, tagDefinitionIds)
     revalidatePath(`/${tenantSlug}/admin/menu`)
-    revalidatePath(`/${tenantSlug}/menu`)
+    revalidateStorefrontMenu(tenantSlug)
     return { success: true as const }
   } catch (error) {
     return { success: false as const, error: error instanceof Error ? error.message : 'Failed to update item tags' }

@@ -7,15 +7,27 @@ import { getTenantBranding } from '@/lib/branding-utils'
 import { OutletGate } from '@/components/customer/outlet-gate'
 import { TableLinkCapture } from '@/components/customer/table-link-capture'
 import { useStorefrontMenu } from '@/storefront/catalog/use-storefront-menu'
-import { LegacyMenuStorefront } from '@/storefront/packs/legacy/menu-storefront'
+import { STOREFRONT_PACK_PAGES, type StorefrontPackPages } from '@/storefront/packs/registry'
+import { getStorefrontPack, resolveStorefrontPack } from '@/lib/storefront-packs'
+import { StorefrontRuntime } from '@/storefront/runtime/storefront-runtime'
 import type { StorefrontMenuInput } from '@/storefront/contracts'
 
-/** Route adapter. Customer behavior and visual composition have separate homes. */
-export function MenuClient(props: StorefrontMenuInput) {
+type StorefrontPage = 'menu' | 'home'
+type StorefrontClientProps = StorefrontMenuInput & {
+  /** Which pack page to draw. Defaults to the menu. */
+  page?: StorefrontPage
+}
+
+/**
+ * Route adapter for the storefront's menu and home routes. Customer behavior
+ * and visual composition have separate homes: the controller comes from
+ * useStorefrontMenu, the markup from the tenant's storefront pack.
+ */
+export function MenuClient(props: StorefrontClientProps) {
   return <MenuEntry key={props.tenant?.id ?? props.tenantSlug} {...props} />
 }
 
-function MenuEntry(props: StorefrontMenuInput) {
+function MenuEntry(props: StorefrontClientProps) {
   const tenant = useBrandingPreviewTenant(props.tenant)
   const draft = useBrandingPreviewDraft()
   const categories = useMemo(() => applyCategoryDraft(props.categories,
@@ -39,11 +51,17 @@ function MenuEntry(props: StorefrontMenuInput) {
   return <ReadyMenu {...props} tenant={tenant} categories={categories} isWelcomePreview={draft?.__previewSurface === 'welcome'} />
 }
 
-function ReadyMenu({ isWelcomePreview, ...props }: StorefrontMenuInput & { isWelcomePreview: boolean }) {
+function ReadyMenu({ isWelcomePreview, page = 'menu', ...props }: StorefrontClientProps & { isWelcomePreview: boolean }) {
   const menu = useStorefrontMenu(props)
+  // Resolved from the preview-merged tenant, so the Branding Studio can switch packs live.
+  const packId = resolveStorefrontPack(props.tenant)
+  const pages: StorefrontPackPages = STOREFRONT_PACK_PAGES[packId]
+  const PackPage = (page === 'home' ? pages.home : undefined) ?? pages.menu
   return <>
     <TableLinkCapture tenantSlug={props.tenantSlug} />
     <OutletGate tenant={props.tenant} tenantSlug={props.tenantSlug} outlets={props.outlets} isPreview={isWelcomePreview} />
-    <LegacyMenuStorefront menu={menu} />
+    <StorefrontRuntime menu={menu} checkoutEntry={getStorefrontPack(packId).checkoutEntry}>
+      <PackPage />
+    </StorefrontRuntime>
   </>
 }

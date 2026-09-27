@@ -24,7 +24,7 @@ import {
 import { CheckoutOutletSummary } from '@/components/customer/checkout-templates/checkout-outlet-section'
 import { CheckoutOutletScreen } from '@/components/customer/checkout-templates/checkout-outlet-screen'
 import { SeniorOrderSteps } from '@/components/customer/senior-mode/senior-order-steps'
-import type { CheckoutTemplate } from '@/lib/checkout-templates'
+import { resolveCheckoutTemplate } from '@/lib/storefront-packs'
 import { isOrderSaveFailed } from '@/lib/checkout/order-save-outcome'
 
 export function CheckoutView({ tenantSlug, initialTenant, config }: UseCheckoutInput) {
@@ -59,7 +59,7 @@ export function CheckoutView({ tenantSlug, initialTenant, config }: UseCheckoutI
 
   if (checkout.isLoading) return <CheckoutLoading />
 
-  const template = (checkout.tenant.checkout_template || 'classic') as CheckoutTemplate
+  const template = resolveCheckoutTemplate(checkout.tenant)
 
   return (
     <>

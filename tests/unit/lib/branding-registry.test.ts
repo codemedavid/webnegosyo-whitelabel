@@ -20,13 +20,14 @@ import {
 } from '@/lib/branding-registry'
 
 describe('branding registry structure', () => {
-  it('defines the ten editor surfaces in rail order', () => {
+  it('defines the eleven editor surfaces in rail order', () => {
     // Arrange / Act
     const ids = BRANDING_SURFACES.map((s) => s.id)
 
     // Assert
     expect(ids).toEqual([
       'global',
+      'layout',
       'storefront',
       'categories',
       'welcome',
@@ -62,7 +63,9 @@ describe('branding registry structure', () => {
       for (const section of surface.sections) {
         for (const field of section.fields) {
           if (field.type === 'note') continue
-          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$/)
+          // Storefront pack settings are virtual fields folded into one jsonb
+          // column (see storefront-pack-studio), namespaced pack.key.
+          expect(field.id).toMatch(/^[a-z][a-z0-9_]*$|^storefront_pack_settings\.[a-z]+\.[a-z0-9_]+$/)
           expect(seen.has(field.id)).toBe(false)
           seen.add(field.id)
         }

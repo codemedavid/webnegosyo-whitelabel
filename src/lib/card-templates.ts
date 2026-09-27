@@ -241,8 +241,8 @@ export const CARD_TEMPLATES: CardTemplateDefinition[] = [
   }
 ]
 
-/** Every card template id, in picker order. */
-export const CARD_TEMPLATE_IDS = CARD_TEMPLATES.map((t) => t.id)
+/** Every selectable id, in registry (picker) order. */
+export const CARD_TEMPLATE_IDS: readonly CardTemplate[] = CARD_TEMPLATES.map((t) => t.id)
 
 /**
  * Get template definition by ID
