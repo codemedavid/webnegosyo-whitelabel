@@ -6,6 +6,7 @@ import type {
   ReceiptPayload,
   UpdateStatus,
   PosOrderPayload,
+  PosOrderScope,
   LocalPosOrder,
   PosCatalogCache,
   PosTenantCache,
@@ -30,8 +31,9 @@ const api = {
   // Offline-first POS local persistence bridge.
   savePosOrder: (
     payload: PosOrderPayload,
-    paymentStatus: 'paid' | 'pending'
-  ): Promise<LocalPosOrder> => ipcRenderer.invoke('pos:saveOrder', payload, paymentStatus),
+    paymentStatus: 'paid' | 'pending',
+    scope: PosOrderScope
+  ): Promise<LocalPosOrder> => ipcRenderer.invoke('pos:saveOrder', payload, paymentStatus, scope),
   getPendingPosOrders: (): Promise<LocalPosOrder[]> => ipcRenderer.invoke('pos:getPending'),
   getPosPendingCount: (): Promise<number> => ipcRenderer.invoke('pos:pendingCount'),
   markPosOrderSynced: (clientOrderId: string, convexOrderId: string): Promise<void> =>

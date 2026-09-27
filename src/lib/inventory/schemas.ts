@@ -84,6 +84,12 @@ export const stockMovementInputSchema = z.object({
    * before sessions existed.
    */
   inventory_count_id: z.string().uuid().optional(),
+  /**
+   * Idempotency key from the client, fixed for one save attempt and reused by
+   * its retries. A phone that times out after the server wrote a delivery would
+   * otherwise record it twice when the merchant taps Save again.
+   */
+  client_request_id: z.string().uuid().optional(),
 }).superRefine((input, ctx) => {
   // Only a stocktake may name a session. A delivery filed under a count would
   // raise that count's coverage for an ingredient nobody counted — the exact

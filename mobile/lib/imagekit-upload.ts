@@ -4,19 +4,13 @@ import { PAYMENT_PROOF_MAX_FILE_SIZE } from './payment-proof'
 /**
  * Mobile payment-proof image picking + ImageKit upload.
  *
- * ImageKit requires a server-signed token for every client upload, so the flow
- * is: pick from the library → fetch upload auth from the web app → upload to
- * ImageKit → return { url, fileId, filePath }. Deletion (on replace, or after the
- * merchant verifies) goes through the same web app route.
- *
- * The web app base URL (EXPO_PUBLIC_WEB_BASE_URL) is the single required config —
- * the public key is delivered by the auth endpoint, so no ImageKit keys live in
- * the mobile bundle.
+ * The selected screenshot is sent to the web app's bounded proof endpoint,
+ * which validates the bytes and chooses a unique path server-side. No upload
+ * credentials or ImageKit keys are issued to the customer app.
+ * EXPO_PUBLIC_WEB_BASE_URL configures the upload and cleanup endpoints.
  */
 
 const WEB_BASE_URL = process.env.EXPO_PUBLIC_WEB_BASE_URL
-const IMAGEKIT_UPLOAD_ENDPOINT = 'https://upload.imagekit.io/api/v1/files/upload'
-const PAYMENT_PROOF_FOLDER = 'payment-proofs'
 
 export interface PaymentProofUploadResult {
   url: string
@@ -30,30 +24,15 @@ export function isImageKitConfigured(): boolean {
   return Boolean(WEB_BASE_URL)
 }
 
-interface UploadAuth {
-  token: string
-  expire: number
-  signature: string
-  publicKey: string
-}
-
 function baseUrl(): string {
   return (WEB_BASE_URL ?? '').replace(/\/$/, '')
-}
-
-async function fetchUploadAuth(): Promise<UploadAuth> {
-  const res = await fetch(`${baseUrl()}/api/imagekit/auth`)
-  if (!res.ok) {
-    throw new Error('Could not authorize upload. Please try again.')
-  }
-  return (await res.json()) as UploadAuth
 }
 
 interface ImageKitUploadResponse {
   url?: string
   fileId?: string
   filePath?: string
-  message?: string
+  error?: string
 }
 
 /**
@@ -86,8 +65,6 @@ export async function pickAndUploadPaymentProof(): Promise<PaymentProofUploadRes
     throw new Error('Screenshot is too large (max 5MB).')
   }
 
-  const auth = await fetchUploadAuth()
-
   const formData = new FormData()
   // React Native FormData file shape.
   formData.append('file', {
@@ -96,18 +73,10 @@ export async function pickAndUploadPaymentProof(): Promise<PaymentProofUploadRes
     type: asset.mimeType ?? 'image/jpeg',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any)
-  formData.append('fileName', asset.fileName ?? `payment-proof-${asset.assetId ?? 'image'}.jpg`)
-  formData.append('publicKey', auth.publicKey)
-  formData.append('signature', auth.signature)
-  formData.append('expire', String(auth.expire))
-  formData.append('token', auth.token)
-  formData.append('folder', PAYMENT_PROOF_FOLDER)
-  formData.append('useUniqueFileName', 'true')
-
-  const response = await fetch(IMAGEKIT_UPLOAD_ENDPOINT, { method: 'POST', body: formData })
+  const response = await fetch(`${baseUrl()}/api/payment-proof/upload`, { method: 'POST', body: formData })
   const json = (await response.json()) as ImageKitUploadResponse
   if (!response.ok || !json.url || !json.fileId || !json.filePath) {
-    throw new Error(json.message ?? 'Failed to upload screenshot.')
+    throw new Error(json.error ?? 'Failed to upload screenshot.')
   }
 
   return { url: json.url, fileId: json.fileId, filePath: json.filePath.replace(/^\//, '') }

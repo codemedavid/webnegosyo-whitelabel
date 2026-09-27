@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { ConvexProvider, ConvexReactClient } from 'convex/react'
+import { fetchConvexToken } from './lib/convex-auth'
 import { useAuthStore } from './stores/auth-store'
 import { useSyncEngine } from './hooks/useSyncEngine'
 import { LoginScreen } from './screens/LoginScreen'
@@ -16,7 +17,9 @@ export function App(): React.JSX.Element {
   const convexClient = useMemo(() => {
     if (!convexUrl) return null
     try {
-      return new ConvexReactClient(convexUrl, { unsavedChangesWarning: false })
+      const client = new ConvexReactClient(convexUrl, { unsavedChangesWarning: false })
+      client.setAuth(fetchConvexToken)
+      return client
     } catch {
       return null
     }

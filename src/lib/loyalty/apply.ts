@@ -50,7 +50,7 @@ export interface LoyaltyApplyResult {
 }
 
 export interface LoyaltyEarningDeps {
-  loadActivePrograms: (tenantId: string) => Promise<LoyaltyProgram[]>
+  loadActivePrograms: (tenantId: string, at?: string) => Promise<LoyaltyProgram[]>
   /** Original earns, including discontinued programs and historical identities. */
   loadOrderEarns: (
     tenantId: string,
@@ -145,7 +145,7 @@ export async function earnLoyaltyForFact(
   const customerKey = customerKeyForFact(fact)
   if (!customerKey) return { action: 'skipped', reason: 'anonymous', programs: [] }
 
-  const programs = await deps.loadActivePrograms(ctx.tenantId)
+  const programs = await deps.loadActivePrograms(ctx.tenantId, fact.completedAt ?? fact.orderedAt)
   if (programs.length === 0) return { action: 'skipped', reason: 'no_programs', programs: [] }
 
   const plans = planEarning(programs, fact)

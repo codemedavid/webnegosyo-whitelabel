@@ -4,18 +4,11 @@ import { colors, typography, spacing, radius } from "../../theme/colors";
 import {
   describeBalance,
   describeMemberStatus,
-  describeRemaining,
   type LoyaltyMember,
-  type Tone,
 } from "../../lib/loyalty/members";
-import { MemberProgressBar } from "./MemberProgress";
+import { describeNextCard, MemberProgressBar } from "./MemberProgress";
+import { TONE_COLORS } from "./tone-colors";
 
-const TONE_COLORS: Record<Tone, { bg: string; text: string }> = {
-  success: { bg: colors.successLight, text: colors.success },
-  accent: { bg: colors.accentLight, text: colors.accent },
-  warning: { bg: colors.warningLight, text: "#92400E" },
-  neutral: { bg: colors.primaryLight, text: colors.textPrimary },
-};
 
 /** A guest with no name on file is still a real customer, not a blank row. */
 function displayName(member: LoyaltyMember): string {
@@ -45,7 +38,7 @@ export function MemberRow({
       onPress={() => onPress(member)}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`${displayName(member)}, ${status.label}, ${describeRemaining(member.headline)}`}
+      accessibilityLabel={`${displayName(member)}, ${status.label}, ${describeNextCard(member.headline)}`}
     >
       <View style={styles.header}>
         <View style={styles.identity}>
@@ -63,12 +56,13 @@ export function MemberRow({
         </View>
       </View>
 
+      {member.rewardsAvailable > 0 ? <Text style={styles.ready}>{member.rewardsAvailable} reward{member.rewardsAvailable === 1 ? "" : "s"} ready</Text> : null}
       <MemberProgressBar progress={member.headline} />
 
       <View style={styles.footer}>
         <Text style={styles.counter}>{describeBalance(member.headline)}</Text>
         <Text style={styles.remaining} numberOfLines={1}>
-          {describeRemaining(member.headline)}
+          {describeNextCard(member.headline)}
         </Text>
       </View>
 
@@ -105,6 +99,7 @@ const styles = StyleSheet.create({
   badgeLabel: { fontSize: 12, fontWeight: "700" },
   footer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   counter: { ...typography.caption, fontWeight: "800", color: colors.textPrimary },
+  ready: { ...typography.caption, color: colors.success, fontWeight: "700" },
   remaining: { ...typography.caption, color: colors.textSecondary, flexShrink: 1, textAlign: "right" },
   quiet: { ...typography.small, color: "#92400E", fontWeight: "600" },
   extra: { ...typography.small, color: colors.textSecondary },

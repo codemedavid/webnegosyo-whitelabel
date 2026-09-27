@@ -29,8 +29,9 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
   // rows created before the column exists read as undefined.
   if (flags.enableOrderManagement === false) paths.add('/orders')
 
+  // `/boost-sales` is never hidden: without the flag the page is the welcome
+  // screen where a store switches Boost Sales on itself.
   if (!flags.menuEngineeringEnabled) {
-    paths.add('/boost-sales')
     // Product Analytics shows basic per-product sales whenever Convex is
     // configured (advanced BCG/cost features are gated inside the page), so
     // only hide it when there is no Convex backend at all.

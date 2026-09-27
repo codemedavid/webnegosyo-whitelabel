@@ -53,10 +53,13 @@ import {
   evaluateCartHandoff,
   type HandoffBlockReason,
 } from "../../lib/scan-handoff-validate";
+import { markPaidAfterHandover, planOrderStatusChange } from "../../lib/order-status-change";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updateOrderStatusRef =
   "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+const updatePaymentStatusRef =
+  "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
 
 /**
  * Collecting an order is recorded as `delivered` — the existing terminal
@@ -186,6 +189,7 @@ export default function ScanScreen() {
   const outletName = useAuthStore((s) => s.outletName);
   const createOrder = useSafeMutation(createOrderRef);
   const updateOrderStatus = useSafeMutation(updateOrderStatusRef);
+  const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
 
   const [state, setState] = useState<ScreenState>({ mode: "scanning" });
   const [isAccepting, setIsAccepting] = useState(false);
@@ -389,7 +393,7 @@ export default function ScanScreen() {
       // invisible to the Regulars list as a counter sale was. Skips itself when
       // the payload names nobody, and never throws — the order is already in.
       if (tenantId) {
-        await notifyPosStockDepletion(tenantId, String(orderId), stockItems);
+        await notifyPosStockDepletion(tenantId, String(orderId), stockItems, "qr_scan");
         await notifyCustomerCapture(tenantId, {
           backend: "convex",
           orderId: String(orderId),
@@ -433,6 +437,12 @@ export default function ScanScreen() {
         orderId: ticket.orderId,
         status: COLLECTED_STATUS,
       });
+      // The tracking API does not report payment, but a pickup is never a
+      // table's tab: the customer walking out with it has paid for it.
+      const plan = planOrderStatusChange(order, COLLECTED_STATUS);
+      if (plan.shouldMarkPaid) {
+        await markPaidAfterHandover(updatePaymentStatus, ticket.orderId);
+      }
       setState({ mode: "pickup-done", order, wasAlready: false });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to confirm pickup.";
@@ -440,7 +450,7 @@ export default function ScanScreen() {
     } finally {
       setIsAccepting(false);
     }
-  }, [state, isAccepting, updateOrderStatus]);
+  }, [state, isAccepting, updateOrderStatus, updatePaymentStatus]);
 
   const handleReject = useCallback(() => {
     // Reject writes nothing. Return to the dashboard.

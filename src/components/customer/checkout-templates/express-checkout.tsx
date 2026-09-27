@@ -63,7 +63,7 @@ export function ExpressCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   return (
     <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Compact sticky header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+      <header data-senior-hidden className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-2 px-4">
           <button
             type="button"

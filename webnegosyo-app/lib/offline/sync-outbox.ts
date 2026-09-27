@@ -6,9 +6,9 @@
  * Per sale: create the order (deduped server-side by `clientOrderId`), mark
  * it paid, persist "written", run the bookkeeping, persist "bookkeeping
  * done", drop it from the queue. Each is awaited so a sale is only forgotten
- * once the server holds it — and each marker is on disk BEFORE the next step,
- * so a process killed at any point resumes without repeating a step that is
- * not idempotent (the Loyverse receipt, customer capture).
+ * once the server holds it. Checkpoints avoid redoing acknowledged stages;
+ * they cannot make remote bookkeeping exactly-once across a process crash.
+ * Those services need server-side idempotency for that guarantee.
  *
  * Two kinds of failure, kept apart on purpose:
  * - The connection went again → stop the whole run and leave the rest queued.
@@ -23,6 +23,8 @@
  * a foreground event landing on top of a connectivity change.
  */
 
+import type { OrderBackend } from "../order-backend";
+import { withDeadline } from "./deadline";
 import { reportOffline } from "./connectivity";
 import { isNetworkFailure } from "./network-error";
 import {
@@ -41,6 +43,8 @@ export { MAX_SYNC_ATTEMPTS } from "./order-outbox";
 export interface SyncOutboxDeps {
   /** Only this store's sales are replayed — the mutations are bound to it. */
   tenantId: string;
+  backend: OrderBackend;
+  isActive?: () => boolean;
   createOrder: (args: unknown) => Promise<unknown>;
   updatePaymentStatus: (args: unknown) => Promise<unknown>;
   bookkeeping?: (facts: PosSaleBookkeepingFacts) => Promise<void>;
@@ -64,18 +68,17 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function writeOrder(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Promise<string> {
-  const orderId = String(await deps.createOrder(sale.orderArgs));
+const SCOPE_CHANGED = Symbol("sync scope changed");
+function assertActive(deps: Required<SyncOutboxDeps>): void {
+  if (!deps.isActive()) throw SCOPE_CHANGED;
+}
 
-  // Counter sales are paid at the drawer. A refusal here is not a lost sale —
-  // the order exists — so it is logged, but a dropped connection still ends
-  // the run before the sale is forgotten.
-  try {
-    await deps.updatePaymentStatus({ orderId, paymentStatus: "paid" });
-  } catch (error) {
-    if (isNetworkFailure(error)) throw error;
-    console.warn("[offline] Could not mark a synced sale paid:", error);
-  }
+async function writeOrder(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Promise<string> {
+  const orderId = String(await withDeadline(deps.createOrder(sale.orderArgs), 12_000));
+
+  assertActive(deps);
+  // Any payment refusal leaves the sale queued for retry/reconciliation.
+  await withDeadline(deps.updatePaymentStatus({ orderId, paymentStatus: "paid" }), 12_000);
 
   await deps.markWritten(sale.localId, orderId);
   return orderId;
@@ -84,6 +87,7 @@ async function writeOrder(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Pro
 async function syncOne(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Promise<void> {
   const orderId = sale.syncedOrderId ?? (await writeOrder(sale, deps));
 
+  assertActive(deps);
   if (!sale.bookkeepingDone) {
     await deps.bookkeeping({
       tenantId: sale.tenantId,
@@ -95,6 +99,7 @@ async function syncOne(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Promis
     await deps.markBookkeepingDone(sale.localId);
   }
 
+  assertActive(deps);
   await deps.remove(sale.localId);
 }
 
@@ -105,15 +110,20 @@ async function runSync(deps: Required<SyncOutboxDeps>): Promise<SyncOutboxResult
   const result: SyncOutboxResult = {
     synced: 0,
     refused: 0,
-    stuck: mine.filter(needsAttention).length,
+    stuck: mine.filter((sale) => needsAttention(sale) || sale.backend !== deps.backend).length,
     stoppedOffline: false,
   };
 
-  for (const sale of mine.filter((candidate) => !needsAttention(candidate))) {
+  const eligible = mine
+    .filter((sale) => !needsAttention(sale) && sale.backend === deps.backend)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  for (const sale of eligible) {
     try {
+      assertActive(deps);
       await syncOne(sale, deps);
       result.synced += 1;
     } catch (error) {
+      if (error === SCOPE_CHANGED || !deps.isActive()) break;
       if (isNetworkFailure(error)) {
         reportOffline();
         result.stoppedOffline = true;
@@ -129,6 +139,7 @@ async function runSync(deps: Required<SyncOutboxDeps>): Promise<SyncOutboxResult
 export function syncOutbox(deps: SyncOutboxDeps): Promise<SyncOutboxResult> {
   if (inFlight) return inFlight;
   const resolved: Required<SyncOutboxDeps> = {
+    isActive: () => true,
     bookkeeping: runPosSaleBookkeeping,
     listSales: () => getOutbox().sales,
     remove: removeQueuedSale,

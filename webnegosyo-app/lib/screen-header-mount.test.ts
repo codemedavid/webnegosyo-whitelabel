@@ -22,6 +22,7 @@ const DETAIL_SCREENS: string[][] = [
   ["printer-settings.tsx"],
   ["team.tsx"],
   ["order", "[orderId].tsx"],
+  ["voucher", "[voucherId].tsx"],
 ];
 
 describe("tab screens", () => {

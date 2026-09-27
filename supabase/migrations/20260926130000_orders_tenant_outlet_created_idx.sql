@@ -1,0 +1,26 @@
+-- Branch-scoped "most recent N orders" index.
+--
+-- APPLIED LIVE 2026-09-26 with CREATE INDEX CONCURRENTLY (this file records it;
+-- `if not exists` makes a replay a no-op).
+--
+-- The merchant app's heaviest orders read is a branch account's queue/list:
+--   orders?tenant_id=eq.T&outlet_id=eq.B&order=created_at.desc[,id.desc]&limit=N
+-- (91k calls, 41.7 ms mean in pg_stat_statements — the top orders statement by
+-- total time). No index covered (tenant_id, outlet_id) AND the sort, so Postgres
+-- bitmap-scanned EVERY order of the branch, ran the per-row RLS function
+-- `app_user_may_see_order` on each one, then sorted and threw most away.
+--
+-- Measured on Gungjeon (810-order branch), as the branch admin, limit 50:
+--   before: Bitmap Heap Scan 810 rows -> Sort -> Limit   21.9 ms, 2,021 buffers
+--   after : Index Scan (this index) 50 rows -> Limit      4.3 ms,   322 buffers
+-- The day-window form (created_at >= day start) now uses the same index as an
+-- index-condition range instead of filtering the whole branch.
+--
+-- `id desc` is the tie-break the adapter orders by; `idx_orders_tenant_outlet`
+-- (tenant_id, outlet_id) is now a strict prefix of this index and could be
+-- dropped in a later cleanup once its idx_scan stops growing.
+--
+-- NOTE: CONCURRENTLY cannot run inside a transaction. If this file is replayed
+-- through a runner that wraps each migration in BEGIN/COMMIT, drop the keyword.
+create index concurrently if not exists orders_tenant_outlet_created_idx
+  on public.orders (tenant_id, outlet_id, created_at desc, id desc);

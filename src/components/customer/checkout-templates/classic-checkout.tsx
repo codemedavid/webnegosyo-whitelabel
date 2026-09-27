@@ -71,7 +71,7 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20" style={{ background: palette.background }}>
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+      <header data-senior-hidden className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
         <div className="container mx-auto flex h-20 items-center gap-4 px-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />

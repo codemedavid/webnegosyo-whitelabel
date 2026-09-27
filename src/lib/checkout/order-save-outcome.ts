@@ -86,3 +86,15 @@ export function classifyOrderSave(
     isMessengerRecoverable: false,
   }
 }
+
+/**
+ * Whether the confirmation screen must NOT claim success. Shared by the
+ * confirmation hero and the senior-mode step tracker, which must never tick
+ * "Order sent" on an order that did not save.
+ */
+export function isOrderSaveFailed({ orderSaveFailed, orderSaveNotice }: {
+  orderSaveFailed: boolean
+  orderSaveNotice: OrderSaveNotice | null
+}): boolean {
+  return orderSaveFailed || (orderSaveNotice != null && orderSaveNotice.verdict !== 'saved')
+}

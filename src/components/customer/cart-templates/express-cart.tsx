@@ -21,6 +21,7 @@ import {
   CartEmptyState,
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
+import { CartOffers } from './cart-shared'
 
 export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
   const { tenant, items, bundleItems, total } = cart
@@ -36,7 +37,7 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
   return (
     <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Sticky compact header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+      <header data-senior-hidden className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
           <button
             type="button"
@@ -76,6 +77,7 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
                 <CartBundleRow key={bundleItem.id} cart={cart} bundleItem={bundleItem} />
               ))}
             </div>
+            <CartOffers cart={cart} />
 
             {/* Order summary */}
             <div

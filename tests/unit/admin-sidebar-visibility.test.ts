@@ -20,8 +20,10 @@ describe('hiddenAdminSidebarPaths — existing behaviour (regression lock)', () 
       // `/inventory/transfers` joined this set when transfers shipped. It is
       // strictly MORE hiding — no tenant gained a section — so the lock still
       // guarantees what it was written to guarantee.
+      // `/boost-sales` left this set when merchants could switch Boost Sales on
+      // themselves: without the flag the page is its welcome screen, so hiding
+      // the entry would hide the only way to turn it on.
       new Set([
-        '/boost-sales',
         '/product-analytics',
         '/bundles',
         '/inventory',
@@ -61,7 +63,11 @@ describe('hiddenAdminSidebarPaths — existing behaviour (regression lock)', () 
       flags({ menuEngineeringEnabled: false, convexConfigured: true })
     )
     expect(hidden.has('/product-analytics')).toBe(false)
-    expect(hidden.has('/boost-sales')).toBe(true)
+  })
+
+  it('always shows Boost Sales, which is where a store turns it on', () => {
+    expect(hiddenAdminSidebarPaths(flags({ menuEngineeringEnabled: false })).has('/boost-sales')).toBe(false)
+    expect(hiddenAdminSidebarPaths(flags({ menuEngineeringEnabled: true })).has('/boost-sales')).toBe(false)
   })
 
   it('hides product analytics when neither menu engineering nor Convex is available', () => {

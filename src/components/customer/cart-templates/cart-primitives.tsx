@@ -21,6 +21,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
 import { formatPresellDateLabel } from '@/lib/presell/month-grid'
 import { getCartPalette } from '@/lib/branding-utils'
+import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import type { CartItem, CartBundleItem } from '@/types/database'
 
@@ -32,6 +33,9 @@ function useCartPalette(cart: UseCartViewReturn) {
 export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; item: CartItem; index: number }) {
   const { updateQuantity, setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor } = cart
   const p = useCartPalette(cart)
+  // Senior mode enlarges the page, so a long dish name gets a second line
+  // instead of being cut to "Skinles…".
+  const isSeniorMode = useSeniorMode()
   const mi = item.menu_item
   const canIncrease = canIncreaseItem(item)
   const presellHint = presellHintFor(item)
@@ -59,7 +63,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
         <div className="flex flex-1 flex-col justify-between min-w-0">
           <div>
             <div className="flex items-start justify-between gap-3 mb-1.5">
-              <h3 className="text-base md:text-lg font-bold text-gray-900 line-clamp-1" style={{ color: p.text }}>{item.menu_item.name}</h3>
+              <h3 className={`text-base md:text-lg font-bold text-gray-900 ${isSeniorMode ? 'line-clamp-2' : 'line-clamp-1'}`} style={{ color: p.text }}>{item.menu_item.name}</h3>
               <div className="flex items-center -mt-1 -mr-1 flex-shrink-0">
                 {canEdit && (
                   <button
@@ -108,7 +112,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
             )}
           </div>
 
-          <div className="flex items-center justify-between mt-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mt-3">
             <div className="flex items-center gap-2.5">
               <button
                 className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 touch-manipulation transition-colors"
@@ -129,7 +133,7 @@ export function CartItemRow({ cart, item, index }: { cart: UseCartViewReturn; it
                 <Plus className="h-4 w-4" />
               </button>
             </div>
-            <div className="text-right">
+            <div className="ml-auto text-right">
               <span className="text-lg font-bold" style={{ color: p.accent }}>{formatPrice(item.subtotal)}</span>
               {item.quantity > 1 && (
                 <p className="text-xs text-gray-500" style={{ color: p.mutedText }}>{formatPrice(item.subtotal / item.quantity)} each</p>
@@ -249,7 +253,7 @@ export function CartCheckoutButton({ cart, className = '' }: { cart: UseCartView
       type="button"
       onClick={requestCheckout}
       disabled={isNavigating}
-      className={`w-full h-14 inline-flex items-center justify-center font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`w-full min-w-0 min-h-14 px-4 py-2 inline-flex items-center justify-center text-center leading-tight font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
       style={{ backgroundColor: p.button ?? p.accent, color: p.accentText }}
     >
       {isNavigating ? (

@@ -1,5 +1,6 @@
 import { ShiftCard } from "../../components/ShiftCard";
 import React, { useCallback, useMemo, useState } from "react";
+import { localDayStartMs } from "../../lib/backends/analytics-time";
 import {
   Alert,
   RefreshControl,
@@ -63,10 +64,13 @@ const SHIFT_ORDER_LIMIT = 200;
  */
 const INTAKE_PREVIEW = 3;
 
-/** Start of today in the device's local timezone. */
+/**
+ * Start of today in MANILA — the day every report, the daily order number and
+ * the server's own "today" use. The phone's timezone made a drawer on a phone
+ * set to another zone count a different day than Home.
+ */
 function startOfToday(): number {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return localDayStartMs(Date.now());
 }
 
 function formatSaleTime(at: number): string {
@@ -187,9 +191,14 @@ export default function PosSalesScreen() {
       <ScrollView
         style={styles.screen}
         contentContainerStyle={styles.body}
+        // The shift card's float / count fields sit above their buttons. Without
+        // this, a tap on Clock in or Confirm with the keyboard up only dismissed
+        // the keyboard — on a tablet it felt like a dead button.
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       >
-        <ShiftCard orders={data ?? []} complete={!isLoading && (data?.length ?? 0) < SHIFT_ORDER_LIMIT} />
+        <ShiftCard orders={data ?? []} pageLimit={SHIFT_ORDER_LIMIT} />
         {/* The money first: it is the only reason this screen is open. */}
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Expected in drawer · Cash</Text>

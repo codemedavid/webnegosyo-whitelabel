@@ -9,6 +9,7 @@ import { MANAGE_SECTIONS, hubSections } from "../../lib/hubs";
 import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { tabPresentation } from "../../lib/workspace-presentation";
 import { canOpenTeam } from "../../lib/staff-service";
+import { hasPermission } from "../../lib/staff-permissions";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
 import { useTutorialChapters, useTutorialProgress } from "../../lib/tutorial/use-tutorial";
@@ -43,6 +44,7 @@ export default function ManageScreen() {
   const ctx = useTabVisibilityContext();
   const sections = hubSections(MANAGE_SECTIONS, ctx);
   const showTeam = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
+  const canDesignReceipt = hasPermission({ role, isOwner, permissions }, "store_setup");
   const chapters = useTutorialChapters();
   const { progress: tutorialProgress } = useTutorialProgress();
   const tour = progressSummary(tutorialProgress, chapters.map((c) => c.id));
@@ -144,6 +146,15 @@ export default function ManageScreen() {
               }
               grouped
             />
+            {canDesignReceipt ? (
+              <ListRow
+                icon="report"
+                title="Receipt design"
+                subtitle="What your printed receipt says and looks like"
+                onPress={() => router.push("/(main)/receipt-editor")}
+                grouped
+              />
+            ) : null}
             <ListRow
               icon="qr"
               title="Scan QR"

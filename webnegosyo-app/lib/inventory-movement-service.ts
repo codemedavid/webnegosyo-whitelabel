@@ -43,6 +43,12 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 
 export interface MovementOptions {
   timeoutMs?: number;
+  /**
+   * One key per save attempt, reused by its retries. After a timeout the write
+   * may already have landed; tapping Save again with the same key is then
+   * refused by the server instead of recording the delivery (or waste) twice.
+   */
+  clientRequestId?: string;
 }
 
 /**
@@ -94,7 +100,12 @@ export async function submitStockMovement(
       // shelf lands in the unbranched pool and South still reads zero.
       // Omitted rather than sent as null when there is no branch, so a
       // single-shop tenant's request is byte-for-byte what it was before.
-      body: JSON.stringify(outletId ? { tenantId, ...payload, outletId } : { tenantId, ...payload }),
+      body: JSON.stringify({
+        tenantId,
+        ...payload,
+        ...(outletId ? { outletId } : {}),
+        ...(options.clientRequestId ? { clientRequestId: options.clientRequestId } : {}),
+      }),
       }),
       expiry,
     ]);

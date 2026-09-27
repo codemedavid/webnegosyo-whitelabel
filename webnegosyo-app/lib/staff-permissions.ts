@@ -157,6 +157,11 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // unmapped tab defaults to allowed, which would let any cashier retire the
   // merchant's GCash account mid-service.
   payments: "store_setup",
+  // A standing discount comes off the merchant's own revenue, so minting one
+  // needs the same grant the web admin asks for. Mapped explicitly because an
+  // unmapped tab defaults to ALLOWED. (Honouring a code at the till does not
+  // need it — that is ordinary counter work, see /api/vouchers/lookup.)
+  vouchers: "vouchers",
   // The kitchen board shows every active order and can advance them. An
   // unmapped tab defaults to ALLOWED, which would put the board — and its
   // bump button — in front of every staffer with any grant at all.

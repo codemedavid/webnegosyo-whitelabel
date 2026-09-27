@@ -22,7 +22,12 @@ type CartCheckoutOptions = {
   onCheckoutStart?: () => void
 }
 
-/** Shared checkout policy and interstitial flow for every cart presentation. */
+/**
+ * Shared checkout policy for every cart presentation, plus the cart's "last
+ * call" suggestions. Those used to gate checkout behind a full-screen
+ * interstitial every diner had to pass; they are now prefetched here and shown
+ * inline in the cart, and Checkout always goes straight through.
+ */
 export function useCartCheckout({
   tenant, tenantSlug, tenantId = tenant?.id, items, hasItems, enabled,
   menuEngineeringEnabled = tenant?.menu_engineering_enabled,
@@ -33,15 +38,14 @@ export function useCartCheckout({
   const router = useRouter()
   const openStatus = useStoreOpenStatus(tenant)
   const [isNavigating, setIsNavigating] = useState(false)
-  const [showUpsellModal, setShowUpsellModal] = useState(false)
   const [prefetch, setPrefetch] = useState<{ key: string; items: MenuItem[] } | null>(null)
   const navigationRef = useRef(false)
   const navigationVersion = useRef(0)
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const showInterstitial = !!(tenantId && menuEngineeringEnabled && checkoutUpsellEnabled)
+  const showCartOffers = !!(tenantId && menuEngineeringEnabled && checkoutUpsellEnabled)
   const cartSignature = useMemo(() => [...new Set(items.map((item) => item.menu_item.id))].sort().join(','), [items])
 
-  const prefetchKey = JSON.stringify([tenantId, tenantSlug, cartSignature, checkoutUpsellMaxItems, showInterstitial])
+  const prefetchKey = JSON.stringify([tenantId, tenantSlug, cartSignature, checkoutUpsellMaxItems, showCartOffers])
   const prefetchedItems = prefetch?.key === prefetchKey ? prefetch.items : null
 
   useEffect(() => {
@@ -50,21 +54,20 @@ export function useCartCheckout({
   }, [enabled, hasItems, router, tenantSlug])
 
   useEffect(() => {
-    if (!enabled || !showInterstitial || !tenantId || !cartSignature) return
+    if (!enabled || !showCartOffers || !tenantId || !cartSignature) return
     let cancelled = false
     const timer = setTimeout(() => {
       getCheckoutUpsellsAction(cartSignature.split(','), tenantId, checkoutUpsellMaxItems)
         .then((result) => {
           if (!cancelled && result.success && result.data) setPrefetch({ key: prefetchKey, items: result.data })
         })
-        .catch(() => { /* The modal can retry on demand. */ })
+        .catch(() => { /* No suggestions this time; the cart works without them. */ })
     }, 500)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [enabled, showInterstitial, tenantId, cartSignature, checkoutUpsellMaxItems, prefetchKey])
+  }, [enabled, showCartOffers, tenantId, cartSignature, checkoutUpsellMaxItems, prefetchKey])
 
   useEffect(() => {
     setIsNavigating(false)
-    setShowUpsellModal(false)
     return () => {
       navigationVersion.current += 1
       navigationRef.current = false
@@ -110,20 +113,9 @@ export function useCartCheckout({
   }, [canCheckout, onCheckoutStart, router, tenantSlug])
 
   const requestCheckout = useCallback(() => {
-    if (!canCheckout()) return
-    if (showInterstitial) {
-      onCheckoutStart?.()
-      setShowUpsellModal(true)
-      return
-    }
-    void navigateToCheckout()
-  }, [canCheckout, showInterstitial, onCheckoutStart, navigateToCheckout])
-
-  const onUpsellContinue = useCallback(() => {
-    setShowUpsellModal(false)
     void navigateToCheckout()
   }, [navigateToCheckout])
 
-  return { router, openStatus, isNavigating, showInterstitial, showUpsellModal, setShowUpsellModal,
-    prefetchedItems, requestCheckout, navigateToCheckout, onUpsellContinue }
+  return { router, openStatus, isNavigating, showCartOffers, cartOfferItems: prefetchedItems,
+    cartOfferMaxItems: checkoutUpsellMaxItems, requestCheckout, navigateToCheckout }
 }

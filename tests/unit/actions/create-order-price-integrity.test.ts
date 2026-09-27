@@ -159,6 +159,7 @@ function orderArgs(over: {
   serviceChargeAmount?: number
   scheduledForISO?: string
   paymentProof?: unknown
+  lalamoveQuoteSignature?: string
 } = {}): AnyArgs {
   return [
     TENANT_ID,
@@ -175,6 +176,10 @@ function orderArgs(over: {
     over.serviceChargeAmount,
     over.scheduledForISO,
     over.paymentProof,
+    undefined, // outletId
+    undefined, // voucherCodes
+    undefined, // clientOrderId
+    over.lalamoveQuoteSignature,
   ]
 }
 
@@ -278,16 +283,92 @@ describe('createOrderAction — price integrity', () => {
     expect(savedArg(5)).toBeUndefined()
   })
 
-  test('keeps a Lalamove quotation fee on a delivery order', async () => {
+  test('refuses unverified delivery when the signing secret is missing', async () => {
     tableRows = {
       ...tableRows,
       tenants: platformTenant({ lalamove_enabled: true }),
       order_types: { ...pickup, name: 'Delivery', type: 'delivery' },
     }
 
-    await place(orderArgs({ deliveryFee: 185, lalamoveQuotationId: 'q-1' }))
+    const previousSecret = process.env.API_SECRET
+    delete process.env.API_SECRET
+    try {
+      const result = await place(orderArgs({ deliveryFee: 185, lalamoveQuotationId: 'q-1' }))
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    } finally {
+      if (previousSecret === undefined) delete process.env.API_SECRET
+      else process.env.API_SECRET = previousSecret
+    }
+  })
 
-    expect(savedArg(5)).toBe(185)
+  describe('Lalamove fee on a deployment with API_SECRET', () => {
+    const previousSecret = process.env.API_SECRET
+    beforeEach(() => {
+      process.env.API_SECRET = 'test-secret'
+      tableRows = {
+        ...tableRows,
+        tenants: platformTenant({ lalamove_enabled: true }),
+        order_types: { ...pickup, name: 'Delivery', type: 'delivery' },
+      }
+    })
+    afterEach(() => {
+      if (previousSecret === undefined) delete process.env.API_SECRET
+      else process.env.API_SECRET = previousSecret
+    })
+
+    async function signedQuote(fee: number, quotationId = 'q-1'): Promise<string> {
+      const { signDeliveryQuote } = await import('@/lib/checkout/delivery-quote-signature')
+      return signDeliveryQuote({ tenantId: TENANT_ID, quotationId, fee,
+        destination: { address: 'Home', lat: 14.7, lng: 121.1 }, expiresAt: Date.now() + 60_000 }) as string
+    }
+
+    test('bills the price Lalamove quoted, not the one the browser sent', async () => {
+      const signature = await signedQuote(185)
+
+      await place(orderArgs({ deliveryFee: 1, lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: signature,
+        customerData: { delivery_address: 'Home', delivery_lat: 14.7, delivery_lng: 121.1 } }))
+
+      expect(savedArg(5)).toBe(185)
+    })
+
+    test('refuses a real signed quotation reused for a different destination', async () => {
+      const result = await place(orderArgs({ lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: await signedQuote(185),
+        customerData: { delivery_address: 'Other home', delivery_lat: 14.8, delivery_lng: 121.1 } }))
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
+    test('refuses a Lalamove fee with no signature', async () => {
+      const result = await place(orderArgs({ deliveryFee: 1, lalamoveQuotationId: 'q-1' }))
+
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
+    test('refuses delivery when both quotation and fee are omitted', async () => {
+      const result = await place(orderArgs())
+
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
+    test('refuses a signature for a different quotation', async () => {
+      const signature = await signedQuote(20, 'q-cheap')
+
+      const result = await place(
+        orderArgs({ deliveryFee: 20, lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: signature })
+      )
+
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
+    test('refuses a quotation sent without its fee and signature (would be booked at no charge)', async () => {
+      const result = await place(orderArgs({ lalamoveQuotationId: 'q-1' }))
+
+      expect(result).toMatchObject({ success: false, refused: true })
+    })
   })
 
   test('strips forged presell and discount keys from customerData', async () => {

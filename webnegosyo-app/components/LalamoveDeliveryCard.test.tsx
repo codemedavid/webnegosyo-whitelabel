@@ -15,7 +15,7 @@
  */
 
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 import { LalamoveDeliveryCard } from "./LalamoveDeliveryCard";
 
@@ -73,6 +73,19 @@ function pressAlertButton(matcher: RegExp) {
 }
 
 describe("a store with no Convex deployment", () => {
+  it("sends only one booking when confirmation is pressed again before completion", async () => {
+    mockRunPlatformLalamoveOp.mockImplementation(() => new Promise(() => {}));
+    render(<LalamoveDeliveryCard order={QUOTED} />);
+    fireEvent.press(screen.getByText("Book Lalamove Delivery"));
+
+    act(() => {
+      pressAlertButton(/^Book$/);
+      pressAlertButton(/^Book$/);
+    });
+
+    expect(mockRunPlatformLalamoveOp).toHaveBeenCalledTimes(1);
+  });
+
   it("books through the web route instead of a Convex action", async () => {
     // Arrange
     render(<LalamoveDeliveryCard order={QUOTED} />);
@@ -188,6 +201,25 @@ describe("a store with no Convex deployment", () => {
     }
   });
 
+  it("waits for cancellation before polling the delivery again", async () => {
+    jest.useFakeTimers();
+    try {
+      mockRunPlatformLalamoveOp.mockImplementation(() => new Promise(() => {}));
+      render(<LalamoveDeliveryCard order={BOOKED} />);
+      fireEvent.press(screen.getByText("Cancel"));
+      act(() => pressAlertButton(/^Yes, cancel$/));
+
+      await jest.advanceTimersByTimeAsync(90_000);
+
+      expect(mockRunPlatformLalamoveOp).toHaveBeenCalledTimes(1);
+      expect(mockRunPlatformLalamoveOp).toHaveBeenCalledWith(
+        expect.objectContaining({ op: "cancel" }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("does not poll a delivery that has already finished", async () => {
     // Arrange
     jest.useFakeTimers();
@@ -229,6 +261,14 @@ describe("a store on its own Convex deployment", () => {
 });
 
 describe("what the merchant can see", () => {
+  it("explains an unconfirmed booking without offering another rider or quotation", () => {
+    render(<LalamoveDeliveryCard order={{ ...QUOTED, lalamoveStatus: "BOOKING" }} />);
+
+    expect(screen.queryByText("Book Lalamove Delivery")).toBeNull();
+    expect(screen.queryByText("Get New Quote")).toBeNull();
+    expect(screen.getByText(/check Lalamove before booking again/i)).toBeTruthy();
+  });
+
   it("shows the live status and a way to track a booked delivery", () => {
     // Arrange + Act
     render(<LalamoveDeliveryCard order={BOOKED} />);
@@ -298,6 +338,19 @@ describe("what the merchant can see", () => {
 
 describe("rebooking after the delivery was cancelled", () => {
   const CANCELLED = { ...BOOKED, lalamoveStatus: "CANCELED" };
+
+  it("does not request multiple fresh quotes while rebooking", () => {
+    mockRunPlatformLalamoveOp.mockImplementation(() => new Promise(() => {}));
+    render(<LalamoveDeliveryCard order={CANCELLED} />);
+    fireEvent.press(screen.getByText("Rebook Delivery"));
+
+    act(() => {
+      pressAlertButton(/^Rebook$/);
+      pressAlertButton(/^Rebook$/);
+    });
+
+    expect(mockRunPlatformLalamoveOp).toHaveBeenCalledTimes(1);
+  });
 
   it("gets a fresh quote and books a new rider after a confirmation", async () => {
     // One accidental Cancel used to leave only Sync — no way to get the

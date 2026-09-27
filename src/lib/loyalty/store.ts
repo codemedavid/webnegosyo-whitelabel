@@ -54,13 +54,17 @@ interface VersionRow {
 export async function loadActiveLoyaltyPrograms(
   client: SupabaseClient,
   tenantId: string,
+  options: { includeInactive?: boolean } = {},
 ): Promise<LoyaltyProgram[]> {
-  const { data: programRows, error } = await client
+  let query = client
     .from('loyalty_programs')
     .select(PROGRAM_SELECT)
     .eq('tenant_id', tenantId)
-    .eq('status', 'active')
     .not('current_version_id', 'is', null)
+  // Historical receipt cards remain readable after earning is paused/ended.
+  // The default used by earning is still active programs only.
+  if (!options.includeInactive) query = query.eq('status', 'active')
+  const { data: programRows, error } = await query
 
   if (error) throw new Error(`loyalty programs could not be read: ${error.message}`)
   const programs = (programRows ?? []) as unknown as ProgramRow[]
@@ -101,7 +105,7 @@ export async function loadActiveLoyaltyPrograms(
 
 export function createSupabaseLoyaltyDeps(client: SupabaseClient): LoyaltyEarningDeps {
   return {
-    loadActivePrograms: (tenantId) => loadActiveLoyaltyPrograms(client, tenantId),
+    loadActivePrograms: (tenantId, at) => at ? loadLoyaltyProgramsAt(client, tenantId, at) : loadActiveLoyaltyPrograms(client, tenantId),
 
     async loadOrderEarns(tenantId, orderBackend, externalOrderId) {
       const { data, error } = await client
@@ -147,6 +151,25 @@ export function createSupabaseLoyaltyDeps(client: SupabaseClient): LoyaltyEarnin
       }
     },
   }
+}
+
+/** Historical rules prevent delayed earning from using a newly edited reward. */
+export async function loadLoyaltyProgramsAt(client: SupabaseClient, tenantId: string, at: string): Promise<LoyaltyProgram[]> {
+  const programs = await loadActiveLoyaltyPrograms(client, tenantId)
+  if (!programs.length) return []
+  const { data, error } = await client.from('loyalty_program_versions')
+    .select(VERSION_SELECT).eq('tenant_id', tenantId).in('program_id', programs.map(program => program.id))
+    .lte('created_at', at).order('version', { ascending: false })
+  if (error) throw new Error('Historical loyalty rules could not be read')
+  const versions = new Map<string, VersionRow>()
+  for (const row of (data ?? []) as VersionRow[]) if (!versions.has(row.program_id)) versions.set(row.program_id, row)
+  return programs.flatMap(program => {
+    const version = versions.get(program.id)
+    if (!version) return []
+    const rules = parseLoyaltyRules(version.rules)
+    if (!rules.ok) throw new Error('Historical loyalty rules are invalid')
+    return [{ ...program, version: { id: version.id, version: version.version, rules: rules.value, createdAt: version.created_at } }]
+  })
 }
 
 export type { LoyaltyTenantFlags }

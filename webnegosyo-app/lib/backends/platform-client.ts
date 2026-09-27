@@ -30,6 +30,8 @@ export interface PlatformQueryBuilder {
   lt(column: string, value: unknown): PlatformQueryBuilder;
   order(column: string, options: { ascending: boolean }): PlatformQueryBuilder;
   limit(count: number): PlatformQueryBuilder;
+  /** Rows `from`..`to` inclusive — how a read pages past the per-request cap. */
+  range(from: number, to: number): PlatformQueryBuilder;
   insert(values: unknown): PlatformQueryBuilder;
   update(values: unknown): PlatformQueryBuilder;
   upsert(values: unknown, options?: { onConflict?: string }): PlatformQueryBuilder;
@@ -38,6 +40,11 @@ export interface PlatformQueryBuilder {
   delete(): PlatformQueryBuilder;
   maybeSingle(): PlatformQueryBuilder;
   single(): PlatformQueryBuilder;
+  /**
+   * Cancel the request when `signal` aborts. Optional because only a READ is
+   * ever given one (see `withAbortSignal`) and hand-written fakes predate it.
+   */
+  abortSignal?(signal: AbortSignal): PlatformQueryBuilder;
   then<TResult>(
     onfulfilled: (value: { data: unknown; error: { message: string } | null }) => TResult,
     onrejected?: (reason: unknown) => TResult
@@ -51,6 +58,73 @@ interface QueryResult<T> {
 
 /** Safety cap for bulk reads, mirroring Convex's QUERY_LIMIT. */
 export const STATS_LIMIT = 10000;
+
+/**
+ * The most rows the platform project's API returns for ONE request, whatever
+ * `.limit()` asks for (PostgREST `db-max-rows`, probed 2026-09-24:
+ * `content-range: 0-999/16983` for a `limit=5000` read).
+ *
+ * Every bulk read that asked for STATS_LIMIT used to receive at most this many
+ * rows and sum them as if they were the whole window — a store doing ~240
+ * orders a day read roughly a third short over 30 days, and different screens
+ * disagreed depending on how many rows each happened to ask for.
+ */
+export const PLATFORM_PAGE_SIZE = 1000;
+
+/**
+ * Every row a read matches, up to `maxRows`, fetched a page at a time.
+ *
+ * `build` must return a FRESH query each call — a supabase-js builder runs once
+ * — and must carry a total ordering (end with a unique column such as `id`),
+ * otherwise rows can shift between pages and be skipped or read twice.
+ *
+ * A short page is the end of the result. A database error on any page throws:
+ * a report summed over two pages of three is worse than no report.
+ */
+export async function readAllPages<Row>(
+  build: () => PlatformQueryBuilder,
+  maxRows: number = STATS_LIMIT
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  while (rows.length < maxRows) {
+    const pageSize = Math.min(PLATFORM_PAGE_SIZE, maxRows - rows.length);
+    const from = rows.length;
+    const page = (await unwrap<Row[] | null>(build().range(from, from + pageSize - 1))) ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+/**
+ * The same client, with `signal` attached to every read it builds.
+ *
+ * supabase-js cancels a request only when its builder carries the signal, and
+ * the adapters build many — one per page of a paged read, one per chunk of
+ * ids. Wrapping `from` puts the signal on each `select` without threading it
+ * through every read function. Writes are left alone on purpose: aborting a
+ * write that already reached the server does not un-write it, it only hides
+ * whether it landed.
+ */
+export function withAbortSignal(client: PlatformClient, signal: AbortSignal): PlatformClient {
+  return {
+    from: (table) => {
+      const query = client.from(table);
+      return new Proxy(query, {
+        get: (target, property) => {
+          if (property === "select") {
+            return (columns?: string) => {
+              const builder = target.select(columns);
+              return builder.abortSignal?.(signal) ?? builder;
+            };
+          }
+          const value: unknown = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+  };
+}
 
 /** A store-wide account, and the default for every caller that passes no scope. */
 export const STORE_WIDE: BranchScope = { kind: "all" };

@@ -7,7 +7,9 @@ import { useSafeQuery } from "../../lib/hooks";
 import { formatCount } from "../../lib/format";
 import { buildBranchKpis, storeKpiTotals, type KpiOrderLike } from "../../lib/branch-kpis";
 import { assignBranchVerdicts } from "../../lib/branch-verdict";
-import { buildKpiPeriod, PERIOD_CHOICES } from "../../lib/branch-period";
+import { buildKpiPeriod, kpiFetchWindow, PERIOD_CHOICES } from "../../lib/branch-period";
+import { ordersInWindowArgs } from "../../lib/report-window";
+import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
 import { useAccountBranchScope } from "../../lib/use-branch-scope";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useOutlets } from "../../lib/use-outlets";
@@ -52,6 +54,8 @@ const LANDING_PERIOD = PERIOD_CHOICES[0];
 export default function PortfolioScreen() {
   const scope = useAccountBranchScope();
   const [refreshing, setRefreshing] = useState(false);
+  const { anchorMs } = useBusinessDayAnchor();
+  const canBound = useCanBoundReports();
 
   const {
     outlets,
@@ -63,12 +67,15 @@ export default function PortfolioScreen() {
     data: orders,
     error: ordersError,
     refetch: refetchOrders,
-  } = useSafeQuery<KpiOrderLike[]>(getOrdersRef, { limit: ORDER_WINDOW });
+  } = useSafeQuery<KpiOrderLike[]>(
+    getOrdersRef,
+    ordersInWindowArgs(kpiFetchWindow(buildKpiPeriod(LANDING_PERIOD.days, anchorMs)), canBound, ORDER_WINDOW)
+  );
 
   const selectBranch = useBranchContextStore((s) => s.selectBranch);
 
   const { rows, totals } = useMemo(() => {
-    const period = buildKpiPeriod(LANDING_PERIOD.days, Date.now());
+    const period = buildKpiPeriod(LANDING_PERIOD.days, anchorMs);
     const scoped = filterOrdersToScope(scope, orders) as KpiOrderLike[];
     const kpis = buildBranchKpis(scoped, outlets, period);
 
@@ -76,7 +83,7 @@ export default function PortfolioScreen() {
       rows: assignBranchVerdicts(kpis, { periodDays: period.days }),
       totals: storeKpiTotals(kpis),
     };
-  }, [scope, orders, outlets]);
+  }, [scope, orders, outlets, anchorMs]);
 
   const onRefresh = useCallback(
     () => refreshWithMinSpinner([refetchOutlets, refetchOrders], setRefreshing),

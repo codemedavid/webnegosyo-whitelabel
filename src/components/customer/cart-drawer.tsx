@@ -28,7 +28,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useCart } from '@/hooks/useCart'
 import { formatPrice } from '@/lib/cart-utils'
-import { CheckoutUpsellModal } from '@/components/customer/checkout-upsell-modal'
+import { CartOffersSection } from '@/components/customer/offers/cart-offers-section'
+import { cartOfferThemeFromBranding } from '@/components/customer/offers/offer-theme'
 import { ItemDetailModal } from '@/components/customer/item-detail-modal'
 import { getCartPalette, type BrandingColors } from '@/lib/branding-utils'
 import type { Tenant } from '@/types/database'
@@ -58,8 +59,8 @@ export function CartDrawer({
   tenantId,
   menuEngineeringEnabled,
   checkoutUpsellEnabled,
-  checkoutUpsellTitle = 'Before you go...',
-  checkoutUpsellSubtitle = 'You might also enjoy these items',
+  checkoutUpsellTitle = 'Add to your order',
+  checkoutUpsellSubtitle,
   checkoutUpsellMaxItems = 4,
 }: CartDrawerProps) {
   // Cart page palette: accent is always resolved (falls back to brand colors);
@@ -76,8 +77,7 @@ export function CartDrawer({
     handleCancelRemove, handleUpdateItem, handleDecreaseBundleQuantity, handleConfirmBundleRemove,
   } = useCartCommands({ tenantId: tenant?.id ?? tenantId, cart })
   const {
-    showInterstitial, showUpsellModal, prefetchedItems, requestCheckout: handleCheckoutClick,
-    onUpsellContinue: handleUpsellContinue,
+    showCartOffers, cartOfferItems, cartOfferMaxItems, requestCheckout: handleCheckoutClick,
   } = useCartCheckout({
     tenant, tenantSlug, tenantId: tenant?.id ?? tenantId, items,
     hasItems: items.length + bundleItems.length > 0, enabled: open,
@@ -334,6 +334,20 @@ export function CartDrawer({
                       </div>
                     </div>
                   ))}
+                  {showCartOffers && (tenant?.id ?? tenantId) && (
+                    <CartOffersSection
+                      suggestions={cartOfferItems}
+                      cartItemIds={items.map((line) => line.menu_item.id)}
+                      maxItems={cartOfferMaxItems}
+                      title={checkoutUpsellTitle}
+                      subtitle={checkoutUpsellSubtitle || undefined}
+                      theme={cartOfferThemeFromBranding(branding)}
+                      tenantId={(tenant?.id ?? tenantId) as string}
+                      tenantSlug={tenantSlug}
+                      hideCurrencySymbol={tenant?.hide_currency_symbol}
+                      onBeforeNavigate={onClose}
+                    />
+                  )}
                 </div>
               </ScrollArea>
 
@@ -443,19 +457,6 @@ export function CartDrawer({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Checkout Upsell Interstitial */}
-      {showInterstitial && (
-        <CheckoutUpsellModal
-          open={showUpsellModal}
-          onContinue={handleUpsellContinue}
-          tenantId={(tenant?.id ?? tenantId)!}
-          branding={branding}
-          title={checkoutUpsellTitle}
-          subtitle={checkoutUpsellSubtitle}
-          maxItems={checkoutUpsellMaxItems}
-          prefetchedItems={prefetchedItems ?? undefined}
-        />
-      )}
     </>
   )
 }

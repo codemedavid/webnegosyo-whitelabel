@@ -20,11 +20,12 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { keepPreviousData, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { supabase } from "../supabase";
-import { withPlatformTimeout } from "./platform-call";
+import { withPlatformDeadline } from "./platform-call";
 import { runPlatformQuery, type PlatformClient } from "./supabase-adapter";
 import {
   NO_FAILURES,
   countConsecutiveFailures,
+  isBulkOrderRead,
   isRefRealtimeBacked,
   resolvePollMs,
   type FailureStreak,
@@ -39,7 +40,7 @@ import {
 import { realtimeHub } from "./realtime-hub-singleton";
 import { bindRealtimeToQueryClient } from "../query/realtime-bridge";
 import { resolveStaleMs, shouldKeepPreviousData } from "../query/query-client";
-import { useRefetchOnScreenFocus } from "../query/use-screen-focus";
+import { useIsScreenFocused, useRefetchOnScreenFocus } from "../query/use-screen-focus";
 import type { BranchScope } from "../branch-scope";
 
 export interface SafeQueryResult<T> {
@@ -124,16 +125,32 @@ export function usePlatformQuery<T>(
   const streakRef = useRef<FailureStreak>(NO_FAILURES);
 
   const isRealtimeBacked = isRefRealtimeBacked(refName);
+  const isBulk = useMemo(() => isBulkOrderRead(refName, JSON.parse(argsKey)), [refName, argsKey]);
+  const staleMs = useMemo(() => resolveStaleMs(refName, JSON.parse(argsKey)), [refName, argsKey]);
   useRealtimeSubscription(tenantId, !isSkipped && isRealtimeBacked);
   const realtimeStatus = useRealtimeStatus(tenantId);
+
+  // Tabs mount once and never unmount, so without this every tab a merchant
+  // had opened kept its reads ACTIVE for the whole session: each polled, each
+  // refetched on every realtime payload and every mutation, and each re-read
+  // on every foreground — a dozen getOrders at once on one device, queued on
+  // the handful of connections a phone opens to one host until the 12 s
+  // deadline fired. Out of view, this instance stops observing: its poll
+  // stops, an invalidation only marks it stale, and focus catches it up. A key
+  // a visible screen or a global watcher still observes keeps being read.
+  const isScreenFocused = useIsScreenFocused();
 
   const query = useQuery({
     queryKey,
     enabled: !isSkipped,
+    subscribed: isScreenFocused,
     // `tenantId` is non-null whenever this can run: the query is disabled and
-    // `refetch` is guarded while skipped.
-    queryFn: () => readPlatformRef<T>(refName, JSON.parse(argsKey), tenantId ?? "", scope),
-    staleTime: resolveStaleMs(refName),
+    // `refetch` is guarded while skipped. The cache's signal aborts a read it
+    // has replaced (an invalidation mid-flight), so the old request leaves the
+    // wire instead of running on behind the new one.
+    queryFn: ({ signal }) =>
+      readPlatformRef<T>(refName, JSON.parse(argsKey), tenantId ?? "", scope, signal),
+    staleTime: staleMs,
     // Realtime is the primary path once connected; the poll drops to a slow
     // safety net then, and speeds back up if the socket goes away. Changing the
     // interval re-arms the timer without a fetch. A read that keeps failing
@@ -144,7 +161,7 @@ export function usePlatformQuery<T>(
       : (query) => {
           const { streak, failures } = countConsecutiveFailures(query.state, streakRef.current);
           streakRef.current = streak;
-          return resolvePollMs(realtimeStatus, failures, () => jitterSeed);
+          return resolvePollMs(realtimeStatus, failures, () => jitterSeed, isBulk);
         },
     refetchIntervalInBackground: false,
     // Only for refs whose key changes while the screen does not (see
@@ -163,7 +180,7 @@ export function usePlatformQuery<T>(
 
   useRefetchOnScreenFocus({
     enabled: !isSkipped,
-    staleMs: resolveStaleMs(refName),
+    staleMs,
     dataUpdatedAt: query.dataUpdatedAt,
     isFetching: query.isFetching,
     refetch,
@@ -172,20 +189,29 @@ export function usePlatformQuery<T>(
   return toSafeQueryResult(query, isSkipped, refetch);
 }
 
-/** One bounded read of a platform ref; failures are logged and rethrown for the cache. */
+/**
+ * One bounded, cancellable read of a platform ref; failures are logged and
+ * rethrown for the cache. The deadline aborts the request as well as the wait
+ * (`withPlatformDeadline`), so a timed-out read never lingers behind its retry.
+ */
 async function readPlatformRef<T>(
   refName: string,
   args: Record<string, unknown>,
   tenantId: string,
-  scope: BranchScope
+  scope: BranchScope,
+  signal: AbortSignal
 ): Promise<T> {
   try {
-    return (await withPlatformTimeout(
-      runPlatformQuery(platformClient, tenantId, refName, args, scope),
-      refName
+    return (await withPlatformDeadline(
+      (deadline) => runPlatformQuery(platformClient, tenantId, refName, args, scope, deadline),
+      refName,
+      { signal }
     )) as T;
   } catch (e: unknown) {
-    console.error("[usePlatformQuery] " + refName + ":", e instanceof Error ? e.message : String(e));
+    // A read the cache cancelled is not a failure worth a log line.
+    if (!signal.aborted) {
+      console.error("[usePlatformQuery] " + refName + ":", e instanceof Error ? e.message : String(e));
+    }
     throw e;
   }
 }

@@ -163,19 +163,80 @@ export function clampSelection(selection: ReportSelection, nowMs: number): Repor
  * THE COMPATIBILITY RULE. Every store runs its own Convex deployment and they
  * are re-pushed in bulk, so at any moment plenty of them are several bundles
  * behind this app. An old validator does not ignore an argument it has never
- * heard of — it rejects the whole query. So a preset sends exactly what it
- * sends today and keeps working everywhere; only a picked day or range sends
- * the new bounded window. A store that is behind therefore fails at the moment
+ * heard of — it rejects the whole query. So unless the caller says the backend
+ * can bound (`canBound`, from `supportsBoundedWindow`), a preset sends exactly
+ * what it always sent and keeps working everywhere; only a picked day or range
+ * sends the new bounded window. A store that is behind therefore fails at the moment
  * the merchant uses the new feature, where `isStaleBundleError` already turns
  * it into "this store needs a backend update" — never on the screens that
  * worked yesterday.
  */
 export function selectionToQueryArgs(
   selection: ReportSelection,
-  nowMs: number
+  nowMs: number,
+  canBound = false
 ): ReportQueryArgs {
-  if (selection.kind === "preset") return { daysBack: clampDays(selection.days) };
-  return resolveReportWindow(selection, nowMs);
+  // A backend that understands bounded windows gets the CALENDAR days the
+  // label names. `daysBack` means "now minus N×24h" on every backend, so
+  // "Last 7 days" used to start mid-afternoon eight days ago, and "Today"
+  // was the last 24 hours — neither matched Home, Trends or the till.
+  if (canBound || selection.kind !== "preset") return resolveReportWindow(selection, nowMs);
+  return { daysBack: clampDays(selection.days) };
+}
+
+/** The Convex bundle in which every report query learned `startMs`/`endMs`. */
+export const BOUNDED_WINDOW_SCHEMA_VERSION = 32;
+
+/**
+ * Whether the backend answering this store's reports accepts a bounded window.
+ *
+ * The platform adapter always does. A Convex deployment does from v32; below
+ * that its validator rejects `startMs` and the whole query fails, so those
+ * stores keep sending `daysBack` for presets until they are redeployed. An
+ * unknown version counts as the oldest, the same rule `convex-order-scope`
+ * applies.
+ */
+export function supportsBoundedWindow(
+  route: string,
+  convexSchemaVersion: number | null | undefined
+): boolean {
+  if (route === "platform") return true;
+  if (route !== "convex") return false;
+  return (convexSchemaVersion ?? 0) >= BOUNDED_WINDOW_SCHEMA_VERSION;
+}
+
+/**
+ * The most orders a windowed `orders:getOrders` read asks for — the bulk-read
+ * cap both backends enforce. A window, not a most-recent-N page, so a quiet
+ * branch's week is never pushed out by a busy neighbour's afternoon.
+ */
+export const WINDOWED_ORDER_LIMIT = 10000;
+
+/**
+ * The most-recent page a screen falls back to on a backend that cannot take a
+ * window. Unchanged from what those screens always asked for.
+ */
+export const LEGACY_ORDER_PAGE = 2000;
+
+export type OrdersQueryArgs =
+  | { startMs: number; endMs: number; limit: number }
+  | { limit: number };
+
+/**
+ * `orders:getOrders` arguments for the orders in `window`.
+ *
+ * Screens that summed "the last 2000 orders, filtered on the phone" silently
+ * lost the oldest days of a busy store's period. A backend that can take a
+ * window now reads exactly that window; an older Convex bundle, which would
+ * reject `startMs`, keeps the page it always read.
+ */
+export function ordersInWindowArgs(
+  window: ReportWindow,
+  canBound: boolean,
+  legacyLimit: number = LEGACY_ORDER_PAGE
+): OrdersQueryArgs {
+  if (!canBound) return { limit: legacyLimit };
+  return { startMs: window.startMs, endMs: window.endMs, limit: WINDOWED_ORDER_LIMIT };
 }
 
 /** True when this selection needs a backend that understands bounded windows. */

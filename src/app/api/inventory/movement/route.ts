@@ -127,7 +127,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const { movement, item } = await recordStockMovementWith(
+    const { movement, item, alreadyRecorded } = await recordStockMovementWith(
       // A Bearer-token client built from the untyped `createClient`, where the
       // service expects the `Database`-typed server one. The queries it runs
       // are identical; only the generic differs.
@@ -159,6 +159,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         inventory_count_id:
           typeof body?.inventory_count_id === 'string' ? body.inventory_count_id : undefined,
         note: typeof body?.note === 'string' ? body.note : undefined,
+        // The phone's key for this one save. A retry after a timeout carries
+        // the same key, and the database refuses to record it a second time.
+        // The schema rejects anything that is not a uuid.
+        client_request_id:
+          typeof body?.clientRequestId === 'string' ? body.clientRequestId : undefined,
       },
       // Everything the service would otherwise resolve for itself, already
       // resolved above to authorize this call. Without it the write repeats a
@@ -168,10 +173,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       {
         userId: user.id,
         scope: resolveBranchScope(appUser as unknown as BranchScopedUser),
+        source: 'merchant_app',
       },
     )
 
-    return NextResponse.json({ success: true, movement, item })
+    return NextResponse.json({ success: true, movement, item, alreadyRecorded: alreadyRecorded === true })
   } catch (error) {
     // The merchant is waiting on this. Return the reason rather than a generic
     // failure — "the movement unit could not be resolved" is actionable and a

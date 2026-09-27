@@ -14,6 +14,14 @@
 
 import { supabase } from "./supabase";
 import { validateCashAmount } from "./shift";
+import { withDeadline } from "./offline/deadline";
+
+/**
+ * How long a shift read or write may take before the cashier is told. An
+ * unbounded await left the Clock in / Confirm button spinning on "…" with no
+ * way out but killing the app (the pos-second-checkout-freeze precedent).
+ */
+const SHIFT_REQUEST_MS = 15_000;
 
 /** Injected in tests so no connection is opened. */
 type Db = Pick<typeof supabase, "from">;
@@ -84,13 +92,18 @@ async function findOpenShift(
   tenantId: string,
   staffUserId: string,
 ): Promise<ShiftRow | null> {
-  const { data, error } = await db
-    .from("staff_shifts")
-    .select(SHIFT_COLUMNS)
-    .eq("tenant_id", tenantId)
-    .eq("staff_user_id", staffUserId)
-    .eq("status", "open")
-    .maybeSingle();
+  const { data, error } = await withDeadline(
+    Promise.resolve(
+      db
+        .from("staff_shifts")
+        .select(SHIFT_COLUMNS)
+        .eq("tenant_id", tenantId)
+        .eq("staff_user_id", staffUserId)
+        .eq("status", "open")
+        .maybeSingle(),
+    ),
+    SHIFT_REQUEST_MS,
+  );
 
   if (error) throw asError(error, "The running shift could not be read.");
   return (data as unknown as ShiftRow) ?? null;
@@ -113,12 +126,27 @@ export async function loadOpenShift(
   if (!tenantId || !staffUserId) return null;
 
   try {
-    const row = await findOpenShift(db, tenantId, staffUserId);
-    return row ? toShift(row) : null;
+    return await fetchOpenShift(tenantId, staffUserId, db);
   } catch (error) {
     console.warn("[shift] open shift unavailable", { tenantId, error });
     return null;
   }
+}
+
+/**
+ * The same read as loadOpenShift, but THROWING on failure — for the one
+ * caller that must tell "no open shift" from "could not look": deciding
+ * whether a close that timed out actually landed. Reading a dropped
+ * connection as "closed" would tell the cashier their drawer was recorded
+ * when it was not.
+ */
+export async function fetchOpenShift(
+  tenantId: string,
+  staffUserId: string,
+  db: Db = supabase,
+): Promise<ShiftRecord | null> {
+  const row = await findOpenShift(db, tenantId, staffUserId);
+  return row ? toShift(row) : null;
 }
 
 export interface OpenShiftInput {
@@ -153,18 +181,23 @@ export async function openShift(
   const existing = await findOpenShift(db, tenantId, input.staffUserId);
   if (existing) return toShift(existing);
 
-  const { data, error } = await db
-    .from("staff_shifts")
-    .insert({
-      tenant_id: tenantId,
-      outlet_id: input.outletId,
-      staff_user_id: input.staffUserId,
-      staff_name: input.staffName,
-      status: "open",
-      opening_float: float.amount,
-    } as never)
-    .select(SHIFT_COLUMNS)
-    .single();
+  const { data, error } = await withDeadline(
+    Promise.resolve(
+      db
+        .from("staff_shifts")
+        .insert({
+          tenant_id: tenantId,
+          outlet_id: input.outletId,
+          staff_user_id: input.staffUserId,
+          staff_name: input.staffName,
+          status: "open",
+          opening_float: float.amount,
+        } as never)
+        .select(SHIFT_COLUMNS)
+        .single(),
+    ),
+    SHIFT_REQUEST_MS,
+  );
 
   if (error) throw asError(error, "The shift could not be started.");
   if (!data) throw new Error("The shift could not be started. Try again.");
@@ -200,20 +233,27 @@ export async function closeShift(
   if (!counted.ok) throw new Error(counted.reason);
 
   if (!Number.isFinite(input.expectedCash)) throw new Error("Expected cash must be a finite amount.");
-  const { data, error } = await db
-    .from("staff_shifts")
-    .update({
-      status: "closed",
-      closed_at: new Date().toISOString(),
-      closing_count: counted.amount,
-      expected_cash: input.expectedCash,
-      note: input.note,
-    } as never)
-    .eq("tenant_id", tenantId)
-    .eq("id", shiftId)
-    .eq("status", "open")
-    .select("id")
-    .single();
+  const { data, error } = await withDeadline(
+    Promise.resolve(
+      db
+        .from("staff_shifts")
+        .update({
+          status: "closed",
+          // The server stamps the real close time (migration
+          // 20260927120000); this value only satisfies the open/closed check.
+          closed_at: new Date().toISOString(),
+          closing_count: counted.amount,
+          expected_cash: input.expectedCash,
+          note: input.note,
+        } as never)
+        .eq("tenant_id", tenantId)
+        .eq("id", shiftId)
+        .eq("status", "open")
+        .select("id")
+        .single(),
+    ),
+    SHIFT_REQUEST_MS,
+  );
 
   if (error || !data) throw asError(error, "The shift could not be closed.");
 }

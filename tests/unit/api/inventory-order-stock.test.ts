@@ -154,6 +154,7 @@ describe('POST /api/inventory/order-stock', () => {
       'sale',
       0,
       null,
+      expect.anything(),
     )
   })
 
@@ -201,6 +202,7 @@ describe('POST /api/inventory/order-stock', () => {
       'sale',
       0,
       null,
+      expect.anything(),
     )
   })
 
@@ -222,6 +224,7 @@ describe('POST /api/inventory/order-stock', () => {
       'sale',
       0,
       null,
+      expect.anything(),
     )
   })
 
@@ -241,7 +244,7 @@ describe('POST /api/inventory/order-stock', () => {
       const res = await POST(makeRequest(RESTORE_BODY, 'Bearer token-1'))
 
       expect(res.status).toBe(200)
-      expect(reverseMock).toHaveBeenCalledWith('t1', 'jh7dm2p8qr3n5x9')
+      expect(reverseMock).toHaveBeenCalledWith('t1', 'jh7dm2p8qr3n5x9', expect.anything())
       expect(applyMock).not.toHaveBeenCalled()
     })
 
@@ -329,6 +332,7 @@ describe('POST /api/inventory/order-stock', () => {
         [expect.objectContaining({ addonIds: ['add-bacon'] })],
         [expect.objectContaining({ addonIds: ['add-cheese'] })],
         null,
+        expect.anything(),
       )
     })
   })
@@ -351,6 +355,7 @@ describe('POST /api/inventory/order-stock', () => {
         'sale',
         0,
         'outlet-north',
+        expect.anything(),
       )
     })
 
@@ -380,6 +385,7 @@ describe('POST /api/inventory/order-stock', () => {
         'sale',
         0,
         'outlet-north',
+        expect.anything(),
       )
     })
 
@@ -404,6 +410,7 @@ describe('POST /api/inventory/order-stock', () => {
         'sale',
         0,
         'outlet-north',
+        expect.anything(),
       )
     })
 
@@ -426,6 +433,7 @@ describe('POST /api/inventory/order-stock', () => {
         'sale',
         0,
         'outlet-north',
+        expect.anything(),
       )
     })
 
@@ -450,6 +458,7 @@ describe('POST /api/inventory/order-stock', () => {
         'sale',
         0,
         'outlet-north',
+        expect.anything(),
       )
     })
 
@@ -465,6 +474,7 @@ describe('POST /api/inventory/order-stock', () => {
         'sale',
         0,
         null,
+        expect.anything(),
       )
     })
   })
@@ -486,6 +496,46 @@ describe('POST /api/inventory/order-stock', () => {
       'sale',
       0,
       null,
+      expect.anything(),
     )
+  })
+
+  describe('audit trail — who and which path', () => {
+    test('a register sale is attributed to the signed-in cashier and the named source', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest({ ...VALID_BODY, source: 'pos' }, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1', VALID_BODY.orderId, expect.anything(), 'sale', 0, null,
+        { context: { source: 'pos', actorUserId: 'u1' } },
+      )
+    })
+
+    test('an old app that sends no source is recorded as the merchant app', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1', VALID_BODY.orderId, expect.anything(), 'sale', 0, null,
+        { context: { source: 'merchant_app', actorUserId: 'u1' } },
+      )
+    })
+
+    test('an invented source is not trusted', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest({ ...VALID_BODY, source: 'web_checkout; drop table' }, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1', VALID_BODY.orderId, expect.anything(), 'sale', 0, null,
+        { context: { source: 'merchant_app', actorUserId: 'u1' } },
+      )
+    })
+
+    test('a restore names the person who cancelled', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest({ tenantId: 't1', orderId: 'jh7dm2p8qr3n5x9', action: 'restore' }, 'Bearer token-1'))
+
+      expect(reverseMock).toHaveBeenCalledWith('t1', 'jh7dm2p8qr3n5x9', { source: 'merchant_app', actorUserId: 'u1' })
+    })
   })
 })

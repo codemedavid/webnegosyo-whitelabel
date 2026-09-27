@@ -846,6 +846,31 @@ describe('branding image & banner ops', () => {
     expect(result.options.hero_preset).toEqual(expect.arrayContaining(['split', 'collage', 'custom']))
     expect(result.options.card_template).toEqual(expect.arrayContaining(['classic', 'minimal']))
   })
+
+  it('get_branding describes every card template and page layout so a designer can choose by look', async () => {
+    const result = await executeOp('get_branding', ctx, { tenantId: TENANT }) as {
+      designCatalog: { cardTemplates: Array<{ id: string; flexible: boolean }>; pageLayouts: Array<{ id: string }> }
+    }
+
+    const cardIds = result.designCatalog.cardTemplates.map((t) => t.id)
+    expect(cardIds).toEqual(expect.arrayContaining(['showcase', 'atelier', 'kiosk', 'sticker', 'menuboard', 'arch']))
+    expect(cardIds).not.toContain('compact')
+    expect(result.designCatalog.pageLayouts.map((l) => l.id)).toEqual(expect.arrayContaining(['storefront', 'kiosk', 'rails', 'lookbook']))
+  })
+
+  it('update_branding refuses an unknown card template before writing anything', async () => {
+    await expect(executeOp('update_branding', ctx, { tenantId: TENANT, branding: { card_template: 'compact' } }))
+      .rejects.toThrow(/menuboard/)
+    expect(saveBrandingWithClient).not.toHaveBeenCalled()
+  })
+
+  it('update_branding accepts a flexible template with its card-style knobs', async () => {
+    await executeOp('update_branding', ctx, {
+      tenantId: TENANT,
+      branding: { card_template: 'sticker', page_layout: 'lookbook', card_add_button: 'pill' },
+    })
+    expect(saveBrandingWithClient).toHaveBeenCalledWith(ctx.client, TENANT, { card_template: 'sticker', page_layout: 'lookbook', card_add_button: 'pill' })
+  })
 })
 
 describe('category icon ops', () => {
@@ -867,6 +892,18 @@ describe('category icon ops', () => {
     const result = await executeOp('list_category_icons', ctx, {}) as { convention: string; groups: Array<{ label: string; icons: string[] }> }
     expect(result.convention).toBe('lucide:<name>')
     expect(result.groups.find((g) => g.label === 'Popular')?.icons).toContain('pizza')
+  })
+
+  it('update_category refuses a card template that does not exist', async () => {
+    await expect(executeOp('update_category', ctx, { tenantId: TENANT, categoryId: CAT, card_template: 'compact' })).rejects.toThrow()
+    expect(updateCategoryFields).not.toHaveBeenCalled()
+  })
+
+  it('update_category accepts a flexible card template and null to inherit', async () => {
+    await executeOp('update_category', ctx, { tenantId: TENANT, categoryId: CAT, card_template: 'menuboard' })
+    expect(updateCategoryFields).toHaveBeenCalledWith(CAT, TENANT, { card_template: 'menuboard' }, ctx)
+    await executeOp('update_category', ctx, { tenantId: TENANT, categoryId: CAT, card_template: null })
+    expect(updateCategoryFields).toHaveBeenLastCalledWith(CAT, TENANT, { card_template: null }, ctx)
   })
 
   it('update_category forwards a partial patch', async () => {

@@ -9,12 +9,20 @@
  * merchant who wants them back makes an adjustment, which says so in the ledger.
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { callLoyaltyApi } from '@/lib/loyalty/browser-client'
 import { describeMemberStatus } from '@/lib/loyalty/members'
 import type { LoyaltyMemberDetail } from '@/lib/loyalty/member-repository'
 
+import { LoyaltyActivityPanel } from './loyalty-activity-panel'
+import { LoyaltyMemberProgress } from './loyalty-member-progress'
+
 const CLAIMABLE = new Set(['issued', 'restored'])
+
+function effectiveRewardStatus(reward: LoyaltyMemberDetail['rewards'][number]): string {
+  if (CLAIMABLE.has(reward.status) && reward.expiresAt && Date.parse(reward.expiresAt) <= Date.now()) return 'expired'
+  return reward.status
+}
 
 const REWARD_STATUS_LABELS: Record<string, string> = {
   issued: 'Ready to use',
@@ -77,9 +85,15 @@ export function LoyaltyMemberDetailCard({
   const [requestId, setRequestId] = useState(newRequestId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resolution, setResolution] = useState<{ entitlementId: string; action: 'consume' | 'void' } | null>(null)
+  const [resolutionReason, setResolutionReason] = useState('')
+  const [showActivity, setShowActivity] = useState(false)
+  const [activityEpoch, setActivityEpoch] = useState(0)
+  const saving = useRef(false)
   const [message, setMessage] = useState<string | null>(null)
 
   const adjust = async () => {
+    if (saving.current) return
     const magnitude = Number(delta)
     if (!Number.isFinite(magnitude) || magnitude <= 0) {
       setError('Enter how many to add or take away.')
@@ -89,6 +103,7 @@ export function LoyaltyMemberDetailCard({
       setError('Say why you are changing this balance.')
       return
     }
+    saving.current = true
     setBusy(true)
     setError(null)
     try {
@@ -119,21 +134,27 @@ export function LoyaltyMemberDetailCard({
       setNote('')
       setDelta('1')
       setRequestId(newRequestId())
+      setActivityEpoch(value => value + 1)
       onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That change could not be saved.')
     } finally {
+      saving.current = false
       setBusy(false)
     }
   }
 
-  const settle = async (entitlementId: string, action: 'consume' | 'void') => {
-    const reason = window.prompt(
-      action === 'consume'
-        ? 'What happened? e.g. Honoured at the counter, receipt 0412'
-        : 'Why is this reward being cancelled?'
-    )
-    if (!reason?.trim()) return
+  const settle = async () => {
+    if (!resolution || !resolutionReason.trim() || saving.current) return
+    const { entitlementId, action } = resolution
+    const reward = rewards.find(row => row.id === entitlementId)
+    if (!reward || !CLAIMABLE.has(effectiveRewardStatus(reward)) || reward.isReserved) {
+      setResolution(null)
+      setError('This reward is no longer available. Refresh the member before trying again.')
+      return
+    }
+    const reason = resolutionReason.trim()
+    saving.current = true
     setBusy(true)
     setError(null)
     try {
@@ -141,16 +162,20 @@ export function LoyaltyMemberDetailCard({
         tenantId,
         body: { action: 'resolve_reward', resolution: { entitlementId, action, note: reason.trim() } },
       })
+      setResolution(null)
+      setResolutionReason('')
       setMessage(action === 'consume' ? 'Marked as used.' : 'Reward cancelled.')
+      setActivityEpoch(value => value + 1)
       onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That reward could not be settled.')
     } finally {
+      saving.current = false
       setBusy(false)
     }
   }
 
-  const claimable = rewards.filter((reward) => CLAIMABLE.has(reward.status))
+  const claimable = rewards.filter((reward) => CLAIMABLE.has(effectiveRewardStatus(reward)))
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -217,16 +242,7 @@ export function LoyaltyMemberDetailCard({
                   {program.threshold > 0 ? ` / ${program.threshold}` : ''}
                 </span>
               </div>
-              <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-200">
-                {program.percent === null ? null : (
-                  <div
-                    className={`h-2 rounded-full ${
-                      program.rewardsAvailable > 0 ? 'bg-emerald-600' : 'bg-orange-500'
-                    }`}
-                    style={{ width: `${Math.max(program.percent, 2)}%` }}
-                  />
-                )}
-              </div>
+              <LoyaltyMemberProgress progress={program} />
               <p className="mt-1 text-xs text-gray-600">
                 {program.rewardLabel}
                 {program.programStatus !== 'active'
@@ -265,7 +281,7 @@ export function LoyaltyMemberDetailCard({
                     type="button"
                     className={ghost}
                     disabled={busy}
-                    onClick={() => void settle(reward.id, 'consume')}
+                    onClick={() => { setResolution({entitlementId: reward.id, action: 'consume'}); setResolutionReason(''); setError(null); setMessage(null) }}
                   >
                     They used it
                   </button>
@@ -273,7 +289,7 @@ export function LoyaltyMemberDetailCard({
                     type="button"
                     className={ghost}
                     disabled={busy}
-                    onClick={() => void settle(reward.id, 'void')}
+                    onClick={() => { setResolution({entitlementId: reward.id, action: 'void'}); setResolutionReason(''); setError(null); setMessage(null) }}
                   >
                     Cancel it
                   </button>
@@ -282,16 +298,25 @@ export function LoyaltyMemberDetailCard({
             </div>
           ))}
           {rewards
-            .filter((reward) => !CLAIMABLE.has(reward.status))
+            .filter((reward) => !CLAIMABLE.has(effectiveRewardStatus(reward)))
             .map((reward) => (
               <p key={reward.id} className="flex justify-between text-xs text-gray-600">
                 <span className="truncate">{reward.label}</span>
                 <span className="font-medium">
-                  {REWARD_STATUS_LABELS[reward.status] ?? reward.status}
+                  {REWARD_STATUS_LABELS[effectiveRewardStatus(reward)] ?? reward.status}
                 </span>
               </p>
             ))}
         </div>
+
+        {resolution ? <form className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3" onSubmit={event => { event.preventDefault(); void settle() }}>
+          <p className="text-sm font-semibold text-gray-900">{resolution.action === 'consume' ? 'Mark reward as used' : 'Cancel reward'}</p>
+          <p className="text-sm text-gray-700">{rewards.find(reward => reward.id === resolution.entitlementId)?.label}. This changes the reward status; it does not return stamps or points.</p>
+          <label className="block text-sm text-gray-900">Reward resolution reason<textarea aria-label="Reward resolution reason" className={field} value={resolutionReason} disabled={busy} maxLength={500} onChange={event => setResolutionReason(event.target.value)} placeholder="What happened? Include a receipt reference when available." /></label>
+          <div className="flex gap-2"><button type="submit" className={primary} disabled={busy || !resolutionReason.trim()}>{busy ? 'Saving…' : resolution.action === 'consume' ? 'Confirm used' : 'Confirm cancellation'}</button><button type="button" className={ghost} disabled={busy} onClick={() => setResolution(null)}>Back</button></div>
+        </form> : null}
+        {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
+        {message ? <p role="status" className="text-sm font-medium text-emerald-700">{message}</p> : null}
 
         {member.programs.length > 0 ? (
           <div className="space-y-2 rounded-lg border border-gray-200 p-3">
@@ -339,11 +364,11 @@ export function LoyaltyMemberDetailCard({
             <button type="button" className={primary} disabled={busy} onClick={() => void adjust()}>
               {busy ? 'Saving…' : 'Save change'}
             </button>
-            {error ? <p className="text-sm text-red-700">{error}</p> : null}
-            {message ? <p className="text-sm font-medium text-emerald-700">{message}</p> : null}
           </div>
         ) : null}
 
+        <button type="button" className={ghost} aria-expanded={showActivity} onClick={() => setShowActivity(value => !value)}>{showActivity ? 'Hide activity' : 'View earning and claim history'}</button>
+        {showActivity ? <LoyaltyActivityPanel tenantId={tenantId} customerKey={member.customerKey} reloadKey={activityEpoch} /> : null}
         <details className="rounded-lg border border-gray-200 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-gray-900">
             Card history ({history.length}) and orders ({orders.length})

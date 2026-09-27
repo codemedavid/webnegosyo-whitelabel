@@ -118,3 +118,33 @@ describe("a request that never comes back", () => {
     ).rejects.toThrow(/may have been saved|check the shelf|before recording it again/i);
   });
 });
+
+describe("retrying a save", () => {
+  it("sends the save attempt's key so the server records a retry once", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, item: { current_qty: 112 } }),
+    });
+
+    await submitStockMovement("t1", payload, null, {
+      clientRequestId: "88888888-8888-4888-8888-888888888888",
+    });
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(init.body)).toMatchObject({
+      clientRequestId: "88888888-8888-4888-8888-888888888888",
+    });
+  });
+
+  it("omits the key when none is given", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, item: { current_qty: 112 } }),
+    });
+
+    await submitStockMovement("t1", payload);
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(init.body)).not.toHaveProperty("clientRequestId");
+  });
+});

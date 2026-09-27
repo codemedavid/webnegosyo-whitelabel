@@ -4,7 +4,7 @@ import { MENU_ITEM_LIST_SELECT } from '@/lib/queries/menu-item-select'
 import { OUTLET_SELECT } from '@/lib/outlets/outlet-repository'
 import { OUTLET_MENU_OVERRIDE_SELECT } from '@/lib/outlets/outlet-menu-repository'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
-import { collectSlotCategoryIds, hydrateBundleSlots } from '@/lib/bundles/slot-hydration'
+import { hydrateBundleSlots } from '@/lib/bundles/slot-hydration'
 import { selectAllPages, type PageRequest } from '@/lib/storefront/paged-select'
 
 /** The subset of a Supabase client the catalog loader needs; injectable for tests. */
@@ -45,37 +45,6 @@ const NO_QUERY: QueryResult<never> = { data: null, error: null }
 /** Whether any query in the catalog failed; such a catalog must not be cached. */
 export function hasCatalogFailure(catalog: StorefrontCatalog): boolean {
   return catalog.error !== null || catalog.outletsFailed || catalog.overridesFailed
-}
-
-async function hydrateBundles(
-  client: CatalogQueryClient,
-  tenantId: string,
-  bundles: BundleWithSlots[]
-): Promise<BundleWithSlots[]> {
-  // ONE query for every slot category at once, then a pure assignment. This
-  // used to await a query per slot. `is_available` is filtered here because a
-  // slot *offers* a dish rather than listing it.
-  const slotCategoryIds = collectSlotCategoryIds(bundles)
-  if (slotCategoryIds.length === 0) return bundles
-
-  const { data, error } = await selectAllPages<MenuItem>(
-    ({ from, to, withCount }) => client
-      .from('menu_items')
-      .select('*', withCount ? { count: 'exact' } : undefined)
-      .eq('tenant_id', tenantId)
-      .eq('is_available', true)
-      .in('category_id', slotCategoryIds)
-      .order('order', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, to) as unknown as PromiseLike<PagedRows<MenuItem>>,
-    { label: 'bundle slot menu_items' }
-  )
-
-  if (error) {
-    console.warn('[storefront-catalog] Bundle slot items query failed:', error.message)
-  }
-
-  return hydrateBundleSlots(bundles, data)
 }
 
 interface PagedRows<T> {
@@ -173,7 +142,9 @@ export async function loadStorefrontCatalog(client: CatalogQueryClient, tenant: 
   if (bundleRows.error) console.warn('[storefront-catalog] Bundle query failed:', bundleRows.error.message)
 
   const bundleData = (bundleRows.data as unknown as BundleWithSlots[] | null) ?? []
-  const hydrated = bundleData.length > 0 ? await hydrateBundles(client, tenant.id, bundleData) : []
+  // The paged catalog already contains every tenant item and its modifiers.
+  // Reuse it so explicit slot choices can span categories without more reads.
+  const hydrated = hydrateBundleSlots(bundleData, items.data.filter(item => item.is_available === true))
 
   return {
     categories: (cats.data as unknown as Category[] | null) ?? [],

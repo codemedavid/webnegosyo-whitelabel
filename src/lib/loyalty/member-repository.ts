@@ -40,7 +40,7 @@ const MAX_MEMBERS = 5000
 /** Ledger entries and orders shown on one member's profile. */
 const HISTORY_LIMIT = 50
 
-const CLAIMABLE_STATUSES = ['issued', 'restored'] as const
+export const CLAIMABLE_STATUSES = ['issued', 'restored'] as const
 
 export interface ProgramRules {
   programId: string
@@ -129,7 +129,7 @@ async function readAll<Row>(
   table: string,
   columns: string,
   tenantId: string,
-  refine?: (query: ReturnType<SupabaseClient['from']>) => unknown,
+  refine?: (query: ReturnType<ReturnType<SupabaseClient['from']>['select']>) => unknown,
   cap = MAX_MEMBERS
 ): Promise<Row[]> {
   const rows: Row[] = []
@@ -148,7 +148,8 @@ async function readAll<Row>(
 /** Claimable rewards per `programId|customerKey`. */
 async function loadClaimableRewards(
   client: SupabaseClient,
-  tenantId: string
+  tenantId: string,
+  customerKey?: string,
 ): Promise<Map<string, number>> {
   const nowIso = new Date().toISOString()
   const rows = await readAll<{ program_id: string; customer_key: string }>(
@@ -156,10 +157,12 @@ async function loadClaimableRewards(
     'loyalty_entitlements',
     'id, program_id, customer_key',
     tenantId,
-    (query) =>
-      (query as never as { in: (c: string, v: readonly string[]) => { or: (f: string) => unknown } })
+    (query) => {
+      const scoped = customerKey ? query.eq('customer_key', customerKey) : query
+      return (scoped as never as { in: (c: string, v: readonly string[]) => { or: (f: string) => unknown } })
         .in('status', CLAIMABLE_STATUSES)
         .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
+    }
   )
 
   const counts = new Map<string, number>()
@@ -242,6 +245,8 @@ async function loadMemberNames(
 }
 
 export interface ListMembersOptions {
+  /** Exact internal lookup; avoids searching a capped directory for detail. */
+  customerKey?: string
   /** Restrict to one program. Omit for every card in the store. */
   programId?: string | null
   /** Case-insensitive match on name or phone. */
@@ -273,9 +278,10 @@ export async function listLoyaltyMembers(
       client,
       'loyalty_balances',
       'id, program_id, customer_key, customer_id, balance, lifetime_earned, rewards_issued, updated_at',
-      tenantId
+      tenantId,
+      options.customerKey ? query => query.eq('customer_key', options.customerKey) : undefined
     ),
-    loadClaimableRewards(client, tenantId),
+    loadClaimableRewards(client, tenantId, options.customerKey),
   ])
 
   const scoped = options.programId
@@ -369,6 +375,8 @@ export interface LoyaltyLedgerEntry {
 
 export interface LoyaltyMemberOrder {
   id: string
+  /** The id the order's own backend knows it by — what opens the order screen. */
+  orderId: string
   backend: 'platform_supabase' | 'convex' | 'tenant_supabase'
   reference: string
   total: number
@@ -421,7 +429,9 @@ async function loadMemberOrders(
   const [platform, external] = await Promise.all([
     client
       .from('orders')
-      .select('id, total, created_at, order_type, status, payment_status, customer_data')
+      .select(
+        'id, total, created_at, order_type, status, payment_status, customer_data, order_items(menu_item_name, quantity)'
+      )
       .eq('tenant_id', tenantId)
       .eq('customer_id', customerId)
       .order('created_at', { ascending: false })
@@ -440,8 +450,14 @@ async function loadMemberOrders(
   const orders: LoyaltyMemberOrder[] = []
 
   for (const row of ((platform.data ?? []) as Array<Record<string, unknown>>)) {
+    const lines = Array.isArray(row.order_items)
+      ? (row.order_items as Array<{ menu_item_name?: unknown; quantity?: unknown }>)
+          .filter((item) => typeof item?.menu_item_name === 'string')
+          .map((item) => ({ name: String(item.menu_item_name), quantity: toNumber(item.quantity) || 1 }))
+      : []
     orders.push({
       id: String(row.id),
+      orderId: String(row.id),
       backend: 'platform_supabase',
       reference: String(row.id).slice(0, 8),
       total: toNumber(row.total),
@@ -450,7 +466,7 @@ async function loadMemberOrders(
       status: (row.status as string | null) ?? null,
       paymentStatus: (row.payment_status as string | null) ?? null,
       address: readOrderAddress(row.customer_data as Record<string, unknown> | null),
-      items: [],
+      items: lines,
     })
   }
 
@@ -462,6 +478,7 @@ async function loadMemberOrders(
       : []
     orders.push({
       id: String(row.id),
+      orderId: String(row.external_order_id ?? row.id),
       backend: (row.backend as LoyaltyMemberOrder['backend']) ?? 'convex',
       reference: String(row.external_order_id ?? '').slice(-8),
       total: toNumber(row.total),
@@ -479,6 +496,33 @@ async function loadMemberOrders(
     .slice(0, HISTORY_LIMIT)
 }
 
+/**
+ * A customer the store knows but who holds no card yet.
+ *
+ * The order queue links every known customer to this screen, and a first-time
+ * profile deserves its order history too — "no card" is a fact to show, not a
+ * reason to show nothing.
+ */
+async function readProfileOnlyMember(
+  client: SupabaseClient,
+  tenantId: string,
+  customerKey: string,
+  nowMs: number
+): Promise<LoyaltyMember | null> {
+  const phone = contactFromCustomerKey(customerKey).phone
+  if (!phone) return null
+  const { data, error } = await client
+    .from('customers')
+    .select('id, name')
+    .eq('tenant_id', tenantId)
+    .eq('phone_e164', phone)
+    .limit(1)
+  if (error) throw new Error(`Customer profile could not be read: ${error.message}`)
+  const row = ((data ?? []) as Array<{ id: string; name: string | null }>)[0]
+  if (!row) return null
+  return buildLoyaltyMember({ customerKey, customerId: row.id, name: row.name, programs: [] }, nowMs)
+}
+
 /** One member, with everything a merchant would want on the counter screen. */
 export async function readLoyaltyMemberDetail(
   client: SupabaseClient,
@@ -486,8 +530,10 @@ export async function readLoyaltyMemberDetail(
   customerKey: string,
   nowMs = Date.now()
 ): Promise<LoyaltyMemberDetail | null> {
-  const page = await listLoyaltyMembers(client, tenantId, { nowMs })
-  const member = page.members.find((row) => row.customerKey === customerKey)
+  const page = await listLoyaltyMembers(client, tenantId, { nowMs, customerKey })
+  const member =
+    page.members.find((row) => row.customerKey === customerKey) ??
+    (await readProfileOnlyMember(client, tenantId, customerKey, nowMs))
   if (!member) return null
 
   const catalog = await loadProgramRules(client, tenantId)

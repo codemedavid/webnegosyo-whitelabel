@@ -1,5 +1,8 @@
 import { ProfitInsights } from "../../components/ProfitInsights";
 import React, { useState, useMemo, useCallback } from "react";
+import { router } from "expo-router";
+import { ProductsPerformanceView } from "../../components/performance/ProductsPerformanceView";
+import { productPerformanceHref } from "../../lib/navigation";
 import {
   View,
   Text,
@@ -130,9 +133,10 @@ interface CategoryRow {
   name: string;
 }
 
-type ViewMode = "daily" | "lifetime";
+type ViewMode = "products" | "daily" | "lifetime";
 
 const VIEW_MODES: readonly { label: string; value: ViewMode }[] = [
+  { label: "Products", value: "products" },
   { label: "Day by day", value: "daily" },
   { label: "Lifetime", value: "lifetime" },
 ];
@@ -167,7 +171,8 @@ export default function ProductAnalyticsScreen() {
   // they open the screen; the rest live in a sheet and are held together in one
   // object so clearing a single chip, or all of them, is one honest replacement
   // rather than five setters that can drift out of step.
-  const [viewMode, setViewMode] = useState<ViewMode>("daily");
+  // Products first: variations and add-ons are the question merchants bring.
+  const [viewMode, setViewMode] = useState<ViewMode>("products");
   const [preset, setPreset] = useState<DateRangePreset>("7d");
   const [filters, setFilters] = useState<ProductFilterState>(DEFAULT_PRODUCT_FILTERS);
   const [isFilterSheetOpen, setFilterSheetOpen] = useState(false);
@@ -234,7 +239,12 @@ export default function ProductAnalyticsScreen() {
     data: accountOrders,
     isLoading: ordersLoading,
     refetch: refetchOrders,
-  } = useSafeQuery<BackendOrder[]>(getOrdersRef, { limit: ORDER_FETCH_LIMIT });
+  } = useSafeQuery<BackendOrder[]>(
+    getOrdersRef,
+    // Only the day-by-day view walks raw orders; the Products view reads its
+    // own windowed lines, so the 2000-order page is not paid for there.
+    viewMode === "daily" ? { limit: ORDER_FETCH_LIMIT } : "skip"
+  );
   const {
     data: backendItems,
     isMissingFunction: itemsMissing,
@@ -567,7 +577,14 @@ export default function ProductAnalyticsScreen() {
     <View style={styles.screen}>
       <ScreenHeader title="Performance" subtitle="What sells, and what doesn't" />
 
-      {viewMode === "lifetime" ? (
+      {viewMode === "products" ? (
+        <ProductsPerformanceView
+          header={modeBlock}
+          onOpenProduct={(menuItemId, periodKey) =>
+            router.push(productPerformanceHref(menuItemId, periodKey))
+          }
+        />
+      ) : viewMode === "lifetime" ? (
         // The whole menu is one list; a virtualised list keeps a long menu
         // from mounting every row at once.
         <FlatList

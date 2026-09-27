@@ -19,6 +19,16 @@ interface AuthState {
   logout: () => Promise<void>
 }
 
+// A refusal is authoritative; only an unreachable lookup permits cached access.
+function isUnreachable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const value = error as { message?: unknown; name?: unknown; code?: unknown }
+  if (typeof value.code === 'string' && value.code) return false
+  if (value.name === 'AuthRetryableFetchError' || value.name === 'AbortError') return true
+  return typeof value.message === 'string' &&
+    /failed to fetch|network request failed|fetch failed|network error|load failed|timed out/i.test(value.message)
+}
+
 async function resolveTenant(userId: string): Promise<{
   tenantId: string
   tenantSlug: string
@@ -36,7 +46,7 @@ async function resolveTenant(userId: string): Promise<{
     .single()
 
   if (appUserError || !appUser) {
-    throw new Error('This account is not a merchant admin.')
+    throw appUserError ?? new Error('This account is not a merchant admin.')
   }
 
   const { data: tenant, error: tenantError } = await supabase
@@ -46,7 +56,7 @@ async function resolveTenant(userId: string): Promise<{
     .single()
 
   if (tenantError || !tenant) {
-    throw new Error('Could not load your store. Please try again.')
+    throw tenantError ?? new Error('Could not load your store. Please try again.')
   }
 
   return {
@@ -121,7 +131,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         .setPosTenant({ userId: user.id, ...tenant, updatedAt: Date.now() })
         .catch(() => undefined)
       set({ isLoading: false, isAuthenticated: true, userId: user.id, ...tenant })
-    } catch {
+    } catch (error) {
+      if (!isUnreachable(error)) {
+        set({ isLoading: false, isAuthenticated: false, tenantId: null, convexUrl: null })
+        return
+      }
       // Offline / network error: fall back to the cached tenant from the last online login.
       const cached = await window.api.getPosTenant().catch(() => null)
       if (cached && cached.userId === user.id) {

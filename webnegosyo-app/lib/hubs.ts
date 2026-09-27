@@ -30,6 +30,9 @@ export const REPORTS_SECTIONS: readonly HubSection[] = [
 
 export const MANAGE_SECTIONS: readonly HubSection[] = [
   { title: "Store", tabs: ["product-management", "categories", "inventory", "payments"] },
+  // Its own heading rather than a fifth Store row: a merchant looking for
+  // "that promo code" scans for the word, not for a setting.
+  { title: "Promotions", tabs: ["vouchers"] },
   // Shown only to an account that runs several branches: both screens are
   // gated on the branch count in tab-visibility, so the section simply
   // empties out for everyone else.

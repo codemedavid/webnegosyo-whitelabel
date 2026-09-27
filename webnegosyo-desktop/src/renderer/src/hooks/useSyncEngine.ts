@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { ConvexReactClient } from 'convex/react'
 import { setSyncClient, requestSync } from '../lib/sync-engine'
+import { useAuthStore } from '../stores/auth-store'
 import { useSyncStore } from '../stores/sync-store'
 
 /**
@@ -9,8 +10,11 @@ import { useSyncStore } from '../stores/sync-store'
  * every 20s so queued sales drain as soon as the connection returns.
  */
 export function useSyncEngine(client: ConvexReactClient | null): void {
+  const tenantId = useAuthStore((state) => state.tenantId)
+  const convexUrl = useAuthStore((state) => state.convexUrl)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   useEffect(() => {
-    setSyncClient(client)
+    setSyncClient(isAuthenticated ? client : null, tenantId && convexUrl ? { tenantId, convexUrl } : null)
 
     // Seed the badge so the UI reflects what's already queued on disk.
     void window.api
@@ -41,5 +45,5 @@ export function useSyncEngine(client: ConvexReactClient | null): void {
       clearInterval(interval)
       setSyncClient(null)
     }
-  }, [client])
+  }, [client, tenantId, convexUrl, isAuthenticated])
 }

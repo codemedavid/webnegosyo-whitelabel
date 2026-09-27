@@ -174,6 +174,13 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     permission: 'store_setup',
   },
   {
+    tab: 'vouchers',
+    label: 'Vouchers',
+    description: 'Create and manage store vouchers',
+    workspace: 'products',
+    permission: 'vouchers',
+  },
+  {
     tab: 'portfolio',
     label: 'Branches',
     description: 'Every branch at a glance',

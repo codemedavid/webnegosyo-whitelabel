@@ -156,6 +156,16 @@ describe('cart-utils edge cases', () => {
 })
 
 describe('slot-based bundle pricing calculations', () => {
+  test('charges customization extras for each selected unit and each bundle', () => {
+    const bundle = createTestCartBundleItem({ basePrice: 200, quantity: 2, slots: [
+      createTestSlotSelection({ quantity: 3, priceOverride: 10,
+        selectedVariation: createTestVariation({ price_modifier: 5 }),
+        selectedAddons: [createTestAddon({ price: 7 })],
+      }),
+    ] })
+    expect(calculateSlotBundleExtras(bundle.slots)).toBe(66)
+    expect(calculateSlotBundleSubtotal(bundle)).toBe(532)
+  })
   describe('calculateSlotBundleBasePrice', () => {
     test('fixed pricing: returns basePrice directly', () => {
       const bundleItem = createTestCartBundleItem({

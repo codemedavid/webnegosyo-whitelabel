@@ -10,7 +10,8 @@
  * Pure and side-effect free.
  */
 
-import { addonQuantity, addonLabel } from '@/lib/addon-quantity'
+import { addonLabel } from '@/lib/addon-quantity'
+import { calculateSlotUnitExtras } from '@/lib/bundle-pricing'
 import type { CartBundleItem, CartBundleSlotSelection } from '@/types/database'
 import { extractBundleSlotSelectionIds } from '@/lib/inventory/order-item-selection'
 
@@ -37,21 +38,10 @@ function slotPricing(slot: CartBundleSlotSelection): {
   unitPrice: number
   variationText: string
 } {
-  let price = slot.priceOverride
-  let variationText = ''
-
-  if (slot.selectedVariation) {
-    price += slot.selectedVariation.price_modifier
-    variationText = slot.selectedVariation.name
-  } else if (slot.selectedVariations) {
-    const options = Object.values(slot.selectedVariations)
-    price += options.reduce((sum, option) => sum + option.price_modifier, 0)
-    variationText = options.map((option) => option.name).join(', ')
-  }
-
-  const addonTotal = slot.selectedAddons.reduce((sum, addon) => sum + addon.price * addonQuantity(addon), 0)
-
-  return { unitPrice: price + addonTotal, variationText }
+  const variationText = slot.selectedVariations
+    ? Object.values(slot.selectedVariations).map(option => option.name).join(', ')
+    : slot.selectedVariation?.name ?? ''
+  return { unitPrice: calculateSlotUnitExtras(slot), variationText }
 }
 
 /** Every bundle's slots as order items, provenance and selection ids intact. */

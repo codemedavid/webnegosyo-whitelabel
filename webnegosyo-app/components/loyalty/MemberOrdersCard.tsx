@@ -41,9 +41,14 @@ function peso(amount: number): string {
 export function MemberOrdersCard({
   orders,
   history,
+  canOpenOrder,
+  onOpenOrder,
 }: {
   orders: LoyaltyMemberOrder[];
   history: LoyaltyLedgerEntry[];
+  /** Only orders on the store's current backend can be opened; older ones are history only. */
+  canOpenOrder?: (order: LoyaltyMemberOrder) => boolean;
+  onOpenOrder?: (order: LoyaltyMemberOrder) => void;
 }) {
   const [tab, setTab] = useState<"orders" | "history">("orders");
 
@@ -77,8 +82,17 @@ export function MemberOrdersCard({
             captured against their number.
           </Text>
         ) : (
-          orders.map((order) => (
-            <View key={order.id} style={styles.row}>
+          orders.map((order) => {
+            const isOpenable = Boolean(onOpenOrder && canOpenOrder?.(order));
+            return (
+            <TouchableOpacity
+              key={order.id}
+              style={styles.row}
+              disabled={!isOpenable}
+              onPress={() => onOpenOrder?.(order)}
+              accessibilityRole={isOpenable ? "button" : undefined}
+              accessibilityLabel={isOpenable ? `Open order of ${peso(order.total)}` : undefined}
+            >
               <View style={styles.rowHeader}>
                 <Text style={styles.rowTitle}>{peso(order.total)}</Text>
                 <Text style={styles.rowMeta}>{formatDateTime(order.orderedAt)}</Text>
@@ -95,8 +109,10 @@ export function MemberOrdersCard({
                 </Text>
               ) : null}
               {order.address ? <Text style={styles.address}>{order.address}</Text> : null}
-            </View>
-          ))
+              {isOpenable ? <Text style={styles.open}>Open order ›</Text> : null}
+            </TouchableOpacity>
+            );
+          })
         )
       ) : history.length === 0 ? (
         <Text style={styles.muted}>Nothing has moved on this card yet.</Text>
@@ -161,6 +177,7 @@ const styles = StyleSheet.create({
   rowMeta: { ...typography.small, color: colors.textSecondary },
   items: { ...typography.caption, color: colors.textPrimary },
   address: { ...typography.small, color: colors.textSecondary, fontStyle: "italic" },
+  open: { ...typography.small, color: colors.accent, fontWeight: "700", marginTop: 2 },
   note: { ...typography.caption, color: colors.textPrimary, fontStyle: "italic" },
   deltaUp: { color: colors.success, fontWeight: "800" },
   deltaDown: { color: colors.danger, fontWeight: "800" },

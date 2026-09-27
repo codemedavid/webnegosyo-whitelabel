@@ -9,7 +9,7 @@
  */
 
 import {
-  STATS_LIMIT,
+  readAllPages,
   asRecord,
   optionalString,
   requireTenant,
@@ -92,10 +92,14 @@ async function getCost(client: PlatformClient, tenantId: string, params: Record<
 }
 
 async function getAllCosts(client: PlatformClient, tenantId: string) {
-  const rows = await unwrap<ProductCostRow[] | null>(
-    client.from("product_costs").select(COST_COLUMNS).eq("tenant_id", tenantId).limit(STATS_LIMIT)
+  const rows = await readAllPages<ProductCostRow>(() =>
+    client
+      .from("product_costs")
+      .select(COST_COLUMNS)
+      .eq("tenant_id", tenantId)
+      .order("menu_item_id", { ascending: true })
   );
-  return (rows ?? []).map(toDto);
+  return rows.map(toDto);
 }
 
 async function setCost(client: PlatformClient, tenantId: string, params: Record<string, unknown>) {

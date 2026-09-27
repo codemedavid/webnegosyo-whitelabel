@@ -37,6 +37,8 @@ function makeClient() {
   const builder: Record<string, unknown> = {}
   builder.select = jest.fn(() => builder)
   builder.eq = jest.fn(() => builder)
+  builder.is = jest.fn(() => builder)
+  builder.gt = jest.fn(() => builder)
   builder.insert = jest.fn((p: Record<string, unknown>) => { inserts.push({ table: currentTable, payload: p }); return builder })
   builder.update = jest.fn((p: Record<string, unknown>) => { updates.push({ table: currentTable, payload: p }); return builder })
   builder.single = jest.fn(async () => singleQueue.shift() ?? { data: null, error: null })
@@ -121,6 +123,7 @@ describe('exchangeAuthorizationCode — tenant binding', () => {
   )
 
   it.each([
+    ['a pending consent record', { scope: 'pending_consent' }],
     ['a legacy superadmin code', { scope: 'superadmin', tenant_id: null }],
     ['a code without merchant authority', { scope: 'offline_access' }],
     ['a code without a tenant binding', { scope: 'tenant_admin offline_access', tenant_id: null }],

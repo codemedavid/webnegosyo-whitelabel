@@ -58,3 +58,13 @@ export function buildKpiPeriod(days: number, nowMs: number): KpiPeriod {
     days: safeDays,
   };
 }
+
+/**
+ * The orders a KPI period needs: the period itself AND the equal-length window
+ * before it, which the revenue trend compares against. Half-open, for
+ * `ordersInWindowArgs`.
+ */
+export function kpiFetchWindow(period: KpiPeriod): { startMs: number; endMs: number } {
+  const length = period.endMs - period.startMs + 1;
+  return { startMs: period.startMs - length, endMs: period.endMs + 1 };
+}

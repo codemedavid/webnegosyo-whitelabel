@@ -11,6 +11,8 @@ import { summarizeStaffPerformance } from "../../lib/staff-analytics";
 import type { StaffMember } from "../../lib/staff-service";
 import { useAuthStore } from "../../stores/auth-store";
 import { useBranchScope } from "../../lib/use-branch-scope";
+import { ordersInWindowArgs } from "../../lib/report-window";
+import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { EmptyState } from "../EmptyState";
 import { ErrorState } from "../ErrorState";
@@ -88,11 +90,21 @@ export function StaffSalesLeaderboard({ staff }: { staff: readonly StaffMember[]
   const scope = useBranchScope();
   const outletId = scope.kind === "branch" ? scope.outletId : undefined;
   const [days, setDays] = useState<number>(1);
-  const period = buildKpiPeriod(days, Date.now());
+  const { anchorMs } = useBusinessDayAnchor();
+  const canBound = useCanBoundReports();
+  const period = buildKpiPeriod(days, anchorMs);
+  // The period itself, where the backend can bound a read. The most recent
+  // 1000 orders refused every period — even Today — once a store's LIFETIME
+  // history passed 1000 orders.
+  const queryArgs = ordersInWindowArgs(
+    { startMs: period.startMs, endMs: period.endMs + 1 },
+    canBound,
+    LIMIT,
+  );
 
   const { data, error, isLoading } = useSafeQuery<CounterSale[]>(
     ordersRef,
-    isDemo ? "skip" : { limit: LIMIT },
+    isDemo ? "skip" : queryArgs,
   );
   const orders = useMemo(() => [...filterOrdersToScope(scope, data)], [scope, data]);
 
@@ -114,7 +126,7 @@ export function StaffSalesLeaderboard({ staff }: { staff: readonly StaffMember[]
         <LoadingState message="Loading sales…" />
       ) : error ? (
         <ErrorState title="Sales unavailable" message={error} />
-      ) : (data?.length ?? 0) >= LIMIT ? (
+      ) : (data?.length ?? 0) >= queryArgs.limit ? (
         <ErrorState
           title="Too much history to total"
           message="This report exceeds the order history the app can read at once. Pick a shorter period."

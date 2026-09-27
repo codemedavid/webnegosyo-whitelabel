@@ -9,10 +9,11 @@
  * call the same customer.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { callLoyaltyApi } from '@/lib/loyalty/browser-client'
 import { describeMemberStatus, type LoyaltyMember, type LoyaltyMemberStatus, type LoyaltyMemberTotals } from '@/lib/loyalty/members'
 import type { LoyaltyMemberDetail } from '@/lib/loyalty/member-repository'
+import { LoyaltyMemberProgress } from './loyalty-member-progress'
 import { LoyaltyMemberDetailCard } from './loyalty-member-detail'
 
 const SEARCH_SETTLE_MS = 350
@@ -52,17 +53,9 @@ function countFor(filter: Filter, totals: LoyaltyMemberTotals | null): number | 
   }
 }
 
-function remainingLabel(member: LoyaltyMember): string {
-  const headline = member.headline
-  if (!headline) return 'No card yet'
-  if (headline.rewardsAvailable > 0) return 'Ready to claim'
-  if (headline.remaining === null) return 'Progress unavailable'
-  if (headline.remaining <= 0) return 'Ready to claim'
-  const unit = headline.earnMode === 'points' ? 'point' : 'visit'
-  return `${headline.remaining} more ${unit}${headline.remaining === 1 ? '' : 's'}`
-}
-
 export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
+  const listRequest = useRef(0)
+  const detailRequest = useRef(0)
   const [members, setMembers] = useState<LoyaltyMember[]>([])
   const [totals, setTotals] = useState<LoyaltyMemberTotals | null>(null)
   const [isTruncated, setTruncated] = useState(false)
@@ -74,6 +67,9 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [detail, setDetail] = useState<LoyaltyMemberDetail | null>(null)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const selection = `${tenantId}:${openKey ?? ''}`
+  const currentSelection = useRef(selection)
+  currentSelection.current = selection
 
   useEffect(() => {
     const timer = setTimeout(() => setSettledQuery(query), SEARCH_SETTLE_MS)
@@ -81,6 +77,8 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
   }, [query])
 
   const load = useCallback(async () => {
+    const ticket = ++listRequest.current
+    setLoading(true)
     try {
       const result = await callLoyaltyApi<{
         members: LoyaltyMember[]
@@ -91,24 +89,30 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
         query: { search: settledQuery, status: filter === 'all' ? null : filter },
         failure: 'Your members could not be loaded.',
       })
+      if (ticket !== listRequest.current) return
       setMembers(result.members)
       setTotals(result.totals)
       setTruncated(result.isTruncated === true)
       setError(null)
     } catch (e) {
       // A failed read must never render as "nobody is collecting stamps".
-      setError(e instanceof Error ? e.message : 'Your members could not be loaded.')
+      if (ticket === listRequest.current) setError(e instanceof Error ? e.message : 'Your members could not be loaded.')
     } finally {
-      setLoading(false)
+      if (ticket === listRequest.current) setLoading(false)
     }
   }, [tenantId, settledQuery, filter])
 
   useEffect(() => {
     void load()
+    const requests = listRequest
+    return () => { requests.current++ }
   }, [load])
+
+  useEffect(() => () => { detailRequest.current++ }, [tenantId])
 
   const openMember = useCallback(
     async (member: LoyaltyMember) => {
+      const ticket = ++detailRequest.current
       if (openKey === member.customerKey) {
         setOpenKey(null)
         setDetail(null)
@@ -123,9 +127,9 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
           query: { customerKey: member.customerKey },
           failure: 'This member could not be loaded.',
         })
-        setDetail(result)
+        if (ticket === detailRequest.current) setDetail(result)
       } catch (e) {
-        setDetailError(e instanceof Error ? e.message : 'This member could not be loaded.')
+        if (ticket === detailRequest.current) setDetailError(e instanceof Error ? e.message : 'This member could not be loaded.')
       }
     },
     [openKey, tenantId]
@@ -133,17 +137,26 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
 
   const reloadDetail = useCallback(async () => {
     if (!openKey) return
-    await load()
+    const ticket = ++detailRequest.current
+    setDetail(null)
+    setDetailError(null)
     try {
       const result = await callLoyaltyApi<LoyaltyMemberDetail>('/api/loyalty/members', {
         tenantId,
         query: { customerKey: openKey },
       })
-      setDetail(result)
+      if (ticket === detailRequest.current && currentSelection.current === selection) setDetail(result)
     } catch {
-      setDetail(null)
+      if (ticket === detailRequest.current && currentSelection.current === selection) setDetailError("This member could not be refreshed.")
     }
-  }, [openKey, tenantId, load])
+  }, [openKey, tenantId, selection])
+
+  useEffect(() => {
+    const refresh = () => { void load(); void reloadDetail() }
+    window.addEventListener('focus', refresh)
+    window.addEventListener('online', refresh)
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh) }
+  }, [load, reloadDetail])
 
   const headline = useMemo(() => {
     if (!totals || totals.total === 0) return null
@@ -244,23 +257,7 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
                   </div>
 
                   <div className="w-40 shrink-0">
-                    <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                      {member.headline?.percent === null || member.headline === null ? null : (
-                        <div
-                          className={`h-2 rounded-full ${
-                            member.rewardsAvailable > 0 ? 'bg-emerald-600' : 'bg-orange-500'
-                          }`}
-                          style={{ width: `${Math.max(member.headline.percent, 2)}%` }}
-                        />
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs text-gray-600">
-                      {member.headline
-                        ? `${member.headline.balance}${
-                            member.headline.threshold > 0 ? ` / ${member.headline.threshold}` : ''
-                          } · ${remainingLabel(member)}`
-                        : remainingLabel(member)}
-                    </p>
+                    {member.headline ? <LoyaltyMemberProgress progress={member.headline} /> : <p className="text-xs text-gray-600">No card yet</p>}
                   </div>
 
                   <span
@@ -280,9 +277,10 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
                       <p className="text-sm text-gray-600">Loading…</p>
                     ) : (
                       <LoyaltyMemberDetailCard
+                        key={`${tenantId}:${member.customerKey}`}
                         tenantId={tenantId}
                         detail={detail}
-                        onChanged={() => void reloadDetail()}
+                        onChanged={() => { void load(); void reloadDetail() }}
                       />
                     )}
                   </div>

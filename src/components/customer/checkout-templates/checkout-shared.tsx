@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
 import { computeOrderTotals } from '@/lib/order-totals'
-import type { OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
+import { isOrderSaveFailed, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { toast } from 'sonner'
 import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
@@ -123,8 +123,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
   // One source of truth for "this screen is lying". `orderSaveNotice` carries
   // the detail; the boolean is kept because designs and tests predate it, and
   // the two must never be able to disagree about whether to warn at all.
-  const hasOrderSaveFailed =
-    orderSaveFailed || (orderSaveNotice != null && orderSaveNotice.verdict !== 'saved')
+  const hasOrderSaveFailed = isOrderSaveFailed({ orderSaveFailed, orderSaveNotice })
 
   // The Messenger message is only a recovery when there is somewhere to send
   // it: the tenant has Messenger on AND a page resolved to redirect to.

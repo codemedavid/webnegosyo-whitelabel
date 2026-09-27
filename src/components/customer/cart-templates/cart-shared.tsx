@@ -3,9 +3,9 @@
 /**
  * Shared, design-agnostic cart pieces.
  *
- * The remove-confirmation dialog and the checkout-upsell interstitial are
- * rendered by the cart page shell for ALL cart designs, so every design
- * preserves upsell conversions and the remove-confirm UX without re-wiring it.
+ * The remove-confirmation dialog is rendered by the cart page shell for ALL
+ * cart designs; `CartOffers` is the one line every design places between its
+ * items and its totals, so every design carries the cart's "last call".
  */
 
 import dynamic from 'next/dynamic'
@@ -20,10 +20,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
+import { cartOfferThemeFromBranding } from '@/components/customer/offers/offer-theme'
 
-// Lazy-loaded — only fetched when the checkout upsell interstitial is enabled for the tenant.
-const CheckoutUpsellModal = dynamic(
-  () => import('@/components/customer/checkout-upsell-modal').then((m) => ({ default: m.CheckoutUpsellModal })),
+// Lazy-loaded — only fetched when the store has cart suggestions switched on.
+const CartOffersSection = dynamic(
+  () => import('@/components/customer/offers/cart-offers-section').then((m) => ({ default: m.CartOffersSection })),
   { ssr: false },
 )
 
@@ -106,20 +107,26 @@ export function CartEditDialog({ cart }: { cart: UseCartViewReturn }) {
   )
 }
 
-/** Checkout-upsell interstitial (shared across cart designs). */
-export function CartUpsellInterstitial({ cart }: { cart: UseCartViewReturn }) {
-  const { showInterstitial, tenant, showUpsellModal, onUpsellContinue, branding, prefetchedItems } = cart
-  if (!showInterstitial || !tenant) return null
+/**
+ * The cart's "last call" — Boost Sales suggestions shown inline, between the
+ * items and the totals, in the merchant's own cart colours.
+ */
+export function CartOffers({ cart, className = 'mt-6' }: { cart: UseCartViewReturn; className?: string }) {
+  const { showCartOffers, tenant, tenantSlug, branding, items, cartOfferItems, cartOfferMaxItems } = cart
+  if (!showCartOffers || !tenant) return null
   return (
-    <CheckoutUpsellModal
-      open={showUpsellModal}
-      onContinue={onUpsellContinue}
-      tenantId={tenant.id}
-      branding={branding}
-      title={tenant.checkout_upsell_title || 'Would you like to add...?'}
-      subtitle={tenant.checkout_upsell_subtitle || 'Complete your meal!'}
-      maxItems={tenant.checkout_upsell_max_items || 4}
-      prefetchedItems={prefetchedItems || undefined}
-    />
+    <div className={className}>
+      <CartOffersSection
+        suggestions={cartOfferItems}
+        cartItemIds={items.map((line) => line.menu_item.id)}
+        maxItems={cartOfferMaxItems}
+        title={tenant.checkout_upsell_title?.trim() || 'Add to your order'}
+        subtitle={tenant.checkout_upsell_subtitle?.trim() || undefined}
+        theme={cartOfferThemeFromBranding(branding)}
+        tenantId={tenant.id}
+        tenantSlug={tenantSlug}
+        hideCurrencySymbol={tenant.hide_currency_symbol}
+      />
+    </div>
   )
 }

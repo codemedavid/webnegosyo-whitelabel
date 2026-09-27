@@ -25,6 +25,9 @@ export function resolveRequoteGate(order: {
   lalamoveOrderId: string | null | undefined
   lalamoveStatus: string | null | undefined
 }): RequoteGate {
+  if (order.lalamoveStatus?.toUpperCase() === 'BOOKING') {
+    return { ok: false, error: 'A delivery booking is pending confirmation. Check Lalamove before trying again.' }
+  }
   const bookedId = order.lalamoveOrderId?.trim()
   if (!bookedId) return { ok: true, retiredOrderId: null }
 

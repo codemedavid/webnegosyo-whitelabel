@@ -21,13 +21,8 @@ import { EmptyState } from "../../components/EmptyState";
 import { HeatmapGrid } from "../../components/HeatmapGrid";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ReportPeriodBar } from "../../components/ReportPeriodBar";
-import {
-  REPORT_PRESETS,
-  defaultSelection,
-  describeSelection,
-  selectionToQueryArgs,
-  type ReportSelection,
-} from "../../lib/report-window";
+import { REPORT_PRESETS } from "../../lib/report-window";
+import { useReportWindow } from "../../lib/use-report-window";
 import { IconButton } from "../../components/IconButton";
 import { ExportSheet } from "../../components/ExportSheet";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
@@ -100,12 +95,9 @@ const FUNNEL_COLORS = [colors.primary, colors.warning, colors.accent];
 
 export default function AnalyticsScreen() {
   // One selection drives every query on this screen. `windowArgs` is spread
-  // into each: a preset still sends `daysBack` alone, so a store on an older
-  // Convex bundle is unaffected until the merchant picks actual dates.
-  const [selection, setSelection] = useState<ReportSelection>(() => defaultSelection(7));
-  const [nowMs] = useState(() => Date.now());
-  const windowArgs = useMemo(() => selectionToQueryArgs(selection, nowMs), [selection, nowMs]);
-  const periodLabel = describeSelection(selection, nowMs);
+  // into each; `useReportWindow` decides whether the backend can take the
+  // calendar days the label names, and moves "today" at Manila midnight.
+  const { selection, setSelection, nowMs, windowArgs, periodLabel } = useReportWindow(7);
   const [refreshing, setRefreshing] = useState(false);
   const [isExportOpen, setExportOpen] = useState(false);
   const [isExporting, setExporting] = useState(false);
@@ -264,7 +256,9 @@ export default function AnalyticsScreen() {
                 growth={classifyGrowth(salesAnalytics.revenueGrowth * 100)}
               />
               <View style={styles.kpiGrid}>
-                <KpiCard value={String(salesAnalytics.totalOrders)} label="Orders" />
+                {/* Cancelled orders are counted on their own card below, so
+                    this is the same "orders" Home and Trends show. */}
+                <KpiCard value={String(salesAnalytics.completedOrders)} label="Orders" />
                 <KpiCard value={formatPeso(salesAnalytics.avgOrderValue, 0)} label="Avg Order Value" />
               </View>
               <View style={styles.kpiGrid}>

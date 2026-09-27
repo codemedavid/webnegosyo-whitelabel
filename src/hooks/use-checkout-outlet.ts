@@ -28,6 +28,13 @@ interface UseCheckoutOutletInput {
    * out a moment later. Defaults to true for callers with nothing to wait on.
    */
   areOrderTypesReady?: boolean
+  /**
+   * Active branches the server already read with the page. When given, the
+   * hook starts from them instead of fetching after mount — the fetch was one
+   * more round trip in checkout's first-paint chain. `null`/omitted keeps the
+   * browser fetch (single-branch tenants, or a failed server read).
+   */
+  initialOutlets?: Outlet[] | null
 }
 
 /** Why a branch the customer had already chosen is no longer chosen. */
@@ -79,12 +86,14 @@ export function useCheckoutOutlet({
   orderTypes,
   orderTypeId,
   areOrderTypesReady = true,
+  initialOutlets = null,
 }: UseCheckoutOutletInput): UseCheckoutOutletResult {
   const isMultiBranch = isMultiBranchEnabled(tenant)
   const isAfterTiming = isMultiBranch && resolveOutletSelectionTiming(tenant) === 'after'
 
-  const [outlets, setOutlets] = useState<Outlet[]>([])
-  const [hasLoadedOutlets, setHasLoadedOutlets] = useState(false)
+  const hasInitialOutlets = initialOutlets !== null
+  const [outlets, setOutlets] = useState<Outlet[]>(() => initialOutlets ?? [])
+  const [hasLoadedOutlets, setHasLoadedOutlets] = useState(hasInitialOutlets)
   // `undefined` is "the customer has not answered", which is NOT the same as
   // `null`: clearing a choice is itself an answer, and has to bring the picker
   // back rather than fall through to the branch their QR link named.
@@ -122,7 +131,7 @@ export function useCheckoutOutlet({
   const needsCheckoutResolution = isMultiBranch && (isAfterTiming || isStorageHydrated)
 
   useEffect(() => {
-    if (!needsCheckoutResolution || !tenant?.id) return
+    if (!needsCheckoutResolution || !tenant?.id || hasInitialOutlets) return
     let isCurrent = true
 
     fetchActiveOutlets(tenant.id).then((rows) => {
@@ -136,7 +145,7 @@ export function useCheckoutOutlet({
     return () => {
       isCurrent = false
     }
-  }, [needsCheckoutResolution, tenant?.id])
+  }, [needsCheckoutResolution, tenant?.id, hasInitialOutlets])
 
   const mode = useMemo(
     () => resolveModeForOrderType(orderTypes, orderTypeId),

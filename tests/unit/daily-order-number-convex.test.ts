@@ -10,6 +10,7 @@ it('allocates per Manila day and recovers the same number for a retried order', 
   const tables = new Map<string, Row[]>()
   let nextId = 0
   const ctx = {
+    auth: { getUserIdentity: async () => ({ subject: "admin", wn_role: "superadmin" }) },
     db: {
       query: (table: string) => ({ withIndex: (_index: string, build: (q: { eq: (field: string, value: unknown) => void }) => unknown) => {
         let field: string; let value: unknown

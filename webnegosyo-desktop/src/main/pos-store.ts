@@ -12,6 +12,7 @@ import { join, dirname } from 'path'
 import type {
   LocalPosOrder,
   PosOrderPayload,
+  PosOrderScope,
   PosCatalogCache,
   PosTenantCache,
 } from '../shared/types'
@@ -77,12 +78,16 @@ function loadOrders(): OrdersFile {
   if (ordersCache) return ordersCache
   try {
     const raw = JSON.parse(readFileSync(ordersPath(), 'utf-8')) as Partial<OrdersFile>
-    ordersCache = {
-      version: 1,
-      orders: Array.isArray(raw.orders) ? raw.orders : [],
+    if (raw.version !== 1 || !Array.isArray(raw.orders) || raw.orders.some((order) =>
+      !order || typeof order.clientOrderId !== 'string' || !order.payload ||
+      !['pending', 'synced'].includes(order.syncStatus))) {
+      throw new Error('The saved sales ledger is damaged. Keep this device data and contact support.')
     }
-  } catch {
-    // A corrupt ledger must never brick the register — fall back to empty.
+    ordersCache = { version: 1, orders: raw.orders }
+  } catch (error) {
+    // Only a missing file is an empty ledger. Never replace corrupt/unreadable
+    // paid sales with a fresh file when the next checkout is saved.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     ordersCache = { version: 1, orders: [] }
   }
   return ordersCache
@@ -120,13 +125,22 @@ function commitCache(next: CacheFile): void {
 
 export function savePosOrder(
   payload: PosOrderPayload,
-  paymentStatus: 'paid' | 'pending'
+  paymentStatus: 'paid' | 'pending',
+  scope: PosOrderScope
 ): LocalPosOrder {
+  if (!scope?.tenantId || !scope.convexUrl) throw new Error('No store selected for this sale')
   const state = loadOrders()
   // Idempotent on clientOrderId — a retried save must never create a duplicate.
   const existing = state.orders.find((o) => o.clientOrderId === payload.clientOrderId)
-  if (existing) return existing
+  if (existing) {
+    if (existing.tenantId !== scope.tenantId || existing.convexUrl !== scope.convexUrl) {
+      throw new Error('This sale belongs to a different or unknown store')
+    }
+    return existing
+  }
   const order: LocalPosOrder = {
+    tenantId: scope.tenantId,
+    convexUrl: scope.convexUrl,
     clientOrderId: payload.clientOrderId,
     payload,
     paymentStatus,

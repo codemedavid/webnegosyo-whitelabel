@@ -45,7 +45,7 @@ describe("withOfflineSnapshot", () => {
   it("does not touch the disk again while the answer is unchanged", async () => {
     const fetcher = jest.fn().mockResolvedValue({ items: [1] });
     await withOfflineSnapshot(key, fetcher, { now: () => 5 });
-    await withOfflineSnapshot(key, fetcher, { now: () => 5 });
+    await withOfflineSnapshot(key, fetcher, { now: () => 6 });
     await flush();
     expect(storage.setItem).toHaveBeenCalledTimes(1);
 
@@ -68,11 +68,11 @@ describe("withOfflineSnapshot", () => {
     await expect(withOfflineSnapshot(key, () => Promise.reject(failure))).rejects.toBe(failure);
   });
 
-  it("a server refusal still falls back but leaves the belief online", async () => {
+  it("does not bypass a server refusal with cached data", async () => {
     storage.getItem.mockResolvedValue(JSON.stringify({ savedAt: 1, value: [] }));
     await expect(
       withOfflineSnapshot(key, () => Promise.reject(new Error("permission denied")))
-    ).resolves.toEqual([]);
+    ).rejects.toThrow("permission denied");
     expect(getConnectivity().status).toBe("online");
   });
 

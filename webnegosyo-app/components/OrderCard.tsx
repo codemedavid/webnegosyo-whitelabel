@@ -19,6 +19,8 @@ import { getPresellDate, formatPresellDate } from "../lib/presell-orders";
 import { getOrderTableNumber } from "../lib/order-table-number";
 import { isOrderUnpaid } from "../lib/order-paid-state";
 import { useTickerNow } from "./TickerProvider";
+import { TONE_COLORS } from "./loyalty/tone-colors";
+import type { OrderCustomerBadge } from "../lib/loyalty/order-customers";
 
 export interface OrderCardOrder {
   dailyNumber?: number | null;
@@ -64,6 +66,8 @@ interface OrderCardProps {
   onCancel?: () => void;
   /** Tighter, action-free variant used in the dashboard "Needs attention" list. */
   compact?: boolean;
+  /** A known customer — member card, stamp earned, or a regular. Omit for walk-ins. */
+  customerBadge?: OrderCustomerBadge | null;
 }
 
 const MAX_THUMBNAILS = 4;
@@ -83,6 +87,7 @@ export const OrderCard = memo(function OrderCard({
   onAdvance,
   onCancel,
   compact = false,
+  customerBadge,
 }: OrderCardProps) {
   const status = getStatusMeta(order.status);
   const customerName = displayCustomerName(order.customerName);
@@ -124,6 +129,19 @@ export const OrderCard = memo(function OrderCard({
             <Text style={styles.contact} numberOfLines={1}>
               {order.customerContact}
             </Text>
+          ) : null}
+          {customerBadge ? (
+            <View
+              style={[styles.customerChip, { backgroundColor: TONE_COLORS[customerBadge.tone].bg }]}
+              accessibilityLabel={`Known customer: ${customerBadge.label}`}
+            >
+              <Text
+                style={[styles.customerChipText, { color: TONE_COLORS[customerBadge.tone].text }]}
+                numberOfLines={1}
+              >
+                ★ {customerBadge.label}
+              </Text>
+            </View>
           ) : null}
         </View>
         <View style={styles.right}>
@@ -240,6 +258,14 @@ const styles = StyleSheet.create({
   identity: { flex: 1 },
   name: { ...typography.heading, color: colors.textPrimary },
   contact: { ...typography.caption, color: colors.textSecondary, marginTop: 1 },
+  customerChip: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  customerChipText: { ...typography.small, fontWeight: "700" },
   right: { alignItems: "flex-end", gap: spacing.xs },
   total: { ...typography.heading, color: colors.accent },
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.full },

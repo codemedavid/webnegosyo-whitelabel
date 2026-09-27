@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useAuthStore } from "../../stores/auth-store";
-import { NEW_CAMPAIGN_ID, campaignHref } from "../../lib/navigation";
+import { NEW_CAMPAIGN_ID, campaignHref, customerHref } from "../../lib/navigation";
 import {
   computeCampaignDueStates,
   type CampaignDueState,
@@ -344,6 +344,7 @@ export default function CustomersScreen() {
               consentAction={consentActionFor(item.customer, suppressedPhones)}
               onToggleOptOut={() => toggleOptOut(item.customer)}
               onRecordConsent={(action) => recordConsent(item.customer, action)}
+              onOpen={() => router.push(customerHref(item.customer.id))}
             />
           )}
         />

@@ -33,6 +33,10 @@ import { TickerProvider } from "../../components/TickerProvider";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
+import {
+  markPaidAfterHandover,
+  planOrderStatusChange,
+} from "../../lib/order-status-change";
 import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
@@ -45,10 +49,14 @@ import type { DateRangePreset } from "../../lib/product-analytics-filters";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useOptimisticOrderCache } from "../../lib/query/optimistic-order-status";
 import { claimOrderBusy, releaseOrderBusy, resolveExportSource } from "../../lib/orders-list-actions";
+import { useOrderCustomers } from "../../lib/query/use-order-customers";
+import { describeOrderCustomerBadge, type OrderCustomerBadge } from "../../lib/loyalty/order-customers";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+const updatePaymentStatusRef =
+  "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
 
 /** Same bounded page the analytics reads use — getOrders defaults to 50. */
 const EXPORT_FETCH_LIMIT = 2000;
@@ -135,15 +143,9 @@ export default function OrdersScreen() {
       : "skip"
   );
   const updateStatus = useSafeMutation(updateOrderStatusRef);
+  const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
   const { patchOrderStatus } = useOptimisticOrderCache();
 
-  // Pull-to-refresh re-reads every query this screen holds (the export reads
-  // are no-ops while the sheet is closed).
-  const onRefresh = useCallback(
-    () =>
-      refreshWithMinSpinner([refetchOrders, refetchExportOrders, refetchExportItems], setRefreshing),
-    [refetchOrders, refetchExportOrders, refetchExportItems]
-  );
 
   // A branch account sees only its own branch's orders. Filtering here — before
   // the counts, search and sort are computed — keeps the status pill counts
@@ -195,6 +197,29 @@ export default function OrdersScreen() {
     [activeBranchFilter, scopedOrders],
   );
 
+  // Known customers on this queue — a member's card, the stamp an order
+  // earned, a regular. Asked for the whole queue, not the filtered view, so
+  // typing in the search box never re-reads.
+  const { byOrderId: orderCustomers, refetch: refetchOrderCustomers } = useOrderCustomers(allOrders);
+  const customerBadges = useMemo(() => {
+    const badges = new Map<string, OrderCustomerBadge>();
+    for (const [orderId, customer] of orderCustomers) {
+      badges.set(orderId, describeOrderCustomerBadge(customer));
+    }
+    return badges;
+  }, [orderCustomers]);
+
+  // Pull-to-refresh re-reads every query this screen holds (the export reads
+  // are no-ops while the sheet is closed).
+  const onRefresh = useCallback(
+    () =>
+      refreshWithMinSpinner(
+        [refetchOrders, refetchExportOrders, refetchExportItems, refetchOrderCustomers],
+        setRefreshing,
+      ),
+    [refetchOrders, refetchExportOrders, refetchExportItems, refetchOrderCustomers]
+  );
+
   const counts = useMemo(() => {
     const map: Record<string, number> = { all: allOrders.length };
     for (const order of allOrders) {
@@ -239,11 +264,18 @@ export default function OrdersScreen() {
   }, []);
 
   const handleUpdateStatus = useCallback(
-    async (orderId: string, newStatus: OrderStatus) => {
+    async (order: ConvexOrder, newStatus: OrderStatus) => {
+      const orderId = order._id;
       if (useAuthStore.getState().isDemo) {
         Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
         return;
       }
+      const plan = planOrderStatusChange(order, newStatus);
+      if (!plan.allowed) {
+        Alert.alert("Cannot update order", plan.reason ?? "This change is not allowed.");
+        return;
+      }
+
       const claim = claimOrderBusy(busyRef.current, orderId);
       if (!claim.isClaimed) return;
       setBusy(claim.busy);
@@ -252,6 +284,10 @@ export default function OrdersScreen() {
       const rollback = patchOrderStatus(orderId, newStatus);
       try {
         await updateStatus({ orderId, status: newStatus });
+        // Handing the order over is taking the money for it.
+        if (plan.shouldMarkPaid) {
+          await markPaidAfterHandover(updatePaymentStatus, orderId);
+        }
         // Put the ingredients back on a cancel — the same shared side-effect
         // the detail screen runs. Never throws, so a stock write cannot make an
         // order un-cancellable from the queue.
@@ -267,14 +303,14 @@ export default function OrdersScreen() {
         // The confirmation receipt prints from GlobalReceiptAutoPrint, which
         // watches the status transition and holds the line items this list
         // does not — no more "open the order to print it" detour.
-      } catch {
+      } catch (err) {
         rollback();
-        Alert.alert("Error", "Failed to update order status");
+        Alert.alert("Error", err instanceof Error ? err.message : "Failed to update order status");
       } finally {
         setBusy(releaseOrderBusy(busyRef.current, orderId));
       }
     },
-    [patchOrderStatus, setBusy, updateStatus],
+    [patchOrderStatus, setBusy, updateStatus, updatePaymentStatus],
   );
 
   const handleExport = async (preset: DateRangePreset) => {
@@ -318,7 +354,7 @@ export default function OrdersScreen() {
     (orderId: string) => {
       const order = allOrders.find((candidate) => candidate._id === orderId);
       const nextStatus = order ? NEXT_STATUS[order.status] : undefined;
-      if (nextStatus) void handleUpdateStatus(orderId, nextStatus);
+      if (order && nextStatus) void handleUpdateStatus(order, nextStatus);
     },
     [allOrders, handleUpdateStatus],
   );
@@ -332,7 +368,7 @@ export default function OrdersScreen() {
           { text: "Keep Order", style: "cancel" },
           {
             text: "Cancel Order",
-            onPress: () => handleUpdateStatus(order._id, "cancelled"),
+            onPress: () => handleUpdateStatus(order, "cancelled"),
             style: "destructive",
           },
         ]
@@ -349,13 +385,14 @@ export default function OrdersScreen() {
           order={order}
           nextStatusLabel={nextStatus ? capitalize(nextStatus) : undefined}
           isBusy={busyIds.has(order._id)}
+          customerBadge={customerBadges.get(order._id)}
           onOpen={handleOpen}
           onAdvance={handleAdvance}
           onCancel={confirmCancel}
         />
       );
     },
-    [busyIds, handleOpen, handleAdvance, confirmCancel],
+    [busyIds, customerBadges, handleOpen, handleAdvance, confirmCancel],
   );
 
   const listEmpty = error ? (

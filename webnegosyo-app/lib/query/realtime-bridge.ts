@@ -7,13 +7,19 @@
  * order. So the binding is ref-counted per client: every platform hook binds,
  * the first registers the listener, the last release removes it.
  *
+ * Payloads are coalesced for `REALTIME_COALESCE_MS` and answered with ONE
+ * invalidation covering every key any of them touches. One sale arrives as an
+ * INSERT plus the UPDATEs its triggers write, and a busy store's events land
+ * back to back; per payload, every order key was refetched several times a
+ * second, each refetch cancelling the one before it.
+ *
  * Takes the hub slice and the client so tests bind fakes; the singletons are
  * supplied by `use-platform-query.ts`.
  */
 
 import type { QueryClient } from "@tanstack/query-core";
-import { invalidateForOrderChange } from "../backends/query-invalidation";
-import type { OrderChangeListener } from "../backends/realtime-hub";
+import { invalidateForOrderChanges } from "../backends/query-invalidation";
+import type { OrderChangeEvent, OrderChangeListener } from "../backends/realtime-hub";
 
 export interface RealtimeChangeSource {
   onChange: (listener: OrderChangeListener) => () => void;
@@ -24,14 +30,39 @@ interface Binding {
   unsubscribe: () => void;
 }
 
+/**
+ * How long payloads gather before one invalidation answers them all. Short
+ * enough that a new order still reaches the board within a second; long
+ * enough to fold a sale's INSERT and its trigger UPDATEs into one read.
+ */
+export const REALTIME_COALESCE_MS = 400;
+
 const bindings = new WeakMap<QueryClient, Binding>();
 
 function subscribe(source: RealtimeChangeSource, client: QueryClient): () => void {
-  return source.onChange(({ tenantId, payload }) => {
-    invalidateForOrderChange(client, tenantId, payload).catch((e: unknown) => {
+  let pending: readonly OrderChangeEvent[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = () => {
+    timer = null;
+    const batch = pending;
+    pending = [];
+    invalidateForOrderChanges(client, batch).catch((e: unknown) => {
       console.warn("[realtime-bridge] invalidation failed:", e);
     });
+  };
+
+  const unsubscribe = source.onChange((event) => {
+    pending = [...pending, event];
+    if (timer === null) timer = setTimeout(flush, REALTIME_COALESCE_MS);
   });
+
+  return () => {
+    unsubscribe();
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    pending = [];
+  };
 }
 
 /** Bind a client to the hub; returns this holder's release. */

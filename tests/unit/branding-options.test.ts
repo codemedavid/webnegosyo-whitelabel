@@ -17,6 +17,12 @@ describe('describeBrandingOptions', () => {
     expect(options.page_layout).toBeDefined()
   })
 
+  it('offers every flexible template and scroll layout, and never the retired compact card', () => {
+    expect(options.card_template).toEqual(expect.arrayContaining(['showcase', 'atelier', 'kiosk', 'sticker', 'menuboard', 'arch']))
+    expect(options.card_template).not.toContain('compact')
+    expect(options.page_layout).toEqual(expect.arrayContaining(['storefront', 'kiosk', 'rails', 'lookbook']))
+  })
+
   it('never lists a field the writer cannot accept', () => {
     const fieldIds = new Set(listBrandingFieldIds())
     for (const key of Object.keys(options)) {

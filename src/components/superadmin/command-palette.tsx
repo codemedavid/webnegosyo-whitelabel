@@ -7,6 +7,7 @@ import {
   BarChart3,
   CornerDownLeft,
   LayoutDashboard,
+  MapPinned,
   Plus,
   Search,
   Settings,
@@ -46,6 +47,15 @@ const DESTINATIONS: CommandDestination[] = [
     icon: BarChart3,
     group: 'Overview',
     keywords: ['gmv', 'revenue', 'charts', 'metrics'],
+  },
+  {
+    id: 'client-map',
+    label: 'Client Map',
+    hint: 'Every live store on a map',
+    href: '/superadmin/map',
+    icon: MapPinned,
+    group: 'Overview',
+    keywords: ['map', 'clients', 'locations', 'globe', 'where'],
   },
   {
     id: 'restaurants',

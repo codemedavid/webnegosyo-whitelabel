@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSignedUploadToken, getUploadAuthParams } from '@/lib/imagekit-server'
+import { createSignedUploadToken } from '@/lib/imagekit-server'
 import { resolveImageKitUploader, type UploaderResolution } from '@/lib/imagekit-uploader-auth'
 import { sanitizeUploadFileName, sanitizeUploadFolder } from '@/lib/imagekit-signature'
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
@@ -14,10 +14,9 @@ import { getClientIP } from '@/lib/rate-limit'
  *   token whose signature binds folder, fileName, useUniqueFileName=true and
  *   overwriteFile=false: ImageKit rejects the upload if any parameter differs.
  *
- * GET — legacy clients only (merchant-app binaries that predate the fix). The
- *   v1 signature covers token+expire and nothing else, so its holder chooses
- *   folder / overwrite freely. Served to anonymous callers ONLY while
- *   `IMAGEKIT_AUTH_REQUIRED` is not 'true'; flip it once those builds are gone.
+ * GET — retired. Its v1 signature did not bind folder or overwrite flags,
+ * so even a tenant admin could replace another tenant's images.
+ * Current staff clients use POST; customers use the payment-proof endpoint.
  *
  * Customers never come here: payment-proof screenshots are uploaded through
  * /api/payment-proof/upload, which stores them server-side.
@@ -33,10 +32,6 @@ const NO_STORE = { 'Cache-Control': 'no-store' }
 
 function respond(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE })
-}
-
-function isAuthEnforced(): boolean {
-  return process.env.IMAGEKIT_AUTH_REQUIRED === 'true'
 }
 
 async function isRateLimited(request: NextRequest): Promise<boolean> {
@@ -78,16 +73,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (await isRateLimited(request)) return respond(TOO_MANY, 429)
 
   const resolution = await resolveImageKitUploader(request)
-  if (resolution.status !== 'authorized') {
-    if (isAuthEnforced()) return refusal(resolution)
-    // Rollout visibility: how much unauthenticated legacy traffic remains
-    // before IMAGEKIT_AUTH_REQUIRED can be switched on.
-    console.warn('[imagekit] legacy unauthenticated upload auth issued', { status: resolution.status })
-  }
+  if (resolution.status !== 'authorized') return refusal(resolution)
 
-  const params = getUploadAuthParams()
-  if (!params) {
-    return respond({ error: 'Image upload is not configured.' }, 503)
-  }
-  return respond(params)
+  return respond({ error: 'This upload method has been retired. Please update your app.' }, 410)
 }

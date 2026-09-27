@@ -56,7 +56,17 @@ jest.mock('@/components/customer/branding-inspector', () => ({
   BrandingInspector: () => null,
 }))
 
-import CheckoutPage from '@/app/[tenant]/checkout/page'
+import { CheckoutView } from '@/app/[tenant]/checkout/checkout-view'
+import type { UseCheckoutInput } from '@/hooks/useCheckout'
+
+// The server page reads these; the view only forwards them to the (mocked) hook.
+const viewProps = {
+  tenantSlug: 'acme',
+  initialTenant: { id: 'tenant-1', checkout_template: 'classic' },
+  config: { orderTypes: [], formFieldsByOrderType: {}, paymentMethodsByOrderType: {}, outlets: null, facebookPageId: null },
+} as unknown as UseCheckoutInput
+
+const CheckoutPage = () => <CheckoutView {...viewProps} />
 
 const outletState = (overrides: Record<string, unknown> = {}) => ({
   isPickerVisible: true,

@@ -3,29 +3,31 @@
  * them. Pure, so the arithmetic that puts a green or red pill on the takings
  * card can be tested without a clock or a backend.
  *
- * Local calendar days, deliberately: the merchant's day is the one on their
- * phone, and a UTC boundary would roll the figure over mid-evening in Manila.
+ * MANILA calendar days, the same `business-day` rule every report, the daily
+ * order number and the server's own "today" use. This used to read the
+ * phone's timezone, so on a phone not set to Manila the takings card compared
+ * against a different "yesterday" than the Analytics screen showed.
  */
+
+import { resolveBusinessDayWindow, previousBusinessDayKey, toBusinessDayKey } from "./daily-report/business-day";
 
 export interface DateRange {
   startDate: number;
+  /** INCLUSIVE — `getDashboardStatsByPeriod` filters `<=` on both backends. */
   endDate: number;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function startOfDay(at: Date): number {
-  return new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+function dayRange(dayKey: string): DateRange {
+  const window = resolveBusinessDayWindow(dayKey);
+  return { startDate: Date.parse(window.startIso), endDate: Date.parse(window.endIso) - 1 };
 }
 
-export function todayRange(now: Date): DateRange {
-  const startDate = startOfDay(now);
-  return { startDate, endDate: startDate + DAY_MS - 1 };
+export function todayRange(nowMs: number): DateRange {
+  return dayRange(toBusinessDayKey(new Date(nowMs).toISOString()));
 }
 
-export function yesterdayRange(now: Date): DateRange {
-  const todayStart = startOfDay(now);
-  return { startDate: todayStart - DAY_MS, endDate: todayStart - 1 };
+export function yesterdayRange(nowMs: number): DateRange {
+  return dayRange(previousBusinessDayKey(toBusinessDayKey(new Date(nowMs).toISOString())));
 }
 
 /**

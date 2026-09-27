@@ -185,3 +185,49 @@ export function summarizeSettlement(
     balanceLabel: formatPeso(Math.abs(balance)),
   };
 }
+
+export interface SettlementDisplay extends SettlementSummary {
+  /** What the card says when the ledger has no rows. */
+  emptyNote: string;
+}
+
+export interface SettlementDisplayContext {
+  /** From `isOrderUnpaid` — the verdict that reads BOTH records of payment. */
+  isOrderUnpaid: boolean;
+}
+
+const EMPTY_NOTE_UNPAID = "Nothing has been collected for this order yet.";
+const EMPTY_NOTE_PAID_OFF_LEDGER =
+  "Paid in full at checkout or on handover — no counter payments were recorded.";
+
+/**
+ * The settlement summary as the card should show it, reconciled with the
+ * order's own payment status.
+ *
+ * The ledger is only one witness: an order paid online, or a cash order that
+ * was delivered, is settled with an EMPTY ledger. Reading the ledger alone put
+ * "Still owing ₱683.00" under a card that said "Status: paid". Only the
+ * "collect" verdict is overridden — a refund the ledger shows is still real
+ * money owed back, whatever the status says.
+ */
+export function toSettlementDisplay(
+  summary: SettlementSummary,
+  { isOrderUnpaid }: SettlementDisplayContext,
+): SettlementDisplay {
+  const isSettledOffLedger = !isOrderUnpaid && summary.intent === "collect";
+
+  if (!isSettledOffLedger) {
+    return {
+      ...summary,
+      emptyNote: isOrderUnpaid ? EMPTY_NOTE_UNPAID : EMPTY_NOTE_PAID_OFF_LEDGER,
+    };
+  }
+
+  return {
+    ...summary,
+    balance: 0,
+    intent: "settled",
+    balanceLabel: formatPeso(0),
+    emptyNote: EMPTY_NOTE_PAID_OFF_LEDGER,
+  };
+}

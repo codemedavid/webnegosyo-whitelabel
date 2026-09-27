@@ -17,7 +17,9 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { formatPrice, calculateSlotBundleSavings, calculateTotalSlotBundleSavings } from '@/lib/cart-utils'
 import { getCartPalette } from '@/lib/branding-utils'
+import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
+import { CartOffers } from './cart-shared'
 
 export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
   const {
@@ -27,6 +29,8 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
     setItemToRemove, setItemToEdit, handleDecreaseQuantity, canIncreaseItem, presellHintFor,
     isNavigating, requestCheckout, exitToMenu,
   } = cart
+  // Senior mode's larger text gets a second line for long dish names.
+  const isSeniorMode = useSeniorMode()
 
   if (!tenant) return null
 
@@ -35,7 +39,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20" style={{ background: palette.background }}>
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
+      <header data-senior-hidden className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-orange-200/30">
         <div className="container mx-auto flex h-20 items-center gap-4 px-4">
           <Button variant="ghost" size="icon" onClick={exitToMenu} aria-label="Back to menu" className="hover:bg-orange-50">
             <ArrowLeft className="h-5 w-5" />
@@ -87,7 +91,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                       <div>
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="flex-1">
-                            <h3 className="text-lg font-bold text-gray-900 line-clamp-1" style={{ color: palette.text }}>
+                            <h3 className={`text-lg font-bold text-gray-900 ${isSeniorMode ? 'line-clamp-2' : 'line-clamp-1'}`} style={{ color: palette.text }}>
                               {item.menu_item.name}
                             </h3>
 
@@ -156,7 +160,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between mt-4">
+                      <div className="flex flex-wrap items-center justify-between gap-y-2 mt-4">
                         <div className="flex items-center gap-3">
                           <Button
                             variant="outline"
@@ -179,7 +183,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
-                        <div className="text-right">
+                        <div className="ml-auto text-right">
                           <span className="text-xl font-bold text-orange-600" style={{ color: accentColor }}>
                             {formatPrice(item.subtotal)}
                           </span>
@@ -278,6 +282,7 @@ export function ClassicCart({ cart }: { cart: UseCartViewReturn }) {
                   </div>
                 )
               })}
+              <CartOffers cart={cart} className="pt-2" />
             </div>
 
             <div className="lg:col-span-1">

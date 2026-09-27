@@ -3,21 +3,11 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, SearchX } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { deleteMenuItemAction, toggleAvailabilityAction } from '@/app/actions/menu-items'
-import { describeActionError } from '@/components/admin/server-action-safety'
+import { Plus, SearchX, UtensilsCrossed } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { toggleAvailabilityAction } from '@/app/actions/menu-items'
+import { describeActionError } from '@/components/admin/server-action-safety'
 import type { MenuItem, Category, OutletMenuOverride } from '@/types/database'
 import {
   buildOutletMenuIndex,
@@ -32,8 +22,9 @@ import {
   hasActiveMenuFilters,
   type MenuListFilters,
 } from '@/lib/menu-list-filters'
+import { groupMenuItemsByCategory } from '@/lib/menu-list-groups'
 import { MenuListToolbar } from '@/components/admin/menu-list-toolbar'
-import { MenuItemCard } from '@/components/admin/menu-item-card'
+import { MenuItemRow } from '@/components/admin/menu-item-row'
 
 interface MenuItemsListProps {
   items: MenuItem[]
@@ -63,141 +54,127 @@ export function MenuItemsList({
   inventoryEnabled = false,
   recipeLinkedItemIds = null,
 }: MenuItemsListProps) {
-  // A Set for the per-card lookup; the array form only exists to cross the
+  // A Set for the per-row lookup; the array form only exists to cross the
   // server boundary.
   const linkedRecipeIds = useMemo(
     () => (recipeLinkedItemIds === null ? null : new Set(recipeLinkedItemIds)),
     [recipeLinkedItemIds]
   )
-  // One index for the whole grid rather than one lookup per card: the owner's
+  // One index for the whole list rather than one lookup per row: the owner's
   // "is this the same everywhere" answer comes from the same resolution the
   // customer's price does, so the badge can never disagree with the storefront.
   const branchIndex = useMemo(
     () => buildOutletMenuIndex(menuOverrides as unknown as OutletMenuOverrideRow[]),
     [menuOverrides]
   )
-  const categoryNames = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
   const router = useRouter()
   const [filters, setFilters] = useState<MenuListFilters>(EMPTY_MENU_FILTERS)
-  const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  /**
+   * Switch positions the owner set that the server has not echoed back yet.
+   * The switch flips on tap rather than after the round trip; the entries are
+   * dropped whenever fresh items arrive, which is when the refresh lands.
+   */
+  const [pendingAvailability, setPendingAvailability] = useState<Record<string, boolean>>({})
+  const [itemsSeen, setItemsSeen] = useState(items)
+  if (itemsSeen !== items) {
+    setItemsSeen(items)
+    setPendingAvailability({})
+  }
 
   const counts = useMemo(() => countMenuItemsByStatus(items), [items])
   const filteredItems = useMemo(() => filterMenuItems(items, filters), [items, filters])
+  const groups = useMemo(() => groupMenuItemsByCategory(filteredItems, categories), [filteredItems, categories])
   const isFiltered = hasActiveMenuFilters(filters)
 
-  const handleDelete = async () => {
-    if (!itemToDelete) return
-    setIsDeleting(true)
-    try {
-      const result = await deleteMenuItemAction(itemToDelete.id, tenantId, tenantSlug)
-      if (result.success) {
-        toast.success(`${itemToDelete.name} deleted`)
-        setItemToDelete(null)
-        router.refresh()
-      } else {
-        toast.error(result.error || 'Failed to delete menu item')
-      }
-    } catch (error) {
-      toast.error(describeActionError(error))
-    } finally {
-      setIsDeleting(false)
-    }
-  }
-
-  const handleToggleAvailability = async (item: MenuItem) => {
+  const handleToggleAvailability = async (item: MenuItem, next: boolean) => {
     setTogglingId(item.id)
+    setPendingAvailability((prev) => ({ ...prev, [item.id]: next }))
+    const revert = () =>
+      setPendingAvailability((prev) => {
+        const rest = { ...prev }
+        delete rest[item.id]
+        return rest
+      })
     try {
-      const result = await toggleAvailabilityAction(item.id, tenantId, tenantSlug, !item.is_available)
+      const result = await toggleAvailabilityAction(item.id, tenantId, tenantSlug, next)
       if (result.success) {
-        toast.success(`${item.name} is now ${item.is_available ? 'out of stock' : 'available'}`)
+        toast.success(`${item.name} is now ${next ? 'available' : 'out of stock'}`)
         router.refresh()
       } else {
-        toast.error(result.error || 'Failed to update availability')
+        revert()
+        toast.error(result.error || 'Could not update the dish. Please try again.')
       }
     } catch (error) {
+      revert()
       toast.error(describeActionError(error))
     } finally {
       setTogglingId(null)
     }
   }
 
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 py-16 text-center">
+        <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+          <UtensilsCrossed className="h-6 w-6 text-muted-foreground" />
+        </span>
+        <h3 className="text-lg font-semibold">Add your first dish</h3>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+          A photo, a name and a price is all it takes. It shows on your menu right away.
+        </p>
+        <Link href={`/${tenantSlug}/admin/menu/new`} className="mt-5">
+          <Button className="h-11 px-6"><Plus className="mr-2 h-4 w-4" />Add dish</Button>
+        </Link>
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <MenuListToolbar filters={filters} counts={counts} categories={categories} onChange={setFilters} />
 
-      <p className="text-xs text-muted-foreground" aria-live="polite">
-        {isFiltered
-          ? `${filteredItems.length} of ${items.length} dish${items.length === 1 ? '' : 'es'}`
-          : `${items.length} dish${items.length === 1 ? '' : 'es'}`}
-      </p>
+      {isFiltered && (
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          Showing {filteredItems.length} of {items.length} dish{items.length === 1 ? '' : 'es'}
+        </p>
+      )}
 
       {filteredItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-14 text-center">
-          {isFiltered ? (
-            <>
-              <SearchX className="mb-3 h-8 w-8 text-muted-foreground" />
-              <h3 className="text-base font-semibold">No dishes match these filters</h3>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">Try a different search, category, or status.</p>
-              <Button variant="outline" size="sm" className="mt-4" onClick={() => setFilters(EMPTY_MENU_FILTERS)}>
-                Clear filters
-              </Button>
-            </>
-          ) : (
-            <>
-              <Plus className="mb-3 h-8 w-8 text-muted-foreground" />
-              <h3 className="text-base font-semibold">Your menu is empty</h3>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">Add your first dish and it will appear on your storefront right away.</p>
-              <Link href={`/${tenantSlug}/admin/menu/new`} className="mt-4">
-                <Button><Plus className="mr-2 h-4 w-4" />Add dish</Button>
-              </Link>
-            </>
-          )}
+          <SearchX className="mb-3 h-8 w-8 text-muted-foreground" />
+          <h3 className="text-base font-semibold">No dishes match these filters</h3>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">Try a different search, category, or status.</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => setFilters(EMPTY_MENU_FILTERS)}>
+            Clear filters
+          </Button>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map((item) => {
-            const branchLabel = outlets.length > 0
-              ? describeBranchSummary(summarizeItemAcrossBranches(item, outlets, branchIndex))
-              : null
-            return (
-              <MenuItemCard
-                key={item.id}
-                item={item}
-                categoryName={categoryNames.get(item.category_id)}
-                tenantSlug={tenantSlug}
-                branchLabel={branchLabel}
-                isRecipeMissing={inventoryEnabled && linkedRecipeIds !== null && !linkedRecipeIds.has(item.id)}
-                isToggling={togglingId === item.id}
-                onToggleAvailability={() => void handleToggleAvailability(item)}
-                onDelete={() => setItemToDelete(item)}
-              />
-            )
-          })}
-        </div>
+        groups.map((group) => (
+          <section key={group.key} aria-label={group.name} className="space-y-2">
+            <h2 className="flex items-baseline gap-2 px-1 text-sm font-semibold">
+              {group.name}
+              <span className="font-normal text-muted-foreground tabular-nums">{group.items.length}</span>
+            </h2>
+            <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
+              {group.items.map((item) => (
+                <MenuItemRow
+                  key={item.id}
+                  item={item}
+                  tenantSlug={tenantSlug}
+                  isAvailable={pendingAvailability[item.id] ?? item.is_available}
+                  branchLabel={outlets.length > 0
+                    ? describeBranchSummary(summarizeItemAcrossBranches(item, outlets, branchIndex))
+                    : null}
+                  isRecipeMissing={inventoryEnabled && linkedRecipeIds !== null && !linkedRecipeIds.has(item.id)}
+                  isToggling={togglingId === item.id}
+                  onToggleAvailability={(next) => void handleToggleAvailability(item, next)}
+                />
+              ))}
+            </ul>
+          </section>
+        ))
       )}
-
-      <AlertDialog open={itemToDelete !== null} onOpenChange={(open) => { if (!open) setItemToDelete(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {itemToDelete?.name ?? 'this dish'}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              It will be removed from your storefront and cannot be restored.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Keep it</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? 'Deleting…' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

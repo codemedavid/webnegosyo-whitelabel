@@ -19,11 +19,16 @@
  */
 
 import { settlementIntent } from "./order-balance";
+import { getOrderTableNumber } from "./order-table-number";
 
 /** Statuses that mean money is in hand. `verified` is an approved proof. */
 const SETTLED_STATUSES: readonly string[] = ["paid", "verified"];
 
 export interface OrderPaidStateLike {
+  /** Fulfilment status. A handed-over order is a settled one — see below. */
+  status?: string | null;
+  /** Carries the table number; a table's bill is settled at the end. */
+  customerData?: unknown;
   /** The order row's own column. Absent means the backend said nothing. */
   paymentStatus?: string | null;
   total?: number | null;
@@ -31,8 +36,22 @@ export interface OrderPaidStateLike {
   amountPaid?: number | null;
 }
 
-function isSettledStatus(paymentStatus?: string | null): boolean {
+export function isSettledStatus(paymentStatus?: string | null): boolean {
   return paymentStatus != null && SETTLED_STATUSES.includes(paymentStatus);
+}
+
+/**
+ * Does handing this order over mean the money was taken?
+ *
+ * Yes for every order except a table's: a dine-in tab is served course by
+ * course and billed when the party leaves, so "delivered" there means "on the
+ * table", and the floor plan reads it as a table waiting for its bill.
+ */
+export function isHandoverSettlement(order: {
+  status?: string | null;
+  customerData?: unknown;
+}): boolean {
+  return order.status === "delivered" && getOrderTableNumber(order.customerData) === null;
 }
 
 /**
@@ -45,6 +64,9 @@ function isSettledStatus(paymentStatus?: string | null): boolean {
 export function isOrderUnpaid(order: OrderPaidStateLike): boolean {
   if (order.paymentStatus == null) return false;
   if (isSettledStatus(order.paymentStatus)) return false;
+  // Delivery now writes `paid`, but every order delivered before it did still
+  // carries `pending` — and a handed-over order is not a debt.
+  if (isHandoverSettlement(order)) return false;
 
   // A non-numeric or absent cache is a backend that keeps no ledger, NOT a
   // zero: falling through to the status is the only honest answer there.

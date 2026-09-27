@@ -47,6 +47,9 @@ interface TenantStockConfig {
   convex_deploy_key: string | null
 }
 
+/** A diner has no account, so the audit log names the path and nobody. */
+const CUSTOMER_APP_AUDIT = { context: { source: 'customer_app' as const } }
+
 /** Shape of `orders:getOrderById` as far as depletion cares. */
 interface ConvexOrderForStock {
   customerData?: unknown
@@ -101,6 +104,7 @@ async function depleteConvexOrder(
       'sale',
       0,
       typeof order.outletId === 'string' ? order.outletId : null,
+      CUSTOMER_APP_AUDIT,
     )
   }
 
@@ -144,6 +148,7 @@ async function depletePlatformOrder(
       'sale',
       0,
       (order as { outlet_id?: string | null }).outlet_id ?? null,
+      CUSTOMER_APP_AUDIT,
     )
   }
 

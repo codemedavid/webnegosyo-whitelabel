@@ -28,7 +28,7 @@ jest.mock('@/lib/inventory/order-stock-service', () => ({
 describe('restoreOrderStock', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    verifyTenantPermission.mockResolvedValue(undefined)
+    verifyTenantPermission.mockResolvedValue({ user: { id: 'owner-1' }, userRole: null })
   })
 
   it('reverses the order-s sale movements for an authorized caller', async () => {
@@ -36,7 +36,7 @@ describe('restoreOrderStock', () => {
     await restoreOrderStock('t1', 'jh7dm2p8qr3n5x9')
 
     // Assert
-    expect(reverseOrderStockBestEffort).toHaveBeenCalledWith('t1', 'jh7dm2p8qr3n5x9')
+    expect(reverseOrderStockBestEffort).toHaveBeenCalledWith('t1', 'jh7dm2p8qr3n5x9', expect.objectContaining({ source: 'web_admin' }))
   })
 
   it('checks permission against the orders capability', async () => {
@@ -63,6 +63,7 @@ describe('restoreOrderStock', () => {
     const calls: string[] = []
     verifyTenantPermission.mockImplementation(async () => {
       calls.push('verify')
+      return { user: { id: 'owner-1' }, userRole: null }
     })
     reverseOrderStockBestEffort.mockImplementation(async () => {
       calls.push('reverse')

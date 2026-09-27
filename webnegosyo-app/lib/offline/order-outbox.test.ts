@@ -110,10 +110,33 @@ describe("order outbox", () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
-  it("drops corrupt disk entries rather than crashing the register", () => {
-    expect(parseStoredOutbox("{nope")).toEqual([]);
-    expect(parseStoredOutbox(JSON.stringify([{ localId: 1 }, sale("ok")]))).toEqual([sale("ok")]);
-    expect(parseStoredOutbox(JSON.stringify({ not: "an array" }))).toEqual([]);
+  it("preserves corrupt ledgers instead of overwriting paid sales", async () => {
+    for (const raw of ["{nope", JSON.stringify([{ localId: 1 }, sale("ok")]), "{}"] ) {
+      storage.getItem.mockResolvedValueOnce(raw);
+      await expect(enqueueSale(sale("new"))).rejects.toThrow();
+      expect(getOutbox().isHydrated).toBe(false);
+      expect(storage.setItem).not.toHaveBeenCalled();
+    }
+    storage.getItem.mockResolvedValueOnce(JSON.stringify([sale("recovered")]));
+    await enqueueSale(sale("new"));
+    expect(getOutbox().sales.map((entry) => entry.localId)).toEqual(["recovered", "new"]);
+    expect(parseStoredOutbox(null)).toEqual([]);
+  });
+
+  it.each([
+    { attempts: undefined }, { backend: "unknown" }, { createdAt: null },
+    { bookkeeping: {} }, { orderArgs: [] }, { syncedOrderId: 7 },
+  ])("rejects malformed replay data without discarding it: %j", (patch) => {
+    expect(() => parseStoredOutbox(JSON.stringify([{ ...sale("a"), ...patch }]))).toThrow();
+  });
+
+  it("does not overwrite an unreadable ledger and retries hydration", async () => {
+    storage.getItem.mockRejectedValueOnce(new Error("disk read failed"));
+    await expect(enqueueSale(sale("new"))).rejects.toThrow("disk read failed");
+    expect(storage.setItem).not.toHaveBeenCalled();
+    storage.getItem.mockResolvedValueOnce(JSON.stringify([sale("existing")]));
+    await enqueueSale(sale("new"));
+    expect(getOutbox().sales).toHaveLength(2);
   });
 
   it("keeps the replay's progress markers on disk, so a crash resumes instead of repeating", async () => {
@@ -129,15 +152,37 @@ describe("order outbox", () => {
     });
   });
 
+  it("deduplicates retried checkout by tenant and client order id", async () => {
+    await enqueueSale(sale("a"));
+    await enqueueSale({ ...sale("retry"), clientOrderId: "pos-a" });
+    expect(getOutbox().sales.map((entry) => entry.localId)).toEqual(["a"]);
+  });
+
+  it("serializes writes and exposes a sale only after it is durable", async () => {
+    await hydrateOutbox();
+    let release!: () => void;
+    storage.setItem.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+    const first = enqueueSale(sale("a"));
+    await new Promise((resolve) => setImmediate(resolve));
+    const second = enqueueSale(sale("b"));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+    expect(getOutbox().sales).toHaveLength(0);
+    release();
+    await Promise.all([first, second]);
+    expect(JSON.parse(storage.setItem.mock.calls.at(-1)![1])).toEqual([sale("a"), sale("b")]);
+  });
+
   it("marks a sale as needing a person once the server has refused it enough times", () => {
     expect(needsAttention({ ...sale("a"), attempts: MAX_SYNC_ATTEMPTS - 1 })).toBe(false);
     expect(needsAttention({ ...sale("a"), attempts: MAX_SYNC_ATTEMPTS })).toBe(true);
   });
 
-  it("survives a storage failure on read and write", async () => {
-    storage.getItem.mockRejectedValue(new Error("disk"));
-    storage.setItem.mockRejectedValue(new Error("disk"));
-    await expect(enqueueSale(sale("a"))).resolves.toBeUndefined();
-    expect(isSaleQueued("a")).toBe(true);
+  it("refuses an unsaved sale and leaves memory unchanged when the disk write fails", async () => {
+    storage.setItem.mockRejectedValueOnce(new Error("disk full"));
+    await expect(enqueueSale(sale("a"))).rejects.toThrow("disk full");
+    expect(isSaleQueued("a")).toBe(false);
+    await enqueueSale(sale("b"));
+    expect(getOutbox().sales.map((entry) => entry.localId)).toEqual(["b"]);
   });
 });

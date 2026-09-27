@@ -39,6 +39,7 @@ import { listProducts, type Product } from "../../lib/products";
 import { getWebAppUrl } from "../../lib/web-app-url";
 import { LoyaltySmsDeviceCard } from "../../components/LoyaltySmsDeviceCard";
 import { SegmentedControl } from "../../components/SegmentedControl";
+import { LoyaltyActivityPanel } from "../../components/loyalty/LoyaltyActivityPanel";
 import { LoyaltyMembersPanel } from "../../components/loyalty/LoyaltyMembersPanel";
 
 /**
@@ -67,7 +68,7 @@ export default function LoyaltyScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [editing, setEditing] = useState<LoyaltyProgramSummary | null>(null);
-  const [section, setSection] = useState<"members" | "programs">("members");
+  const [section, setSection] = useState<"members" | "programs" | "activity">("members");
   // Bumped whenever a programme changes: the member counts hang off the rules.
   const [membersEpoch, setMembersEpoch] = useState(0);
 
@@ -114,6 +115,7 @@ export default function LoyaltyScreen() {
     setRefreshing(true);
     try {
       await load();
+      setMembersEpoch(epoch => epoch + 1);
     } finally {
       setRefreshing(false);
     }
@@ -213,6 +215,7 @@ export default function LoyaltyScreen() {
         <SegmentedControl
           options={[
             { label: "Members", value: "members" as const },
+            { label: "Activity", value: "activity" as const },
             { label: "Programmes", value: "programs" as const },
           ]}
           value={section}
@@ -221,7 +224,9 @@ export default function LoyaltyScreen() {
         />
 
         {section === "members" ? (
-          <LoyaltyMembersPanel tenantId={tenantId} reloadKey={membersEpoch} />
+          <LoyaltyMembersPanel key={tenantId} tenantId={tenantId} reloadKey={membersEpoch} />
+        ) : section === "activity" ? (
+          <LoyaltyActivityPanel key={tenantId} tenantId={tenantId} reloadKey={membersEpoch} />
         ) : (
           <>
         {actionError ? <Text style={styles.error}>{actionError}</Text> : null}

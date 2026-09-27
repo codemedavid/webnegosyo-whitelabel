@@ -4,7 +4,8 @@
  * Cart page shell.
  *
  * All logic lives in useCartView(); the selected design renders the cart;
- * the remove-confirmation dialog and checkout-upsell interstitial are shared.
+ * the remove-confirmation and edit dialogs are shared. Each design places the
+ * shared `CartOffers` row itself, between its items and its totals.
  * The design is chosen per-tenant via `cart_template` and lazy-loaded so only
  * that design's chunk ships. Unknown values fall back to 'classic'.
  */
@@ -16,9 +17,9 @@ import {
   CartNotFound,
   CartRemoveDialog,
   CartEditDialog,
-  CartUpsellInterstitial,
 } from '@/components/customer/cart-templates/cart-shared'
 import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
+import { SeniorOrderSteps } from '@/components/customer/senior-mode/senior-order-steps'
 import type { CartTemplate } from '@/lib/cart-templates'
 
 export default function CartPage() {
@@ -33,11 +34,12 @@ export default function CartPage() {
 
   return (
     <>
+      {/* Senior mode only: "Step 2 of 4" + a labelled back button */}
+      <SeniorOrderSteps current="cart" branding={cart.branding} backLabel="Back to menu" onBack={cart.exitToMenu} />
       <CartTemplateRenderer template={template} cart={cart} />
       {/* Shared overlays — rendered for every design */}
       <CartRemoveDialog cart={cart} />
       <CartEditDialog cart={cart} />
-      <CartUpsellInterstitial cart={cart} />
     </>
   )
 }

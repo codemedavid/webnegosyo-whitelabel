@@ -61,14 +61,14 @@ export function VoucherField({
           autoCapitalize="characters"
           autoComplete="off"
           spellCheck={false}
-          className="flex-1 h-10 rounded-md border border-gray-300 px-3 font-mono text-sm uppercase"
+          className="min-w-0 flex-1 h-10 rounded-md border border-gray-300 px-3 font-mono text-sm uppercase"
           disabled={isChecking}
         />
         <button
           type="button"
           onClick={() => void submit()}
           disabled={isChecking || draft.trim() === ''}
-          className="h-10 rounded-md border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
+          className="h-10 shrink-0 rounded-md border border-gray-300 px-4 text-sm font-medium disabled:opacity-50"
         >
           {isChecking ? 'Checking…' : 'Apply'}
         </button>

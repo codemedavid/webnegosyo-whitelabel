@@ -2,6 +2,7 @@ import {
   toPaymentLines,
   toRevisionLines,
   summarizeSettlement,
+  toSettlementDisplay,
   type OrderPaymentLike,
   type OrderRevisionLike,
 } from "./order-history-view";
@@ -221,5 +222,44 @@ describe("summarizeSettlement", () => {
     const summary = summarizeSettlement(250, [payment({ amount: 249.999 })]);
 
     expect(summary.intent).toBe("settled");
+  });
+});
+
+describe("toSettlementDisplay", () => {
+  it("reads a delivered order with an empty ledger as settled, not owing its total", () => {
+    // Arrange: a cash delivery handed over — delivery wrote `paid` on the row,
+    // but no cashier ever collected through the ledger.
+    const summary = summarizeSettlement(683, []);
+
+    // Act
+    const display = toSettlementDisplay(summary, { isOrderUnpaid: false });
+
+    // Assert
+    expect(display.intent).toBe("settled");
+    expect(display.balance).toBe(0);
+    expect(display.balanceLabel).toBe("₱0.00");
+    expect(display.emptyNote).toMatch(/paid/i);
+    expect(display.emptyNote).not.toMatch(/nothing has been collected/i);
+  });
+
+  it("keeps the ledger's figures when the order is still unpaid", () => {
+    const summary = summarizeSettlement(250, []);
+
+    const display = toSettlementDisplay(summary, { isOrderUnpaid: true });
+
+    expect(display.intent).toBe("collect");
+    expect(display.balance).toBe(250);
+    expect(display.emptyNote).toBe("Nothing has been collected for this order yet.");
+  });
+
+  it("still shows a refund due on a paid order the ledger over-collected", () => {
+    // Arrange: paid ₱370, then edited down to ₱250 — the status says paid, and
+    // the ₱120 owed back is real money the card must not hide.
+    const summary = summarizeSettlement(250, [payment({ amount: 370 })]);
+
+    const display = toSettlementDisplay(summary, { isOrderUnpaid: false });
+
+    expect(display.intent).toBe("refund");
+    expect(display.balance).toBe(-120);
   });
 });

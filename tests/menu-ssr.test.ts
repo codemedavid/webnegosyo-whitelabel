@@ -14,12 +14,22 @@ jest.mock('@/lib/storefront/brand-admin', () => ({ resolveIsBrandAdmin: jest.fn(
 
 const getMenuData = async (slug: string) => (await import('@/app/[tenant]/menu/menu-server')).getMenuData(slug)
 
+// PostgREST query builders remain chainable through sorting and pagination.
+function listQuery(data: unknown[] | null, error: { message: string } | null = null) {
+  const response = { data, error, count: data?.length ?? null }
+  return {
+    order: jest.fn().mockReturnThis(),
+    range: jest.fn().mockResolvedValue(response),
+    then: (resolve: (value: typeof response) => unknown) => Promise.resolve(response).then(resolve),
+  }
+}
+
 describe('Menu Server Component - SSR and ISR', () => {
   const mockSupabase = {
     from: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
+    ...listQuery([]),
     maybeSingle: jest.fn(),
     auth: {
       getUser: jest.fn().mockResolvedValue({ data: { user: null }, error: null })
@@ -148,12 +158,12 @@ describe('Menu Server Component - SSR and ISR', () => {
       const categoriesQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockCategories, error: null })
+        ...listQuery(mockCategories)
       }
       const menuItemsQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockMenuItems, error: null })
+        ...listQuery(mockMenuItems)
       }
 
       mockSupabase.from.mockImplementation((table: string) => {
@@ -206,12 +216,12 @@ describe('Menu Server Component - SSR and ISR', () => {
       const categoriesQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockCategories, error: null })
+        ...listQuery(mockCategories)
       }
       const menuItemsQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockMenuItems, error: null })
+        ...listQuery(mockMenuItems)
       }
 
       mockSupabase.from.mockImplementation((table: string) => {
@@ -240,14 +250,14 @@ describe('Menu Server Component - SSR and ISR', () => {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
-            order: jest.fn().mockResolvedValue({ data: mockCategories, error: null })
+            ...listQuery(mockCategories)
           }
         }
         if (table === 'menu_items') {
           return {
             select: jest.fn().mockReturnThis(),
             eq: jest.fn().mockReturnThis(),
-            order: jest.fn().mockResolvedValue({ data: mockMenuItems, error: null })
+            ...listQuery(mockMenuItems)
           }
         }
         return mockSupabase
@@ -271,7 +281,7 @@ describe('Menu Server Component - SSR and ISR', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
-          order: jest.fn().mockResolvedValue({ data: null, error: { message: 'DB Error' } })
+          ...listQuery(null, { message: 'DB Error' })
         }
       })
 
@@ -294,7 +304,7 @@ describe('Menu Server Component - SSR and ISR', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
-          order: jest.fn().mockResolvedValue({ data: null, error: { message: 'DB Error' } })
+          ...listQuery(null, { message: 'DB Error' })
         }
       })
 
@@ -317,7 +327,7 @@ describe('Menu Server Component - SSR and ISR', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
-          order: jest.fn().mockResolvedValue({ data: mockCategories, error: null })
+          ...listQuery(mockCategories)
         }
       })
 
@@ -338,7 +348,7 @@ describe('Menu Server Component - SSR and ISR', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
-          order: jest.fn().mockResolvedValue({ data: mockMenuItems, error: null })
+          ...listQuery(mockMenuItems)
         }
       })
 
@@ -351,7 +361,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       const categoriesQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockCategories, error: null })
+        ...listQuery(mockCategories)
       }
 
       mockSupabase.from.mockImplementation((table: string) => {
@@ -377,7 +387,7 @@ describe('Menu Server Component - SSR and ISR', () => {
       const menuItemsQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockMenuItems, error: null })
+        ...listQuery(mockMenuItems)
       }
 
       mockSupabase.from.mockImplementation((table: string) => {
@@ -396,7 +406,7 @@ describe('Menu Server Component - SSR and ISR', () => {
 
       await getMenuData('test-restaurant')
 
-      expect(menuItemsQuery.order).toHaveBeenCalledWith('order')
+      expect(menuItemsQuery.order).toHaveBeenCalledWith('order', { ascending: true })
     })
   })
 
@@ -408,7 +418,9 @@ describe('Menu Server Component - SSR and ISR', () => {
 
     it('should be async function for server-side rendering', async () => {
       const { getMenuData: fn } = await import('@/app/[tenant]/menu/menu-server')
-      expect(fn('test-restaurant')).toBeInstanceOf(Promise)
+      const result = fn('test-restaurant')
+      expect(result).toBeInstanceOf(Promise)
+      await result
     })
   })
 
@@ -422,12 +434,12 @@ describe('Menu Server Component - SSR and ISR', () => {
       const categoriesQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockCategories, error: null })
+        ...listQuery(mockCategories)
       }
       const menuItemsQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockMenuItems, error: null })
+        ...listQuery(mockMenuItems)
       }
 
       mockSupabase.from.mockImplementation((table: string) => {
@@ -457,7 +469,7 @@ describe('Menu Server Component - SSR and ISR', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
-          order: jest.fn().mockResolvedValue({ data: mockCategories, error: null })
+          ...listQuery(mockCategories)
         }
       });
 
@@ -484,7 +496,7 @@ describe('Menu Server Component - SSR and ISR', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
-          order: jest.fn().mockResolvedValue({ data: mockMenuItems, error: null })
+          ...listQuery(mockMenuItems)
         }
       });
 

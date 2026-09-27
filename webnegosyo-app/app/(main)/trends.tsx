@@ -22,13 +22,8 @@ import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ReportPeriodBar } from "../../components/ReportPeriodBar";
-import {
-  REPORT_PRESETS,
-  defaultSelection,
-  describeSelection,
-  selectionToQueryArgs,
-  type ReportSelection,
-} from "../../lib/report-window";
+import { REPORT_PRESETS } from "../../lib/report-window";
+import { useReportWindow } from "../../lib/use-report-window";
 
 const getTrendsRef = "analytics:getTrends" as unknown as FunctionReference<"query">;
 const getSalesAnalyticsRef = "analytics:getSalesAnalytics" as unknown as FunctionReference<"query">;
@@ -199,12 +194,9 @@ const stackStyles = StyleSheet.create({
 
 export default function TrendsScreen() {
   // One selection drives every query on this screen. `windowArgs` is spread
-  // into each: a preset still sends `daysBack` alone, so a store on an older
-  // Convex bundle is unaffected until the merchant picks actual dates.
-  const [selection, setSelection] = useState<ReportSelection>(() => defaultSelection(14));
-  const [nowMs] = useState(() => Date.now());
-  const windowArgs = useMemo(() => selectionToQueryArgs(selection, nowMs), [selection, nowMs]);
-  const periodLabel = describeSelection(selection, nowMs);
+  // into each; `useReportWindow` decides whether the backend can take the
+  // calendar days the label names, and moves "today" at Manila midnight.
+  const { selection, setSelection, nowMs, windowArgs, periodLabel } = useReportWindow(14);
   const { data: trends, isLoading, error, isMissingFunction: trendsMissing, refetch: refetchTrends } = useSafeQuery<DailyStat[]>(getTrendsRef, { ...windowArgs });
   const { data: salesAnalytics, error: salesError, isMissingFunction: salesMissing, refetch: refetchSales } = useSafeQuery<SalesAnalytics>(getSalesAnalyticsRef, { ...windowArgs });
   const { data: paymentAnalytics, error: paymentError, isMissingFunction: paymentMissing, refetch: refetchPayments } = useSafeQuery<PaymentMethodAnalytics>(getPaymentMethodAnalyticsRef, { ...windowArgs });

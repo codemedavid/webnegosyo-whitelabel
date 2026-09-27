@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   View,
@@ -23,6 +23,7 @@ import {
   type MovementDraft,
 } from "../lib/inventory-movement";
 import { submitStockMovement } from "../lib/inventory-movement-service";
+import { newLocalOrderId } from "../lib/offline/local-id";
 import type { StockItemView } from "../lib/inventory-stock";
 import { colors, typography, spacing, radius } from "../theme/colors";
 
@@ -68,6 +69,13 @@ export function StockMovementSheet({
   const [draft, setDraft] = useState<MovementDraft>(EMPTY_MOVEMENT_DRAFT);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One key per thing the merchant means to record. Tapping Save again after a
+  // timeout reuses it, so the server records that delivery once; changing what
+  // was typed is a new intent and gets a new key.
+  const requestIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    requestIdRef.current = null;
+  }, [draft, item?.id]);
 
   const outcome = useMemo(
     () => (item ? describeMovementOutcome(draft.reason, draft.quantity, item) : null),
@@ -103,7 +111,10 @@ export function StockMovementSheet({
 
     setIsSaving(true);
     try {
-      await submitStockMovement(tenantId, payload, outletId);
+      requestIdRef.current ??= newLocalOrderId();
+      await submitStockMovement(tenantId, payload, outletId, {
+        clientRequestId: requestIdRef.current,
+      });
       close();
       onRecorded();
     } catch (submitError) {

@@ -3,10 +3,10 @@
 /**
  * Flex card kit — the shared anatomy of the flexible card templates.
  *
- * Every flexible template (showcase, atelier, kiosk, sticker, menuboard, arch)
- * is a composition of these parts, so the merchant's Card style knobs (image
- * shape/fit, add button, alignment, description, spacing) mean the same thing
- * on every design. Templates own their look; the kit owns the rules:
+ * Every flexible template (showcase, atelier, kiosk, sticker, menuboard, arch,
+ * bistro) is a composition of these parts, so the merchant's Card style knobs
+ * (image shape/fit, add button, alignment, description, spacing) mean the same
+ * thing on every design. Templates own their look; the kit owns the rules:
  *
  *  - price, compare-at and "from" logic
  *  - sold-out state (orderability is decided once, upstream, and passed in)
@@ -175,6 +175,8 @@ interface AddButtonProps {
   background: string
   color: string
   label?: string
+  /** Show the plus beside a text label. The icon variant always shows it. */
+  showGlyph?: boolean
   className?: string
   buttonStyle?: CSSProperties
 }
@@ -190,9 +192,10 @@ const PlusGlyph = ({ className = 'h-4 w-4' }: { className?: string }) => (
  * card button (z-10) so both stay independently clickable.
  */
 export function AddButton({
-  item, variant, isOrderable, onSelect, background, color, label = 'Add', className = '', buttonStyle,
+  item, variant, isOrderable, onSelect, background, color, label = 'Add', showGlyph = true, className = '', buttonStyle,
 }: AddButtonProps) {
   if (variant === 'hidden') return null
+  const isGlyphShown = variant === 'icon' || showGlyph
 
   const shape = {
     icon: 'h-9 w-9 @xs:h-10 @xs:w-10 justify-center rounded-full',
@@ -212,7 +215,7 @@ export function AddButton({
       className={`relative z-10 inline-flex shrink-0 cursor-pointer items-center transition-[transform,opacity] duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${shape} ${className}`}
       style={{ backgroundColor: background, color, ...buttonStyle }}
     >
-      <PlusGlyph className={variant === 'bar' ? 'h-4 w-4' : 'h-[15px] w-[15px]'} />
+      {isGlyphShown && <PlusGlyph className={variant === 'bar' ? 'h-4 w-4' : 'h-[15px] w-[15px]'} />}
       {variant !== 'icon' && <span>{isOrderable ? label : 'Sold out'}</span>}
     </button>
   )

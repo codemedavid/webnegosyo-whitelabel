@@ -18,6 +18,10 @@ function loadModule() {
 }
 /* eslint-enable @typescript-eslint/no-require-imports */
 
+jest.mock('@/lib/public-image-fetch', () => ({
+    requestPublicImage: jest.fn((url: URL, options: unknown) => global.fetch(url.href, options as RequestInit)),
+}))
+
 const originalFetch = global.fetch
 
 afterEach(() => {
@@ -83,6 +87,16 @@ describe('assertPublicHttpUrl', () => {
         'http://172.16.4.4/a.png',
         'http://169.254.169.254/latest/meta-data',
         'http://[::1]/a.png',
+        'http://[::ffff:127.0.0.1]/a.png',
+        'http://100.64.0.1/a.png',
+        'http://198.18.0.1/a.png',
+        'http://192.0.0.1/a.png',
+        'http://192.88.99.1/a.png',
+        'http://198.51.100.1/a.png',
+        'http://203.0.113.1/a.png',
+        'http://[2001::1]/a.png',
+        'http://localhost./a.png',
+        'http://user:pass@example.com/a.png',
     ])('rejects %s', (url) => {
         const { assertPublicHttpUrl } = loadModule()
         expect(() => assertPublicHttpUrl(url)).toThrow()
@@ -162,6 +176,33 @@ describe('fetchRemoteImageAsBase64', () => {
         ) as unknown as typeof fetch
 
         await expect(fetchRemoteImageAsBase64('https://cdn.example.com/huge.png')).rejects.toThrow(/too large/i)
+    })
+
+    it('validates redirect targets before contacting them', async () => {
+        global.fetch = jest.fn(async () => ({
+            status: 302, ok: false,
+            headers: new Headers({ location: 'http://169.254.169.254/latest/meta-data' }),
+        })) as unknown as typeof fetch
+        const { fetchRemoteImageAsBase64 } = loadModule()
+        await expect(fetchRemoteImageAsBase64('https://cdn.example.com/a')).rejects.toThrow(/private|loopback/i)
+        expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('follows a relative public redirect', async () => {
+        const mock = jest.fn<typeof fetch>()
+            .mockResolvedValueOnce({ status: 302, ok: false, headers: new Headers({ location: '/actual.png' }) } as Response)
+            .mockResolvedValueOnce(imageResponse(PNG_BYTES))
+        global.fetch = mock as unknown as typeof fetch
+        const { fetchRemoteImageAsBase64 } = loadModule()
+        await expect(fetchRemoteImageAsBase64('https://cdn.example.com/share')).resolves.toMatchObject({ contentType: 'image/png' })
+        expect(mock.mock.calls[1][0]).toBe('https://cdn.example.com/actual.png')
+    })
+
+    it('bounds redirect loops', async () => {
+        global.fetch = jest.fn(async () => ({ status: 302, ok: false, headers: new Headers({ location: '/loop' }) })) as unknown as typeof fetch
+        const { fetchRemoteImageAsBase64 } = loadModule()
+        await expect(fetchRemoteImageAsBase64('https://cdn.example.com/loop')).rejects.toThrow(/redirect/i)
+        expect(global.fetch).toHaveBeenCalledTimes(6)
     })
 
     it('refuses to fetch a private-network url', async () => {

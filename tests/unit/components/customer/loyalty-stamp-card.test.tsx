@@ -325,3 +325,28 @@ describe('store logo as the stamp mark', () => {
     expect(filled[0].querySelector('img')).toHaveAttribute('src', 'https://cdn.test/logo.png')
   })
 })
+
+it.each([0, 1])('shows %i next-card stamps separately from a ready reward on the receipt', (balance) => {
+  render(<LoyaltyStampCard {...BASE} offer={OFFER} view="card" card={{ programName: 'Coffee Club', earnMode: 'stamp', balance, threshold: 8, rewardsAvailable: 1, rewardLabel: 'Free Iced Latte' }} />)
+  expect(screen.getByText(/reward ready/i)).toBeInTheDocument()
+  expect(screen.getByText(`${balance} of 8 stamps toward your next Free Iced Latte`)).toBeInTheDocument()
+  expect(screen.getByTestId('stamp-track')).toHaveAttribute('aria-label', `${balance} of 8 stamps`)
+})
+
+it('starts an empty next card after the claim unlocks a reward', async () => {
+  const user = userEvent.setup()
+  mockFetch(200, { success: true, loyalty: { state: 'earned', stamps: 1, balance: 0, rewardUnlocked: true } })
+  render(<LoyaltyStampCard {...BASE} offer={OFFER} />)
+  await user.type(screen.getByLabelText(/mobile number/i), '09171234567')
+  await user.click(screen.getByRole('button', { name: /claim my stamp/i }))
+  await screen.findByText('Reward unlocked!')
+  expect(screen.getByTestId('stamp-track')).toHaveAttribute('aria-label', '0 of 8 stamps')
+  expect(screen.getByText('0 of 8 stamps toward your next Free Iced Latte')).toBeInTheDocument()
+})
+
+it.each(['paused', 'ended'] as const)('shows %s earning without promising automatic new stamps', (programStatus) => {
+  render(<LoyaltyStampCard {...BASE} offer={OFFER} view="card" card={{programName:'Coffee Club',programStatus,earnMode:'stamp',balance:-2,threshold:8,rewardsAvailable:1,rewardLabel:'Free Iced Latte'}} />)
+  expect(screen.getByText(programStatus === 'paused' ? 'Earning is paused for this program.' : 'This program has ended.')).toBeInTheDocument()
+  expect(screen.getByText(/balance includes an adjustment/i)).toBeInTheDocument()
+  expect(screen.queryByText(/stamps add up automatically/i)).not.toBeInTheDocument()
+})

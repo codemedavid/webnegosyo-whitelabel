@@ -190,7 +190,10 @@ export default function DailyReportScreen() {
   // hour of drift would put late-night sales against the wrong day's stock.
   const revenueWindow = useMemo(() => {
     const { startIso, endIso } = resolveBusinessDayWindow(dayKey);
-    return { startDate: Date.parse(startIso), endDate: Date.parse(endIso) };
+    // `endDate` is INCLUSIVE on both backends (`<=`), so the next day's first
+    // instant is excluded here — an order stamped exactly at midnight belongs
+    // to the day it opens, not to both.
+    return { startDate: Date.parse(startIso), endDate: Date.parse(endIso) - 1 };
   }, [dayKey]);
 
 

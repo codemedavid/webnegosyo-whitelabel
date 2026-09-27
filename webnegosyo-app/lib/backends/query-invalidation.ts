@@ -15,8 +15,9 @@
  */
 
 import type { QueryClient } from "@tanstack/query-core";
-import { isPlatformKey, keyTenant, platformKeyRef, platformKeyScope } from "./query-keys";
+import { isPlatformKey, keyTenant, platformKeyArgs, platformKeyRef, platformKeyScope } from "./query-keys";
 import {
+  isBulkOrderRead,
   isOrderChangeInScope,
   isRefRealtimeBacked,
   type OrderChangePayload,
@@ -30,6 +31,9 @@ export function isQueryAffectedByOrderChange(
   if (!isPlatformKey(key)) return false;
   if (keyTenant(key) !== tenantId) return false;
   if (!isRefRealtimeBacked(platformKeyRef(key))) return false;
+  // A report-sized read refreshes on its own slow poll and on focus, never
+  // per payload — see `isBulkOrderRead`.
+  if (isBulkOrderRead(platformKeyRef(key), platformKeyArgs(key))) return false;
   return isOrderChangeInScope(payload, tenantId, platformKeyScope(key));
 }
 
@@ -41,6 +45,26 @@ export function invalidateForOrderChange(
 ): Promise<void> {
   return client.invalidateQueries({
     predicate: (query) => isQueryAffectedByOrderChange(query.queryKey, tenantId, payload),
+  });
+}
+
+/**
+ * Refetch every active key ANY of a burst of changes touches — once.
+ *
+ * One sale reaches the channel as an INSERT plus the UPDATEs its triggers
+ * write; invalidating per payload refetched every order key several times per
+ * sale, each refetch cancelling the one before it.
+ */
+export function invalidateForOrderChanges(
+  client: QueryClient,
+  changes: readonly { tenantId: string; payload: OrderChangePayload }[]
+): Promise<void> {
+  if (changes.length === 0) return Promise.resolve();
+  return client.invalidateQueries({
+    predicate: (query) =>
+      changes.some(({ tenantId, payload }) =>
+        isQueryAffectedByOrderChange(query.queryKey, tenantId, payload)
+      ),
   });
 }
 

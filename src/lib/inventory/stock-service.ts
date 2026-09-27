@@ -13,6 +13,8 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { auditManualMovement, type ManualMovementAudit } from '@/lib/inventory/stock-audit-service'
+import type { StockAuditSource } from '@/lib/inventory/stock-audit'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import type { InventoryItem, InventoryUnitRow, StockMovement } from '@/types/database'
 import {
@@ -72,6 +74,12 @@ export interface StockMovementResult {
   movement: StockMovement
   /** The item as it stands after the movement, for the caller to display. */
   item: InventoryItem
+  /**
+   * True when this request was a retry of one already written (same
+   * `client_request_id`): nothing new was recorded, and `movement` is the
+   * original. The merchant sees success either way — the delivery IS recorded.
+   */
+  alreadyRecorded?: boolean
 }
 
 /** Recent movements for one ingredient, newest first. */
@@ -153,6 +161,8 @@ export interface MovementActor {
   /** `null` for a system write with no person behind it. */
   userId: string | null
   scope: BranchScope
+  /** Which surface recorded it, for the audit log. Absent = the web admin. */
+  source?: StockAuditSource
 }
 
 async function resolveActingUserId(supabase: StockMovementClient): Promise<string | null> {
@@ -350,10 +360,12 @@ export async function recordStockMovementWith(
       ? undefined
       : convertUnitCost(validated.unit_cost, toUnit(enteredUnit), toUnit(stockUnit))
 
+  const actingUserId = actor ? actor.userId : await resolveActingUserId(supabase)
+
   const { data: movementRow, error: movementError } = await supabase
     .from('stock_movements')
     .insert({
-      created_by: actor ? actor.userId : await resolveActingUserId(supabase),
+      created_by: actingUserId,
       tenant_id: tenantId,
       inventory_item_id: validated.inventory_item_id,
       outlet_id: outletId,
@@ -382,10 +394,19 @@ export async function recordStockMovementWith(
       // shelf was actually counted. The schema has already refused any reason
       // but `stocktake`.
       inventory_count_id: validated.inventory_count_id ?? null,
+      client_request_id: validated.client_request_id ?? null,
     } as never)
     .select()
     .single()
-  if (movementError) throw movementError
+  if (movementError) {
+    // The unique index on (tenant_id, client_request_id) refused a retry of a
+    // save that already landed. Answer with the original rather than an error:
+    // the merchant's delivery IS recorded, and an error would invite a third try.
+    if (validated.client_request_id && isUniqueViolation(movementError)) {
+      return readAlreadyRecorded(supabase, tenantId, validated.client_request_id, item)
+    }
+    throw movementError
+  }
   const movement = movementRow as unknown as StockMovement
 
   // A delivery at a new price blends into the cost of stock already on hand.
@@ -415,6 +436,13 @@ export async function recordStockMovementWith(
   // that actually changed rather than the chain total.
   await notifyStockLevelChanges(tenantId, [item], new Map([[item.id, quantityDelta]]), outletId)
 
+  await auditManualMovement(supabase, {
+    tenantId,
+    movement: movement as unknown as ManualMovementAudit['movement'],
+    ingredientName: item.name,
+    context: { source: actor?.source ?? 'web_admin', actorUserId: actingUserId },
+  })
+
   const { data: updatedRow, error: refreshError } = await supabase
     .from('inventory_items')
     .select('*')
@@ -424,6 +452,39 @@ export async function recordStockMovementWith(
   if (refreshError) throw refreshError
 
   return { movement, item: updatedRow as unknown as InventoryItem }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
+}
+
+/** The movement a retried request already wrote, and the item as it stands. */
+async function readAlreadyRecorded(
+  supabase: StockMovementClient,
+  tenantId: string,
+  clientRequestId: string,
+  item: InventoryItem,
+): Promise<StockMovementResult> {
+  const { data: original, error } = await supabase
+    .from('stock_movements')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('client_request_id', clientRequestId)
+    .single()
+  if (error) throw error
+
+  const { data: current } = await supabase
+    .from('inventory_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('id', item.id)
+    .single()
+
+  return {
+    movement: original as unknown as StockMovement,
+    item: (current ?? item) as unknown as InventoryItem,
+    alreadyRecorded: true,
+  }
 }
 
 /**
@@ -444,9 +505,12 @@ export async function restoreOrderStock(
   tenantId: string,
   orderId: string,
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'orders')
+  const { user } = await verifyTenantPermission(tenantId, 'orders')
   const { reverseOrderStockBestEffort } = await import(
     '@/lib/inventory/order-stock-service'
   )
-  await reverseOrderStockBestEffort(tenantId, orderId)
+  await reverseOrderStockBestEffort(tenantId, orderId, {
+    source: 'web_admin',
+    actorUserId: user?.id ?? null,
+  })
 }

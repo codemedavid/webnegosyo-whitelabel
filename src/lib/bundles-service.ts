@@ -50,6 +50,29 @@ export const bundleSchema = z.object({
 
 export type BundleInput = z.infer<typeof bundleSchema>
 
+/** Service-role writes must validate ownership of foreign keys as well as the parent. */
+async function validateSlotReferences(
+  client: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  slots: BundleInput['slots'],
+): Promise<void> {
+  const categoryIds = [...new Set(slots.map(slot => slot.category_id))]
+  const itemIds = [...new Set(slots.flatMap(slot => [
+    ...(slot.included_item_ids ?? []), ...slot.price_overrides.map(override => override.menu_item_id),
+  ]))]
+  const reads = [
+    { table: 'categories' as const, ids: categoryIds },
+    { table: 'menu_items' as const, ids: itemIds },
+  ]
+  await Promise.all(reads.map(async ({ table, ids }) => {
+    if (ids.length === 0) return
+    const { data, error } = await client.from(table).select('id').eq('tenant_id', tenantId).in('id', ids)
+    if (error) throw error
+    const owned = new Set((data ?? []).map(row => row.id))
+    if (ids.some(id => !owned.has(id))) throw new Error('All bundle categories and items must belong to this store')
+  }))
+}
+
 /**
  * Row-only fields of a bundle (no slots), all optional and WITHOUT defaults.
  * Written out rather than derived: zod keeps `.default()` values through
@@ -153,6 +176,8 @@ export async function createBundle(tenantId: string, input: BundleInput, ctx?: P
 
   const { slots, ...bundleData } = validated
 
+  await validateSlotReferences(supabase, tenantId, slots)
+
   // Create the bundle
   const { data: bundle, error: bundleError } = await supabase
     .from('bundles')
@@ -235,6 +260,12 @@ export async function updateBundle(
 
   const { slots, ...bundleData } = validated
 
+  // Resolve ownership and references before changing any part of the bundle.
+  const { error: ownershipError } = await supabase.from('bundles').select('id')
+    .eq('id', bundleId).eq('tenant_id', tenantId).single()
+  if (ownershipError) throw ownershipError
+  await validateSlotReferences(supabase, tenantId, slots)
+
   // Update the bundle row
   const { error: bundleError } = await supabase
     .from('bundles')
@@ -242,6 +273,10 @@ export async function updateBundle(
     .update(toBundleRow(bundleData) as any)
     .eq('id', bundleId)
     .eq('tenant_id', tenantId)
+    // A scoped update with zero matches is otherwise a success. Require an
+    // owned row before touching child slots through the service-role client.
+    .select('id')
+    .single()
 
   if (bundleError) throw bundleError
 
@@ -398,7 +433,10 @@ export async function reorderBundles(tenantId: string, bundleIds: string[]): Pro
       .eq('tenant_id', tenantId)
   )
 
-  await Promise.all(updates)
+  const results = await Promise.all(updates)
+  for (const result of results) {
+    if (result.error) throw result.error
+  }
 }
 
 // ============================================
@@ -503,7 +541,7 @@ export async function getSlotItems(
   const [{ data: items, error: itemsError }, { data: category, error: catError }] =
     await Promise.all([
       itemsQuery,
-      supabase.from('categories').select('*').eq('id', categoryId).single(),
+      supabase.from('categories').select('*').eq('id', categoryId).eq('tenant_id', tenantId).single(),
     ])
 
   if (itemsError) throw new Error(`Failed to fetch slot items: ${itemsError.message}`)

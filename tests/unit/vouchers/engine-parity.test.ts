@@ -29,7 +29,8 @@ const APP_DIR = join(process.cwd(), 'webnegosyo-app/lib/vouchers')
  *
  * `repository.ts`, `resolve.ts` and `order-pricing.ts` are deliberately absent:
  * they reach a database, and the register reaches a different one. `mapper.ts`
- * is absent for the same reason — it decodes a Postgres row shape.
+ * decodes a Postgres row shape, so it is pinned below with the management
+ * modules rather than with the engine.
  */
 const PORTED_MODULES = ['types.ts', 'eligibility.ts', 'discount.ts', 'stacking.ts'] as const
 
@@ -41,6 +42,21 @@ describe('voucher engine parity — web vs merchant app', () => {
   it.each(PORTED_MODULES)('%s is byte-identical', (file) => {
     expect(read(APP_DIR, file)).toBe(read(WEB_DIR, file))
   })
+
+  /**
+   * The merchant app also MANAGES vouchers, reading and writing the same
+   * platform `vouchers` table the web admin does. So the rules for what may be
+   * saved, how a row decodes, and how a scoped voucher's targets are picked
+   * must be the web's rules exactly — otherwise a voucher saved on the phone
+   * could be one the web admin refuses to open, or decode to a different deal.
+   * `mapper.ts` is safe to share here because both apps read the same row.
+   */
+  it.each(['admin-validation.ts', 'target-picker.ts', 'mapper.ts'])(
+    'management module %s is byte-identical',
+    (file) => {
+      expect(read(APP_DIR, file)).toBe(read(WEB_DIR, file))
+    },
+  )
 
   it('ports the type the engine returns its lines in', () => {
     // stacking.ts imports OrderDiscountLine from '../order-totals'. The app

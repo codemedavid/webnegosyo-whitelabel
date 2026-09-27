@@ -163,6 +163,7 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   inventory: 'menu',
   'daily-report': 'menu',
   payments: 'store_setup',
+  vouchers: 'vouchers',
   portfolio: 'analytics',
   branches: 'analytics',
   'branch-menu': 'menu',

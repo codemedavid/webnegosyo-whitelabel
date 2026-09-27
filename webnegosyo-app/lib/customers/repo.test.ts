@@ -54,6 +54,7 @@ jest.mock("../supabase", () => {
 import {
   listCustomers,
   getCustomer,
+  getCustomerProfile,
   findCustomerByPhone,
   createCustomer,
   updateCustomer,
@@ -176,6 +177,31 @@ describe("getCustomer", () => {
     queued = [{ data: null, error: null }];
 
     await expect(getCustomer("t1", "nope")).resolves.toBeNull();
+  });
+});
+
+describe("getCustomerProfile", () => {
+  it("scopes to the tenant as well as the id and reads the favourites", async () => {
+    queued = [{ data: { ...ROW, top_items: [{ name: "Tuna Silog", quantity: 3 }] }, error: null }];
+
+    const profile = await getCustomerProfile("t1", "c1");
+
+    expect(argsFor("eq")).toContainEqual(["tenant_id", "t1"]);
+    expect(argsFor("eq")).toContainEqual(["id", "c1"]);
+    expect(String(argsFor("select")[0][0])).toContain("top_items");
+    expect(profile?.topItems).toEqual([{ name: "Tuna Silog", quantity: 3 }]);
+  });
+
+  it("returns null when no such customer exists", async () => {
+    queued = [{ data: null, error: null }];
+
+    await expect(getCustomerProfile("t1", "nope")).resolves.toBeNull();
+  });
+
+  it("throws on a failed read instead of rendering an empty profile", async () => {
+    queued = [{ data: null, error: { message: "boom" } }];
+
+    await expect(getCustomerProfile("t1", "c1")).rejects.toThrow("boom");
   });
 });
 

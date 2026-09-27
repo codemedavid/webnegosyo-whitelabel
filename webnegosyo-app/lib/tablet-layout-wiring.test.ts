@@ -81,3 +81,18 @@ describe("orientation", () => {
     expect(rootLayout()).toMatch(/useOrientationLock\(\)/);
   });
 });
+
+describe("the Drawer's shift controls", () => {
+  const drawerScreen = () => read("app", "(main)", "pos-sales.tsx");
+
+  it("lets a tap on Clock in / Confirm land while the tablet keyboard is up", () => {
+    // Without it the ScrollView spends the first tap dismissing the keyboard,
+    // so the button under the cashier's finger never fires.
+    expect(drawerScreen()).toMatch(/keyboardShouldPersistTaps="handled"/);
+  });
+
+  it("hands the shift card the page size, not a length-based 'complete' verdict", () => {
+    expect(drawerScreen()).toMatch(/<ShiftCard[^>]*pageLimit=\{SHIFT_ORDER_LIMIT\}/);
+    expect(drawerScreen()).not.toMatch(/complete=\{/);
+  });
+});

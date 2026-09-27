@@ -53,7 +53,6 @@ export function ProductDetailSheet({
     // The item currently shown in the sheet — swappable in-place via upgrade /
     // related-item selection without navigating routes.
     const [currentItem, setCurrentItem] = useState<MenuItem | null>(item)
-    const [suppressAutoUpgrade, setSuppressAutoUpgrade] = useState(false)
     // Tenant-level theme settings — fetched once on mount (item-invariant) so the
     // theme is ready before the first open. Persists across item swaps.
     const [customization, setCustomization] = useState<ProductDetailSettings | null>(null)
@@ -90,7 +89,6 @@ export function ProductDetailSheet({
     useEffect(() => {
         if (item) {
             setCurrentItem(item)
-            setSuppressAutoUpgrade(false)
         }
     }, [item])
 
@@ -159,9 +157,8 @@ export function ProductDetailSheet({
             .slice(0, 4)
     }, [allMenuItems, currentItem?.category_id, currentItem?.id])
 
-    const handleNavigateToItem = useCallback((next: MenuItem, opts?: { fromUpgrade?: boolean }) => {
+    const handleNavigateToItem = useCallback((next: MenuItem) => {
         setCurrentItem(next)
-        setSuppressAutoUpgrade(!!opts?.fromUpgrade)
     }, [])
 
     const handleDragEnd = useCallback(
@@ -232,7 +229,6 @@ export function ProductDetailSheet({
                             linkedModifierItems={linkedModifierItems}
                             hideCurrencySymbol={hideCurrencySymbol}
                             isBrandAdmin={false}
-                            suppressAutoUpgrade={suppressAutoUpgrade}
                             upsellsPending={upsellsLoading}
                             onClose={onClose}
                             onNavigateToItem={handleNavigateToItem}

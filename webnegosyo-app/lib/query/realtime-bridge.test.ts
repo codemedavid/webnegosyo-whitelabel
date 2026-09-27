@@ -9,7 +9,7 @@
 import { QueryClient, QueryObserver } from "@tanstack/query-core";
 import { platformQueryKey } from "../backends/query-keys";
 import type { OrderChangeEvent, OrderChangeListener } from "../backends/realtime-hub";
-import { bindRealtimeToQueryClient } from "./realtime-bridge";
+import { REALTIME_COALESCE_MS, bindRealtimeToQueryClient } from "./realtime-bridge";
 
 function fakeHub() {
   const listeners = new Set<OrderChangeListener>();
@@ -69,9 +69,79 @@ describe("bindRealtimeToQueryClient", () => {
     bindRealtimeToQueryClient(hub, client);
     bindRealtimeToQueryClient(hub, client);
     emit({ tenantId: "t1", payload: { new: { tenant_id: "t1" } } });
-    await flush();
+    await settleCoalescing();
 
     expect(queryFn).toHaveBeenCalledTimes(2);
     client.clear();
   });
+
+  it("answers a burst of payloads with ONE refetch", async () => {
+    // One sale arrives as an INSERT and then the UPDATEs its triggers write
+    // (daily number, amount paid, status). Each payload used to invalidate
+    // every order key on its own, each cancelling and restarting the read
+    // before it — several requests per key per sale.
+    const { hub, emit } = fakeHub();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryFn = jest.fn(async () => []);
+    const observer = new QueryObserver(client, {
+      queryKey: platformQueryKey("orders:getOrders", {}, "t1", { kind: "all" }),
+      queryFn,
+      staleTime: 60_000,
+    });
+    observer.subscribe(() => {});
+    await flush();
+    bindRealtimeToQueryClient(hub, client);
+
+    emit({ tenantId: "t1", payload: { new: { tenant_id: "t1" } } });
+    emit({ tenantId: "t1", payload: { new: { tenant_id: "t1" } } });
+    emit({ tenantId: "t1", payload: { new: { tenant_id: "t1" } } });
+    await flush();
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    await settleCoalescing();
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    client.clear();
+  });
+
+  it("still refreshes every key any payload in the burst touches", async () => {
+    const { hub, emit } = fakeHub();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const northFn = jest.fn(async () => []);
+    const southFn = jest.fn(async () => []);
+    for (const [outletId, queryFn] of [["north", northFn], ["south", southFn]] as const) {
+      new QueryObserver(client, {
+        queryKey: platformQueryKey("orders:getOrders", {}, "t1", { kind: "branch", outletId }),
+        queryFn,
+        staleTime: 60_000,
+      }).subscribe(() => {});
+    }
+    await flush();
+    bindRealtimeToQueryClient(hub, client);
+
+    emit({ tenantId: "t1", payload: { new: { tenant_id: "t1", outlet_id: "north" } } });
+    emit({ tenantId: "t1", payload: { new: { tenant_id: "t1", outlet_id: "south" } } });
+    await settleCoalescing();
+
+    expect(northFn).toHaveBeenCalledTimes(2);
+    expect(southFn).toHaveBeenCalledTimes(2);
+    client.clear();
+  });
+
+  it("drops a pending burst when the last holder releases", async () => {
+    const { hub, emit } = fakeHub();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = jest.spyOn(client, "invalidateQueries");
+    const release = bindRealtimeToQueryClient(hub, client);
+
+    emit({ tenantId: "t1", payload: { new: { tenant_id: "t1" } } });
+    release();
+    await settleCoalescing();
+
+    expect(invalidate).not.toHaveBeenCalled();
+  });
 });
+
+async function settleCoalescing() {
+  await new Promise((resolve) => setTimeout(resolve, REALTIME_COALESCE_MS + 20));
+  await flush();
+}

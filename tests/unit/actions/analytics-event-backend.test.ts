@@ -23,6 +23,11 @@ jest.mock('@/lib/tenant-secrets', () => ({
   getTenantSecrets: jest.fn(async () => ({ convex_deploy_key: 'deploy-key' })),
 }))
 
+let mockRateAllowed = true
+jest.mock('@/lib/action-rate-limit', () => ({
+  checkActionRateLimit: jest.fn(async () => ({ allowed: mockRateAllowed, retryAfterSec: 0 })),
+}))
+
 const mockConvexMutation = jest.fn<(...args: unknown[]) => Promise<unknown>>()
 const mockInsert = jest.fn<(...args: unknown[]) => Promise<{ error: null }>>()
 let mockTenantRow: Record<string, unknown> | null = null
@@ -60,6 +65,7 @@ async function loadAction() {
 }
 
 beforeEach(() => {
+  mockRateAllowed = true
   mockConvexMutation.mockReset()
   mockInsert.mockReset()
   mockInsert.mockResolvedValue({ error: null })
@@ -118,5 +124,36 @@ describe('trackAnalyticsEventAction', () => {
     mockInsert.mockRejectedValueOnce(new Error('boom'))
 
     await expect(trackAnalyticsEventAction('tenant-1', 'upsell_shown')).resolves.toBeUndefined()
+  })
+
+  test('drops metadata over the size cap instead of storing it', async () => {
+    const trackAnalyticsEventAction = await loadAction()
+    mockTenantRow = { convex_deployment_url: null, order_backend: 'platform' }
+
+    await trackAnalyticsEventAction('tenant-1', 'upsell_shown', { blob: 'x'.repeat(5000) })
+
+    expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  test('drops metadata that is not a plain object', async () => {
+    const trackAnalyticsEventAction = await loadAction()
+    mockTenantRow = { convex_deployment_url: null, order_backend: 'platform' }
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+
+    await trackAnalyticsEventAction('tenant-1', 'upsell_shown', cyclic)
+    await trackAnalyticsEventAction('tenant-1', 'upsell_shown', ['not', 'an', 'object'] as unknown as Record<string, unknown>)
+
+    expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  test('drops events from a client over the rate limit', async () => {
+    const trackAnalyticsEventAction = await loadAction()
+    mockTenantRow = { convex_deployment_url: null, order_backend: 'platform' }
+    mockRateAllowed = false
+
+    await trackAnalyticsEventAction('tenant-1', 'upsell_shown', { source: 'post_add' })
+
+    expect(mockInsert).not.toHaveBeenCalled()
   })
 })

@@ -82,6 +82,10 @@ export function platformKeyRef(key: PlatformQueryKey): string {
   return key[1];
 }
 
+export function platformKeyArgs(key: PlatformQueryKey): Record<string, unknown> {
+  return key[2];
+}
+
 export function platformKeyScope(key: PlatformQueryKey): BranchScope {
   return key[4];
 }

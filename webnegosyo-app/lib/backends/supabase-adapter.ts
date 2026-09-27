@@ -14,6 +14,7 @@
  */
 
 import {
+  ORDER_DTO_COLUMNS,
   buildCreateOrderRows,
   groupRealtimeQueue,
   localDayStartMs,
@@ -40,13 +41,16 @@ import {
   STATS_LIMIT,
   STORE_WIDE,
   asRecord,
+  readAllPages,
   requireTenant,
   scopeToBranch,
   unwrap,
+  withAbortSignal,
   type PlatformClient,
 } from "./platform-client";
 import { isUuid, toUuidOrNull } from "../uuid";
 import { PartialOrderWriteError } from "../offline/network-error";
+import { DELIVERED_NOT_CANCELLABLE_MESSAGE } from "../order-status-change";
 import { isPlatformAnalyticsRef, runPlatformAnalyticsQuery } from "./supabase-analytics";
 import {
   isPlatformProductCostRef,
@@ -58,7 +62,8 @@ import {
 // existing importers (hooks, tests) keep their entry point.
 export type { PlatformClient, PlatformQueryBuilder } from "./platform-client";
 
-const ORDER_COLUMNS = "*";
+/** Order lists read only what `toOrderDto` maps — see `ORDER_DTO_COLUMNS`. */
+const ORDER_COLUMNS = ORDER_DTO_COLUMNS;
 const ORDER_WITH_ITEMS_COLUMNS = "*, order_items(*)";
 
 /**
@@ -77,6 +82,15 @@ const ORDER_ITEM_COLUMNS = "*, orders!inner(tenant_id, created_at)";
 
 /** Matches the Convex `getOrders` default page size. */
 const DEFAULT_ORDER_LIMIT = 50;
+
+/** The dashboard figures read only these — not the full order row. */
+const STATS_COLUMNS = "id, created_at, status, total";
+
+/** How many orders a `getOrders` call may ask for: its limit, within the bulk-read cap. */
+function orderLimit(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_ORDER_LIMIT;
+  return Math.min(Math.max(Math.floor(value), 1), STATS_LIMIT);
+}
 
 /**
  * Safety cap on the live queue. Convex takes 50 per status; one bounded read
@@ -207,33 +221,33 @@ async function getOrders(
   args: Record<string, unknown>,
   scope: BranchScope
 ) {
-  let builder = scopeToBranch(
-    client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
-    scope
-  );
-
-  if (typeof args.status === "string") {
-    builder = builder.eq("status", args.status);
-  }
-
   // A report asking for one day or a custom range. Pushed to PostgREST rather
   // than filtered after the limit: this is a most-recent-N page, so a
   // post-filter would answer "which of the last N orders fell on that day?"
   // and return nothing at all on a store that has traded since.
   const window = orderWindow(args);
-  if (window) {
-    builder = builder
-      .gte("created_at", new Date(window.startMs).toISOString())
-      .lt("created_at", new Date(window.endMs).toISOString());
-  }
 
-  const rows = await unwrap<PlatformOrderRow[] | null>(
-    builder
-      .order("created_at", { ascending: false })
-      .limit(typeof args.limit === "number" ? args.limit : DEFAULT_ORDER_LIMIT)
-  );
+  const build = () => {
+    let builder = scopeToBranch(
+      client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
+      scope
+    );
+    if (typeof args.status === "string") {
+      builder = builder.eq("status", args.status);
+    }
+    if (window) {
+      builder = builder
+        .gte("created_at", new Date(window.startMs).toISOString())
+        .lt("created_at", new Date(window.endMs).toISOString());
+    }
+    return builder.order("created_at", { ascending: false }).order("id", { ascending: false });
+  };
 
-  return (rows ?? []).map((row) => toOrderDto(row));
+  // Paged: a report asking for 2000 orders used to receive the API's
+  // per-request maximum (1000) and treat it as the whole window.
+  const rows = await readAllPages<PlatformOrderRow>(build, orderLimit(args.limit));
+
+  return rows.map((row) => toOrderDto(row));
 }
 
 async function getOrderById(
@@ -282,25 +296,27 @@ async function getAllOrderItems(
   args: Record<string, unknown>,
   scope: BranchScope
 ) {
-  const itemsFor = (ids?: readonly string[]) => {
-    let builder = scopeToBranch(
-      client
-        .from("order_items")
-        .select(ORDER_ITEM_COLUMNS)
-        .eq("orders.tenant_id", tenantId),
-      scope,
-      "orders.outlet_id"
-    );
-    if (ids) builder = builder.in("order_id", ids);
-    return unwrap<PlatformOrderItemRow[] | null>(
-      builder
-        // Newest parent order first, so the STATS_LIMIT cap drops history rather
-        // than letting the database pick which rows survive — unordered, it is
-        // the NEWEST orders' items that silently vanish past 10k line items.
-        .order("orders(created_at)", { ascending: false })
-        .limit(STATS_LIMIT)
-    );
-  };
+  const itemsFor = (ids?: readonly string[]) =>
+    readAllPages<PlatformOrderItemRow>(() => {
+      let builder = scopeToBranch(
+        client
+          .from("order_items")
+          .select(ORDER_ITEM_COLUMNS)
+          .eq("orders.tenant_id", tenantId),
+        scope,
+        "orders.outlet_id"
+      );
+      if (ids) builder = builder.in("order_id", ids);
+      return (
+        builder
+          // Newest parent order first, so the STATS_LIMIT cap drops history rather
+          // than letting the database pick which rows survive — unordered, it is
+          // the NEWEST orders' items that silently vanish past 10k line items.
+          // Paged, because 200 orders can carry more lines than one request returns.
+          .order("orders(created_at)", { ascending: false })
+          .order("id", { ascending: false })
+      );
+    });
 
   const rows =
     args.orderIds === undefined
@@ -450,20 +466,20 @@ async function getStatsBetween(
   startMs: number,
   endMs?: number
 ) {
-  let builder = scopeToBranch(
-    client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
-    scope
-  ).gte("created_at", new Date(startMs).toISOString());
+  const build = () => {
+    let builder = scopeToBranch(
+      client.from("orders").select(STATS_COLUMNS).eq("tenant_id", tenantId),
+      scope
+    ).gte("created_at", new Date(startMs).toISOString());
 
-  if (endMs !== undefined) {
-    builder = builder.lte("created_at", new Date(endMs).toISOString());
-  }
+    if (endMs !== undefined) {
+      builder = builder.lte("created_at", new Date(endMs).toISOString());
+    }
+    return builder.order("created_at", { ascending: false }).order("id", { ascending: false });
+  };
 
-  const rows = await unwrap<PlatformOrderRow[] | null>(
-    builder.order("created_at", { ascending: false }).limit(STATS_LIMIT)
-  );
-
-  return summarizeDashboardStats(rows ?? []);
+  // Paged: a busy day past the API's per-request maximum used to read short.
+  return summarizeDashboardStats(await readAllPages<PlatformOrderRow>(build));
 }
 
 // --- mutations ------------------------------------------------------------
@@ -590,11 +606,53 @@ async function patchOrder(
     ).select("id")
   );
   if (!rows || rows.length === 0) {
-    throw new Error(
-      "That order no longer exists in your branch — it may have been moved or deleted."
-    );
+    throw new Error(ORDER_NOT_IN_BRANCH_MESSAGE);
   }
   return id;
+}
+
+const ORDER_NOT_IN_BRANCH_MESSAGE =
+  "That order no longer exists in your branch — it may have been moved or deleted.";
+
+/**
+ * Cancel an order — unless it was already delivered.
+ *
+ * The screens hide Cancel on a delivered order, but a list row can be stale:
+ * another device may have handed the order over since it rendered. So the
+ * refusal lives in the write itself (`status <> 'delivered'`), leaving no gap
+ * between a check and the update. Only a refused write pays for a second read,
+ * to tell "already delivered" apart from "not in your branch".
+ */
+async function cancelOrder(
+  client: PlatformClient,
+  tenantId: string,
+  orderId: unknown,
+  scope: BranchScope
+): Promise<string> {
+  const id = requireOrderUuid(orderId);
+
+  const rows = await unwrap<{ id: string }[] | null>(
+    scopeToBranch(
+      client
+        .from("orders")
+        .update({ status: "cancelled" })
+        .eq("id", id)
+        .eq("tenant_id", tenantId)
+        .neq("status", "delivered"),
+      scope
+    ).select("id")
+  );
+  if (rows && rows.length > 0) return id;
+
+  const current = await unwrap<{ status: string } | null>(
+    scopeToBranch(
+      client.from("orders").select("status").eq("id", id).eq("tenant_id", tenantId),
+      scope
+    ).maybeSingle()
+  );
+  throw new Error(
+    current?.status === "delivered" ? DELIVERED_NOT_CANCELLABLE_MESSAGE : ORDER_NOT_IN_BRANCH_MESSAGE
+  );
 }
 
 /**
@@ -750,16 +808,20 @@ async function recordPayment(
  * they exist to compare — and an owner may see the whole store anyway, so there
  * is no safety to be had from it. Narrowing by the account, on the other hand,
  * is the only thing that stops a manager's device receiving rows it may not see.
+ *
+ * `signal` cancels every request the read makes — see `withPlatformDeadline`.
  */
 export async function runPlatformQuery(
-  client: PlatformClient,
+  unsignalledClient: PlatformClient,
   tenantId: string,
   ref: string,
   args: unknown,
-  scope: BranchScope = STORE_WIDE
+  scope: BranchScope = STORE_WIDE,
+  signal?: AbortSignal
 ): Promise<unknown> {
   const tenant = requireTenant(tenantId);
   const params = asRecord(args);
+  const client = signal ? withAbortSignal(unsignalledClient, signal) : unsignalledClient;
 
   switch (ref) {
     case "orders:getOrders":
@@ -822,6 +884,9 @@ export async function runPlatformMutation(
     case "orders:createOrder":
       return createOrder(client, tenant, params);
     case "orders:updateOrderStatus":
+      if (params.status === "cancelled") {
+        return cancelOrder(client, tenant, params.orderId, scope);
+      }
       return patchOrder(client, tenant, params.orderId, { status: params.status }, scope);
     case "orders:updatePaymentStatus":
       return patchOrder(

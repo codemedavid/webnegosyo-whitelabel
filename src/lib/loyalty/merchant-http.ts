@@ -40,7 +40,10 @@ export function hasExactKeys(
 }
 
 /** Bounds the streamed bytes, not just the caller-controlled Content-Length. */
-export async function readBody(request: NextRequest): Promise<unknown | NextResponse> {
+export async function readBody(
+  request: NextRequest,
+  maxBytes: number = MAX_BODY_BYTES,
+): Promise<unknown | NextResponse> {
   const reader = request.body?.getReader()
   if (!reader) return respond({ error: 'JSON body is required.' }, 400)
   let bytes = 0
@@ -51,7 +54,7 @@ export async function readBody(request: NextRequest): Promise<unknown | NextResp
       const part = await reader.read()
       if (part.done) break
       bytes += part.value.byteLength
-      if (bytes > MAX_BODY_BYTES) {
+      if (bytes > maxBytes) {
         await reader.cancel()
         return respond({ error: 'Request is too large.' }, 413)
       }

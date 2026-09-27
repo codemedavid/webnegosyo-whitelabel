@@ -1,41 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+/**
+ * The add / edit dish screen.
+ *
+ * Laid out the way an owner thinks about a dish: what it is (photo, name,
+ * price, category), whether people can order it, and what they can choose.
+ * Everything else — cost, recipe, pre-orders, selling tools, branches — sits
+ * in a "More options" list of closed rows that each state what they are doing.
+ * One Save button, pinned to the bottom of the screen.
+ */
+
+import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ImageUpload } from '@/components/shared/image-upload'
-import { CategoryIcon } from '@/components/shared/category-icon'
-import type { MenuItem, Category, VariationType, VariationOption, BcgClassification, ModifierGroup, PresellStock } from '@/types/database'
-import { VariationGroupsEditor } from '@/components/admin/variation-groups-editor'
-import { AddonEditor } from '@/components/admin/addon-editor'
-import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
-import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
-import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
-import { MenuItemPresellSection, SettingSwitch } from '@/components/admin/menu-item-presell-section'
-import { syncPresellAllocationsAction } from '@/app/actions/presell'
-import { draftFromRows, diffDraft, type DraftAllocation } from '@/lib/presell/allocation-draft'
-import { normalizeModifierGroups } from '@/lib/modifier-groups'
-import { serializeGroups, splitGroupsToLegacyColumns, omitUnchangedOptionStock } from '@/lib/modifier-groups-form'
-import { attachEntriesToAddons } from '@/lib/addon-library-utils'
-import { attachEntriesToGroups, buildLibraryDraftFromGroup } from '@/lib/modifier-library-utils'
-import { createModifierGroupLibraryEntryAction } from '@/app/actions/modifier-library'
-import { describeActionError, runServerAction } from '@/components/admin/server-action-safety'
-import { TagManager } from '@/components/admin/tag-manager'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { SafeConvexProvider } from '@/components/shared/safe-convex-provider'
-import { ProductCostField } from '@/components/admin/product-cost-field'
-import { ProductCostFieldConvex } from '@/components/admin/product-cost-field-convex'
-import { ProductMiniPerformance } from '@/components/admin/product-mini-performance'
-import { useMenuItemCosts } from '@/hooks/use-menu-item-costs'
-import { RecipeEditor } from '@/components/admin/recipe-editor'
-import { resolvePostSaveStep } from '@/lib/menu-item-save-flow'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -44,6 +23,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import type { MenuItem, Category, BcgClassification, ModifierGroup, PresellStock } from '@/types/database'
+import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
+import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
+import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
+import { SettingSwitch } from '@/components/admin/menu-item-presell-section'
+import { syncPresellAllocationsAction } from '@/app/actions/presell'
+import { draftFromRows, diffDraft, type DraftAllocation } from '@/lib/presell/allocation-draft'
+import { normalizeModifierGroups } from '@/lib/modifier-groups'
+import { serializeGroups, splitGroupsToLegacyColumns, omitUnchangedOptionStock } from '@/lib/modifier-groups-form'
+import { attachEntriesToAddons } from '@/lib/addon-library-utils'
+import { attachEntriesToGroups, buildLibraryDraftFromGroup } from '@/lib/modifier-library-utils'
+import { createModifierGroupLibraryEntryAction } from '@/app/actions/modifier-library'
+import { describeActionError, runServerAction } from '@/components/admin/server-action-safety'
+import { useMenuItemCosts } from '@/hooks/use-menu-item-costs'
+import { RecipeEditor } from '@/components/admin/recipe-editor'
+import { resolvePostSaveStep } from '@/lib/menu-item-save-flow'
+import { EditorSection } from '@/components/admin/menu-editor/editor-section'
+import {
+  DishBasicsSection,
+  MIN_DESCRIPTION_LENGTH,
+  type DishBasics,
+  type DishBasicsErrors,
+} from '@/components/admin/menu-editor/dish-basics-section'
+import { DishMoreOptions, type DishBoosts } from '@/components/admin/menu-editor/dish-more-options'
+import { LegacyOptionsSections } from '@/components/admin/menu-editor/legacy-options-sections'
+import { useLegacyOptions } from '@/components/admin/menu-editor/use-legacy-options'
+import { SaveBar } from '@/components/admin/menu-editor/save-bar'
+import { DeleteDishSection } from '@/components/admin/menu-editor/delete-dish-section'
 
 interface MenuItemFormProps {
   item?: MenuItem
@@ -55,6 +62,8 @@ interface MenuItemFormProps {
   /** Menu items an add-on option may link to (live reference). */
   linkableItems?: LinkableMenuItem[]
   inventoryEnabled?: boolean
+  /** Whether this dish has a recipe; undefined when unknown or not read. */
+  hasRecipe?: boolean
   /** Tenant flag: per-date presell allocations (migration 20260830120000). */
   presellEnabled?: boolean
   /** Allocations fetched by the page so the presell panel opens populated. */
@@ -62,71 +71,103 @@ interface MenuItemFormProps {
   /** Set when the page could not read them; the panel is withheld rather than shown empty. */
   presellLoadError?: string
   convexUrl?: string
+  /** The per-branch panel, which saves on its own and so lives outside the form. */
+  branchesPanel?: ReactNode
 }
 
-// Client-side validation schema (matches server-side schema)
+const FORM_ID = 'menu-item-form'
+
+// Client-side validation (the server applies the same rules).
 const menuItemFormSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  description: z.string().min(10, 'Description must be at least 10 characters'),
+  name: z.string().trim().min(2, 'Give the dish a name (at least 2 letters).'),
+  description: z.string().min(MIN_DESCRIPTION_LENGTH, `Add a short description (at least ${MIN_DESCRIPTION_LENGTH} characters).`),
   price: z.string().refine((val) => {
     const num = parseFloat(val)
     return Number.isFinite(num) && num >= 0
-  }, 'Price must be 0 or more'),
+  }, 'Enter a price. Use 0 for a free item.'),
   discounted_price: z.string().optional().refine((val) => {
     if (!val) return true
     const num = parseFloat(val)
     return !isNaN(num) && num >= 0
-  }, 'Discounted price must be a positive number'),
+  }, 'Sale price must be 0 or more, or left empty.'),
   // Image is optional — accept a valid URL or an empty string (no image).
-  image_url: z.string().url('Must be a valid URL').or(z.literal('')),
-  category_id: z.string().uuid('Must select a category'),
+  image_url: z.string().url('That photo link is not valid. Upload it again.').or(z.literal('')),
+  category_id: z.string().uuid('Choose a category.'),
 })
 
-type FormErrors = {
-  name?: string
-  description?: string
-  price?: string
-  discounted_price?: string
-  image_url?: string
-  category_id?: string
+/** Which element to focus for each field, so the owner lands on the problem. */
+const FIELD_ELEMENT_ID: Partial<Record<keyof DishBasics, string>> = {
+  name: 'name',
+  description: 'description',
+  price: 'price',
+  discounted_price: 'discounted_price',
+  category_id: 'category',
+  image_url: 'image_url',
 }
 
-export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngineeringEnabled, modifierGroupsEnabled, linkableItems, inventoryEnabled, presellEnabled, presellAllocations, presellLoadError, convexUrl }: MenuItemFormProps) {
+function focusField(field: keyof DishBasics | undefined) {
+  if (!field) return
+  const elementId = FIELD_ELEMENT_ID[field]
+  if (elementId) document.getElementById(elementId)?.focus()
+}
+
+function errorsFromIssues(issues: readonly { path: readonly PropertyKey[]; message: string }[]): DishBasicsErrors {
+  const next: DishBasicsErrors = {}
+  for (const issue of issues) {
+    const field = issue.path[0]
+    if (typeof field === 'string' && !(field in next)) next[field as keyof DishBasics] = issue.message
+  }
+  return next
+}
+
+export function MenuItemForm({
+  item,
+  categories,
+  tenantId,
+  tenantSlug,
+  menuEngineeringEnabled = false,
+  modifierGroupsEnabled,
+  linkableItems,
+  inventoryEnabled = false,
+  hasRecipe,
+  presellEnabled,
+  presellAllocations,
+  presellLoadError,
+  convexUrl,
+  branchesPanel,
+}: MenuItemFormProps) {
   const router = useRouter()
   const [persistedItemId, setPersistedItemId] = useState(item?.id)
   const [stockBaseline, setStockBaseline] = useState<ModifierGroup[]>(item?.modifier_groups ?? [])
   // Recipe-derived costs for the per-option margin display. No-ops when the
   // tenant has no inventory or the item has not been saved yet.
-  const { optionRecipeCosts, refresh: refreshCosts } = useMenuItemCosts(
-    tenantId,
-    item?.id,
-    inventoryEnabled ?? false,
-  )
-  const [formData, setFormData] = useState({
+  const { optionRecipeCosts, refresh: refreshCosts } = useMenuItemCosts(tenantId, item?.id, inventoryEnabled)
+
+  const [basics, setBasics] = useState<DishBasics>({
     name: item?.name || '',
     description: item?.description || '',
     price: item?.price.toString() || '',
     discounted_price: item?.discounted_price?.toString() || '',
     image_url: item?.image_url || '',
     category_id: item?.category_id || categories[0]?.id || '',
-    is_available: item?.is_available ?? true,
-    is_featured: item?.is_featured ?? false,
+  })
+  const [isAvailable, setIsAvailable] = useState(item?.is_available ?? true)
+  const [isFeatured, setIsFeatured] = useState(item?.is_featured ?? false)
+  const [isPresellOn, setIsPresellOn] = useState(item?.presell_enabled ?? false)
+  const [boosts, setBoosts] = useState<DishBoosts>({
     show_in_checkout_upsell: item?.show_in_checkout_upsell ?? false,
     bcg_classification: (item?.bcg_classification || 'unclassified') as BcgClassification,
     badge_text: item?.badge_text || '',
-    presell_enabled: item?.presell_enabled ?? false,
   })
 
-  const [variations, setVariations] = useState(item?.variations || [])
-  const [variationTypes, setVariationTypes] = useState(item?.variation_types || [])
-  const [addons, setAddons] = useState(item?.addons || [])
+  const legacy = useLegacyOptions(item)
   // Unified editor state. Seeded from the item's existing modifiers (explicit
   // modifier_groups OR derived from legacy variation_types/variations/addons) so
   // enabling the flag on a legacy item shows its current options.
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>(() =>
     modifierGroupsEnabled ? normalizeModifierGroups(item ?? {}) : []
   )
-  const [errors, setErrors] = useState<FormErrors>({})
+  const [errors, setErrors] = useState<DishBasicsErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   /**
    * The freshly created item whose recipe step is open. Creating used to end by
@@ -136,9 +177,6 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
    */
   const [recipeStepItemId, setRecipeStepItemId] = useState<string | null>(null)
   const [isRecipeSaving, setIsRecipeSaving] = useState(false)
-  const [useNewVariations, setUseNewVariations] = useState(
-    (item?.variation_types && item.variation_types.length > 0) || false
-  )
   /**
    * Pre-order dates, staged like every other field.
    *
@@ -151,36 +189,23 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
   )
   const [presellDraft, setPresellDraft] = useState<DraftAllocation[]>(savedAllocations)
 
+  const updateBasics = <K extends keyof DishBasics>(field: K, value: DishBasics[K]) => {
+    setBasics((prev) => ({ ...prev, [field]: value }))
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }))
+  }
+
   const validateForm = (): boolean => {
-    try {
-      menuItemFormSchema.parse({
-        name: formData.name,
-        description: formData.description,
-        price: formData.price,
-        discounted_price: formData.discounted_price,
-        image_url: formData.image_url,
-        category_id: formData.category_id,
-      })
+    const parsed = menuItemFormSchema.safeParse(basics)
+    if (parsed.success) {
       setErrors({})
       return true
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const newErrors: FormErrors = {}
-        error.issues.forEach((err) => {
-          if (err.path[0]) {
-            newErrors[err.path[0] as keyof FormErrors] = err.message
-          }
-        })
-        setErrors(newErrors)
-        
-        // Show first error in toast
-        const firstError = error.issues[0]
-        if (firstError) {
-          toast.error(`${firstError.path.join('.')}: ${firstError.message}`)
-        }
-      }
-      return false
     }
+    const nextErrors = errorsFromIssues(parsed.error.issues)
+    setErrors(nextErrors)
+    const firstField = parsed.error.issues[0]?.path[0] as keyof DishBasics | undefined
+    toast.error(parsed.error.issues[0]?.message ?? 'Please check the highlighted fields.')
+    focusField(firstField)
+    return false
   }
 
   /**
@@ -206,109 +231,102 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     return undefined
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Client-side validation
-    if (!validateForm()) {
+  const buildInput = () => {
+    // With the unified editor on, `modifier_groups` is canonical and the
+    // legacy columns are derived from it so surfaces that don't yet read the
+    // new model (storefront, POS, mobile) keep rendering.
+    const cleanGroups = modifierGroupsEnabled ? serializeGroups(modifierGroups) : []
+    const legacyColumns = modifierGroupsEnabled ? splitGroupsToLegacyColumns(cleanGroups) : null
+    const input = {
+      name: basics.name,
+      description: basics.description,
+      price: parseFloat(basics.price),
+      discounted_price: basics.discounted_price ? parseFloat(basics.discounted_price) : null,
+      image_url: basics.image_url,
+      category_id: basics.category_id,
+      modifier_groups: persistedItemId ? omitUnchangedOptionStock(cleanGroups, stockBaseline) : cleanGroups,
+      // Include legacy formats for backward compatibility
+      variation_types: legacyColumns
+        ? legacyColumns.variation_types
+        : legacy.useGroupedVariations ? legacy.variationTypes : [],
+      variations: legacyColumns ? legacyColumns.variations : legacy.useGroupedVariations ? [] : legacy.variations,
+      addons: legacyColumns ? legacyColumns.addons : legacy.addons,
+      is_available: isAvailable,
+      is_featured: isFeatured,
+      show_in_checkout_upsell: boosts.show_in_checkout_upsell,
+      order: item?.order || 0,
+      ...(menuEngineeringEnabled ? {
+        bcg_classification: boosts.bcg_classification,
+        badge_text: boosts.badge_text || null,
+      } : {}),
+      ...(presellEnabled ? { presell_enabled: isPresellOn } : {}),
+    }
+    return { input, cleanGroups }
+  }
+
+  const reportServerError = (error: string | undefined) => {
+    if (!error) {
+      toast.error('Could not save the dish. Please try again.')
       return
     }
+    try {
+      const errorData = JSON.parse(error)
+      if (Array.isArray(errorData)) {
+        // Zod validation errors from the server
+        setErrors(errorsFromIssues(errorData))
+        toast.error('Please fix the highlighted fields.')
+        return
+      }
+      toast.error(error)
+    } catch {
+      toast.error(error)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validateForm()) return
 
     setIsSubmitting(true)
-    
     try {
-      // Import actions
       const { createMenuItemAction, updateMenuItemAction } = await import('@/app/actions/menu-items')
-      
-      // With the unified editor on, `modifier_groups` is canonical and the
-      // legacy columns are derived from it so surfaces that don't yet read the
-      // new model (storefront, POS, mobile) keep rendering.
-      const cleanGroups = modifierGroupsEnabled ? serializeGroups(modifierGroups) : []
-      const legacy = modifierGroupsEnabled ? splitGroupsToLegacyColumns(cleanGroups) : null
-
-      const input = {
-        name: formData.name,
-        description: formData.description,
-        price: parseFloat(formData.price),
-        discounted_price: formData.discounted_price ? parseFloat(formData.discounted_price) : null,
-        image_url: formData.image_url,
-        category_id: formData.category_id,
-        modifier_groups: persistedItemId ? omitUnchangedOptionStock(cleanGroups, stockBaseline) : cleanGroups,
-        // Include legacy formats for backward compatibility
-        variation_types: legacy ? legacy.variation_types : useNewVariations ? variationTypes : [],
-        variations: legacy ? legacy.variations : useNewVariations ? [] : variations,
-        addons: legacy ? legacy.addons : addons,
-        is_available: formData.is_available,
-        is_featured: formData.is_featured,
-        show_in_checkout_upsell: formData.show_in_checkout_upsell,
-        order: item?.order || 0,
-        ...(menuEngineeringEnabled ? {
-          bcg_classification: formData.bcg_classification,
-          badge_text: formData.badge_text || null,
-        } : {}),
-        ...(presellEnabled ? { presell_enabled: formData.presell_enabled } : {}),
-      }
+      const { input, cleanGroups } = buildInput()
 
       const result = persistedItemId
         ? await updateMenuItemAction(persistedItemId, tenantId, tenantSlug, input)
         : await createMenuItemAction(tenantId, tenantSlug, input)
 
-      if (result.success) {
-        const savedItemId = (result.data as { id?: string } | undefined)?.id ?? persistedItemId
-        setPersistedItemId(savedItemId)
-        setStockBaseline(cleanGroups)
-        /*
-         * The dates land here, with the dish, rather than one server action
-         * per click while the merchant is still editing. If they do not land
-         * the merchant is told and kept on the page — navigating away would
-         * discard a draft that only exists in this component's state.
-         */
-        if (presellEnabled && savedItemId && !presellLoadError) {
-          const allocationError = await savePresellDraft(savedItemId)
-          if (allocationError) {
-            toast.error(allocationError)
-            return
-          }
-        }
+      if (!result.success) {
+        reportServerError(result.error)
+        return
+      }
 
-        toast.success(item ? 'Menu item updated!' : 'Menu item created!')
-        const step = resolvePostSaveStep({
-          isNewItem: !item,
-          inventoryEnabled: inventoryEnabled ?? false,
-          savedItemId,
-        })
-        if (step.kind === 'link-ingredients') {
-          // Hold the merchant here for the recipe instead of closing: until a
-          // dish has one, selling it deducts no stock.
-          setRecipeStepItemId(step.itemId)
-        } else {
-          router.push(`/${tenantSlug}/admin/menu`)
-          router.refresh()
+      const savedItemId = (result.data as { id?: string } | undefined)?.id ?? persistedItemId
+      setPersistedItemId(savedItemId)
+      setStockBaseline(cleanGroups)
+      /*
+       * The dates land here, with the dish, rather than one server action
+       * per click while the merchant is still editing. If they do not land
+       * the merchant is told and kept on the page — navigating away would
+       * discard a draft that only exists in this component's state.
+       */
+      if (presellEnabled && savedItemId && !presellLoadError) {
+        const allocationError = await savePresellDraft(savedItemId)
+        if (allocationError) {
+          toast.error(allocationError)
+          return
         }
+      }
+
+      toast.success(item ? 'Changes saved' : `${basics.name} added to your menu`)
+      const step = resolvePostSaveStep({ isNewItem: !item, inventoryEnabled, savedItemId })
+      if (step.kind === 'link-ingredients') {
+        // Hold the merchant here for the recipe instead of closing: until a
+        // dish has one, selling it deducts no stock.
+        setRecipeStepItemId(step.itemId)
       } else {
-        // Handle server-side validation errors
-        if (result.error) {
-          try {
-            const errorData = JSON.parse(result.error)
-            if (Array.isArray(errorData)) {
-              // Zod validation errors from server
-              const newErrors: FormErrors = {}
-              errorData.forEach((err: { path: string[]; message: string }) => {
-                if (err.path[0]) {
-                  newErrors[err.path[0] as keyof FormErrors] = err.message
-                }
-              })
-              setErrors(newErrors)
-              toast.error('Please fix the validation errors')
-            } else {
-              toast.error(result.error)
-            }
-          } catch {
-            toast.error(result.error || 'Failed to save menu item')
-          }
-        } else {
-          toast.error('Failed to save menu item')
-        }
+        router.push(`/${tenantSlug}/admin/menu`)
+        router.refresh()
       }
     } catch (error) {
       // Includes Next's own "unexpected response" rejection, which says nothing
@@ -327,46 +345,10 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     router.refresh()
   }
 
-  const addVariation = () => {
-    setVariations([
-      ...variations,
-      { id: `temp-${Date.now()}`, name: '', price_modifier: 0, is_default: variations.length === 0 },
-    ])
-  }
-
-  const removeVariation = (index: number) => {
-    setVariations(variations.filter((_, i) => i !== index))
-  }
-
-  const updateVariation = (index: number, field: string, value: string | number | boolean) => {
-    const updated = [...variations]
-    updated[index] = { ...updated[index], [field]: value }
-    setVariations(updated)
-  }
-
-  const addAddon = () => {
-    setAddons([
-      ...addons,
-      { id: `temp-${Date.now()}`, name: '', price: 0 },
-    ])
-  }
-
-  const removeAddon = (index: number) => {
-    setAddons(addons.filter((_, i) => i !== index))
-  }
-
-  const updateAddon = (index: number, field: string, value: string | number | boolean) => {
-    const updated = [...addons]
-    updated[index] = { ...updated[index], [field]: value }
-    setAddons(updated)
-  }
-
-  const attachFromLibrary = (entries: Parameters<typeof attachEntriesToAddons>[1]) => {
-    setAddons((prev) => {
+  const attachAddonsFromLibrary = (entries: Parameters<typeof attachEntriesToAddons>[1]) => {
+    legacy.setAddons((prev) => {
       const merged = attachEntriesToAddons(prev, entries)
-      if (merged.length === prev.length) {
-        toast.info('Those add-ons are already on this item')
-      }
+      if (merged.length === prev.length) toast.info('Those add-ons are already on this item')
       return merged
     })
   }
@@ -410,469 +392,93 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
     toast.success(`"${draft.name}" saved to your modifier library`)
   }
 
-  // New Variation Types handlers
-  const addVariationType = () => {
-    const newType: VariationType = {
-      id: `type-temp-${Date.now()}`,
-      name: '',
-      is_required: false,
-      display_order: variationTypes.length,
-      options: []
-    }
-    setVariationTypes([...variationTypes, newType])
+  const recipeContext = {
+    tenantId,
+    tenantSlug,
+    menuItemId: item?.id,
+    inventoryEnabled,
+    onRecipeSaved: refreshCosts,
   }
-
-  const removeVariationType = (index: number) => {
-    setVariationTypes(variationTypes.filter((_, i) => i !== index))
-  }
-
-  const updateVariationType = (index: number, field: keyof VariationType, value: string | boolean | number) => {
-    const updated = [...variationTypes]
-    updated[index] = { ...updated[index], [field]: value }
-    setVariationTypes(updated)
-  }
-
-  const addVariationOption = (typeIndex: number) => {
-    const updated = [...variationTypes]
-    const newOption: VariationOption = {
-      id: `opt-temp-${Date.now()}`,
-      name: '',
-      price_modifier: 0,
-      image_url: undefined,
-      is_default: updated[typeIndex].options.length === 0,
-      display_order: updated[typeIndex].options.length
-    }
-    updated[typeIndex].options.push(newOption)
-    setVariationTypes(updated)
-  }
-
-  const removeVariationOption = (typeIndex: number, optionIndex: number) => {
-    const updated = [...variationTypes]
-    updated[typeIndex].options = updated[typeIndex].options.filter((_, i) => i !== optionIndex)
-    setVariationTypes(updated)
-  }
-
-  const updateVariationOption = (
-    typeIndex: number,
-    optionIndex: number,
-    field: keyof VariationOption,
-    value: string | number | boolean | undefined
-  ) => {
-    const updated = [...variationTypes]
-    updated[typeIndex].options[optionIndex] = {
-      ...updated[typeIndex].options[optionIndex],
-      [field]: value
-    }
-    setVariationTypes(updated)
-  }
+  const price = parseFloat(basics.price) || 0
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Item Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => {
-                setFormData({ ...formData, name: e.target.value })
-                if (errors.name) setErrors({ ...errors, name: undefined })
-              }}
-              placeholder="e.g., Margherita Pizza"
-              required
-              className={errors.name ? 'border-destructive' : ''}
-            />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name}</p>
-            )}
-          </div>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="space-y-5">
+        <DishBasicsSection values={basics} errors={errors} categories={categories} onChange={updateBasics} />
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Description *</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => {
-                setFormData({ ...formData, description: e.target.value })
-                if (errors.description) setErrors({ ...errors, description: undefined })
-              }}
-              placeholder="Describe your dish... (at least 10 characters)"
-              rows={3}
-              required
-              className={errors.description ? 'border-destructive' : ''}
-            />
-            {errors.description && (
-              <p className="text-sm text-destructive">{errors.description}</p>
-            )}
-            {!errors.description && formData.description.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {formData.description.length}/10 characters
-              </p>
-            )}
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="price">Price (₱) *</Label>
-              <Input
-                id="price"
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.price}
-                onChange={(e) => {
-                  setFormData({ ...formData, price: e.target.value })
-                  if (errors.price) setErrors({ ...errors, price: undefined })
-                }}
-                placeholder="14.99"
-                required
-                className={errors.price ? 'border-destructive' : ''}
-              />
-              <p className="text-xs text-muted-foreground">Enter 0 for a free item.</p>
-              {errors.price && (
-                <p className="text-sm text-destructive">{errors.price}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="discounted_price">Discounted Price (₱)</Label>
-              <Input
-                id="discounted_price"
-                type="number"
-                step="0.01"
-                value={formData.discounted_price}
-                onChange={(e) => {
-                  setFormData({ ...formData, discounted_price: e.target.value })
-                  if (errors.discounted_price) setErrors({ ...errors, discounted_price: undefined })
-                }}
-                placeholder="Optional"
-                className={errors.discounted_price ? 'border-destructive' : ''}
-              />
-              {errors.discounted_price && (
-                <p className="text-sm text-destructive">{errors.discounted_price}</p>
-              )}
-            </div>
-          </div>
-
-          {convexUrl && item?.id ? (
-            <SafeConvexProvider url={convexUrl}>
-              {/* Convex-connected: actually persists the cost price so BCG
-                  classification can work (the bare field never saved). */}
-              <ProductCostFieldConvex
-                menuItemId={item.id}
-                currentPrice={parseFloat(formData.price) || 0}
-                discountedPrice={parseFloat(formData.discounted_price) || undefined}
-              />
-              <ProductMiniPerformance menuItemId={item.id} />
-            </SafeConvexProvider>
-          ) : (
-            // New (unsaved) item or no Convex: show the calculator only. Costs
-            // can be saved once the item has an id and Convex is configured.
-            <ProductCostField
-              menuItemId={item?.id}
-              currentPrice={parseFloat(formData.price) || 0}
-              discountedPrice={parseFloat(formData.discounted_price) || undefined}
-            />
-          )}
-
-          {inventoryEnabled &&
-            (item?.id ? (
-              <RecipeEditor
-                tenantId={tenantId}
-                tenantSlug={tenantSlug}
-                target={{ type: 'menu_item', menuItemId: item.id }}
-                label="Base recipe (ingredients used per item)"
-                onSaved={refreshCosts}
-              />
-            ) : (
-              // A recipe needs an item id to attach to, so a brand-new dish
-              // cannot have one yet. Rendering nothing made that look like the
-              // feature was missing rather than merely not-yet — say so instead.
-              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">
-                  Base recipe (ingredients used per item)
-                </p>
-                <p className="mt-1">
-                  You will be asked to link the ingredients this dish uses right after it is
-                  created. Until a dish has a recipe, selling it will not deduct any stock.
-                </p>
-              </div>
-            ))}
-
-          <div className="space-y-2">
-            <Label htmlFor="category">Category *</Label>
-            <Select
-              value={formData.category_id}
-              onValueChange={(value) => {
-                setFormData({ ...formData, category_id: value })
-                if (errors.category_id) setErrors({ ...errors, category_id: undefined })
-              }}
-            >
-              <SelectTrigger className={errors.category_id ? 'border-destructive' : ''}>
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    <span className="flex items-center gap-2">
-                      <CategoryIcon icon={category.icon} color={category.icon_color} size="sm" />
-                      {category.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.category_id && (
-              <p className="text-sm text-destructive">{errors.category_id}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <ImageUpload
-              currentImageUrl={formData.image_url}
-              onImageUploaded={(url) => {
-                setFormData({ ...formData, image_url: url })
-                if (errors.image_url) setErrors({ ...errors, image_url: undefined })
-              }}
-              label="Dish Image *"
-              description="Upload a photo of your dish (horizontal/landscape recommended)"
-              folder="menu-items"
-            />
-            {errors.image_url && (
-              <p className="text-sm text-destructive">{errors.image_url}</p>
-            )}
-          </div>
-
-          <div className="divide-y rounded-xl border">
+        <EditorSection title="Availability">
+          <div className="divide-y rounded-lg border">
             <SettingSwitch
               id="is_available"
-              label="In stock"
-              description="Off, the dish stays on your menu marked out of stock — it is not removed."
-              checked={formData.is_available}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_available: checked })}
+              label="Available to order"
+              description="Turn off when you run out. It stays on your menu, marked out of stock."
+              checked={isAvailable}
+              onCheckedChange={setIsAvailable}
             />
             <SettingSwitch
               id="is_featured"
               label="Featured"
-              description="Highlight this dish on the storefront."
-              checked={formData.is_featured}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_featured: checked })}
-            />
-            <SettingSwitch
-              id="show_in_checkout_upsell"
-              label="Show in checkout upsell"
-              description="Offer it on the “Before you go” screen at checkout."
-              checked={formData.show_in_checkout_upsell}
-              onCheckedChange={(checked) => setFormData({ ...formData, show_in_checkout_upsell: checked })}
+              description="Highlight this dish on your menu."
+              checked={isFeatured}
+              onCheckedChange={setIsFeatured}
             />
           </div>
+        </EditorSection>
 
-          {presellEnabled && (
-            <MenuItemPresellSection
-              isEnabled={formData.presell_enabled}
-              onToggle={(checked) => setFormData({ ...formData, presell_enabled: checked })}
-              savedAllocations={savedAllocations}
-              draft={presellDraft}
-              onDraftChange={setPresellDraft}
-              loadError={presellLoadError}
-            />
-          )}
+        {modifierGroupsEnabled ? (
+          <ModifierGroupsEditor
+            groups={modifierGroups}
+            onChange={setModifierGroups}
+            basePrice={price}
+            recipeContext={recipeContext}
+            optionRecipeCosts={optionRecipeCosts}
+            headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
+            onSaveGroupToLibrary={saveGroupToLibrary}
+            linkableItems={linkableItems?.filter((candidate) => candidate.id !== item?.id)}
+          />
+        ) : (
+          <LegacyOptionsSections
+            options={legacy}
+            addonLibraryPicker={<AddonLibraryPicker tenantId={tenantId} onAttach={attachAddonsFromLibrary} />}
+            recipeContext={recipeContext}
+          />
+        )}
+      </form>
 
-          {menuEngineeringEnabled && (
-            <>
-            <div className="grid gap-4 sm:grid-cols-2 border-t pt-4 mt-2">
-              <div className="space-y-2">
-                <Label htmlFor="bcg_classification">BCG Classification</Label>
-                <Select
-                  value={formData.bcg_classification}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, bcg_classification: value as BcgClassification })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select classification" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unclassified">Unclassified</SelectItem>
-                    <SelectItem value="star">Star</SelectItem>
-                    <SelectItem value="plowhorse">Plowhorse</SelectItem>
-                    <SelectItem value="puzzle">Puzzle</SelectItem>
-                    <SelectItem value="dog">Dog</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Classify this item based on popularity and profitability
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="badge_text">Badge Text</Label>
-                <Input
-                  id="badge_text"
-                  value={formData.badge_text}
-                  onChange={(e) => setFormData({ ...formData, badge_text: e.target.value })}
-                  placeholder="e.g., Best Seller, New"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Optional badge shown on the customer menu card
-                </p>
-              </div>
-            </div>
-            <TagManager
-              itemId={item?.id ?? null}
-              tenantId={tenantId}
-              tenantSlug={tenantSlug}
-            />
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {modifierGroupsEnabled ? (
-        <ModifierGroupsEditor
-          groups={modifierGroups}
-          onChange={setModifierGroups}
-          basePrice={parseFloat(formData.price) || 0}
-          recipeContext={{
-            tenantId,
-            tenantSlug,
-            menuItemId: item?.id,
-            inventoryEnabled: inventoryEnabled ?? false,
-            onRecipeSaved: refreshCosts,
-          }}
-          optionRecipeCosts={optionRecipeCosts}
-          headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
-          onSaveGroupToLibrary={saveGroupToLibrary}
-          linkableItems={linkableItems?.filter((candidate) => candidate.id !== item?.id)}
-        />
-      ) : (
-      <>
-      {/* Variation System Selector */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Variation System</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                checked={!useNewVariations}
-                onChange={() => setUseNewVariations(false)}
-                className="h-4 w-4"
-              />
-              <span className="text-sm font-medium">Simple Variations (Legacy)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                checked={useNewVariations}
-                onChange={() => setUseNewVariations(true)}
-                className="h-4 w-4"
-              />
-              <span className="text-sm font-medium">Grouped Variations with Images (New)</span>
-            </label>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            {useNewVariations 
-              ? 'Create organized variation groups (Size, Spice Level, etc.) with optional images for each option.'
-              : 'Simple flat list of variations for basic size options.'}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Legacy Variations System */}
-      {!useNewVariations && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Variations</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={addVariation}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Variation
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {variations.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground">
-                No variations. Add sizes like Small, Medium, Large.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {variations.map((variation, index) => (
-                  <div key={variation.id} className="flex gap-2">
-                    <Input
-                      placeholder="Name (e.g., Small)"
-                      value={variation.name}
-                      onChange={(e) => updateVariation(index, 'name', e.target.value)}
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="Price modifier"
-                      value={variation.price_modifier}
-                      onChange={(e) => updateVariation(index, 'price_modifier', parseFloat(e.target.value) || 0)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeVariation(index)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* New Grouped Variation Types System */}
-      {useNewVariations && (
-        <VariationGroupsEditor
-          variationTypes={variationTypes}
-          onAddVariationType={addVariationType}
-          onRemoveVariationType={removeVariationType}
-          onUpdateVariationType={updateVariationType}
-          onAddVariationOption={addVariationOption}
-          onRemoveVariationOption={removeVariationOption}
-          onUpdateVariationOption={updateVariationOption}
-        />
-      )}
-
-      <AddonEditor
-        addons={addons}
-        onAddAddon={addAddon}
-        onRemoveAddon={removeAddon}
-        onUpdateAddon={updateAddon}
-        headerAction={<AddonLibraryPicker tenantId={tenantId} onAttach={attachFromLibrary} />}
-        recipeContext={{
-          tenantId,
-          tenantSlug,
-          menuItemId: item?.id,
-          inventoryEnabled: inventoryEnabled ?? false,
-          onRecipeSaved: refreshCosts,
-        }}
+      <DishMoreOptions
+        itemId={item?.id}
+        tenantId={tenantId}
+        tenantSlug={tenantSlug}
+        convexUrl={convexUrl}
+        price={price}
+        discountedPrice={parseFloat(basics.discounted_price) || undefined}
+        inventoryEnabled={inventoryEnabled}
+        hasRecipe={hasRecipe}
+        onRecipeSaved={refreshCosts}
+        presell={presellEnabled ? {
+          isEnabled: isPresellOn,
+          onToggle: setIsPresellOn,
+          savedAllocations,
+          draft: presellDraft,
+          onDraftChange: setPresellDraft,
+          loadError: presellLoadError,
+        } : undefined}
+        menuEngineeringEnabled={menuEngineeringEnabled}
+        boosts={boosts}
+        onBoostsChange={setBoosts}
+        branchesSlot={branchesPanel}
       />
-      </>
+
+      {item && (
+        <DeleteDishSection itemId={item.id} itemName={item.name} tenantId={tenantId} tenantSlug={tenantSlug} />
       )}
 
-      <div className="flex justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.push(`/${tenantSlug}/admin/menu`)}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : item ? 'Update Item' : 'Create Item'}
-        </Button>
-      </div>
+      <SaveBar
+        formId={FORM_ID}
+        isSaving={isSubmitting}
+        isNew={!item}
+        onCancel={() => router.push(`/${tenantSlug}/admin/menu`)}
+      />
 
       {/*
         The recipe step for a freshly created dish. Dismissing it in any way —
@@ -890,7 +496,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           <DialogHeader>
             <DialogTitle>Link ingredients now?</DialogTitle>
             <DialogDescription>
-              {formData.name || 'This dish'} is saved. Until it has a recipe, selling it will not
+              {basics.name || 'This dish'} is saved. Until it has a recipe, selling it will not
               deduct any stock from your inventory.
             </DialogDescription>
           </DialogHeader>
@@ -899,7 +505,7 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
               tenantId={tenantId}
               tenantSlug={tenantSlug}
               target={{ type: 'menu_item', menuItemId: recipeStepItemId }}
-              label="Base recipe (ingredients used per item)"
+              label="Ingredients used per order"
               onSavingChange={setIsRecipeSaving}
             />
           )}
@@ -924,6 +530,6 @@ export function MenuItemForm({ item, categories, tenantId, tenantSlug, menuEngin
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </form>
+    </div>
   )
 }

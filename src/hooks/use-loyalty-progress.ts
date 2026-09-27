@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import type { OrderStampCard } from '@/lib/loyalty/stamp-status'
 
@@ -10,6 +10,8 @@ export interface LoyaltyProgressState {
   /** The typed number's standing, or null while unknown. */
   card: OrderStampCard | null
   isLoading: boolean
+  error?: string | null
+  refresh?: () => void
 }
 
 interface UseLoyaltyProgressInput {
@@ -39,46 +41,81 @@ export function useLoyaltyProgress({
   outletId = null,
   enabled = true,
 }: UseLoyaltyProgressInput): LoyaltyProgressState {
-  const [state, setState] = useState<LoyaltyProgressState>(EMPTY)
+  const [result, setResult] = useState<{ key: string | null; state: LoyaltyProgressState }>({ key: null, state: EMPTY })
+  const [reload, setReload] = useState(0)
+  const refresh = useCallback(() => setReload(value => value + 1), [])
   const isAsking = enabled && Boolean(tenantId) && phone !== null
+  const key = isAsking ? JSON.stringify([tenantId, phone, outletId]) : null
 
   useEffect(() => {
+    const setState = (state: LoyaltyProgressState) => setResult({ key, state })
     if (!isAsking) {
       setState(EMPTY)
       return
     }
 
     let cancelled = false
-    const controller = new AbortController()
-    setState({ offer: null, card: null, isLoading: true })
+    let inFlight = false
+    let attempts = 0
+    let controller: AbortController | undefined
+    let timer: ReturnType<typeof setTimeout>
+    setResult(previous => ({ key, state: previous.key === key ? previous.state : { ...EMPTY, isLoading: true } }))
 
-    const timer = setTimeout(async () => {
+    const read = async () => {
+      if (cancelled || inFlight) return
+      clearTimeout(timer)
+      inFlight = true
+      attempts++
+      controller = new AbortController()
+      const timeout = setTimeout(() => controller?.abort(), 15000)
       try {
         const res = await fetch('/api/loyalty/progress', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tenantId, phone, outletId }),
           signal: controller.signal,
+          cache: 'no-store',
         })
-        const body = res.ok ? await res.json() : null
+        if (!res.ok) throw new Error('unavailable')
+        const body = await res.json()
         if (cancelled) return
         setState({
           offer: (body?.offer ?? null) as LoyaltyOffer | null,
           card: (body?.card ?? null) as OrderStampCard | null,
           isLoading: false,
+          error: null,
         })
       } catch {
-        // A card that cannot be read is simply not shown; the order still works.
-        if (!cancelled) setState(EMPTY)
+        if (!cancelled) setResult(previous => ({ key, state: {
+          ...(previous.key === key ? previous.state : EMPTY),
+          isLoading: false,
+          error: 'Could not refresh your stamps. Try again.',
+        } }))
+      } finally {
+        clearTimeout(timeout)
+        inFlight = false
+        if (!cancelled && attempts < 12) timer = setTimeout(read, 30000)
       }
-    }, SETTLE_MS)
+    }
+    const resume = () => { attempts = 0; void read() }
+    const visible = () => { if (document.visibilityState === 'visible') resume() }
+    timer = setTimeout(read, SETTLE_MS)
+    window.addEventListener('focus', resume)
+    window.addEventListener('online', resume)
+    document.addEventListener('visibilitychange', visible)
 
     return () => {
       cancelled = true
-      controller.abort()
+      controller?.abort()
       clearTimeout(timer)
+      window.removeEventListener('focus', resume)
+      window.removeEventListener('online', resume)
+      document.removeEventListener('visibilitychange', visible)
     }
-  }, [tenantId, phone, outletId, isAsking])
+  }, [tenantId, phone, outletId, isAsking, key, reload])
 
-  return state
+  // Effects run after commit. Guard during render as well so a changed identity
+  // can never display the previous customer's balance for even one frame.
+  if (!isAsking) return EMPTY
+  return { ...(result.key === key ? result.state : { ...EMPTY, isLoading: true }), refresh }
 }

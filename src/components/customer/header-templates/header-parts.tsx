@@ -6,8 +6,10 @@
  * header template renders identical, bug-free pieces and only differs in layout.
  */
 
-import { Search } from 'lucide-react'
+import { Search, ShoppingCart } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
+import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
+import { describeCartCount } from '@/lib/senior-mode'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { HeaderConfig, HeaderLogoShape, HeaderHeight } from '@/lib/header-templates'
 import type { Tenant } from '@/types/database'
@@ -182,6 +184,34 @@ export function HeaderCartButton({
   onClick: () => void
   branding: BrandingColors
 }) {
+  const isSeniorMode = useSeniorMode()
+
+  // Senior mode: a filled, labelled "Cart" button — the bare emoji was the
+  // single most-missed control for older customers.
+  if (isSeniorMode) {
+    return (
+      <button
+        type="button"
+        data-branding-scope="storefront/header-cart"
+        onClick={onClick}
+        className="flex min-h-12 flex-shrink-0 items-center gap-2 rounded-full px-4 text-base font-bold shadow-sm transition-transform active:scale-95"
+        style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
+        aria-label={`Open cart, ${describeCartCount(itemCount)}`}
+      >
+        <ShoppingCart className="h-6 w-6" aria-hidden="true" />
+        Cart
+        {itemCount > 0 && (
+          <span
+            className="flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-sm"
+            style={{ backgroundColor: branding.buttonPrimaryText, color: branding.buttonPrimary }}
+          >
+            {itemCount > 99 ? '99+' : itemCount}
+          </span>
+        )}
+      </button>
+    )
+  }
+
   return (
     <button
       type="button"

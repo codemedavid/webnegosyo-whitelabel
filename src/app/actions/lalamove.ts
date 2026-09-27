@@ -22,6 +22,7 @@ import { resolveRequoteGate, retireDeadBookingPatch } from '@/lib/lalamove-reboo
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { Database, Tenant } from '@/types/database'
+import { signDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 
 /**
  * The tenant columns Lalamove work actually needs. Several of these actions
@@ -149,9 +150,25 @@ export async function createQuotationAction(
       { lat: deliveryLat, lng: deliveryLng },
     )
 
+    const expiresAt = new Date(quotation.expiresAt).getTime()
+    const quoteSignature = signDeliveryQuote({
+      tenantId,
+      quotationId: quotation.quotationId,
+      fee: quotation.price,
+      destination: { address: deliveryAddress, lat: deliveryLat, lng: deliveryLng },
+      expiresAt,
+    })
+    if (!quoteSignature) {
+      return { success: false, error: 'Could not verify a valid delivery quotation. Please try again or contact the store.' }
+    }
+
     return {
       success: true,
-      data: quotation,
+      data: {
+        ...quotation,
+        expiresAt: new Date(expiresAt).toISOString(),
+        quoteSignature,
+      },
     }
   } catch (error) {
     console.error('Quotation creation error:', error)

@@ -44,6 +44,8 @@ interface GuestRowProps {
   consentAction: ConsentAction;
   onToggleOptOut: () => void;
   onRecordConsent: (action: ConsentAction) => void;
+  /** Open this guest's full profile. */
+  onOpen: () => void;
 }
 
 export function GuestRow({
@@ -51,6 +53,7 @@ export function GuestRow({
   consentAction,
   onToggleOptOut,
   onRecordConsent,
+  onOpen,
 }: GuestRowProps) {
   const { customer, reachability } = row;
   const tone = TONES[reachability.status];
@@ -59,39 +62,53 @@ export function GuestRow({
 
   return (
     <View style={styles.row}>
-      <View style={styles.lead}>
-        {/*
-          The tone lives in the ring, not in a filled circle. Two of the six
-          palette colours are light enough that white initials on them land
-          near 2:1 — this way the initials are always ink on near-white and the
-          colour still does its only job, which is telling rows apart.
-        */}
-        <View style={[styles.avatar, { borderColor: ring }]}>
-          <Text style={styles.initials}>{initialsOf(customer.name)}</Text>
+      {/*
+        The identity and figures open the profile; the consent buttons below
+        stay outside this target so a tap on "Do not text" never navigates.
+      */}
+      <TouchableOpacity
+        style={styles.summary}
+        onPress={onOpen}
+        activeOpacity={0.6}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${customer.name?.trim() || "unnamed guest"}'s details`}
+      >
+        <View style={styles.lead}>
+          {/*
+            The tone lives in the ring, not in a filled circle. Two of the six
+            palette colours are light enough that white initials on them land
+            near 2:1 — this way the initials are always ink on near-white and the
+            colour still does its only job, which is telling rows apart.
+          */}
+          <View style={[styles.avatar, { borderColor: ring }]}>
+            <Text style={styles.initials}>{initialsOf(customer.name)}</Text>
+          </View>
+
+          <View style={styles.identity}>
+            <Text style={styles.name} numberOfLines={1}>
+              {customer.name?.trim() || "Unnamed guest"}
+            </Text>
+            <Text style={styles.phone} numberOfLines={1}>
+              {customer.phone_e164 ?? "No phone number"}
+            </Text>
+          </View>
+
+          <View style={styles.state}>
+            <View style={[styles.dot, { backgroundColor: tone }]} />
+            <Text style={styles.stateLabel}>{reachability.label}</Text>
+          </View>
+
+          <Icon name="chevron" color={colors.textTertiary} size={16} />
         </View>
 
-        <View style={styles.identity}>
-          <Text style={styles.name} numberOfLines={1}>
-            {customer.name?.trim() || "Unnamed guest"}
-          </Text>
-          <Text style={styles.phone} numberOfLines={1}>
-            {customer.phone_e164 ?? "No phone number"}
-          </Text>
-        </View>
-
-        <View style={styles.state}>
-          <View style={[styles.dot, { backgroundColor: tone }]} />
-          <Text style={styles.stateLabel}>{reachability.label}</Text>
-        </View>
-      </View>
-
-      <Text style={styles.metrics} numberOfLines={1}>
-        {customer.order_count} {customer.order_count === 1 ? "order" : "orders"}
-        {"  ·  "}
-        {peso(customer.total_spent)}
-        {"  ·  "}
-        {lastOrderLabel(customer.last_order_at)}
-      </Text>
+        <Text style={styles.metrics} numberOfLines={1}>
+          {customer.order_count} {customer.order_count === 1 ? "order" : "orders"}
+          {"  ·  "}
+          {peso(customer.total_spent)}
+          {"  ·  "}
+          {lastOrderLabel(customer.last_order_at)}
+        </Text>
+      </TouchableOpacity>
 
       {(consentAction.isEnabled || customer.phone_e164) && (
         <View style={styles.actions}>
@@ -137,6 +154,7 @@ const AVATAR = 42;
 
 const styles = StyleSheet.create({
   row: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 6 },
+  summary: { gap: 6 },
   lead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   avatar: {
     width: AVATAR,

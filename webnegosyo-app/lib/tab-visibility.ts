@@ -79,6 +79,7 @@ export const SETUP_TABS: readonly string[] = [
   "categories",
   "inventory",
   "payments",
+  "vouchers",
   "portfolio",
   "branch-menu",
 ];

@@ -111,6 +111,8 @@ describe('POST /api/lalamove', () => {
   let adminEqMock: jest.Mock
   let tenantRow: Record<string, unknown> | null
   let orderRow: Record<string, unknown> | null
+  let failBookingPersistence: boolean
+  let failOrderUpdates: boolean
 
   beforeEach(async () => {
     jest.resetModules()
@@ -120,6 +122,8 @@ describe('POST /api/lalamove', () => {
 
     tenantRow = { ...TENANT }
     orderRow = { ...ORDER }
+    failBookingPersistence = false
+    failOrderUpdates = false
 
     const { createClient } = await import('@supabase/supabase-js')
     const mockCreateClient = createClient as unknown as jest.Mock
@@ -150,17 +154,32 @@ describe('POST /api/lalamove', () => {
       from: jest.fn((table: string) => {
         const builder: Record<string, unknown> = {}
         let selectedColumns: string | null = null
+        let patch: Record<string, unknown> | null = null
+        const filters: Array<(row: Record<string, unknown>) => boolean> = []
         builder.select = jest.fn((columns?: string) => {
           selectedColumns = typeof columns === 'string' ? columns : null
           return builder
         })
         builder.eq = jest.fn((column: unknown, value: unknown) => {
           adminEqMock(table, column, value)
+          filters.push((row) => row[String(column)] === value)
           return builder
         })
-        builder.is = jest.fn(() => builder)
-        builder.update = jest.fn((patch: unknown) => {
-          adminUpdateMock(table, patch)
+        builder.is = jest.fn((column: string, value: unknown) => {
+          filters.push((row) => row[column] === value)
+          return builder
+        })
+        builder.or = jest.fn((expression: string) => {
+          if (expression === 'lalamove_status.is.null,lalamove_status.neq.BOOKING') {
+            filters.push((row) => row.lalamove_status !== 'BOOKING')
+          } else {
+            throw new Error(`Unsupported test filter: ${expression}`)
+          }
+          return builder
+        })
+        builder.update = jest.fn((value: Record<string, unknown>) => {
+          patch = value
+          adminUpdateMock(table, value)
           return builder
         })
         builder.maybeSingle = jest.fn(async () => {
@@ -175,14 +194,24 @@ describe('POST /api/lalamove', () => {
               }
             }
           }
+          if (table === 'orders' && patch) {
+            if (failOrderUpdates || (failBookingPersistence && patch.lalamove_order_id)) {
+              return { data: null, error: { message: 'Storage unavailable' } }
+            }
+            if (!orderRow || !filters.every((filter) => filter(orderRow!))) {
+              return { data: null, error: null }
+            }
+            orderRow = { ...orderRow, ...patch }
+          }
           return {
-            data: table === 'tenants' ? tenantRow : orderRow,
+            data: table === 'tenants' ? tenantRow : orderRow ? { ...orderRow } : null,
             error: null,
           }
         })
         builder.single = builder.maybeSingle
         // An update chain is awaited directly rather than read back.
-        builder.then = (resolve: (v: unknown) => unknown) => resolve({ data: null, error: null })
+        builder.then = (resolve: (v: unknown) => unknown) =>
+          (builder.maybeSingle as () => Promise<unknown>)().then(resolve)
         return builder
       }),
     })
@@ -258,6 +287,35 @@ describe('POST /api/lalamove', () => {
       lalamove_status: 'ASSIGNING_DRIVER',
       lalamove_tracking_url: 'https://share.lalamove.com/lala-1',
     })
+  })
+
+  test('claims the order before calling Lalamove so concurrent bookings cannot send two riders', async () => {
+    const service = await import('@/lib/lalamove-service')
+    const { POST } = await import('@/app/api/lalamove/route')
+
+    const responses = await Promise.all([
+      POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t')),
+      POST(makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t')),
+    ])
+
+    expect(service.createLalamoveOrder).toHaveBeenCalledTimes(1)
+    const bodies = await Promise.all(responses.map((response) => response.json()))
+    expect(bodies.filter((body) => body.success)).toHaveLength(1)
+  })
+
+  test('does not report success when a paid booking could not be saved', async () => {
+    failBookingPersistence = true
+    const { POST } = await import('@/app/api/lalamove/route')
+
+    const response = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/booked.*lala-1.*save|lala-1.*record/i),
+    })
+    expect(orderRow?.lalamove_status).toBe('BOOKING')
   })
 
   test('reads the delivery address from customer_data, not a nonexistent column', async () => {
@@ -415,6 +473,36 @@ describe('POST /api/lalamove', () => {
     expect(patch).toMatchObject({ lalamove_quotation_id: 'quote-new' })
   })
 
+  test.each(['requote', 'sync', 'cancel'])(
+    'reports failure when the %s result cannot be saved',
+    async (op) => {
+      failOrderUpdates = true
+      if (op !== 'requote') {
+        orderRow = { ...ORDER, lalamove_order_id: 'lala-1', lalamove_status: 'ASSIGNING_DRIVER' }
+      }
+      const { POST } = await import('@/app/api/lalamove/route')
+      const response = await POST(makeRequest({ op, tenantId: 't1', orderId: 'order-1' }, 'Bearer t'))
+
+      await expect(response.json()).resolves.toMatchObject({ success: false })
+    },
+  )
+
+  test('does not replace a quotation once another request has claimed its booking', async () => {
+    const service = await import('@/lib/lalamove-service')
+    ;(service.createLalamoveQuotation as jest.Mock).mockImplementation(async () => {
+      orderRow = { ...orderRow, lalamove_status: 'BOOKING' }
+      return { quotationId: 'quote-new', price: 89, currency: 'PHP' }
+    })
+    const { POST } = await import('@/app/api/lalamove/route')
+
+    const response = await POST(
+      makeRequest({ op: 'requote', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    await expect(response.json()).resolves.toMatchObject({ success: false })
+    expect(orderRow?.lalamove_quotation_id).toBe('quote-1')
+  })
+
   test('refuses to re-quote once a delivery is booked', async () => {
     // Swapping the quotation under a live booking would desync the order from
     // the rider already on the road.
@@ -566,6 +654,21 @@ describe('POST /api/lalamove', () => {
     const body = (await res.json()) as { success: boolean; error?: string }
     expect(body.success).toBe(false)
     expect(body.error).toMatch(/expired/i)
+  })
+
+  test('releases the booking claim when quotation validation fails before contacting the booking API', async () => {
+    const service = await import('@/lib/lalamove-service')
+    const { LalamoveBookingError } = await import('@/lib/lalamove-booking-error')
+    ;(service.createLalamoveOrder as jest.Mock<(...args: unknown[]) => Promise<unknown>>)
+      .mockRejectedValue(new LalamoveBookingError('Quotation expired', false))
+    const { POST } = await import('@/app/api/lalamove/route')
+
+    const response = await POST(
+      makeRequest({ op: 'book', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    await expect(response.json()).resolves.toMatchObject({ success: false, error: 'Quotation expired' })
+    expect(orderRow?.lalamove_status).toBeNull()
   })
 
   test('never books against an order belonging to another tenant', async () => {

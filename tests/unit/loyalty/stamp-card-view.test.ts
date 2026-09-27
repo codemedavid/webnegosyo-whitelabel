@@ -75,6 +75,10 @@ function program(overrides: Partial<LoyaltyProgram> = {}): LoyaltyProgram {
 }
 
 describe('summarizeStampCard', () => {
+  test('labels a scheduled end as ended even when the stored status is active', () => {
+    expect(summarizeStampCard({ programs: [program({ endsAt: '2020-01-01T00:00:00Z' })], earnedProgramId: 'prog-1', balance: 3, rewardsAvailable: 1 }))
+      .toMatchObject({ programStatus: 'ended', balance: 3 })
+  })
   test('builds the card from the program that actually earned', () => {
     const card = summarizeStampCard({
       programs: [program({ id: 'other' }), program()],
@@ -102,9 +106,9 @@ describe('summarizeStampCard', () => {
       .toBeNull()
   })
 
-  test('an unknown or negative balance reads as zero, never as a negative stamp count', () => {
+  test('an unknown balance reads as zero and reversal debt remains explainable', () => {
     expect(summarizeStampCard({ programs: [program()], earnedProgramId: 'prog-1', balance: null, rewardsAvailable: 0 })?.balance).toBe(0)
     expect(summarizeStampCard({ programs: [program()], earnedProgramId: 'prog-1', balance: -2, rewardsAvailable: -3 }))
-      .toMatchObject({ balance: 0, rewardsAvailable: 0 })
+      .toMatchObject({ balance: -2, rewardsAvailable: 0 })
   })
 })

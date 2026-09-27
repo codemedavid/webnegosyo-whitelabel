@@ -95,7 +95,7 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   return (
     <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+      <header data-senior-hidden className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
           <button
             type="button"
@@ -114,7 +114,9 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
       <main className="mx-auto max-w-2xl px-4 py-6 sm:py-8">
         {/* Progress stepper */}
-        <nav aria-label="Checkout progress" className="mb-6 sm:mb-8">
+        {/* data-senior-hidden: senior mode's own "Step 3 of 4" tracker is on
+            screen; a second step counter would contradict it. */}
+        <nav data-senior-hidden aria-label="Checkout progress" className="mb-6 sm:mb-8">
           <ol className="flex items-center">
             {steps.map((label, index) => {
               const isComplete = index < stepIndex
@@ -168,7 +170,7 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           style={{ backgroundColor: palette.cardBackground }}
         >
           <div className="mb-5 sm:mb-6">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>
+            <p data-senior-hidden className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>
               Step {stepIndex + 1} of {steps.length}
             </p>
             <h2 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl" style={{ color: palette.text }}>{stepTitles[current]}</h2>

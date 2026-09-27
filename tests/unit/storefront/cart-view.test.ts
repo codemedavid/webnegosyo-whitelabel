@@ -20,16 +20,19 @@ jest.mock('sonner', () => ({ toast: { error: jest.fn() } }))
 const fetchTenant = jest.mocked(getTenantBySlugClient)
 beforeEach(() => { jest.clearAllMocks(); mockSlug = 'cafe'; mockOpenStatus = ALWAYS_OPEN_STATUS; fetchTenant.mockResolvedValue({ data: mockTenant, error: null }) })
 
-test('cart page uses the current hours when continuing its upsell', async () => {
+test('checkout goes straight through — no interstitial — and still respects store hours', async () => {
   const { result, rerender } = renderHook(() => useCartView())
   await act(async () => {})
-  act(() => result.current.requestCheckout())
-  expect(result.current.showUpsellModal).toBe(true)
+  // Suggestions are shown inline in the cart instead of gating checkout.
+  expect(result.current.showCartOffers).toBe(true)
   mockOpenStatus = { ...ALWAYS_OPEN_STATUS, isOrderingBlocked: true }
   rerender()
-  await act(async () => result.current.onUpsellContinue())
-  expect(result.current.showUpsellModal).toBe(false)
+  await act(async () => result.current.requestCheckout())
   expect(mockRouter.push).not.toHaveBeenCalled()
+  mockOpenStatus = ALWAYS_OPEN_STATUS
+  rerender()
+  await act(async () => result.current.requestCheckout())
+  expect(mockRouter.push).toHaveBeenCalledWith('/cafe/checkout')
 })
 
 test('a tenant response arriving after a slug change cannot replace the current tenant', async () => {

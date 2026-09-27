@@ -13,6 +13,12 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * No real drawer holds this much. Refusing it catches a stray extra digit and
+ * keeps the write clear of the NUMERIC(12,2) column's overflow error.
+ */
+export const MAX_DRAWER_CASH = 10_000_000;
+
 /** A cash amount the drawer can actually hold, or why it cannot. */
 export type CashAmountVerdict =
   | { ok: true; amount: number }
@@ -32,7 +38,52 @@ export function validateCashAmount(value: number): CashAmountVerdict {
   if (value < 0) {
     return { ok: false, reason: "A cash amount cannot be negative." };
   }
+  if (value > MAX_DRAWER_CASH) {
+    return { ok: false, reason: "That amount is too large for a drawer. Check for an extra digit." };
+  }
   return { ok: true, amount: value };
+}
+
+// A leading minus is READ, so validateCashAmount can say "negative" rather
+// than "not a number" — and still refuse it.
+const CASH_TEXT = /^-?(\d+(\.\d+)?|\.\d+)$/;
+/** One comma followed by one or two digits is a decimal comma ("125,50"). */
+const DECIMAL_COMMA = /^\d+,\d{1,2}$/;
+
+/**
+ * What a cashier typed into a cash field, as a number — or NaN.
+ *
+ * A tablet's decimal pad offers a comma in some locales, and cashiers type
+ * "1,250" or "₱300" out of habit; `Number()` read all three as NaN and the
+ * shift refused a correct count. What it read too generously is refused here:
+ * `Number("1e5")` is 100000 and `Number("0x10")` is 16, neither of which is
+ * money anyone typed. NaN goes on to validateCashAmount, which says why.
+ */
+export function parseCashInput(text: string): number {
+  const bare = text.replace(/\s+/g, "").replace(/^(₱|php)/i, "");
+  const normalized = DECIMAL_COMMA.test(bare) ? bare.replace(",", ".") : bare.replace(/,(?=\d{3}(\D|$))/g, "");
+  return CASH_TEXT.test(normalized) ? Number(normalized) : Number.NaN;
+}
+
+/**
+ * Whether a newest-first page of orders holds EVERY order since the shift
+ * opened.
+ *
+ * A short page is the whole history. A FULL page is still whole for this
+ * shift when its oldest order predates the clock-in — the page reached past
+ * the shift, so nothing inside it was cut off. Judging on page length alone
+ * refused to reconcile every store that had ever taken 200 orders, so End
+ * shift could never be confirmed there.
+ */
+export function isShiftHistoryComplete(
+  orders: readonly { _creationTime: number }[],
+  pageLimit: number,
+  openedAt: string,
+): boolean {
+  if (orders.length < pageLimit) return true;
+  const openedAtMs = Date.parse(openedAt);
+  if (!Number.isFinite(openedAtMs)) return false;
+  return orders.some((order) => order._creationTime < openedAtMs);
 }
 
 export type ShiftState = "open" | "closed";

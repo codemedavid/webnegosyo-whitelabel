@@ -5182,6 +5182,7 @@ export type Database = {
       stock_movements: {
         Row: {
           balance_after: number
+          client_request_id: string | null
           created_at: string | null
           created_by: string | null
           entered_quantity: number | null
@@ -5201,6 +5202,7 @@ export type Database = {
         }
         Insert: {
           balance_after?: number
+          client_request_id?: string | null
           created_at?: string | null
           created_by?: string | null
           entered_quantity?: number | null
@@ -5220,6 +5222,7 @@ export type Database = {
         }
         Update: {
           balance_after?: number
+          client_request_id?: string | null
           created_at?: string | null
           created_by?: string | null
           entered_quantity?: number | null

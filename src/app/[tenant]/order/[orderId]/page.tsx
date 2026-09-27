@@ -62,12 +62,8 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
     brandPromise,
     // If tracking token is in URL, fetch initial data server-side (SSR)
     trackingToken ? fetchOrderTrackingData(orderId, trackingToken, tenant.id) : null,
-    trackingToken
-      ? brandPromise.then((resolved) =>
-          resolved.loyaltyOffer
-            ? getOrderStampStatus({ orderId, tenantId: tenant.id, token: trackingToken })
-            : null
-        )
+    trackingToken && readLoyaltyTenantFlags(tenant).isEnabled
+      ? getOrderStampStatus({ orderId, tenantId: tenant.id, token: trackingToken })
       : null,
   ])
 

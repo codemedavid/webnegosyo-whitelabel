@@ -10,13 +10,15 @@
  */
 
 import { useState } from 'react'
+import { LoyaltyActivityPanel } from './loyalty-activity-panel'
 import { LoyaltyMembersPanel } from './loyalty-members-panel'
 import { LoyaltyProgramsManagement } from './loyalty-programs-management'
 
-type Section = 'members' | 'programs'
+type Section = 'members' | 'programs' | 'activity'
 
 const TABS: readonly { label: string; value: Section }[] = [
   { label: 'Members', value: 'members' },
+  { label: 'Activity', value: 'activity' },
   { label: 'Programmes', value: 'programs' },
 ]
 
@@ -58,8 +60,9 @@ export function LoyaltyWorkspace({
       {/* Both stay mounted: flipping back to a list that has to re-fetch every
           time makes comparing a member against the rules a chore. */}
       <div hidden={section !== 'members'}>
-        <LoyaltyMembersPanel tenantId={tenantId} />
+        <LoyaltyMembersPanel key={tenantId} tenantId={tenantId} />
       </div>
+      {section === 'activity' ? <LoyaltyActivityPanel key={tenantId} tenantId={tenantId} /> : null}
       <div hidden={section !== 'programs'}>
         <LoyaltyProgramsManagement tenantId={tenantId} tenantSlug={tenantSlug} />
       </div>

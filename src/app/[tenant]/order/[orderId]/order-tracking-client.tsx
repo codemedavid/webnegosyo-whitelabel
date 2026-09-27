@@ -196,11 +196,11 @@ export function OrderTrackingClient({
   // The stamp itself usually lands after the claim — when the merchant
   // completes the order — so the card is painted from a live read, not from
   // the claim's own reply. Re-read on every status change.
-  const { stamps, refresh: refreshStamps } = useOrderStamps({
+  const { stamps, refresh: refreshStamps, error: stampError } = useOrderStamps({
     orderId,
     tenantId,
     trackingToken,
-    enabled: brand.loyaltyOffer !== null,
+    enabled: brand.loyaltyOffer !== null || Boolean(initialStamps?.card),
     status: trackingData.status,
     initialStamps,
   })
@@ -272,6 +272,12 @@ export function OrderTrackingClient({
           )}
 
           {/* The store's loyalty card: claim, live balance, or the closed window */}
+          {stampError && !isCancelled && (
+            <div role="status" className="flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm" style={{ color: 'var(--trk-text-muted)', borderColor: 'var(--trk-card-border)' }}>
+              <p>{stampError}</p>
+              <button type="button" className="shrink-0 font-semibold underline" onClick={refreshStamps}>Try again</button>
+            </div>
+          )}
           {stampView !== 'hidden' && (
             <LoyaltyStampCard
               tenantSlug={tenantSlug}

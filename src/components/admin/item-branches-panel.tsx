@@ -6,8 +6,7 @@ import { RotateCcw, Store } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { OptionalSection } from '@/components/admin/menu-editor/editor-section'
 import {
   saveOutletMenuOverrideAction,
   clearOutletMenuOverrideAction,
@@ -124,28 +123,15 @@ export function ItemBranchesPanel({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Store className="h-4 w-4" />
-            Branches
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Blank price means this branch charges the store price.
-          </p>
-        </div>
-        {summaryLabel && (
-          <Badge
-            variant={summaryLabel.tone === 'warning' ? 'destructive' : 'secondary'}
-            title={summaryLabel.detail}
-          >
-            {summaryLabel.text}
-          </Badge>
-        )}
-      </CardHeader>
-
-      <CardContent className="space-y-3">
+    <OptionalSection
+      icon={Store}
+      title="Branches"
+      hint="Price and stock at each branch. Changes save right away."
+      summary={summaryLabel?.text}
+      summaryTone={summaryLabel?.tone === 'warning' ? 'warning' : 'muted'}
+    >
+      <p className="text-xs text-muted-foreground">Leave a price blank to charge the store price.</p>
+      <div className="divide-y rounded-lg border bg-background">
         {outlets.map((outlet) => {
           const override = findOutletMenuOverride(index, outlet.id, item.id)
           const resolved = resolveItemForOutlet(item, override)
@@ -154,10 +140,10 @@ export function ItemBranchesPanel({
           return (
             <div
               key={outlet.id}
-              className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0 flex-1">
-                <p className="font-medium">{outlet.name}</p>
+                <p className="text-sm font-semibold">{outlet.name}</p>
                 <p className="text-xs text-muted-foreground">
                   {override === null ? 'Same as the rest of the store' : 'Set for this branch'}
                 </p>
@@ -192,7 +178,7 @@ export function ItemBranchesPanel({
                   disabled={isBusy}
                   defaultValue={override?.price ?? ''}
                   placeholder={String(item.price)}
-                  className="w-28"
+                  className="h-10 w-28"
                   aria-label={`Price at ${outlet.name}`}
                   onBlur={(e) => {
                     const next = parsePrice(e.target.value)
@@ -215,7 +201,7 @@ export function ItemBranchesPanel({
             </div>
           )
         })}
-      </CardContent>
-    </Card>
+      </div>
+    </OptionalSection>
   )
 }

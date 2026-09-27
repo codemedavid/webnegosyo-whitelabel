@@ -30,6 +30,22 @@ export const DISCONNECTED_POLL_MS = 15000;
  */
 export const MAX_FAILURE_POLL_MS = 120000;
 
+/**
+ * The most orders a LIVE screen reads at once — the queue pages (50, 200) and
+ * the scheduled agenda (300). Anything bigger is a report: a 2000-order page,
+ * a day or 90-day window asking for 10 000, the line items of a thousand
+ * orders. See `isBulkOrderRead`.
+ */
+export const LIVE_ORDER_READ_MAX = 300;
+
+/**
+ * How often a bulk read re-reads while its screen is in view. Every order
+ * event used to re-read it — live, one device re-issued a 10 000-row window
+ * about every 0.7 s. A report a few minutes old is still the report; focus
+ * and the merchant's own writes refresh it sooner.
+ */
+export const BULK_READ_POLL_MS = 300000;
+
 /** Jitter applied to a retry, so devices that failed together do not retry together. */
 const RETRY_JITTER_RATIO = 0.2;
 
@@ -180,12 +196,15 @@ export function resolveRealtimeStatus(status: string): RealtimeStatus {
 export function resolvePollMs(
   status: RealtimeStatus,
   failureCount = 0,
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  isBulk = false
 ): number {
-  const base = status === "connected" ? REALTIME_FALLBACK_POLL_MS : DISCONNECTED_POLL_MS;
+  const liveBase = status === "connected" ? REALTIME_FALLBACK_POLL_MS : DISCONNECTED_POLL_MS;
+  const base = isBulk ? BULK_READ_POLL_MS : liveBase;
   if (failureCount <= 0) return base;
 
-  const backedOff = Math.min(base * 2 ** failureCount, MAX_FAILURE_POLL_MS);
+  const ceiling = Math.max(MAX_FAILURE_POLL_MS, base);
+  const backedOff = Math.min(base * 2 ** failureCount, ceiling);
   const jitter = 1 - RETRY_JITTER_RATIO + 2 * RETRY_JITTER_RATIO * random();
   return Math.round(backedOff * jitter);
 }
@@ -230,4 +249,18 @@ export function countConsecutiveFailures(
 /** Whether this ref should re-read when an order row changes. */
 export function isRefRealtimeBacked(ref: string): boolean {
   return REALTIME_BACKED_REFS.includes(ref);
+}
+
+/**
+ * Whether a read is report-sized rather than a live screen's page.
+ *
+ * Bulk reads are NOT refreshed by every order change (`query-invalidation`)
+ * and poll on `BULK_READ_POLL_MS`: re-reading thousands of full order rows per
+ * payload is what queued a device's live reads behind them until the 12 s
+ * deadline fired. Decided from the arguments, which are what the cache keys on.
+ */
+export function isBulkOrderRead(ref: string, args: Record<string, unknown>): boolean {
+  if (Array.isArray(args.orderIds) && args.orderIds.length > LIVE_ORDER_READ_MAX) return true;
+  if (ref !== "orders:getOrders") return false;
+  return typeof args.limit === "number" && args.limit > LIVE_ORDER_READ_MAX;
 }

@@ -8,7 +8,7 @@
  * short and the trend reads as a decline that is not happening.
  */
 
-import { buildKpiPeriod, PERIOD_CHOICES } from "./branch-period";
+import { buildKpiPeriod, kpiFetchWindow, PERIOD_CHOICES } from "./branch-period";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -65,5 +65,19 @@ describe("buildKpiPeriod", () => {
     for (const choice of PERIOD_CHOICES) {
       expect(choice.label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("kpiFetchWindow", () => {
+  it("spans the previous period and the current one, half-open", () => {
+    // Arrange
+    const period = buildKpiPeriod(7, Date.parse("2026-09-19T05:00:00.000Z"));
+
+    // Act
+    const window = kpiFetchWindow(period);
+
+    // Assert
+    expect(window.endMs).toBe(period.endMs + 1);
+    expect(window.endMs - window.startMs).toBe(14 * 24 * 60 * 60 * 1000);
   });
 });

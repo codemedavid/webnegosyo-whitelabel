@@ -369,6 +369,7 @@ export default function PosTenderScreen() {
           editContext.orderId,
           editContext.expectedRevisionNumber + 1,
           posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems)),
+          "pos",
         );
       }
 

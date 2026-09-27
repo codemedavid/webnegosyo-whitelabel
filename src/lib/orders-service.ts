@@ -197,9 +197,10 @@ export async function getOrderById(orderId: string, tenantId: string) {
 async function restoreStockForCancelledOrder(
   orderId: string,
   tenantId: string,
+  actorUserId: string | null,
 ): Promise<void> {
   const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await reverseOrderStockBestEffort(tenantId, orderId)
+  await reverseOrderStockBestEffort(tenantId, orderId, { source: 'web_admin', actorUserId })
 }
 
 /**
@@ -215,9 +216,10 @@ async function restoreStockForCancelledOrder(
 async function redepleteStockForUncancelledOrder(
   orderId: string,
   tenantId: string,
+  actorUserId: string | null,
 ): Promise<void> {
   const { redepleteOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await redepleteOrderStockBestEffort(tenantId, orderId)
+  await redepleteOrderStockBestEffort(tenantId, orderId, { source: 'web_admin', actorUserId })
 }
 
 /**
@@ -333,7 +335,7 @@ export async function updateOrderStatus(
   // service's own order+direction guard is the second line of defence).
   const previousStatus = (existingOrder as unknown as Order | null)?.status
   if (status === 'cancelled' && previousStatus !== 'cancelled') {
-    await restoreStockForCancelledOrder(orderId, tenantId)
+    await restoreStockForCancelledOrder(orderId, tenantId, actor?.id ?? null)
     await releasePresellForCancelledOrder(existingOrder, tenantId)
   }
 
@@ -341,7 +343,7 @@ export async function updateOrderStatus(
   // the order's ingredients again. Guarded on the KNOWN previous status — a
   // missing pre-read must not be read as "was cancelled".
   if (previousStatus === 'cancelled' && status !== 'cancelled') {
-    await redepleteStockForUncancelledOrder(orderId, tenantId)
+    await redepleteStockForUncancelledOrder(orderId, tenantId, actor?.id ?? null)
   }
 
   // The loyalty ledger follows the order: a delivery earns, a cancellation

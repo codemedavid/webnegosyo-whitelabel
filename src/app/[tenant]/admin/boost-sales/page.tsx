@@ -1,70 +1,56 @@
-import { redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
-import { getMenuItemsByBcgClassification, getUpsellPairsByTenant } from '@/lib/menu-engineering-service'
-import { getBundlesByTenant } from '@/lib/bundles-service'
-import { getPairingRules } from '@/lib/pairing-rules-service'
-import { getTagDefinitions } from '@/lib/tags-service'
-import { BoostSalesDashboard } from '@/components/admin/boost-sales-dashboard'
+import { getCachedTenantBySlug } from '@/lib/cache'
+import { getTenantBranding } from '@/lib/branding-utils'
+import { getBoostWorkspace } from '@/lib/boost/workspace'
+import { cartOfferThemeFromBranding, offerThemeFromBranding } from '@/components/customer/offers/offer-theme'
+import { BoostHome } from '@/components/admin/boost/boost-home'
+import type { EditorTarget } from '@/components/admin/boost/boost-model'
 
-export default async function BoostSalesPage({
-  params,
-}: {
+interface BoostSalesPageProps {
   params: Promise<{ tenant: string }>
-}) {
-  const { tenant: tenantSlug } = await params
+  searchParams: Promise<{ new?: string; edit?: string }>
+}
 
+/**
+ * Deep links from the old routes (/admin/bundles/new, /admin/bundles/[id])
+ * and from anywhere else that wants to open an editor directly:
+ * `?new=combo` or `?edit=combo:<id>`.
+ */
+function initialEditorFrom({ new: create, edit }: { new?: string; edit?: string }): EditorTarget | null {
+  if (create === 'combo') return { kind: 'combo', comboId: null }
+  if (create === 'upgrade') return { kind: 'upgrade', upgradeId: null }
+  if (create === 'pairing') return { kind: 'pairing', groupKey: null }
+  if (create === 'last_call') return { kind: 'last_call' }
+  if (edit?.startsWith('combo:')) return { kind: 'combo', comboId: edit.slice('combo:'.length) }
+  return null
+}
+
+export default async function BoostSalesPage({ params, searchParams }: BoostSalesPageProps) {
+  const [{ tenant: tenantSlug }, query] = await Promise.all([params, searchParams])
   const tenant = await getCachedTenantBySlug(tenantSlug)
+  if (!tenant) notFound()
 
-  if (!tenant) {
-    return <div>Tenant not found</div>
-  }
-
-  if (!tenant.menu_engineering_enabled) {
-    redirect(`/${tenantSlug}/admin`)
-  }
-
-  const [menuItems, categories, upsellPairs, bundles, pairingRules, tagDefinitions] = await Promise.all([
-    getMenuItemsByBcgClassification(tenant.id),
-    getCachedCategoriesByTenant(tenant.id),
-    getUpsellPairsByTenant(tenant.id),
-    getBundlesByTenant(tenant.id),
-    tenant.pairing_rules_enabled ? getPairingRules(tenant.id) : Promise.resolve([]),
-    tenant.pairing_rules_enabled ? getTagDefinitions(tenant.id) : Promise.resolve([]),
-  ])
+  // Never a redirect: a store without Boost Sales gets the welcome screen,
+  // with offers already drafted from its menu, and turns it on itself.
+  const workspace = await getBoostWorkspace(tenant)
+  const branding = getTenantBranding(tenant)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Breadcrumbs
-            items={[
-              { label: 'Dashboard', href: `/${tenantSlug}/admin` },
-              { label: 'Boost Sales' },
-            ]}
-          />
-          <h1 className="text-2xl font-bold mt-2">Boost Sales</h1>
-          <p className="text-sm text-muted-foreground">
-            Set up upsell moments across your customer&apos;s ordering journey
-          </p>
-        </div>
-      </div>
-
-      <BoostSalesDashboard
-        menuItems={menuItems}
-        categories={categories}
-        upsellPairs={upsellPairs}
-        bundles={bundles}
+    <div className="space-y-4">
+      <Breadcrumbs
+        items={[
+          { label: 'Dashboard', href: `/${tenantSlug}/admin` },
+          { label: 'Boost Sales' },
+        ]}
+      />
+      <BoostHome
+        workspace={workspace}
         tenantId={tenant.id}
         tenantSlug={tenantSlug}
-        checkoutUpsellEnabled={tenant.checkout_upsell_enabled ?? false}
-        checkoutUpsellTitle={tenant.checkout_upsell_title ?? 'Before you go...'}
-        checkoutUpsellSubtitle={tenant.checkout_upsell_subtitle ?? 'You might also enjoy these items'}
-        checkoutUpsellMaxItems={tenant.checkout_upsell_max_items ?? 4}
-        bundlesEnabled={tenant.bundles_enabled ?? false}
-        pairingRulesEnabled={tenant.pairing_rules_enabled ?? false}
-        initialPairingRules={pairingRules}
-        initialTagDefinitions={tagDefinitions}
+        theme={offerThemeFromBranding(branding)}
+        cartTheme={cartOfferThemeFromBranding(branding)}
+        initialEditor={workspace.isEnabled ? initialEditorFrom(query) : null}
       />
     </div>
   )

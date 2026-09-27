@@ -340,7 +340,9 @@ describe("usePlatformQuery — refetch", () => {
 describe("usePlatformQuery — screen focus", () => {
   function focusWrapperFor(queryClient: QueryClient, focusListeners: Array<() => void>) {
     const navigation = {
-      addListener: (_event: string, cb: () => void) => {
+      addListener: (event: string, cb: () => void) => {
+        // Only "focus" is under test here; the focus-gate's "blur" is not.
+        if (event !== "focus") return () => {};
         focusListeners.push(cb);
         return () => {
           focusListeners.splice(focusListeners.indexOf(cb), 1);
@@ -365,7 +367,8 @@ describe("usePlatformQuery — screen focus", () => {
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(fetchesFor("orders:getOrders")).toBe(1);
-    expect(focusListeners).toHaveLength(1);
+    // One from the stale-refetch hook, one from the focus gate.
+    expect(focusListeners).toHaveLength(2);
 
     await act(async () => {
       focusListeners.forEach((cb) => cb());
@@ -451,5 +454,129 @@ describe("usePlatformQuery — line items keep the last answer across an order-s
 
     expect(result.current.data).toEqual(["item-for-a"]);
     expect(result.current.isLoading).toBe(false);
+  });
+});
+
+describe("usePlatformQuery — a replaced read is cancelled on the wire", () => {
+  it("hands the adapter a signal and aborts it when an invalidation replaces the read", async () => {
+    // Every realtime payload and every mutation invalidates the tenant's
+    // order keys. The read that was in flight used to be abandoned but NOT
+    // cancelled, so a burst of order events left several copies of the same
+    // getOrders running at once — the pile-up behind "request timed out".
+    const { result } = renderHook(() => usePlatformQuery("orders:getOrders", {}, "tenant-1", ALL), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const signals: AbortSignal[] = [];
+    mockRunPlatformQuery.mockImplementation((...args: unknown[]) => {
+      signals.push(args[5] as AbortSignal);
+      return new Promise(() => {});
+    });
+
+    await act(async () => {
+      void client.invalidateQueries();
+    });
+    await waitFor(() => expect(signals).toHaveLength(1));
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[0].aborted).toBe(false);
+
+    await act(async () => {
+      void client.invalidateQueries();
+    });
+    await waitFor(() => expect(signals).toHaveLength(2));
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+  });
+});
+
+describe("usePlatformQuery — a screen out of view stops polling", () => {
+  interface FakeNavigation {
+    focused: boolean;
+    listeners: Map<string, Set<() => void>>;
+    fire: (event: "focus" | "blur") => void;
+  }
+
+  function fakeNavigation(): FakeNavigation {
+    const listeners = new Map<string, Set<() => void>>();
+    const nav: FakeNavigation = {
+      focused: true,
+      listeners,
+      fire: (event) => {
+        nav.focused = event === "focus";
+        listeners.get(event)?.forEach((cb) => cb());
+      },
+    };
+    return nav;
+  }
+
+  function navWrapperFor(queryClient: QueryClient, nav: FakeNavigation) {
+    const navigation = {
+      addListener: (event: string, cb: () => void) => {
+        const set = nav.listeners.get(event) ?? new Set<() => void>();
+        set.add(cb);
+        nav.listeners.set(event, set);
+        return () => {
+          set.delete(cb);
+        };
+      },
+      isFocused: () => nav.focused,
+    } as unknown as React.ContextType<typeof NavigationContext>;
+    return function Wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <NavigationContext.Provider value={navigation}>{children}</NavigationContext.Provider>
+        </QueryClientProvider>
+      );
+    };
+  }
+
+  it("does not poll or refetch on invalidation while blurred, and catches up on focus", async () => {
+    // Tabs mount once and never unmount, so every tab a merchant had opened
+    // kept polling — and kept answering every realtime invalidation — for the
+    // life of the session: a dozen getOrders reads per order event.
+    jest.useFakeTimers();
+    const nav = fakeNavigation();
+    renderHook(() => usePlatformQuery("orders:getOrders", {}, "tenant-1", ALL), {
+      wrapper: navWrapperFor(client, nav),
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(1));
+
+    await act(async () => {
+      nav.fire("blur");
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+    await act(async () => {
+      void client.invalidateQueries();
+    });
+    expect(fetchesFor("orders:getOrders")).toBe(1);
+
+    await act(async () => {
+      nav.fire("focus");
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(2));
+  });
+
+  it("keeps polling a key another, visible observer still shows", async () => {
+    jest.useFakeTimers();
+    const nav = fakeNavigation();
+    renderHook(() => usePlatformQuery("orders:getOrders", {}, "tenant-1", ALL), {
+      wrapper: navWrapperFor(client, nav),
+    });
+    // A global watcher (auto-print) sits outside any tab's navigation.
+    renderHook(() => usePlatformQuery("orders:getOrders", {}, "tenant-1", ALL), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(1));
+
+    await act(async () => {
+      nav.fire("blur");
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(15_000);
+    });
+    await waitFor(() => expect(fetchesFor("orders:getOrders")).toBe(2));
   });
 });

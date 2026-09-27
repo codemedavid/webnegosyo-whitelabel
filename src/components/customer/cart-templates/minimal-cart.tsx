@@ -21,6 +21,7 @@ import {
   CartEmptyState,
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
+import { CartOffers } from './cart-shared'
 
 export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
   const { tenant, items, bundleItems } = cart
@@ -38,7 +39,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
   return (
     <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Minimal header */}
-      <header className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/80 backdrop-blur-md">
+      <header data-senior-hidden className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-xl items-center gap-3 px-5 md:px-0">
           <button
             type="button"
@@ -76,6 +77,7 @@ export function MinimalCart({ cart }: { cart: UseCartViewReturn }) {
                 <CartBundleRow key={bundleItem.id} cart={cart} bundleItem={bundleItem} />
               ))}
             </div>
+            <CartOffers cart={cart} />
 
             {/* Summary panel */}
             <section

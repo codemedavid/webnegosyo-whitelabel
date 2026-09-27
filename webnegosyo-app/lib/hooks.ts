@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { FunctionReference } from "convex/server";
 import { useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/query-core";
 import { useAuthStore } from "../stores/auth-store";
 import { isStaleBundleError } from "./stale-backend";
 import { resolveRefRoute, type RefRoute } from "./backends/route";
@@ -16,6 +17,8 @@ import {
 import { useAccountBranchScope, useBranchScope } from "./use-branch-scope";
 import { planLifecycleSync } from "./customers/lifecycle-plan";
 import { notifyLifecycleSync } from "./customers/lifecycle";
+import { invalidateResource } from "./query/use-resource";
+import { ORDER_CUSTOMERS_RESOURCE } from "./loyalty/order-customers";
 import type { OrderBackend } from "./order-backend";
 import { convexOrderQueryArgs } from "./convex-order-scope";
 
@@ -207,17 +210,27 @@ type SafeMutation = (args?: unknown) => Promise<unknown>;
  * backed tenants and for mutations that are not lifecycle changes, so this
  * costs nothing on the mutations it does not care about.
  *
- * Never awaited and never throws: the ticket has already moved.
+ * Never awaited and never throws: the ticket has already moved. Once the
+ * platform has caught up, the order-customer chips are re-read — that sync is
+ * what writes a stamp, so reading before it lands would show "no stamp" on the
+ * order that just earned one.
  */
-function reportLifecycle(input: {
-  tenantId: string | null;
-  orderBackend: OrderBackend | null;
-  refName: string;
-  args: unknown;
-}): void {
+function reportLifecycle(
+  input: {
+    tenantId: string | null;
+    orderBackend: OrderBackend | null;
+    refName: string;
+    args: unknown;
+  },
+  queryClient: QueryClient,
+): void {
   const plan = planLifecycleSync(input);
   if (!plan) return;
-  void notifyLifecycleSync(plan);
+  void notifyLifecycleSync(plan)
+    .then(() => invalidateResource(queryClient, ORDER_CUSTOMERS_RESOURCE, plan.tenantId))
+    .catch((error: unknown) => {
+      console.warn("[useSafeMutation] customer refresh after lifecycle sync failed:", error);
+    });
 }
 
 export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutation {
@@ -250,7 +263,7 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
       invalidatePlatformQueries(queryClient, tenantId).catch((e: unknown) => {
         console.warn("[useSafeMutation] refetch after " + refName + " failed:", e);
       });
-      reportLifecycle({ tenantId, orderBackend, refName, args });
+      reportLifecycle({ tenantId, orderBackend, refName, args }, queryClient);
       return result;
     },
     [refName, tenantId, accountScope, queryClient, orderBackend]
@@ -270,7 +283,7 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
     const mutate = convexMutate;
     return async (args) => {
       const result = await mutate(args);
-      reportLifecycle({ tenantId, orderBackend, refName, args });
+      reportLifecycle({ tenantId, orderBackend, refName, args }, queryClient);
       return result;
     };
   }

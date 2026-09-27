@@ -50,6 +50,10 @@ function groupWith(optionOverrides: Partial<ModifierGroup['options'][number]> = 
   }
 }
 
+/**
+ * Cost, stock and the recipe live behind each option's settings toggle, so the
+ * helper opens it the way a merchant would before looking for them.
+ */
 function renderEditor(group: ModifierGroup, extra: Record<string, unknown> = {}) {
   const onChange = jest.fn()
   render(
@@ -61,6 +65,8 @@ function renderEditor(group: ModifierGroup, extra: Record<string, unknown> = {})
       {...extra}
     />,
   )
+  const settings = screen.queryByRole('button', { name: /more settings for/i })
+  if (settings) fireEvent.click(settings)
   return { onChange }
 }
 
@@ -68,22 +74,22 @@ describe('per-option cost source control', () => {
   it('converts an existing group into add-ons while retaining IDs and recipes', () => {
     const group = groupWith({ stock_mode: 'recipe', cost_mode: 'composite' })
     const { onChange } = renderEditor(group)
-    fireEvent.change(screen.getByLabelText('Group type for Size'), { target: { value: 'quantity' } })
+    fireEvent.change(screen.getByLabelText(/how do customers choose\? \(size\)/i), { target: { value: 'extras-optional' } })
     expect(onChange).toHaveBeenCalledWith([{ ...group, selection_mode: 'quantity' }])
   })
   it('creates variations and quantity add-ons through separate actions', () => {
     const onChange = jest.fn()
     render(<ModifierGroupsEditor groups={[]} onChange={onChange} basePrice={100} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Add Variation' }))
+    fireEvent.click(screen.getByRole('button', { name: /add a choice/i }))
     expect(onChange.mock.calls[0][0][0]).toMatchObject({ selection_mode: 'choice', min_select: 0, max_select: 1 })
-    fireEvent.click(screen.getByRole('button', { name: 'Add Add-on Group' }))
+    fireEvent.click(screen.getByRole('button', { name: /add extras/i }))
     expect(onChange.mock.calls[1][0][0]).toMatchObject({ selection_mode: 'quantity', min_select: 0, max_select: null })
   })
 
   it('edits total portions for a capped add-on without turning it into a variation', () => {
     const group: ModifierGroup = { ...groupWith({ cost_mode: 'composite', stock_mode: 'recipe' }), selection_mode: 'quantity', max_select: 1 }
     const { onChange } = renderEditor(group)
-    expect(screen.queryByLabelText('Allow multiple')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('At most')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Max portions'), { target: { value: '3' } })
     expect(onChange.mock.calls[0][0][0]).toEqual({ ...group, max_select: 3 })
     expect(screen.getByText(/per item ordered/i)).toBeInTheDocument()
@@ -153,12 +159,42 @@ describe('per-option cost source control', () => {
     // Leaving an editable field that no longer affects the cost is a lie.
     renderEditor(groupWith({ cost_mode: 'composite' }))
 
-    expect(screen.queryByText(/manual cost/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/manual cost \(₱\)/i)).not.toBeInTheDocument()
   })
 
   it('still shows the manual cost input for a legacy option with no mode', () => {
     renderEditor(groupWith({ manual_cost: 40 }))
 
-    expect(screen.getByText(/manual cost/i)).toBeInTheDocument()
+    expect(screen.getByText(/manual cost \(₱\)/i)).toBeInTheDocument()
+  })
+})
+
+describe('the simplified option row', () => {
+  it('keeps cost and stock out of sight until the merchant asks for them', () => {
+    render(<ModifierGroupsEditor groups={[groupWith()]} onChange={jest.fn()} basePrice={0} />)
+
+    expect(screen.getByDisplayValue('Large')).toBeInTheDocument()
+    expect(screen.queryByText(/stock tracking/i)).not.toBeInTheDocument()
+  })
+
+  it('still says what a hidden setting is doing', () => {
+    render(
+      <ModifierGroupsEditor
+        groups={[groupWith({ is_default: true, stock_mode: 'simple', stock_qty: 7 })]}
+        onChange={jest.fn()}
+        basePrice={0}
+      />,
+    )
+
+    expect(screen.getByText(/selected by default · 7 in stock/i)).toBeInTheDocument()
+  })
+
+  it('asks one question for how customers choose', () => {
+    const group: ModifierGroup = { ...groupWith(), min_select: 1, max_select: 1 }
+    const { onChange } = renderEditor(group)
+
+    fireEvent.change(screen.getByLabelText(/how do customers choose\? \(size\)/i), { target: { value: 'pick-any' } })
+
+    expect(onChange.mock.calls[0][0][0]).toMatchObject({ min_select: 0, max_select: null, selection_mode: 'choice' })
   })
 })

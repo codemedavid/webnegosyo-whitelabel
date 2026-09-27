@@ -37,23 +37,9 @@ describe('the storefront menu grid', () => {
     expect(gridQuery).not.toContain("eq('is_available', true)")
   })
 
-  /*
-   * The slot query used to run per slot, anchored on `slot.category_id`. It is
-   * now one batched query over every slot category at once — so the anchor is
-   * the `in('category_id', ...)` call that replaced it. The guarantee is
-   * unchanged: whatever shape the query takes, it must not offer a dish the
-   * customer cannot buy.
-   */
-  it('still keeps out-of-stock dishes out of bundle slots', () => {
-    const anchor = source.indexOf("in('category_id', slotCategoryIds)")
-    expect(anchor).toBeGreaterThan(-1)
-
-    // Read backwards to the start of that query chain, so the assertion is
-    // about this query and cannot be satisfied by a filter on another one.
-    const slotQuery = source.slice(source.lastIndexOf("from('menu_items')", anchor), anchor)
-
-    expect(slotQuery).toContain("eq('is_available', true)")
-  })
+  // Bundle availability is covered through loadStorefrontCatalog and getMenuData
+  // in storefront-catalog-loader.test.ts and storefront/menu-data.test.ts.
+  // Slots now reuse the catalog, so there is no separate query to inspect.
 })
 
 describe('the product page reached by its own URL', () => {

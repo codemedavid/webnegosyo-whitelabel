@@ -652,14 +652,14 @@ export const adminSidebarItems: SidebarEntry[] = [
       { label: 'Add-ons', href: '/admin/addons', icon: Box },
       { label: 'Inventory', href: '/admin/inventory', icon: Box },
       { label: 'Transfers', href: '/admin/inventory/transfers', icon: Box },
-      { label: 'Bundles', href: '/admin/bundles', icon: Box },
+      { label: 'Stock Log', href: '/admin/inventory/log', icon: Box },
+      { label: 'Boost Sales', href: '/admin/boost-sales', icon: TrendingUp },
     ],
   },
   {
     label: 'Analytics',
     icon: BarChart3,
     children: [
-      { label: 'Boost Sales', href: '/admin/boost-sales', icon: TrendingUp },
       { label: 'Product Analytics', href: '/admin/product-analytics', icon: BarChart3 },
     ],
   },

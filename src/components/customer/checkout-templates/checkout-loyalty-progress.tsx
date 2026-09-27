@@ -31,7 +31,7 @@ export function CheckoutLoyaltyProgress({ checkout }: { checkout: UseCheckoutRet
     enabled: isLoyaltyLive(tenant),
   })
 
-  if (!progress.card && !progress.isLoading) return null
+  if (!progress.card && !progress.isLoading && !progress.error) return null
 
   return (
     <div style={buildTrackingTheme(branding)}>
@@ -39,6 +39,8 @@ export function CheckoutLoyaltyProgress({ checkout }: { checkout: UseCheckoutRet
         offer={progress.offer}
         card={progress.card}
         isLoading={progress.isLoading}
+        error={progress.error}
+        onRetry={progress.refresh}
         storeName={tenant?.name ?? 'the store'}
         logoUrl={branding.logoUrl}
         tenantSlug={tenant?.slug}

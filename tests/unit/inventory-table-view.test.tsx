@@ -271,18 +271,55 @@ describe('actions', () => {
   })
 })
 
-describe('export', () => {
-  it('downloads the filtered rows as CSV', () => {
-    const createObjectURL = jest.fn(() => 'blob:csv')
-    const revokeObjectURL = jest.fn()
-    Object.assign(URL, { createObjectURL, revokeObjectURL })
-    renderTable()
+describe('spreadsheets', () => {
+  function openExportMenu() {
+    // Radix opens its menu from the keyboard in jsdom; pointer events need a real layout.
+    fireEvent.keyDown(screen.getByRole('button', { name: /^export/i }), { key: 'Enter' })
+  }
+
+  it('exports exactly the rows the search left on screen', () => {
+    const onExport = jest.fn()
+    renderTable({ onExport })
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'chick' } })
 
-    fireEvent.click(screen.getByRole('button', { name: /export/i }))
+    openExportMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: /excel/i }))
 
-    expect(createObjectURL).toHaveBeenCalledTimes(1)
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:csv')
+    expect(onExport).toHaveBeenCalledWith(['i2'], 'xlsx')
+  })
+
+  it('says whether the export is everything or only the search results', () => {
+    renderTable({ onExport: jest.fn() })
+
+    openExportMenu()
+
+    expect(screen.getByText('All 3 ingredients')).toBeInTheDocument()
+  })
+
+  it('offers the blank template from the same menu', () => {
+    const onDownloadTemplate = jest.fn()
+    renderTable({ onExport: jest.fn(), onDownloadTemplate })
+
+    openExportMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: /blank template/i }))
+
+    expect(onDownloadTemplate).toHaveBeenCalledWith('xlsx')
+  })
+
+  it('opens the import from the toolbar', () => {
+    const onImport = jest.fn()
+    renderTable({ onImport })
+
+    fireEvent.click(screen.getByRole('button', { name: /^import$/i }))
+
+    expect(onImport).toHaveBeenCalled()
+  })
+
+  it('hides export and import when the caller supports neither', () => {
+    renderTable()
+
+    expect(screen.queryByRole('button', { name: /^export/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^import$/i })).not.toBeInTheDocument()
   })
 })
 
@@ -350,12 +387,14 @@ describe('row menu keyboard contract', () => {
 
 describe('selection payoff', () => {
   it('offers an export of exactly what is selected', () => {
-    renderTable()
+    const onExport = jest.fn()
+    renderTable({ onExport })
 
     fireEvent.click(screen.getByLabelText('Select Chicken'))
-
     // The checkboxes used to end in a counter and nothing else.
-    expect(screen.getByRole('button', { name: /export selected/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /export selected/i }))
+
+    expect(onExport).toHaveBeenCalledWith(['i2'], 'xlsx')
   })
 
   it('lets the merchant drop the selection without unticking each row', () => {

@@ -44,7 +44,7 @@ export async function countAvailableLoyaltyRewards(
     .eq('tenant_id', tenantId)
     .eq('program_id', programId)
     .eq('customer_key', customerKey)
-    .eq('status', 'issued')
+    .in('status', ['issued', 'restored'])
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
 
   if (error) throw new Error(`loyalty rewards could not be counted: ${error.message}`)

@@ -1,6 +1,18 @@
 import { postAuthorized } from "./authorized-post";
 import type { PosStockItem } from "./pos-stock";
 
+/**
+ * Which screen moved the stock, for the platform's inventory audit log. A
+ * label, not an authority: the server checks it against a fixed list and
+ * records who was signed in from the token, never from the body.
+ */
+export type StockAuditSource = "pos" | "qr_scan" | "merchant_app";
+
+/** Omitted entirely when unnamed, so the request is what it always was. */
+function withSource<T extends Record<string, unknown>>(body: T, source?: StockAuditSource) {
+  return source ? { ...body, source } : body;
+}
+
 
 /**
  * Fire-and-forget: ask the platform to spend a counter sale's ingredients.
@@ -20,9 +32,10 @@ export async function notifyPosStockDepletion(
   tenantId: string,
   orderId: string,
   items: readonly PosStockItem[],
+  source?: StockAuditSource,
 ): Promise<void> {
   if (items.length === 0) return;
-  await postStockAction({ tenantId, orderId, items });
+  await postStockAction(withSource({ tenantId, orderId, items }, source));
 }
 
 /**
@@ -41,8 +54,9 @@ export async function notifyPosStockDepletion(
 export async function notifyOrderStockRestore(
   tenantId: string,
   orderId: string,
+  source?: StockAuditSource,
 ): Promise<void> {
-  await postStockAction({ tenantId, orderId, action: "restore" });
+  await postStockAction(withSource({ tenantId, orderId, action: "restore" }, source));
 }
 
 /**
@@ -62,17 +76,23 @@ export async function notifyOrderStockRevision(
   orderId: string,
   revision: number,
   movement: { deplete: readonly PosStockItem[]; restore: readonly PosStockItem[] },
+  source?: StockAuditSource,
 ): Promise<void> {
   if (movement.deplete.length === 0 && movement.restore.length === 0) return;
 
-  await postStockAction({
-    tenantId,
-    orderId,
-    action: "revise",
-    revision,
-    deplete: movement.deplete,
-    restore: movement.restore,
-  });
+  await postStockAction(
+    withSource(
+      {
+        tenantId,
+        orderId,
+        action: "revise",
+        revision,
+        deplete: movement.deplete,
+        restore: movement.restore,
+      },
+      source,
+    ),
+  );
 }
 
 /**

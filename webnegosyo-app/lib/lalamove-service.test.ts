@@ -102,6 +102,14 @@ describe("resolveLalamoveTransport", () => {
 });
 
 describe("runPlatformLalamoveOp", () => {
+  it("returns a failure when session lookup fails", async () => {
+    (supabase.auth.getSession as jest.Mock).mockRejectedValue(new Error("Session unavailable"));
+
+    await expect(runPlatformLalamoveOp({ op: "book", tenantId: "t1", orderId: "o1" }))
+      .resolves.toEqual({ success: false, error: "Session unavailable" });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("posts the operation with the merchant's own token", async () => {
     // Arrange
     (global.fetch as jest.Mock).mockResolvedValue({
@@ -193,6 +201,27 @@ describe("runPlatformLalamoveOp", () => {
     // Assert
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/took too long|timed out/i);
+  });
+
+  it("times out when response headers arrive but the response body stalls", async () => {
+    jest.useFakeTimers();
+    try {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: () => new Promise(() => {}),
+      });
+      let result: Awaited<ReturnType<typeof runPlatformLalamoveOp>> | undefined;
+      void runPlatformLalamoveOp(
+        { op: "book", tenantId: "t1", orderId: "o1" },
+        { timeoutMs: 20 },
+      ).then((value) => { result = value; });
+
+      await jest.advanceTimersByTimeAsync(21);
+
+      expect(result).toEqual({ success: false, error: expect.stringMatching(/may have been booked/i) });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("warns that a timed-out booking may still have placed a rider", async () => {

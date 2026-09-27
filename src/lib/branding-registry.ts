@@ -9,7 +9,8 @@
  * (src/lib/branding-utils.ts) so the panel's "↳ Inherits" labels are truthful.
  */
 
-import { CARD_TEMPLATES } from '@/lib/card-templates'
+import { CARD_TEMPLATE_IDS, CARD_TEMPLATES } from '@/lib/card-templates'
+import { PAGE_LAYOUT_IDS } from '@/lib/page-layouts'
 import { CARD_STYLE_FIELDS } from '@/lib/card-style'
 import { DEFAULT_MOBILE_GRID_COLUMNS } from '@/lib/storefront-device-layout'
 
@@ -92,15 +93,10 @@ const image = (id: string, label: string, placeholder = 'https://…/photo.jpg')
   ({ id, label, type: 'image', default: '', placeholder })
 
 const HEADER_TEMPLATE_OPTIONS = ['classic', 'centered', 'minimal', 'split', 'banner', 'stacked'] as const
-const CARD_TEMPLATE_OPTIONS = [
-  'classic', 'minimal', 'modern', 'elegant', 'compact', 'bold', 'glass',
-  'polaroid', 'brutalist', 'magazine', 'zen', 'neon', 'storefront',
-  'showcase', 'atelier', 'kiosk', 'sticker', 'menuboard', 'arch',
-] as const
-const PAGE_LAYOUT_OPTIONS = [
-  'default', 'sidebar', 'magazine', 'grid-focus', 'list', 'mosaic',
-  'storefront', 'kiosk', 'rails', 'lookbook',
-] as const
+// Derived from the template systems so a new or retired design can't drift
+// out of the Studio pickers or the MCP's option vocabulary.
+const CARD_TEMPLATE_OPTIONS = CARD_TEMPLATE_IDS
+const PAGE_LAYOUT_OPTIONS = PAGE_LAYOUT_IDS
 const FLEXIBLE_CARD_TEMPLATES = CARD_TEMPLATES.filter((t) => t.isFlexible).map((t) => t.id)
 const WHEN_FLEXIBLE_CARD = { fieldId: 'card_template', values: FLEXIBLE_CARD_TEMPLATES }
 const CARD_STYLE_REGISTRY_FIELDS: BrandingField[] = CARD_STYLE_FIELDS.map((knob) => ({
@@ -165,6 +161,14 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
     glyph: 'S',
     description: 'Menu page — announcement, header, hero, navigation, search and menu cards.',
     sections: [
+      {
+        title: 'Easy ordering',
+        fields: [
+          // columnBacked: one setting for every device, never a mobile override.
+          { ...toggle('senior_friendly_mode', 'Senior-friendly mode', false), columnBacked: true },
+          note('note_senior_friendly_mode', 'For stores with older customers. Makes text and buttons larger, pins a big "View cart" bar to the bottom of the menu, labels the cart and back buttons, shows a clear "Added to your cart" message, and adds step numbers (1 Choose food → 2 Check cart → 3 Your details → 4 Order sent) to the cart and checkout.'),
+        ],
+      },
       {
         title: 'Page background',
         fields: [

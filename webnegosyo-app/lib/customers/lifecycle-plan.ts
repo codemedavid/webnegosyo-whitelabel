@@ -33,7 +33,7 @@ const LIFECYCLE_REFS = new Set([
  * platform calls `tenant_supabase`; the app's `platform` is the platform's
  * own orders table.
  */
-const PLATFORM_BACKEND: Record<OrderBackend, string> = {
+export const PLATFORM_BACKEND: Record<OrderBackend, string> = {
   convex: "convex",
   supabase: "tenant_supabase",
   platform: "platform_supabase",

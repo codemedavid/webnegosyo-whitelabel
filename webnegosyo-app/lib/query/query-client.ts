@@ -19,6 +19,7 @@ import {
   type AppStateLike,
   type AppStateValue,
 } from "../supabase-auth-refresh";
+import { isBulkOrderRead } from "../backends/supabase-realtime";
 
 /** How long a platform read is served from cache before a mount refetches it. */
 export const PLATFORM_STALE_MS = 10_000;
@@ -30,10 +31,16 @@ export const PLATFORM_GC_MS = 5 * 60_000;
 const STALE_MS_BY_REF: Readonly<Record<string, number>> = {
   // A 10k-row join; order changes invalidate it anyway.
   "orders:getAllOrderItems": 60_000,
+  // Up to a month of line items, paged; a minute-old answer is fine for a report.
+  "analytics:getItemSales": 60_000,
 };
 
-export function resolveStaleMs(refName: string): number {
-  return STALE_MS_BY_REF[refName] ?? PLATFORM_STALE_MS;
+/** How long a report-sized order read (`isBulkOrderRead`) is served from cache. */
+export const BULK_READ_STALE_MS = 60_000;
+
+export function resolveStaleMs(refName: string, args: Record<string, unknown> = {}): number {
+  const byRef = STALE_MS_BY_REF[refName] ?? PLATFORM_STALE_MS;
+  return isBulkOrderRead(refName, args) ? Math.max(byRef, BULK_READ_STALE_MS) : byRef;
 }
 
 /**

@@ -90,6 +90,9 @@ export const WORKSPACES: readonly Workspace[] = [
       "inventory",
       "daily-report",
       "payments",
+      // Promo codes sit beside how the store gets paid: both decide what a
+      // customer is charged at checkout and at the counter.
+      "vouchers",
     ],
     defaultTab: "product-analytics",
   },

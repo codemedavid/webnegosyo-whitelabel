@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifySuperadmin, verifyTenantPermission } from '@/lib/admin-service'
+import { z } from 'zod'
 import type {
   MenuItem,
   PairingRule,
@@ -28,9 +29,15 @@ interface CreateRuleInput {
   }[]
 }
 
+// These reads interpolate the tenant into a PostgREST OR expression. Equality
+// filters escape values; raw OR expressions do not, so accept only UUIDs.
+const tenantIdSchema = z.string().uuid('Invalid tenant ID')
+
 export async function getPairingRules(
   tenantId: string
 ): Promise<PairingRuleWithDetails[]> {
+  await verifyTenantPermission(tenantId, 'analytics')
+  tenantIdSchema.parse(tenantId)
   const supabase = createAdminClient()
 
   const { data: rules, error: rulesError } = await supabase
@@ -320,6 +327,7 @@ export async function resolveRuleBasedSuggestions(
   tenantId: string,
   cartItemIds: string[] = []
 ): Promise<MenuItem[]> {
+  tenantIdSchema.parse(tenantId)
   const supabase = createAdminClient()
 
   const { data: tagRows } = await supabase
@@ -378,7 +386,7 @@ async function resolveRulesBySource(
 
   const rule = rules[0] as { id: string; tenant_id: string | null; max_suggestions: number }
 
-  return resolveRuleTargets(supabase, rule.id, rule.max_suggestions, excludeIds)
+  return resolveRuleTargets(supabase, tenantId, rule.id, rule.max_suggestions, excludeIds)
 }
 
 async function resolveRulesBySourceTags(
@@ -400,11 +408,12 @@ async function resolveRulesBySourceTags(
 
   const rule = rules[0] as { id: string; max_suggestions: number }
 
-  return resolveRuleTargets(supabase, rule.id, rule.max_suggestions, excludeIds)
+  return resolveRuleTargets(supabase, tenantId, rule.id, rule.max_suggestions, excludeIds)
 }
 
 async function resolveRuleTargets(
   supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
   ruleId: string,
   maxSuggestions: number,
   excludeIds: Set<string>
@@ -433,8 +442,9 @@ async function resolveRuleTargets(
     if (t.selection_mode === 'handpick') {
       const { data: pickedRows } = await supabase
         .from('pairing_rule_target_items')
-        .select('menu_item:menu_items!menu_item_id(id, name, description, price, discounted_price, image_url, is_available, category_id, variations, addons, variation_types, bcg_classification, badge_text, order, created_at, updated_at)')
+        .select('menu_item:menu_items!menu_item_id!inner(id, name, description, price, discounted_price, image_url, is_available, category_id, variations, addons, variation_types, bcg_classification, badge_text, order, created_at, updated_at)')
         .eq('target_id', t.id)
+        .eq('menu_item.tenant_id', tenantId)
         .order('display_order', { ascending: true })
 
       items = (pickedRows || [])
@@ -445,6 +455,7 @@ async function resolveRuleTargets(
         const { data: catItems } = await supabase
           .from('menu_items')
           .select('*')
+          .eq('tenant_id', tenantId)
           .eq('category_id', t.target_category_id)
           .eq('is_available', true)
           .limit(maxSuggestions)
@@ -453,7 +464,9 @@ async function resolveRuleTargets(
       } else if (t.target_type === 'tag' && t.target_tag_id) {
         const { data: taggedItems } = await supabase
           .from('menu_item_tags')
-          .select('menu_item:menu_items!menu_item_id(*)')
+          .select('menu_item:menu_items!menu_item_id!inner(*)')
+          .eq('tenant_id', tenantId)
+          .eq('menu_item.tenant_id', tenantId)
           .eq('tag_definition_id', t.target_tag_id)
 
         items = (taggedItems || [])

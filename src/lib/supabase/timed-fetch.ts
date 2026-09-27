@@ -29,10 +29,14 @@ export function createTimedFetch(
     const doFetch = baseFetch ?? globalThis.fetch
 
     const controller = new AbortController()
-    const caller = init?.signal
+    // Match fetch: undefined inherits a Request's signal, while null clears it.
+    const caller = init?.signal !== undefined
+      ? init.signal
+      : typeof Request !== 'undefined' && input instanceof Request ? input.signal : undefined
+    const abortFromCaller = () => controller.abort(caller?.reason)
     if (caller) {
-      if (caller.aborted) controller.abort()
-      else caller.addEventListener('abort', () => controller.abort(), { once: true })
+      if (caller.aborted) abortFromCaller()
+      else caller.addEventListener('abort', abortFromCaller, { once: true })
     }
 
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -43,27 +47,28 @@ export function createTimedFetch(
         headers: { 'Content-Type': 'application/json' },
       })
 
-    const deadline = new Promise<Response>((resolve) => {
-      timer = setTimeout(() => {
-        timedOut = true
-        // Resolve a completed 408 rather than throw: auth-js wraps every
-        // thrown fetch (including AbortError) as AuthRetryableFetchError and
-        // retries until a 30s tick, which is how a 3s budget still 504'd.
-        // 408 is outside that retry set (500–504, 520–530).
-        resolve(timeoutResponse())
-        controller.abort()
-      }, timeoutMs)
-    })
-
-    const inFlight = doFetch(input, { ...init, signal: controller.signal }).catch((error: unknown) => {
-      if (timedOut) return timeoutResponse()
-      throw error
-    })
-
     try {
+      const deadline = new Promise<Response>((resolve) => {
+        timer = setTimeout(() => {
+          timedOut = true
+          // Resolve before aborting so even a fetch that rejects on abort
+          // yields a completed 408, outside auth-js's retry set.
+          resolve(timeoutResponse())
+          controller.abort()
+        }, timeoutMs)
+      })
+
+      // Keep invocation inside the cleanup scope: injected fetch functions
+      // may throw synchronously instead of returning a rejected promise.
+      const inFlight = doFetch(input, { ...init, signal: controller.signal }).catch((error: unknown) => {
+        if (timedOut) return timeoutResponse()
+        throw error
+      })
+
       return await Promise.race([inFlight, deadline])
     } finally {
       if (timer !== undefined) clearTimeout(timer)
+      caller?.removeEventListener('abort', abortFromCaller)
     }
   }
 }

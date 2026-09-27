@@ -125,7 +125,15 @@ export interface PosOrderPayload {
  * A sale recorded on this PC. The local store is the source of truth for the
  * sale until it is confirmed synced to Convex.
  */
+export interface PosOrderScope {
+  tenantId: string
+  convexUrl: string
+}
+
 export interface LocalPosOrder {
+  /** Absent on legacy rows; keep these for reconciliation, never guess a store. */
+  tenantId?: string
+  convexUrl?: string
   clientOrderId: string
   payload: PosOrderPayload
   paymentStatus: 'paid' | 'pending'

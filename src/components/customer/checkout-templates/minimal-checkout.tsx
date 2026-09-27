@@ -39,7 +39,7 @@ export function MinimalCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     <div className="min-h-screen" style={{ backgroundColor: pageBackground }}>
       <div className="mx-auto max-w-xl px-5 sm:px-6">
         {/* Minimal header — back button + large heading, no card chrome */}
-        <header className="flex items-center gap-3 pt-6 pb-2 sm:pt-8">
+        <header data-senior-hidden className="flex items-center gap-3 pt-6 pb-2 sm:pt-8">
           <button
             type="button"
             onClick={() => router.back()}

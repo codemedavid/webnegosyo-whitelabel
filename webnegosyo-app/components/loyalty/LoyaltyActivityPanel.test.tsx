@@ -1,0 +1,41 @@
+import React from 'react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { LoyaltyActivityPanel } from './LoyaltyActivityPanel';
+import type { LoyaltyActivityEvent, LoyaltyActivityPage } from '../../lib/loyalty/activity';
+import { fetchLoyaltyActivity } from '../../lib/loyalty/activity-repo';
+jest.mock('../../lib/loyalty/activity-repo', () => ({ fetchLoyaltyActivity: jest.fn() }));
+const fetchActivity = jest.mocked(fetchLoyaltyActivity);
+const event: LoyaltyActivityEvent = { id: 'one', kind: 'reward_consumed', occurredAt: '2026-09-26T10:30:12Z', customerKey: 'phone:+639171234567', programId: 'p', programName: 'Coffee card', delta: null, rewardId: 'r', rewardLabel: 'Free coffee', previousStatus: 'issued', status: 'consumed', orderBackend: 'convex', orderId: 'sale-42', outletId: null, actorId: null, note: 'Honoured at counter' };
+beforeEach(() => fetchActivity.mockReset());
+it('shows claim details, appends pages, and normalizes a phone search', async () => {
+ fetchActivity.mockResolvedValueOnce({ events: [event], nextCursor: 'page-2' }).mockResolvedValue({events:[],nextCursor:null});
+ render(<LoyaltyActivityPanel tenantId="store" />);
+ expect(await screen.findByText('Coffee card · Free coffee')).toBeTruthy();
+ expect(screen.getByText('Actor: Not recorded')).toBeTruthy();
+ expect(screen.getByText(/sale-42/)).toBeTruthy();
+ fireEvent.press(screen.getByText('Load more'));
+ await waitFor(() => expect(fetchActivity).toHaveBeenLastCalledWith('store', expect.objectContaining({cursor:'page-2'})));
+ expect(screen.getByText('Coffee card · Free coffee')).toBeTruthy();
+ fireEvent.changeText(screen.getByLabelText('Customer phone'), '0917 123 4567');
+ fireEvent.press(screen.getByText('Search'));
+ await waitFor(() => expect(fetchActivity).toHaveBeenLastCalledWith('store', expect.objectContaining({customerKey:'phone:+639171234567'})));
+});
+it('ignores stale requests after switching stores', async () => {
+ let resolveOld!: (page: LoyaltyActivityPage) => void;
+ fetchActivity.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; })).mockResolvedValue({events:[],nextCursor:null});
+ const view = render(<LoyaltyActivityPanel tenantId="old" />);
+ view.rerender(<LoyaltyActivityPanel tenantId="new" />);
+ await screen.findByText('No activity yet');
+ await act(async () => resolveOld({events:[event],nextCursor:null}));
+ expect(screen.queryByText('Coffee card · Free coffee')).toBeNull();
+});
+it('surfaces an error, retries, and filters reward claims', async () => {
+ fetchActivity.mockRejectedValueOnce(new Error('Connection interrupted')).mockResolvedValue({events:[],nextCursor:null});
+ render(<LoyaltyActivityPanel tenantId="store" customerKey="phone:+639171234567" />);
+ expect(await screen.findByText('Connection interrupted')).toBeTruthy();
+ expect(screen.queryByText('No matching activity')).toBeNull();
+ fireEvent.press(screen.getByText('Retry'));
+ await screen.findByText('No matching activity');
+ fireEvent.press(screen.getByText('Reward used'));
+ await waitFor(() => expect(fetchActivity).toHaveBeenLastCalledWith('store', expect.objectContaining({kind:'reward_consumed',customerKey:'phone:+639171234567'})));
+});

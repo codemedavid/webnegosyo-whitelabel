@@ -1,5 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, AppState } from "react-native";
+import { onlineManager } from "@tanstack/query-core";
+import { useRefetchOnScreenFocus } from "../../lib/query/use-screen-focus";
 import { router } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { EmptyState } from "../EmptyState";
@@ -54,6 +56,7 @@ export function LoyaltyMembersPanel({
   tenantId: string | null;
   reloadKey?: number;
 }) {
+  const request = useRef(0);
   const [members, setMembers] = useState<LoyaltyMember[]>([]);
   const [totals, setTotals] = useState<LoyaltyMemberTotals | null>(null);
   const [isTruncated, setTruncated] = useState(false);
@@ -69,12 +72,14 @@ export function LoyaltyMembersPanel({
   }, [query]);
 
   const load = useCallback(async () => {
-    if (!tenantId) return;
+    const ticket = ++request.current;
+    if (!tenantId) {setMembers([]);setTotals(null);setStatus("ready");return;}
     setRefreshing(true);
     const result = await fetchLoyaltyMembers(tenantId, {
       search: settledQuery,
       status: filter === "all" ? null : filter,
     });
+    if (ticket !== request.current) return;
     setRefreshing(false);
     if (!result.ok) {
       setStatus(result.reason === "forbidden" ? "forbidden" : "error");
@@ -87,8 +92,14 @@ export function LoyaltyMembersPanel({
   }, [tenantId, settledQuery, filter]);
 
   useEffect(() => {
+    setStatus("loading");
     void load();
+    const requests = request;
+    const app = AppState.addEventListener("change", state => { if (state === "active") void load(); });
+    const offOnline = onlineManager.subscribe(online => { if (online) void load(); });
+    return () => { requests.current++; app.remove(); offOnline(); };
   }, [load, reloadKey]);
+  useRefetchOnScreenFocus({ enabled: Boolean(tenantId), dataUpdatedAt: 0, staleMs: 0, isFetching: isRefreshing, refetch: load });
 
   const open = useCallback((member: LoyaltyMember) => {
     router.push(loyaltyMemberHref(member.customerKey));

@@ -15,6 +15,12 @@ import { toFiniteNumber } from '@/lib/lalamove-order-details'
 import { resolveLalamoveSender } from '@/lib/lalamove-sender'
 import { isLalamoveFinal } from '@/lib/lalamove-status'
 import { resolveRequoteGate, retireDeadBookingPatch } from '@/lib/lalamove-rebook'
+import {
+  claimLalamoveBooking,
+  persistLalamoveBooking,
+  releaseLalamoveBookingClaim,
+} from '@/lib/lalamove-booking-claim'
+import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import type { Database, Tenant } from '@/types/database'
 
 /**
@@ -165,7 +171,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (bookedId) {
         return fail(`A delivery is already booked for this order (${bookedId})`)
       }
-      if (!order.lalamove_quotation_id) {
+      if (!order.lalamove_quotation_id?.trim()) {
         return fail('This order has no Lalamove quotation to book against')
       }
       const deliveryAddress = order.customer_data?.delivery_address
@@ -193,29 +199,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return fail('No phone number to give the rider. Add a store pickup phone in delivery settings.')
       }
 
-      const placed = await createLalamoveOrder(
-        tenant,
-        order.lalamove_quotation_id,
-        sender.name,
-        sender.phone,
-        order.customer_name || 'Customer',
-        recipient.phone,
-        { orderId, tenantId },
-      )
+      const bookingClaim = {
+        orderId,
+        tenantId,
+        quotationId: order.lalamove_quotation_id,
+      }
+      const claim = await claimLalamoveBooking(admin, bookingClaim)
+      if (!claim.success) return fail(claim.error, 409)
 
-      // Guarded on the column still being null so two merchants tapping Book at
-      // the same moment cannot overwrite each other's booking reference — the
-      // one that loses would otherwise leave a paid-for rider untracked.
-      await admin
-        .from('orders')
-        .update({
-          lalamove_order_id: placed.orderId,
-          lalamove_status: placed.status ?? 'ASSIGNING_DRIVER',
-          lalamove_tracking_url: placed.shareLink ?? '',
-        })
-        .eq('id', orderId)
-        .eq('tenant_id', tenantId)
-        .is('lalamove_order_id', null)
+      let placed
+      try {
+        placed = await createLalamoveOrder(
+          tenant,
+          order.lalamove_quotation_id,
+          sender.name,
+          sender.phone,
+          order.customer_name || 'Customer',
+          recipient.phone,
+          { orderId, tenantId },
+        )
+      } catch (error) {
+        if (error instanceof LalamoveBookingError && !error.bookingMayExist) {
+          const released = await releaseLalamoveBookingClaim(admin, bookingClaim)
+          if (!released.success) return fail(released.error, 503)
+        }
+        throw error
+      }
+
+      const saved = await persistLalamoveBooking(admin, bookingClaim, placed)
+      if (!saved.success) return fail(saved.error, 503)
 
       return NextResponse.json({
         success: true,
@@ -267,20 +279,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // Guarded on the booking still being what the gate saw — absent, or the
       // same dead booking — so a booking racing this requote is never wiped
       // nor left referencing a quotation it was not made from.
-      const update = admin.from('orders')
+      let update
       if (gate.retiredOrderId) {
-        await update
+        update = admin.from('orders')
           .update(retireDeadBookingPatch(quotation.quotationId))
           .eq('id', orderId)
           .eq('tenant_id', tenantId)
           .eq('lalamove_order_id', gate.retiredOrderId)
       } else {
-        await update
+        update = admin.from('orders')
           .update({ lalamove_quotation_id: quotation.quotationId })
           .eq('id', orderId)
           .eq('tenant_id', tenantId)
           .is('lalamove_order_id', null)
       }
+      const { data: saved, error: saveError } = await update
+        .or('lalamove_status.is.null,lalamove_status.neq.BOOKING')
+        .select('id').maybeSingle()
+      if (saveError || !saved) return fail('Could not save the new quotation. Refresh the order and try again.', 409)
 
       return NextResponse.json({
         success: true,
@@ -311,7 +327,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (live?.driver?.phone) patch.lalamove_driver_phone = live.driver.phone
 
       if (Object.keys(patch).length > 0) {
-        await admin.from('orders').update(patch).eq('id', orderId).eq('tenant_id', tenantId)
+        const { data: saved, error: saveError } = await admin.from('orders')
+          .update(patch).eq('id', orderId).eq('tenant_id', tenantId)
+          .eq('lalamove_order_id', bookedId).select('id').maybeSingle()
+        if (saveError || !saved) return fail('Could not save the delivery status. Refresh the order and sync again.', 409)
       }
 
       return NextResponse.json({ success: true, status: live?.status })
@@ -324,11 +343,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       await cancelLalamoveOrder(tenant, bookedId)
 
-      await admin
+      const { data: saved, error: saveError } = await admin
         .from('orders')
         .update({ lalamove_status: 'CANCELLED' })
         .eq('id', orderId)
         .eq('tenant_id', tenantId)
+        .eq('lalamove_order_id', bookedId)
+        .select('id').maybeSingle()
+      if (saveError || !saved) {
+        return fail('Delivery cancelled, but its status could not be saved. Refresh the order and sync before booking again.', 409)
+      }
 
       return NextResponse.json({ success: true })
     }

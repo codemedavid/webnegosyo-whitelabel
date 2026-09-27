@@ -35,6 +35,14 @@ import {
   type OrderItemRow,
 } from '@/lib/inventory/customer-order-items'
 import { reportStockFailure } from '@/lib/inventory/stock-failure-report'
+import {
+  buildAuditLines,
+  type StockAuditContext,
+  type StockAuditEvent,
+  type StockAuditLine,
+  type StockAuditOutcome,
+} from '@/lib/inventory/stock-audit'
+import { auditErrorDetail, recordStockAudit } from '@/lib/inventory/stock-audit-service'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 
 function toUnit(row: InventoryUnitRow): InventoryUnit {
@@ -91,9 +99,26 @@ export interface OrderStockResult {
   movementCount: number
   /** Ingredients skipped because a unit could not be resolved. */
   skipped: string[]
+  /**
+   * What happened, for the audit log. `duplicate` is the one worth watching: a
+   * second caller tried to move this order's stock and the claim refused it.
+   */
+  outcome: StockAuditOutcome
+  /** The ingredient ledger rows written, named — empty unless `applied`. */
+  lines: StockAuditLine[]
 }
 
-const EMPTY_RESULT: OrderStockResult = { movementCount: 0, skipped: [] }
+const EMPTY_RESULT: OrderStockResult = {
+  movementCount: 0,
+  skipped: [],
+  outcome: 'nothing_to_deduct',
+  lines: [],
+}
+
+/** A result that wrote nothing, for the stated reason. */
+function unwritten(outcome: StockAuditOutcome, movementCount = 0): OrderStockResult {
+  return { ...EMPTY_RESULT, outcome, movementCount }
+}
 
 /**
  * Spend (`sale`) or return (`void`) an order's ingredients.
@@ -127,14 +152,13 @@ export async function applyOrderStockMovements(
   // The option RPC has its own transaction/claim. Run it even on a retried
   // ingredient claim, so either independently failed stock path can recover.
   const simpleMovementCount = await applySimpleOptionStock(supabase, tenantId, orderId, direction, revision, items, resolveMovementOutletId(outletId))
-  const simpleResult: OrderStockResult = { movementCount: simpleMovementCount, skipped: [] }
 
   // Idempotency. The order-creation path is retryable, and depleting twice
   // would take stock down twice for one sale with two ledger rows each claiming
   // to be the truth. The claim is a unique-indexed row, so the database refuses
   // the second caller — a SELECT-then-INSERT here let every racing call through.
   if (!(await claimOrderStockApplication(supabase, tenantId, orderId, direction, revision))) {
-    return simpleResult
+    return unwritten('duplicate', simpleMovementCount)
   }
 
   // Every exit between the claim and the ledger write has to hand the claim
@@ -151,7 +175,7 @@ export async function applyOrderStockMovements(
       const claims = await listOrderStockClaims(supabase, tenantId, orderId)
       if (hasBlockingVoidClaim(claims, revision)) {
         await releaseOrderStockApplication(supabase, tenantId, orderId, direction, revision)
-        return EMPTY_RESULT
+        return unwritten('cancelled_first')
       }
     }
 
@@ -279,7 +303,7 @@ async function depleteClaimedOrder(
     })
   }
 
-  if (rows.length === 0) return { movementCount: 0, skipped }
+  if (rows.length === 0) return { ...EMPTY_RESULT, skipped }
 
   const { error: insertError } = await supabase.from('stock_movements').insert(rows as never)
   if (insertError) throw insertError
@@ -294,7 +318,15 @@ async function depleteClaimedOrder(
   }
   await notifyStockLevelChanges(tenantId, inventoryItems, deltas, soleOutletId(rows))
 
-  return { movementCount: rows.length, skipped }
+  return {
+    movementCount: rows.length,
+    skipped,
+    outcome: 'applied',
+    lines: buildAuditLines(
+      rows as unknown as Parameters<typeof buildAuditLines>[0],
+      new Map(inventoryItems.map((i) => [i.id, i.name])),
+    ),
+  }
 }
 
 /**
@@ -313,7 +345,7 @@ export async function reverseOrderStockMovements(
 ): Promise<OrderStockResult> {
   const supabase = createAdminClient()
   const simpleMovementCount = await applySimpleOptionStock(supabase, tenantId, orderId, 'cancel')
-  const simpleResult: OrderStockResult = { movementCount: simpleMovementCount, skipped: [] }
+  const simpleResult = unwritten('nothing_to_deduct', simpleMovementCount)
 
   // The void claim is taken at a revision that pairs with the order's latest
   // sale, skipping any void an edit already burned — so a cancellation works
@@ -329,7 +361,7 @@ export async function reverseOrderStockMovements(
   // first (as this used to) returned EMPTY without any claim, and a sale
   // landing a moment later was never reversed.
   if (!(await claimOrderStockApplication(supabase, tenantId, orderId, 'void', voidRevision))) {
-    return simpleResult
+    return unwritten('duplicate', simpleMovementCount)
   }
 
   // EVERY movement this order recorded, not just its sale.
@@ -451,18 +483,86 @@ export async function reverseOrderStockMovements(
   }
   await notifyStockLevelChanges(tenantId, inventoryItems, deltas, soleOutletId(rows))
 
-  return { movementCount: rows.length + simpleMovementCount, skipped: [] }
+  return {
+    movementCount: rows.length + simpleMovementCount,
+    skipped: [],
+    outcome: 'applied',
+    lines: buildAuditLines(rows, new Map(inventoryItems.map((i) => [i.id, i.name]))),
+  }
+}
+
+/** Where an order-driven stock write came from, when the caller knows. */
+export interface OrderStockAuditOptions {
+  context?: StockAuditContext
+  /** Overrides the event implied by the direction (e.g. an edit, an un-cancel). */
+  event?: StockAuditEvent
+}
+
+const SYSTEM_CONTEXT: StockAuditContext = { source: 'system' }
+
+interface OrderAuditTarget {
+  tenantId: string
+  orderId: string
+  event: StockAuditEvent
+  context: StockAuditContext
+  revision: number | null
+  outletId: string | null
+}
+
+/**
+ * The audit row for one order-driven operation. Never throws — the writer
+ * swallows its own failures, and this runs after the stock decision is final.
+ */
+async function auditOrderStock(
+  target: OrderAuditTarget,
+  outcome: { result: OrderStockResult } | { error: unknown },
+): Promise<void> {
+  const isFailure = 'error' in outcome
+  if (!isFailure && outcome.result.outcome === 'duplicate') {
+    // The signal a "deducted twice" report needs. Also on the server log, so it
+    // shows up in Vercel without opening the admin screen.
+    console.warn('[inventory-audit] Refused a second stock operation for order', {
+      tenantId: target.tenantId,
+      orderId: target.orderId,
+      event: target.event,
+      source: target.context.source,
+      revision: target.revision,
+    })
+  }
+  await recordStockAudit(createAdminClient(), {
+    tenantId: target.tenantId,
+    event: target.event,
+    outcome: isFailure ? 'failed' : outcome.result.outcome,
+    context: target.context,
+    orderId: target.orderId,
+    revision: target.revision,
+    outletId: target.outletId,
+    lines: isFailure ? [] : outcome.result.lines,
+    detail: isFailure ? auditErrorDetail(outcome.error) : skippedDetail(outcome.result),
+  })
+}
+
+function skippedDetail(result: OrderStockResult): string | null {
+  return result.skipped.length > 0
+    ? `Skipped ${result.skipped.length} ingredient(s) with an unresolvable unit: ${result.skipped.join(', ')}`
+    : null
 }
 
 /** Never throws: a stock write must not make an order un-cancellable. */
 export async function reverseOrderStockBestEffort(
   tenantId: string,
   orderId: string,
+  context: StockAuditContext = SYSTEM_CONTEXT,
 ): Promise<void> {
+  const target: OrderAuditTarget = {
+    tenantId, orderId, event: 'order_restore', context, revision: null, outletId: null,
+  }
   try {
-    await reverseOrderStockMovements(tenantId, orderId)
+    const result = await reverseOrderStockMovements(tenantId, orderId)
+    await auditOrderStock(target, { result })
   } catch (error) {
     reportStockFailure({ tenantId, orderId, operation: 'reverse_order_stock' }, error)
+    await auditOrderStock(target, { error })
   }
 }
 
@@ -483,7 +583,11 @@ export async function reverseOrderStockBestEffort(
 export async function redepleteOrderStockBestEffort(
   tenantId: string,
   orderId: string,
+  context: StockAuditContext = SYSTEM_CONTEXT,
 ): Promise<void> {
+  const target: OrderAuditTarget = {
+    tenantId, orderId, event: 'order_redeplete', context, revision: null, outletId: null,
+  }
   try {
     const supabase = createAdminClient()
 
@@ -531,8 +635,10 @@ export async function redepleteOrderStockBestEffort(
         skipped: result.skipped,
       })
     }
+    await auditOrderStock({ ...target, revision, outletId }, { result })
   } catch (error) {
     reportStockFailure({ tenantId, orderId, operation: 'redeplete_order_stock' }, error)
+    await auditOrderStock(target, { error })
   }
 }
 
@@ -550,7 +656,18 @@ export async function applyOrderStockBestEffort(
   direction: 'sale' | 'void' = 'sale',
   revision: number = 0,
   outletId: string | null = null,
+  audit: OrderStockAuditOptions = {},
 ): Promise<void> {
+  // An order with no lines has nothing to move and nothing worth a log row.
+  if (items.length === 0) return
+  const target: OrderAuditTarget = {
+    tenantId,
+    orderId,
+    event: audit.event ?? (direction === 'sale' ? 'order_sale' : 'order_restore'),
+    context: audit.context ?? SYSTEM_CONTEXT,
+    revision,
+    outletId,
+  }
   try {
     const result = await applyOrderStockMovements(
       tenantId,
@@ -566,10 +683,12 @@ export async function applyOrderStockBestEffort(
         skipped: result.skipped,
       })
     }
+    await auditOrderStock(target, { result })
   } catch (error) {
     // `applyOrderRevisionStockBestEffort` funnels through here too, so the
     // revision being saved rides along whenever the caller passed one.
     reportStockFailure({ tenantId, orderId, operation: 'apply_order_stock', revision }, error)
+    await auditOrderStock(target, { error })
   }
 }
 
@@ -593,6 +712,7 @@ export async function applyOrderRevisionStockBestEffort(
   deplete: readonly DepletionOrderItem[],
   restore: readonly DepletionOrderItem[],
   outletId: string | null = null,
+  context: StockAuditContext = SYSTEM_CONTEXT,
 ): Promise<void> {
   // Simple counters enforce a floor: return the old configuration first so a
   // swap can reuse its own stock. The RPC distinguishes edits from cancellation
@@ -608,9 +728,15 @@ export async function applyOrderRevisionStockBestEffort(
   // at the same revision blocks sales. Apply replacement consumption first,
   // then the return, so the edit cannot block its own deduction.
   if (deplete.length > 0) {
-    await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision, outletId)
+    await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision, outletId, {
+      context,
+      event: 'order_edit',
+    })
   }
   if (restore.length > 0) {
-    await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision, outletId)
+    await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision, outletId, {
+      context,
+      event: 'order_edit',
+    })
   }
 }

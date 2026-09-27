@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "path": "/api/loyalty/earning-recovery",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/loyverse/reconcile",
       "schedule": "0 */6 * * *"
     },

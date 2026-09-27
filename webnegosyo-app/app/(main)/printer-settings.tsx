@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { BackHeader } from "../../components/BackHeader";
@@ -9,6 +10,9 @@ import { SectionHeader } from "../../components/SectionHeader";
 import { PrinterRow, type RowActivity } from "../../components/printer/PrinterRow";
 import { AddPrinterPanel } from "../../components/printer/AddPrinterPanel";
 import { AutoPrintCard } from "../../components/printer/AutoPrintCard";
+import { ReceiptDesignCard } from "../../components/receipt/ReceiptDesignCard";
+import { useAuthStore } from "../../stores/auth-store";
+import { hasPermission } from "../../lib/staff-permissions";
 import { usePrinterStore } from "../../stores/printer-store";
 import {
   printersForRole,
@@ -52,6 +56,15 @@ export default function PrinterSettingsScreen() {
   const updatePrinter = usePrinterStore((s) => s.updatePrinter);
   const setPrintTrigger = usePrinterStore((s) => s.setPrintTrigger);
   const setKitchenAutoPrint = usePrinterStore((s) => s.setKitchenAutoPrint);
+
+  const tenantName = useAuthStore((s) => s.tenantName);
+  const receiptLayout = useAuthStore((s) => s.receiptLayout);
+  const receiptLogoUrl = useAuthStore((s) => s.receiptLogoUrl);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  // The printer is this device's; the receipt design is the store's.
+  const canDesignReceipt = hasPermission({ role, isOwner, permissions }, "store_setup");
 
   const [isAdding, setIsAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -219,6 +232,18 @@ export default function PrinterSettingsScreen() {
               hasKitchenPrinter={hasKitchenPrinter}
               onPrintTrigger={(trigger) => void setPrintTrigger(trigger)}
               onKitchenAutoPrint={(enabled) => void setKitchenAutoPrint(enabled)}
+            />
+          </View>
+        ) : null}
+
+        {canDesignReceipt ? (
+          <View style={styles.card}>
+            <SectionHeader title="What it prints" />
+            <ReceiptDesignCard
+              storeName={tenantName ?? "Your store"}
+              savedLayout={receiptLayout}
+              logoUrl={receiptLogoUrl}
+              onPress={() => router.push("/(main)/receipt-editor")}
             />
           </View>
         ) : null}

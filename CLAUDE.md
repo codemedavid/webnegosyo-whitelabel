@@ -75,58 +75,24 @@ Menu items support two variation formats:
 
 Cart utilities in `src/lib/cart-utils.ts` handle both formats.
 
-### Menu Engineering & Upsell System
+### Boost Sales (combos, upgrades, pairings, cart last call)
 
-Menu engineering is a feature-flagged system (`menu_engineering_enabled` + `checkout_upsell_enabled`) that enables BCG matrix classification, upsell pairs, bundles, and checkout interstitials.
+One merchant screen, `/[tenant]/admin/boost-sales` (sidebar: Menu → Boost Sales, never hidden), organised by the four moments a diner meets an offer. Every offer lives at exactly one moment:
 
-**BCG Matrix Classification** (`src/lib/menu-engineering-service.ts`):
-- Each `MenuItem` has a `bcg_classification`: `star | plowhorse | puzzle | dog | unclassified`
-- Admin dashboard at `/[tenant]/admin/menu-engineering` with 2x2 quadrant visual, bulk classify, and per-item dropdowns
-- `badge_text` field renders as an overlay pill on card templates when `menuEngineeringEnabled` is true
+| Moment | Offer | Stored in | Diner UI |
+|---|---|---|---|
+| On the menu | Combo | `bundles` + `bundle_slots` (+ `bundle_slot_price_overrides` = per-choice surcharges) | combo card via `bundle-adapter.ts` |
+| On the item page | Upgrade (+ combos containing the item) | `upsell_pairs` `pair_type='upgrade'` | inline `ItemOffers` — never a takeover |
+| Right after adding | Pairing | `upsell_pairs` `pair_type='complementary'`, one row per source × target | `AddedSheet` bottom sheet |
+| In the cart | Last call | `tenants.checkout_upsell_*` + `menu_items.show_in_checkout_upsell` (picks; none = automatic) | inline `CartOffersSection` — checkout is never gated |
 
-**Upsell Pairs** (`upsell_pairs` table):
-- Two pair types: `complementary` (post-add-to-cart suggestion) and `upgrade` (pre-add side-by-side comparison)
-- Extra columns: `is_auto_generated`, `bcg_strategy`, `upgrade_display_style` (`inline` | `modal`), `max_suggestions`
-- `UpsellSuggestionModal` — shown after adding an item, displays complementary items
-- `UpgradeUpsellModal` — shown before adding, side-by-side comparison with animated arrow
-
-**Phase 1 — "Make it a Meal?" Upgrade** (`src/components/customer/inline-upgrade-section.tsx`):
-- McDonald's kiosk-style full-width section on product detail page with side-by-side cards
-- "Ala Carte" (current item) vs "Meal" (upgrade/bundle) — large 4:3 images, bold labels, price diff badges
-- Default selects "Ala Carte"; tapping upgrade switches with green border + checkmark animation
-- Supports custom labels via `upgrade_header`, `source_label`, `target_label` on upsell pairs
-- Smart suggestions via `getSmartUpgradeSuggestions` / `getSmartUpgradeSuggestionsRanked` (AOV lift scoring)
-- Admin: `SmartUpgradePanel` in upsell pairs tab, live preview of customer-facing cards
-- Analytics: `upsell_shown` + `upsell_clicked` with `source: 'inline_upgrade'`
-- Gated by `menuEngineeringEnabled`
-
-**Phase 2 — "Perfect with..." Pair Suggestion** (`src/components/customer/pair-suggestion-sheet.tsx`):
-- Full-screen takeover page triggered after "Add to Cart" for complementary pair suggestions
-- Bold header: "Perfect with [item name]", subtitle: "Complete your order"
-- Responsive grid: 2 cols mobile, 3 tablet, 4 desktop — large cards with 4:3 images and "Add" buttons
-- Green "Added!" state with checkmark overlay on added items
-- "Continue" button navigates back to menu; "Buy Now" flow redirects to cart after prompts
-- Analytics: `upsell_shown`, `upsell_clicked`, `upsell_dismissed` with `source: 'pair_suggestion'`
-- BCG-powered auto-generation: `generateSmartPairSuggestions` pairs plowhorses→stars, stars→stars, puzzles→plowhorses
-- Admin: `SmartPairSuggestionsTab` with Generate/Accept/Reject/Bulk Accept, images, prices, AOV lift estimates
-
-**Phase 3 — "Before you go..." Checkout Page** (`src/components/customer/checkout-upsell-modal.tsx`):
-- Full-screen takeover on ALL devices (not a modal/drawer) triggered from cart "Checkout" button
-- 4-tier priority waterfall: manually-flagged items → complementary pairs → BCG star items → any available items
-- Running cart total display, responsive grid (2/3/4 cols), large cards with "Add to Cart" buttons
-- "No thanks, checkout" ghost button as secondary action
-- Analytics: `upsell_shown`, `upsell_clicked`, `upsell_dismissed` with `source: 'checkout_modal'`
-- Customizable branding via 7 `checkout_modal_*` tenant color fields
-- Cart page prefetches suggestions on load for instant display
-- Admin settings: `CheckoutUpsellSettingsTab` in menu engineering dashboard (enable/disable, title, subtitle, max items, item picker)
-
-**Bundles** (`src/lib/bundles-service.ts`, `src/components/customer/bundles-section.tsx`):
-- `bundles` + `bundle_items` tables. Pricing types: `fixed` or `discount` (percentage off)
-- `BundlesSection` renders above menu categories with savings badges and 2x2 thumbnail grids
-- `BundleCustomizationModal` — per-item variation/addon selection before adding bundle to cart
-- `BundleUpsellModal` — suggests a bundle when adding a single item that belongs to one
-- `show_on_menu` and `show_as_upsell` are independent toggles per bundle
-- Gated by `bundles_enabled` per-tenant flag
+- **Engine** (`src/lib/boost/`, pure + tested in `tests/unit/boost/`): `menu-roles` (main/side/drink/dessert from category + item names, EN + Filipino), `basket-stats` (co-occurrence from real orders), `ideas` ("Ready to go" drafts; anchors on mains, or on drinks for cafés), `combo-draft` (editor "picks" ⇄ bundle slots), `pairing-groups` (rows ⇄ offers), `pricing` (charm prices, savings).
+- **Server**: `workspace.ts` loads everything (order history only for `resolveOrderBackend === 'platform'`, paged past the 1000-row API cap); `writes.ts` + `src/app/actions/boost.ts` do every write and refresh Redis + storefront caches together. Combo order lines carry only surcharges, so performance reports combo ORDERS, never combo revenue.
+- **Merchant UI** `src/components/admin/boost/`: journey rail, ideas (one tap + Undo), sections, and ONE editor sheet (`EditorShell`) with live previews that render the real diner components from `src/components/customer/offers/`.
+- **Self-serve**: `setBoostEnabledAction` flips `menu_engineering_enabled` + `bundles_enabled` via the service role (the tenant-column guard trigger blocks the `authenticated` role). Without the flag the page is the welcome screen.
+- **Theming**: diner offers never hard-code colours — `offer-theme.ts` (modal colours; the cart row uses `checkout_modal_*`).
+- Analytics sources kept for report continuity: `inline_upgrade` (item page), `post_add` (after adding), `checkout_modal` (cart row).
+- `/admin/bundles/new` and `/admin/bundles/[id]` redirect into the Boost Sales editor (`?new=combo`, `?edit=combo:<id>`). Pairing rules (`pairing_rules_enabled`) still feed the after-add moment as a fallback but have no admin UI.
 
 ### Convex (Real-Time Backend)
 
@@ -198,16 +164,16 @@ Two-path architecture with graceful degradation:
 
 ### Tenant Branding
 
-Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/branding-utils.ts`). Card templates: classic, minimal, modern, elegant, compact, bold, glass, polaroid, brutalist, magazine, zen, neon, storefront (fixed designs), plus the **flexible** set — showcase, atelier, kiosk, sticker, menuboard, arch — built on `card-templates/flex/card-kit.tsx` and tuned by six `card_*` knob columns (`src/lib/card-style.ts`; NULL/`auto` = template default, per-device via `mobile_overrides`). A new flexible design is flagged `isFlexible` in `CARD_TEMPLATES` and composes the kit. Page layouts add storefront, kiosk, rails, lookbook — scroll-based catalogs sharing `layouts/layout-parts.tsx` + `useCategoryScrollSpy`.
+Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/branding-utils.ts`). Card templates: classic, minimal, modern, elegant, bold, glass, polaroid, brutalist, magazine, zen, neon, storefront (fixed designs), plus the **flexible** set — showcase, atelier, kiosk, sticker, menuboard, arch, bistro — built on `card-templates/flex/card-kit.tsx` and tuned by six `card_*` knob columns (`src/lib/card-style.ts`; NULL/`auto` = template default, per-device via `mobile_overrides`). A new flexible design is flagged `isFlexible` in `CARD_TEMPLATES` and composes the kit. Page layouts add storefront, kiosk, rails, lookbook — scroll-based catalogs sharing `layouts/layout-parts.tsx` + `useCategoryScrollSpy`. The Studio pickers and the SmartMenu MCP (`get_branding` `designCatalog`, `src/lib/mcp/design-catalog.ts`) derive from `CARD_TEMPLATES` / `PAGE_LAYOUTS`, so registering a design there is the only edit. The `compact` card was retired 2026-09-24 (stores moved to `menuboard`).
 
 Dev gotcha: `/_next/static` is served `immutable` even in dev, and dev chunk names don't change, so a browser that already loaded the storefront keeps running stale client code after edits. Load a fresh origin (e.g. `127.0.0.1` instead of `localhost`) when verifying UI changes.
 
 ### Feature Flags
 
 Feature flags are per-tenant boolean columns on the `tenants` table, controlled by superadmin:
-- `menu_engineering_enabled` — Master toggle for BCG classification, badges, and upsell pairs
-- `checkout_upsell_enabled` — Secondary toggle for checkout interstitial (requires `menu_engineering_enabled`)
-- `bundles_enabled` — Bundle system (menu bundles + bundle upsell)
+- `menu_engineering_enabled` — Boost Sales master switch (upgrades, pairings, cart last call); merchants flip it themselves from Boost Sales
+- `checkout_upsell_enabled` — the cart's inline "last call" row (requires `menu_engineering_enabled`)
+- `bundles_enabled` — combos (menu cards + item-page combo option); switched with Boost Sales
 - `mapbox_enabled` — Address autocomplete
 - `lalamove_enabled` — Delivery integration
 - `enable_order_management` — Admin order management features

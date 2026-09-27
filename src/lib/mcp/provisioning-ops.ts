@@ -28,6 +28,8 @@ import {
     readBrandingSnapshot,
 } from '@/lib/branding-images'
 import { describeBrandingOptions, listBrandingFieldIds } from '@/lib/branding-options'
+import { assertKnownDesignIds, describeDesignCatalog } from '@/lib/mcp/design-catalog'
+import { CARD_TEMPLATE_IDS } from '@/lib/card-templates'
 import { CURATED_ICON_GROUPS, LUCIDE_PREFIX, isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-icon-catalog'
 import { assertSingleImageSource, pickImageSource, type ImageSource } from '@/lib/image-source'
 import { withFeatureWarning, type TenantFeatureFlags } from '@/lib/mcp/feature-flag-warnings'
@@ -291,7 +293,7 @@ const ops: ProvisioningOp<unknown>[] = [
     }),
     op({
         name: 'update_branding',
-        description: 'Partially update a tenant\'s branding (logo, colors, templates, hero, footer, welcome page). Only include fields that should change. Call get_branding first to see current values and the allowed options for every select field. Envelope: { tenantId, branding: {...} }. For images use set_branding_image / add_banner instead of pasting URLs.',
+        description: 'Partially update a tenant\'s branding (logo, colors, card template, page layout, card-style knobs, hero, footer, welcome page). Only include fields that should change. Call get_branding first: its `options` list the allowed value of every select field and its `designCatalog` describes what each card template and page layout looks like. An unknown card_template or page_layout is refused. Envelope: { tenantId, branding: {...} }. For images use set_branding_image / add_banner instead of pasting URLs.',
         input: z.object({
             tenantId: UUID,
             // Accepted so older clients that still send it are not refused, but
@@ -301,6 +303,7 @@ const ops: ProvisioningOp<unknown>[] = [
         }),
         execute: async (ctx, input) => {
             const i = input as { tenantId: string; branding: BrandingPatchInput }
+            assertKnownDesignIds(i.branding as Record<string, unknown>)
             return saveBrandingWithClient(ctx.client, i.tenantId, i.branding)
         },
     }),
@@ -695,7 +698,7 @@ const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'get_branding',
         description:
-            "Read a tenant's current branding/design values (every field update_branding can write) plus `options`: the allowed values for each select field (hero_preset, card_template, page_layout, header_template, font_pair, storefront_palette, footer_theme, …). Call this before designing so you never guess a template name. Envelope: { tenantId }.",
+            "Read a tenant's current branding/design values (every field update_branding can write) plus `options`: the allowed values for each select field (hero_preset, card_template, page_layout, header_template, font_pair, storefront_palette, footer_theme, …), and `designCatalog`: what every card template and page layout looks like, which templates are flexible, and the card-style knobs (card_image_ratio, card_add_button, card_density, …) those flexible templates respond to. Call this before designing so you never guess a template name. Envelope: { tenantId }.",
         readOnly: true,
         input: z.object({ tenantId: UUID }),
         execute: async (ctx, input) => {
@@ -707,6 +710,7 @@ const ops: ProvisioningOp<unknown>[] = [
                 tenantSlug: snapshot.slug,
                 values: snapshot.values,
                 options: describeBrandingOptions(),
+                designCatalog: describeDesignCatalog(),
                 imageTargets: ['hero', 'logo', 'footer_logo', 'background', 'flash_screen'],
                 notes: [
                     'Use set_branding_image for hero/logo/background/flash images and add_banner for promo banners; both host the image on the platform CDN.',
@@ -822,7 +826,7 @@ const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'update_category',
         description:
-            'Update an EXISTING category. Partial: only the fields you pass change. Envelope: { tenantId, categoryId, name?, description?, icon?, icon_color?, is_active?, display_layout?, card_template? }. icon is "lucide:<name>" from list_category_icons (or one emoji); pass "" to clear. Resolve categoryId via list_categories.',
+            'Update an EXISTING category. Partial: only the fields you pass change. Envelope: { tenantId, categoryId, name?, description?, icon?, icon_color?, is_active?, display_layout?, card_template? }. icon is "lucide:<name>" from list_category_icons (or one emoji); pass "" to clear. card_template gives this category its own card design (ids and looks in get_branding designCatalog); null inherits the store template. Resolve categoryId via list_categories.',
         input: z.object({
             tenantId: UUID,
             categoryId: UUID,
@@ -832,7 +836,8 @@ const ops: ProvisioningOp<unknown>[] = [
             icon_color: z.string().optional(),
             is_active: z.boolean().optional(),
             display_layout: z.enum(['grid', 'horizontal_scroll', 'horizontal_mobile_only', 'horizontal_desktop_only']).optional(),
-            card_template: z.string().nullable().optional(),
+            card_template: z.enum(CARD_TEMPLATE_IDS as [string, ...string[]]).nullable().optional()
+                .describe('A card template id from get_branding designCatalog; null inherits the store template'),
         }),
         execute: (ctx, input) => {
             const record = input as Record<string, unknown>

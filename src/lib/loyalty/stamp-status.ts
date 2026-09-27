@@ -11,12 +11,13 @@
  */
 
 import { describeLoyaltyReward } from './offer'
-import type { LoyaltyEarnMode, LoyaltyProgram } from './types'
+import type { LoyaltyEarnMode, LoyaltyProgram, LoyaltyProgramStatus } from './types'
 
 export interface OrderStampCard {
   /** False when showing existing progress before this order earns. */
   earnedOnOrder?: boolean
   programName: string
+  programStatus?: LoyaltyProgramStatus
   earnMode: LoyaltyEarnMode
   /** Stamps/points toward the next reward. */
   balance: number
@@ -51,11 +52,13 @@ export function summarizeStampCard(input: StampCardInput): OrderStampCard | null
 
   const { rules } = program.version
   const balance = Number(input.balance)
+  const status = program.endsAt && Date.parse(program.endsAt) <= Date.now() ? 'ended' : program.status
 
   return {
     programName: program.name,
+    ...(status !== 'active' ? { programStatus: status } : {}),
     earnMode: rules.earnMode,
-    balance: Number.isFinite(balance) && balance > 0 ? balance : 0,
+    balance: Number.isFinite(balance) ? balance : 0,
     threshold: rules.threshold,
     rewardsAvailable: clampCount(input.rewardsAvailable),
     rewardLabel: describeLoyaltyReward(rules.reward),

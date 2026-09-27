@@ -129,15 +129,7 @@ export function BundleWizardReviewScreen({
               {/* Selection rows */}
               {selections.map((sel, idx) => {
                 const customizations = describeCustomizations(sel)
-                const extraCost =
-                  sel.priceOverride +
-                  (sel.selectedVariations
-                    ? Object.values(sel.selectedVariations).reduce(
-                        (sum, opt) => sum + (opt.price_modifier ?? 0),
-                        0
-                      )
-                    : sel.selectedVariation?.price_modifier ?? 0) +
-                  (sel.selectedAddons?.reduce((sum, a) => sum + a.price, 0) ?? 0)
+                const extraCost = calculateSlotBundleExtras([sel])
 
                 return (
                   <div

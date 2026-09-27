@@ -16,6 +16,9 @@ import { DeliverySettingsForm } from '@/components/admin/delivery-settings-form'
 import { StaffManagementCard } from '@/components/admin/staff-management-card'
 import { AccountSettingsCard } from '@/components/admin/account-settings-card'
 import { LalamoveSettingsCard } from '@/components/admin/lalamove-settings-card'
+import { DeleteOrdersCard } from '@/components/admin/order-deletion/delete-orders-card'
+import { decideOwnerAccess } from '@/lib/order-deletion/access'
+import { resolveOrderBackend } from '@/lib/order-backend'
 import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
 import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { listStaffAction } from '@/app/actions/staff'
@@ -52,6 +55,11 @@ export default async function SettingsPage({
   const caller = userRole ?? { role: 'admin', tenant_id: null }
   const isOwner = canManageStaff(caller)
   const hasSettingsAccess = hasPermission(caller, 'settings')
+  // Deleting orders is the store owner's alone — not staff, not a superadmin.
+  const isStoreOwner = decideOwnerAccess(
+    { role: caller.role, tenant_id: caller.tenant_id, is_owner: caller.is_owner ?? null },
+    tenant.id
+  ).allowed
   // A branch admin manages its own branch's people, so it needs the card too.
   const canManageAnyStaff =
     isOwner || canManageBranchStaff(caller, caller.outlet_id ?? null)
@@ -254,6 +262,13 @@ export default async function SettingsPage({
             />
           )}
         </>
+      )}
+
+      {isStoreOwner && (
+        <DeleteOrdersCard
+          tenantSlug={tenantSlug}
+          isAvailable={resolveOrderBackend(tenant) === 'platform'}
+        />
       )}
     </div>
   )

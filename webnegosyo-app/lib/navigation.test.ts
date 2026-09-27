@@ -1,4 +1,4 @@
-import { productHref, NEW_PRODUCT_ID } from "./navigation";
+import { productHref, productPerformanceHref, NEW_PRODUCT_ID } from "./navigation";
 
 /**
  * Regression guard for the "Unmatched Route" crash when opening a product from
@@ -42,5 +42,15 @@ describe("productHref", () => {
 
     // Assert
     expect(href).toBe("/(main)/product/a%20b%2Fc");
+  });
+});
+
+describe("productPerformanceHref", () => {
+  it("interpolates the product and the period into one string href", () => {
+    expect(productPerformanceHref("abc-123", "7d")).toBe("/(main)/product-performance/abc-123?period=7d");
+  });
+
+  it("encodes an id that is not URL-safe", () => {
+    expect(productPerformanceHref("a/b", "today")).toBe("/(main)/product-performance/a%2Fb?period=today");
   });
 });

@@ -19,6 +19,7 @@ async function main() {
 
  await db.exec(readFileSync('supabase/migrations/20260914162000_loyalty_wallet.sql','utf8'))
  await db.exec(readFileSync('supabase/migrations/20260914164000_loyalty_cleanup.sql','utf8'))
+ await db.exec(readFileSync('supabase/migrations/20260926152000_loyalty_wallet_history.sql','utf8'))
  const p = (await db.query(`insert into loyalty_programs(tenant_id,name,earn_mode,status,activates_at) values($1,'Coffee','stamp','active',now()) returning id`,[tenant])).rows[0].id
  const rules = { earnMode:'stamp',threshold:10,reward:{type:'fixed',amount:100},isExclusive:true }
  const v = (await db.query('insert into loyalty_program_versions(tenant_id,program_id,version,rules) values($1,$2,1,$3) returning id',[tenant,p,rules])).rows[0].id
@@ -37,6 +38,11 @@ async function main() {
  assert.equal((await lookup('phone:+639179999999')).rewards.length,0,'Other phones cannot discover these entitlements')
  for(let i=0;i<8;i++)assert.equal((await lookup()).ok,true)
  assert.deepEqual(await lookup(),{ok:false,error:'rate_limited'})
+ await db.query("update loyalty_programs set status='ended' where id=$1",[p])
+ const historical=await lookup(phone,'d'.repeat(64))
+ assert.equal(historical.programs[0]?.balance,3,'Ended programs retain the member card')
+ assert.equal(historical.programs[0]?.status,'ended')
+ assert.equal((await lookup('phone:+639179999999','e'.repeat(64))).programs.length,0,'An ended program is not offered to a new customer')
  await db.exec('update tenants set loyalty_shadow=true')
  assert.deepEqual(await lookup(phone,'c'.repeat(64)),{ok:true,programs:[],rewards:[]})
  await db.exec('set role authenticated')

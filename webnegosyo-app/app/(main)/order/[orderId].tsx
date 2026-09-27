@@ -27,6 +27,11 @@ import {
 } from "../../../components/order/CollectPaymentSheet";
 import { canCollectPayment } from "../../../lib/order-collect";
 import { isOrderUnpaid, shouldMarkOrderPaid } from "../../../lib/order-paid-state";
+import {
+  canCancelOrder,
+  markPaidAfterHandover,
+  planOrderStatusChange,
+} from "../../../lib/order-status-change";
 import { resolveLedgerState, isLedgerSafeToEdit } from "../../../lib/order-ledger";
 import { summarizeSettlement } from "../../../lib/order-history-view";
 import { listAllPaymentMethods } from "../../../lib/pos-catalog";
@@ -52,6 +57,7 @@ import { orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
+import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -420,13 +426,14 @@ export default function OrderDetailScreen() {
   // The two records of the same money. Collecting writes both now, but every
   // order collected before that still carries `pending` on the row, and the
   // ledger beside it is the one that saw the cash.
-  const paymentStatusLabel = isOrderUnpaid({
+  const isUnpaid = isOrderUnpaid({
+    status: order?.status,
+    customerData: order?.customerData,
     paymentStatus: order?.paymentStatus ?? "pending",
     total: order?.total,
     amountPaid: collectedFromLedger,
-  })
-    ? (order?.paymentStatus ?? "pending")
-    : "paid";
+  });
+  const paymentStatusLabel = isUnpaid ? (order?.paymentStatus ?? "pending") : "paid";
   const collectGate = order
     ? canCollectPayment({
         status: order.status,
@@ -660,11 +667,21 @@ export default function OrderDetailScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
+    const plan = planOrderStatusChange(order, newStatus);
+    if (!plan.allowed) {
+      Alert.alert("Cannot update order", plan.reason ?? "This change is not allowed.");
+      return;
+    }
     try {
       // Confirmation receipts print from GlobalReceiptAutoPrint, which reacts
       // to the status transition itself — so a confirm from this screen, the
       // list, the Drawer or the web admin all print exactly once.
       await updateStatus({ orderId: order._id, status: newStatus });
+
+      // Handing the order over is taking the money for it.
+      if (plan.shouldMarkPaid) {
+        await markPaidAfterHandover(updatePaymentStatus, order._id);
+      }
 
       // Push the confirmed order into Loyverse as a sales receipt. Fires once
       // (confirm is a single transition); the server checks the tenant's flag
@@ -703,8 +720,8 @@ export default function OrderDetailScreen() {
       // cancelling it never reaches the web app's updateOrderStatus where
       // stock is restored. Shared with the order list screen; never throws.
       await restoreStockForStatusChange(newStatus, String(order._id));
-    } catch {
-      Alert.alert("Error", "Failed to update status");
+    } catch (err) {
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to update status");
     }
   };
 
@@ -769,6 +786,8 @@ export default function OrderDetailScreen() {
           </View>
         )}
       </Card>
+
+      <OrderCustomerCard order={order} style={styles.section} />
 
       {customerDetailRows.length > 0 && (
         <Card title="Customer Details" style={styles.section}>
@@ -909,6 +928,7 @@ export default function OrderDetailScreen() {
         total={order.total}
         payments={payments ?? []}
         isLedgerAvailable={ledgerState === "available"}
+        isOrderUnpaid={isUnpaid}
       />
 
       {/*
@@ -916,7 +936,7 @@ export default function OrderDetailScreen() {
         the foot of the screen: the cashier reading "Still owing ₱149.00" is
         looking here, and the answer to it should be here too.
       */}
-      {collectGate.allowed && (
+      {collectGate.allowed && isUnpaid && (
         <TouchableOpacity
           style={styles.collectButton}
           onPress={handleOpenCollect}
@@ -1015,7 +1035,7 @@ export default function OrderDetailScreen() {
               }}
             />
           )}
-          {order.status !== "delivered" && order.status !== "cancelled" && (
+          {canCancelOrder(order.status) && (
             <TouchableOpacity
               onPress={() => {
                 Alert.alert("Cancel Order", "Are you sure?", [

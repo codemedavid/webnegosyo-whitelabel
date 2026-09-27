@@ -64,7 +64,8 @@ export interface QueuedSale {
    * Set once the bookkeeping (stock, Loyverse, vouchers, activity, capture)
    * has run for this sale. The Loyverse receipt and customer capture are not
    * idempotent, so a replay that finds this skips straight to forgetting the
-   * sale — bookkeeping is at-most-once, exactly as on the online path.
+   * sale. This is a checkpoint, not an exactly-once guarantee: a crash after
+   * a remote side effect and before this write can still repeat that effect.
    */
   bookkeepingDone?: boolean;
 }
@@ -93,53 +94,71 @@ function emit(next: OutboxState): void {
 }
 
 async function persist(sales: readonly QueuedSale[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(sales));
-  } catch (error) {
-    console.warn("[offline] Could not persist the sales outbox:", error);
-  }
+  await AsyncStorage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(sales));
+}
+
+// Serialize read/modify/write operations and publish only durable state. A
+// failed operation rejects its caller without poisoning subsequent writes.
+let writes: Promise<void> = Promise.resolve();
+function updateSales(change: (sales: readonly QueuedSale[]) => readonly QueuedSale[]): Promise<void> {
+  const operation = writes.then(async () => {
+    await hydrateOutbox();
+    const sales = change(state.sales);
+    if (sales === state.sales) return;
+    await persist(sales);
+    emit({ ...state, sales });
+  });
+  writes = operation.catch(() => undefined);
+  return operation;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function isQueuedSale(value: unknown): value is QueuedSale {
-  if (!value || typeof value !== "object") return false;
-  const sale = value as Partial<QueuedSale>;
+  if (!isRecord(value)) return false;
+  const book = value.bookkeeping;
   return (
-    typeof sale.localId === "string" &&
-    typeof sale.tenantId === "string" &&
-    typeof sale.clientOrderId === "string" &&
-    typeof sale.createdAt === "number" &&
-    !!sale.orderArgs &&
-    typeof sale.orderArgs === "object" &&
-    !!sale.bookkeeping &&
-    typeof sale.bookkeeping === "object"
+    typeof value.localId === "string" && value.localId.length > 0 &&
+    typeof value.tenantId === "string" && value.tenantId.length > 0 &&
+    typeof value.clientOrderId === "string" && value.clientOrderId.length > 0 &&
+    ["platform", "convex", "supabase"].includes(String(value.backend)) &&
+    typeof value.createdAt === "number" && Number.isFinite(value.createdAt) &&
+    typeof value.attempts === "number" && Number.isInteger(value.attempts) && value.attempts >= 0 &&
+    (value.lastError === null || typeof value.lastError === "string") &&
+    (value.syncedOrderId == null || (typeof value.syncedOrderId === "string" && value.syncedOrderId.length > 0)) &&
+    (value.bookkeepingDone === undefined || typeof value.bookkeepingDone === "boolean") &&
+    isRecord(value.orderArgs) && isRecord(book) &&
+    Array.isArray(book.stockItems) && Array.isArray(book.loyverseLines) &&
+    Array.isArray(book.discountLines) && Array.isArray(book.captureItems) &&
+    typeof book.total === "number" && Number.isFinite(book.total) &&
+    typeof book.customerName === "string" && typeof book.customerContact === "string" &&
+    isRecord(book.customerData) &&
+    (book.outletId === null || typeof book.outletId === "string") &&
+    (book.channel === null || typeof book.channel === "string")
   );
 }
 
 export function parseStoredOutbox(raw: string | null): QueuedSale[] {
   if (raw === null) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isQueuedSale);
-  } catch {
-    return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed) || !parsed.every(isQueuedSale)) {
+    throw new Error("The saved sales queue is damaged. Keep this device's data and contact support.");
   }
+  return parsed;
 }
 
-/** Read the queue off disk once; every write waits for this first. */
+/** Read once; failures keep the original ledger intact and permit a retry. */
 export function hydrateOutbox(): Promise<void> {
   if (hydration) return hydration;
   hydration = (async () => {
-    let stored: QueuedSale[] = [];
-    try {
-      stored = parseStoredOutbox(await AsyncStorage.getItem(OUTBOX_STORAGE_KEY));
-    } catch {
-      stored = [];
-    }
-    // Anything enqueued while the read was in flight stays ahead of nothing:
-    // the disk copy is older, so it goes first.
-    emit({ sales: [...stored, ...state.sales], isHydrated: true });
-  })();
+    const stored = parseStoredOutbox(await AsyncStorage.getItem(OUTBOX_STORAGE_KEY));
+    emit({ sales: stored, isHydrated: true });
+  })().catch((error) => {
+    hydration = null;
+    throw error;
+  });
   return hydration;
 }
 
@@ -154,50 +173,43 @@ export function subscribeOutbox(listener: () => void): () => void {
   };
 }
 
-export async function enqueueSale(sale: QueuedSale): Promise<void> {
-  await hydrateOutbox();
-  const sales = [...state.sales, sale];
-  emit({ ...state, sales });
-  await persist(sales);
+export async function enqueueSale(sale: QueuedSale): Promise<string> {
+  let localId = sale.localId;
+  await updateSales((sales) => {
+    const existing = sales.find((entry) => entry.tenantId === sale.tenantId && entry.clientOrderId === sale.clientOrderId);
+    if (existing) {
+      localId = existing.localId;
+      return sales;
+    }
+    return [...sales, sale];
+  });
+  return localId;
 }
 
-export async function removeQueuedSale(localId: string): Promise<void> {
-  await hydrateOutbox();
-  const sales = state.sales.filter((sale) => sale.localId !== localId);
-  if (sales.length === state.sales.length) return;
-  emit({ ...state, sales });
-  await persist(sales);
+export function removeQueuedSale(localId: string): Promise<void> {
+  return updateSales((sales) => sales.some((sale) => sale.localId === localId)
+    ? sales.filter((sale) => sale.localId !== localId)
+    : sales);
+}
+
+function updateSale(localId: string, change: (sale: QueuedSale) => QueuedSale): Promise<void> {
+  return updateSales((sales) => sales.some((sale) => sale.localId === localId)
+    ? sales.map((sale) => sale.localId === localId ? change(sale) : sale)
+    : sales);
 }
 
 /** The server holds the order and its paid status; persisted BEFORE bookkeeping. */
-export async function markSaleWritten(localId: string, orderId: string): Promise<void> {
-  await hydrateOutbox();
-  const sales = state.sales.map((sale) =>
-    sale.localId === localId ? { ...sale, syncedOrderId: orderId } : sale
-  );
-  emit({ ...state, sales });
-  await persist(sales);
+export function markSaleWritten(localId: string, orderId: string): Promise<void> {
+  return updateSale(localId, (sale) => ({ ...sale, syncedOrderId: orderId }));
 }
 
 /** The bookkeeping has run; persisted BEFORE the sale is forgotten. */
-export async function markBookkeepingDone(localId: string): Promise<void> {
-  await hydrateOutbox();
-  const sales = state.sales.map((sale) =>
-    sale.localId === localId ? { ...sale, bookkeepingDone: true } : sale
-  );
-  emit({ ...state, sales });
-  await persist(sales);
+export function markBookkeepingDone(localId: string): Promise<void> {
+  return updateSale(localId, (sale) => ({ ...sale, bookkeepingDone: true }));
 }
 
-export async function recordSyncFailure(localId: string, message: string): Promise<void> {
-  await hydrateOutbox();
-  const sales = state.sales.map((sale) =>
-    sale.localId === localId
-      ? { ...sale, attempts: sale.attempts + 1, lastError: message }
-      : sale
-  );
-  emit({ ...state, sales });
-  await persist(sales);
+export function recordSyncFailure(localId: string, message: string): Promise<void> {
+  return updateSale(localId, (sale) => ({ ...sale, attempts: sale.attempts + 1, lastError: message }));
 }
 
 /** True while a sale taken offline has not yet been written to the server. */
@@ -209,5 +221,6 @@ export function isSaleQueued(localId: string): boolean {
 export function resetOutboxForTests(): void {
   state = EMPTY;
   hydration = null;
+  writes = Promise.resolve();
   listeners.clear();
 }

@@ -34,6 +34,8 @@ function makeClient() {
   const builder: Record<string, unknown> = {}
   builder.select = jest.fn(() => builder)
   builder.eq = jest.fn(() => builder)
+  builder.is = jest.fn(() => builder)
+  builder.gt = jest.fn(() => builder)
   builder.insert = jest.fn((p: Record<string, unknown>) => { inserts.push({ table: currentTable, payload: p }); return builder })
   builder.update = jest.fn((p: Record<string, unknown>) => { updates.push({ table: currentTable, payload: p }); return builder })
   builder.single = jest.fn(async () => singleQueue.shift() ?? { data: null, error: null })

@@ -53,15 +53,23 @@ export async function getPhoneLoyaltyProgress(
     const admin = createAdminClient()
     const [flags, programs] = await Promise.all([
       loadLoyaltyTenantFlags(admin, query.tenantId),
-      loadActiveLoyaltyPrograms(admin, query.tenantId),
+      loadActiveLoyaltyPrograms(admin, query.tenantId, { includeInactive: true }),
     ])
     if (!flags.isEnabled || flags.isShadow) return SILENT
 
-    const program = selectLiveProgram(programs, { nowMs: Date.now(), outletId: query.outletId })
-    if (!program) return SILENT
-
-    const offer = describeLoyaltyOffer(flags, [program])
     const customerKey = `phone:${phoneE164}`
+    let program = selectLiveProgram(programs, { nowMs: Date.now(), outletId: query.outletId })
+    const offer = program ? describeLoyaltyOffer(flags, [program]) : null
+    if (!program) {
+      const eligibleIds = programs.filter(p => p.status !== 'draft' && p.activatesAt && Date.parse(p.activatesAt) <= Date.now() && (p.scope === 'business' || p.outletId === query.outletId)).map(p => p.id)
+      if (!eligibleIds.length) return SILENT
+      const { data: held, error } = await admin.from('loyalty_balances').select('program_id')
+        .eq('tenant_id', query.tenantId).eq('customer_key', customerKey).in('program_id', eligibleIds)
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      if (error) throw new Error('Existing card could not be read')
+      program = programs.find(p => p.id === held?.program_id) ?? null
+      if (!program) return SILENT
+    }
     const [balance, rewardsAvailable] = await Promise.all([
       readLoyaltyBalance(admin, query.tenantId, program.id, customerKey),
       countAvailableLoyaltyRewards(admin, query.tenantId, program.id, customerKey),

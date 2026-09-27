@@ -23,6 +23,7 @@ import { buildVoucherPreview } from '@/lib/vouchers/preview'
 import type { VoucherLookup } from '@/lib/vouchers/resolve'
 import type { Voucher } from '@/lib/vouchers/types'
 import type { CartItem, Tenant } from '@/types/database'
+import type { CheckoutConfig } from '@/lib/checkout/checkout-config'
 
 // ---- The cart, mutable between renders -----------------------------------
 
@@ -40,11 +41,12 @@ const clearCart = jest.fn()
 const setOrderType = jest.fn()
 const BUNDLE_ITEMS: never[] = []
 
-// Every function and array here is hoisted deliberately. `useCheckout`'s data-load
-// effect lists `setOrderType` among its dependencies, so a mock that minted a new
-// callback per render would re-fetch the tenant on every render — forever.
+// Every function and array here is hoisted deliberately. `useCheckout`'s
+// order-type effect lists `setOrderType` among its dependencies, so a mock that
+// minted a new callback per render would re-run it on every render.
 jest.mock('@/hooks/useCart', () => ({
   useCart: () => ({
+    isHydrated: true,
     items: cartItems,
     bundleItems: BUNDLE_ITEMS,
     total: cartItems.reduce((sum, item) => sum + item.subtotal, 0),
@@ -75,29 +77,18 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/acme/checkout',
 }))
 
-jest.mock('@/lib/tenants-client', () => ({
-  getTenantBySlugClient: jest.fn(async () => ({ data: TENANT, error: null })),
-}))
-
-jest.mock('@/lib/order-types-client', () => ({
-  getEnabledOrderTypesByTenantClient: jest.fn(async () => []),
-  getCustomerFormFieldsByOrderTypeClient: jest.fn(async () => []),
-}))
-
-jest.mock('@/lib/payment-methods-client', () => ({
-  getPaymentMethodsByOrderTypeClient: jest.fn(async () => []),
-}))
+// What the server page reads and hands the hook. No order types, form fields
+// or payment methods: the suite is about vouchers, not the form.
+const CHECKOUT_CONFIG: CheckoutConfig = {
+  orderTypes: [],
+  formFieldsByOrderType: {},
+  paymentMethodsByOrderType: {},
+  outlets: null,
+  facebookPageId: null,
+}
 
 jest.mock('@/lib/outlets/outlets-client', () => ({
   fetchActiveOutlets: jest.fn(async () => []),
-}))
-
-jest.mock('@/lib/supabase/client', () => ({
-  createClient: () => ({
-    from: () => ({
-      select: () => ({ eq: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }) }),
-    }),
-  }),
 }))
 
 jest.mock('@/app/actions/orders', () => ({
@@ -218,7 +209,7 @@ import {
 } from '@/components/customer/checkout-templates/checkout-primitives'
 
 function CheckoutHarness() {
-  const checkout = useCheckout('acme')
+  const checkout = useCheckout({ tenantSlug: 'acme', initialTenant: TENANT, config: CHECKOUT_CONFIG })
   return (
     <div>
       <OrderSummaryLines checkout={checkout} />
@@ -235,7 +226,7 @@ function displayedTotal(): string {
 
 async function renderCheckout() {
   const view = render(<CheckoutHarness />)
-  // The tenant load settles before anything voucher-related can run.
+  // The order type resolves before anything voucher-related can run.
   await screen.findByText('Subtotal')
   return view
 }

@@ -22,17 +22,17 @@ test('an old tenant request cannot replace current tenant suggestions', async ()
   await act(async () => { jest.advanceTimersByTime(500) })
   rerender({ ...options, tenant: { ...tenant, id: 'tenant-2' }, tenantSlug: 'new-cafe' })
   await act(async () => { jest.advanceTimersByTime(500) })
-  expect(result.current.prefetchedItems).toEqual(suggestions)
+  expect(result.current.cartOfferItems).toEqual(suggestions)
   await act(async () => { resolveOld({ success: true, data: [{ id: 'old-suggestion' }] as MenuItem[] }) })
-  expect(result.current.prefetchedItems).toEqual(suggestions)
+  expect(result.current.cartOfferItems).toEqual(suggestions)
 })
 
 test('changing cart contents immediately hides suggestions fetched for the previous contents', async () => {
   const { result, rerender } = renderHook((props) => useCartCheckout(props), { initialProps: options })
   await act(async () => { jest.advanceTimersByTime(500) })
-  expect(result.current.prefetchedItems).toEqual(suggestions)
+  expect(result.current.cartOfferItems).toEqual(suggestions)
   rerender({ ...options, items: [{ id: 'line-2', menu_item: { id: 'dish-2' } }] as CartItem[] })
-  expect(result.current.prefetchedItems).toBeNull()
+  expect(result.current.cartOfferItems).toBeNull()
 })
 
 test('unmount clears the checkout safety timer while router navigation is pending', async () => {

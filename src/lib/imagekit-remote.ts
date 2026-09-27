@@ -1,4 +1,5 @@
 import 'server-only'
+import { requestPublicImage } from '@/lib/public-image-fetch'
 
 /**
  * Fetch a remote image so it can be re-hosted on ImageKit.
@@ -32,20 +33,28 @@ function isPrivateIpv4(hostname: string): boolean {
     const octets = parts.map((p) => Number(p))
     if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false
 
-    const [a, b] = octets
-    if (a === 0 || a === 10 || a === 127) return true
+    const [a, b, c] = octets
+    if (a === 0 || a === 10 || a === 127 || a >= 224) return true
+    if (a === 100 && b >= 64 && b <= 127) return true
     if (a === 169 && b === 254) return true // link-local, incl. 169.254.169.254
     if (a === 172 && b >= 16 && b <= 31) return true
-    if (a === 192 && b === 168) return true
+    if (a === 192 && (b === 168 || b === 0)) return true
+    if (a === 198 && (b === 18 || b === 19)) return true
+    if (a === 192 && b === 88 && c === 99) return true // deprecated relay range
+    if (a === 198 && b === 51 && c === 100) return true // documentation
+    if (a === 203 && b === 0 && c === 113) return true // documentation
     return false
 }
 
-/** IPv6 loopback, link-local (fe80::/10) and unique-local (fc00::/7) literals. */
+/** IPv6 literals outside ordinary global unicast, including transition ranges. */
 function isPrivateIpv6(hostname: string): boolean {
     const host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
     if (!host.includes(':')) return false
-    if (host === '::1' || host === '::') return true
-    return /^(fe[89ab]|fc|fd)/.test(host)
+    // Only ordinary global unicast IPv6 is eligible. This excludes mapped
+    // IPv4, NAT64, multicast, loopback and local address ranges.
+    if (!/^[23][0-9a-f]{3}:/.test(host)) return true
+    // Exclude transition/documentation ranges that can embed other addresses.
+    return /^(2001:(:|[0-9a-f]{1,2}:|1[0-9a-f]{2}:|db8:)|2002:)/.test(host)
 }
 
 /**
@@ -64,7 +73,9 @@ export function assertPublicHttpUrl(rawUrl: string): URL {
         throw new Error(`Only http(s) image URLs are supported (got ${url.protocol}).`)
     }
 
-    const hostname = url.hostname.toLowerCase()
+    if (url.username || url.password) throw new Error('Image URLs must not contain credentials.')
+
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, '')
     const isBlocked =
         BLOCKED_HOSTNAMES.has(hostname) ||
         hostname.endsWith('.localhost') ||
@@ -146,12 +157,19 @@ export async function fetchRemoteImageAsBase64(rawUrl: string, fileNameHint?: st
     // apply to the address the caller actually supplied.
     assertPublicHttpUrl(rawUrl)
     const normalized = normalizeRemoteImageUrl(rawUrl)
-    const target = assertPublicHttpUrl(normalized)
-
-    const response = await fetch(normalized, {
-        redirect: 'follow',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    let target = assertPublicHttpUrl(normalized)
+    const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    const download = () => requestPublicImage(target, {
+        assertUrl: assertPublicHttpUrl, maxBytes: MAX_REMOTE_IMAGE_BYTES, signal,
     })
+    let response = await download()
+    for (let redirects = 0; [301, 302, 303, 307, 308].includes(response.status); redirects++) {
+        if (redirects >= 5) throw new Error('Too many image redirects.')
+        const location = response.headers.get('location')
+        if (!location) throw new Error('Image redirect has no location.')
+        target = assertPublicHttpUrl(new URL(location, target).href)
+        response = await download()
+    }
 
     if (!response.ok) {
         throw new Error(`Could not download the image (HTTP ${response.status}).`)

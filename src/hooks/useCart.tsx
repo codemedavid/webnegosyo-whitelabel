@@ -26,6 +26,12 @@ export type AddItemResult =
   | { ok: false; reason: 'presell_date_conflict'; committedDate: string }
 
 interface CartContextType extends Cart {
+  /**
+   * False until the cart, order type and PSID have been read from storage.
+   * Before that the cart reads as empty, which is not the same as empty — a
+   * page that redirects on an empty cart must wait for this.
+   */
+  isHydrated: boolean
   orderType: string | null
   setOrderType: (orderType: string | null) => void
   messengerPsid: string | null
@@ -796,6 +802,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Memoize the context value to avoid triggering all consumers on every render.
   // Only changes when one of the actual values changes.
   const contextValue = useMemo<CartContextType>(() => ({
+    isHydrated: isInitialized,
     items,
     total,
     item_count,
@@ -817,6 +824,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     removeBundleFromCart,
     updateBundleQuantity,
   }), [
+    isInitialized,
     items,
     total,
     item_count,

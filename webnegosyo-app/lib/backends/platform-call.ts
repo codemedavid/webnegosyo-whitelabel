@@ -43,3 +43,61 @@ export async function withPlatformTimeout<T>(
     if (timer !== undefined) clearTimeout(timer);
   }
 }
+
+export interface PlatformDeadlineOptions {
+  /** The caller's own cancellation — the query cache's, for a read it replaced. */
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/**
+ * `withPlatformTimeout` for work that can be CANCELLED, which every read can.
+ *
+ * The race above only stops waiting: the request it bounded stays on the wire.
+ * For a read that is the wrong half of a timeout — the next poll, focus or
+ * realtime invalidation starts another copy behind it, so a slow database met
+ * a growing queue of abandoned reads from every device, each holding one of
+ * the few connections a phone opens to a host while the fresh read queued
+ * behind it and timed out in turn. Here the deadline and the caller's signal
+ * both abort the work itself.
+ *
+ * A cancellation is not reported as a connectivity outcome: the cache
+ * replacing a read says nothing about the network, and reading its AbortError
+ * as "offline" would send the register's next sale to the offline queue.
+ */
+export async function withPlatformDeadline<T>(
+  start: (signal: AbortSignal) => Promise<T>,
+  callLabel: string,
+  options: PlatformDeadlineOptions = {}
+): Promise<T> {
+  const { signal: callerSignal, timeoutMs = PLATFORM_CALL_TIMEOUT_MS } = options;
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (callerSignal?.aborted) cancel();
+  callerSignal?.addEventListener("abort", cancel);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const result = await Promise.race([
+      start(controller.signal),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          cancel();
+          reject(
+            new Error(
+              `The request timed out (${callLabel}). Check your connection and try again.`
+            )
+          );
+        }, timeoutMs);
+      }),
+    ]);
+    reportOutcome(undefined);
+    return result;
+  } catch (error) {
+    if (!callerSignal?.aborted) reportOutcome(error);
+    throw error;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", cancel);
+  }
+}

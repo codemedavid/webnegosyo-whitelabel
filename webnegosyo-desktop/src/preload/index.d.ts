@@ -5,6 +5,7 @@ import type {
   ReceiptPayload,
   UpdateStatus,
   PosOrderPayload,
+  PosOrderScope,
   LocalPosOrder,
   PosCatalogCache,
   PosTenantCache,
@@ -21,7 +22,8 @@ export interface DesktopApi {
   onUpdateStatus: (cb: (status: UpdateStatus) => void) => () => void
   savePosOrder: (
     payload: PosOrderPayload,
-    paymentStatus: 'paid' | 'pending'
+    paymentStatus: 'paid' | 'pending',
+    scope: PosOrderScope
   ) => Promise<LocalPosOrder>
   getPendingPosOrders: () => Promise<LocalPosOrder[]>
   getPosPendingCount: () => Promise<number>

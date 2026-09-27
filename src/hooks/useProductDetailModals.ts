@@ -1,61 +1,39 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { BundleWithSlots } from '@/types/database'
 
 interface UseProductDetailModalsOptions {
     tenantSlug: string
-    menuEngineeringEnabled: boolean
-    upgradeUpsellsCount: number
-    upsellBundlesCount: number
     /**
      * When provided (sheet mode), this is called instead of router.back() when a
      * flow wants to dismiss the product detail (e.g. closing the post-add upsell
      * screen). In page mode this is omitted and navigation falls back to history.
      */
     onExit?: () => void
-    /**
-     * Suppress the auto-opening "Make it a Meal?" upgrade prompt. Used by the
-     * bottom sheet after an in-sheet upgrade swap so the prompt doesn't re-fire.
-     */
-    suppressAutoUpgrade?: boolean
 }
 
+/**
+ * Open/close state for the item page's overlays. The upgrade offer is no
+ * longer one of them: it is part of the page (`ItemOffers`), where it used to
+ * open itself as a full-screen takeover 200 ms after the product appeared.
+ */
 export function useProductDetailModals({
     tenantSlug,
-    menuEngineeringEnabled,
-    upgradeUpsellsCount,
-    upsellBundlesCount,
     onExit,
-    suppressAutoUpgrade = false,
 }: UseProductDetailModalsOptions) {
     const router = useRouter()
-
-    const [upgradeDismissed, setUpgradeDismissed] = useState(() =>
-        typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('upgraded')
-    )
 
     // Modal open states
     const [isImageModalOpen, setIsImageModalOpen] = useState(false)
     const [isPostAddUpsellOpen, setIsPostAddUpsellOpen] = useState(false)
     const [isPopupPreviewOpen, setIsPopupPreviewOpen] = useState(false)
     const [isCheckoutPreviewOpen, setIsCheckoutPreviewOpen] = useState(false)
-    const [isUpgradeScreenOpen, setIsUpgradeScreenOpen] = useState(false)
 
     // Bundle states
     const [bundleForCustomization, setBundleForCustomization] = useState<BundleWithSlots | null>(null)
 
     // When true, navigating after upsell prompts goes to checkout instead of back to menu
     const buyNowIntentRef = useRef(false)
-
-    // Auto-open the upgrade screen once -- skip if user already chose or dismissed
-    // Brief delay so user sees the product detail page first
-    useEffect(() => {
-        if (upgradeDismissed || suppressAutoUpgrade) return
-        if (menuEngineeringEnabled && (upgradeUpsellsCount > 0 || upsellBundlesCount > 0)) {
-            const timer = setTimeout(() => setIsUpgradeScreenOpen(true), 200)
-            return () => clearTimeout(timer)
-        }
-    }, [menuEngineeringEnabled, upgradeUpsellsCount, upsellBundlesCount, upgradeDismissed, suppressAutoUpgrade])
 
     // Image modal handlers
     const handleOpenImageModal = useCallback(() => {
@@ -101,8 +79,6 @@ export function useProductDetailModals({
 
     return {
         // States
-        upgradeDismissed,
-        setUpgradeDismissed,
         isImageModalOpen,
         isPostAddUpsellOpen,
         setIsPostAddUpsellOpen,
@@ -110,8 +86,6 @@ export function useProductDetailModals({
         setIsPopupPreviewOpen,
         isCheckoutPreviewOpen,
         setIsCheckoutPreviewOpen,
-        isUpgradeScreenOpen,
-        setIsUpgradeScreenOpen,
         bundleForCustomization,
         setBundleForCustomization,
         buyNowIntentRef,

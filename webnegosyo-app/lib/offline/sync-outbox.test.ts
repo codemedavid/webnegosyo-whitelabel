@@ -37,6 +37,7 @@ function harness(sales: QueuedSale[]) {
   const markBookkeepingDone = jest.fn().mockResolvedValue(undefined);
   const deps = {
     tenantId: "tenant-1",
+    backend: "platform" as const,
     createOrder,
     updatePaymentStatus,
     bookkeeping,
@@ -132,7 +133,10 @@ describe("syncOutbox", () => {
   it("a refused paid-status write does not lose the sale; a dropped one does not forget it", async () => {
     const h = harness([sale("a")]);
     h.updatePaymentStatus.mockRejectedValueOnce(new Error("permission denied"));
-    await expect(syncOutbox(h.deps)).resolves.toMatchObject({ synced: 1 });
+    await expect(syncOutbox(h.deps)).resolves.toMatchObject({ synced: 0, refused: 1 });
+    expect(h.markWritten).not.toHaveBeenCalled();
+    expect(h.bookkeeping).not.toHaveBeenCalled();
+    expect(h.remove).not.toHaveBeenCalled();
 
     resetSyncForTests();
     const h2 = harness([sale("b")]);
@@ -146,6 +150,41 @@ describe("syncOutbox", () => {
     await syncOutbox(h.deps);
     expect(h.createOrder).toHaveBeenCalledTimes(1);
     expect(h.remove).toHaveBeenCalledWith("mine");
+  });
+
+  it("keeps a sale from the previous backend for reconciliation", async () => {
+    const h = harness([{ ...sale("old"), backend: "convex" }, sale("current")]);
+    await expect(syncOutbox(h.deps)).resolves.toMatchObject({ synced: 1 });
+    expect(h.createOrder).toHaveBeenCalledTimes(1);
+    expect(h.remove).toHaveBeenCalledWith("current");
+  });
+
+  it("stops after an account switch without further writes or bookkeeping", async () => {
+    const h = harness([sale("a"), sale("b")]);
+    let active = true;
+    h.createOrder.mockImplementation(async () => { active = false; return "server-a"; });
+    await expect(syncOutbox({ ...h.deps, isActive: () => active })).resolves.toMatchObject({ synced: 0 });
+    expect(h.updatePaymentStatus).not.toHaveBeenCalled();
+    expect(h.bookkeeping).not.toHaveBeenCalled();
+    expect(h.recordFailure).not.toHaveBeenCalled();
+    expect(h.remove).not.toHaveBeenCalled();
+  });
+
+  it("bounds a stalled mutation and releases the worker for a later retry", async () => {
+    const h = harness([sale("a")]);
+    h.createOrder.mockImplementationOnce(() => new Promise<string>(() => {}));
+    jest.useFakeTimers();
+    try {
+      const result = syncOutbox(h.deps);
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(h.remove).not.toHaveBeenCalled();
+      // Await only after verifying a timeout actually fired (old code hangs).
+      expect(getConnectivity().status).toBe("offline");
+      await expect(result).resolves.toMatchObject({ synced: 0, stoppedOffline: true });
+      await expect(syncOutbox(h.deps)).resolves.toMatchObject({ synced: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("a second trigger joins the run in flight instead of replaying twice", async () => {

@@ -11,6 +11,7 @@ import {
   getManualUpsellItems,
   getUpsellsForCart,
   getStarItems,
+  getQuickAddItems,
   updateCheckoutUpsellSettings,
   getSmartUpgradeSuggestions,
   generateSmartPairSuggestions,
@@ -210,16 +211,20 @@ export async function getCheckoutUpsellsAction(
   maxItems: number = 4
 ) {
   try {
-    // Fetch all 3 tiers in parallel (each is Redis-cached individually)
-    const [manualItems, complementary, stars] = await Promise.all([
-      getManualUpsellItems(tenantId, maxItems),
+    // Fetch every tier in parallel (each is Redis-cached individually). Asked
+    // for extra so items already in the cart can drop out and still fill the row.
+    const poolSize = maxItems + cartItemIds.length
+    const [manualItems, complementary, stars, quickAdds] = await Promise.all([
+      getManualUpsellItems(tenantId, poolSize),
       cartItemIds.length > 0
         ? getUpsellsForCart(cartItemIds, tenantId).catch(() => [] as MenuItem[])
         : Promise.resolve([] as MenuItem[]),
-      getStarItems(tenantId, maxItems).catch(() => [] as MenuItem[]),
+      getStarItems(tenantId, poolSize).catch(() => [] as MenuItem[]),
+      getQuickAddItems(tenantId, poolSize).catch(() => [] as MenuItem[]),
     ])
 
-    // Merge with priority: manual > complementary > stars
+    // Hand-picked (Boost Sales "I'll choose") means exactly the merchant's
+    // picks. Automatic: pairings for this cart > stars > quick add-ons.
     const collectedItems: MenuItem[] = []
     const seenIds = new Set(cartItemIds)
 
@@ -232,9 +237,13 @@ export async function getCheckoutUpsellsAction(
       }
     }
 
-    addUnique(manualItems)
-    addUnique(complementary)
-    addUnique(stars)
+    if (manualItems.length > 0) {
+      addUnique(manualItems)
+    } else {
+      addUnique(complementary)
+      addUnique(stars)
+      addUnique(quickAdds)
+    }
 
     return { success: true, data: collectedItems.slice(0, maxItems) }
   } catch (error) {

@@ -9,7 +9,6 @@ export type CardTemplate =
   | 'minimal'      // Clean, minimal design with subtle borders
   | 'modern'       // Overlapping elements, bold typography
   | 'elegant'      // Sophisticated with soft shadows
-  | 'compact'      // Horizontal layout, info beside image
   | 'bold'         // High contrast, prominent CTA
   | 'glass'        // Glassmorphism with frosted glass effect
   | 'polaroid'     // Retro photo-style with thick frame
@@ -24,6 +23,7 @@ export type CardTemplate =
   | 'sticker'      // Promo card with a rotated price sticker
   | 'menuboard'    // Café menu-board row: thumbnail, dotted leader, price
   | 'arch'         // Arch-framed photo, centered specialty-café card
+  | 'bistro'       // White card, wide photo, serif caps name, pill add button
 
 export interface CardTemplateDefinition {
   id: CardTemplate
@@ -85,18 +85,6 @@ export const CARD_TEMPLATES: CardTemplateDefinition[] = [
       'Refined spacing',
       'Elevated aesthetics',
       'Premium feel'
-    ]
-  },
-  {
-    id: 'compact',
-    name: 'Compact',
-    description: 'Horizontal layout showing more items',
-    preview: '📊',
-    features: [
-      'Horizontal orientation',
-      'Space-efficient',
-      'Quick scanning',
-      'Mobile-optimized'
     ]
   },
   {
@@ -242,8 +230,19 @@ export const CARD_TEMPLATES: CardTemplateDefinition[] = [
     preview: '⛩️',
     isFlexible: true,
     features: ['Arch photo frame', 'Centered layout', 'Soft tinted field', 'Pill add button']
+  },
+  {
+    id: 'bistro',
+    name: 'Bistro',
+    description: 'Clean white card with a wide photo, serif capitals and a pill Add button',
+    preview: '🥤',
+    isFlexible: true,
+    features: ['Wide photo on top', 'Serif uppercase name', 'Two-line description', 'Price beside a pill Add']
   }
 ]
+
+/** Every card template id, in picker order. */
+export const CARD_TEMPLATE_IDS = CARD_TEMPLATES.map((t) => t.id)
 
 /**
  * Get template definition by ID

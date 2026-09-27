@@ -55,6 +55,7 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   categories: { label: "Categories", icon: "list", hint: "Menu sections, their order and icons" },
   inventory: { label: "Stock", icon: "stock", hint: "Ingredients, counts and transfers" },
   payments: { label: "Payments", icon: "payments", hint: "How customers pay you" },
+  vouchers: { label: "Vouchers", icon: "voucher", hint: "Promo codes for checkout and the counter" },
   portfolio: { label: "Branches", icon: "storefront", hint: "Every branch at a glance — tap one to run it" },
   "branch-menu": { label: "Branch products", icon: "list", hint: "Which branch sells what" },
 };

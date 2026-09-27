@@ -39,6 +39,9 @@ import type { ActivityFeedEntry } from '@/lib/inventory/activity-feed'
 import { cn } from '@/lib/utils'
 import { StockHistoryList } from '@/components/admin/stock-history-list'
 import { InventoryTable } from '@/components/admin/inventory-table'
+import { ImportWizard } from '@/components/admin/inventory-import/import-wizard'
+import { useIngredientSpreadsheets } from '@/components/admin/inventory-import/use-ingredient-spreadsheets'
+import { mergeImportedItems } from '@/lib/inventory/import/merge-items'
 import { StockCountPanel } from '@/components/admin/stock-count-panel'
 import type { CountSessionProgress } from '@/lib/inventory/count-session'
 import { buildInventoryRows } from '@/lib/inventory/inventory-table'
@@ -424,6 +427,8 @@ function IngredientsTab({
 }: IngredientsTabProps) {
   const router = useRouter()
   const [isUnitsOpen, setIsUnitsOpen] = useState(false)
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const spreadsheets = useIngredientSpreadsheets({ ingredients, units, storeName: tenantSlug })
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<IngredientDraft>(EMPTY_INGREDIENT_DRAFT)
@@ -664,6 +669,25 @@ function IngredientsTab({
         onRecipe={(id) => toggleRecipe(id)}
         onDelete={withItem(handleDelete)}
         onManageUnits={() => setIsUnitsOpen(true)}
+        onImport={() => setIsImportOpen(true)}
+        onExport={spreadsheets.exportIngredients}
+        onDownloadTemplate={spreadsheets.downloadTemplate}
+      />
+
+      <ImportWizard
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        tenantId={tenantId}
+        storeName={tenantSlug}
+        ingredients={ingredients}
+        units={units}
+        branches={branches}
+        isTemplatePending={spreadsheets.pending === 'template'}
+        onDownloadTemplate={spreadsheets.downloadTemplate}
+        onImported={(saved) => {
+          onChange(mergeImportedItems(ingredients, saved))
+          router.refresh()
+        }}
       />
 
       <InventoryLogs

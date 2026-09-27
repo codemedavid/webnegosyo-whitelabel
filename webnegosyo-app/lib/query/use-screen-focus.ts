@@ -10,7 +10,7 @@
  * instead of throwing.
  */
 
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { NavigationContext } from "@react-navigation/native";
 
 export interface FocusRefetchInput {
@@ -52,4 +52,41 @@ export function useRefetchOnScreenFocus(input: FocusRefetchInput): void {
       void refetch();
     });
   }, [navigation, input.enabled]);
+}
+
+/** The slice of a navigation object `useIsScreenFocused` reads. */
+interface FocusableNavigation {
+  isFocused?: () => boolean;
+  addListener: (event: "focus" | "blur", callback: () => void) => () => void;
+}
+
+function readFocused(navigation: FocusableNavigation | undefined): boolean {
+  if (!navigation || typeof navigation.isFocused !== "function") return true;
+  return navigation.isFocused();
+}
+
+/**
+ * Whether the screen this hook renders in is the one in view.
+ *
+ * True outside a navigator — the global watchers mounted in the tab layout
+ * (auto-print, order alerts) must never stop — and true for a navigator that
+ * cannot say. A tab that is mounted but not shown reads false, which is what
+ * lets its reads stop polling instead of running for the life of the session.
+ */
+export function useIsScreenFocused(): boolean {
+  const navigation = useContext(NavigationContext) as FocusableNavigation | undefined;
+  const [isFocused, setFocused] = useState(() => readFocused(navigation));
+
+  useEffect(() => {
+    if (!navigation) return;
+    setFocused(readFocused(navigation));
+    const offFocus = navigation.addListener("focus", () => setFocused(true));
+    const offBlur = navigation.addListener("blur", () => setFocused(false));
+    return () => {
+      offFocus();
+      offBlur();
+    };
+  }, [navigation]);
+
+  return navigation ? isFocused : true;
 }

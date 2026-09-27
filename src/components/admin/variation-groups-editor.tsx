@@ -4,7 +4,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import { ImageUpload } from '@/components/shared/image-upload'
 import type { VariationType, VariationOption } from '@/types/database'
 
@@ -33,18 +33,19 @@ export function VariationGroupsEditor({
   onUpdateVariationOption,
 }: VariationGroupsEditorProps) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Variation Types</CardTitle>
+    <EditorSection
+      title="Choices"
+      description="Groups like Size or Spice level. Customers pick one option from each."
+      action={
         <Button type="button" variant="outline" size="sm" onClick={onAddVariationType}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Variation Type
+          <Plus className="mr-1.5 h-4 w-4" />
+          Add group
         </Button>
-      </CardHeader>
-      <CardContent>
+      }
+    >
         {variationTypes.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            No variation types. Add groups like Size, Spice Level, Protein Type, etc.
+          <p className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">
+            No choices yet. Add a group like Size or Spice level.
           </p>
         ) : (
           <div className="space-y-6">
@@ -54,7 +55,7 @@ export function VariationGroupsEditor({
                 <div className="flex items-start gap-3">
                   <div className="flex-1 space-y-3">
                     <Input
-                      placeholder="Type Name (e.g., Size, Spice Level)"
+                      placeholder="Group name, e.g. Size"
                       value={variationType.name}
                       onChange={(e) => onUpdateVariationType(typeIndex, 'name', e.target.value)}
                       className="font-medium"
@@ -66,7 +67,7 @@ export function VariationGroupsEditor({
                         onChange={(e) => onUpdateVariationType(typeIndex, 'is_required', e.target.checked)}
                         className="h-4 w-4"
                       />
-                      <span className="text-sm">Required (customer must select)</span>
+                      <span className="text-sm">Customer must pick one</span>
                     </label>
                   </div>
                   <Button
@@ -74,7 +75,8 @@ export function VariationGroupsEditor({
                     variant="ghost"
                     size="icon"
                     onClick={() => onRemoveVariationType(typeIndex)}
-                    className="text-red-500 hover:text-red-600"
+                    aria-label="Delete group"
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -102,7 +104,7 @@ export function VariationGroupsEditor({
                   ) : (
                     <div className="space-y-3">
                       {variationType.options.map((option, optionIndex) => (
-                        <div key={option.id} className="border rounded-md p-3 space-y-3 bg-gray-50">
+                        <div key={option.id} className="space-y-3 rounded-lg border bg-muted/30 p-3">
                           <div className="flex gap-2">
                             <Input
                               placeholder="Option name (e.g., Small)"
@@ -115,7 +117,8 @@ export function VariationGroupsEditor({
                             <Input
                               type="number"
                               step="0.01"
-                              placeholder="Price modifier"
+                              placeholder="+₱0"
+                              aria-label="Extra charge"
                               value={option.price_modifier}
                               onChange={(e) =>
                                 onUpdateVariationOption(
@@ -132,7 +135,8 @@ export function VariationGroupsEditor({
                               variant="ghost"
                               size="icon"
                               onClick={() => onRemoveVariationOption(typeIndex, optionIndex)}
-                              className="text-red-500"
+                              aria-label="Remove option"
+                              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -140,7 +144,7 @@ export function VariationGroupsEditor({
 
                           {/* Image Upload for Option */}
                           <div className="space-y-2">
-                            <Label className="text-xs">Option Image (Optional)</Label>
+                            <Label className="text-xs">Photo (optional)</Label>
                             <ImageUpload
                               currentImageUrl={option.image_url || ''}
                               onImageUploaded={(url) =>
@@ -172,7 +176,6 @@ export function VariationGroupsEditor({
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+    </EditorSection>
   )
 }

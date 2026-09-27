@@ -20,6 +20,7 @@
 import { supabase } from "../supabase";
 import { normalizePhoneE164 } from "../phone";
 import type { ValidatedCustomer } from "./validation";
+import { parseTopItems, type TopItem } from "./profile";
 
 /**
  * Explicit column list rather than `select("*")`: this table is PII, and a
@@ -197,6 +198,33 @@ export async function getCustomer(
 
   if (error) raise(error as PostgrestFailure);
   return data ? toRecord(data as unknown as Record<string, unknown>) : null;
+}
+
+/** One guest as the profile screen shows them: the record plus their favourites. */
+export interface CustomerProfile extends CustomerRecord {
+  topItems: TopItem[];
+}
+
+/**
+ * One guest for the profile screen. `top_items` is read only here: the list and
+ * the export never show it, so they do not pay for the jsonb on every row.
+ */
+export async function getCustomerProfile(
+  tenantId: string,
+  customerId: string
+): Promise<CustomerProfile | null> {
+  const { data, error } = await supabase
+    .from("customers")
+    .select(`${COLUMNS}, top_items`)
+    // Both filters, always — see `getCustomer`.
+    .eq("tenant_id", tenantId)
+    .eq("id", customerId)
+    .maybeSingle();
+
+  if (error) raise(error as PostgrestFailure);
+  if (!data) return null;
+  const row = data as unknown as Record<string, unknown>;
+  return { ...toRecord(row), topItems: parseTopItems(row.top_items) };
 }
 
 /** Pre-flight dedupe lookup, so a repeat guest is offered rather than rejected. */

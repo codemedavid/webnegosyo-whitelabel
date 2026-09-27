@@ -67,7 +67,15 @@ export async function runPlatformLalamoveOp(
   input: LalamoveOpInput,
   options: { timeoutMs?: number } = {},
 ): Promise<LalamoveOpResult> {
-  const token = await accessToken();
+  let token: string | null;
+  try {
+    token = await accessToken();
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Could not read your session. Sign in and try again.",
+    };
+  }
   if (!token) {
     return { success: false, error: "You are signed out. Sign in and try again." };
   }
@@ -88,10 +96,9 @@ export async function runPlatformLalamoveOp(
     }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   });
 
-  let response: Response;
   try {
-    response = await Promise.race([
-      fetch(`${getWebAppUrl()}/api/lalamove`, {
+    const request = async (): Promise<LalamoveOpResult> => {
+      const response = await fetch(`${getWebAppUrl()}/api/lalamove`, {
         method: "POST",
         signal: controller.signal,
         headers: {
@@ -104,9 +111,18 @@ export async function runPlatformLalamoveOp(
           orderId: input.orderId,
           ...(input.amount === undefined ? {} : { amount: input.amount }),
         }),
-      }),
-      expiry,
-    ]);
+      });
+      const body = (await response.json().catch(() => null)) as LalamoveOpResult | null;
+      if (!response.ok) {
+        return { success: false, error: body?.error ?? `Request failed (${response.status})` };
+      }
+      return {
+        success: body?.success === true,
+        error: body?.error,
+        ...(body?.recipientPhoneSource ? { recipientPhoneSource: body.recipientPhoneSource } : {}),
+      };
+    };
+    return await Promise.race([request(), expiry]);
   } catch (error) {
     if (timedOut) return { success: false, error: TIMEOUT_MESSAGE };
     return {
@@ -116,16 +132,4 @@ export async function runPlatformLalamoveOp(
   } finally {
     clearTimeout(timer);
   }
-
-  const body = (await response.json().catch(() => null)) as LalamoveOpResult | null;
-
-  if (!response.ok) {
-    return { success: false, error: body?.error ?? `Request failed (${response.status})` };
-  }
-
-  return {
-    success: body?.success === true,
-    error: body?.error,
-    ...(body?.recipientPhoneSource ? { recipientPhoneSource: body.recipientPhoneSource } : {}),
-  };
 }

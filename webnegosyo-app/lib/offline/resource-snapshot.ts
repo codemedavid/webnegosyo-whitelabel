@@ -5,7 +5,7 @@
  * quit, so an offline launch had nothing to sell from. This wraps a fetcher:
  * a successful read is written to AsyncStorage (only when its bytes changed,
  * so the 10-second focus refetch costs no disk writes while nothing moves),
- * and a FAILED read answers from that copy instead of erroring.
+ * and an unreachable read answers from that copy instead of erroring.
  *
  * The online path is untouched — the server is always asked first, and the
  * snapshot is consulted only after it has failed to answer. A read that has
@@ -18,6 +18,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { reportOnline, reportOutcome } from "./connectivity";
+import { isNetworkFailure } from "./network-error";
 
 export const RESOURCE_SNAPSHOT_PREFIX = "offline_res_v1:";
 
@@ -35,13 +36,15 @@ export function resourceSnapshotKey(queryKey: readonly unknown[]): string {
 
 async function persistSnapshot<T>(storageKey: string, value: T, now: number): Promise<void> {
   let serialized: string;
+  let fingerprint: string;
   try {
+    fingerprint = JSON.stringify({ value });
     serialized = JSON.stringify({ savedAt: now, value } satisfies StoredSnapshot<T>);
   } catch {
     return;
   }
-  if (lastWritten.get(storageKey) === serialized) return;
-  lastWritten.set(storageKey, serialized);
+  if (lastWritten.get(storageKey) === fingerprint) return;
+  lastWritten.set(storageKey, fingerprint);
   try {
     await AsyncStorage.setItem(storageKey, serialized);
   } catch (error) {
@@ -71,7 +74,7 @@ export interface SnapshotDeps {
 }
 
 /**
- * Run `fetcher`; on success remember the answer, on failure answer from the
+ * Run `fetcher`; on success remember the answer, on network failure answer from the
  * last remembered one. Rethrows the original failure when there is nothing
  * remembered. Reports the outcome to the connectivity belief either way.
  */
@@ -88,6 +91,7 @@ export async function withOfflineSnapshot<T>(
     return value;
   } catch (error) {
     reportOutcome(error, now());
+    if (!isNetworkFailure(error)) throw error;
     const snapshot = await readResourceSnapshot<T>(storageKey);
     if (snapshot === null) throw error;
     return snapshot.value;

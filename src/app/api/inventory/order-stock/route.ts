@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isUuid } from '@/lib/uuid'
 import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
+import { parseStockAuditSource, type StockAuditContext } from '@/lib/inventory/stock-audit'
 import { createClient } from '@supabase/supabase-js'
 
 /**
@@ -193,9 +194,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const actorOutletId = orderOutletId ?? accountOutletId
 
+  // For the audit log: WHICH screen asked (register, QR scan, order list …) and
+  // WHO was signed in. The source is a label from a fixed list, never an
+  // authority — an unknown or missing value (every app build before this
+  // field existed) is recorded as the merchant app.
+  const audit: StockAuditContext = {
+    source: parseStockAuditSource(body?.source, 'merchant_app'),
+    actorUserId: user.id,
+  }
+
   if (action === 'restore') {
     const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-    await reverseOrderStockBestEffort(tenantId, orderId)
+    await reverseOrderStockBestEffort(tenantId, orderId, audit)
     return NextResponse.json({ success: true })
   }
 
@@ -225,6 +235,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       toDepletionItems(body?.deplete),
       toDepletionItems(body?.restore),
       actorOutletId,
+      audit,
     )
     return NextResponse.json({ success: true })
   }
@@ -232,7 +243,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const items = toDepletionItems(rawItems)
 
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await applyOrderStockBestEffort(tenantId, orderId, items, 'sale', 0, actorOutletId)
+  await applyOrderStockBestEffort(tenantId, orderId, items, 'sale', 0, actorOutletId, { context: audit })
 
   return NextResponse.json({ success: true })
 }

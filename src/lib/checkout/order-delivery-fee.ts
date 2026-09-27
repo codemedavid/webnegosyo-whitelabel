@@ -7,10 +7,9 @@
  * Anything else carries no fee. The distance fee is recomputed here from the
  * store and destination coordinates; the browser's number is ignored.
  *
- * RESIDUAL RISK: a Lalamove fee cannot be recomputed without re-quoting
- * Lalamove (and a failed re-quote after the optimistic confirmation screen
- * would be an invisible refusal), so it is range-checked only. A forged
- * request can still under-state a Lalamove fee within [0, MAX_DELIVERY_FEE].
+ * A Lalamove fee cannot be recomputed without re-quoting Lalamove, so the
+ * caller passes the price the quote action SIGNED (see
+ * delivery-quote-signature.ts) as `clientFee` — never the browser's number.
  *
  * Pure: the caller supplies config and coordinates.
  */
@@ -27,7 +26,10 @@ export function isValidClientDeliveryFee(fee: unknown): boolean {
 }
 
 export interface OrderDeliveryFeeInput {
-  /** Already checked with `isValidClientDeliveryFee`. */
+  /**
+   * Already checked with `isValidClientDeliveryFee`. For a Lalamove order this
+   * is the verified, signed quotation price.
+   */
   clientFee: number | null | undefined
   isDeliveryOrder: boolean
   lalamoveEnabled: boolean

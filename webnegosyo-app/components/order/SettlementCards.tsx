@@ -7,6 +7,7 @@ import {
   toPaymentLines,
   toRevisionLines,
   summarizeSettlement,
+  toSettlementDisplay,
   type OrderPaymentLike,
   type OrderRevisionLike,
 } from "../../lib/order-history-view";
@@ -25,6 +26,11 @@ interface SettlementCardProps {
   payments: readonly OrderPaymentLike[];
   /** Hidden entirely when the backend cannot serve a ledger. */
   isLedgerAvailable: boolean;
+  /**
+   * The screen's verdict from BOTH payment records. An order paid online or
+   * handed over is settled with an empty ledger, and must not read as owing.
+   */
+  isOrderUnpaid: boolean;
 }
 
 const INTENT_COPY: Record<string, { label: string; tone: string; bg: string }> = {
@@ -37,10 +43,13 @@ export function SettlementCard({
   total,
   payments,
   isLedgerAvailable,
+  isOrderUnpaid,
 }: SettlementCardProps) {
   if (!isLedgerAvailable) return null;
 
-  const summary = summarizeSettlement(total, payments);
+  const summary = toSettlementDisplay(summarizeSettlement(total, payments), {
+    isOrderUnpaid,
+  });
   const lines = toPaymentLines(payments);
   const intent = INTENT_COPY[summary.intent] ?? INTENT_COPY.settled;
 
@@ -54,7 +63,7 @@ export function SettlementCard({
       </View>
 
       {lines.length === 0 ? (
-        <Text style={styles.empty}>Nothing has been collected for this order yet.</Text>
+        <Text style={styles.empty}>{summary.emptyNote}</Text>
       ) : (
         lines.map((line) => (
           <View key={line._id} style={styles.row}>

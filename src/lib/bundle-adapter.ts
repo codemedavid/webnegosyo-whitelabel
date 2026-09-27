@@ -40,8 +40,13 @@ export function bundleToMenuItem(bundle: BundleWithSlots, allMenuItems?: MenuIte
     .map((s) => (s.pick_count > 1 ? `${s.pick_count}× ${s.name}` : s.name))
     .join(' + ')
 
-  // Use bundle image
-  const imageUrl = bundle.image_url || ''
+  // A combo without its own photo borrows the first photo among its items,
+  // so a merchant can publish one from Boost Sales without shooting it first.
+  const slotItemImage = slots
+    .flatMap((slot) => slot.items ?? [])
+    .map((item) => item.image_url?.trim())
+    .find(Boolean)
+  const imageUrl = bundle.image_url || slotItemImage || ''
 
   return {
     id: `bundle_${bundle.id}`,

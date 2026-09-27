@@ -7,6 +7,7 @@ import { TenantFlashProvider } from '@/components/customer/flash-screen-loader'
 import { resolveFlashScreenBranding } from '@/lib/flash-loader'
 import { resolveTenantFavicon } from '@/lib/tenant-favicon'
 import { omitTenantSecrets } from '@/lib/tenant-public'
+import { SeniorModeProvider } from '@/components/customer/senior-mode/senior-mode-provider'
 
 type Props = {
     params: Promise<{ tenant: string }>
@@ -50,11 +51,14 @@ export default async function TenantLayout({ params, children }: Props) {
 
     return (
         <TenantFlashProvider branding={flashBranding}>
-            <Suspense fallback={null}>
-                <NavigationProgress color={primaryColor} />
-            </Suspense>
-            {children}
-            <SiteFooter tenant={omitTenantSecrets(tenant)} />
+            {/* Merchant's senior-friendly toggle; inert on /admin and /login. */}
+            <SeniorModeProvider isSavedOn={tenant?.senior_friendly_mode}>
+                <Suspense fallback={null}>
+                    <NavigationProgress color={primaryColor} />
+                </Suspense>
+                {children}
+                <SiteFooter tenant={omitTenantSecrets(tenant)} />
+            </SeniorModeProvider>
         </TenantFlashProvider>
     )
 }

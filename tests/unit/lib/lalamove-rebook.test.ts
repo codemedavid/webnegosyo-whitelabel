@@ -29,6 +29,9 @@ describe('isRebookableLalamoveStatus', () => {
 })
 
 describe('resolveRequoteGate', () => {
+  test('refuses a pending booking whose provider ID is not known yet', () => {
+    expect(resolveRequoteGate({ lalamoveOrderId: null, lalamoveStatus: 'BOOKING' }).ok).toBe(false)
+  })
   test('an order that was never booked can be quoted, retiring nothing', () => {
     expect(resolveRequoteGate({ lalamoveOrderId: null, lalamoveStatus: null })).toEqual({
       ok: true,

@@ -305,19 +305,45 @@ describe('lalamove server actions', () => {
   })
 
   describe('createQuotationAction', () => {
+    const previousSecret = process.env.API_SECRET
+    beforeEach(() => { process.env.API_SECRET = 'quote-test-secret' })
+    afterEach(() => {
+      if (previousSecret === undefined) delete process.env.API_SECRET
+      else process.env.API_SECRET = previousSecret
+    })
     function mockQuote() {
       return import('@/lib/lalamove-service').then((service) => {
         ;(service.createLalamoveQuotation as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
           quotationId: 'q1',
           price: 100,
           currency: 'PHP',
-          expiresAt: new Date(),
+          expiresAt: new Date(Date.now() + 300_000),
           distance: '0 km',
           duration: '0 min',
         })
         return service
       })
     }
+
+    test('does not report a successful quote when signing is unavailable', async () => {
+      await mockQuote()
+      delete process.env.API_SECRET
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121, 'Home', 14.7, 121.1)
+      expect(result.success).toBe(false)
+    })
+
+    test('binds the signed price to the provider expiry and destination', async () => {
+      await mockQuote()
+      const { createQuotationAction } = await import('@/app/actions/lalamove')
+      const { verifyDeliveryQuote } = await import('@/lib/checkout/delivery-quote-signature')
+      const result = await createQuotationAction('t1', 'Store', 14.6, 121, 'Home', 14.7, 121.1)
+      expect(result.success).toBe(true)
+      expect(typeof result.data?.expiresAt).toBe('string')
+      expect(verifyDeliveryQuote(result.data?.quoteSignature, {
+        tenantId: 't1', quotationId: 'q1', destination: { address: 'Home', lat: 14.7, lng: 121.1 },
+      })).toEqual({ ok: true, fee: 100 })
+    })
 
     test('refuses when the tenant is over the quotation rate limit', async () => {
       const { checkRateLimit } = await import('@/lib/distributed-rate-limit')

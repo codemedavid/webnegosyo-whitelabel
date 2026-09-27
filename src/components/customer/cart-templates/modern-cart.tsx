@@ -19,6 +19,7 @@ import {
   CartEmptyState,
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
+import { CartOffers } from './cart-shared'
 
 export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
   if (!cart.tenant) return null
@@ -36,7 +37,7 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
   return (
     <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
       {/* Sticky header */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+      <header data-senior-hidden className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="container mx-auto flex h-16 items-center gap-3 px-4 md:h-20">
           <button
             type="button"
@@ -74,6 +75,7 @@ export function ModernCart({ cart }: { cart: UseCartViewReturn }) {
                 <CartBundleRow key={bundleItem.id} cart={cart} bundleItem={bundleItem} />
               ))}
             </div>
+            <CartOffers cart={cart} />
 
             {/* RIGHT: sticky order summary */}
             <div className="lg:col-span-1">

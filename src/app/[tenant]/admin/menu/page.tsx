@@ -1,8 +1,7 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { FolderOpen, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getMenuItemsByTenant } from '@/lib/admin-service'
 import { MenuItemsList } from '@/components/admin/menu-items-list'
@@ -69,25 +68,26 @@ export default async function AdminMenuPage({
   const tenant: Tenant = tenantData
 
   return (
-    <div className="space-y-6">
-      <Breadcrumbs
-        items={[
-          { label: 'Dashboard', href: `/${tenantSlug}/admin` },
-          { label: 'Menu Management' },
-        ]}
-      />
-
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Menu Management</h1>
-          <p className="text-muted-foreground">Manage your restaurant menu items</p>
+    <div className="mx-auto max-w-4xl space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold">Menu</h1>
+          <p className="text-sm text-muted-foreground">Tap a dish to edit it. Use the switch when something runs out.</p>
         </div>
-        <Link href={`/${tenantSlug}/admin/menu/new`}>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Item
-          </Button>
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link href={`/${tenantSlug}/admin/categories`} className="hidden sm:block">
+            <Button variant="outline" className="h-11">
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Categories
+            </Button>
+          </Link>
+          <Link href={`/${tenantSlug}/admin/menu/new`}>
+            <Button className="h-11 px-5">
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add dish
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <Suspense fallback={<MenuSkeleton />}>

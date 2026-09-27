@@ -268,16 +268,19 @@ export async function exchangeAuthorizationCode(
     throw new Error('invalid_grant: authorization code is not a merchant grant')
   }
 
-  // Single-use: consume the code before issuing tokens.
-  const { error: consumeError } = await client
+  // Claim atomically: concurrent requests may both have read an unused code.
+  const { data: consumed, error: consumeError } = await client
     .from('mcp_oauth_codes')
     .update({ consumed_at: new Date(now).toISOString() })
     .eq('id', row.id)
+    .is('consumed_at', null)
+    .gt('expires_at', new Date(now).toISOString())
     .select('id')
-    .single()
+    .maybeSingle()
   if (consumeError) {
     throw new Error(`Failed to consume authorization code: ${consumeError.message}`)
   }
+  if (!consumed) throw new Error('invalid_grant: authorization code already used or expired')
 
   return issueTokens(client, {
     clientId: row.client_id,

@@ -32,7 +32,7 @@ describe("runPosSaleBookkeeping", () => {
       deps
     );
 
-    expect(deps.stock).toHaveBeenCalledWith("t", "abcdef123456", expect.any(Array));
+    expect(deps.stock).toHaveBeenCalledWith("t", "abcdef123456", expect.any(Array), "pos");
     expect(deps.loyverse).toHaveBeenCalledWith("t", "123456", expect.any(Array));
     expect(deps.vouchers).toHaveBeenCalledWith("t", "abcdef123456", [], "o");
     expect(deps.activity).toHaveBeenCalledWith("t", {

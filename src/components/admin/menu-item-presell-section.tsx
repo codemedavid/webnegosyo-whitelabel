@@ -14,7 +14,6 @@
  */
 
 import dynamic from 'next/dynamic'
-import { CalendarDays } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import type { DraftAllocation } from '@/lib/presell/allocation-draft'
@@ -88,20 +87,15 @@ export function MenuItemPresellSection({
   loadError,
 }: MenuItemPresellSectionProps) {
   return (
-    <section className="rounded-xl border" aria-labelledby="presell-heading">
-      <div className="flex items-start justify-between gap-4 p-4">
-        <div className="flex min-w-0 gap-3">
-          <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-600/10 text-sky-700 dark:text-sky-300">
-            <CalendarDays className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <Label id="presell-heading" htmlFor="presell_enabled" className="text-sm font-semibold">
-              Pre-order with limited stock per date
-            </Label>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Customers pick a pickup date when they order. Each date sells only what you allocate below.
-            </p>
-          </div>
+    <section className="overflow-hidden rounded-lg border bg-background" aria-labelledby="presell-heading">
+      <div className="flex items-center justify-between gap-4 p-4">
+        <div className="min-w-0">
+          <Label id="presell-heading" htmlFor="presell_enabled" className="text-sm font-semibold">
+            Take pre-orders for this dish
+          </Label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Customers pick a pickup date. Each date sells only what you set below.
+          </p>
         </div>
         <Switch id="presell_enabled" checked={isEnabled} onCheckedChange={onToggle} />
       </div>

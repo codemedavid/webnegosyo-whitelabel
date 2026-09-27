@@ -393,6 +393,52 @@ export async function getStarItems(tenantId: string, limit: number = 4): Promise
   )
 }
 
+/**
+ * The automatic cart suggestions' last tier: quick additions — drinks,
+ * desserts and sides, featured first, then the merchant's menu order. Stars
+ * alone could not carry "automatic": 12 of ~18k live items are classified.
+ */
+export async function getQuickAddItems(tenantId: string, limit: number = 8): Promise<MenuItem[]> {
+  const cacheKey = generateCacheKey('checkout:quickadd', `${tenantId}:${limit}`)
+
+  return getCachedOrFetch(
+    cacheKey,
+    async () => {
+      const { classifyMenuRole } = await import('@/lib/boost/menu-roles')
+      const supabase = await createClient()
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons, category:categories(name)')
+        .eq('tenant_id', tenantId)
+        .eq('is_available', true)
+        .order('is_featured', { ascending: false })
+        .order('order', { ascending: true })
+        .limit(200)
+
+      if (error) throw error
+
+      type QuickAddRow = MenuItem & { category?: { name?: string | null } | null }
+      return ((data || []) as unknown as QuickAddRow[])
+        .filter((row) => {
+          const role = classifyMenuRole({ categoryName: row.category?.name, itemName: row.name })
+          return role === 'drink' || role === 'dessert' || role === 'side'
+        })
+        .slice(0, limit)
+        .map((row): MenuItem => {
+          const item: QuickAddRow = { ...row }
+          delete item.category
+          return {
+            ...item,
+            variations: item.variations || [],
+            variation_types: item.variation_types || [],
+            addons: item.addons || [],
+          }
+        })
+    },
+    CACHE_TTL.CHECKOUT_UPSELL
+  )
+}
+
 /** Items manually marked by admin to appear in the checkout upsell */
 export async function getManualUpsellItems(tenantId: string, limit: number = 8): Promise<MenuItem[]> {
   const cacheKey = generateCacheKey('checkout:manual', `${tenantId}:${limit}`)

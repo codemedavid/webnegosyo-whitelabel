@@ -59,9 +59,11 @@ export function ProductCostField({
   }, [hasCost, cost, costNotes, menuItemId, convexSave])
 
   return (
-    <div className="space-y-3 rounded-lg border border-dashed p-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Cost & Margin Analysis</Label>
+        <p className="text-sm text-muted-foreground">
+          {hasCost ? 'Your margin on each order' : 'Enter what one order costs you to see your profit.'}
+        </p>
         {hasCost && (
           <Badge
             variant={marginPercent >= 40 ? 'default' : marginPercent >= 20 ? 'secondary' : 'destructive'}
@@ -73,7 +75,7 @@ export function ProductCostField({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="cost_price">Cost Price (₱)</Label>
+          <Label htmlFor="cost_price">Cost to make (₱)</Label>
           <Input
             id="cost_price"
             type="number"
@@ -81,14 +83,15 @@ export function ProductCostField({
             value={costPrice}
             onChange={(e) => setCostPrice(e.target.value)}
             onBlur={handleSave}
-            placeholder="What it costs to make"
+            inputMode="decimal"
+            placeholder="e.g. 65"
             disabled={isSaving}
           />
         </div>
 
         {hasCost && (
           <div className="space-y-2">
-            <Label>Projected Profit</Label>
+            <Label>You keep</Label>
             <div className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm">
               <span className={profit >= 0 ? 'text-green-600' : 'text-red-600'}>
                 {profit >= 0 ? '+' : ''}{'\u20B1'}{Math.round(profit)} per unit ({marginPercent}%)
@@ -99,7 +102,7 @@ export function ProductCostField({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="cost_notes">Cost Notes</Label>
+        <Label htmlFor="cost_notes">Notes (optional)</Label>
         <Textarea
           id="cost_notes"
           value={costNotes}

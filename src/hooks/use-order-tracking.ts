@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { ACTIVE_ORDERS_STORAGE_PREFIX } from '@/lib/checkout/active-orders-storage'
 
 export interface ActiveOrder {
   orderId: string
@@ -10,7 +11,7 @@ export interface ActiveOrder {
   statusUpdatedAt?: string
 }
 
-const STORAGE_PREFIX = 'active_orders_'
+const STORAGE_PREFIX = ACTIVE_ORDERS_STORAGE_PREFIX
 
 /** Max time (ms) an order can sit in a given status before the banner auto-expires. */
 const STAGE_EXPIRY_MS: Record<string, number> = {

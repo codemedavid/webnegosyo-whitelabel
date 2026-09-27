@@ -5,6 +5,11 @@ import {
   rangeDayCount,
   resolveReportWindow,
   selectionToQueryArgs,
+  supportsBoundedWindow,
+  ordersInWindowArgs,
+  BOUNDED_WINDOW_SCHEMA_VERSION,
+  LEGACY_ORDER_PAGE,
+  WINDOWED_ORDER_LIMIT,
   type ReportSelection,
 } from "./report-window";
 
@@ -127,6 +132,73 @@ describe("selectionToQueryArgs", () => {
       startMs: manilaMidnight("2026-09-01"),
       endMs: manilaMidnight("2026-09-15"),
     });
+  });
+});
+
+describe("selectionToQueryArgs on a backend that serves bounded windows", () => {
+  it("sends a preset as whole Manila calendar days ending tonight", () => {
+    // "Last 7 days" means today and the six days before it — the same days the
+    // Trends bars, Branches and the product view count — never now-minus-168h,
+    // which starts mid-afternoon eight days ago.
+    const args = selectionToQueryArgs({ kind: "preset", days: 7 }, NOW, true);
+
+    expect(args).toEqual({
+      startMs: manilaMidnight("2026-09-13"),
+      endMs: manilaMidnight("2026-09-20"),
+    });
+  });
+
+  it("sends Today as the Manila day, matching the Home takings", () => {
+    const args = selectionToQueryArgs({ kind: "preset", days: 1 }, NOW, true);
+
+    expect(args).toEqual({
+      startMs: manilaMidnight("2026-09-19"),
+      endMs: manilaMidnight("2026-09-20"),
+    });
+  });
+
+  it("still sends a picked day exactly", () => {
+    const args = selectionToQueryArgs({ kind: "day", dayKey: "2026-09-18" }, NOW, true);
+
+    expect(args).toEqual({
+      startMs: manilaMidnight("2026-09-18"),
+      endMs: manilaMidnight("2026-09-19"),
+    });
+  });
+});
+
+describe("supportsBoundedWindow", () => {
+  it("is true for the platform backend, whatever its Convex version", () => {
+    expect(supportsBoundedWindow("platform", null)).toBe(true);
+  });
+
+  it("is true for a Convex store deployed at or past the bounded-window bundle", () => {
+    expect(supportsBoundedWindow("convex", BOUNDED_WINDOW_SCHEMA_VERSION)).toBe(true);
+    expect(supportsBoundedWindow("convex", 34)).toBe(true);
+  });
+
+  it("is false for an older or unknown Convex bundle, which would reject startMs", () => {
+    expect(supportsBoundedWindow("convex", 28)).toBe(false);
+    expect(supportsBoundedWindow("convex", null)).toBe(false);
+    expect(supportsBoundedWindow("convex", undefined)).toBe(false);
+  });
+
+  it("is false while the route is unresolved", () => {
+    expect(supportsBoundedWindow("idle", 40)).toBe(false);
+    expect(supportsBoundedWindow("unsupported", 40)).toBe(false);
+  });
+});
+
+describe("ordersInWindowArgs", () => {
+  const window = { startMs: manilaMidnight("2026-09-13"), endMs: manilaMidnight("2026-09-20") };
+
+  it("reads exactly the window when the backend can bound it", () => {
+    expect(ordersInWindowArgs(window, true)).toEqual({ ...window, limit: WINDOWED_ORDER_LIMIT });
+  });
+
+  it("keeps the old most-recent page on a backend that would reject startMs", () => {
+    expect(ordersInWindowArgs(window, false)).toEqual({ limit: LEGACY_ORDER_PAGE });
+    expect(ordersInWindowArgs(window, false, 1000)).toEqual({ limit: 1000 });
   });
 });
 

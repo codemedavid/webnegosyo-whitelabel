@@ -8,6 +8,11 @@
  * never duplicate logic. The return value is the stable API every design
  * consumes via `ReturnType<typeof useCheckout>`.
  *
+ * Data arrives with the page. The server reads the tenant (cached), order
+ * types, form fields, payment methods, branches and the Messenger page id in
+ * one parallel batch (src/lib/checkout/load-checkout-config.ts); this hook
+ * never fetches them. Switching order type is a lookup, not a request.
+ *
  * Load-bearing invariants preserved from the original monolith — do not change:
  *  - `checkoutCompleteRef.current = true` is set synchronously BEFORE `clearCart()`
  *    so the cart-empty redirect effect can't navigate away mid-confirmation.
@@ -15,7 +20,7 @@
  *    after the async quote returns to drop stale quotes.
  */
 
-import { addonQuantity, addonLabel } from '@/lib/addon-quantity'
+import { addonLabel } from '@/lib/addon-quantity'
 import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
@@ -24,24 +29,9 @@ import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType 
 import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-order-save'
 import { awaitSaveBeforeRedirect } from '@/lib/checkout/messenger-redirect-gate'
 import { classifyOrderSave, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
-import { getTenantBySlugClient } from '@/lib/tenants-client'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
-import { getEnabledOrderTypesByTenantClient, getCustomerFormFieldsByOrderTypeClient } from '@/lib/order-types-client'
-import { getPaymentMethodsByOrderTypeClient } from '@/lib/payment-methods-client'
-import {
-  getAdvanceOrderConfig,
-  generateScheduleDates,
-  generateTimeSlots,
-  getFirstAvailableSlot,
-  combineDateAndTime,
-  isValidScheduledTime,
-  formatScheduledFor,
-} from '@/lib/advance-order-utils'
-import { findCartPresellDate } from '@/lib/presell/availability'
-import { presellAdvanceConfig, presellScheduleDates } from '@/lib/presell/checkout-schedule'
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
 import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
-import { normalizeOperatingHours } from '@/lib/operating-hours'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { validateVoucherAction } from '@/app/actions/vouchers'
@@ -63,7 +53,7 @@ import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
-import { extractSelectionIds, extractBundleSlotSelectionIds } from '@/lib/inventory/order-item-selection'
+import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
 import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
@@ -72,10 +62,6 @@ import { resolveActiveOrderType } from '@/lib/checkout-order-type'
 import { clearLinkedTable, preferDineInOrderType, readLinkedTable, seedTableField } from '@/lib/table-qr-param'
 import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
-import { createQuotationAction } from '@/app/actions/lalamove'
-import { calculateDistanceDeliveryFeeAction } from '@/app/actions/delivery'
-import { resolveDeliveryQuotePlan } from '@/lib/delivery-quote'
-import { createClient } from '@/lib/supabase/client'
 import { computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
 import { prepareOrderQr } from '@/lib/qr-order-capacity'
 import { savePendingOrder } from '@/lib/qr-pending-order'
@@ -84,9 +70,20 @@ import { normalizeCustomerData } from '@/lib/customer-field-normalization'
 import { validateCheckoutFields } from '@/lib/checkout-field-validation'
 import { withSmsConsent } from '@/lib/sms-consent'
 import { getTenantBranding } from '@/lib/branding-utils'
+import {
+  carryOverCustomerData,
+  formFieldsForOrderType,
+  paymentMethodsForOrderType,
+  reconcilePaymentSelection,
+  type CheckoutConfig,
+} from '@/lib/checkout/checkout-config'
+import { buildInventorySelections, buildQrOrderItems } from '@/lib/checkout/qr-order-items'
+import { rememberActiveOrder } from '@/lib/checkout/active-orders-storage'
+import { useDeliveryQuote } from '@/hooks/checkout/use-delivery-quote'
+import { useCheckoutSchedule } from '@/hooks/checkout/use-checkout-schedule'
 import { toast } from 'sonner'
-import type { QrOrderItemV1, QrOrderPayloadV1 } from '@/types/qr-order'
-import type { Tenant, OrderType, CustomerFormField, PaymentMethod, CartItem } from '@/types/database'
+import type { QrOrderPayloadV1 } from '@/types/qr-order'
+import type { Tenant, CartItem } from '@/types/database'
 
 export interface CompletedOrderData {
   items: CartItem[]
@@ -112,31 +109,59 @@ export interface CompletedOrderData {
 /** Seconds the confirmation screen counts down before it opens Messenger. */
 const COUNTDOWN_SECONDS = 3
 
-export function useCheckout(tenantSlug: string) {
+/** How long the "copied" tick stays on a copied payment detail. */
+const COPIED_FEEDBACK_MS = 2000
+
+export interface UseCheckoutInput {
+  tenantSlug: string
+  /** The storefront tenant row, read on the server (cached). */
+  initialTenant: Tenant
+  /** Order types, form fields, payment methods, branches — read on the server. */
+  config: CheckoutConfig
+}
+
+export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutInput) {
   const router = useRouter()
-  const { items, bundleItems, total, clearCart, orderType, setOrderType, messengerPsid } = useCart()
+  const {
+    items,
+    bundleItems,
+    total,
+    clearCart,
+    orderType,
+    setOrderType,
+    messengerPsid,
+    isHydrated: isCartHydrated,
+  } = useCart()
 
   // A counter tablet running `?kiosk=1` serves a queue, not a person: it never
   // hands off to Messenger, and it returns itself to the menu after an order.
   const { isKiosk } = useKioskMode(tenantSlug)
 
-  const [fetchedTenant, setTenant] = useState<Tenant | null>(null)
   // Branding Studio live preview — merges the editor's unsaved draft over the
   // saved tenant when the checkout page renders inside the preview iframe.
-  const tenant = useBrandingPreviewTenant(fetchedTenant)
-  const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
-  // Distinguishes "not fetched yet" from "this tenant has none", which the
-  // array alone cannot. The branch picker needs the difference — see
-  // `areOrderTypesReady` in useCheckoutOutlet.
-  const [areOrderTypesReady, setAreOrderTypesReady] = useState(false)
-  const [formFields, setFormFields] = useState<CustomerFormField[]>([])
+  const tenant = useBrandingPreviewTenant(initialTenant)
+  const orderTypes = config.orderTypes
+
+  /**
+   * Whether the stored order type has been checked against THIS tenant's list.
+   * The stored id is shared across every store on the platform (see
+   * lib/checkout-order-type), so it must not drive the form until then. Waits
+   * for the cart's storage read: resolving before it — as the old fetch chain
+   * did on a hard refresh, from a stale closure — replaced the customer's
+   * chosen order type with the tenant's first one.
+   */
+  const [isOrderTypeResolved, setIsOrderTypeResolved] = useState(false)
+  // Nothing is fetched any more: "loading" is only the one tick it takes to
+  // read the cart and the order type out of browser storage.
+  const isLoading = !isCartHydrated || !isOrderTypeResolved
+
+  const formFields = formFieldsForOrderType(config, orderType)
   const [customerData, setCustomerData] = useState<Record<string, string>>({})
   // Permission to text this customer later. Deliberately NOT part of
   // `customerData`: that map is `Record<string, string>`, and both consent read
   // sites compare with `=== true`, so a string "true" would be silently
   // ignored and the customer would never become reachable. See lib/sms-consent.
   const [isSmsOptedIn, setIsSmsOptedIn] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
   const checkoutCompleteRef = useRef(false) // Sync ref to prevent race with cart empty useEffect
@@ -170,21 +195,12 @@ export function useCheckout(tenantSlug: string) {
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null)
   const [trackingToken, setTrackingToken] = useState<string | null>(null)
 
-  // Delivery fee state (Lalamove quotation OR distance-based; Lalamove takes precedence)
-  const [deliveryFee, setDeliveryFee] = useState<number | null>(null)
-  const [quotationId, setQuotationId] = useState<string | null>(null)
-  const [isFetchingDeliveryFee, setIsFetchingDeliveryFee] = useState(false)
-  const [deliveryFeeAddress, setDeliveryFeeAddress] = useState<string>('') // Track which address the fee is for
-  // Distance-based delivery: address is outside the configured radius (blocks delivery submit)
-  const [deliveryOutOfRange, setDeliveryOutOfRange] = useState(false)
-  const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null)
-  // Customer-visible reason the delivery fee couldn't be calculated (e.g. store not set up,
-  // or the quote provider failed). Shown in the order summary instead of failing silently.
-  const [deliveryFeeError, setDeliveryFeeError] = useState<string | null>(null)
-
-  // Payment method state
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null)
+  // Payment methods linked to the chosen order type. The selection is derived:
+  // a choice the new order type does not offer is dropped (an order must never
+  // carry a method not linked to its order type) and a sole method preselects.
+  const paymentMethods = paymentMethodsForOrderType(config, orderType)
+  const [chosenPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null)
+  const selectedPaymentMethod = reconcilePaymentSelection(paymentMethods, chosenPaymentMethod)
   const [qrDialogOpen, setQrDialogOpen] = useState(false)
   const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
@@ -196,13 +212,6 @@ export function useCheckout(tenantSlug: string) {
   const [messageExpanded, setMessageExpanded] = useState(false)
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
 
-  // Advance order (scheduling) state
-  const [scheduleMode, setScheduleMode] = useState<'asap' | 'scheduled'>('asap')
-  const [scheduleDate, setScheduleDate] = useState<string>('') // YYYY-MM-DD (local)
-  const [scheduleTime, setScheduleTime] = useState<string>('') // HH:MM (24h, local)
-  // `now` drives slot availability; refreshed each minute so the cutoff stays accurate.
-  const [now, setNow] = useState<Date>(() => new Date())
-
   const branding = useMemo(() => getTenantBranding(tenant), [tenant])
 
   // Copy to clipboard helper function
@@ -212,7 +221,7 @@ export function useCheckout(tenantSlug: string) {
       setCopiedText(text)
       toast.success(`${label} copied to clipboard`)
       // Reset copied state after 2 seconds
-      setTimeout(() => setCopiedText(null), 2000)
+      setTimeout(() => setCopiedText(null), COPIED_FEEDBACK_MS)
     } catch {
       toast.error('Failed to copy to clipboard')
     }
@@ -233,7 +242,7 @@ export function useCheckout(tenantSlug: string) {
     tenantSlug,
     orderTypes,
     orderTypeId: orderType,
-    areOrderTypesReady,
+    initialOutlets: config.outlets,
   })
   const serviceChargeAmount = (() => {
     if (!selectedOrderTypeData?.service_charge_enabled || !selectedOrderTypeData.service_charge_value) return 0
@@ -243,39 +252,75 @@ export function useCheckout(tenantSlug: string) {
     return selectedOrderTypeData.service_charge_value
   })()
 
-  // Advance order configuration + derived scheduling values for the selected order type.
-  // Only surface dates that still have at least one selectable slot (a too-late "today"
-  // or a day fully inside the lead window is dropped).
-  // A presell cart is committed to one pickup date: scheduling is forced on,
-  // ASAP is off, and the horizon stretches to reach that date. See
-  // src/lib/presell/checkout-schedule.ts.
-  const cartPresellDate = useMemo(() => findCartPresellDate(items), [items])
-  const baseAdvanceConfig = getAdvanceOrderConfig(selectedOrderTypeData)
-  const advanceConfig = cartPresellDate ? presellAdvanceConfig(baseAdvanceConfig, cartPresellDate, now) : baseAdvanceConfig
-  // Operating hours bound the selectable slot window per weekday (closed days are dropped).
-  const operatingHours = useMemo(
-    () => normalizeOperatingHours(tenant?.operating_hours ?? null),
-    [tenant?.operating_hours],
-  )
+  // Advance-order scheduling for the selected order type (see useCheckoutSchedule).
+  const {
+    now,
+    advanceConfig,
+    cartPresellDate,
+    scheduleMode,
+    setScheduleMode,
+    scheduleDate,
+    setScheduleDate,
+    scheduleTime,
+    setScheduleTime,
+    scheduleDates,
+    timeSlots,
+    isScheduling,
+    scheduledDateObj,
+    scheduledForISO,
+    scheduledForLabel,
+    isScheduleValid,
+    handleScheduleDateChange,
+  } = useCheckoutSchedule({
+    selectedOrderType: selectedOrderTypeData,
+    items,
+    operatingHours: tenant?.operating_hours,
+  })
   // Operating-hours enforcement. A scheduled (advance) order is always allowed —
   // pre-ordering while the shop is shut is the point of the feature — so only
   // ASAP checkouts are gated.
   const openStatus = useStoreOpenStatus(tenant)
 
-  const generatedScheduleDates = advanceConfig.enabled
-    ? generateScheduleDates(advanceConfig, now, operatingHours).filter(d => generateTimeSlots(advanceConfig, d.value, now, operatingHours).length > 0)
-    : []
-  const scheduleDates = cartPresellDate ? presellScheduleDates(generatedScheduleDates, cartPresellDate) : generatedScheduleDates
-  const timeSlots = advanceConfig.enabled && scheduleDate
-    ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours)
-    : []
-  const isScheduling = advanceConfig.enabled && scheduleMode === 'scheduled'
-  const scheduledDateObj = isScheduling && scheduleDate && scheduleTime
-    ? combineDateAndTime(scheduleDate, scheduleTime)
-    : null
-  const scheduledForISO = scheduledDateObj ? scheduledDateObj.toISOString() : null
-  const scheduledForLabel = scheduledDateObj ? formatScheduledFor(scheduledDateObj) : null
-  const isScheduleValid = scheduledDateObj ? isValidScheduledTime(advanceConfig, scheduledDateObj, now, operatingHours) : true
+  // Delivery fee for the picked address: Lalamove quote OR distance-based fee.
+  const {
+    deliveryFee,
+    quotationId,
+    quoteSignature,
+    isFetchingDeliveryFee,
+    deliveryFeeAddress,
+    deliveryOutOfRange,
+    deliveryDistanceKm,
+    deliveryFeeError,
+  } = useDeliveryQuote({
+    tenant,
+    isDeliveryOrder: selectedOrderTypeData?.type === 'delivery',
+    deliveryAddress: customerData.delivery_address,
+    deliveryLat: customerData.delivery_lat,
+    deliveryLng: customerData.delivery_lng,
+  })
+
+  // All submission paths must agree, including the payment dialog's direct
+  // submit and Messenger-only orders that never call createOrderAction.
+  const isDeliveryBlocked = (): boolean => {
+    if (selectedOrderTypeData?.type !== 'delivery' || !(tenant?.lalamove_enabled || tenant?.distance_delivery_enabled)) return false
+    // The scanner payload has no quotation/signature fields, so this flow
+    // cannot preserve a verified delivery price or book the quoted route.
+    if (tenant.lalamove_enabled && tenant.qr_handoff_enabled) {
+      toast.error('Lalamove delivery is unavailable with QR checkout. Please choose pickup or contact the store.')
+      return true
+    }
+    const message = deliveryFeeError || (deliveryOutOfRange
+      ? 'This address is outside the delivery area. Please choose a closer address or switch to pickup.'
+      : isFetchingDeliveryFee
+        ? 'Please wait for the delivery fee before continuing.'
+        : deliveryFee === null || deliveryFeeAddress !== customerData.delivery_address ||
+          (tenant.lalamove_enabled && (!quotationId || !quoteSignature))
+          ? 'Please choose a delivery address and get a valid delivery quote before continuing.'
+          : null)
+    if (!message) return false
+    toast.error(message)
+    return true
+  }
 
   /**
    * Refuse an ASAP checkout while the shop is outside its operating hours.
@@ -350,39 +395,56 @@ export function useCheckout(tenantSlug: string) {
    * what a voucher is worth. Guarded on the fingerprint captured before the
    * request so a slow reply cannot overwrite a newer cart.
    */
+  // Only the newest voucher request may write its answer. Applying A then B
+  // quickly used to let the slower [A] reply land last and show A's discount
+  // as if it were [A, B]'s — the fingerprint only tracks the cart, not codes.
+  const voucherRequestSeqRef = useRef(0)
+  const tenantId = tenant?.id ?? null
+
   const refreshVoucherPreview = useCallback(
     async (codes: readonly string[], fingerprint: string) => {
+      const requestSeq = ++voucherRequestSeqRef.current
       if (codes.length === 0) {
         setVoucherState({ codes: [], preview: null, previewFingerprint: null })
+        setIsCheckingVoucher(false)
         return
       }
 
-      if (!tenant) return
+      if (!tenantId) return
 
       setIsCheckingVoucher(true)
-      const result = await validateVoucherAction({
-        tenantId: tenant.id,
-        codes: [...codes],
-        lines: voucherPreviewLines,
-        deliveryFee: validDeliveryFee,
-        serviceCharge: serviceChargeAmount,
-        channel: 'checkout',
-        outletId: outlet.selectedOutletId ?? null,
-      })
-      setIsCheckingVoucher(false)
+      try {
+        const result = await validateVoucherAction({
+          tenantId,
+          codes: [...codes],
+          lines: voucherPreviewLines,
+          deliveryFee: validDeliveryFee,
+          serviceCharge: serviceChargeAmount,
+          channel: 'checkout',
+          outletId: outlet.selectedOutletId ?? null,
+        })
+        if (requestSeq !== voucherRequestSeqRef.current) return
 
-      if (!result.success || !result.data) {
-        toast.error(result.error ?? 'Could not check that voucher')
-        return
+        if (!result.success || !result.data) {
+          toast.error(result.error ?? 'Could not check that voucher')
+          return
+        }
+
+        setVoucherState((prev) => ({
+          ...prev,
+          preview: result.data ?? null,
+          previewFingerprint: fingerprint,
+        }))
+      } catch (error) {
+        if (requestSeq !== voucherRequestSeqRef.current) return
+        console.error('[Checkout] Voucher check failed:', error)
+        toast.error('Could not check that voucher. Please try again.')
+      } finally {
+        // A thrown request used to leave the spinner on for good.
+        if (requestSeq === voucherRequestSeqRef.current) setIsCheckingVoucher(false)
       }
-
-      setVoucherState((prev) => ({
-        ...prev,
-        preview: result.data ?? null,
-        previewFingerprint: fingerprint,
-      }))
     },
-    [tenant, voucherPreviewLines, validDeliveryFee, serviceChargeAmount, outlet.selectedOutletId]
+    [tenantId, voucherPreviewLines, validDeliveryFee, serviceChargeAmount, outlet.selectedOutletId]
   )
 
   const applyVoucherCode = useCallback(
@@ -412,164 +474,30 @@ export function useCheckout(tenantSlug: string) {
     void refreshVoucherPreview(voucherState.codes, voucherFingerprint)
   }, [voucherState, voucherFingerprint, refreshVoucherPreview])
 
-  // Convenience: change the scheduled date and snap the time to the first valid slot.
-  const handleScheduleDateChange = (date: string) => {
-    setScheduleDate(date)
-    const slots = generateTimeSlots(advanceConfig, date, now, operatingHours)
-    setScheduleTime(slots[0]?.value ?? '')
-  }
-
-  // Ref to track loading state and prevent duplicate fetches
-  const isLoadingRef = useRef(false)
-  // Ref to track if we've initialized the default order type
-  const hasInitializedOrderType = useRef(false)
-
-  // Load all checkout data: tenant → order types → form fields + payment methods
-  // Consolidated into one effect to eliminate waterfall from separate render cycles
+  // Resolve the order type once the cart has been read from storage. The
+  // stored selection is shared across tenants, so it is validated against this
+  // tenant's list; a guest who scanned a table code is dining in, whatever the
+  // browser last remembered.
   useEffect(() => {
-    if (isLoadingRef.current) return
-    isLoadingRef.current = true
+    if (!isCartHydrated || isOrderTypeResolved) return
+    const hasLinkedTable = readLinkedTable(window.localStorage, tenantSlug, Date.now()) !== null
+    const resolved = preferDineInOrderType(orderTypes, resolveActiveOrderType(orderType, orderTypes), hasLinkedTable)
+    if (resolved !== orderType) setOrderType(resolved)
+    setIsOrderTypeResolved(true)
+  }, [isCartHydrated, isOrderTypeResolved, orderType, orderTypes, setOrderType, tenantSlug])
 
-    let isCancelled = false
-
-    const loadAllData = async () => {
-      try {
-        const { data, error: fetchError } = await getTenantBySlugClient(tenantSlug)
-        if (isCancelled) return
-        if (fetchError || !data) {
-          toast.error('Restaurant not found')
-          router.push('/')
-          return
-        }
-        setTenant(data)
-
-        const enabledOrderTypes = await getEnabledOrderTypesByTenantClient(data.id)
-        if (isCancelled) return
-        setOrderTypes(enabledOrderTypes)
-        setAreOrderTypesReady(true)
-
-        // Determine the active order type for form fields fetch. The stored
-        // selection is shared across tenants, so it must be validated against
-        // this tenant's order types before it drives any fetch.
-        let activeOrderType = orderType
-        if (!hasInitializedOrderType.current) {
-          activeOrderType = resolveActiveOrderType(orderType, enabledOrderTypes)
-          // A guest who scanned a table code is dining in, whatever the
-          // browser last remembered.
-          activeOrderType = preferDineInOrderType(
-            enabledOrderTypes,
-            activeOrderType,
-            readLinkedTable(window.localStorage, tenantSlug, Date.now()) !== null
-          )
-          if (activeOrderType !== orderType) {
-            setOrderType(activeOrderType)
-          }
-          hasInitializedOrderType.current = true
-        }
-
-        // Immediately fetch form fields + payment methods (no waiting for re-render)
-        if (activeOrderType) {
-          const [fieldsResult, methodsResult] = await Promise.allSettled([
-            getCustomerFormFieldsByOrderTypeClient(activeOrderType, data.id),
-            getPaymentMethodsByOrderTypeClient(activeOrderType, data.id)
-          ])
-
-          if (isCancelled) return
-
-          if (fieldsResult.status === 'fulfilled') {
-            const fields = fieldsResult.value
-            setFormFields(fields)
-            const initialData: Record<string, string> = {}
-            fields.forEach(field => { initialData[field.field_name] = '' })
-            setCustomerData(seedTableField(initialData, fields, readLinkedTable(window.localStorage, tenantSlug, Date.now())))
-          } else {
-            console.error('Failed to load form fields:', fieldsResult.reason)
-            toast.error('Failed to load form fields')
-          }
-
-          if (methodsResult.status === 'fulfilled') {
-            const methods = methodsResult.value || []
-            setPaymentMethods(methods)
-            if (methods.length === 1) {
-              setSelectedPaymentMethod(methods[0].id)
-            } else {
-              setSelectedPaymentMethod(null)
-            }
-          } else {
-            setPaymentMethods([])
-            setSelectedPaymentMethod(null)
-          }
-        }
-      } catch {
-        if (isCancelled) return
-        toast.error('Failed to load restaurant')
-        router.push('/')
-      } finally {
-        setIsLoading(false)
-        isLoadingRef.current = false
-      }
-    }
-
-    loadAllData()
-
-    return () => {
-      isCancelled = true
-      isLoadingRef.current = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantSlug, router, setOrderType])
-
-  // Reload form fields and payment methods when order type changes (after initial load)
+  // A new order type brings its own form. Keep what the customer already typed
+  // into fields both forms share, and pre-fill the table from a scanned code.
   useEffect(() => {
-    // Skip during initial load — the consolidated effect handles it
-    if (isLoading || !tenant || !orderType) return
-
-    let isCancelled = false
-
-    const loadFormFields = async () => {
-      try {
-        const [fieldsResult, methodsResult] = await Promise.allSettled([
-          getCustomerFormFieldsByOrderTypeClient(orderType, tenant.id),
-          getPaymentMethodsByOrderTypeClient(orderType, tenant.id)
-        ])
-
-        if (isCancelled) return
-
-        if (fieldsResult.status === 'fulfilled') {
-          const fields = fieldsResult.value
-          setFormFields(fields)
-          const initialData: Record<string, string> = {}
-          fields.forEach(field => { initialData[field.field_name] = '' })
-          setCustomerData(seedTableField(initialData, fields, readLinkedTable(window.localStorage, tenantSlug, Date.now())))
-        } else {
-          console.error('Failed to load form fields:', fieldsResult.reason)
-          toast.error('Failed to load form fields')
-        }
-
-        if (methodsResult.status === 'fulfilled') {
-          const methods = methodsResult.value || []
-          setPaymentMethods(methods)
-          if (methods.length === 1) {
-            setSelectedPaymentMethod(methods[0].id)
-          } else {
-            setSelectedPaymentMethod(null)
-          }
-        } else {
-          setPaymentMethods([])
-          setSelectedPaymentMethod(null)
-        }
-      } catch (error) {
-        if (isCancelled) return
-        console.error('Failed to load form fields:', error)
-        toast.error('Failed to load form fields')
-      }
-    }
-
-    loadFormFields()
-
-    return () => { isCancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderType])
+    if (!isOrderTypeResolved) return
+    setCustomerData(previous =>
+      seedTableField(
+        carryOverCustomerData(formFields, previous),
+        formFields,
+        readLinkedTable(window.localStorage, tenantSlug, Date.now())
+      )
+    )
+  }, [formFields, isOrderTypeResolved, tenantSlug])
 
   // Redirect to menu if cart is empty
   // Don't redirect if checkout is in progress or has completed (prevents race condition with Messenger redirect)
@@ -654,217 +582,13 @@ export function useCheckout(tenantSlug: string) {
     }
   }, [checkoutComplete, completedOrderData?.messengerUrl, messengerRedirectEnabled])
 
-  // Fetch the delivery fee when a delivery address is entered.
-  // Two mutually-exclusive sources: Lalamove (when enabled — always wins) or the
-  // distance-based fee (when Lalamove is off and distance delivery is configured).
-  useEffect(() => {
-    let isCancelled = false // Prevent race conditions
-
-    // Reset all delivery-fee state to "no fee".
-    const resetDeliveryState = () => {
-      setDeliveryFee(null)
-      setQuotationId(null)
-      setDeliveryFeeAddress('')
-      setDeliveryOutOfRange(false)
-      setDeliveryDistanceKm(null)
-      setDeliveryFeeError(null)
-      setIsFetchingDeliveryFee(false)
-    }
-
-    const fetchDeliveryQuote = async () => {
-      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
-      const isDeliveryOrder = selectedOrderType?.type === 'delivery'
-
-      const deliveryAddress = customerData.delivery_address
-      const deliveryLat = customerData.delivery_lat
-      const deliveryLng = customerData.delivery_lng
-
-      // Single source of truth for which fee source applies (and why none does).
-      const plan = resolveDeliveryQuotePlan({
-        isDeliveryOrder,
-        lalamoveEnabled: !!tenant?.lalamove_enabled,
-        distanceEnabled: !!tenant?.distance_delivery_enabled,
-        restaurantLatitude: tenant?.restaurant_latitude,
-        restaurantLongitude: tenant?.restaurant_longitude,
-        deliveryLatitude: deliveryLat,
-        deliveryLongitude: deliveryLng,
-      })
-
-      // Delivery enabled but the store's pickup coordinates were never set. The customer
-      // already sees `plan.message` via setDeliveryFeeError, so this is a developer/support
-      // diagnostic only — keep it at warn level so it doesn't trip the Next.js dev error
-      // overlay for an already-handled state.
-      if (plan.kind === 'misconfigured') {
-        console.warn(
-          `[Checkout] Delivery enabled for tenant ${tenant?.id} but restaurant coordinates are missing`
-        )
-        resetDeliveryState()
-        setDeliveryFeeError(plan.message)
-        return
-      }
-
-      // Not a delivery order, no fee source enabled, or address not yet picked.
-      if (plan.kind === 'idle' || plan.kind === 'awaiting-address') {
-        resetDeliveryState()
-        return
-      }
-
-      // IMMEDIATELY clear old delivery state to prevent showing stale data
-      setDeliveryFee(null)
-      setQuotationId(null)
-      setDeliveryFeeAddress('')
-      setDeliveryOutOfRange(false)
-      setDeliveryDistanceKm(null)
-      setDeliveryFeeError(null)
-      setIsFetchingDeliveryFee(true)
-
-      try {
-        if (plan.kind === 'lalamove') {
-          const result = await createQuotationAction(
-            tenant!.id,
-            tenant!.restaurant_address || '',
-            Number(tenant!.restaurant_latitude),
-            Number(tenant!.restaurant_longitude),
-            deliveryAddress,
-            parseFloat(deliveryLat),
-            parseFloat(deliveryLng)
-          )
-          if (isCancelled) return
-          if (result.success && result.data) {
-            if (deliveryAddress === customerData.delivery_address) {
-              setDeliveryFee(result.data.price)
-              setQuotationId(result.data.quotationId)
-              setDeliveryFeeAddress(deliveryAddress)
-            }
-          } else {
-            console.error('Failed to fetch delivery quote:', result.error)
-            toast.error(result.error || 'Failed to get delivery fee')
-            setDeliveryFee(null)
-            setQuotationId(null)
-            setDeliveryFeeAddress('')
-            setDeliveryFeeError(result.error || 'We couldn’t get a delivery fee for this address. Please try again.')
-          }
-        } else {
-          // Distance-based fee
-          const result = await calculateDistanceDeliveryFeeAction(
-            tenant!.id,
-            parseFloat(deliveryLat),
-            parseFloat(deliveryLng)
-          )
-          if (isCancelled) return
-          if (result.success && result.data) {
-            // Guard against stale responses for a previous address
-            if (deliveryAddress === customerData.delivery_address) {
-              setDeliveryDistanceKm(result.data.distanceKm)
-              if (result.data.withinRadius) {
-                setDeliveryFee(result.data.fee)
-                setDeliveryFeeAddress(deliveryAddress)
-                setDeliveryOutOfRange(false)
-              } else {
-                setDeliveryFee(null)
-                setDeliveryFeeAddress('')
-                setDeliveryOutOfRange(true)
-                toast.error(`This address is outside the delivery area (${result.data.radiusKm} km).`)
-              }
-            }
-          } else {
-            console.error('Failed to calculate delivery fee:', result.error)
-            toast.error(result.error || 'Failed to get delivery fee')
-            setDeliveryFee(null)
-            setDeliveryFeeAddress('')
-            setDeliveryOutOfRange(false)
-            setDeliveryFeeError(result.error || 'We couldn’t calculate a delivery fee for this address. Please try again.')
-          }
-        }
-      } catch (error) {
-        if (isCancelled) return
-        console.error('Error fetching delivery fee:', error)
-        toast.error('Failed to calculate delivery fee')
-        setDeliveryFee(null)
-        setQuotationId(null)
-        setDeliveryFeeAddress('')
-        setDeliveryOutOfRange(false)
-        setDeliveryFeeError('We couldn’t calculate a delivery fee right now. Please try again.')
-      } finally {
-        if (!isCancelled) {
-          setIsFetchingDeliveryFee(false)
-        }
-      }
-    }
-
-    fetchDeliveryQuote()
-
-    // Cleanup function to cancel pending requests
-    return () => {
-      isCancelled = true
-    }
-  }, [tenant, orderTypes, orderType, customerData.delivery_address, customerData.delivery_lat, customerData.delivery_lng])
-
-  // Advance order: refresh "now" each minute so the lead-time cutoff stays accurate
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000)
-    return () => clearInterval(id)
-  }, [])
-
-  // Advance order: default the "When?" choice whenever the selected order type changes.
-  // Schedule-only types (ASAP disabled) start in scheduled mode; others default to ASAP.
-  useEffect(() => {
-    if (!advanceConfig.enabled) {
-      setScheduleMode('asap')
-      return
-    }
-    setScheduleMode(advanceConfig.allowAsap ? 'asap' : 'scheduled')
-  }, [orderType, advanceConfig.enabled, advanceConfig.allowAsap])
-
-  // Advance order: seed a sensible default slot on entering scheduled mode, and keep the
-  // selection valid as time passes or the order type changes. Re-seeds when the chosen date
-  // is missing, has gone stale (e.g. crossed midnight), or falls outside the order type's
-  // (possibly shrunk) horizon; otherwise just snaps the time to a valid slot for that date.
-  useEffect(() => {
-    if (!advanceConfig.enabled || scheduleMode !== 'scheduled') return
-    // A presell cart's date is not a suggestion: pin it, then only snap the time.
-    if (cartPresellDate) {
-      if (scheduleDate !== cartPresellDate) {
-        setScheduleDate(cartPresellDate)
-        setScheduleTime(generateTimeSlots(advanceConfig, cartPresellDate, now, operatingHours)[0]?.value ?? '')
-        return
-      }
-      const presellSlots = generateTimeSlots(advanceConfig, cartPresellDate, now, operatingHours)
-      if (presellSlots.length > 0 && (!scheduleTime || !presellSlots.some(s => s.value === scheduleTime))) {
-        setScheduleTime(presellSlots[0].value)
-      }
-      return
-    }
-    const dates = generateScheduleDates(advanceConfig, now, operatingHours)
-    const dateValid = !!scheduleDate && dates.some(d => d.value === scheduleDate)
-    const slots = dateValid ? generateTimeSlots(advanceConfig, scheduleDate, now, operatingHours) : []
-    if (!dateValid || slots.length === 0) {
-      const first = getFirstAvailableSlot(advanceConfig, now, operatingHours)
-      setScheduleDate(first?.dateValue ?? '')
-      setScheduleTime(first?.timeValue ?? '')
-      return
-    }
-    if (!scheduleTime || !slots.some(s => s.value === scheduleTime)) {
-      setScheduleTime(slots[0].value)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    scheduleMode,
-    scheduleDate,
-    advanceConfig.enabled,
-    advanceConfig.maxDaysAhead,
-    advanceConfig.leadTimeMinutes,
-    advanceConfig.slotIntervalMinutes,
-    operatingHours,
-    now,
-  ])
-
   // QR-handoff flow: build a QrOrderPayloadV1 from the cart + form values,
   // persist it locally, and navigate to the QR thank-you page. NOTHING is
   // written to Convex or Supabase here — the vendor scanner is the sole writer.
   const handleQrHandoff = () => {
     if (!tenant || isProcessing || !orderType) return
     if (isOrderingClosed()) return
+    if (isDeliveryBlocked()) return
 
     const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
     const proofError = getPaymentProofError(selectedMethodForProof, {
@@ -886,117 +610,16 @@ export function useCheckout(tenantSlug: string) {
       const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
       const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
 
-      // Map cart items to QrOrderItemV1 — mirrors the OrderItem construction
-      // used in the Messenger/createOrderAction path below.
-      const qrItems: QrOrderItemV1[] = items.map(item => {
-        // Per-unit price MUST include add-ons: the server enforces
-        // subtotal = price × quantity, so an add-on missing here is deleted
-        // from the customer's total.
-        const itemPrice = calculateCartItemUnitPrice(
-          getEffectiveItemPrice(item.menu_item),
-          item.selected_variations ?? item.selected_variation,
-          item.selected_addons
-        )
-
-        const variationSelections: QrOrderItemV1['variationSelections'] = []
-        let variationText = ''
-        if (item.selected_variation) {
-          variationText = item.selected_variation.name
-          variationSelections.push({
-            typeName: 'Variation',
-            optionName: item.selected_variation.name,
-            priceAdjustment: item.selected_variation.price_modifier,
-          })
-        } else if (item.selected_variations) {
-          const opts = Object.values(item.selected_variations)
-          variationText = opts.map(opt => opt.name).join(', ')
-          for (const opt of opts) {
-            variationSelections.push({
-              typeName: 'Variation',
-              optionName: opt.name,
-              priceAdjustment: opt.price_modifier,
-            })
-          }
-        }
-
-        return {
-          menuItemId: item.menu_item.id,
-          menuItemName: item.menu_item.name,
-          quantity: item.quantity,
-          price: itemPrice,
-          basePrice: getEffectiveItemPrice(item.menu_item),
-          subtotal: item.subtotal,
-          ...(variationSelections.length > 0 ? { variationSelections } : {}),
-          ...(variationText ? { variation: variationText } : {}),
-          ...(item.selected_addons.length > 0
-            ? { addons: item.selected_addons.map(a => ({ name: a.name, price: a.price, quantity: addonQuantity(a) })) }
-            : {}),
-          ...(item.special_instructions ? { specialInstructions: item.special_instructions } : {}),
-          ...(item.upsellSource ? { isUpsellItem: true } : {}),
-        }
-      })
-
-      // Flatten bundle items into QR items (same shape as the Messenger path).
-      for (const bundle of bundleItems) {
-        for (const slot of bundle.slots) {
-          let slotPrice = slot.priceOverride
-          let variationText = ''
-          const variationSelections: QrOrderItemV1['variationSelections'] = []
-
-          if (slot.selectedVariation) {
-            slotPrice += slot.selectedVariation.price_modifier
-            variationText = slot.selectedVariation.name
-            variationSelections.push({
-              typeName: 'Variation',
-              optionName: slot.selectedVariation.name,
-              priceAdjustment: slot.selectedVariation.price_modifier,
-            })
-          } else if (slot.selectedVariations) {
-            const opts = Object.values(slot.selectedVariations)
-            slotPrice += opts.reduce((sum, option) => sum + option.price_modifier, 0)
-            variationText = opts.map(opt => opt.name).join(', ')
-            for (const opt of opts) {
-              variationSelections.push({
-                typeName: 'Variation',
-                optionName: opt.name,
-                priceAdjustment: opt.price_modifier,
-              })
-            }
-          }
-
-          const addonTotal = slot.selectedAddons.reduce((sum, a) => sum + a.price * addonQuantity(a), 0)
-          const quantity = slot.quantity * bundle.quantity
-          const itemTotal = (slotPrice + addonTotal) * quantity
-
-          qrItems.push({
-            menuItemId: slot.menuItemId,
-            menuItemName: slot.menuItemName,
-            quantity,
-            basePrice: slot.priceOverride,
-            price: slotPrice + addonTotal,
-            subtotal: itemTotal,
-            ...(variationSelections.length > 0 ? { variationSelections } : {}),
-            ...(variationText ? { variation: variationText } : {}),
-            ...(slot.selectedAddons.length > 0
-              ? { addons: slot.selectedAddons.map(a => ({ name: a.name, price: a.price, quantity: addonQuantity(a) })) }
-              : {}),
-            isBundleItem: true,
-            bundleId: bundle.bundleId,
-            bundleName: bundle.bundleName,
-            slotName: slot.slotName,
-          })
-        }
-      }
+      // Cart lines + bundle slots → QR payload lines (same shape as the
+      // Messenger/createOrderAction path below).
+      const qrItems = buildQrOrderItems(items, bundleItems)
 
       // The same number the summary shows. Built separately it drifted: it
       // omitted the delivery fee entirely, so a delivery order paid by QR
       // asked for less than it billed, and it would have missed any discount.
       const grandTotalForQr = grandTotal
 
-      const inventorySelections = [
-        ...items.map(item => { const selected = extractSelectionIds(item); return { menu_item_id: item.menu_item.id, quantity: item.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } }),
-        ...bundleItems.flatMap(bundle => bundle.slots.map(slot => { const selected = extractBundleSlotSelectionIds(slot); return { menu_item_id: slot.menuItemId, quantity: slot.quantity * bundle.quantity, option_ids: selected.optionIds, addon_ids: selected.addonIds, addon_quantities: selected.addonQuantities } })),
-      ]
+      const inventorySelections = buildInventorySelections(items, bundleItems)
       const qrCustomerData = withInventorySelectionSnapshot({
         ...normalizedCustomerData,
         ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
@@ -1070,6 +693,7 @@ export function useCheckout(tenantSlug: string) {
   }
 
   const handleProceedToPayment = () => {
+    if (isDeliveryBlocked()) return
     // Validate presence AND format. The phone check uses the same normalizer as
     // customer identity, so a number that would be dropped during capture is
     // caught here instead of quietly costing the merchant a customer.
@@ -1219,6 +843,7 @@ export function useCheckout(tenantSlug: string) {
   const handleCheckout = async () => {
     if (!tenant || isProcessing || !orderType) return
     if (isOrderingClosed()) return
+    if (isDeliveryBlocked()) return
 
     // Enforce per-method payment-proof requirement (screenshot OR reference).
     // After-billing and skip-details methods still honour this: a proof-required
@@ -1279,27 +904,11 @@ export function useCheckout(tenantSlug: string) {
         }
       )
 
-      // ── PHASE 2: Resolve Messenger URL (fast — uses cached tenant data) ──
-      let pageId: string | null = tenant.messenger_username || tenant.messenger_page_id || null
-
-      if (tenant.facebook_page_id) {
-        try {
-          const supabase = createClient()
-          const { data: facebookPage, error: pageError } = await supabase
-            .from('facebook_pages')
-            .select('page_id')
-            .eq('id', tenant.facebook_page_id)
-            .eq('is_active', true)
-            .single()
-
-          if (!pageError && facebookPage) {
-            const page = facebookPage as { page_id: string }
-            if (page.page_id) pageId = page.page_id
-          }
-        } catch (error) {
-          console.error('Error fetching Facebook page:', error)
-        }
-      }
+      // ── PHASE 2: Resolve Messenger URL (no request — read with the page) ──
+      // The connected Facebook page's id was resolved on the server; see
+      // CheckoutConfig.facebookPageId for why the browser no longer reads it.
+      const pageId: string | null =
+        config.facebookPageId || tenant.messenger_username || tenant.messenger_page_id || null
 
       const isFacebookPageConnected = tenant.facebook_page_id !== null &&
         tenant.facebook_page_id !== undefined &&
@@ -1318,37 +927,32 @@ export function useCheckout(tenantSlug: string) {
         }
       }
 
-      // ── Presell preflight ──
+      // ── Preflights ──
       // The confirmation screen below is optimistic, so a server refusal after
-      // it would be invisible. A pre-order re-checks its dates first.
-      if (cartPresellDate) {
-        const verdict = await preflightPresellAction(
-          tenant.id,
-          items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity, presellDate: item.presell_date })),
-        )
-        if (!verdict.ok) {
-          toast.error(verdict.message)
-          setIsProcessing(false)
-          return
-        }
-      }
-
-      // ── Producible-quantity preflight ──
-      // Same reason as above, for the guard that asks whether the kitchen can
-      // make the number in this cart. Without it an uncoverable cart showed
-      // "Order Placed!" and wrote nothing. The guard inside createOrderAction
-      // stays authoritative; this only moves its sentence somewhere visible.
-      {
-        const verdict = await preflightCheckoutStockAction(
+      // it would be invisible. A pre-order re-checks its dates, and every cart
+      // asks whether the kitchen can make the number in it — without that an
+      // uncoverable cart showed "Order Placed!" and wrote nothing. The guards
+      // inside createOrderAction stay authoritative; these only move their
+      // sentence somewhere visible. Independent, so they run side by side
+      // rather than adding two round trips to the tap.
+      const [presellVerdict, stockVerdict] = await Promise.all([
+        cartPresellDate
+          ? preflightPresellAction(
+              tenant.id,
+              items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity, presellDate: item.presell_date })),
+            )
+          : Promise.resolve({ ok: true } as const),
+        preflightCheckoutStockAction(
           tenant.id,
           items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity })),
           outlet.selectedOutletId ?? null,
-        )
-        if (!verdict.ok) {
-          toast.error(verdict.message)
-          setIsProcessing(false)
-          return
-        }
+        ),
+      ])
+      const refusal = [presellVerdict, stockVerdict].find(verdict => !verdict.ok)
+      if (refusal && !refusal.ok) {
+        toast.error(refusal.message)
+        setIsProcessing(false)
+        return
       }
 
       // ── PHASE 3: Show confirmation screen IMMEDIATELY ─────────────────────
@@ -1367,7 +971,9 @@ export function useCheckout(tenantSlug: string) {
       setCompletedOrderData({
         items: snapshotItems,
         total: snapshotTotal,
-        deliveryFee: (deliveryFee && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : null,
+        // validDeliveryFee, not a truthiness test: free delivery (0) is a fee,
+        // and the summary already billed it as one.
+        deliveryFee: validDeliveryFee,
         serviceChargeAmount,
         discounts: snapshotDiscounts,
         customerData: snapshotCustomerData,
@@ -1468,6 +1074,7 @@ export function useCheckout(tenantSlug: string) {
         // whitespace-only normalization difference never drops a valid fee.
         const validDeliveryFeeForOrder = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
         const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
+        const validQuoteSignature = (quoteSignature && validQuotationId) ? quoteSignature : undefined
 
         // Stable across retries of this attempt — see clientOrderIdRef.
         if (!clientOrderIdRef.current) {
@@ -1520,7 +1127,8 @@ export function useCheckout(tenantSlug: string) {
               selectedOutletId,
               // Codes, not amounts. The server recomputes the discount from these.
               [...voucherState.codes],
-              clientOrderId
+              clientOrderId,
+              validQuoteSignature
             )
             saveResult = attemptResult
             return { success: attemptResult.success, error: attemptResult.error }
@@ -1570,18 +1178,11 @@ export function useCheckout(tenantSlug: string) {
             if (result.data?.id && result.trackingToken) {
               setTrackingOrderId(result.data.id)
               setTrackingToken(result.trackingToken)
-              try {
-                const storageKey = `active_orders_${tenantSlug}`
-                const existing = JSON.parse(localStorage.getItem(storageKey) || '[]')
-                if (!existing.some((o: { orderId: string }) => o.orderId === result.data!.id)) {
-                  existing.push({
-                    orderId: result.data.id,
-                    trackingToken: result.trackingToken,
-                    createdAt: new Date().toISOString(),
-                  })
-                  localStorage.setItem(storageKey, JSON.stringify(existing))
-                }
-              } catch { /* ignore localStorage errors */ }
+              rememberActiveOrder(window.localStorage, tenantSlug, {
+                orderId: result.data.id,
+                trackingToken: result.trackingToken,
+                createdAt: new Date().toISOString(),
+              })
             }
           } else {
             // The customer was told the order was placed and the cart is gone,

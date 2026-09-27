@@ -17,6 +17,7 @@
 
 import { isOffline as connectivityIsOffline, reportOffline, reportOnline } from "./connectivity";
 import { isNetworkFailure } from "./network-error";
+import { withDeadline } from "./deadline";
 import { enqueueSale, type QueuedSale } from "./order-outbox";
 
 /** How long a write may take before the sale is kept locally instead. */
@@ -31,21 +32,8 @@ export interface PlaceSaleInput {
   /** The sale as it would be queued; `orderArgs` is also what is sent live. */
   sale: Omit<QueuedSale, "attempts" | "lastError">;
   isOffline?: () => boolean;
-  enqueue?: (sale: QueuedSale) => Promise<void>;
+  enqueue?: (sale: QueuedSale) => Promise<string | void>;
   timeoutMs?: number;
-}
-
-function withDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expiry = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error("The request timed out (orders:createOrder). Check your connection and try again.")),
-      timeoutMs
-    );
-  });
-  return Promise.race([work, expiry]).finally(() => {
-    if (timer !== undefined) clearTimeout(timer);
-  });
 }
 
 export async function placeCounterSale(input: PlaceSaleInput): Promise<PlaceSaleOutcome> {
@@ -54,8 +42,8 @@ export async function placeCounterSale(input: PlaceSaleInput): Promise<PlaceSale
   const queued: QueuedSale = { ...input.sale, attempts: 0, lastError: null };
 
   if (isOffline()) {
-    await enqueue(queued);
-    return { kind: "queued", localId: queued.localId };
+    const savedId = await enqueue(queued);
+    return { kind: "queued", localId: savedId ?? queued.localId };
   }
 
   try {
@@ -68,7 +56,7 @@ export async function placeCounterSale(input: PlaceSaleInput): Promise<PlaceSale
   } catch (error) {
     if (!isNetworkFailure(error)) throw error;
     reportOffline();
-    await enqueue(queued);
-    return { kind: "queued", localId: queued.localId };
+    const savedId = await enqueue(queued);
+    return { kind: "queued", localId: savedId ?? queued.localId };
   }
 }

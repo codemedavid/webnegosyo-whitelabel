@@ -120,17 +120,16 @@ describe('storefront menu data', () => {
     warn.mockRestore()
   })
 
-  it('fills multiple bundles with one scoped slot read, retaining category restrictions and dish order', async () => {
+  it('fills multiple bundles from the scoped catalog, retaining availability and dish order', async () => {
     const { queries } = database(bundleTables)
 
     const result = await getMenuData('cafe')
 
     expect(result.status).toBe('ready')
-    const slotQueries = queries.filter((query) => query.table === 'menu_items' && query.categories)
-    expect(slotQueries).toEqual([{
+    const itemQueries = queries.filter((query) => query.table === 'menu_items')
+    expect(itemQueries).toEqual([{
       table: 'menu_items',
-      categories: ['mains', 'drinks'],
-      filters: [['tenant_id', tenant.id], ['is_available', true]],
+      filters: [['tenant_id', tenant.id]],
     }])
     expect(result.bundles.map((entry) => entry.slots.map((slot) => slot.items?.map((item) => item.id))))
       .toEqual([[['soup', 'rice'], ['tea']], [['soup', 'rice'], ['juice', 'tea']]])
@@ -138,9 +137,9 @@ describe('storefront menu data', () => {
     expect(result.menuItems.map((item) => item.id)).not.toContain('other-tenant')
   })
 
-  it.each(['bundles', 'slot_items'])('keeps the menu usable when %s cannot be read', async (failure) => {
+  it('keeps the menu usable when bundles cannot be read', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
-    database(bundleTables, { [failure]: { message: 'Read timed out' } })
+    database(bundleTables, { bundles: { message: 'Read timed out' } })
 
     const result = await getMenuData('cafe')
 

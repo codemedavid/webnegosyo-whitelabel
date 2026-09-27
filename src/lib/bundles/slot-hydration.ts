@@ -7,10 +7,8 @@
  * could be returned. Every one of those queries differed only in which category
  * it asked for.
  *
- * So the caller now runs a single query for every slot category at once and
- * hands the result here. This module is the assignment, kept pure so the
- * filtering rules the queries encoded — category, `included_item_ids`, and the
- * caller's ordering — are pinned by tests rather than by a `.eq()` chain.
+ * The caller now reuses its tenant catalog. Explicit choices can span
+ * categories, matching getSlotItems; category is only the fallback.
  */
 
 import type { BundleWithSlots, MenuItem } from '@/types/database'
@@ -39,6 +37,7 @@ export function hydrateBundleSlots(
   itemPool: readonly MenuItem[],
 ): BundleWithSlots[] {
   const byCategory = new Map<string, MenuItem[]>()
+  const byId = new Map(itemPool.map((item, index) => [item.id, { item, index }]))
   for (const menuItem of itemPool) {
     const categoryId = menuItem.category_id
     if (!categoryId) continue
@@ -56,7 +55,10 @@ export function hydrateBundleSlots(
       const allowed = slot.included_item_ids
       const items =
         allowed && allowed.length > 0
-          ? candidates.filter((menuItem) => allowed.includes(menuItem.id))
+          ? [...new Set(allowed)]
+              .flatMap(id => { const entry = byId.get(id); return entry ? [entry] : [] })
+              .sort((a, b) => a.index - b.index)
+              .map(entry => entry.item)
           : [...candidates]
 
       return { ...slot, items }

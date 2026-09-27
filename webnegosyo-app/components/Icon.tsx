@@ -35,6 +35,7 @@ export type IconName =
   | "stock"
   | "report"
   | "payments"
+  | "voucher"
   | "storefront"
   | "compare"
   | "list"
@@ -65,7 +66,16 @@ export type IconName =
   | "chevron-left"
   | "minus"
   | "trash"
-  | "rotate";
+  | "rotate"
+  // Receipt editor
+  | "arrow-up"
+  | "arrow-down"
+  | "duplicate"
+  | "bold"
+  | "align-left"
+  | "align-center"
+  | "align-right"
+  | "undo";
 
 interface IconProps {
   name: IconName;
@@ -223,6 +233,17 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Circle cx={12} cy={12} r={2.75} />
       <Line x1={6} y1={12} x2={6.5} y2={12} />
       <Line x1={17.5} y1={12} x2={18} y2={12} />
+    </>
+  ),
+
+  // A ticket with a notch in each side and a perforated stub: a promo code.
+  // Distinct from `payments` beside it in the hub — money off, not money in.
+  voucher: (
+    <>
+      <Path d="M3 6 H21 V9.5 A2.5 2.5 0 0 0 21 14.5 V18 H3 V14.5 A2.5 2.5 0 0 0 3 9.5 Z" />
+      <Line x1={15} y1={7.5} x2={15} y2={9} />
+      <Line x1={15} y1={11.25} x2={15} y2={12.75} />
+      <Line x1={15} y1={15} x2={15} y2={16.5} />
     </>
   ),
 
@@ -445,6 +466,71 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Line x1={4} y1={7} x2={20} y2={7} />
       <Path d="M9.5 7V4h5v3" />
       <Path d="M6 7l1 13.5h10L18 7" />
+    </>
+  ),
+
+  "arrow-up": (
+    <>
+      <Line x1={12} y1={20} x2={12} y2={4.5} />
+      <Polyline points="6,10.5 12,4.5 18,10.5" />
+    </>
+  ),
+
+  "arrow-down": (
+    <>
+      <Line x1={12} y1={4} x2={12} y2={19.5} />
+      <Polyline points="6,13.5 12,19.5 18,13.5" />
+    </>
+  ),
+
+  // Two sheets offset: the block and its copy.
+  duplicate: (
+    <>
+      <Rect x={8.5} y={8.5} width={12} height={12} />
+      <Path d="M15.5 8.5V3.5h-12v12h5" />
+    </>
+  ),
+
+  // A drawn B, not a font glyph, so it sits on the same stroke as the set.
+  bold: (
+    <>
+      <Path d="M7 4.5h6a3.75 3.75 0 0 1 0 7.5H7z" />
+      <Path d="M7 12h7a4 4 0 0 1 0 8H7z" />
+    </>
+  ),
+
+  "align-left": (
+    <>
+      <Line x1={4} y1={6} x2={20} y2={6} />
+      <Line x1={4} y1={10} x2={14} y2={10} />
+      <Line x1={4} y1={14} x2={20} y2={14} />
+      <Line x1={4} y1={18} x2={14} y2={18} />
+    </>
+  ),
+
+  "align-center": (
+    <>
+      <Line x1={4} y1={6} x2={20} y2={6} />
+      <Line x1={7} y1={10} x2={17} y2={10} />
+      <Line x1={4} y1={14} x2={20} y2={14} />
+      <Line x1={7} y1={18} x2={17} y2={18} />
+    </>
+  ),
+
+  "align-right": (
+    <>
+      <Line x1={4} y1={6} x2={20} y2={6} />
+      <Line x1={10} y1={10} x2={20} y2={10} />
+      <Line x1={4} y1={14} x2={20} y2={14} />
+      <Line x1={10} y1={18} x2={20} y2={18} />
+    </>
+  ),
+
+  // A hook turning back on itself: the step you just took, taken back.
+  undo: (
+    <>
+      <Polyline points="8.5,4.5 4,9 8.5,13.5" />
+      <Path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H9" />
     </>
   ),
 };

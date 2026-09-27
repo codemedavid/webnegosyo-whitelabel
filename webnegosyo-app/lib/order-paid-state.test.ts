@@ -96,6 +96,31 @@ describe("isOrderUnpaid", () => {
       isOrderUnpaid({ paymentStatus: "pending", total: 100, amountPaid: Number.NaN }),
     ).toBe(true);
   });
+
+  /**
+   * Handing an order over is taking the money for it. Orders delivered before
+   * delivery wrote the status still carry `pending`, and kept their red chip.
+   */
+  it("reads a delivered order as paid even though its status still says pending", () => {
+    expect(
+      isOrderUnpaid({ status: "delivered", paymentStatus: "pending", total: 500, amountPaid: 0 }),
+    ).toBe(false);
+  });
+
+  it("still reads a delivered TABLE order as owing — the bill comes at the end", () => {
+    expect(
+      isOrderUnpaid({
+        status: "delivered",
+        paymentStatus: "pending",
+        total: 500,
+        customerData: { table_number: "4" },
+      }),
+    ).toBe(true);
+  });
+
+  it("still reads an unpaid order that is not yet delivered as owing", () => {
+    expect(isOrderUnpaid({ status: "ready", paymentStatus: "pending", total: 500 })).toBe(true);
+  });
 });
 
 describe("shouldMarkOrderPaid", () => {

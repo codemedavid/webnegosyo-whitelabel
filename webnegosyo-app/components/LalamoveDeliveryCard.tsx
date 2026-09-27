@@ -73,6 +73,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   const [busy, setBusy] = React.useState<
     null | "book" | "sync" | "cancel" | "fee" | "requote" | "rebook"
   >(null);
+  const operationPending = React.useRef(false);
 
   const hasQuotation = !!order.lalamoveQuotationId && String(order.lalamoveQuotationId).trim() !== "";
   // A delivery that was never quoted (the quote call failed at checkout, or
@@ -94,6 +95,7 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     if (useAuthStore.getState().isDemo) return;
 
     const intervalId = setInterval(() => {
+      if (operationPending.current) return;
       void dispatch("sync").catch(() => {
         // A missed poll self-heals on the next tick; alerting would nag.
       });
@@ -137,27 +139,38 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
     return (await convexActionFor[op](args)) as ActionResult;
   };
 
-  const run = async (
+  // A ref locks immediately, including two callbacks delivered before React
+  // can disable the buttons. Keep the entire requote/book sequence inside it.
+  const withOperation = async (
     kind: NonNullable<typeof busy>,
-    op: LalamoveOp,
-    successMessage: string,
-    amount?: string
+    action: () => Promise<void>,
   ) => {
-    if (guardDemo()) return;
+    if (operationPending.current || guardDemo()) return;
+    operationPending.current = true;
     setBusy(kind);
     try {
-      const result = await dispatch(op, amount);
-      if (result?.success) {
-        Alert.alert("Success", successMessage);
-      } else {
-        Alert.alert("Lalamove", result?.error ?? "Something went wrong");
-      }
+      await action();
     } catch {
       Alert.alert("Lalamove", "Failed to reach the delivery service");
     } finally {
+      operationPending.current = false;
       setBusy(null);
     }
   };
+
+  const run = (
+    kind: NonNullable<typeof busy>,
+    op: LalamoveOp,
+    successMessage: string,
+    amount?: string,
+  ) => withOperation(kind, async () => {
+    const result = await dispatch(op, amount);
+    if (result?.success) {
+      Alert.alert("Success", successMessage);
+    } else {
+      Alert.alert("Lalamove", result?.error ?? "Something went wrong");
+    }
+  });
 
   const handleRequote = () => run("requote", "requote", "New quotation created — you can book the delivery now.");
 
@@ -166,16 +179,9 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
    * the quotation dies ~5 minutes after checkout, and sending the merchant to
    * hunt for a separate button at that moment loses them.
    */
-  const runBook = async () => {
-    setBusy("book");
-    try {
-      reportBookResult(await dispatch("book"));
-    } catch {
-      Alert.alert("Lalamove", "Failed to reach the delivery service");
-    } finally {
-      setBusy(null);
-    }
-  };
+  const runBook = () => withOperation("book", async () => {
+    reportBookResult(await dispatch("book"));
+  });
 
   const reportBookResult = (result: ActionResult) => {
     if (result?.success) {
@@ -206,21 +212,14 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
    * then the rider is booked on the fresh quotation. If the booking step
    * fails, the order is left quoted and the card offers Book again.
    */
-  const runRebook = async () => {
-    setBusy("rebook");
-    try {
-      const quote = await dispatch("requote");
-      if (!quote?.success) {
-        Alert.alert("Lalamove", quote?.error ?? "Could not get a new quote");
-        return;
-      }
-      reportBookResult(await dispatch("book"));
-    } catch {
-      Alert.alert("Lalamove", "Failed to reach the delivery service");
-    } finally {
-      setBusy(null);
+  const runRebook = () => withOperation("rebook", async () => {
+    const quote = await dispatch("requote");
+    if (!quote?.success) {
+      Alert.alert("Lalamove", quote?.error ?? "Could not get a new quote");
+      return;
     }
-  };
+    reportBookResult(await dispatch("book"));
+  });
 
   const handleRebook = () => {
     if (guardDemo()) return;
@@ -278,6 +277,16 @@ export function LalamoveDeliveryCard({ order }: LalamoveDeliveryCardProps) {
   // a pickup. A delivery with an address but no quotation stays visible so
   // the merchant can quote it from here instead of finding no card at all.
   if (!hasQuotation && !hasOrder && !isQuotable) return null;
+
+  if (status.toUpperCase() === "BOOKING" && !hasOrder) {
+    return (
+      <Card title="Lalamove Delivery" style={styles.card}>
+        <Text style={styles.muted}>
+          The delivery booking is awaiting confirmation. Check Lalamove before booking again.
+        </Text>
+      </Card>
+    );
+  }
 
   // No backend the app can reach — a per-tenant Supabase project, for which it
   // ships no adapter. Show what is known and say where the merchant CAN act,

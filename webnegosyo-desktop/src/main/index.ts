@@ -20,6 +20,7 @@ import type {
   PrintResult,
   ReceiptPayload,
   PosOrderPayload,
+  PosOrderScope,
   PosCatalogCache,
   PosTenantCache,
   LocalPosOrder,
@@ -86,8 +87,8 @@ app.whenReady().then(() => {
   // Offline-first POS local persistence — durable ledger + catalog/tenant cache.
   ipcMain.handle(
     'pos:saveOrder',
-    (_e, payload: PosOrderPayload, paymentStatus: 'paid' | 'pending'): LocalPosOrder =>
-      savePosOrder(payload, paymentStatus)
+    (_e, payload: PosOrderPayload, paymentStatus: 'paid' | 'pending', scope: PosOrderScope): LocalPosOrder =>
+      savePosOrder(payload, paymentStatus, scope)
   )
   ipcMain.handle('pos:getPending', (): LocalPosOrder[] => getPendingPosOrders())
   ipcMain.handle('pos:pendingCount', (): number => getPosPendingCount())

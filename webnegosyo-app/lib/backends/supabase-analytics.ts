@@ -33,17 +33,17 @@ import {
 } from "./product-analytics-compute";
 import { DAY_MS, localDayStartMs } from "./analytics-time";
 import {
-  STATS_LIMIT,
   STORE_WIDE,
   asRecord,
   boundedInt,
+  readAllPages,
   requireTenant,
   scopeToBranch,
   toNumber,
-  unwrap,
   type PlatformClient,
 } from "./platform-client";
 import type { BranchScope } from "../branch-scope";
+import { parseItemSalesArgs, readItemSales } from "./supabase-item-sales";
 
 /** Refs this module serves. */
 const ANALYTICS_REFS = [
@@ -59,6 +59,7 @@ const ANALYTICS_REFS = [
   "analytics:getCustomerInsights",
   "productAnalytics:getAll",
   "productAnalytics:getPortfolioSummary",
+  "analytics:getItemSales",
 ] as const;
 
 export function isPlatformAnalyticsRef(ref: string): boolean {
@@ -234,24 +235,26 @@ async function fetchOrders(
   window: Window,
   options: ReadOptions = {}
 ): Promise<AnalyticsOrder[]> {
-  let builder = scopeToBranch(
-    client.from("orders").select(ANALYTICS_ORDER_COLUMNS).eq("tenant_id", tenantId),
-    scope
-  ).gte("created_at", new Date(window.startMs).toISOString());
+  const build = () => {
+    let builder = scopeToBranch(
+      client.from("orders").select(ANALYTICS_ORDER_COLUMNS).eq("tenant_id", tenantId),
+      scope
+    ).gte("created_at", new Date(window.startMs).toISOString());
 
-  if (window.endMs !== undefined) {
-    builder = builder.lt("created_at", new Date(window.endMs).toISOString());
-  }
-  // Pushed to PostgREST rather than filtered after the cap: on a busy store a
-  // post-filter would let cancelled rows crowd real sales out of the window.
-  if (!options.includeCancelled) {
-    builder = builder.neq("status", "cancelled");
-  }
+    if (window.endMs !== undefined) {
+      builder = builder.lt("created_at", new Date(window.endMs).toISOString());
+    }
+    // Pushed to PostgREST rather than filtered after the cap: on a busy store a
+    // post-filter would let cancelled rows crowd real sales out of the window.
+    if (!options.includeCancelled) {
+      builder = builder.neq("status", "cancelled");
+    }
+    // `id` breaks created_at ties so no row shifts between pages.
+    return builder.order("created_at", { ascending: false }).order("id", { ascending: false });
+  };
 
-  const rows = await unwrap<AnalyticsOrderRow[] | null>(
-    builder.order("created_at", { ascending: false }).limit(STATS_LIMIT)
-  );
-  return (rows ?? []).map(toAnalyticsOrder);
+  const rows = await readAllPages<AnalyticsOrderRow>(build);
+  return rows.map(toAnalyticsOrder);
 }
 
 /** Line items of the non-cancelled orders in the window. */
@@ -261,28 +264,31 @@ async function fetchItems(
   scope: BranchScope,
   window: Window
 ): Promise<AnalyticsItem[]> {
-  let builder = scopeToBranch(
-    client
-      .from("order_items")
-      .select(ANALYTICS_ITEM_COLUMNS)
-      .eq("orders.tenant_id", tenantId)
-      .gte("orders.created_at", new Date(window.startMs).toISOString())
-      .neq("orders.status", "cancelled"),
-    scope,
-    "orders.outlet_id"
-  );
+  const build = () => {
+    let builder = scopeToBranch(
+      client
+        .from("order_items")
+        .select(ANALYTICS_ITEM_COLUMNS)
+        .eq("orders.tenant_id", tenantId)
+        .gte("orders.created_at", new Date(window.startMs).toISOString())
+        .neq("orders.status", "cancelled"),
+      scope,
+      "orders.outlet_id"
+    );
 
-  // The upper bound belongs on the JOINED order, not on the item: an item has
-  // no date of its own, so without this a window asking for one day would take
-  // that day's first item and every item sold since.
-  if (window.endMs !== undefined) {
-    builder = builder.lt("orders.created_at", new Date(window.endMs).toISOString());
-  }
+    // The upper bound belongs on the JOINED order, not on the item: an item has
+    // no date of its own, so without this a window asking for one day would take
+    // that day's first item and every item sold since.
+    if (window.endMs !== undefined) {
+      builder = builder.lt("orders.created_at", new Date(window.endMs).toISOString());
+    }
+    return builder
+      .order("orders(created_at)", { ascending: false })
+      .order("id", { ascending: false });
+  };
 
-  const rows = await unwrap<AnalyticsItemRow[] | null>(
-    builder.order("orders(created_at)", { ascending: false }).limit(STATS_LIMIT)
-  );
-  return (rows ?? []).map(toAnalyticsItem);
+  const rows = await readAllPages<AnalyticsItemRow>(build);
+  return rows.map(toAnalyticsItem);
 }
 
 async function fetchEvents(
@@ -292,38 +298,39 @@ async function fetchEvents(
   scope: BranchScope,
   window: Window
 ): Promise<AnalyticsEvent[]> {
-  let builder = client.from("analytics_events")
-    .select("type, created_at")
-    .eq("tenant_id", tenantId);
-  if (scope.kind === "branch") {
-    // Checkout historically used outletId; newer event producers use outlet_id.
-    // Prefer the canonical key if both exist. Quote PostgREST filter values.
-    const id = JSON.stringify(scope.outletId);
-    builder = builder.or(`metadata->>outlet_id.eq.${id},and(metadata->>outlet_id.is.null,metadata->>outletId.eq.${id})`);
-  }
-  builder = builder
-    .in("type", types)
-    .gte("created_at", new Date(window.startMs).toISOString());
+  const build = () => {
+    let builder = client.from("analytics_events")
+      .select("type, created_at")
+      .eq("tenant_id", tenantId);
+    if (scope.kind === "branch") {
+      // Checkout historically used outletId; newer event producers use outlet_id.
+      // Prefer the canonical key if both exist. Quote PostgREST filter values.
+      const id = JSON.stringify(scope.outletId);
+      builder = builder.or(`metadata->>outlet_id.eq.${id},and(metadata->>outlet_id.is.null,metadata->>outletId.eq.${id})`);
+    }
+    builder = builder
+      .in("type", types)
+      .gte("created_at", new Date(window.startMs).toISOString());
 
-  if (window.endMs !== undefined) {
-    builder = builder.lt("created_at", new Date(window.endMs).toISOString());
-  }
+    if (window.endMs !== undefined) {
+      builder = builder.lt("created_at", new Date(window.endMs).toISOString());
+    }
+    return builder.order("created_at", { ascending: false }).order("id", { ascending: false });
+  };
 
-  const rows = await unwrap<AnalyticsEventRow[] | null>(
-    builder.order("created_at", { ascending: false }).limit(STATS_LIMIT)
-  );
-  return (rows ?? []).map(toAnalyticsEvent);
+  const rows = await readAllPages<AnalyticsEventRow>(build);
+  return rows.map(toAnalyticsEvent);
 }
 
 async function fetchCosts(client: PlatformClient, tenantId: string): Promise<ProductCost[]> {
-  const rows = await unwrap<ProductCostRow[] | null>(
+  const rows = await readAllPages<ProductCostRow>(() =>
     client
       .from("product_costs")
       .select("menu_item_id, cost_price")
       .eq("tenant_id", tenantId)
-      .limit(STATS_LIMIT)
+      .order("menu_item_id", { ascending: true })
   );
-  return (rows ?? []).map(toProductCost);
+  return rows.map(toProductCost);
 }
 
 async function fetchProductRows(
@@ -401,6 +408,8 @@ export async function runPlatformAnalyticsQuery(
       return computeOrderHeatmap(await fetchOrders(client, tenant, scope, rollingWindow(params, 30)));
     case "analytics:getCustomerInsights":
       return computeCustomerInsights(await fetchOrders(client, tenant, scope, rollingWindow(params, 30)));
+    case "analytics:getItemSales":
+      return readItemSales(client, tenant, scope, parseItemSalesArgs(params));
     case "productAnalytics:getAll":
       return fetchProductRows(client, tenant, scope, params);
     case "productAnalytics:getPortfolioSummary":

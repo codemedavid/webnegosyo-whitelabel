@@ -58,6 +58,20 @@ function createFakeClient(results: Record<string, TableResult>) {
 const tenant = { id: 't-1', bundles_enabled: false, multi_branch_enabled: false } as unknown as Tenant
 
 describe('loadStorefrontCatalog', () => {
+  test('hydrates cross-category bundle choices from the existing catalog without another item read', async () => {
+    const { client, queried } = createFakeClient({
+      menu_items: { data: [
+        { id: 'drink', category_id: 'drinks', is_available: true },
+        { id: 'side', category_id: 'sides', is_available: true },
+        { id: 'sold-out', category_id: 'sides', is_available: false },
+      ], error: null },
+      bundles: { data: [{ id: 'meal', slots: [{ category_id: 'drinks', included_item_ids: ['side', 'sold-out', 'drink'] }] }], error: null },
+    })
+    const catalog = await loadStorefrontCatalog(client, { ...tenant, bundles_enabled: true })
+    expect(catalog.bundles[0].slots[0].items?.map(item => item.id)).toEqual(['drink', 'side'])
+    expect(queried.filter(table => table === 'menu_items')).toHaveLength(1)
+  })
+
   test('single-location tenant runs only the category and item queries', async () => {
     const { client, queried } = createFakeClient({
       categories: { data: [{ id: 'c1' }], error: null },

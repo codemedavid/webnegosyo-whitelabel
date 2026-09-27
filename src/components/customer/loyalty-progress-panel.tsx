@@ -15,6 +15,8 @@ interface LoyaltyProgressPanelProps {
   storeName: string
   logoUrl?: string | null
   tenantSlug?: string
+  error?: string | null
+  onRetry?: () => void
 }
 
 /**
@@ -29,14 +31,22 @@ interface LoyaltyProgressPanelProps {
  * a guessed balance would be worse than an empty space.
  */
 export function LoyaltyProgressPanel({
-  offer,
   card,
   isLoading,
   storeName,
   logoUrl = null,
   tenantSlug,
+  error,
+  onRetry,
 }: LoyaltyProgressPanelProps) {
-  if (isLoading) {
+  const refreshNotice = error ? (
+    <div role="status" className="space-y-1 text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+      <p>{error} {card ? 'Showing your last confirmed balance.' : 'Your balance is unavailable right now.'}</p>
+      {onRetry && <button type="button" onClick={onRetry} className="font-semibold underline" style={{ color: 'var(--trk-accent)' }}>Try again</button>}
+    </div>
+  ) : null
+
+  if (isLoading && !card) {
     return (
       <div
         data-testid="loyalty-progress-loading"
@@ -49,13 +59,11 @@ export function LoyaltyProgressPanel({
     )
   }
 
-  if (!card || !offer) return null
+  if (!card) return refreshNotice
 
   const unit = card.earnMode === 'stamp' ? 'stamps' : 'points'
+  const earningActive = !card.programStatus || card.programStatus === 'active'
   const hasReward = card.rewardsAvailable > 0
-  // A reward is issued by spending the balance, so a customer holding one can
-  // legitimately be back at zero. Show the card they earned, not an empty row.
-  const filled = card.balance === 0 && hasReward ? card.threshold : card.balance
 
   return (
     <section
@@ -78,17 +86,20 @@ export function LoyaltyProgressPanel({
             ? `Reward ready! ${card.rewardLabel} is waiting at ${storeName}.`
             : `${card.balance} of ${card.threshold} ${unit} toward ${card.rewardLabel}`}
         </p>
+        {hasReward && <p className="text-sm font-semibold" style={{ color: 'var(--trk-text)' }}>{card.balance} of {card.threshold} {unit} toward your next {card.rewardLabel}</p>}
         <StampTrack
           threshold={card.threshold}
-          filled={filled}
+          filled={card.balance}
           earnMode={card.earnMode}
-          nextIsLive={!hasReward}
+          nextIsLive={earningActive}
           logoUrl={logoUrl}
         />
         <p className="text-xs" style={{ color: 'var(--trk-text-muted)' }}>
-          Use this number every time and your stamps add up automatically.
+          {earningActive ? 'Use this number every time and your stamps add up automatically.' : card.programStatus === 'ended' ? 'This program has ended.' : 'Earning is paused for this program.'}
         </p>
-        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="inline-block text-xs font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & claim</Link> : null}
+        {card.balance < 0 && <p className="text-xs" style={{ color: 'var(--trk-text-muted)' }}>Your balance includes an adjustment. New earnings first cover the {Math.abs(card.balance)} {unit} adjustment.</p>}
+        {refreshNotice}
+        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="inline-block text-xs font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & use a reward</Link> : null}
       </div>
     </section>
   )

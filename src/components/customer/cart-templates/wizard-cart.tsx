@@ -18,6 +18,7 @@ import {
   CartEmptyState,
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
+import { CartOffers } from './cart-shared'
 
 export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
   if (!cart.tenant) return null
@@ -33,7 +34,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
   return (
     <div className="min-h-screen bg-gray-100" style={{ backgroundColor: palette.background }}>
       {/* Page header with back button + title */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+      <header data-senior-hidden className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
           <button
             type="button"
@@ -103,6 +104,7 @@ export function WizardCart({ cart }: { cart: UseCartViewReturn }) {
                     <CartBundleRow key={bundleItem.id} cart={cart} bundleItem={bundleItem} />
                   ))}
                 </div>
+                <CartOffers cart={cart} className="pb-5" />
 
                 {/* Dashed separator before totals */}
                 <div className="border-t border-dashed border-gray-300" aria-hidden="true" />

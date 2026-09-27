@@ -175,7 +175,9 @@ export function CheckoutDialog({ onClose, onToast }: CheckoutDialogProps): React
     try {
       // Durable write — once this resolves the sale is recorded and survives a
       // crash or restart. Counter sales are paid on the spot.
-      await window.api.savePosOrder(payload, 'paid')
+      const auth = useAuthStore.getState()
+      if (!auth.tenantId || !auth.convexUrl) throw new Error('No store selected')
+      await window.api.savePosOrder(payload, 'paid', { tenantId: auth.tenantId, convexUrl: auth.convexUrl })
 
       // Hand the counter back to the cashier right away.
       clear()

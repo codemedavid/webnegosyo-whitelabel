@@ -11,9 +11,11 @@ interface ActiveOrderBannerProps {
   tenantSlug: string
   primaryColor?: string
   primaryTextColor?: string
+  /** Sit above the senior-mode cart bar instead of on top of it. */
+  isRaised?: boolean
 }
 
-export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }: ActiveOrderBannerProps) {
+export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor, isRaised = false }: ActiveOrderBannerProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [latestOrder, setLatestOrder] = useState<ActiveOrder | null>(null)
@@ -79,6 +81,7 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }
   if (!latestOrder) return null
 
   const trackUrl = `/${tenantSlug}/order/${latestOrder.orderId}?t=${latestOrder.trackingToken}`
+  const bottomClass = isRaised ? 'bottom-32' : 'bottom-6'
   const bgColor = primaryColor || '#2563eb'
   const textColor = primaryTextColor || '#ffffff'
 
@@ -87,7 +90,7 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }
     return (
       <button
         onClick={() => router.push(trackUrl)}
-        className="fixed bottom-6 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95"
+        className={`fixed ${bottomClass} right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform hover:scale-110 active:scale-95`}
         style={{ backgroundColor: bgColor, color: textColor }}
         aria-label="Track your order"
       >
@@ -97,7 +100,7 @@ export function ActiveOrderBanner({ tenantSlug, primaryColor, primaryTextColor }
   }
 
   return (
-    <div className="fixed bottom-6 left-4 right-4 z-50 max-w-lg mx-auto">
+    <div className={`fixed ${bottomClass} left-4 right-4 z-50 max-w-lg mx-auto`}>
       <div
         className="flex items-center gap-3 rounded-2xl px-4 py-3 text-white shadow-lg"
         style={{ backgroundColor: bgColor, color: textColor }}

@@ -93,7 +93,7 @@ export interface Tenant {
   hero_image_url?: string | null; // Fallback hero tile image when no product is attached
   hero_link_url?: string | null; // Where the fallback hero image links to when clicked
   hero_design?: Record<string, unknown> | null;  // HeroDesign JSON from hero designer
-  card_template?: string; // 'classic' | 'minimal' | 'modern' | 'elegant' | 'compact' | 'bold' | 'glass' | 'polaroid' | 'brutalist' | 'magazine' | 'zen' | 'neon' | 'storefront'
+  card_template?: string; // a CardTemplate id — see CARD_TEMPLATES in src/lib/card-templates.ts
   checkout_template?: string; // Checkout page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
   cart_template?: string; // Cart page design: 'classic' | 'modern' | 'wizard' | 'minimal' | 'express'
   page_layout?: string; // 'default' | 'sidebar' | 'magazine' | 'grid-focus' | 'list' | 'mosaic'
@@ -115,6 +115,8 @@ export interface Tenant {
   header_show_logo?: boolean;
   header_show_name?: boolean;
   header_show_cart?: boolean;
+  /** Senior-friendly ordering mode (src/lib/senior-mode.ts). */
+  senior_friendly_mode?: boolean;
   header_show_search?: boolean; // Show an inline search bar in the header
   header_tagline?: string; // Optional tagline shown under the restaurant name
   header_tagline_color?: string;

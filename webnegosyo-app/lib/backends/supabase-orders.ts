@@ -435,6 +435,54 @@ function customerDataWithPaymentProof(
 }
 
 /**
+ * The columns `toOrderDto` is built from — the projection of every order LIST
+ * read (`getOrders`, the live queue), which a device repeats all day.
+ *
+ * `select=*` shipped every column of every row, the access-token hash and the
+ * discount and Loyverse bookkeeping included, none of which the DTO reads.
+ * Named here, beside the mapper, because a column the mapper reads but the
+ * SELECT omits becomes a silent `undefined`; `supabase-orders.test.ts` pins
+ * the two together. `daily_order_number` is deliberately absent: the mapper
+ * tolerates it, but the platform table has no such column and naming it fails
+ * the whole read.
+ */
+export const ORDER_DTO_COLUMNS = [
+  "id",
+  "created_at",
+  "outlet_id",
+  "daily_number",
+  "customer_name",
+  "customer_contact",
+  "customer_data",
+  "total",
+  "item_count",
+  "status",
+  "source",
+  "order_type",
+  "order_type_id",
+  "payment_status",
+  "payment_method_name",
+  "payment_method_details",
+  "delivery_fee",
+  "service_charge_amount",
+  "lalamove_quotation_id",
+  "lalamove_order_id",
+  "lalamove_status",
+  "lalamove_driver_name",
+  "lalamove_driver_phone",
+  "lalamove_tracking_url",
+  "scheduled_for",
+  "client_order_id",
+  "prep_minutes",
+  "promised_ready_at",
+  "revision_number",
+  "amount_paid",
+  "payment_proof_url",
+  "payment_proof_public_id",
+  "payment_proof_reference",
+].join(", ");
+
+/**
  * `items` is only needed for rows written before `item_count` existed; the
  * count is otherwise read straight off the column.
  */

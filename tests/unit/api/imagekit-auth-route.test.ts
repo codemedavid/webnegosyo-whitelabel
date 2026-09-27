@@ -8,7 +8,7 @@
  *  - POST (current clients): admin/superadmin only, returns a v2 token that
  *    SIGNS folder + fileName + no-overwrite.
  *  - GET (legacy clients, e.g. merchant-app builds that predate the fix):
- *    still served to anonymous callers until IMAGEKIT_AUTH_REQUIRED=true.
+ *    retired because v1 permits cross-tenant overwrites, even for staff.
  */
 
 import { NextRequest } from 'next/server'
@@ -127,14 +127,13 @@ describe('/api/imagekit/auth', () => {
   })
 
   describe('GET (legacy v1 params)', () => {
-    it('still serves an anonymous legacy caller while IMAGEKIT_AUTH_REQUIRED is unset', async () => {
+    it('refuses an anonymous legacy caller by default', async () => {
       const { resolve, route } = await load()
       resolve.mockResolvedValue({ status: 'anonymous' })
 
       const res = await route.GET(get())
 
-      expect(res.status).toBe(200)
-      expect(await res.json()).toEqual({ token: 't', expire: 1, signature: 's', publicKey: 'pk' })
+      expect(res.status).toBe(401)
     })
 
     it('refuses an anonymous legacy caller once IMAGEKIT_AUTH_REQUIRED=true', async () => {
@@ -147,14 +146,14 @@ describe('/api/imagekit/auth', () => {
       expect(res.status).toBe(401)
     })
 
-    it('serves an authenticated admin even with enforcement on', async () => {
+    it('retires unrestricted v1 tokens even for authenticated admins', async () => {
       process.env.IMAGEKIT_AUTH_REQUIRED = 'true'
       const { resolve, route } = await load()
       resolve.mockResolvedValue(ADMIN as never)
 
       const res = await route.GET(get())
 
-      expect(res.status).toBe(200)
+      expect(res.status).toBe(410)
     })
 
     it('refuses non-admin credentials once enforcement is on', async () => {

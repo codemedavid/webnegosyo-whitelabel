@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import type { LoyaltyWallet } from '@/lib/loyalty/wallet'
+import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
 
 async function post(path: string, body: unknown) {
   const controller = new AbortController()
@@ -25,18 +26,26 @@ async function post(path: string, body: unknown) {
   }
 }
 const button =
-  'rounded-xl bg-gray-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50'
+  'rounded-xl bg-[var(--brand-button-primary,var(--primary))] px-5 py-3 text-sm font-semibold text-[var(--brand-button-primary-text,var(--primary-foreground))] disabled:opacity-50'
 const input =
-  'w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900'
+  'w-full rounded-xl border border-[var(--brand-border,var(--border))] bg-[var(--brand-cards,var(--card))] px-4 py-3 text-base text-[var(--brand-text-primary,var(--foreground))]'
 
-export function LoyaltyWalletPage({
+type LoyaltyWalletPageProps = { tenantId: string; tenantSlug: string; storeName: string; logoUrl?: string | null }
+
+export function LoyaltyWalletPage(props: LoyaltyWalletPageProps) {
+  return <WalletSession key={props.tenantId} {...props} />
+}
+
+function WalletSession({
   tenantId,
   tenantSlug,
   storeName,
+  logoUrl,
 }: {
   tenantId: string
   tenantSlug: string
   storeName: string
+  logoUrl?: string | null
 }) {
   const [phone, setPhone] = useState('')
   const [wallet, setWallet] = useState<LoyaltyWallet | null>(null)
@@ -57,26 +66,36 @@ export function LoyaltyWalletPage({
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
   const generation = useRef(0)
+  const running = useRef(false)
+  const invalidateSession = useCallback(() => { generation.current++ }, [])
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => {
+      invalidateSession()
       clearInterval(timer)
     }
-  }, [])
-  const run = async (action: () => Promise<void>) => {
-    if (busy) return
+  }, [invalidateSession])
+  const run = useCallback(async (action: () => Promise<void>) => {
+    if (running.current) return
+    const current = generation.current
+    running.current = true
     setBusy(true)
     setError(null)
     try {
       await action()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Please try again.')
+      if (current === generation.current) setError(e instanceof Error ? e.message : 'Please try again.')
     } finally {
-      setBusy(false)
+      if (current === generation.current) {
+        running.current = false
+        setBusy(false)
+      }
     }
-  }
+  }, [])
   const reset = () => {
     generation.current++
+    running.current = false
+    setBusy(false)
     setPhone('')
     setWallet(null)
     setSelected(null)
@@ -85,12 +104,47 @@ export function LoyaltyWalletPage({
     setCode('')
     setError(null)
   }
-  const lookup = () =>
+  const lookup = useCallback(() =>
     run(async () => {
       const current = generation.current
       const result = await post('wallet', { tenantId, phone })
       if (current === generation.current) setWallet(result)
-    })
+    }), [phone, tenantId, run])
+  useEffect(() => {
+    if (!wallet) return
+    const refresh = () => { void lookup() }
+    const visible = () => { if (document.visibilityState === 'visible') refresh() }
+    window.addEventListener('focus', refresh)
+    window.addEventListener('online', refresh)
+    document.addEventListener('visibilitychange', visible)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener('online', refresh)
+      document.removeEventListener('visibilitychange', visible)
+    }
+  }, [wallet, lookup])
+  useEffect(() => {
+    if (!claim) return
+    let checks = 0
+    // Six checks over three minutes fit within the public wallet quotas. Stop
+    // once the QR expires; focus/reconnect and manual refresh remain available.
+    const timer = setInterval(() => {
+      if (++checks > 6 || Date.now() >= Date.parse(claim.expiresAt)) {
+        clearInterval(timer)
+        return
+      }
+      if (document.visibilityState === 'visible') void lookup()
+    }, 30000)
+    return () => clearInterval(timer)
+  }, [claim, lookup])
+  useEffect(() => {
+    if (wallet && selected && !wallet.rewards.some(reward => reward.id === selected.id)) {
+      setSelected(null)
+      setChallenge(null)
+      setClaim(null)
+      setCode('')
+    }
+  }, [wallet, selected])
   const requestCode = (reward: LoyaltyWallet['rewards'][number]) =>
     run(async () => {
       const current = generation.current
@@ -138,17 +192,17 @@ export function LoyaltyWalletPage({
     ? Math.max(0, Math.ceil((challenge.resend - now) / 1000))
     : 0
   return (
-    <main className="mx-auto min-h-screen max-w-lg space-y-6 px-5 py-10">
-      <Link href={`/${tenantSlug}/menu`} className="text-sm text-gray-600">
+    <main className="mx-auto min-h-screen max-w-lg space-y-6 px-5 py-10 text-[var(--brand-text-primary,var(--foreground))]">
+      <Link href={`/${tenantSlug}/menu`} className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
         ← {storeName}
       </Link>
       <header>
-        <p className="text-sm font-medium text-gray-500">
+        <p className="text-sm font-medium text-[var(--brand-text-muted,var(--muted-foreground))]">
           A little thank-you for coming back
         </p>
-        <h1 className="mt-2 text-3xl font-bold text-gray-950">Your rewards</h1>
-        <p className="mt-3 text-gray-600">
-          Use the mobile number on your orders. No account needed.
+        <h1 className="mt-2 text-3xl font-bold text-[var(--brand-text-primary,var(--foreground))]">Your rewards</h1>
+        <p className="mt-3 text-[var(--brand-text-secondary,var(--muted-foreground))]">
+          {wallet ? 'Your next visit brings another reward closer.' : 'Use the mobile number on your orders. No account needed.'}
         </p>
       </header>
       {error ? (
@@ -185,7 +239,7 @@ export function LoyaltyWalletPage({
           <button className={button} disabled={busy}>
             {busy ? 'Checking…' : 'Check my rewards'}
           </button>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">
             This lookup shows loyalty progress and rewards only.
           </p>
         </form>
@@ -194,7 +248,6 @@ export function LoyaltyWalletPage({
           <button
             type="button"
             className="text-sm underline"
-            disabled={busy}
             onClick={reset}
           >
             Use another number
@@ -207,7 +260,7 @@ export function LoyaltyWalletPage({
               <h2 className="text-xl font-semibold">
                 {claimSeconds > 0
                   ? 'Show this at the counter'
-                  : 'Your claim QR has expired'}
+                  : 'Your reward QR has expired'}
               </h2>
               <p>{selected?.label}</p>
               {claimSeconds > 0 ? (
@@ -216,20 +269,20 @@ export function LoyaltyWalletPage({
                     <QRCodeSVG
                       value={claim.token}
                       size={220}
-                      title="Single-use reward claim"
+                      title="Single-use reward QR"
                     />
                   </div>
                   <p className="text-sm">
                     Valid for {claimSeconds} seconds. Ask the cashier to scan
                     before payment.
                   </p>
-                  <p className="text-xs text-gray-500">
-                    This QR claims one reward and can be used once.
+                  <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">
+                    Your reward is used only when the cashier applies it to your order. This QR can be used once.
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-gray-600">
-                  Request a new code to claim your reward.
+                <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
+                  If your reward is still available, request a new code to get another QR.
                 </p>
               )}
               {selected ? (
@@ -245,9 +298,9 @@ export function LoyaltyWalletPage({
           ) : challenge && selected ? (
             <section className="space-y-4 rounded-2xl border p-5">
               <h2 className="text-lg font-semibold">
-                Verify to claim {selected.label}
+                Verify to use {selected.label}
               </h2>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
                 If this reward is eligible, an SMS code will arrive on your
                 phone. Codes expire after five minutes.
               </p>
@@ -313,9 +366,9 @@ export function LoyaltyWalletPage({
           ) : (
             <>
               <section className="space-y-3">
-                <h2 className="text-xl font-semibold">Ready to claim</h2>
+                <h2 className="text-xl font-semibold">Ready to use</h2>
                 {wallet.rewards.length === 0 ? (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
                     No rewards ready yet. Keep using the same number when you
                     order.
                   </p>
@@ -323,13 +376,13 @@ export function LoyaltyWalletPage({
                 {wallet.rewards.map((reward) => (
                   <article
                     key={reward.id}
-                    className="space-y-3 rounded-2xl border bg-white p-5"
+                    className="space-y-3 rounded-2xl border border-[var(--brand-cards-border,var(--border))] bg-[var(--brand-cards,var(--card))] p-5"
                   >
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-text-muted,var(--muted-foreground))]">
                       {reward.programName}
                     </p>
                     <h3 className="text-xl font-semibold">{reward.label}</h3>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
                       {reward.branchName
                         ? `At ${reward.branchName}`
                         : 'At any branch'}
@@ -338,7 +391,7 @@ export function LoyaltyWalletPage({
                         : ' · No expiry'}
                     </p>
                     {reward.freeItem ? (
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">
                         One base item; upgrades and add-ons are payable. Subject
                         to item availability.
                       </p>
@@ -346,15 +399,15 @@ export function LoyaltyWalletPage({
                     {wallet.claimsAvailable ? (
                       <button
                         className={button}
-                        aria-label={`Claim ${reward.label}`}
+                        aria-label={`Get QR for ${reward.label}`}
                         disabled={busy}
                         onClick={() => void requestCode(reward)}
                       >
-                        Claim reward
+                        Get reward QR
                       </button>
                     ) : (
-                      <p className="text-sm text-gray-600">
-                        Your reward is saved. Claiming is not available at this
+                      <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
+                        Your reward is saved. Reward QR codes are not available at this
                         store yet.
                       </p>
                     )}
@@ -362,16 +415,17 @@ export function LoyaltyWalletPage({
                 ))}
               </section>
               <section className="space-y-3">
-                <h2 className="text-xl font-semibold">Your progress</h2>
+                <h2 className="text-xl font-semibold">Your next reward</h2>
+                <p className="text-sm text-[var(--brand-text-muted,var(--muted-foreground))]">Keep collecting while your reward is ready. Using it keeps your next-card progress.</p>
                 {wallet.programs.length === 0 ? (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
                     There are no active programs to show.
                   </p>
                 ) : null}
                 {wallet.programs.map((program) => (
                   <article
                     key={program.id}
-                    className="space-y-3 rounded-2xl border p-5"
+                    className="space-y-3 rounded-2xl border border-[var(--brand-cards-border,var(--border))] bg-[var(--brand-cards,var(--card))] p-5"
                   >
                     <h3 className="font-semibold">{program.name}</h3>
                     <p className="text-sm">
@@ -379,18 +433,14 @@ export function LoyaltyWalletPage({
                       {program.earnMode === 'stamp' ? 'stamps' : 'points'}{' '}
                       toward {program.rewardLabel}
                     </p>
-                    <progress
-                      className="h-2 w-full accent-gray-900"
-                      aria-label={`${program.name} progress`}
-                      value={Math.max(0, program.balance)}
-                      max={program.threshold}
-                    />
-                    <p className="text-xs text-gray-500">
+                    {program.balance < 0 && <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">Your balance includes an adjustment. New earnings first cover the {Math.abs(program.balance)} {program.earnMode === 'stamp' ? 'stamps' : 'points'} adjustment.</p>}
+                    <StampTrack threshold={program.threshold} filled={Math.max(0, program.balance)} earnMode={program.earnMode} nextIsLive={program.status === 'active'} logoUrl={logoUrl} />
+                    <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">
                       {program.branchName || 'All branches'}
                       {program.minSpend
                         ? ` · Orders of ₱${program.minSpend} or more`
                         : ''}
-                      {program.status === 'paused' ? ' · Earning paused' : ''}
+                      {program.status === 'paused' ? ' · Earning paused' : program.status === 'ended' ? ' · Program ended' : ''}
                     </p>
                   </article>
                 ))}

@@ -73,7 +73,7 @@ export async function runPosSaleBookkeeping(
   const deps = injectedDeps ?? (await liveDeps());
   const { tenantId, orderId, backend, bookkeeping } = facts;
   await Promise.all([
-    deps.stock(tenantId, orderId, bookkeeping.stockItems),
+    deps.stock(tenantId, orderId, bookkeeping.stockItems, "pos"),
     deps.loyverse(tenantId, loyverseOrderNumber(orderId), bookkeeping.loyverseLines),
     deps.vouchers(tenantId, orderId, bookkeeping.discountLines, bookkeeping.outletId),
     deps.activity(tenantId, {

@@ -1,4 +1,7 @@
 import {
+  BULK_READ_POLL_MS,
+  LIVE_ORDER_READ_MAX,
+  isBulkOrderRead,
   DISCONNECTED_POLL_MS,
   MAX_FAILURE_POLL_MS,
   REALTIME_FALLBACK_POLL_MS,
@@ -331,5 +334,47 @@ describe("countConsecutiveFailures", () => {
       streak: { dataUpdatedAt: 0, errorsAtLastSuccess: 0 },
       failures: 0,
     });
+  });
+});
+
+/**
+ * The report-sized reads — a 2000-order page, a 10 000-row day window, the
+ * line items of a thousand orders — were polled and re-read on every order
+ * event exactly like the 50-order live queue. Live, one device re-issued each
+ * of them about every 0.7 s. They now refresh on a slow poll, on focus and on
+ * the merchant's own writes, never on every payload.
+ */
+describe("isBulkOrderRead", () => {
+  it("treats the live queue pages as live", () => {
+    expect(isBulkOrderRead("orders:getOrders", {})).toBe(false);
+    expect(isBulkOrderRead("orders:getOrders", { limit: 200 })).toBe(false);
+    expect(isBulkOrderRead("orders:getOrders", { limit: LIVE_ORDER_READ_MAX })).toBe(false);
+  });
+
+  it("treats a report-sized page or window as bulk", () => {
+    expect(isBulkOrderRead("orders:getOrders", { limit: 2000 })).toBe(true);
+    expect(
+      isBulkOrderRead("orders:getOrders", { startMs: 1, endMs: 2, limit: 10000 })
+    ).toBe(true);
+  });
+
+  it("treats a read naming more orders than a live screen shows as bulk", () => {
+    const many = Array.from({ length: LIVE_ORDER_READ_MAX + 1 }, (_, i) => `o${i}`);
+    expect(isBulkOrderRead("orders:getAllOrderItems", { orderIds: many })).toBe(true);
+    expect(isBulkOrderRead("orders:getOrderPaymentsForOrders", { orderIds: many })).toBe(true);
+    expect(isBulkOrderRead("orders:getAllOrderItems", { orderIds: many.slice(0, 5) })).toBe(false);
+  });
+});
+
+describe("resolvePollMs — bulk reads", () => {
+  const exact = () => 0.5;
+
+  it("polls a bulk read slowly whatever the socket is doing", () => {
+    expect(resolvePollMs("disconnected", 0, exact, true)).toBe(BULK_READ_POLL_MS);
+    expect(resolvePollMs("connected", 0, exact, true)).toBe(BULK_READ_POLL_MS);
+  });
+
+  it("still backs a failing bulk read off, capped at the bulk interval", () => {
+    expect(resolvePollMs("disconnected", 3, exact, true)).toBe(BULK_READ_POLL_MS);
   });
 });

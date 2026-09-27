@@ -72,6 +72,11 @@ function fakeDeps(programs: LoyaltyProgram[], earned: Record<string, number> = {
 }
 
 describe('earnLoyaltyForFact', () => {
+  it('asks for the rules at completion when an order event arrives late', async () => {
+    const loadActivePrograms = jest.fn(async () => [program('a')])
+    await earnLoyaltyForFact(fact(), CTX, { ...fakeDeps([]).deps, loadActivePrograms })
+    expect(loadActivePrograms).toHaveBeenCalledWith('tenant-1', fact().completedAt)
+  })
   it('writes one earn per eligible program under the phone-keyed customer', async () => {
     const { deps, writes } = fakeDeps([program('a'), program('b', { status: 'paused' }), program('c')])
     const outcome = await earnLoyaltyForFact(fact(), CTX, deps)

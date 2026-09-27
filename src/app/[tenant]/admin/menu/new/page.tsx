@@ -1,4 +1,5 @@
-import { Breadcrumbs } from '@/components/shared/breadcrumbs'
+import Link from 'next/link'
+import { EditorPageHeader } from '@/components/admin/menu-editor/editor-page-header'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getLinkableMenuItems } from '@/lib/admin-service'
@@ -21,46 +22,31 @@ export default async function NewMenuItemPage({
     getLinkableMenuItems(tenant.id).catch(() => []),
   ])
 
+  const menuHref = `/${tenantSlug}/admin/menu`
+
   if (categories.length === 0) {
     return (
-      <div className="space-y-6">
-        <Breadcrumbs
-          items={[
-            { label: 'Dashboard', href: `/${tenantSlug}/admin` },
-            { label: 'Menu Management', href: `/${tenantSlug}/admin/menu` },
-            { label: 'New Item' },
-          ]}
-        />
-        <div className="text-center py-12">
-          <h2 className="text-2xl font-bold mb-2">No categories found</h2>
-          <p className="text-muted-foreground mb-4">
-            You need to create at least one category before adding menu items.
+      <div className="space-y-5">
+        <EditorPageHeader backHref={menuHref} title="Add a dish" />
+        <div className="mx-auto max-w-md rounded-xl border bg-card px-6 py-10 text-center">
+          <h2 className="text-lg font-semibold">First, make a category</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Every dish goes under a category, like Rice Meals or Drinks. Make one, then come back here.
           </p>
-          <a
+          <Link
             href={`/${tenantSlug}/admin/categories`}
-            className="text-primary hover:underline"
+            className="mt-5 inline-flex h-11 items-center justify-center rounded-md bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
           >
-            Go to Categories
-          </a>
+            Make a category
+          </Link>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <Breadcrumbs
-        items={[
-          { label: 'Dashboard', href: `/${tenantSlug}/admin` },
-          { label: 'Menu Management', href: `/${tenantSlug}/admin/menu` },
-          { label: 'New Item' },
-        ]}
-      />
-
-      <div>
-        <h1 className="text-3xl font-bold">Add Menu Item</h1>
-        <p className="text-muted-foreground">Create a new item for your menu</p>
-      </div>
+    <div className="space-y-5">
+      <EditorPageHeader backHref={menuHref} title="Add a dish" />
 
       <MenuItemForm
         categories={categories}

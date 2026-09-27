@@ -1,4 +1,5 @@
 import {
+  ORDER_DTO_COLUMNS,
   localDayStartMs,
   toOrderDto,
   toOrderItemDto,
@@ -897,4 +898,67 @@ it('maps both persisted daily-number column conventions without changing order i
   expect(toOrderDto(orderRow({ daily_number: 7 }))).toMatchObject({ _id: 'order-1', dailyNumber: 7 });
   expect(toOrderDto(orderRow({ daily_order_number: 9 }))).toMatchObject({ _id: 'order-1', dailyNumber: 9 });
   expect(toOrderDto(orderRow()).dailyNumber).toBeNull();
+});
+
+/**
+ * The order lists used to read `select=*` — every column of every row, the
+ * access-token hash, discount blobs and Loyverse bookkeeping included — on
+ * reads a device repeats all day. They now name the columns the DTO is built
+ * from. The danger of a named projection is the one this file has met before:
+ * a column the mapper reads but the SELECT omits silently becomes undefined.
+ * So the projection is pinned against the mapper itself.
+ */
+describe("ORDER_DTO_COLUMNS", () => {
+  const FULL_ROW = {
+    id: "o1",
+    tenant_id: "t1",
+    outlet_id: "north",
+    daily_number: 7,
+    customer_name: "Ana",
+    customer_contact: "0917",
+    customer_data: { delivery_address: "Makati", cashierId: "u1" },
+    total: "350.00",
+    item_count: 3,
+    status: "preparing",
+    source: "pos",
+    order_type: "Dine in",
+    order_type_id: "ot1",
+    payment_status: "paid",
+    payment_method_name: "GCash",
+    payment_method_details: "09xx",
+    delivery_fee: "50",
+    service_charge_amount: "10",
+    lalamove_quotation_id: "q",
+    lalamove_order_id: "l",
+    lalamove_status: "ASSIGNING",
+    lalamove_driver_name: "Ben",
+    lalamove_driver_phone: "0918",
+    lalamove_tracking_url: "https://track",
+    scheduled_for: "2026-09-26T10:00:00.000Z",
+    client_order_id: "c1",
+    prep_minutes: 15,
+    promised_ready_at: "2026-09-26T10:15:00.000Z",
+    revision_number: 2,
+    payment_proof_url: "https://proof",
+    payment_proof_public_id: "pid",
+    payment_proof_reference: "ref",
+    amount_paid: "350",
+    created_at: "2026-09-26T09:00:00.000Z",
+    updated_at: "2026-09-26T09:05:00.000Z",
+  };
+
+  function project(row: Record<string, unknown>, columns: string): Record<string, unknown> {
+    const names = columns.split(",").map((name) => name.trim());
+    return Object.fromEntries(names.filter((name) => name in row).map((name) => [name, row[name]]));
+  }
+
+  it("carries every field the order DTO is built from", () => {
+    const projected = project(FULL_ROW, ORDER_DTO_COLUMNS) as unknown as PlatformOrderRow;
+    expect(toOrderDto(projected)).toEqual(toOrderDto(FULL_ROW as unknown as PlatformOrderRow));
+  });
+
+  it("is a named list, not every column", () => {
+    expect(ORDER_DTO_COLUMNS).not.toContain("*");
+    expect(ORDER_DTO_COLUMNS).not.toMatch(/order_token_hash|discount_data|loyverse_/);
+  });
 });

@@ -21,18 +21,16 @@ export function calculateSlotBundleBasePrice(bundleItem: CartBundleItem): number
  * Calculate extras cost (price overrides + variation modifiers + addons) across all slots
  */
 export function calculateSlotBundleExtras(slots: CartBundleSlotSelection[]): number {
-  return slots.reduce((sum, s) => {
-    let variationExtra = 0
-    if (s.selectedVariations) {
-      variationExtra = Object.values(s.selectedVariations).reduce(
-        (acc, opt) => acc + (opt as { price_modifier: number }).price_modifier, 0
-      )
-    } else if (s.selectedVariation) {
-      variationExtra = s.selectedVariation.price_modifier || 0
-    }
-    const addonExtra = s.selectedAddons.reduce((acc, a) => acc + a.price * addonQuantity(a), 0)
-    return sum + s.priceOverride + variationExtra + addonExtra
-  }, 0)
+  return slots.reduce((sum, slot) => sum + calculateSlotUnitExtras(slot) * slot.quantity, 0)
+}
+
+/** Shared by cart totals, the bundle review and flattened order lines. */
+export function calculateSlotUnitExtras(slot: CartBundleSlotSelection): number {
+  const variationExtra = slot.selectedVariations
+    ? Object.values(slot.selectedVariations).reduce((sum, option) => sum + option.price_modifier, 0)
+    : slot.selectedVariation?.price_modifier ?? 0
+  const addonExtra = slot.selectedAddons.reduce((sum, addon) => sum + addon.price * addonQuantity(addon), 0)
+  return slot.priceOverride + variationExtra + addonExtra
 }
 
 /**

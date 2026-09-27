@@ -35,6 +35,7 @@ import { parseOrderLines } from '@/lib/checkout/order-line-schema'
 import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
+import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import {
   CHECKOUT_ORDER_TYPE_SELECT,
   advanceConfigOf,
@@ -135,6 +136,8 @@ async function depleteStockForOrder(
     'sale',
     0,
     outletId,
+    // A diner placing an order online has no merchant account behind it.
+    { context: { source: 'web_checkout' } },
   )
 }
 
@@ -235,7 +238,13 @@ export async function createOrderAction(
    * a duplicate sale. A fresh attempt mints a fresh id, so a customer who
    * genuinely orders twice still gets two orders.
    */
-  clientOrderId?: string
+  clientOrderId?: string,
+  /**
+   * The signature `createQuotationAction` put on the Lalamove price. A Lalamove
+   * delivery order must carry a quotation and is billed the SIGNED price;
+   * without a valid signature it is refused. See delivery-quote-signature.ts.
+   */
+  lalamoveQuoteSignature?: string
 ) {
   // Declared OUTSIDE the try so the catch below can reach them. Presell stock
   // is claimed mid-flight, and a throw after that point used to walk past every
@@ -598,11 +607,38 @@ export async function createOrderAction(
     // ── Delivery fee (authoritative) ──
     // A distance fee is recomputed from coordinates; an order with no fee
     // source (not a delivery, or neither Lalamove nor distance pricing on)
-    // carries none. A Lalamove fee is range-checked only — see the residual
-    // risk documented in order-delivery-fee.ts.
+    // carries none. A Lalamove fee is the price the quote action SIGNED, never
+    // the browser's number: a forged ₱1 fee on a real quotation used to be
+    // booked at the merchant's cost.
+    const isLalamoveDelivery = orderTypeRow?.type === 'delivery' && tenantConfig.lalamove_enabled === true
     const deliveryDestination = (effectiveCustomerData ?? {}) as Record<string, unknown>
+    let trustedDeliveryFee = deliveryFee
+    if (isLalamoveDelivery) {
+      const verification = verifyDeliveryQuote(lalamoveQuoteSignature, {
+        tenantId,
+        quotationId: lalamoveQuotationId,
+        destination: {
+          address: deliveryDestination.delivery_address,
+          lat: deliveryDestination.delivery_lat,
+          lng: deliveryDestination.delivery_lng,
+        },
+      })
+      if (verification.ok) {
+        trustedDeliveryFee = verification.fee
+      } else if (verification.reason === 'unconfigured') {
+        console.error('[createOrderAction] Lalamove quote signing is not configured', { tenantId })
+        return await refuse('Delivery quotes are temporarily unavailable. Please contact the store or choose another order type.')
+      } else {
+        console.warn('[createOrderAction] Refused an unverified Lalamove fee', {
+          tenantId,
+          reason: verification.reason,
+        })
+        return await refuse(INVALID_DELIVERY_FEE_MESSAGE)
+      }
+    }
+
     const deliveryResolution = resolveOrderDeliveryFee({
-      clientFee: deliveryFee,
+      clientFee: trustedDeliveryFee,
       isDeliveryOrder: orderTypeRow?.type === 'delivery',
       lalamoveEnabled: tenantConfig.lalamove_enabled === true,
       distanceConfig: resolveDistanceDeliveryConfig({
@@ -1009,4 +1045,3 @@ export async function updatePaymentStatusAction(
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update payment status' }
   }
 }
-

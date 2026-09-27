@@ -147,3 +147,29 @@ describe("notifyOrderStockRestore", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("audit source", () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    getSessionMock.mockResolvedValue({ data: { session: { access_token: "token-1" } } });
+  });
+
+  it("tells the platform which screen deducted the stock", async () => {
+    await notifyPosStockDepletion("t1", "order-1", items, "qr_scan");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ source: "qr_scan" });
+  });
+
+  it("sends no source key when none is named, so old requests are unchanged", async () => {
+    await notifyPosStockDepletion("t1", "order-1", items);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("source");
+  });
+
+  it("names the source of a restore", async () => {
+    await notifyOrderStockRestore("t1", "order-1", "pos");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ action: "restore", source: "pos" });
+  });
+});

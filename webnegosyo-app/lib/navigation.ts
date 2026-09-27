@@ -26,6 +26,17 @@ export function productHref(productId: string): `/(main)/product/${string}` {
 }
 
 /**
+ * Build the href for a product's sales performance page, opened on `period`
+ * ("today", "yesterday", "7d" or "30d").
+ */
+export function productPerformanceHref(
+  productId: string,
+  period: string
+): `/(main)/product-performance/${string}` {
+  return `/(main)/product-performance/${encodeURIComponent(productId)}?period=${encodeURIComponent(period)}`;
+}
+
+/**
  * Build the href for a product's recipe (ingredients) editor.
  *
  * @param productId the menu item whose recipe is being edited.
@@ -44,6 +55,18 @@ export const NEW_PAYMENT_METHOD_ID = "new" as const;
  */
 export function paymentMethodHref(methodId: string): `/(main)/payment/${string}` {
   return `/(main)/payment/${encodeURIComponent(methodId)}`;
+}
+
+/** Sentinel voucherId that puts the voucher editor into create mode. */
+export const NEW_VOUCHER_ID = "new" as const;
+
+/**
+ * Build the href for the voucher editor screen.
+ *
+ * @param voucherId an existing voucher id, or {@link NEW_VOUCHER_ID}.
+ */
+export function voucherHref(voucherId: string): `/(main)/voucher/${string}` {
+  return `/(main)/voucher/${encodeURIComponent(voucherId)}`;
 }
 
 /** Sentinel campaignId that puts the SMS campaign editor into create mode. */
@@ -79,4 +102,14 @@ export function categoryHref(categoryId: string): `/(main)/category/${string}` {
  */
 export function loyaltyMemberHref(customerKey: string): `/(main)/loyalty-member/${string}` {
   return `/(main)/loyalty-member/${encodeURIComponent(customerKey)}`;
+}
+
+/**
+ * Build the href for one guest's profile, opened from the Customers list.
+ *
+ * Keyed by the `customers` row id, unlike `loyaltyMemberHref`: every guest on
+ * the list has a row, but not every one has a phone or a stamp card.
+ */
+export function customerHref(customerId: string): `/(main)/customer/${string}` {
+  return `/(main)/customer/${encodeURIComponent(customerId)}`;
 }

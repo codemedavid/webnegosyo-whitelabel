@@ -1,27 +1,16 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Library, Plus, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ImageUpload } from '@/components/shared/image-upload'
-import type { CostMode, ModifierGroup, ModifierOption, ModifierStockMode } from '@/types/database'
+import { ListChecks, PlusCircle } from 'lucide-react'
+import type { ModifierGroup, ModifierOption } from '@/types/database'
 import {
   createModifierGroup,
   createModifierOption,
-  isSingleSelectGroup,
   setGroupMaxSelect,
   setGroupMinSelect,
-  setGroupMultiple,
-  setGroupRequired,
-  setOptionCostMode,
 } from '@/lib/modifier-groups-form'
-import { describeSelectionRule } from '@/lib/modifier-groups'
-import { computeOptionMargin } from '@/lib/modifier-margin'
-import { ModifierOptionRecipeEditor } from '@/components/admin/modifier-option-recipe-editor'
+import { EditorSection } from '@/components/admin/menu-editor/editor-section'
+import { ModifierGroupCard } from '@/components/admin/modifier-group-card'
 
 /**
  * Context needed to attach an inventory recipe to a recipe-stock option.
@@ -50,9 +39,9 @@ interface ModifierGroupsEditorProps {
    * (which owns the server action) so this editor stays presentational.
    */
   optionRecipeCosts?: Record<string, number>
-  /** Optional slot rendered beside the creation actions (e.g. the library picker). */
+  /** Optional slot rendered beside the section title (e.g. the library picker). */
   headerAction?: ReactNode
-  /** When provided, each group card gets a "Save to library" control. */
+  /** When provided, each group gets a "Save to library" control. */
   onSaveGroupToLibrary?: (group: ModifierGroup) => void
   /**
    * Menu items an option may link to. Linking makes the option a live reference:
@@ -69,556 +58,100 @@ export interface LinkableMenuItem {
 }
 
 /**
- * Editor for separate variation choices and quantity add-on groups. Each group
- * has selection rules and each option carries a price modifier plus
- * optional per-option cost and stock. State is owned by the parent form; this
- * component is presentational and mutates immutably through `onChange`.
+ * Editor for a dish's choices (Size, Flavor) and extras (Extra rice ×2). State
+ * is owned by the parent form; this component is presentational and updates
+ * immutably through `onChange`.
  */
 export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, optionRecipeCosts, headerAction, onSaveGroupToLibrary, linkableItems }: ModifierGroupsEditorProps) {
   const addGroup = (mode: 'choice' | 'quantity') => {
     onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length, mode)])
   }
 
-  const removeGroup = (groupIndex: number) => {
-    onChange(groups.filter((_, i) => i !== groupIndex))
-  }
-
   const replaceGroup = (groupIndex: number, next: ModifierGroup) => {
     onChange(groups.map((g, i) => (i === groupIndex ? next : g)))
   }
 
-  const updateGroupField = <K extends keyof ModifierGroup>(
-    groupIndex: number,
-    field: K,
-    value: ModifierGroup[K],
-  ) => {
-    replaceGroup(groupIndex, { ...groups[groupIndex], [field]: value })
-  }
-
-  const addOption = (groupIndex: number) => {
+  const withOptions = (groupIndex: number, map: (options: ModifierOption[]) => ModifierOption[]) => {
     const group = groups[groupIndex]
-    const next = {
-      ...group,
-      options: [...group.options, createModifierOption(`opt-${Date.now()}`, group.options.length)],
-    }
-    replaceGroup(groupIndex, next)
-  }
-
-  const removeOption = (groupIndex: number, optionIndex: number) => {
-    const group = groups[groupIndex]
-    replaceGroup(groupIndex, {
-      ...group,
-      options: group.options.filter((_, i) => i !== optionIndex),
-    })
-  }
-
-  const updateOption = <K extends keyof ModifierOption>(
-    groupIndex: number,
-    optionIndex: number,
-    field: K,
-    value: ModifierOption[K],
-  ) => {
-    const group = groups[groupIndex]
-    replaceGroup(groupIndex, {
-      ...group,
-      options: group.options.map((o, i) => (i === optionIndex ? { ...o, [field]: value } : o)),
-    })
-  }
-
-  const replaceOption = (groupIndex: number, optionIndex: number, next: ModifierOption) => {
-    const group = groups[groupIndex]
-    replaceGroup(groupIndex, {
-      ...group,
-      options: group.options.map((o, i) => (i === optionIndex ? next : o)),
-    })
+    replaceGroup(groupIndex, { ...group, options: map(group.options) })
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <CardTitle>Variations &amp; Add-ons</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Variations customize an item. Add-ons let customers choose how many portions of each extra to add.
-            {' '}Set an option price to 0 for no extra charge.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {headerAction}
-          <Button type="button" variant="outline" size="sm" onClick={() => addGroup('choice')}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Variation
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => addGroup('quantity')}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Add-on Group
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {groups.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            Add a variation like Size, or an add-on group like Extra Rice &amp; Sauces.
-          </p>
-        ) : (
-          <div className="space-y-6">
-            {(['choice', 'quantity'] as const).map((mode) => (
-              <section key={mode} className="space-y-4" aria-label={mode === 'quantity' ? 'Add-ons' : 'Variations'}>
-                <h3 className="font-medium">{mode === 'quantity' ? 'Add-ons' : 'Variations'}</h3>
-                {groups.map((group, groupIndex) => (group.selection_mode ?? 'choice') === mode && (
-              <ModifierGroupCard
-                key={group.id}
-                group={group}
-                basePrice={basePrice}
-                recipeContext={recipeContext}
-                optionRecipeCosts={optionRecipeCosts}
-                linkableItems={linkableItems}
-                // The promise is deliberately dropped — the handler owns its own
-                // failure reporting and is contracted never to reject.
-                onSaveToLibrary={onSaveGroupToLibrary ? () => { void onSaveGroupToLibrary(group) } : undefined}
-                onRemoveGroup={() => removeGroup(groupIndex)}
-                onUpdateName={(name) => updateGroupField(groupIndex, 'name', name)}
-                onUpdateMode={(mode) => updateGroupField(groupIndex, 'selection_mode', mode)}
-                onToggleRequired={(required) => replaceGroup(groupIndex, setGroupRequired(group, required))}
-                onToggleMultiple={(multiple) => replaceGroup(groupIndex, setGroupMultiple(group, multiple))}
-                onUpdateMinSelect={(min) => replaceGroup(groupIndex, setGroupMinSelect(group, min))}
-                onUpdateMaxSelect={(max) => replaceGroup(groupIndex, setGroupMaxSelect(group, max))}
-                onAddOption={() => addOption(groupIndex)}
-                onRemoveOption={(optionIndex) => removeOption(groupIndex, optionIndex)}
-                onUpdateOption={(optionIndex, field, value) =>
-                  updateOption(groupIndex, optionIndex, field, value)
-                }
-                onReplaceOption={(optionIndex, next) => replaceOption(groupIndex, optionIndex, next)}
-              />
-                ))}
-              </section>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-interface ModifierGroupCardProps {
-  group: ModifierGroup
-  basePrice: number
-  recipeContext?: ModifierRecipeContext
-  optionRecipeCosts?: Record<string, number>
-  linkableItems?: LinkableMenuItem[]
-  onSaveToLibrary?: () => void
-  onRemoveGroup: () => void
-  onUpdateName: (name: string) => void
-  onUpdateMode: (mode: 'choice' | 'quantity') => void
-  onToggleRequired: (required: boolean) => void
-  onToggleMultiple: (multiple: boolean) => void
-  onUpdateMinSelect: (min: number) => void
-  onUpdateMaxSelect: (max: number | null) => void
-  onAddOption: () => void
-  onRemoveOption: (optionIndex: number) => void
-  onUpdateOption: <K extends keyof ModifierOption>(
-    optionIndex: number,
-    field: K,
-    value: ModifierOption[K],
-  ) => void
-  onReplaceOption: (optionIndex: number, next: ModifierOption) => void
-}
-
-function ModifierGroupCard({
-  group,
-  basePrice,
-  recipeContext,
-  optionRecipeCosts,
-  linkableItems,
-  onSaveToLibrary,
-  onRemoveGroup,
-  onUpdateName,
-  onUpdateMode,
-  onToggleRequired,
-  onToggleMultiple,
-  onUpdateMinSelect,
-  onUpdateMaxSelect,
-  onAddOption,
-  onRemoveOption,
-  onUpdateOption,
-  onReplaceOption,
-}: ModifierGroupCardProps) {
-  const isSingle = isSingleSelectGroup(group)
-  const isQuantity = group.selection_mode === 'quantity'
-  const isRequired = group.min_select >= 1
-
-  return (
-    <div className="border rounded-lg p-4 space-y-4">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 space-y-3">
-          <Input
-            placeholder="Group name (e.g., Size, Extras)"
-            value={group.name}
-            onChange={(e) => onUpdateName(e.target.value)}
-            className="font-medium"
-          />
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <span>Group type</span>
-              <select aria-label={`Group type for ${group.name || 'new group'}`} value={group.selection_mode ?? 'choice'}
-                onChange={event => onUpdateMode(event.target.value as 'choice' | 'quantity')}
-                className="rounded-md border bg-background px-2 py-1.5">
-                <option value="choice">Variation — choose options</option>
-                <option value="quantity">Add-on — choose quantities</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={isRequired}
-                onChange={(e) => onToggleRequired(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <span className="text-sm">Required</span>
-            </label>
-            {!isQuantity && <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={!isSingle}
-                onChange={(e) => onToggleMultiple(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <span className="text-sm">Allow multiple</span>
-            </label>}
-            {!isSingle && (
-              <>
-                <label className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{isQuantity ? 'Min portions' : 'Min'}</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    placeholder="0"
-                    value={group.min_select}
-                    onChange={(e) => {
-                      const raw = e.target.value.trim()
-                      onUpdateMinSelect(raw === '' ? 0 : Math.max(0, parseInt(raw, 10) || 0))
-                    }}
-                    className="w-20"
-                  />
-                </label>
-                <label className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{isQuantity ? 'Max portions' : 'Max'}</span>
-                  <Input
-                    type="number"
-                    min={1}
-                    placeholder="∞"
-                    value={group.max_select ?? ''}
-                    onChange={(e) => {
-                      const raw = e.target.value.trim()
-                      onUpdateMaxSelect(raw === '' ? null : Math.max(1, parseInt(raw, 10) || 1))
-                    }}
-                    className="w-20"
-                  />
-                </label>
-              </>
-            )}
-          </div>
-          {/* Exactly what the customer will be told, so the merchant can see the
-              effect of Min/Max without leaving the editor. */}
-          <p className="text-xs text-muted-foreground">
-            {isQuantity
-              ? 'Customers use − / + for each extra. Limits count total portions per item ordered; leave Max portions blank for no limit.'
-              : <>Customer sees: {describeSelectionRule(group)}</>}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {onSaveToLibrary && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onSaveToLibrary}
-              title="Save this group as reusable in your library"
-            >
-              <Library className="mr-1 h-4 w-4" />
-              Save to library
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onRemoveGroup}
-            className="text-red-500 hover:text-red-600"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="ml-4 space-y-3 border-l-2 pl-4">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-muted-foreground">Options</h4>
-          <Button type="button" variant="outline" size="sm" onClick={onAddOption}>
-            <Plus className="mr-1 h-3 w-3" />
-            Add Option
-          </Button>
-        </div>
-
-        {group.options.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-2">
-            No options yet. Add options like Small, Large, Extra Cheese.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {group.options.map((option, optionIndex) => (
-              <ModifierOptionRow
-                key={option.id}
-                option={option}
-                basePrice={basePrice}
-                recipeContext={recipeContext}
-                recipeCost={optionRecipeCosts?.[option.id]}
-                linkableItems={linkableItems}
-                onRemove={() => onRemoveOption(optionIndex)}
-                onUpdate={(field, value) => onUpdateOption(optionIndex, field, value)}
-                onReplace={(next) => onReplaceOption(optionIndex, next)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-interface ModifierOptionRowProps {
-  option: ModifierOption
-  basePrice: number
-  recipeContext?: ModifierRecipeContext
-  /** Recipe-derived cost for this option, when one has been costed. */
-  recipeCost?: number
-  onRemove: () => void
-  onUpdate: <K extends keyof ModifierOption>(field: K, value: ModifierOption[K]) => void
-  onReplace: (next: ModifierOption) => void
-  linkableItems?: LinkableMenuItem[]
-}
-
-function ModifierOptionRow({ option, basePrice, recipeContext, recipeCost, onRemove, onUpdate, onReplace, linkableItems }: ModifierOptionRowProps) {
-  const linkedItem = option.menu_item_id
-    ? linkableItems?.find((i) => i.id === option.menu_item_id)
-    : undefined
-  const isLinked = Boolean(option.menu_item_id)
-  const stockMode: ModifierStockMode = option.stock_mode ?? 'none'
-  const isComposite = option.cost_mode === 'composite'
-  // Live margin honoring the option's cost source. Options with no mode keep the
-  // legacy rule (an attached recipe cost overrides the typed one).
-  const margin = computeOptionMargin(basePrice, option, recipeCost)
-  const marginTone =
-    margin.marginPercent >= 60
-      ? 'text-green-600'
-      : margin.marginPercent >= 30
-        ? 'text-amber-600'
-        : 'text-red-600'
-
-  return (
-    <div className="border rounded-md p-3 space-y-3 bg-gray-50">
-      <div className="flex gap-2">
-        <Input
-          placeholder="Option name (e.g., Small)"
-          value={isLinked ? (linkedItem?.name ?? option.name) : option.name}
-          onChange={(e) => onUpdate('name', e.target.value)}
-          disabled={isLinked}
-          className="flex-1"
-        />
-        <Input
-          type="number"
-          step="0.01"
-          placeholder="Price +/-"
-          value={isLinked ? (linkedItem?.price ?? option.price_modifier) : option.price_modifier}
-          onChange={(e) => onUpdate('price_modifier', parseFloat(e.target.value) || 0)}
-          disabled={isLinked}
-          className="w-28"
-          title={isLinked ? 'Taken from the linked item' : 'Price modifier'}
-        />
-        <Button type="button" variant="ghost" size="icon" onClick={onRemove} className="text-red-500">
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {linkableItems && linkableItems.length > 0 && (
-        <div className="space-y-1">
-          <Label className="text-xs">Link to a menu item (optional)</Label>
-          <Select
-            value={option.menu_item_id ?? 'none'}
-            onValueChange={(value) =>
-              onReplace({ ...option, menu_item_id: value === 'none' ? null : value })
+    <EditorSection
+      title="Sizes & add-ons"
+      description="Let customers pick a size or flavor, or add extras. Skip this if the dish has none."
+      action={headerAction}
+    >
+      <div className="space-y-4">
+        {groups.map((group, groupIndex) => (
+          <ModifierGroupCard
+            key={group.id}
+            group={group}
+            basePrice={basePrice}
+            recipeContext={recipeContext}
+            optionRecipeCosts={optionRecipeCosts}
+            linkableItems={linkableItems}
+            // The promise is deliberately dropped — the handler owns its own
+            // failure reporting and is contracted never to reject.
+            onSaveToLibrary={onSaveGroupToLibrary ? () => { void onSaveGroupToLibrary(group) } : undefined}
+            onRemoveGroup={() => onChange(groups.filter((_, i) => i !== groupIndex))}
+            onReplaceGroup={(next) => replaceGroup(groupIndex, next)}
+            onUpdateName={(name) => replaceGroup(groupIndex, { ...group, name })}
+            onUpdateMinSelect={(min) => replaceGroup(groupIndex, setGroupMinSelect(group, min))}
+            onUpdateMaxSelect={(max) => replaceGroup(groupIndex, setGroupMaxSelect(group, max))}
+            onAddOption={() =>
+              withOptions(groupIndex, (options) => [...options, createModifierOption(`opt-${Date.now()}`, options.length)])
             }
-          >
-            <SelectTrigger className="h-9">
-              <SelectValue placeholder="Not linked - type a name and price above" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Not linked</SelectItem>
-              {linkableItems.map((menuItem) => (
-                <SelectItem key={menuItem.id} value={menuItem.id}>
-                  {menuItem.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {isLinked && (
-            <p className="text-[11px] text-muted-foreground">
-              Name, price and image follow this item automatically. It shows as sold out when the
-              item is unavailable.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label className="text-xs">Cost source</Label>
-          <CostSourceToggle
-            mode={option.cost_mode}
-            onSelect={(mode) => onReplace(setOptionCostMode(option, mode))}
+            onRemoveOption={(optionIndex) =>
+              withOptions(groupIndex, (options) => options.filter((_, i) => i !== optionIndex))
+            }
+            onUpdateOption={(optionIndex, field, value) =>
+              withOptions(groupIndex, (options) => options.map((o, i) => (i === optionIndex ? { ...o, [field]: value } : o)))
+            }
+            onReplaceOption={(optionIndex, next) =>
+              withOptions(groupIndex, (options) => options.map((o, i) => (i === optionIndex ? next : o)))
+            }
           />
-          {isComposite ? (
-            <p className="text-[11px] text-muted-foreground">
-              {recipeCost === undefined
-                ? 'Attach a recipe below to cost this option from ingredients.'
-                : `From recipe: ₱${recipeCost.toFixed(2)}`}
-            </p>
-          ) : (
-            <>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                placeholder="0.00"
-                value={option.manual_cost ?? ''}
-                onChange={(e) => {
-                  const raw = e.target.value.trim()
-                  onUpdate('manual_cost', raw === '' ? undefined : Math.max(0, parseFloat(raw) || 0))
-                }}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Manual cost (₱), used for margin.
-                {option.cost_mode === undefined && ' An attached recipe overrides this.'}
-              </p>
-            </>
-          )}
-        </div>
+        ))}
 
-        <div className="space-y-1">
-          <Label className="text-xs">Stock tracking</Label>
-          <Select
-            value={stockMode}
-            onValueChange={(value) => onUpdate('stock_mode', value as ModifierStockMode)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Not tracked</SelectItem>
-              <SelectItem value="simple">Simple count</SelectItem>
-              <SelectItem value="recipe">Recipe-backed</SelectItem>
-            </SelectContent>
-          </Select>
-          {stockMode === 'simple' && (
-            <Input
-              type="number"
-              min={0}
-              placeholder="Qty on hand"
-              value={option.stock_qty ?? ''}
-              onChange={(e) => {
-                const raw = e.target.value.trim()
-                onUpdate('stock_qty', raw === '' ? undefined : Math.max(0, parseInt(raw, 10) || 0))
-              }}
-              className="mt-1"
-            />
-          )}
-          {stockMode === 'recipe' && !recipeContext?.inventoryEnabled && (
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Enable Inventory for this store to attach a recipe.
-            </p>
-          )}
-          {stockMode === 'recipe' && recipeContext?.inventoryEnabled && !recipeContext.menuItemId && (
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Save the item first, then attach a recipe to deduct ingredients per sale.
-            </p>
-          )}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <AddGroupButton
+            icon={ListChecks}
+            title="Add a choice"
+            example="Size, flavor, spice level"
+            onClick={() => addGroup('choice')}
+          />
+          <AddGroupButton
+            icon={PlusCircle}
+            title="Add extras"
+            example="Extra rice, egg, sauces"
+            onClick={() => addGroup('quantity')}
+          />
         </div>
       </div>
-
-      {(stockMode === 'recipe' || isComposite) && recipeContext?.inventoryEnabled && recipeContext.menuItemId && (
-        <ModifierOptionRecipeEditor
-          tenantId={recipeContext.tenantId}
-          tenantSlug={recipeContext.tenantSlug}
-          menuItemId={recipeContext.menuItemId}
-          modifierOptionId={option.id}
-          onSaved={recipeContext.onRecipeSaved}
-        />
-      )}
-
-      {margin.price > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Sells at ₱{margin.price.toFixed(2)} · cost ₱{margin.cost.toFixed(2)} ·{' '}
-          <span className={marginTone}>{margin.marginPercent.toFixed(0)}% margin</span>
-        </p>
-      )}
-
-      <div className="space-y-2">
-        <Label className="text-xs">Option image (optional)</Label>
-        <ImageUpload
-          currentImageUrl={option.image_url || ''}
-          onImageUploaded={(url) => onUpdate('image_url', url)}
-          label=""
-          description="Upload an image for this option"
-          folder="modifier-options"
-        />
-      </div>
-
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={option.is_default || false}
-          onChange={(e) => onUpdate('is_default', e.target.checked)}
-          className="h-3 w-3"
-        />
-        <span className="text-xs">Default option</span>
-      </label>
-    </div>
+    </EditorSection>
   )
 }
 
-interface CostSourceToggleProps {
-  mode: CostMode | undefined
-  onSelect: (mode: CostMode) => void
+interface AddGroupButtonProps {
+  icon: typeof ListChecks
+  title: string
+  example: string
+  onClick: () => void
 }
 
-/**
- * Two-way choice for where an option's cost comes from. A legacy option (no
- * mode) shows neither side pressed — the merchant has not chosen yet, and the
- * legacy precedence rule still applies until they do.
- */
-function CostSourceToggle({ mode, onSelect }: CostSourceToggleProps) {
-  const options: ReadonlyArray<{ mode: CostMode; label: string }> = [
-    { mode: 'simple', label: 'Manual' },
-    { mode: 'composite', label: 'Recipe' },
-  ]
-
+function AddGroupButton({ icon: Icon, title, example, onClick }: AddGroupButtonProps) {
   return (
-    <div className="inline-flex rounded-md border p-0.5">
-      {options.map((o) => (
-        <button
-          key={o.mode}
-          type="button"
-          aria-pressed={mode === o.mode}
-          onClick={() => onSelect(o.mode)}
-          className={
-            mode === o.mode
-              ? 'rounded px-3 py-1 text-xs font-medium bg-primary text-primary-foreground'
-              : 'rounded px-3 py-1 text-xs text-muted-foreground hover:bg-muted'
-          }
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-xl border border-dashed px-4 py-3 text-left transition-colors hover:border-foreground/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className="block text-xs text-muted-foreground">{example}</span>
+      </span>
+    </button>
   )
 }

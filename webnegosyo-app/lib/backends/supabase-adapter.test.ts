@@ -56,12 +56,14 @@ function fakeClient(responses: Record<string, TableResponse[]>) {
     for (const method of [
       "select",
       "eq",
+      "neq",
       "in",
       "gte",
-      "lte",      "gte",
+      "lte",
       "lt",
       "order",
       "limit",
+      "range",
       "insert",
       "update",
       "delete",
@@ -665,6 +667,61 @@ describe("runPlatformMutation — status updates", () => {
     expect(opsOf(calls, "update")[0]).toEqual([{ payment_status: "paid" }]);
   });
 
+  /**
+   * A list row can be stale — another device may have handed the order over
+   * since it rendered — so the refusal has to live in the write, not the UI.
+   */
+  it("cancels only an order that is not yet delivered", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: ORDER_ID }], error: null }] });
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+      orderId: ORDER_ID,
+      status: "cancelled",
+    });
+
+    // Assert
+    expect(opsOf(calls, "update")[0]).toEqual([{ status: "cancelled" }]);
+    expect(opsOf(calls, "neq")).toContainEqual(["status", "delivered"]);
+  });
+
+  it("refuses to cancel a delivered order, and says why", async () => {
+    // Arrange — the guarded write matches nothing; the order reads delivered.
+    const { client } = fakeClient({
+      orders: [
+        { data: [], error: null },
+        { data: { status: "delivered" }, error: null },
+      ],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+        orderId: ORDER_ID,
+        status: "cancelled",
+      })
+    ).rejects.toThrow(/already delivered/i);
+  });
+
+  it("still reports a missing order as missing when a cancel matches nothing", async () => {
+    // Arrange
+    const { client } = fakeClient({
+      orders: [
+        { data: [], error: null },
+        { data: null, error: null },
+      ],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+        orderId: ORDER_ID,
+        status: "cancelled",
+      })
+    ).rejects.toThrow(/no longer exists/i);
+  });
+
   it("rejects an unknown mutation ref rather than silently doing nothing", async () => {
     // Arrange
     const { client } = fakeClient({});
@@ -768,8 +825,8 @@ describe("runPlatformQuery — orders:getAllOrderItems", () => {
     await runPlatformQuery(client, TENANT, "orders:getAllOrderItems", {});
 
     // Assert
-    expect(opsOf(calls, "limit")).toHaveLength(1);
-    expect(opsOf(calls, "limit")[0][0]).toBeLessThanOrEqual(10000);
+    // Paged: one bounded range per request, ending at the first short page.
+    expect(opsOf(calls, "range")).toEqual([[0, 999]]);
   });
 
   it("returns an empty list when the tenant has no items yet", async () => {
@@ -1006,7 +1063,9 @@ describe("runPlatformQuery — getAllOrderItems ordering", () => {
       "orders(created_at)",
       { ascending: false },
     ]);
-    expect(opsOf(calls, "limit").length).toBeGreaterThan(0);
+    // The unique tiebreaker keeps rows from shifting between pages.
+    expect(opsOf(calls, "order")).toContainEqual(["id", { ascending: false }]);
+    expect(opsOf(calls, "range").length).toBeGreaterThan(0);
   });
 });
 

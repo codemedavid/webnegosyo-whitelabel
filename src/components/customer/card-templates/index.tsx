@@ -37,10 +37,6 @@ const ElegantCard = dynamic(
   () => import('./elegant-card').then((m) => ({ default: m.ElegantCard })),
   { loading: CardSkeleton }
 )
-const CompactCard = dynamic(
-  () => import('./compact-card').then((m) => ({ default: m.CompactCard })),
-  { loading: CardSkeleton }
-)
 const BoldCard = dynamic(
   () => import('./bold-card').then((m) => ({ default: m.BoldCard })),
   { loading: CardSkeleton }
@@ -100,6 +96,10 @@ const ArchCard = dynamic(
   () => import('./flex/arch-card').then((m) => ({ default: m.ArchCard })),
   { loading: CardSkeleton }
 )
+const BistroCard = dynamic(
+  () => import('./flex/bistro-card').then((m) => ({ default: m.BistroCard })),
+  { loading: CardSkeleton }
+)
 
 interface CardTemplateProps {
   item: MenuItem
@@ -122,8 +122,6 @@ export function getCardTemplateComponent(template: CardTemplate = 'classic') {
       return ModernCard
     case 'elegant':
       return ElegantCard
-    case 'compact':
-      return CompactCard
     case 'bold':
       return BoldCard
     case 'glass':
@@ -152,6 +150,8 @@ export function getCardTemplateComponent(template: CardTemplate = 'classic') {
       return MenuboardCard
     case 'arch':
       return ArchCard
+    case 'bistro':
+      return BistroCard
     case 'classic':
     default:
       return ClassicCard

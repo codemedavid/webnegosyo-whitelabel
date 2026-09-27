@@ -11,7 +11,7 @@
  * overlapping triggers itself.
  */
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import type { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../hooks";
@@ -23,6 +23,7 @@ import {
   subscribeOutbox,
   type OutboxState,
 } from "./order-outbox";
+import { resolveOrderBackend } from "../order-backend";
 import { syncOutbox } from "./sync-outbox";
 import { useConnectivity } from "./use-connectivity";
 
@@ -46,41 +47,62 @@ export function usePendingSaleCounts(): PendingSaleCounts {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const outbox = useOutbox();
   const mine = outbox.sales.filter((sale) => sale.tenantId === tenantId);
-  const stuck = mine.filter(needsAttention).length;
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const backend = resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl });
+  const stuck = mine.filter((sale) => needsAttention(sale) || sale.backend !== backend).length;
   return { pending: mine.length - stuck, stuck };
 }
 
+export const OUTBOX_RETRY_INTERVAL_MS = 20_000;
+
 export function useOutboxSync(): void {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const userId = useAuthStore((s) => s.userId);
   const isDemo = useAuthStore((s) => s.isDemo);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const backend = resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl });
   const createOrder = useSafeMutation(createOrderRef);
   const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
+  const mutations = useRef({ createOrder, updatePaymentStatus });
+  mutations.current = { createOrder, updatePaymentStatus };
   const { status } = useConnectivity();
   const outbox = useOutbox();
 
-  useEffect(() => {
-    void hydrateOutbox();
-  }, []);
-
   const pending = outbox.sales.some(
-    (sale) => sale.tenantId === tenantId && !needsAttention(sale)
+    (sale) => sale.tenantId === tenantId && sale.backend === backend && !needsAttention(sale)
   );
 
-  const sync = useCallback(() => {
-    if (!tenantId || isDemo || !pending) return;
-    void syncOutbox({ tenantId, createOrder, updatePaymentStatus });
-  }, [tenantId, isDemo, pending, createOrder, updatePaymentStatus]);
-
   useEffect(() => {
-    if (status !== "online") return;
-    sync();
-  }, [status, sync]);
-
-  useEffect(() => {
-    const onChange = (next: AppStateStatus) => {
-      if (next === "active" && status === "online") sync();
+    if (!tenantId || isDemo || status !== "online") {
+      void hydrateOutbox().catch((error) => console.warn("[offline] Could not read queued sales:", error));
+      return;
+    }
+    let active = true;
+    const isActive = () => {
+      const auth = useAuthStore.getState();
+      return active && auth.isAuthenticated && !auth.isDemo && auth.userId === userId &&
+        (auth.impersonatedTenantId ?? auth.tenantId) === tenantId &&
+        auth.convexUrl === convexUrl && auth.orderBackend === orderBackend;
     };
-    const subscription = AppState.addEventListener("change", onChange);
-    return () => subscription.remove();
-  }, [status, sync]);
+    const sync = () => {
+      if (AppState.currentState !== "active" || !isActive()) return;
+      void hydrateOutbox()
+        .then(() => syncOutbox({ tenantId, backend, ...mutations.current, isActive }))
+        .catch((error) => console.warn("[offline] Could not sync queued sales:", error));
+    };
+    sync();
+    // A queue change during an in-flight run, or a refused sale, must get
+    // another chance without requiring a connectivity change or app restart.
+    const timer = setInterval(sync, OUTBOX_RETRY_INTERVAL_MS);
+    const subscription = AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (next === "active") sync();
+    });
+    return () => {
+      active = false;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [tenantId, userId, isDemo, orderBackend, convexUrl, backend, status, pending]);
 }

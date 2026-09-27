@@ -3,7 +3,6 @@ import { View, Text, StyleSheet } from "react-native";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import {
   describeBalance,
-  describeRemaining,
   type LoyaltyMemberProgress,
 } from "../../lib/loyalty/members";
 
@@ -14,23 +13,32 @@ import {
  * be read has an unknown threshold, and a bar at 0% there would tell the
  * merchant the customer has nothing when the truth is that we cannot say.
  */
+export function describeNextCard(progress: LoyaltyMemberProgress | null): string {
+  if (!progress) return "No card yet";
+  if (progress.threshold <= 0) return "Next reward: progress unavailable";
+  const remaining = Math.max(0, progress.threshold - progress.balance);
+  const unit = progress.earnMode === "points" ? "point" : "visit";
+  return remaining === 0 ? "Next card complete" : `Next reward: ${remaining} more ${unit}${remaining === 1 ? "" : "s"}`;
+}
+
 export function MemberProgressBar({ progress }: { progress: LoyaltyMemberProgress | null }) {
-  if (!progress || progress.percent === null) {
+  if (!progress || progress.threshold <= 0) {
     return <View style={styles.trackUnknown} accessibilityLabel="Progress unavailable" />;
   }
 
-  const isReady = progress.rewardsAvailable > 0 || progress.remaining === 0;
+  const percent = Math.max(0, Math.min(100, progress.balance / progress.threshold * 100));
   return (
     <View
       style={styles.track}
+      accessible
+      accessibilityLabel="Next card progress"
       accessibilityRole="progressbar"
-      accessibilityValue={{ min: 0, max: 100, now: progress.percent }}
+      accessibilityValue={{ min: 0, max: 100, now: percent }}
     >
       <View
         style={[
           styles.fill,
-          { width: `${Math.max(progress.percent, 2)}%` },
-          isReady && styles.fillReady,
+          { width: `${percent}%` },
         ]}
       />
     </View>
@@ -57,11 +65,12 @@ export function MemberProgressCard({
         <Text style={styles.counter}>{describeBalance(progress)}</Text>
       </View>
 
+      {isReady ? <Text style={styles.remainingReady}>{progress.rewardsAvailable} reward{progress.rewardsAvailable === 1 ? "" : "s"} ready</Text> : null}
       <MemberProgressBar progress={progress} />
 
       <View style={styles.cardFooter}>
-        <Text style={[styles.remaining, isReady && styles.remainingReady]}>
-          {describeRemaining(progress)}
+        <Text style={styles.remaining}>
+          {describeNextCard(progress)}
         </Text>
         <Text style={styles.reward} numberOfLines={1}>
           {progress.rewardLabel}

@@ -1,6 +1,6 @@
 'use server'
 
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 interface ReceiptContext {
@@ -25,7 +25,7 @@ export async function saveReceiptLayoutAction(
   layout: unknown,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantPermission(tenantId, 'store_setup')
 
     const { sanitizeLayoutForSave } = await import('@/lib/receipt-editor')
     const sanitized = sanitizeLayoutForSave(layout)

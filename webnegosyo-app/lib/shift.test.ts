@@ -13,7 +13,9 @@
  */
 
 import {
+  isShiftHistoryComplete,
   judgeShift,
+  parseCashInput,
   reconcileShift,
   validateCashAmount,
 } from "./shift";
@@ -133,5 +135,61 @@ describe("reconcileShift", () => {
     });
     expect(r.verdict).toBe("short");
     expect(r.variance).toBe(-100);
+  });
+});
+
+
+describe("parseCashInput", () => {
+  it.each([
+    ["125", 125],
+    [" 125.50 ", 125.5],
+    ["₱1,250", 1250],
+    ["1,250.75", 1250.75],
+    ["125,50", 125.5],
+    ["PHP 300", 300],
+    [".5", 0.5],
+  ])("reads %p as %p", (text, expected) => {
+    expect(parseCashInput(text)).toBe(expected);
+  });
+
+  it.each(["", "   ", "abc", "1e5", "0x10", "12.3.4", "1,2,3.4.5"])(
+    "refuses %p rather than guessing",
+    (text) => {
+      expect(Number.isNaN(parseCashInput(text))).toBe(true);
+    },
+  );
+});
+
+it("reads a negative amount so the refusal names the real problem", () => {
+  expect(validateCashAmount(parseCashInput("-50"))).toEqual({ ok: false, reason: "A cash amount cannot be negative." });
+});
+
+describe("validateCashAmount ceiling", () => {
+  it("refuses an amount no drawer holds, before the database overflows on it", () => {
+    expect(validateCashAmount(50_000_000).ok).toBe(false);
+    expect(validateCashAmount(9_999_999).ok).toBe(true);
+  });
+});
+
+describe("isShiftHistoryComplete", () => {
+  const openedAt = "2026-01-01T09:00:00.000Z";
+  const at = (iso: string) => ({ _creationTime: Date.parse(iso) });
+
+  it("is complete when the page came back short of its limit", () => {
+    expect(isShiftHistoryComplete([at("2026-01-01T10:00:00Z")], 200, openedAt)).toBe(true);
+  });
+
+  it("is complete when a FULL page reaches back past the shift start (a store with long history)", () => {
+    const orders = [at("2026-01-01T10:00:00Z"), at("2025-12-01T10:00:00Z")];
+    expect(isShiftHistoryComplete(orders, 2, openedAt)).toBe(true);
+  });
+
+  it("is incomplete when every order on a full page is inside the shift", () => {
+    const orders = [at("2026-01-01T11:00:00Z"), at("2026-01-01T10:00:00Z")];
+    expect(isShiftHistoryComplete(orders, 2, openedAt)).toBe(false);
+  });
+
+  it("is incomplete when the shift start cannot be read", () => {
+    expect(isShiftHistoryComplete([at("2026-01-01T10:00:00Z")], 1, "not a date")).toBe(false);
   });
 });

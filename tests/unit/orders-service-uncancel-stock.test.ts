@@ -102,7 +102,7 @@ describe('updateOrderStatus stock movement on status changes', () => {
     await updateOrderStatus('o1', 't1', 'confirmed')
 
     // Assert
-    expect(redepleteOrderStockBestEffort).toHaveBeenCalledWith('t1', 'o1')
+    expect(redepleteOrderStockBestEffort).toHaveBeenCalledWith('t1', 'o1', expect.objectContaining({ source: 'web_admin' }))
     expect(reverseOrderStockBestEffort).not.toHaveBeenCalled()
   })
 
@@ -113,7 +113,7 @@ describe('updateOrderStatus stock movement on status changes', () => {
 
       await updateOrderStatus('o1', 't1', nextStatus)
 
-      expect(redepleteOrderStockBestEffort).toHaveBeenCalledWith('t1', 'o1')
+      expect(redepleteOrderStockBestEffort).toHaveBeenCalledWith('t1', 'o1', expect.objectContaining({ source: 'web_admin' }))
     },
   )
 
@@ -143,7 +143,7 @@ describe('updateOrderStatus stock movement on status changes', () => {
 
     await updateOrderStatus('o1', 't1', 'cancelled')
 
-    expect(reverseOrderStockBestEffort).toHaveBeenCalledWith('t1', 'o1')
+    expect(reverseOrderStockBestEffort).toHaveBeenCalledWith('t1', 'o1', expect.objectContaining({ source: 'web_admin' }))
     expect(redepleteOrderStockBestEffort).not.toHaveBeenCalled()
   })
 

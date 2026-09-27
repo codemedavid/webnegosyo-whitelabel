@@ -99,6 +99,8 @@ export const createOrder = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    // POS is a merchant write, including idempotent replay of an existing sale.
+    if (args.source === "pos") await requireAccess(ctx, "write");
     const { items, ...orderData } = args;
 
     // Idempotency guard: if this clientOrderId already exists, return the
@@ -631,8 +633,12 @@ export const getOrderByIdInternal = internalQuery({ args: getOrderByIdArgs, hand
 
 // Bulk-load all order items in one query. Used by the product-analytics
 // aggregator to avoid an N+1 (one getOrderById per order, per period).
+//
+// NEWEST first: past QUERY_LIMIT line items the default ascending scan kept the
+// store's OLDEST 10k and dropped every recent sale, so the app's product view
+// showed a busy store's last weeks as empty.
 async function getAllOrderItemsHandler(ctx: QueryCtx) {
-    return await ctx.db.query("orderItems").take(QUERY_LIMIT);
+    return await ctx.db.query("orderItems").order("desc").take(QUERY_LIMIT);
 }
 
 export const getAllOrderItems = query({

@@ -33,3 +33,19 @@ it('still shows the offer when the number has no stamps yet', () => {
   render(<LoyaltyProgressPanel {...props} card={{ ...card, balance: 0 }} />)
   expect(screen.getByText(/0 of 8 stamps toward Free Latte/i)).toBeInTheDocument()
 })
+
+ it.each([0, 1])('keeps %i stamps on the next card while a reward is ready', (balance) => {
+  render(<LoyaltyProgressPanel {...props} card={{ ...card, balance, rewardsAvailable: 1 }} />)
+  expect(screen.getByText(/reward ready/i)).toBeInTheDocument()
+  expect(screen.getByText(`${balance} of 8 stamps toward your next Free Latte`)).toBeInTheDocument()
+  expect(screen.getByTestId('stamp-track')).toHaveAttribute('aria-label', `${balance} of 8 stamps`)
+ })
+
+it('keeps confirmed progress visible with a useful refresh error and retry action', () => {
+  const retry = jest.fn()
+  render(<LoyaltyProgressPanel {...props} isLoading error="Could not refresh your stamps." onRetry={retry} />)
+  expect(screen.getByText(/5 of 8 stamps toward/)).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent(/could not refresh/i)
+  screen.getByRole('button', { name: 'Try again' }).click()
+  expect(retry).toHaveBeenCalledTimes(1)
+})

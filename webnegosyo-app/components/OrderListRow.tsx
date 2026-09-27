@@ -1,5 +1,7 @@
 import React, { memo, useCallback } from "react";
 import { OrderCard, type OrderCardOrder } from "./OrderCard";
+import type { OrderCustomerBadge } from "../lib/loyalty/order-customers";
+import { canCancelOrder } from "../lib/order-status-change";
 
 /**
  * One row of the Orders tab.
@@ -21,6 +23,8 @@ interface OrderListRowProps<O extends OrderListRowOrder> {
   nextStatusLabel?: string;
   /** True while a status change for this order is in flight — actions hide. */
   isBusy: boolean;
+  /** Known-customer chip; must be referentially stable across renders. */
+  customerBadge?: OrderCustomerBadge | null;
   onOpen: (orderId: string) => void;
   onAdvance: (orderId: string) => void;
   onCancel: (order: O) => void;
@@ -30,6 +34,7 @@ function OrderListRowInner<O extends OrderListRowOrder>({
   order,
   nextStatusLabel,
   isBusy,
+  customerBadge,
   onOpen,
   onAdvance,
   onCancel,
@@ -38,13 +43,14 @@ function OrderListRowInner<O extends OrderListRowOrder>({
   const handleAdvance = useCallback(() => onAdvance(order._id), [onAdvance, order._id]);
   const handleCancel = useCallback(() => onCancel(order), [onCancel, order]);
 
-  const canCancel = order.status !== "delivered" && order.status !== "cancelled";
+  const canCancel = canCancelOrder(order.status);
   const canAdvance = nextStatusLabel !== undefined && !isBusy;
 
   return (
     <OrderCard
       order={order}
       onPress={handleOpen}
+      customerBadge={customerBadge}
       nextStatusLabel={canAdvance ? nextStatusLabel : undefined}
       onAdvance={canAdvance ? handleAdvance : undefined}
       onCancel={canCancel && !isBusy ? handleCancel : undefined}

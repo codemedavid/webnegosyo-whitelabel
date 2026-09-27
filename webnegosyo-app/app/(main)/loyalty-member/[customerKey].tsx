@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Linking, Alert } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Linking, Alert, AppState, TouchableOpacity } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { useAuthStore } from "../../../stores/auth-store";
 import { colors, typography, spacing, radius } from "../../../theme/colors";
@@ -8,12 +8,17 @@ import { BackHeader } from "../../../components/BackHeader";
 import { LoadingState } from "../../../components/LoadingState";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorState } from "../../../components/ErrorState";
+import { onlineManager } from "@tanstack/query-core";
+import { useRefetchOnScreenFocus } from "../../../lib/query/use-screen-focus";
+import { LoyaltyActivityPanel } from "../../../components/loyalty/LoyaltyActivityPanel";
 import { MemberProgressCard } from "../../../components/loyalty/MemberProgress";
 import { MemberRewardsCard } from "../../../components/loyalty/MemberRewardsCard";
 import { MemberAdjustCard } from "../../../components/loyalty/MemberAdjustCard";
 import { MemberOrdersCard } from "../../../components/loyalty/MemberOrdersCard";
 import { describeMemberStatus, type LoyaltyMemberDetail } from "../../../lib/loyalty/members";
 import { fetchLoyaltyMember } from "../../../lib/loyalty/members-repo";
+import { PLATFORM_BACKEND } from "../../../lib/customers/lifecycle-plan";
+import type { LoyaltyMemberOrder } from "../../../lib/loyalty/members";
 
 /**
  * One customer's whole loyalty standing.
@@ -29,14 +34,39 @@ import { fetchLoyaltyMember } from "../../../lib/loyalty/members-repo";
 export default function LoyaltyMemberScreen() {
   const { customerKey } = useLocalSearchParams<{ customerKey: string }>();
   const tenantId = useAuthStore((s) => s.tenantId);
+  return <LoyaltyMemberSession key={`${tenantId}:${customerKey}`} tenantId={tenantId} customerKey={customerKey} />;
+}
 
+function LoyaltyMemberSession({ tenantId, customerKey }: { tenantId: string | null; customerKey: string }) {
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  // An order recorded under the store's previous backend cannot be opened
+  // here — the order screen reads only the current one.
+  const currentBackend = orderBackend ? PLATFORM_BACKEND[orderBackend] : null;
+  const canOpenOrder = useCallback(
+    (order: LoyaltyMemberOrder) => Boolean(order.orderId) && order.backend === currentBackend,
+    [currentBackend],
+  );
+  const openOrder = useCallback(
+    (order: LoyaltyMemberOrder) => router.push(`/(main)/order/${order.orderId}`),
+    [],
+  );
+
+  const request = useRef(0);
+  const refreshRequest = useRef(0);
+  const identity = `${tenantId}:${customerKey}`;
+  const currentIdentity = useRef(identity);
+  currentIdentity.current = identity;
+  const [showActivity, setShowActivity] = useState(false);
+  const [activityEpoch, setActivityEpoch] = useState(0);
   const [detail, setDetail] = useState<LoyaltyMemberDetail | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "forbidden" | "missing" | "error">("loading");
   const [isRefreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    if (!tenantId || !customerKey) return;
+    const ticket = ++request.current;
+    if (!tenantId || !customerKey) { setDetail(null); setStatus("missing"); return; }
     const result = await fetchLoyaltyMember(tenantId, customerKey);
+    if (ticket !== request.current || currentIdentity.current !== identity) return;
     if (!result.ok) {
       setStatus(
         result.reason === "forbidden" ? "forbidden" : result.reason === "missing" ? "missing" : "error",
@@ -44,21 +74,32 @@ export default function LoyaltyMemberScreen() {
       return;
     }
     setDetail(result.detail);
+    setActivityEpoch(epoch => epoch + 1);
     setStatus("ready");
-  }, [tenantId, customerKey]);
+  }, [tenantId, customerKey, identity]);
 
   useEffect(() => {
+    setDetail(null); setStatus("loading"); setShowActivity(false);
     void load();
+    const requests = request;
+    const refreshes = refreshRequest;
+    const app = AppState.addEventListener("change", state => { if (state === "active") void load(); });
+    const offOnline = onlineManager.subscribe(online => { if (online) void load(); });
+    return () => { requests.current++; refreshes.current++; app.remove(); offOnline(); };
   }, [load]);
+  useRefetchOnScreenFocus({ enabled: Boolean(tenantId && customerKey), dataUpdatedAt: 0, staleMs: 0, isFetching: status === "loading", refetch: load });
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
+    // Foreground and focus reads may supersede data without owning this spinner.
+    const ticket = ++refreshRequest.current;
+    const pending = load();
     try {
-      await load();
+      await pending;
     } finally {
-      setRefreshing(false);
+      if (ticket === refreshRequest.current && currentIdentity.current === identity) setRefreshing(false);
     }
-  }, [load]);
+  }, [load, identity]);
 
   if (status === "loading") {
     return (
@@ -77,8 +118,8 @@ export default function LoyaltyMemberScreen() {
           <EmptyState title="No access" message="Your account cannot see loyalty members." />
         ) : status === "missing" ? (
           <EmptyState
-            title="Not on the card"
-            message="This customer holds no stamp card at this store."
+            title="No profile"
+            message="This store has no profile or stamp card for this customer."
           />
         ) : (
           <ErrorState
@@ -95,6 +136,7 @@ export default function LoyaltyMemberScreen() {
 
   const { member, profile, rewards, orders, addresses, history } = detail;
   const name = member.name?.trim() || member.phone || "Guest";
+  const hasCard = member.programs.length > 0;
   const statusCopy = describeMemberStatus(member.status);
 
   return (
@@ -108,7 +150,9 @@ export default function LoyaltyMemberScreen() {
         <View style={styles.card}>
           <Text style={styles.name}>{name}</Text>
           <Text style={styles.statusLine}>
-            {statusCopy.label} · {statusCopy.hint}
+            {hasCard
+              ? `${statusCopy.label} · ${statusCopy.hint}`
+              : "No stamp card yet · earns one on a qualifying order"}
           </Text>
 
           {member.phone ? (
@@ -186,8 +230,16 @@ export default function LoyaltyMemberScreen() {
           onChanged={() => void load()}
         />
 
+        <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showActivity }} style={styles.card} onPress={() => setShowActivity(value => !value)}><Text style={styles.link}>{showActivity ? "Hide activity" : "View earning and claim history"}</Text></TouchableOpacity>
+        {showActivity ? <LoyaltyActivityPanel key={identity} tenantId={tenantId} customerKey={member.customerKey} reloadKey={activityEpoch} /> : null}
+
         {/* ── What they ordered ──────────────────────────────────────── */}
-        <MemberOrdersCard orders={orders} history={history} />
+        <MemberOrdersCard
+          orders={orders}
+          history={history}
+          canOpenOrder={canOpenOrder}
+          onOpenOrder={openOrder}
+        />
       </ScrollView>
     </View>
   );

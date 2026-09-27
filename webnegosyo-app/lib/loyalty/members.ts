@@ -88,6 +88,8 @@ export interface LoyaltyLedgerEntry {
 
 export interface LoyaltyMemberOrder {
   id: string;
+  /** The id the order's own backend knows it by — what opens the order screen. */
+  orderId: string;
   backend: "platform_supabase" | "convex" | "tenant_supabase";
   reference: string;
   total: number;

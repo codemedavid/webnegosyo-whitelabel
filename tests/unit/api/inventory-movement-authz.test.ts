@@ -287,3 +287,29 @@ describe('POST /api/inventory/movement — the identity it already resolved', ()
     })
   })
 })
+
+describe('POST /api/inventory/movement — retries and the audit trail', () => {
+  const OWNER = { role: 'admin', tenant_id: TENANT, permissions: null, is_owner: true }
+
+  test('forwards the save attempt key so a retried save is recorded once', async () => {
+    await post(OWNER as never, { clientRequestId: '88888888-8888-4888-8888-888888888888' })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ client_request_id: '88888888-8888-4888-8888-888888888888' }),
+      expect.anything(),
+    )
+  })
+
+  test('marks the movement as recorded from the merchant app', async () => {
+    await post(OWNER as never)
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.anything(),
+      expect.objectContaining({ source: 'merchant_app' }),
+    )
+  })
+})

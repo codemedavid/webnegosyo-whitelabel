@@ -7,8 +7,107 @@
  * Vercel killed it at 25s — a 504 on every page for as long as the outage
  * lasted. A bounded fetch turns "hang" into "fail open in 3 seconds".
  */
+import { getEventListeners } from 'node:events'
+import { createTimedFetch } from '@/lib/supabase/timed-fetch'
 
 describe('createTimedFetch', () => {
+  describe('caller cancellation', () => {
+    it.each([undefined, { signal: undefined }])(
+      'inherits the Request signal when init is %p',
+      async (init) => {
+        const caller = new AbortController()
+        const reason = new Error('caller cancelled')
+        const request = new Request('https://example.test', { signal: caller.signal })
+        const base: typeof fetch = async (_input, options) => {
+          caller.abort(reason)
+          options?.signal?.throwIfAborted()
+          return new Response('ok')
+        }
+
+        await expect(createTimedFetch(1000, base)(request, init)).rejects.toBe(reason)
+      }
+    )
+
+    it('preserves the reason when the caller was already aborted', async () => {
+      const reason = new Error('cancelled before fetch')
+      const caller = new AbortController()
+      caller.abort(reason)
+      const base: typeof fetch = async (_input, options) => {
+        options?.signal?.throwIfAborted()
+        return new Response('ok')
+      }
+
+      await expect(
+        createTimedFetch(1000, base)('https://example.test', { signal: caller.signal })
+      ).rejects.toBe(reason)
+    })
+
+    it('uses the init signal instead of the Request signal', async () => {
+      const original = new AbortController()
+      const override = new AbortController()
+      const reason = new Error('override cancelled')
+      const request = new Request('https://example.test', { signal: original.signal })
+      original.abort()
+      const base: typeof fetch = async (_input, options) => {
+        expect(options?.signal?.aborted).toBe(false)
+        override.abort(reason)
+        options?.signal?.throwIfAborted()
+        return new Response('ok')
+      }
+
+      await expect(
+        createTimedFetch(1000, base)(request, { signal: override.signal })
+      ).rejects.toBe(reason)
+    })
+
+    it('allows a null init signal to disable Request cancellation', async () => {
+      const original = new AbortController()
+      const request = new Request('https://example.test', { signal: original.signal })
+      original.abort()
+      const response = new Response('ok')
+      const base: typeof fetch = async (_input, options) => {
+        expect(options?.signal?.aborted).toBe(false)
+        return response
+      }
+
+      await expect(createTimedFetch(1000, base)(request, { signal: null })).resolves.toBe(response)
+    })
+  })
+
+  describe('resource cleanup', () => {
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    it.each(['success', 'rejection', 'synchronous throw', 'timeout', 'caller abort'])(
+      'releases the caller listener and timer after %s',
+      async (outcome) => {
+        const caller = new AbortController()
+        const error = new Error('fetch failed')
+        const response = new Response('ok')
+        const base: typeof fetch = (_input, options) => {
+          if (outcome === 'synchronous throw') throw error
+          if (outcome === 'rejection') return Promise.reject(error)
+          if (outcome === 'success') return Promise.resolve(response)
+          return new Promise<Response>((_resolve, reject) => {
+            if (outcome === 'caller abort') {
+              options?.signal?.addEventListener('abort', () => reject(error), { once: true })
+            }
+          })
+        }
+        const pending = createTimedFetch(50, base)('https://example.test', { signal: caller.signal })
+        if (outcome === 'timeout') jest.advanceTimersByTime(50)
+        if (outcome === 'caller abort') caller.abort()
+
+        if (outcome === 'success') await expect(pending).resolves.toBe(response)
+        else if (outcome === 'timeout') await expect(pending).resolves.toHaveProperty('status', 408)
+        else await expect(pending).rejects.toBe(error)
+
+        expect(jest.getTimerCount()).toBe(0)
+        expect(getEventListeners(caller.signal, 'abort')).toHaveLength(0)
+      }
+    )
+  })
+
   it('hands the underlying fetch an abort signal', async () => {
     const base = jest.fn(async () => new Response('ok'))
     const { createTimedFetch } = await import('@/lib/supabase/timed-fetch')

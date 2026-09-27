@@ -177,8 +177,12 @@ describe("runPlatformAnalyticsQuery — argument validation", () => {
 
     await runPlatformAnalyticsQuery(client, TENANT, "analytics:getTopItems", { daysBack: 7, limit: 10 });
 
+    // Paged rather than `limit`ed: every request names a bounded row range.
     for (const call of calls) {
-      expect(call.ops.some((op) => op.method === "limit")).toBe(true);
+      const ranges = call.ops.filter((op) => op.method === "range");
+      expect(ranges).toHaveLength(1);
+      const [from, to] = ranges[0].args as [number, number];
+      expect(to - from + 1).toBeLessThanOrEqual(1000);
     }
   });
 

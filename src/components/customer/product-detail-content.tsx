@@ -44,28 +44,28 @@ import { LazyImageModal, LazyProductDetailCustomizer, LazyRelatedItemsSection } 
 import { BackgroundOverlayLayer } from './background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { motion } from 'framer-motion'
-const InlineUpgradeSection = dynamic(
-  () => import('./inline-upgrade-section').then((m) => ({ default: m.InlineUpgradeSection })),
-  { ssr: false }
-)
+import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
+import { describeAddedToCart } from '@/lib/senior-mode'
+import { ItemOffers, combosContainingItem } from '@/components/customer/offers/item-offers'
+import { cartOfferThemeFromBranding, offerThemeFromBranding } from '@/components/customer/offers/offer-theme'
+import { CartOfferRow } from '@/components/customer/offers/cart-offer-row'
 
 // Upsell/checkout modals — not visible on initial render; lazy-load them.
-const PostAddUpsellScreen = dynamic(
-  () => import('@/components/customer/post-add-upsell-screen').then((m) => ({ default: m.PostAddUpsellScreen })),
-  { ssr: false }
-)
-const UpsellSuggestionModal = dynamic(
-  () => import('./upsell-suggestion-modal').then((m) => ({ default: m.UpsellSuggestionModal })),
-  { ssr: false }
-)
-const CheckoutUpsellModal = dynamic(
-  () => import('./checkout-upsell-modal').then((m) => ({ default: m.CheckoutUpsellModal })),
+const AddedSheet = dynamic(
+  () => import('@/components/customer/offers/added-sheet').then((m) => ({ default: m.AddedSheet })),
   { ssr: false }
 )
 const BundleWizard = dynamic(
   () => import('@/components/customer/bundle-wizard').then((m) => ({ default: m.BundleWizard })),
   { ssr: false }
 )
+
+/**
+ * Senior mode's add-to-cart confirmation: long enough to read a two-line
+ * message, short enough not to linger — the bottom cart bar keeps showing the
+ * count afterwards.
+ */
+const SENIOR_ADDED_TOAST_MS = 3000
 
 interface ProductDetailContentProps {
     tenant: SelectedTenant
@@ -94,7 +94,6 @@ interface ProductDetailContentProps {
     mode?: 'page' | 'sheet'
     onClose?: () => void
     onNavigateToItem?: (item: MenuItem, opts?: { fromUpgrade?: boolean }) => void
-    suppressAutoUpgrade?: boolean
     /**
      * Sheet mode: true while the per-item upsell data is still being fetched.
      * Used to defer the post-add upsell decision so a fast Add-to-Cart tap
@@ -261,7 +260,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     mode = 'page',
     onClose,
     onNavigateToItem,
-    suppressAutoUpgrade = false,
     upsellsPending = false,
 }: ProductDetailContentProps) {
     const router = useRouter()
@@ -293,6 +291,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         [previewDraft, tenant, brandingProp]
     )
     const { addItem, setTenantContext, items: cartItems } = useCart()
+    const isSeniorMode = useSeniorMode()
     const mainContentRef = useRef<HTMLElement | null>(null)
     const [isPageTransitioning, setIsPageTransitioning] = useState(false)
     const pendingNavigationRef = useRef<string | null>(null)
@@ -302,7 +301,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const [customizationDraft, setCustomizationDraft] = useState<Partial<ProductDetailSettings> | null>(null)
 
     const {
-        setUpgradeDismissed,
         isImageModalOpen,
         isPostAddUpsellOpen,
         setIsPostAddUpsellOpen,
@@ -310,8 +308,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         setIsPopupPreviewOpen,
         isCheckoutPreviewOpen,
         setIsCheckoutPreviewOpen,
-        isUpgradeScreenOpen,
-        setIsUpgradeScreenOpen,
         bundleForCustomization,
         setBundleForCustomization,
         buyNowIntentRef,
@@ -322,29 +318,17 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         handlePostAddUpsellClose,
     } = useProductDetailModals({
         tenantSlug: tenant.slug,
-        menuEngineeringEnabled,
-        upgradeUpsellsCount: upgradeUpsells.length,
-        upsellBundlesCount: upsellBundles.length,
         onExit: isSheet ? onClose : undefined,
-        suppressAutoUpgrade,
     })
 
-    // Warm the ONE chunk this page might need but does not already render.
-    //
-    // This used to pull four chunks on every product mount, which undid the
-    // `next/dynamic` split above it: `PostAddUpsellScreen` and `BundleWizard`
-    // are rendered unconditionally (closed), so their chunks already load on
-    // mount, and `checkout-upsell-modal` only ever renders behind
-    // `isBrandAdmin` — every customer was downloading an admin preview.
-    //
-    // `InlineUpgradeSection` is the real case: it renders only behind the gate
-    // below, and it is the first thing a customer sees after "Add to cart".
-    const canShowUpgradeScreen =
-        menuEngineeringEnabled && (upgradeUpsells.length > 0 || upsellBundles.length > 0)
-    useEffect(() => {
-        if (!canShowUpgradeScreen) return
-        void import('./inline-upgrade-section')
-    }, [canShowUpgradeScreen])
+    // The item page's offers use the merchant's own colours, never a fixed palette.
+    const offerTheme = useMemo(() => offerThemeFromBranding(branding), [branding])
+    // Upgrade targets carry store-wide prices; resolve them to this branch so
+    // the "+₱X" difference is against the price the diner actually pays.
+    const branchUpgrades = useMemo(
+        () => upgradeUpsells.map((upgrade) => ({ ...upgrade, targetItem: branchPricing.resolve(upgrade.targetItem) })),
+        [upgradeUpsells, branchPricing]
+    )
 
     const {
         selectedVariation,
@@ -639,16 +623,23 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             toast.error(`Your cart is already for ${formatPresellDateLabel(result.committedDate)}. Pre-orders are placed one date at a time.`)
             return false
         }
+        if (isSeniorMode) {
+            // Senior mode: a larger worded confirmation (styled by .senior-toast
+            // in SeniorModeProvider), shown at the TOP so it never covers the
+            // bottom "View cart" bar that is the customer's next tap.
+            const message = describeAddedToCart(item.name, useGroups ? mg.quantity : quantity, presell ? formatPresellDateLabel(presell) : undefined)
+            toast.success(message.title, { description: message.description, duration: SENIOR_ADDED_TOAST_MS, position: 'top-center', className: 'senior-toast' })
+            return true
+        }
         toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
         return true
-    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate])
+    }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate, isSeniorMode])
 
-    const matchingBundle = useMemo(() => {
-        if (!bundlesEnabled || !upsellBundles?.length) return null
-        return upsellBundles.find((b) =>
-            b.slots.some((s) => s.category_id === item.category_id)
-        ) ?? null
-    }, [bundlesEnabled, upsellBundles, item.category_id])
+    // Only combos that contain this dish — never the store's first combo.
+    const itemCombos = useMemo(
+        () => (bundlesEnabled ? combosContainingItem(upsellBundles ?? [], item.id) : []),
+        [bundlesEnabled, upsellBundles, item.id]
+    )
 
     const handleAddToCart = useCallback((skipNavigation = false) => {
         /*
@@ -705,12 +696,11 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         // Add the item to cart
         if (!addCurrentItemToCart()) return
 
-        // Check if any upsell data exists
+        // Pairings only. Combos are offered on the item page, BEFORE the add —
+        // offering one after left the dish in the cart twice.
         const hasSuggestions = (menuEngineeringEnabled || pairingRulesEnabled) && complementaryUpsells && complementaryUpsells.length > 0
-        const hasBundle = bundlesEnabled && matchingBundle !== null
 
-        if (!skipNavigation && (hasSuggestions || hasBundle)) {
-            // Open unified upsell screen
+        if (!skipNavigation && hasSuggestions) {
             setIsPostAddUpsellOpen(true)
             return
         }
@@ -735,7 +725,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, isOrderable, isPresell, presellDate, effectiveQuantity, addableQuantity])
+    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, isOrderable, isPresell, presellDate, effectiveQuantity, addableQuantity])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -763,8 +753,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         if (!isSheet || upsellsPending || !pendingPostAddRef.current) return
         pendingPostAddRef.current = false
         const hasSuggestions = (menuEngineeringEnabled || pairingRulesEnabled) && complementaryUpsells.length > 0
-        const hasBundle = bundlesEnabled && matchingBundle !== null
-        if (hasSuggestions || hasBundle) {
+        if (hasSuggestions) {
             setIsPostAddUpsellOpen(true)
         } else if (buyNowIntentRef.current) {
             buyNowIntentRef.current = false
@@ -772,7 +761,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         } else {
             onClose?.()
         }
-    }, [isSheet, upsellsPending, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, bundlesEnabled, matchingBundle, router, tenant.slug, onClose, buyNowIntentRef, setIsPostAddUpsellOpen])
+    }, [isSheet, upsellsPending, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, router, tenant.slug, onClose, buyNowIntentRef, setIsPostAddUpsellOpen])
 
     return (
         <UpsellOrchestratorProvider>
@@ -785,17 +774,32 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             {/* Back Navigation */}
             <header data-branding-scope="product/header" className={`${isSheet ? 'absolute' : 'fixed'} top-0 left-0 right-0 z-50 p-3${isSheet ? ' rounded-t-2xl' : ''}`} style={{ backgroundColor: 'var(--pd-header-background)' }}>
                 <div className="flex items-center justify-between gap-2">
-                    <motion.button
-                        onClick={handleGoBack}
-                        className="rounded-full p-2 shadow-md transition-colors"
-                        style={{
-                            backgroundColor: 'var(--pd-header-button-bg)',
-                        }}
-                        aria-label="Go back"
-                        whileTap={{ scale: 0.95 }}
-                    >
-                        <ChevronLeft className="h-6 w-6" style={{ color: 'var(--pd-header-button-icon)' }} />
-                    </motion.button>
+                    {isSeniorMode ? (
+                        // Senior mode: the icon-only chevron was easy to miss —
+                        // say where the button goes, and go there even when
+                        // the dish was opened from a shared link (no history).
+                        <motion.button
+                            onClick={handleGoMenu}
+                            className="flex min-h-12 items-center gap-1.5 rounded-full py-2 pl-3 pr-5 text-lg font-bold shadow-md transition-colors"
+                            style={{ backgroundColor: 'var(--pd-header-button-bg)', color: 'var(--pd-header-button-icon)' }}
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <ChevronLeft className="h-7 w-7" aria-hidden="true" />
+                            Back to menu
+                        </motion.button>
+                    ) : (
+                        <motion.button
+                            onClick={handleGoBack}
+                            className="rounded-full p-2 shadow-md transition-colors"
+                            style={{
+                                backgroundColor: 'var(--pd-header-button-bg)',
+                            }}
+                            aria-label="Go back"
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <ChevronLeft className="h-6 w-6" style={{ color: 'var(--pd-header-button-icon)' }} />
+                        </motion.button>
+                    )}
                     <motion.button
                         onClick={handleShare}
                         className="rounded-full p-2 shadow-md transition-colors"
@@ -1150,7 +1154,26 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         </div>
                     )}
 
-                    {/* Inline Upgrade Section (McDonald's kiosk style) */}
+                    {/* Upgrade moment: the meal version and this dish's combos, as a choice — never a takeover */}
+                    {(menuEngineeringEnabled ? branchUpgrades.length : 0) + itemCombos.length > 0 && (
+                        <ItemOffers
+                            item={item}
+                            upgrades={menuEngineeringEnabled ? branchUpgrades : []}
+                            combos={itemCombos}
+                            theme={offerTheme}
+                            hideCurrencySymbol={hideCurrencySymbol}
+                            tenantId={tenant.id}
+                            onChooseUpgrade={(upgrade) => {
+                                if (isSheet) {
+                                    onNavigateToItem?.(upgrade.targetItem, { fromUpgrade: true })
+                                    return
+                                }
+                                pendingNavigationRef.current = `/${tenant.slug}/menu/item/${upgrade.targetItem.id}?upgraded=1`
+                                setIsPageTransitioning(true)
+                            }}
+                            onChooseCombo={(combo) => setBundleForCustomization(combo)}
+                        />
+                    )}
                     {/* Related Items Section */}
                     {relatedItems.length > 0 && (
                         <div className="relative" data-branding-scope="product/related">
@@ -1178,65 +1201,32 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 itemName={item.name}
             />
 
-            {/* Full-screen "Make it a Meal?" upgrade screen */}
-            {menuEngineeringEnabled && (upgradeUpsells.length > 0 || upsellBundles.length > 0) && (
-                <InlineUpgradeSection
-                    open={isUpgradeScreenOpen}
-                    sourceItem={item}
-                    upgrades={upgradeUpsells}
-                    bundles={upsellBundles}
-                    onSelectUpgrade={(upgrade) => {
-                        setIsUpgradeScreenOpen(false)
-                        setUpgradeDismissed(true)
-                        if (isSheet) {
-                            // Swap the item in-place; the host suppresses the re-prompt.
-                            onNavigateToItem?.(upgrade.targetItem, { fromUpgrade: true })
-                            return
-                        }
-                        // Trigger slide-left exit animation, then navigate
-                        pendingNavigationRef.current = `/${tenant.slug}/menu/item/${upgrade.targetItem.id}?upgraded=1`
-                        setIsPageTransitioning(true)
-                    }}
-                    onSelectBundle={(bundle) => {
-                        setIsUpgradeScreenOpen(false)
-                        setUpgradeDismissed(true)
-                        setBundleForCustomization(bundle)
-                    }}
-                    onDismiss={() => {
-                        setIsUpgradeScreenOpen(false)
-                        setUpgradeDismissed(true)
-                    }}
-                    hideCurrencySymbol={hideCurrencySymbol}
-                    tenantId={tenant.id}
-                />
-            )}
-
-            {/* Unified post-add upsell screen (replaces PairSuggestionSheet, UpsellSuggestionModal, BundleUpsellModal) */}
-            <PostAddUpsellScreen
+            {/* Right after adding: "Goes well with" */}
+            <AddedSheet
                 open={isPostAddUpsellOpen}
-                onClose={handlePostAddUpsellClose}
-                onAddItem={(upsellItem, qty) => {
-                    addItem(
-                        upsellItem,
-                        undefined,
-                        [],
-                        qty,
-                        undefined,
-                        'suggestion',
-                        item.id
-                    )
-                }}
-                tenantSlug={tenant.slug}
-                onAcceptBundle={(bundle) => {
-                    setIsPostAddUpsellOpen(false)
-                    setBundleForCustomization(bundle)
-                }}
+                addedItem={item}
                 suggestions={complementaryUpsells ?? []}
-                matchingBundle={matchingBundle}
-                triggerItemName={item.name}
+                theme={offerTheme}
                 tenantId={tenant.id}
-                sourceItemId={item.id}
                 hideCurrencySymbol={hideCurrencySymbol}
+                primaryLabel="View cart"
+                onAdd={(upsellItem) => {
+                    addItem(upsellItem, undefined, [], 1, undefined, 'suggestion', item.id)
+                }}
+                onCustomize={(upsellItem) => {
+                    setIsPostAddUpsellOpen(false)
+                    if (isSheet) {
+                        onNavigateToItem?.(upsellItem)
+                        return
+                    }
+                    router.push(`/${tenant.slug}/menu/item/${upsellItem.id}`)
+                }}
+                onPrimary={() => {
+                    setIsPostAddUpsellOpen(false)
+                    buyNowIntentRef.current = false
+                    router.push(`/${tenant.slug}/cart`)
+                }}
+                onClose={handlePostAddUpsellClose}
             />
 
             {/* Bundle Wizard (replaces old BundleCustomizationModal) */}
@@ -1256,67 +1246,49 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
             {isBrandAdmin && (
                 <>
-                    {/* Popup Preview Modal (admin only - renders above sidebar z-[56]) */}
-                    <UpsellSuggestionModal
+                    {/* "Just added" preview (admin only) — the real sheet, with this dish's related items */}
+                    <AddedSheet
                         open={isPopupPreviewOpen}
+                        addedItem={item}
+                        suggestions={relatedItems.length > 0 ? relatedItems.slice(0, 4) : [item]}
+                        theme={offerTheme}
+                        tenantId={tenant.id}
+                        hideCurrencySymbol={hideCurrencySymbol}
+                        primaryLabel="View cart"
+                        onAdd={() => {}}
+                        onCustomize={() => {}}
+                        onPrimary={() => setIsPopupPreviewOpen(false)}
                         onClose={() => setIsPopupPreviewOpen(false)}
-                        onAddItem={() => { }}
-                        suggestions={[{
-                            id: 'preview-1',
-                            tenant_id: tenant.id,
-                            name: 'Sample Item',
-                            description: 'A sample menu item for preview',
-                            price: 199,
-                            image_url: item.image_url || '',
-                            category_id: item.category_id || '',
-                            is_available: true,
-                            order: 0,
-                            variations: [],
-                            addons: [],
-                            variation_types: [],
-                            created_at: '',
-                            updated_at: '',
-                        } as MenuItem]}
-                        triggerItemName={item.name}
-                        zIndexClass="z-[58]"
                     />
 
-                    {/* Checkout Preview Modal (admin only - renders above sidebar z-[56]) */}
-                    <CheckoutUpsellModal
-                        open={isCheckoutPreviewOpen}
-                        onContinue={() => setIsCheckoutPreviewOpen(false)}
-                        tenantId={tenant.id}
-                        branding={branding}
-                        title="Before you go..."
-                        subtitle="You might also enjoy these items"
-                        maxItems={4}
-                        previewSuggestions={[{
-                            id: 'checkout-preview-1',
-                            tenant_id: tenant.id,
-                            name: 'Sample Item',
-                            description: 'A sample menu item for preview',
-                            price: 199,
-                            image_url: item.image_url || '',
-                            category_id: item.category_id || '',
-                            is_available: true,
-                            order: 0,
-                            variations: [],
-                            addons: [],
-                            variation_types: [],
-                            created_at: '',
-                            updated_at: '',
-                        } as MenuItem]}
-                        previewColors={{
-                            background: activeCustomization?.checkout_modal_background_color || '#ffffff',
-                            title: activeCustomization?.checkout_modal_title_color || '#111111',
-                            description: activeCustomization?.checkout_modal_description_color || '#6b7280',
-                            price: activeCustomization?.checkout_modal_price_color || '#111111',
-                            button: activeCustomization?.checkout_modal_button_color || '#3b82f6',
-                            buttonText: activeCustomization?.checkout_modal_button_text_color || '#ffffff',
-                            border: activeCustomization?.checkout_modal_border_color || '#e5e7eb',
-                        }}
-                        zIndexClass="z-[58]"
-                    />
+                    {/* Cart "last call" preview (admin only) — live with the draft checkout_modal_* colours */}
+                    {isCheckoutPreviewOpen && (
+                        <div className="fixed inset-0 z-[58] flex items-center justify-center bg-black/40 p-4" onClick={() => setIsCheckoutPreviewOpen(false)}>
+                            <div className="w-full max-w-md" onClick={(event) => event.stopPropagation()}>
+                                <CartOfferRow
+                                    title={tenant.checkout_upsell_title?.trim() || 'Add to your order'}
+                                    subtitle={tenant.checkout_upsell_subtitle?.trim() || undefined}
+                                    items={(relatedItems.length > 0 ? relatedItems.slice(0, 4) : [item]).map((preview) => ({
+                                        id: preview.id,
+                                        name: preview.name,
+                                        priceLabel: formatPrice(preview.price, { hideCurrencySymbol }),
+                                        imageUrl: preview.image_url,
+                                    }))}
+                                    addedIds={new Set()}
+                                    theme={cartOfferThemeFromBranding({
+                                        ...branding,
+                                        checkoutModalBackground: activeCustomization?.checkout_modal_background_color || branding.checkoutModalBackground,
+                                        checkoutModalTitle: activeCustomization?.checkout_modal_title_color || branding.checkoutModalTitle,
+                                        checkoutModalDescription: activeCustomization?.checkout_modal_description_color || branding.checkoutModalDescription,
+                                        checkoutModalButton: activeCustomization?.checkout_modal_button_color || branding.checkoutModalButton,
+                                        checkoutModalButtonText: activeCustomization?.checkout_modal_button_text_color || branding.checkoutModalButtonText,
+                                        checkoutModalBorder: activeCustomization?.checkout_modal_border_color || branding.checkoutModalBorder,
+                                    })}
+                                    onAdd={() => {}}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
 

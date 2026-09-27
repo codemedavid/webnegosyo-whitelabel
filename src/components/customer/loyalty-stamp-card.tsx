@@ -128,7 +128,7 @@ export function LoyaltyStampCard({
     return (
       <CardShell>
         <EarnedCardState card={card} storeName={storeName} logoUrl={logoUrl} />
-        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & claim</Link> : null}
+        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & use a reward</Link> : null}
       </CardShell>
     )
   }
@@ -143,7 +143,7 @@ export function LoyaltyStampCard({
           storeName={storeName}
           logoUrl={logoUrl}
         />
-        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & claim</Link> : null}
+        {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & use a reward</Link> : null}
       </CardShell>
     )
   }
@@ -189,7 +189,9 @@ export function LoyaltyStampCard({
             tenantSlug={tenantSlug}
             offer={typedProgress.offer}
             card={typedProgress.card}
-            isLoading={false}
+            isLoading={typedProgress.isLoading}
+            error={typedProgress.error}
+            onRetry={typedProgress.refresh}
             storeName={storeName}
             logoUrl={logoUrl}
           />
@@ -201,8 +203,8 @@ export function LoyaltyStampCard({
             {offer && (
               <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} />
             )}
-            {typedProgress.isLoading && (
-              <LoyaltyProgressPanel offer={null} card={null} isLoading storeName={storeName} />
+            {(typedProgress.isLoading || typedProgress.error) && (
+              <LoyaltyProgressPanel offer={null} card={null} isLoading={typedProgress.isLoading} error={typedProgress.error} onRetry={typedProgress.refresh} storeName={storeName} />
             )}
           </>
         )}
@@ -312,7 +314,8 @@ function EarnedCardState({
 }) {
   const unit = card.earnMode === 'stamp' ? 'stamps' : 'points'
   const hasReward = card.rewardsAvailable > 0
-  const filled = card.balance === 0 && hasReward ? card.threshold : card.balance
+  const filled = card.balance
+  const earningActive = !card.programStatus || card.programStatus === 'active'
 
   return (
     <div data-testid="stamp-card-earned">
@@ -322,18 +325,20 @@ function EarnedCardState({
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">{card.programName}</p>
         <h2 className="mt-1 text-2xl font-extrabold leading-tight">
-          {hasReward ? 'Reward ready!' : card.earnedOnOrder === false ? 'Your reward progress' : 'Stamp collected!'}
+          {hasReward ? 'Reward ready!' : card.earnedOnOrder === true ? 'Stamp collected!' : 'Your reward progress'}
         </h2>
         <p className="mt-1.5 text-sm opacity-90">
           {hasReward
-            ? `${card.rewardLabel} is waiting. Give your number at ${storeName} to use it.`
+            ? `${card.rewardLabel} is ready to use at ${storeName}. Open your rewards to get a QR for the cashier.`
             : `${card.balance} of ${card.threshold} ${unit} toward ${card.rewardLabel}`}
         </p>
       </div>
       <div className="p-5">
+        {hasReward && <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-text)' }}>{card.balance} of {card.threshold} {unit} toward your next {card.rewardLabel}</p>}
         <StampTrack threshold={card.threshold} filled={filled} earnMode={card.earnMode} logoUrl={logoUrl} />
+        {card.balance < 0 && <p className="mt-3 text-xs" style={{ color: 'var(--trk-text-muted)' }}>Your balance includes an adjustment. New earnings first cover the {Math.abs(card.balance)} {unit} adjustment.</p>}
         <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
-          Use the same number when you order and your stamps add up automatically.
+          {earningActive ? 'Use the same number when you order and your stamps add up automatically.' : card.programStatus === 'ended' ? 'This program has ended.' : 'Earning is paused for this program.'}
         </p>
       </div>
     </div>
@@ -456,7 +461,7 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
   const reduceMotion = useReducedMotion()
 
   if (loyalty.state === 'earned' && offer) {
-    const filled = loyalty.rewardUnlocked && loyalty.balance === 0 ? offer.threshold : (loyalty.balance ?? 1)
+    const filled = loyalty.balance ?? 0
     const unit = offer.earnMode === 'stamp' ? 'stamps' : 'points'
     return (
       <div role="status" aria-live="polite">
@@ -478,13 +483,14 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
           </h2>
           <p className="mt-1 text-sm opacity-90">
             {loyalty.rewardUnlocked
-              ? `${offer.rewardLabel} is yours. Show this number at ${storeName} to claim it.`
-              : loyalty.balance !== null
+              ? `${offer.rewardLabel} is ready at ${storeName}. Open your rewards to get a QR for the cashier.`
+              : loyalty.balance != null
                 ? `${loyalty.balance} of ${offer.threshold} ${unit} toward ${offer.rewardLabel}`
                 : `Your stamp is on your card at ${storeName}.`}
           </p>
         </div>
         <div className="p-5">
+          {loyalty.rewardUnlocked && loyalty.balance != null && <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-text)' }}>{loyalty.balance} of {offer.threshold} {unit} toward your next {offer.rewardLabel}</p>}
           <StampTrack threshold={offer.threshold} filled={filled} earnMode={offer.earnMode} animateLast logoUrl={logoUrl} />
           <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
             Use the same number when you order and your stamps add up automatically.

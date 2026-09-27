@@ -58,7 +58,9 @@ describe('applyOrderStockBestEffort', () => {
     // An uncosted menu is the common case; it must not read further tables.
     // Four touches are expected: claim the order, check no cancellation has
     // spoken for it (the cancel-wins guard), find no recipes, then hand the
-    // claim back so a retry after the recipe is added still deducts.
+    // claim back so a retry after the recipe is added still deducts. The fifth
+    // is the audit row saying "nothing to deduct" — the answer to "why didn't
+    // this sale move my stock?" — and it reads no ingredient tables either.
     from.mockImplementation((table: string) => {
       if (table === 'order_stock_applications') {
         const claimChain = {
@@ -85,6 +87,7 @@ describe('applyOrderStockBestEffort', () => {
       'order_stock_applications',
       'recipes',
       'order_stock_applications',
+      'inventory_audit_log',
     ])
   })
 })

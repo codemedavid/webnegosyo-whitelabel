@@ -90,7 +90,7 @@ export async function getOrderStampStatus(
     const admin = createAdminClient()
     const [initialEarn, programs, flags] = await Promise.all([
       readOrderEarn(admin, query, data.loyaltyIdentity.backend),
-      loadActiveLoyaltyPrograms(admin, query.tenantId),
+      loadActiveLoyaltyPrograms(admin, query.tenantId, { includeInactive: true }),
       loadLoyaltyTenantFlags(admin, query.tenantId),
     ])
     if (!flags.isEnabled || flags.isShadow) return { ok: true, status: base }

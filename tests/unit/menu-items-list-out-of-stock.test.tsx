@@ -52,7 +52,8 @@ describe('the availability switch in menu management', () => {
   it('says "Out of stock" for a dish the merchant switched off', () => {
     renderList([item({ is_available: false, auto_disabled_at: null })])
 
-    expect(screen.getByRole('button', { name: /out of stock/i })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: /lechon kawali available to order/i })).not.toBeChecked()
+    expect(screen.getByText('Out of stock', { selector: '[data-slot="badge"]' })).toBeInTheDocument()
   })
 
   it('no longer calls it "Hidden", which is not what it does any more', () => {
@@ -61,9 +62,10 @@ describe('the availability switch in menu management', () => {
     expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
   })
 
-  it('says "Available" for a dish that is in stock', () => {
+  it('shows the switch on, and no stock label, for a dish that is in stock', () => {
     renderList([item({ is_available: true })])
 
-    expect(screen.getByRole('button', { name: /available/i })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: /lechon kawali available to order/i })).toBeChecked()
+    expect(screen.queryByText('Out of stock', { selector: '[data-slot="badge"]' })).not.toBeInTheDocument()
   })
 })

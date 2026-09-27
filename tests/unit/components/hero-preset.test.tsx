@@ -278,3 +278,41 @@ describe('HeroPresetSection — featured product media panel', () => {
     expect(screen.getByRole('img', { name: 'Wood-fired Margherita' })).toBeInTheDocument()
   })
 })
+
+describe('HeroPresetSection — colored hero band', () => {
+  it('renders a full-bleed padded band carrying the section background when one is set', () => {
+    render(
+      <HeroPresetSection
+        {...baseProps}
+        preset="editorial"
+        kicker="Daily Dash"
+        ctaPrimaryLabel="Order Now"
+        sectionBackground="#2A6FDB"
+      />
+    )
+    const band = screen.getByTestId('hero-band')
+    expect(band).toHaveStyle({ background: '#2A6FDB', width: '100vw' })
+    expect(band.className).toMatch(/\bpy-/)
+    expect(band.className).toMatch(/min-h-/)
+    expect(band).toContainElement(screen.getByTestId('hero-kicker'))
+    expect(band).toContainElement(screen.getByRole('button', { name: 'Order Now' }))
+  })
+
+  it.each(['editorial', 'split', 'collage', 'minimal', 'centered'] as const)(
+    '%s paints the section background as a band',
+    (preset) => {
+      render(<HeroPresetSection {...baseProps} preset={preset} sectionBackground="#2A6FDB" />)
+      expect(screen.getByTestId('hero-band')).toHaveStyle({ background: '#2A6FDB' })
+    }
+  )
+
+  it('renders no band when no section background is set', () => {
+    render(<HeroPresetSection {...baseProps} preset="editorial" />)
+    expect(screen.queryByTestId('hero-band')).not.toBeInTheDocument()
+  })
+
+  it('keeps banner as its own card rather than a full-bleed band', () => {
+    render(<HeroPresetSection {...baseProps} preset="banner" sectionBackground="#2A6FDB" />)
+    expect(screen.queryByTestId('hero-band')).not.toBeInTheDocument()
+  })
+})

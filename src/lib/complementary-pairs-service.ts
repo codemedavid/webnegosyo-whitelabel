@@ -40,6 +40,29 @@ async function fetchComplementaryItems(
 ): Promise<MenuItem[]> {
   const supabase = createAdminClient()
 
+  // Tier 0: Boost Sales pairings. Merchants create these as `upsell_pairs`
+  // rows (pair_type 'complementary'); the checkout already read them, but this
+  // "right after adding" moment only read `complementary_pairs`, which no
+  // screen writes — so every pairing a merchant made never showed here.
+  const { data: boostPairs, error: boostError } = await supabase
+    .from('upsell_pairs')
+    .select('target_item_id, display_order, target_item:menu_items!upsell_pairs_target_item_id_fkey(*)')
+    .eq('tenant_id', tenantId)
+    .eq('pair_type', 'complementary')
+    .eq('source_item_id', itemId)
+    .eq('is_active', true)
+    .order('display_order', { ascending: true })
+    .limit(4)
+
+  if (boostError) {
+    console.error('Error fetching Boost Sales pairings:', boostError)
+  }
+
+  const boostItems = (boostPairs ?? [])
+    .map((p: Record<string, unknown>) => p.target_item as MenuItem)
+    .filter((item: MenuItem) => item && item.is_available)
+  if (boostItems.length > 0) return boostItems
+
   // Tier 1: Manual item-level pairs (always highest priority)
   const { data: itemPairs, error: itemError } = await supabase
     .from('complementary_pairs')

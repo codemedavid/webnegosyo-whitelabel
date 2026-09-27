@@ -132,6 +132,7 @@ describe('customer order stock route', () => {
       'sale',
       0,
       null,
+      { context: { source: 'customer_app' } },
     )
   })
 
@@ -155,6 +156,7 @@ describe('customer order stock route', () => {
       'sale',
       0,
       null,
+      { context: { source: 'customer_app' } },
     )
   })
 
@@ -175,6 +177,7 @@ describe('customer order stock route', () => {
       'sale',
       0,
       'outlet-north',
+      { context: { source: 'customer_app' } },
     )
   })
 
@@ -273,6 +276,7 @@ describe('customer order stock route — Convex-backend tenants', () => {
       'sale',
       0,
       null,
+      { context: { source: 'customer_app' } },
     )
   })
 
@@ -300,6 +304,7 @@ describe('customer order stock route — Convex-backend tenants', () => {
       'sale',
       0,
       null,
+      { context: { source: 'customer_app' } },
     )
   })
 
@@ -322,6 +327,7 @@ describe('customer order stock route — Convex-backend tenants', () => {
       'sale',
       0,
       'outlet-north',
+      { context: { source: 'customer_app' } },
     )
   })
 

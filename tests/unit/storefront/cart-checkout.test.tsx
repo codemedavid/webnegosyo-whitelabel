@@ -16,7 +16,7 @@ jest.mock('@/hooks/use-presell-cart-caps', () => ({ usePresellCartCaps: () => ({
 jest.mock('@/hooks/useCart', () => ({ useCart: () => ({ items: mockItems, bundleItems: [], total: 10, updateQuantity: jest.fn(), updateItemConfiguration: jest.fn(), removeItem: jest.fn(), updateBundleQuantity: jest.fn(), removeBundleFromCart: jest.fn() }) }))
 jest.mock('@/app/actions/menu-engineering', () => ({ getCheckoutUpsellsAction: jest.fn().mockResolvedValue({ success: true, data: [] }) }))
 jest.mock('@/components/customer/item-detail-modal', () => ({ ItemDetailModal: () => null }))
-jest.mock('@/components/customer/checkout-upsell-modal', () => ({ CheckoutUpsellModal: ({ open, onContinue }: { open: boolean; onContinue: () => void }) => open ? <button data-testid="continue-upsell" onClick={onContinue}>Continue</button> : null }))
+jest.mock('@/components/customer/offers/cart-offers-section', () => ({ CartOffersSection: () => <div data-testid="cart-offers" /> }))
 
 const props = { open: true, onClose: jest.fn(), tenantSlug: 'cafe', tenant: { id: 'tenant-1' } as Tenant, branding: { primary: '#000000', secondary: '#ffffff', accent: '#000000' } as never }
 beforeEach(() => { jest.clearAllMocks(); mockOpenStatus = ALWAYS_OPEN_STATUS })
@@ -30,14 +30,10 @@ test('drawer blocks checkout while ordering is closed and leaves the cart visibl
   expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('tomorrow'))
 })
 
-test('drawer rechecks ordering hours when continuing from the upsell', async () => {
+test('drawer shows suggestions inline and checks out without an interstitial', async () => {
   const upsellProps = { ...props, tenantId: 'tenant-1', menuEngineeringEnabled: true, checkoutUpsellEnabled: true }
-  const view = render(<CartDrawer {...upsellProps} />)
-  fireEvent.click(screen.getByRole('button', { name: 'Proceed to Checkout' }))
-  expect(screen.getByTestId('continue-upsell')).toBeInTheDocument()
-  mockOpenStatus = { ...ALWAYS_OPEN_STATUS, isOrderingBlocked: true }
-  view.rerender(<CartDrawer {...upsellProps} />)
-  await act(async () => { fireEvent.click(screen.getByTestId('continue-upsell')) })
-  expect(mockPush).not.toHaveBeenCalled()
-  expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('closed'))
+  render(<CartDrawer {...upsellProps} />)
+  expect(screen.getByTestId('cart-offers')).toBeInTheDocument()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Proceed to Checkout' })) })
+  expect(mockPush).toHaveBeenCalledWith('/cafe/checkout')
 })

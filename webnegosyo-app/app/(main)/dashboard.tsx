@@ -12,6 +12,8 @@ import { isPortfolioAvailable } from "../../lib/portfolio-landing";
 import { isTabReachable } from "../../lib/tab-visibility";
 import { quickActionsFor } from "../../lib/home-quick-actions";
 import { revenueDelta, todayRange, yesterdayRange } from "../../lib/home-period";
+import { ordersInWindowArgs } from "../../lib/report-window";
+import { useBusinessDayAnchor, useCanBoundReports } from "../../lib/use-report-window";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useAuthStore } from "../../stores/auth-store";
@@ -37,7 +39,7 @@ const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">
 
 /**
  * How many recent orders a branch account pulls to re-derive its own stat
- * tiles. Matches the window the product-analytics screen already accepts: past
+ * tiles on a backend too old to read a window. Matches the window the product-analytics screen already accepts: past
  * this many orders in the period the branch totals under-report, which is why
  * the indexed `outletId` server-side filter is the real fix.
  */
@@ -113,8 +115,14 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // Spread into a fresh literal: the query hook wants an indexable record,
   // and the interface deliberately is not one.
-  const yesterday = useMemo(() => ({ ...yesterdayRange(new Date()) }), []);
-  const today = useMemo(() => todayRange(new Date()), []);
+  //
+  // Keyed to the Manila day, not to mount: Home is a tab that never unmounts,
+  // so ranges computed once kept comparing against the day before yesterday
+  // after midnight while the server's "today" had already rolled over.
+  const { anchorMs } = useBusinessDayAnchor();
+  const canBound = useCanBoundReports();
+  const yesterday = useMemo(() => ({ ...yesterdayRange(anchorMs) }), [anchorMs]);
+  const today = useMemo(() => todayRange(anchorMs), [anchorMs]);
 
   const { data: stats, isLoading, error: statsError, refetch: refetchStats } =
     useSafeQuery<DashboardStats>(getDashboardStatsRef);
@@ -135,7 +143,15 @@ export default function DashboardScreen() {
   const { data: scopedOrders, isLoading: scopedOrdersLoading, refetch: refetchScopedOrders } =
     useSafeQuery<StatOrderLike[]>(
       getOrdersRef,
-      isBranchScoped ? { limit: BRANCH_STATS_ORDER_WINDOW } : "skip"
+      isBranchScoped
+        ? // Yesterday and today exactly, where the backend can bound a read —
+          // not the last 2000 orders filtered on the phone.
+          ordersInWindowArgs(
+            { startMs: yesterday.startDate, endMs: today.endDate + 1 },
+            canBound,
+            BRANCH_STATS_ORDER_WINDOW
+          )
+        : "skip"
     );
 
   // Pull-to-refresh re-reads every query this screen holds. On a Convex tenant

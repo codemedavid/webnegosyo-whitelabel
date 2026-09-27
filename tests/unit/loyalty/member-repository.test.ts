@@ -5,6 +5,17 @@ import { listLoyaltyMembers, readLoyaltyMemberDetail } from '@/lib/loyalty/membe
 const TENANT = 'tenant-1'
 const NOW = Date.parse('2026-09-22T00:00:00Z')
 
+it('finds a member directly even when their balance falls beyond the directory limit', async () => {
+  const tables = seed()
+  const target = { ...tables.loyalty_balances[0], id: 'zz-target', customer_key: 'phone:+639179999999' }
+  tables.loyalty_balances = [
+    ...Array.from({ length: 5000 }, (_, i) => ({ ...tables.loyalty_balances[0], id: String(i).padStart(6, '0'), customer_key: `phone:+63${i}`, customer_id: null })),
+    target,
+  ]
+  const { client } = database(tables)
+  expect((await readLoyaltyMemberDetail(client, TENANT, String(target.customer_key), NOW))?.member.customerKey).toBe(target.customer_key)
+})
+
 type Row = Record<string, unknown>
 
 /**
@@ -329,6 +340,63 @@ describe('readLoyaltyMemberDetail', () => {
     const detail = await readLoyaltyMemberDetail(client, TENANT, 'phone:+639171111111', NOW)
 
     expect(detail?.rewards[0].isReserved).toBe(true)
+  })
+
+  it('opens a customer who has ordered but holds no card yet, with their history', async () => {
+    // Arrange — a profile and an order, but no balance on any card.
+    const tables = seed()
+    tables.customers.push({
+      id: 'cust-3',
+      tenant_id: TENANT,
+      name: 'Carla Diaz',
+      phone_e164: '+639173333333',
+      email: null,
+      order_count: 1,
+      total_spent: '250',
+    })
+    tables.orders = [
+      {
+        id: 'order-carla',
+        tenant_id: TENANT,
+        customer_id: 'cust-3',
+        total: '250',
+        created_at: '2026-09-21T00:00:00Z',
+        order_type: 'Pickup',
+        status: 'pending',
+        payment_status: 'pending',
+        customer_data: {},
+      },
+    ]
+    const { client } = database(tables)
+
+    // Act
+    const detail = await readLoyaltyMemberDetail(client, TENANT, 'phone:+639173333333', NOW)
+
+    // Assert
+    expect(detail?.member.programs).toEqual([])
+    expect(detail?.member.name).toBe('Carla Diaz')
+    expect(detail?.profile?.orderCount).toBe(1)
+    expect(detail?.orders.map((o) => o.orderId)).toEqual(['order-carla'])
+  })
+
+  it("carries each order's own backend id so the merchant can open it", async () => {
+    const tables = seed()
+    tables.customer_external_orders = [
+      {
+        id: 'ledger-row-1',
+        tenant_id: TENANT,
+        customer_id: 'cust-1',
+        backend: 'convex',
+        external_order_id: 'jh70mwef055zxzpv',
+        total: '100',
+        ordered_at: '2026-09-20T00:00:00Z',
+      },
+    ]
+    const { client } = database(tables)
+
+    const detail = await readLoyaltyMemberDetail(client, TENANT, 'phone:+639171111111', NOW)
+
+    expect(detail?.orders[0].orderId).toBe('jh70mwef055zxzpv')
   })
 
   it('returns null for a customer who holds no card at this store', async () => {

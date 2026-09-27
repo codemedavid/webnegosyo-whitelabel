@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import { RecipeDisclosure } from '@/components/admin/recipe-disclosure'
 
 interface Addon {
@@ -50,22 +50,22 @@ export function AddonEditor({
 }: AddonEditorProps) {
   const canAttachRecipe = Boolean(recipeContext?.inventoryEnabled && recipeContext.menuItemId)
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Add-ons</CardTitle>
-        <div className="flex items-center gap-2">
+    <EditorSection
+      title="Add-ons"
+      description="Extras customers can add, like Extra cheese. Enter 0 for a free add-on."
+      action={
+        <>
           {headerAction}
           <Button type="button" variant="outline" size="sm" onClick={onAddAddon}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Add-on
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add add-on
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <p className="mb-3 text-xs text-muted-foreground">Enter 0 for a free add-on.</p>
+        </>
+      }
+    >
         {addons.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground">
-            No add-ons. Add extras like Extra Cheese, No Onions.
+          <p className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">
+            No add-ons yet. Add extras like Extra cheese or No onions.
           </p>
         ) : (
           <div className="space-y-3">
@@ -73,14 +73,17 @@ export function AddonEditor({
               <div key={addon.id} className="space-y-2">
               <div className="flex gap-2">
                 <Input
-                  placeholder="Name (e.g., Extra Cheese)"
+                  placeholder="Name, e.g. Extra cheese"
+                  aria-label="Add-on name"
                   value={addon.name}
                   onChange={(e) => onUpdateAddon(index, 'name', e.target.value)}
                 />
                 <Input
                   type="number"
                   step="0.01"
-                  placeholder="Price"
+                  placeholder="₱0"
+                  aria-label="Add-on price"
+                  className="w-28 shrink-0"
                   value={addon.price}
                   onChange={(e) => onUpdateAddon(index, 'price', parseFloat(e.target.value))}
                 />
@@ -89,6 +92,8 @@ export function AddonEditor({
                   variant="ghost"
                   size="icon"
                   onClick={() => onRemoveAddon(index)}
+                  aria-label={`Remove ${addon.name || 'add-on'}`}
+                  className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -118,7 +123,6 @@ export function AddonEditor({
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+    </EditorSection>
   )
 }

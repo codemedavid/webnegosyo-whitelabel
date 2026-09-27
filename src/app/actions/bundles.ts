@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import {
     getBundlesByTenant,
     getBundleById,
@@ -19,6 +20,7 @@ import {
 
 export async function getBundlesAction(tenantId: string): Promise<{ success: true; data: BundleWithSlots[] } | { success: false; error: string }> {
     try {
+        await verifyTenantPermission(tenantId, 'menu')
         const bundles = await getBundlesByTenant(tenantId)
         return { success: true, data: bundles }
     } catch (error) {
@@ -28,6 +30,7 @@ export async function getBundlesAction(tenantId: string): Promise<{ success: tru
 
 export async function getBundleAction(bundleId: string, tenantId: string): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
+        await verifyTenantPermission(tenantId, 'menu')
         const bundle = await getBundleById(bundleId, tenantId)
         return { success: true, data: bundle }
     } catch (error) {

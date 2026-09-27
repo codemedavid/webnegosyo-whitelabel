@@ -134,3 +134,17 @@ describe("invalidatePlatformQueries", () => {
     client.clear();
   });
 });
+
+describe("isQueryAffectedByOrderChange — bulk reads", () => {
+  it("leaves a report-sized order read to its own slow poll", () => {
+    const report = platformQueryKey("orders:getOrders", { startMs: 1, endMs: 2, limit: 10000 }, "t1", ALL);
+    const page = platformQueryKey("orders:getOrders", { limit: 2000 }, "t1", ALL);
+    expect(isQueryAffectedByOrderChange(report, "t1", northSale)).toBe(false);
+    expect(isQueryAffectedByOrderChange(page, "t1", northSale)).toBe(false);
+  });
+
+  it("still refreshes the live queue page on every order change", () => {
+    const live = platformQueryKey("orders:getOrders", { limit: 200 }, "t1", ALL);
+    expect(isQueryAffectedByOrderChange(live, "t1", northSale)).toBe(true);
+  });
+});

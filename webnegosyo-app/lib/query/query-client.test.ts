@@ -8,6 +8,7 @@
  */
 import { focusManager } from "@tanstack/query-core";
 import {
+  BULK_READ_STALE_MS,
   PLATFORM_GC_MS,
   PLATFORM_STALE_MS,
   bindQueryManagersToAppState,
@@ -96,5 +97,14 @@ describe("shouldKeepPreviousData", () => {
   it("lets every other ref show a loading state on a key change", () => {
     expect(shouldKeepPreviousData("orders:getDashboardStatsByPeriod")).toBe(false);
     expect(shouldKeepPreviousData("orders:getOrders")).toBe(false);
+  });
+});
+
+describe("resolveStaleMs — bulk reads", () => {
+  it("serves a report-sized order read from cache for a minute", () => {
+    expect(resolveStaleMs("orders:getOrders", { limit: 10000, startMs: 1, endMs: 2 })).toBe(
+      BULK_READ_STALE_MS
+    );
+    expect(resolveStaleMs("orders:getOrders", { limit: 200 })).toBe(PLATFORM_STALE_MS);
   });
 });

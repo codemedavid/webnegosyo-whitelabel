@@ -31,7 +31,7 @@ export function MenuListToolbar({ filters, counts, categories, onChange }: MenuL
             placeholder="Search dishes…"
             value={filters.query}
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
-            className="h-10 w-full rounded-lg border bg-background pl-9 pr-9 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-search-cancel-button]:appearance-none"
+            className="h-11 w-full rounded-lg border bg-card pl-9 pr-9 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-search-cancel-button]:appearance-none"
           />
           {filters.query && (
             <button
@@ -45,8 +45,8 @@ export function MenuListToolbar({ filters, counts, categories, onChange }: MenuL
           )}
         </div>
         <div className="shrink-0 sm:w-[220px]">
-        <Select value={filters.categoryId} onValueChange={(categoryId) => onChange({ ...filters, categoryId })}>
-          <SelectTrigger className="h-10 w-full" aria-label="Category">
+          <Select value={filters.categoryId} onValueChange={(categoryId) => onChange({ ...filters, categoryId })}>
+          <SelectTrigger className="h-11 w-full bg-card" aria-label="Category">
             <SelectValue placeholder="All categories" />
           </SelectTrigger>
           <SelectContent>
@@ -75,10 +75,10 @@ export function MenuListToolbar({ filters, counts, categories, onChange }: MenuL
               aria-selected={isActive}
               onClick={() => onChange({ ...filters, status: value })}
               className={cn(
-                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors',
+                'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors',
                 isActive
                   ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-background text-muted-foreground hover:border-foreground/40 hover:text-foreground',
+                  : 'border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground',
               )}
             >
               {label}

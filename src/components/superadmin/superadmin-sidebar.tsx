@@ -17,6 +17,7 @@ import {
   CreditCard,
   Megaphone,
   GraduationCap,
+  MapPinned,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -47,6 +48,7 @@ const navGroups: SidebarGroup[] = [
     items: [
       { label: 'Dashboard', href: '/superadmin', icon: LayoutDashboard },
       { label: 'Analytics', href: '/superadmin/analytics', icon: BarChart3 },
+      { label: 'Client Map', href: '/superadmin/map', icon: MapPinned },
     ],
   },
   {

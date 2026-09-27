@@ -40,7 +40,7 @@ it('does not send the editor stock snapshot when saving an unrelated item edit',
   } as MenuItem
   mockUpdate.mockResolvedValue({ success: true, data: { id: item.id } })
   const { container } = render(<MenuItemForm item={item} tenantId="tenant" tenantSlug="shop" modifierGroupsEnabled categories={[{ id: item.category_id, name: 'Food' } as Category]} />)
-  fireEvent.change(screen.getByLabelText('Description *'), { target: { value: 'A newly described dish' } })
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'A newly described dish' } })
   fireEvent.submit(container.querySelector('form')!)
   await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1))
   const payload = mockUpdate.mock.calls[0][3]
@@ -54,9 +54,11 @@ it('updates the created item when retrying after a failed allocation save', asyn
   mockUpdate.mockResolvedValue({ success: true, data: { id } })
   mockAllocations.mockResolvedValueOnce({ success: false, error: 'Temporary failure' }).mockResolvedValueOnce({ success: true })
   const { container } = render(<MenuItemForm tenantId="tenant" tenantSlug="shop" presellEnabled categories={[{ id: '11111111-1111-4111-8111-111111111111', name: 'Food' } as Category]} />)
-  fireEvent.change(screen.getByLabelText('Item Name *'), { target: { value: 'New dish' } })
-  fireEvent.change(screen.getByLabelText('Description *'), { target: { value: 'A delicious new dish' } })
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'New dish' } })
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'A delicious new dish' } })
   fireEvent.change(container.querySelector('#price')!, { target: { value: '100' } })
+  // Pre-order dates live in the "More options" list, closed until asked for.
+  fireEvent.click(screen.getByRole('button', { name: /pre-order dates/i }))
   fireEvent.click(screen.getByText('Stage date'))
   fireEvent.submit(container.querySelector('form')!)
   await waitFor(() => expect(mockAllocations).toHaveBeenCalledTimes(1))
@@ -81,8 +83,8 @@ it('keeps the new-item recipe dialog open while its recipe write is pending', as
       } as Category]}
     />,
   )
-  fireEvent.change(screen.getByLabelText('Item Name *'), { target: { value: 'New dish' } })
-  fireEvent.change(screen.getByLabelText('Description *'), {
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'New dish' } })
+  fireEvent.change(screen.getByLabelText('Description'), {
     target: { value: 'A delicious new dish' },
   })
   fireEvent.change(container.querySelector('#price')!, { target: { value: '100' } })

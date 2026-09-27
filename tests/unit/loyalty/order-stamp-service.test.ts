@@ -1,4 +1,5 @@
 import { getOrderStampStatus } from '@/lib/loyalty/order-stamp-service'
+import { getPhoneLoyaltyProgress } from '@/lib/loyalty/progress-lookup'
 import { fetchOrderTrackingData } from '@/lib/order-tracking-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
@@ -86,6 +87,26 @@ it('shows an empty card for a first-time customer without inventing an earned st
   tables.loyalty_balances = []
   tables.loyalty_entitlements = []
   expect(await getOrderStampStatus(query)).toMatchObject({ ok: true, status: { card: { balance: 0, rewardsAvailable: 0, earnedOnOrder: false } } })
+})
+
+it('counts a restored reward exactly like the owner member screen', async () => {
+  tables.loyalty_entitlements[0].status = 'restored'
+  expect(await getOrderStampStatus(query)).toMatchObject({ ok: true, status: { card: { rewardsAvailable: 1 } } })
+})
+
+it('retains a known member card in checkout when earning is paused without offering it to a new number', async () => {
+  tables.loyalty_programs[0].status = 'paused'
+  expect(await getPhoneLoyaltyProgress({ tenantId: 'tenant-1', phone: '09171234567' })).toMatchObject({
+    ok: true, progress: { offer: null, card: { balance: 3, programStatus: 'paused' } },
+  })
+  expect(await getPhoneLoyaltyProgress({ tenantId: 'tenant-1', phone: '09999888777' })).toMatchObject({ ok: true, progress: { offer: null, card: null } })
+})
+
+it.each(['paused', 'ended'])('keeps the earned card visible after its program is %s', async (status) => {
+  tables.orders[0].status = 'delivered'
+  tables.loyalty_programs[0].status = status
+  tables.loyalty_ledger = [{ tenant_id: 'tenant-1', external_order_id: 'order-1', order_backend: 'platform_supabase', kind: 'earn', is_shadow: false, program_id: 'program-1', customer_key: 'phone:+639171234567' }]
+  expect(await getOrderStampStatus(query)).toMatchObject({ ok: true, status: { card: { balance: 3, rewardsAvailable: 1, earnedOnOrder: true } } })
 })
 
 it('keeps anonymous receipts on the claim form without reading another customer balance', async () => {

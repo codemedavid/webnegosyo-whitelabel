@@ -8,6 +8,10 @@
  * back to a default that can collide with the background (e.g. hero CTA text
  * turning invisible after publish while the editor preview — which merges the
  * full draft — still looks correct).
+ *
+ * The checkout page renders from this same cached read (the tenant layout has
+ * already warmed it), so the last lines carry the columns only checkout uses:
+ * Messenger routing, QR handoff, the order backend and the delivery-fee inputs.
  */
 export const TENANT_STOREFRONT_SELECT = `
   id, slug, name, logo_url, domain,
@@ -36,6 +40,7 @@ export const TENANT_STOREFRONT_SELECT = `
   font_pair, card_roundness, brand_color, storefront_palette, category_nav_style, hero_preset,
   card_template, checkout_template, cart_template, page_layout, mobile_page_layout, mobile_card_template,
   card_image_ratio, card_image_fit, card_add_button, card_text_align, card_description, card_density,
+  senior_friendly_mode,
   header_template, mobile_header_template, header_show_logo, header_show_name, header_show_cart, header_show_search,
   header_tagline, header_tagline_color, header_sticky, header_blur, header_shadow, header_logo_shape, header_height,
   hero_title, hero_description, hero_title_color, hero_description_color, hero_design, hero_section_enabled,
@@ -71,5 +76,8 @@ export const TENANT_STOREFRONT_SELECT = `
   footer_background_color, footer_text_color, footer_heading_color, footer_muted_color,
   footer_link_color, footer_border_color, footer_icon_color, footer_icon_background_color,
   checkout_background_color, checkout_card_background_color, checkout_text_color, checkout_muted_text_color,
-  checkout_accent_color, checkout_button_color, checkout_button_text_color, checkout_border_color, checkout_summary_background_color
+  checkout_accent_color, checkout_button_color, checkout_button_text_color, checkout_border_color, checkout_summary_background_color,
+  messenger_username, messenger_page_id, messenger_redirect_enabled, messenger_redirect_mode,
+  qr_handoff_enabled, order_backend, lalamove_market,
+  distance_delivery_enabled, delivery_radius_km, restaurant_latitude, restaurant_longitude
 `
