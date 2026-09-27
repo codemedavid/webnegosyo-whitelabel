@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  // Cross-app regression tests import Electron/Expo sources. Their dependencies
+  // belong to those projects, not Vercel's web-only install. Keep production
+  // typechecking focused on the application; root tsc still checks the tests.
+  typescript: { tsconfigPath: "tsconfig.build.json" },
   images: {
     // Cache optimized images longer to reduce repeated requests
     

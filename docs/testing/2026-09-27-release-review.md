@@ -28,7 +28,7 @@ The pending workspace was committed on `release/reviewed-updates-2026-09-27` and
 | Convex template | Bundle rebuilt successfully, version 35 |
 | Production stock contract | Read-only probe passed |
 
-The first local build/test attempts overlapped the integration and were superseded. Clearing the generated Next ESLint cache removed stale merge-marker diagnostics. A native test import initially polluted web ambient types; the test now keeps native declarations out of the web TypeScript program while exercising the real HTTP client. The final PR preview is the full build gate; check its status before promotion.
+The first local build/test attempts overlapped the integration and were superseded. Clearing the generated Next ESLint cache removed stale merge-marker diagnostics. A native test import initially polluted web ambient types; the test now keeps native declarations out of the web TypeScript program while exercising the real HTTP client. A fresh Vercel install also exposed desktop tests being pulled into the web production typecheck without Electron installed. `tsconfig.build.json` now checks all web application source and generated route types; root and native project checks continue to validate tests and cross-app code. The final PR preview is the full build gate; check its status before promotion.
 
 SQL harnesses run with an isolated PGlite install outside the repository. They execute the loyalty activity, earning recovery, wallet history, staff shift server-time and anonymous Lalamove insertion contracts without changing production data. Root dependency audit reports zero vulnerabilities. The production stock-contract read-only check passed.
 
