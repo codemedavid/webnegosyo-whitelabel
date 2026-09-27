@@ -222,8 +222,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (error instanceof LalamoveBookingError && !error.bookingMayExist) {
           const released = await releaseLalamoveBookingClaim(admin, bookingClaim)
           if (!released.success) return fail(released.error, 503)
+          throw error
         }
-        throw error
+        return fail(
+          `${error instanceof Error ? error.message : 'The delivery service could not be reached'}. ` +
+          'The delivery may have been booked. Check Lalamove before booking again.',
+          503,
+        )
       }
 
       const saved = await persistLalamoveBooking(admin, bookingClaim, placed)
@@ -327,9 +332,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (live?.driver?.phone) patch.lalamove_driver_phone = live.driver.phone
 
       if (Object.keys(patch).length > 0) {
-        const { data: saved, error: saveError } = await admin.from('orders')
+        let update = admin.from('orders')
           .update(patch).eq('id', orderId).eq('tenant_id', tenantId)
-          .eq('lalamove_order_id', bookedId).select('id').maybeSingle()
+          .eq('lalamove_order_id', bookedId)
+        update = order.lalamove_status === null
+          ? update.is('lalamove_status', null)
+          : update.eq('lalamove_status', order.lalamove_status)
+        const { data: saved, error: saveError } = await update.select('id').maybeSingle()
         if (saveError || !saved) return fail('Could not save the delivery status. Refresh the order and sync again.', 409)
       }
 
