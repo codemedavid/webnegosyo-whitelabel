@@ -24,6 +24,45 @@ function calledPaths(): string[] {
 beforeEach(() => { fetchMock.mockReset() })
 
 describe('createConvexServerClient', () => {
+  test('keeps checkout working on v34 while v35 introduces internal order creation', async () => {
+    const { createConvexServerClient } = await import('@/lib/convex/server')
+    const args = { source: 'web', total: 150, items: [{ menuItemId: 'burger', quantity: 1, price: 150 }] }
+    fetchMock
+      .mockReturnValueOnce(reply({ status: 'error', errorMessage: "Could not find function for 'orders:createOrderInternal'" }))
+      .mockReturnValueOnce(reply({ status: 'success', value: 'new-order' }))
+    await expect(createConvexServerClient('https://x.convex.cloud', 'dev:key')
+      .mutation('orders:createOrderInternal', args)).resolves.toBe('new-order')
+    expect(calledPaths()).toEqual(['orders:createOrderInternal', 'orders:createOrder'])
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(JSON.parse(String(init.body)).args).toEqual(args)
+      expect((init.headers as Record<string, string>).Authorization).toBe('Convex dev:key')
+    }
+  })
+
+  test('v35 checkout stays on the protected internal mutation', async () => {
+    const { createConvexServerClient } = await import('@/lib/convex/server')
+    fetchMock.mockReturnValueOnce(reply({ status: 'success', value: 'new-order' }))
+    await expect(createConvexServerClient('https://x.convex.cloud', 'dev:key')
+      .mutation('orders:createOrderInternal', { source: 'web' })).resolves.toBe('new-order')
+    expect(calledPaths()).toEqual(['orders:createOrderInternal'])
+  })
+
+  test('an order rejection or uncertain network failure never falls back and risks a duplicate sale', async () => {
+    const { createConvexServerClient } = await import('@/lib/convex/server')
+    fetchMock.mockRejectedValueOnce(new Error('Connection interrupted'))
+    await expect(createConvexServerClient('https://x.convex.cloud', 'dev:key')
+      .mutation('orders:createOrderInternal', { source: 'web' })).rejects.toThrow('Connection interrupted')
+    expect(calledPaths()).toEqual(['orders:createOrderInternal'])
+  })
+
+  test('never routes an authorization refusal through the public order mutation', async () => {
+    const { createConvexServerClient } = await import('@/lib/convex/server')
+    fetchMock.mockReturnValueOnce(reply({ status: 'error', errorMessage: 'Unauthorized: invalid deployment credentials' }))
+    await expect(createConvexServerClient('https://x.convex.cloud', 'invalid-key')
+      .mutation('orders:createOrderInternal', { source: 'web' })).rejects.toThrow('Unauthorized')
+    expect(calledPaths()).toEqual(['orders:createOrderInternal'])
+  })
+
   test('falls back to the public name when the internal variant is missing', async () => {
     // Arrange
     const { createConvexServerClient } = await import('@/lib/convex/server')

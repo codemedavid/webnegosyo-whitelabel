@@ -32,8 +32,7 @@ import {
 
 // --- MUTATIONS ---
 
-export const createOrder = mutation({
-  args: {
+const createOrderArgs = {
     customerName: v.string(),
     customerContact: v.string(),
     customerData: v.optional(v.any()),
@@ -97,10 +96,9 @@ export const createOrder = mutation({
         presellDate: v.optional(v.string()),
       })
     ),
-  },
-  handler: async (ctx, args) => {
-    // POS is a merchant write, including idempotent replay of an existing sale.
-    if (args.source === "pos") await requireAccess(ctx, "write");
+};
+
+async function insertOrder(ctx: MutationCtx, args: ObjectType<typeof createOrderArgs>) {
     const { items, ...orderData } = args;
 
     // Idempotency guard: if this clientOrderId already exists, return the
@@ -159,7 +157,39 @@ export const createOrder = mutation({
     });
 
     return orderId;
+}
+
+/** Customer checkout for Lalamove stores must pass through the web server,
+ * which verifies the signed quotation against authoritative order types.
+ * Display names and caller-supplied source/address are not security signals. */
+async function requireLalamoveOrderAccess(ctx: MutationCtx) {
+  const keys = ["lalamove_enabled", "lalamove_api_key", "tenant_id"];
+  const rows = await Promise.all(keys.map((key) => ctx.db.query("tenantConfig")
+    .withIndex("by_key", (q) => q.eq("key", key)).first()));
+  const [enabled, apiKey, tenantId] = rows.map((row) => row?.value);
+  if (enabled !== "true" && !apiKey?.trim()) return;
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity?.wn_role === "superadmin") return;
+  if (identity?.wn_role === "admin" && tenantId && identity.wn_tenant_id === tenantId) return;
+  // The existing merchant rollout gate allows anonymous callers in soft
+  // mode, so this boundary deliberately requires actual merchant claims.
+  throw new Error("Unauthorized: complete checkout for this store on its website so the delivery quotation can be verified.");
+}
+
+export const createOrder = mutation({
+  args: createOrderArgs,
+  handler: async (ctx, args) => {
+    await requireLalamoveOrderAccess(ctx);
+    // POS is a merchant write, including idempotent replay of an existing sale.
+    if (args.source === "pos") await requireAccess(ctx, "write");
+    return insertOrder(ctx, args);
   },
+});
+
+/** Reachable only with the deployment key held by the web server. */
+export const createOrderInternal = internalMutation({
+  args: createOrderArgs,
+  handler: insertOrder,
 });
 
 export const updateOrderStatus = mutation({
@@ -460,6 +490,10 @@ export const updateLalamoveDetails = mutation({
   },
   handler: async (ctx, args) => {
     await requireAccess(ctx, "write");
+    const order = await ctx.db.get(args.orderId);
+    if (order?.lalamoveStatus === "BOOKING") {
+      throw new Error("The delivery booking is awaiting confirmation. Check Lalamove before changing it.");
+    }
     const { orderId, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([, val]) => val !== undefined)
@@ -470,10 +504,63 @@ export const updateLalamoveDetails = mutation({
   },
 });
 
+/** Convex mutations serialize the claim before any paid provider request. */
+export const claimLalamoveBookingInternal = internalMutation({
+  args: { orderId: v.id("orders"), quotationId: v.string() },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.lalamoveOrderId || order.lalamoveStatus === "BOOKING" ||
+      order.lalamoveQuotationId !== args.quotationId) return false;
+    await ctx.db.patch(args.orderId, { lalamoveStatus: "BOOKING" });
+    return true;
+  },
+});
+
+export const releaseLalamoveBookingInternal = internalMutation({
+  args: { orderId: v.id("orders"), quotationId: v.string() },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.lalamoveOrderId || order.lalamoveStatus !== "BOOKING" ||
+      order.lalamoveQuotationId !== args.quotationId) return false;
+    await ctx.db.patch(args.orderId, { lalamoveStatus: undefined });
+    return true;
+  },
+});
+
+export const completeLalamoveBookingInternal = internalMutation({
+  args: {
+    orderId: v.id("orders"), quotationId: v.string(),
+    lalamoveOrderId: v.string(), lalamoveStatus: v.string(), lalamoveTrackingUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.lalamoveOrderId || order.lalamoveStatus !== "BOOKING" ||
+      order.lalamoveQuotationId !== args.quotationId) return false;
+    await ctx.db.patch(args.orderId, {
+      lalamoveOrderId: args.lalamoveOrderId,
+      lalamoveStatus: args.lalamoveStatus,
+      lalamoveTrackingUrl: args.lalamoveTrackingUrl,
+    });
+    return true;
+  },
+});
+
+export const replaceLalamoveQuotationInternal = internalMutation({
+  args: { orderId: v.id("orders"), lalamoveQuotationId: v.string() },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.lalamoveOrderId || order.lalamoveStatus === "BOOKING") return false;
+    await ctx.db.patch(args.orderId, { lalamoveQuotationId: args.lalamoveQuotationId });
+    return true;
+  },
+});
+
 // Internal mutation for Lalamove action
 export const updateLalamoveDetailsInternal = internalMutation({
   args: {
     orderId: v.id("orders"),
+    expectedLalamoveOrderId: v.optional(v.string()),
+    expectedLalamoveStatus: v.optional(v.string()),
     lalamoveQuotationId: v.optional(v.string()),
     lalamoveOrderId: v.optional(v.string()),
     lalamoveStatus: v.optional(v.string()),
@@ -482,13 +569,23 @@ export const updateLalamoveDetailsInternal = internalMutation({
     lalamoveTrackingUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.lalamoveStatus === "BOOKING") return false;
+    if (args.expectedLalamoveOrderId !== undefined &&
+      order.lalamoveOrderId !== args.expectedLalamoveOrderId) return false;
+    if (args.expectedLalamoveStatus !== undefined &&
+      (order.lalamoveStatus ?? "") !== args.expectedLalamoveStatus) return false;
+    if (args.lalamoveOrderId && order.lalamoveOrderId &&
+      args.lalamoveOrderId !== order.lalamoveOrderId) return false;
     const { orderId, ...updates } = args;
     const filtered = Object.fromEntries(
-      Object.entries(updates).filter(([, val]) => val !== undefined)
+      Object.entries(updates).filter(([key, val]) => val !== undefined &&
+        key !== "expectedLalamoveOrderId" && key !== "expectedLalamoveStatus")
     );
     if (Object.keys(filtered).length > 0) {
       await ctx.db.patch(orderId, filtered);
     }
+    return true;
   },
 });
 

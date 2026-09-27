@@ -87,6 +87,19 @@ describe('CartOffersSection', () => {
     tenantSlug: 'cafe',
   }
 
+  it.each<Partial<MenuItem>>([
+    { presell_enabled: true },
+    { modifier_groups: [{ id: 'g', name: 'Extras', display_order: 0, min_select: 1, max_select: null, options: [] }] },
+  ])('opens items with required ordering choices instead of adding an incomplete line (%j)', async (choices) => {
+    const { CartOffersSection } = await import('@/components/customer/offers/cart-offers-section')
+    const closeDrawer = jest.fn()
+    render(<CartOffersSection {...baseProps} suggestions={[dish('tea', 'Tea', choices)]} cartItemIds={[]} onBeforeNavigate={closeDrawer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tea' }))
+    expect(mockAddItem).not.toHaveBeenCalled()
+    expect(closeDrawer).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledWith('/cafe/menu/item/tea')
+  })
+
   it('leaves out what is already in the cart and adds the rest in one tap', async () => {
     const { CartOffersSection } = await import('@/components/customer/offers/cart-offers-section')
     render(

@@ -24,6 +24,7 @@ async function main() {
       grant select on app_users,outlets to authenticated;`)
     await db.exec(readFileSync('supabase/migrations/20260823120000_staff_shifts.sql', 'utf8'))
     await db.exec(readFileSync('supabase/migrations/20260916150000_staff_shift_custody.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/20260927120000_staff_shift_server_timestamps.sql', 'utf8'))
     // Supabase's public-schema default privileges are explicit in this fixture.
     await db.exec('grant select,insert,update,delete on staff_shifts to authenticated')
     await db.query('insert into tenants values($1),($2)', [tenant, otherTenant])
@@ -35,14 +36,22 @@ async function main() {
     const open = (staff = actor, branch = outlet) => db.query("insert into staff_shifts(tenant_id,outlet_id,staff_user_id,staff_name,opening_float) values($1,$2,$3,'Cashier',100) returning id", [tenant, branch, staff])
     await assert.rejects(open(colleague), /row-level security/)
     await assert.rejects(open(actor, otherOutlet), /different store/)
-    const id = (await open()).rows[0].id
+    const id = (await db.query("insert into staff_shifts(tenant_id,outlet_id,staff_user_id,staff_name,opening_float,opened_at,created_at,closed_at,expected_cash,closing_count) values($1,$2,$3,'Cashier',100,'2000-01-01','2000-01-01','2099-01-01',999,999) returning *", [tenant,outlet,actor])).rows[0].id
+    const opened = (await db.query('select * from staff_shifts where id=$1', [id])).rows[0]
+    assert.ok(new Date(opened.opened_at).getTime() > Date.now() - 60_000, 'Server controls opening time')
+    assert.ok(new Date(opened.created_at).getTime() > Date.now() - 60_000, 'Server controls creation time')
+    assert.equal(opened.closed_at, null)
+    assert.equal(opened.expected_cash, null)
+    assert.equal(opened.closing_count, null)
     await assert.rejects(open(), /duplicate key/)
     await assert.rejects(db.query("update staff_shifts set opening_float=200,status='closed',closed_at=now(),expected_cash=100,closing_count=100 where id=$1", [id]), /custody/)
     await assert.rejects(db.query("update staff_shifts set status='closed',closed_at=now() where id=$1", [id]), /expected cash/)
     await db.query("select set_config('test.uid',$1,false)", [colleague])
     assert.equal((await db.query("update staff_shifts set status='closed',closed_at=now(),expected_cash=100,closing_count=100 where id=$1 returning id", [id])).rows.length, 0, 'a colleague cannot close another drawer')
     await db.query("select set_config('test.uid',$1,false)", [actor])
-    await db.query("update staff_shifts set status='closed',closed_at=now(),expected_cash=150,closing_count=145 where id=$1", [id])
+    await db.query("update staff_shifts set status='closed',closed_at='2099-01-01',expected_cash=150,closing_count=145 where id=$1", [id])
+    const closed = (await db.query('select closed_at from staff_shifts where id=$1', [id])).rows[0]
+    assert.ok(Math.abs(new Date(closed.closed_at).getTime() - Date.now()) < 60_000, 'Server controls closing time')
     assert.equal((await db.query('update staff_shifts set closing_count=150 where id=$1 returning id', [id])).rows.length, 0, 'closed evidence is immutable')
     assert.equal((await db.query('delete from staff_shifts where id=$1 returning id', [id])).rows.length, 0, 'staff cannot erase drawer history')
     await db.exec('reset role')

@@ -287,7 +287,7 @@ export async function getUpsellsForItem(
       *,
       target_item:menu_items!upsell_pairs_target_item_id_fkey(
         id, tenant_id, category_id, name, description, price, discounted_price,
-        image_url, is_available, is_featured, variations, variation_types, addons
+        image_url, is_available, is_featured, modifier_groups, presell_enabled, variations, variation_types, addons
       )
     `)
     .eq('source_item_id', itemId)
@@ -333,7 +333,7 @@ export async function getUpsellsForCart(
       target_item_id,
       target_item:menu_items!upsell_pairs_target_item_id_fkey(
         id, tenant_id, category_id, name, description, price, discounted_price,
-        image_url, is_available, is_featured, variations, variation_types, addons
+        image_url, is_available, is_featured, modifier_groups, presell_enabled, variations, variation_types, addons
       )
     `)
     .in('source_item_id', cartItemIds)
@@ -373,7 +373,7 @@ export async function getStarItems(tenantId: string, limit: number = 4): Promise
       const supabase = await createClient()
       const { data, error } = await supabase
         .from('menu_items')
-        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons')
+        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, modifier_groups, presell_enabled, variations, variation_types, addons')
         .eq('tenant_id', tenantId)
         .eq('bcg_classification', 'star')
         .eq('is_available', true)
@@ -408,7 +408,7 @@ export async function getQuickAddItems(tenantId: string, limit: number = 8): Pro
       const supabase = await createClient()
       const { data, error } = await supabase
         .from('menu_items')
-        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons, category:categories(name)')
+        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, modifier_groups, presell_enabled, variations, variation_types, addons, category:categories(name)')
         .eq('tenant_id', tenantId)
         .eq('is_available', true)
         .order('is_featured', { ascending: false })
@@ -449,7 +449,7 @@ export async function getManualUpsellItems(tenantId: string, limit: number = 8):
       const supabase = await createClient()
       const { data, error } = await supabase
         .from('menu_items')
-        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, variations, variation_types, addons')
+        .select('id, tenant_id, category_id, name, description, price, discounted_price, image_url, is_available, is_featured, show_in_checkout_upsell, modifier_groups, presell_enabled, variations, variation_types, addons')
         .eq('tenant_id', tenantId)
         .eq('show_in_checkout_upsell', true)
         .eq('is_available', true)

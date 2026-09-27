@@ -8,7 +8,7 @@ import type { PermissionHolder } from '@/lib/staff-permissions'
 const MAX_BODY_BYTES = 16384
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export type MerchantMember = PermissionHolder & { tenant_id: string | null }
+export type MerchantMember = PermissionHolder & { tenant_id: string | null; outlet_id?: string | null }
 export type MerchantAuth =
   | { ok: true; userId: string; member: MerchantMember }
   | { ok: false; response: NextResponse }
@@ -78,7 +78,7 @@ export async function authenticateMerchant(request: NextRequest, tenantId: strin
   const { data: { user }, error: authError } = await caller.auth.getUser()
   if (authError || !user) return denied(401, 'Unauthorized')
   const { data: member, error: memberError } = await caller.from('app_users')
-    .select('role, tenant_id, permissions, is_owner').eq('user_id', user.id).single()
+    .select('role, tenant_id, permissions, is_owner, outlet_id').eq('user_id', user.id).single()
   if (memberError || !member) return denied(403, 'Forbidden')
   const isMember = member.role === 'superadmin' || (member.role === 'admin' && member.tenant_id === tenantId)
   if (!isMember) return denied(403, 'Forbidden')

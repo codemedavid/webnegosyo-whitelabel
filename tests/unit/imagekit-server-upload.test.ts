@@ -13,7 +13,7 @@ const ENV = {
 const originalEnv = { ...process.env }
 const originalFetch = global.fetch
 
-/* eslint-disable @typescript-eslint/no-var-requires */
+/* eslint-disable @typescript-eslint/no-require-imports */
 function loadModule() {
   let mod: typeof import('@/lib/imagekit-server')
   jest.isolateModules(() => {
@@ -22,7 +22,7 @@ function loadModule() {
   // @ts-expect-error assigned inside isolateModules
   return mod
 }
-/* eslint-enable @typescript-eslint/no-var-requires */
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 beforeEach(() => {
   Object.assign(process.env, ENV)

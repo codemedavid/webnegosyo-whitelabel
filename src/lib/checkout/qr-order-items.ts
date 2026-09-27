@@ -5,6 +5,8 @@
 import { addonQuantity } from '@/lib/addon-quantity'
 import { calculateCartItemUnitPrice, getEffectiveItemPrice } from '@/lib/cart-utils'
 import { extractBundleSlotSelectionIds, extractSelectionIds } from '@/lib/inventory/order-item-selection'
+import { calculateSlotBundleSubtotal, calculateSlotUnitExtras } from '@/lib/bundle-pricing'
+import { allocateLineTotal } from './allocate-line-total'
 import type { CartBundleItem, CartItem } from '@/types/database'
 import type { QrOrderItemV1 } from '@/types/qr-order'
 
@@ -67,6 +69,7 @@ function toQrItem(item: CartItem): QrOrderItemV1 {
     item.selected_addons
   )
   const variations = describeVariations(cartItemVariations(item))
+  const selection = extractSelectionIds(item)
 
   return {
     menuItemId: item.menu_item.id,
@@ -75,6 +78,9 @@ function toQrItem(item: CartItem): QrOrderItemV1 {
     price,
     basePrice,
     subtotal: item.subtotal,
+    optionIds: selection.optionIds,
+    addonIds: selection.addonIds,
+    ...(selection.addonQuantities ? { addonQuantities: selection.addonQuantities } : {}),
     ...qrVariationFields(variations.text, variations.selections),
     ...qrAddons(item.selected_addons),
     ...(item.special_instructions ? { specialInstructions: item.special_instructions } : {}),
@@ -83,11 +89,12 @@ function toQrItem(item: CartItem): QrOrderItemV1 {
 }
 
 function toQrBundleItems(bundle: CartBundleItem): QrOrderItemV1[] {
-  return bundle.slots.map((slot) => {
+  const lines = bundle.slots.map((slot): QrOrderItemV1 => {
     const variations = describeVariations(slotVariations(slot))
     const slotPrice = slot.priceOverride + variations.priceAdjustment
     const addonTotal = slot.selectedAddons.reduce((sum, addon) => sum + addon.price * addonQuantity(addon), 0)
     const quantity = slot.quantity * bundle.quantity
+    const selection = extractBundleSlotSelectionIds(slot)
 
     return {
       menuItemId: slot.menuItemId,
@@ -102,8 +109,18 @@ function toQrBundleItems(bundle: CartBundleItem): QrOrderItemV1[] {
       bundleId: bundle.bundleId,
       bundleName: bundle.bundleName,
       slotName: slot.slotName,
+      bundleCartId: bundle.id,
+      bundleSlotId: slot.slotId,
+      bundleQuantity: bundle.quantity,
+      optionIds: selection.optionIds,
+      addonIds: selection.addonIds,
+      ...(selection.addonQuantities ? { addonQuantities: selection.addonQuantities } : {}),
     }
   })
+  const weights = bundle.slots.map((slot) =>
+    Math.max(1, Math.round((slot.menuItemPrice + calculateSlotUnitExtras(slot)) * 100)) * slot.quantity * bundle.quantity
+  )
+  return allocateLineTotal(lines, weights, Math.round(calculateSlotBundleSubtotal(bundle) * 100))
 }
 
 /** Every cart line and bundle slot as a QR payload line (same shape as the Messenger path). */

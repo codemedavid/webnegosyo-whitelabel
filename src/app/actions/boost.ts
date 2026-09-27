@@ -13,7 +13,7 @@ import {
   type BundleInput,
 } from '@/lib/bundles-service'
 import { invalidateTenantCache } from '@/lib/cache'
-import { revalidateStorefront } from '@/lib/storefront/revalidate'
+import { revalidateStorefront, revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 import {
   deleteBoostPairing,
   saveBoostLastCall,
@@ -47,8 +47,7 @@ async function refreshOfferCaches(tenantId: string, tenantSlug: string): Promise
   // The cached public menu (combo cards) is keyed by slug, product pages by id.
   revalidateStorefront({ slug: tenantSlug, id: tenantId })
   revalidatePath(`/${tenantSlug}/admin/boost-sales`)
-  revalidatePath(`/${tenantSlug}/menu`)
-  revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+  revalidateStorefrontMenu(tenantSlug)
 }
 
 async function run<T>(

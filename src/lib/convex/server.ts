@@ -8,8 +8,8 @@ interface ConvexServerClient {
  * Convex answers "function not found" for an internal function called
  * without admin credentials AND for a function that does not exist yet.
  * The server always sends the deploy key, so here it can only mean the
- * deployment still runs a template older than v28, where the `*Internal`
- * variants do not exist and the public names were still open.
+ * deployment still predates that internal variant (v28 for reads, v35 for
+ * createOrder), where the public name remains available.
  */
 const NOT_FOUND = /Could not find (public )?function/;
 const INTERNAL_SUFFIX = "Internal";
@@ -48,7 +48,7 @@ export function createConvexServerClient(
 
   /**
    * Server code calls the `*Internal` variants, which only admin credentials
-   * reach. Until every store's deployment is on v28 the variant may not exist
+   * reach. Until every store has the relevant template version the variant may not exist
    * there yet; fall back to the public name once, so the rollout order
    * (web first, then deployments) cannot take order tracking down.
    */

@@ -20,6 +20,12 @@ import { CURRENT_SCHEMA_VERSION } from "@/lib/convex-deploy";
 const CURRENT = CURRENT_SCHEMA_VERSION;
 
 describe("tenantsNeedingDeploy", () => {
+  it("updates v34 tenants for POS authentication and serialized delivery booking", () => {
+    expect(CURRENT).toBeGreaterThan(34);
+    expect(tenantsNeedingDeploy([{ id: "needs-booking-claim", convex_schema_version: "34" }], CURRENT))
+      .toEqual([{ id: "needs-booking-claim", convex_schema_version: "34" }]);
+  });
+
   it("selects a single-digit version that lexical comparison hid", () => {
     const rows = [
       { id: "on-5", convex_schema_version: "5" },

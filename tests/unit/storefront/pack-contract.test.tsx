@@ -60,7 +60,6 @@ jest.mock('@/components/customer/active-order-banner', () => ({ ActiveOrderBanne
 jest.mock('@/components/customer/outlet-gate', () => ({ OutletGate: () => null }))
 jest.mock('@/components/customer/flash-screen-loader', () => ({ FlashScreenLoader: () => null }))
 jest.mock('@/components/customer/background-overlay-layer', () => ({ BackgroundOverlayLayer: () => null }))
-jest.mock('@/components/customer/checkout-upsell-modal', () => ({ CheckoutUpsellModal: () => null }))
 
 const burger = createTestMenuItem({ id: 'burger', name: 'Classic Burger' })
 const soldOut = createTestMenuItem({ id: 'fries', name: 'Loaded Fries', is_available: false })

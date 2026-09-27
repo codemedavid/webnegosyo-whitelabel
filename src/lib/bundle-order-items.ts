@@ -32,6 +32,9 @@ export interface BundleOrderItem {
   bundleId: string
   bundleName: string
   slotName: string
+  bundleCartId: string
+  bundleSlotId: string
+  bundleQuantity: number
 }
 
 function slotPricing(slot: CartBundleSlotSelection): {
@@ -70,6 +73,9 @@ export function flattenBundleOrderItems(
         bundleId: bundle.bundleId,
         bundleName: bundle.bundleName,
         slotName: slot.slotName,
+        bundleCartId: bundle.id,
+        bundleSlotId: slot.slotId,
+        bundleQuantity: bundle.quantity,
       }
     }),
   )

@@ -350,6 +350,11 @@ export async function createOrderAction(
       }
     }
 
+    // An unknown/missing type must not turn off the required delivery gate.
+    if (tenantConfig.lalamove_enabled === true && !orderTypeRow) {
+      return { success: false, refused: true, error: 'Please select a valid order type before continuing.' }
+    }
+
     // ── Live Loyverse stock verification (authoritative; every order backend) ──
     // The synced mirror can always be stale — a webhook may be unregistered or
     // disabled by Loyverse after 48h of failures. One live read here is the

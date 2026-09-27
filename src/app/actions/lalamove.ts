@@ -23,6 +23,8 @@ import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { Database, Tenant } from '@/types/database'
 import { signDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
+import { claimLalamoveBooking, persistLalamoveBooking, releaseLalamoveBookingClaim, LALAMOVE_BOOKING_PENDING_MESSAGE } from '@/lib/lalamove-booking-claim'
+import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 
 /**
  * The tenant columns Lalamove work actually needs. Several of these actions
@@ -285,10 +287,18 @@ export async function createLalamoveOrderAction(
     // checkout form with no phone field.
     const { data: existingOrder } = await supabase
       .from('orders')
-      .select('lalamove_order_id, customer_contact, customer_data')
+      .select('lalamove_order_id, lalamove_quotation_id, lalamove_status, customer_contact, customer_data')
       .eq('id', orderId)
       .eq('tenant_id', tenantId)
       .single()
+
+    if (!existingOrder) return { success: false, error: 'Order not found' }
+    if (!quotationId?.trim() || existingOrder.lalamove_quotation_id !== quotationId) {
+      return { success: false, error: 'This order has no matching Lalamove quotation. Get a new quote first.' }
+    }
+    if (existingOrder.lalamove_status === 'BOOKING') {
+      return { success: false, error: LALAMOVE_BOOKING_PENDING_MESSAGE }
+    }
 
     if (existingOrder && (existingOrder as { lalamove_order_id?: string | null }).lalamove_order_id) {
       const existingId = (existingOrder as { lalamove_order_id: string }).lalamove_order_id
@@ -298,26 +308,6 @@ export async function createLalamoveOrderAction(
           error: `Lalamove order already exists with ID: ${existingId}` 
         }
       }
-    }
-
-    // Check quotation validity first (5 minute expiry)
-    // In sandbox mode, be more lenient - let Lalamove API validate instead of blocking here
-    const validityCheck = await checkQuotationValidity(tenantId, quotationId)
-    
-    // Only block if we're in production and quotation is definitely expired
-    // In sandbox, we'll let Lalamove API tell us if quotation is invalid
-    if (!validityCheck.valid && !tenantTyped.lalamove_sandbox) {
-      // In production, block expired quotations
-      return { 
-        success: false, 
-        error: validityCheck.error || 'Quotation has expired. Please create a new quotation.' 
-      }
-    }
-    
-    // In sandbox or if validity check failed, log warning but proceed
-    // Lalamove API will reject if quotation is truly expired
-    if (!validityCheck.valid) {
-      console.warn('Quotation validity check failed, but proceeding in sandbox mode:', validityCheck.error)
     }
 
     // Resolve the sender (pickup) contact from the tenant — the driver calls
@@ -365,37 +355,36 @@ export async function createLalamoveOrderAction(
       }
     }
 
-    // Create Lalamove order
-    const lalamoveOrder = await createLalamoveOrder(
-      tenantTyped,
-      quotationId,
-      sender.name || senderName,
-      resolvedSenderPhone,
-      recipientName,
-      recipient.phone,
-      {
-        ...metadata,
-        orderId,
-        tenantId,
+    // Claim the order before any paid provider request, shared with the app.
+    const claim = { tenantId, orderId, quotationId }
+    const reservation = await claimLalamoveBooking(supabase, claim)
+    if (!reservation.success) return reservation
+
+    let lalamoveOrder: Awaited<ReturnType<typeof createLalamoveOrder>>
+    try {
+      lalamoveOrder = await createLalamoveOrder(
+        tenantTyped,
+        quotationId,
+        sender.name || senderName,
+        resolvedSenderPhone,
+        recipientName,
+        recipient.phone,
+        {
+          ...metadata,
+          orderId,
+          tenantId,
+        }
+      )
+    } catch (error) {
+      if (error instanceof LalamoveBookingError && !error.bookingMayExist) {
+        const released = await releaseLalamoveBookingClaim(supabase, claim)
+        if (!released.success) return released
+        throw error
       }
-    )
-
-    // Update order in database with Lalamove order details
-    // Use a conditional update to prevent overwriting if another process already created it
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({
-        lalamove_order_id: lalamoveOrder.orderId,
-        lalamove_status: lalamoveOrder.status,
-        lalamove_tracking_url: lalamoveOrder.shareLink,
-      })
-      .eq('id', orderId)
-      .is('lalamove_order_id', null) // Only update if lalamove_order_id is null
-
-    if (updateError) {
-      console.error('Failed to update order with Lalamove info:', updateError)
-      // Don't fail the whole operation, order was created in Lalamove
+      return { success: false, error: `Delivery may have been booked. ${LALAMOVE_BOOKING_PENDING_MESSAGE}` }
     }
+    const persisted = await persistLalamoveBooking(supabase, claim, lalamoveOrder)
+    if (!persisted.success) return persisted
 
     return {
       success: true,
@@ -500,23 +489,28 @@ export async function requoteLalamoveAction(tenantId: string, orderId: string) {
     // Guarded on the booking still being what the gate saw — absent, or the
     // same dead booking — so a booking racing this requote is never wiped nor
     // left referencing a quotation it was not made from.
-    const { error: updateError } = gate.retiredOrderId
+    const { data: updated, error: updateError } = gate.retiredOrderId
       ? await supabase
           .from('orders')
           .update(retireDeadBookingPatch(quotation.quotationId))
           .eq('id', orderId)
           .eq('tenant_id', tenantId)
           .eq('lalamove_order_id', gate.retiredOrderId)
+          .eq('lalamove_status', order.lalamove_status!)
+          .select('id').maybeSingle()
       : await supabase
           .from('orders')
           .update({ lalamove_quotation_id: quotation.quotationId })
           .eq('id', orderId)
           .eq('tenant_id', tenantId)
           .is('lalamove_order_id', null)
+          .or('lalamove_status.is.null,lalamove_status.neq.BOOKING')
+          .select('id').maybeSingle()
 
     if (updateError) {
       throw updateError
     }
+    if (!updated) return { success: false, error: 'Delivery changed while getting a quote. Please refresh.' }
 
     return {
       success: true,
@@ -561,6 +555,13 @@ export async function syncLalamoveOrderAction(
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
 
+    const { data: existing } = await supabase.from('orders')
+      .select('lalamove_order_id, lalamove_status')
+      .eq('id', orderId).eq('tenant_id', tenantId).single()
+    if (!existing || !lalamoveOrderId || existing.lalamove_order_id !== lalamoveOrderId) {
+      return { success: false, error: 'No matching delivery booking was found for this order.' }
+    }
+
     // Get order from Lalamove
     const { getLalamoveOrder } = await import('@/lib/lalamove-service')
     const lalamoveOrder = (await getLalamoveOrder(tenantTyped, lalamoveOrderId)) as {
@@ -602,15 +603,20 @@ export async function syncLalamoveOrderAction(
     }
 
     if (Object.keys(updateData).length > 0) {
-      const { error: updateError } = await supabase
+      let update = supabase
         .from('orders')
         .update(updateData)
         .eq('id', orderId)
         .eq('tenant_id', tenantId)
-
+        .eq('lalamove_order_id', lalamoveOrderId)
+      update = existing.lalamove_status == null
+        ? update.is('lalamove_status', null)
+        : update.eq('lalamove_status', existing.lalamove_status)
+      const { data: updated, error: updateError } = await update.select('id').maybeSingle()
       if (updateError) {
         throw updateError
       }
+      if (!updated) return { success: false, error: 'Delivery changed while syncing. Please refresh.' }
     }
 
     return {
@@ -662,6 +668,13 @@ export async function addPriorityFeeAction(
       return { success: false, error: 'Lalamove delivery is not enabled' }
     }
 
+    const { data: existing } = await supabase.from('orders')
+      .select('id, lalamove_order_id')
+      .eq('tenant_id', tenantId).eq('lalamove_order_id', lalamoveOrderId).maybeSingle()
+    if (!existing || !lalamoveOrderId || existing.lalamove_order_id !== lalamoveOrderId) {
+      return { success: false, error: 'No matching delivery booking was found for this store.' }
+    }
+
     const { addLalamovePriorityFee } = await import('@/lib/lalamove-service')
     await addLalamovePriorityFee(tenantTyped, lalamoveOrderId, String(parsed))
 
@@ -710,12 +723,15 @@ export async function cancelLalamoveOrderAction(
     // happened to the order.
     const { data: existing } = await supabase
       .from('orders')
-      .select('lalamove_status')
+      .select('lalamove_status, lalamove_order_id')
       .eq('id', orderId)
       .eq('tenant_id', tenantId)
       .single()
 
-    const currentStatus = (existing as { lalamove_status?: string | null } | null)?.lalamove_status
+    if (!existing || !lalamoveOrderId || existing.lalamove_order_id !== lalamoveOrderId) {
+      return { success: false, error: 'No matching delivery booking was found for this order.' }
+    }
+    const currentStatus = existing.lalamove_status
     if (isLalamoveFinal(currentStatus)) {
       return {
         success: false,
@@ -727,17 +743,20 @@ export async function cancelLalamoveOrderAction(
     await cancelLalamoveOrder(tenantTyped, lalamoveOrderId)
 
     // Update order in database
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('orders')
       .update({
         lalamove_status: 'CANCELLED',
       })
       .eq('id', orderId)
       .eq('tenant_id', tenantId)
+      .eq('lalamove_order_id', lalamoveOrderId)
+      .select('id').maybeSingle()
 
     if (updateError) {
       throw updateError
     }
+    if (!updated) return { success: false, error: 'Delivery changed during cancellation. Please refresh.' }
 
     return {
       success: true,

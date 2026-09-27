@@ -62,6 +62,9 @@ const orderLineSchema = z
     bundleId: optionalText(MAX_ID_LENGTH),
     bundleName: optionalText(MAX_LABEL_LENGTH),
     slotName: optionalText(MAX_LABEL_LENGTH),
+    bundleCartId: id.optional(),
+    bundleSlotId: id.optional(),
+    bundleQuantity: z.number().int().min(1).max(MAX_LINE_QUANTITY).optional(),
     presell_date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)

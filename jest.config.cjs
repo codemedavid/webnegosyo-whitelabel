@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node configuration is loaded as CommonJS. */
 // CommonJS mirror of jest.config.ts.
 // Node 22 loads the .ts config as native ESM, where `next/jest` fails to resolve
 // (no ESM export map entry). Loading via CJS `require` resolves next/jest.js.

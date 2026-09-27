@@ -30,6 +30,12 @@ export interface QrOrderItemV1 {
   bundleId?: string;
   bundleName?: string;
   slotName?: string;
+  bundleCartId?: string;
+  bundleSlotId?: string;
+  bundleQuantity?: number;
+  optionIds?: string[];
+  addonIds?: string[];
+  addonQuantities?: Record<string, number>;
 }
 
 export interface QrOrderPayloadV1 {

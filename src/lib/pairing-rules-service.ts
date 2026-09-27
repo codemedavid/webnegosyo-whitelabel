@@ -442,7 +442,7 @@ async function resolveRuleTargets(
     if (t.selection_mode === 'handpick') {
       const { data: pickedRows } = await supabase
         .from('pairing_rule_target_items')
-        .select('menu_item:menu_items!menu_item_id!inner(id, name, description, price, discounted_price, image_url, is_available, category_id, variations, addons, variation_types, bcg_classification, badge_text, order, created_at, updated_at)')
+        .select('menu_item:menu_items!menu_item_id!inner(id, name, description, price, discounted_price, image_url, is_available, category_id, modifier_groups, presell_enabled, variations, addons, variation_types, bcg_classification, badge_text, order, created_at, updated_at)')
         .eq('target_id', t.id)
         .eq('menu_item.tenant_id', tenantId)
         .order('display_order', { ascending: true })

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, AppState } from "react-native";
-import { onlineManager } from "@tanstack/query-core";
+import { subscribeOnReconnect } from "../../lib/query/reconnect";
 import { useRefetchOnScreenFocus } from "../../lib/query/use-screen-focus";
 import { router } from "expo-router";
 import { colors, typography, spacing, radius } from "../../theme/colors";
@@ -96,7 +96,7 @@ export function LoyaltyMembersPanel({
     void load();
     const requests = request;
     const app = AppState.addEventListener("change", state => { if (state === "active") void load(); });
-    const offOnline = onlineManager.subscribe(online => { if (online) void load(); });
+    const offOnline = subscribeOnReconnect(() => { void load(); });
     return () => { requests.current++; app.remove(); offOnline(); };
   }, [load, reloadKey]);
   useRefetchOnScreenFocus({ enabled: Boolean(tenantId), dataUpdatedAt: 0, staleMs: 0, isFetching: isRefreshing, refetch: load });

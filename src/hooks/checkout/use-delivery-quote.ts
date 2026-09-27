@@ -68,6 +68,8 @@ export interface UseDeliveryQuoteInput {
 
 interface DeliveryQuoteResult extends DeliveryQuoteState {
   retryDeliveryQuote: () => void
+  /** Rechecked at submit time because suspended browser tabs delay timers. */
+  getDeliveryQuoteError: () => string | null
 }
 
 function failedQuote(message: string): DeliveryQuoteState {
@@ -96,12 +98,17 @@ async function requestQuote(
       toast.error(result.error || 'Failed to get delivery fee')
       return failedQuote(result.error || 'We couldn’t get a delivery fee for this address. Please try again.')
     }
+    const quoteExpiresAt = new Date(result.data.expiresAt).getTime()
+    if (!result.data.quotationId || !result.data.quoteSignature || !Number.isFinite(result.data.price) || result.data.price < 0 || !Number.isFinite(quoteExpiresAt)) {
+      return failedQuote('We couldn’t get a valid delivery quote. Please try again.')
+    }
+    if (quoteExpiresAt <= Date.now()) return failedQuote(EXPIRED_QUOTE_MESSAGE)
     return {
       ...IDLE_DELIVERY_QUOTE,
       deliveryFee: result.data.price,
       quotationId: result.data.quotationId,
       quoteSignature: result.data.quoteSignature ?? null,
-      quoteExpiresAt: new Date(result.data.expiresAt).getTime(),
+      quoteExpiresAt,
       deliveryFeeAddress: address,
     }
   }
@@ -227,5 +234,19 @@ export function useDeliveryQuote({
     requestKey,
   ])
 
-  return { ...quote, retryDeliveryQuote }
+  const getDeliveryQuoteError = (): string | null => {
+    if (!isDeliveryOrder || !(lalamoveEnabled || distanceEnabled)) return null
+    if (quote.deliveryFeeError) return quote.deliveryFeeError
+    if (quote.deliveryOutOfRange) return 'This address is outside the delivery area. Please choose a closer address or switch to pickup.'
+    if (quote.isFetchingDeliveryFee) return 'Please wait for the delivery fee before continuing.'
+    if (lalamoveEnabled && quote.quoteExpiresAt !== null && quote.quoteExpiresAt <= Date.now()) return EXPIRED_QUOTE_MESSAGE
+    if (
+      quote.deliveryFee === null || !Number.isFinite(quote.deliveryFee) || quote.deliveryFee < 0 ||
+      quote.deliveryFeeAddress !== deliveryAddress ||
+      (lalamoveEnabled && (!quote.quotationId || !quote.quoteSignature || !Number.isFinite(quote.quoteExpiresAt)))
+    ) return 'Please choose a delivery address and get a valid delivery quote before continuing.'
+    return null
+  }
+
+  return { ...quote, retryDeliveryQuote, getDeliveryQuoteError }
 }

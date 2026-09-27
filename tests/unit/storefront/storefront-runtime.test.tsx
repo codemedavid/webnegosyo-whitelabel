@@ -29,9 +29,6 @@ jest.mock('@/components/customer/bundle-wizard', () => ({
 jest.mock('@/components/customer/active-order-banner', () => ({ ActiveOrderBanner: () => <div data-testid="active-order" /> }))
 jest.mock('@/components/customer/branding-inspector', () => ({ BrandingInspector: () => <div data-testid="inspector" /> }))
 jest.mock('@/components/customer/flash-screen-loader', () => ({ FlashScreenLoader: () => <div data-testid="flash" /> }))
-jest.mock('@/components/customer/checkout-upsell-modal', () => ({
-  CheckoutUpsellModal: (props: { open: boolean }) => (props.open ? <div data-testid="upsell" /> : null),
-}))
 
 const mockCart = { items: [] as unknown[], bundleItems: [] as unknown[] }
 jest.mock('@/hooks/useCart', () => ({ useCart: () => mockCart }))
@@ -39,10 +36,6 @@ jest.mock('@/hooks/useCart', () => ({ useCart: () => mockCart }))
 const mockGate = {
   requestCheckout: jest.fn(),
   isNavigating: false,
-  showInterstitial: false,
-  showUpsellModal: false,
-  prefetchedItems: null,
-  onUpsellContinue: jest.fn(),
 }
 const mockUseCartCheckout = jest.fn((options: unknown) => { void options; return mockGate })
 jest.mock('@/storefront/cart/use-cart-checkout', () => ({
@@ -76,7 +69,6 @@ async function renderRuntime(
 beforeEach(() => {
   mockDraft.current = null
   mockCart.items = []
-  Object.assign(mockGate, { showInterstitial: false, showUpsellModal: false })
   jest.clearAllMocks()
 })
 
@@ -157,18 +149,7 @@ describe('checkout entry for packs without a cart drawer', () => {
     expect(openCart).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the checkout upsell interstitial for a direct-checkout pack', async () => {
-    Object.assign(mockGate, { showInterstitial: true, showUpsellModal: true })
-    await renderRuntime(controller(), undefined, 'direct')
-    expect(await screen.findByTestId('upsell')).toBeInTheDocument()
-  })
 
-  it('leaves the interstitial to the cart drawer for a drawer pack', async () => {
-    Object.assign(mockGate, { showInterstitial: true, showUpsellModal: true })
-    await renderRuntime(controller(), undefined, 'cart-drawer')
-    await waitFor(() => expect(screen.getByTestId('active-order')).toBeInTheDocument())
-    expect(screen.queryByTestId('upsell')).not.toBeInTheDocument()
-  })
 })
 
 describe('StorefrontBottomInset', () => {

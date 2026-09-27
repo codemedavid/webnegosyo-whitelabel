@@ -8,6 +8,8 @@ import type { MenuItem } from '@/types/database'
  * groups entirely.)
  */
 export function needsChoices(item: MenuItem): boolean {
+  // A pre-order needs an allocated pickup date, even with no size or extras.
+  if (item.presell_enabled) return true
   if ((item.variations?.length ?? 0) > 0) return true
   if (item.variation_types?.some((type) => type.is_required && (type.options?.length ?? 0) > 0)) return true
   if (item.modifier_groups?.some((group) => (group.min_select ?? 0) > 0)) return true

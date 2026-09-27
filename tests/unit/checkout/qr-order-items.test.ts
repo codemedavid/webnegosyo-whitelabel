@@ -28,9 +28,13 @@ const bundle = {
   bundleId: 'combo-1',
   bundleName: 'Family Combo',
   quantity: 2,
+  pricingType: 'fixed',
+  basePrice: 100,
   slots: [
     {
       slotName: 'Drink',
+      slotId: 'drink-slot',
+      menuItemPrice: 40,
       menuItemId: 'iced-tea',
       menuItemName: 'Iced Tea',
       priceOverride: 40,
@@ -44,7 +48,7 @@ const bundle = {
 describe('buildQrOrderItems', () => {
   it('omits every optional key a plain line does not have', () => {
     expect(buildQrOrderItems([plainItem], [])).toEqual([
-      { menuItemId: 'adobo', menuItemName: 'Adobo', quantity: 2, price: 150, basePrice: 150, subtotal: 300 },
+      { menuItemId: 'adobo', menuItemName: 'Adobo', quantity: 2, price: 150, basePrice: 150, subtotal: 300, optionIds: [], addonIds: [] },
     ])
   })
 
@@ -58,6 +62,9 @@ describe('buildQrOrderItems', () => {
       price: 180, // 120 + 30 (Large) + 0 (Hot) + 15 × 2 (Egg)
       basePrice: 120,
       subtotal: 180,
+      optionIds: ['opt-large', 'opt-hot'],
+      addonIds: ['addon-egg'],
+      addonQuantities: { 'addon-egg': 2 },
       variation: 'Large, Hot',
       variationSelections: [
         { typeName: 'Variation', optionName: 'Large', priceAdjustment: 30 },
@@ -77,8 +84,8 @@ describe('buildQrOrderItems', () => {
       menuItemName: 'Iced Tea',
       quantity: 2,
       basePrice: 40,
-      price: 55, // 40 + 10 (Big) + 5 (Pearls)
-      subtotal: 110,
+      price: 155, // 100 combo base + 40 surcharge + 10 Big + 5 Pearls
+      subtotal: 310,
       variation: 'Big',
       variationSelections: [{ typeName: 'Variation', optionName: 'Big', priceAdjustment: 10 }],
       addons: [{ name: 'Pearls', price: 5, quantity: 1 }],
@@ -86,6 +93,8 @@ describe('buildQrOrderItems', () => {
       bundleId: 'combo-1',
       bundleName: 'Family Combo',
       slotName: 'Drink',
+      bundleCartId: 'bundle-line', bundleSlotId: 'drink-slot', bundleQuantity: 2,
+      optionIds: ['opt-big'], addonIds: ['addon-pearl'],
     })
   })
 

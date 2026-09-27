@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { onlineManager } from '@tanstack/query-core';
+import { subscribeOnReconnect } from '../../lib/query/reconnect';
 import { colors, typography, spacing, radius } from '../../theme/colors';
 import { normalizePhoneE164 } from '../../lib/phone';
 import { useRefetchOnScreenFocus } from '../../lib/query/use-screen-focus';
@@ -41,7 +41,7 @@ export function LoyaltyActivityPanel({ tenantId, customerKey, reloadKey = 0 }: {
     setEvents([]); setCursor(null); void load();
     const requests = request;
     const app = AppState.addEventListener('change', state => { if (state === 'active') void load(); });
-    const offOnline = onlineManager.subscribe(online => { if (online) void load(); });
+    const offOnline = subscribeOnReconnect(() => { void load(); });
     return () => { requests.current++; app.remove(); offOnline(); };
   }, [load, reloadKey]);
 

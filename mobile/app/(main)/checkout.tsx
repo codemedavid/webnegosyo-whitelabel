@@ -38,6 +38,7 @@ import {
   untrackedOrder,
 } from '@/lib/checkout-outcome'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
+import { getMobileDeliveryCheckoutError } from '@/lib/lalamove-checkout'
 import { withSmsConsent } from '@/lib/sms-consent'
 import { pickAndUploadPaymentProof, deletePaymentProof, isImageKitConfigured } from '@/lib/imagekit-upload'
 import { PaymentProofField } from '@/components/checkout/payment-proof-field'
@@ -222,10 +223,16 @@ export default function CheckoutScreen() {
   }, [formFields, formValues])
 
   const handleNextToPayment = useCallback(() => {
+    if (!tenant || !selectedOrderType) return
+    const deliveryCheckoutError = getMobileDeliveryCheckoutError(tenant, selectedOrderType)
+    if (deliveryCheckoutError) {
+      Alert.alert('Complete checkout on the website', deliveryCheckoutError)
+      return
+    }
     if (validateForm()) {
       setStep(2)
     }
-  }, [validateForm])
+  }, [validateForm, tenant, selectedOrderType])
 
   const handlePickProof = useCallback(async () => {
     if (!isImageKitConfigured()) {
@@ -260,6 +267,11 @@ export default function CheckoutScreen() {
 
   const handleSubmitOrder = useCallback(async () => {
     if (!tenant || !selectedOrderType) return
+    const deliveryCheckoutError = getMobileDeliveryCheckoutError(tenant, selectedOrderType)
+    if (deliveryCheckoutError) {
+      Alert.alert('Complete checkout on the website', deliveryCheckoutError)
+      return
+    }
     if (!selectedPaymentMethod && paymentMethods.length > 0) {
       Alert.alert('Payment Required', 'Please select a payment method.')
       return
@@ -702,7 +714,7 @@ export default function CheckoutScreen() {
               </Text>
               {schedulerEl}
               <View style={styles.navButtons}>
-                <Button title="Continue to Payment" onPress={() => setStep(2)} style={{ flex: 1 }} checkoutVariant />
+                <Button title="Continue to Payment" onPress={handleNextToPayment} style={{ flex: 1 }} checkoutVariant />
               </View>
             </View>
           ) : (

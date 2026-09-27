@@ -22,6 +22,7 @@ import {
   type PriceableOrderLine,
   type StoreMenuItemRow,
 } from '@/lib/checkout/price-order-lines'
+import type { CheckoutBundle } from './price-bundle-lines'
 
 interface QueryResult {
   data: unknown
@@ -99,11 +100,28 @@ export async function loadAndPriceOrderLines<T extends PriceableOrderLine>(
   const overrides = await readBranchOverrides(client, tenantId, outletId, ids)
   if (!overrides.ok) return { ok: false, refused: false, error: 'Failed to verify branch prices' }
 
+  const bundleIds = [...new Set(lines.filter(line => line.isBundleItem).map(line => line.bundleId).filter(Boolean))]
+  let bundles = new Map<string, CheckoutBundle>()
+  if (lines.some(line => line.isBundleItem)) {
+    const [tenant, catalog]: QueryResult[] = await Promise.all([
+      client.from('tenants').select('bundles_enabled').eq('id', tenantId).maybeSingle(),
+      client.from('bundles')
+        .select('id, name, is_active, pricing_type, fixed_price, discount_percent, slots:bundle_slots(id, name, category_id, pick_count, included_item_ids, price_overrides:bundle_slot_price_overrides(menu_item_id, price_override))')
+        .eq('tenant_id', tenantId).in('id', bundleIds),
+    ])
+    if (tenant.error || catalog.error) return { ok: false, refused: false, error: 'Failed to verify combo prices' }
+    if (!(tenant.data as { bundles_enabled?: boolean } | null)?.bundles_enabled) {
+      return { ok: false, refused: true, error: 'Combos are no longer available at this store.' }
+    }
+    bundles = new Map(((catalog.data ?? []) as CheckoutBundle[]).map(bundle => [bundle.id, bundle]))
+  }
+
   const priced = priceOrderLines(lines, {
     storeItems: new Map(rows.map((row) => [row.id, row])),
     branchOverrides: overrides.index,
     outletId,
     linkedItems: linked.items,
+    bundles,
   })
   return priced.ok ? priced : { ok: false, refused: true, error: priced.error }
 }

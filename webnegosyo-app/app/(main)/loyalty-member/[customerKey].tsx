@@ -8,7 +8,7 @@ import { BackHeader } from "../../../components/BackHeader";
 import { LoadingState } from "../../../components/LoadingState";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorState } from "../../../components/ErrorState";
-import { onlineManager } from "@tanstack/query-core";
+import { subscribeOnReconnect } from "../../../lib/query/reconnect";
 import { useRefetchOnScreenFocus } from "../../../lib/query/use-screen-focus";
 import { LoyaltyActivityPanel } from "../../../components/loyalty/LoyaltyActivityPanel";
 import { MemberProgressCard } from "../../../components/loyalty/MemberProgress";
@@ -84,7 +84,7 @@ function LoyaltyMemberSession({ tenantId, customerKey }: { tenantId: string | nu
     const requests = request;
     const refreshes = refreshRequest;
     const app = AppState.addEventListener("change", state => { if (state === "active") void load(); });
-    const offOnline = onlineManager.subscribe(online => { if (online) void load(); });
+    const offOnline = subscribeOnReconnect(() => { void load(); });
     return () => { requests.current++; refreshes.current++; app.remove(); offOnline(); };
   }, [load]);
   useRefetchOnScreenFocus({ enabled: Boolean(tenantId && customerKey), dataUpdatedAt: 0, staleMs: 0, isFetching: status === "loading", refetch: load });

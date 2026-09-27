@@ -291,6 +291,17 @@ export const bookLalamove = action({
       return { success: false, error: "Quotation has no valid stops" };
     }
 
+    const claimed = await ctx.runMutation(internal.orders.claimLalamoveBookingInternal, {
+      orderId: args.orderId,
+      quotationId: order.lalamoveQuotationId,
+    });
+    if (!claimed) {
+      return {
+        success: false,
+        error: "A delivery booking is already in progress or awaiting confirmation. Check Lalamove before booking again.",
+      };
+    }
+
     const placed = await callLalamove(config, "POST", "/v3/orders", {
       quotationId: order.lalamoveQuotationId,
       sender: {
@@ -311,15 +322,44 @@ export const bookLalamove = action({
     });
 
     if (!placed.ok) {
-      return { success: false, error: placed.error ?? "Lalamove API error" };
+      // Only explicit validation/auth refusals establish that no rider was
+      // placed. A connection failure or server error may follow acceptance.
+      if ([400, 401, 403, 404, 422].includes(placed.status)) {
+        await ctx.runMutation(internal.orders.releaseLalamoveBookingInternal, {
+          orderId: args.orderId,
+          quotationId: order.lalamoveQuotationId,
+        });
+        return { success: false, error: placed.error ?? "Lalamove API error" };
+      }
+      return {
+        success: false,
+        error: `${placed.error ?? "Lalamove API error"}. The delivery may have been booked. Check Lalamove before booking again.`,
+      };
     }
 
-    await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, {
-      orderId: args.orderId,
-      lalamoveOrderId: placed.data.orderId,
-      lalamoveStatus: placed.data.status ?? "ASSIGNING_DRIVER",
-      lalamoveTrackingUrl: placed.data.shareLink ?? "",
-    });
+    if (typeof placed.data?.orderId !== "string" || !placed.data.orderId.trim()) {
+      return {
+        success: false,
+        error: "The delivery may have been booked, but no booking reference was returned. Check Lalamove before booking again.",
+      };
+    }
+
+    let saved = false;
+    try {
+      saved = await ctx.runMutation(internal.orders.completeLalamoveBookingInternal, {
+        orderId: args.orderId,
+        quotationId: order.lalamoveQuotationId,
+        lalamoveOrderId: placed.data.orderId,
+        lalamoveStatus: placed.data.status ?? "ASSIGNING_DRIVER",
+        lalamoveTrackingUrl: placed.data.shareLink ?? "",
+      });
+    } catch {
+      // Retain the claim: a paid rider exists, even if storage is unavailable.
+    }
+    if (!saved) return {
+      success: false,
+      error: `Delivery booked (${placed.data.orderId}), but its reference could not be saved. Check Lalamove before booking again.`,
+    };
 
     return {
       success: true,
@@ -415,10 +455,14 @@ export const requoteLalamove = action({
         };
       }
     } else {
-      await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, {
+      const saved = await ctx.runMutation(internal.orders.replaceLalamoveQuotationInternal, {
         orderId: args.orderId,
         lalamoveQuotationId: quote.data.quotationId,
       });
+      if (!saved) return {
+        success: false,
+        error: "This delivery changed while re-quoting — refresh the order and try again",
+      };
     }
 
     return {
@@ -455,10 +499,12 @@ export const cancelLalamove = action({
       return { success: false, error: result.error ?? "Failed to cancel" };
     }
 
-    await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, {
+    const saved = await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, {
       orderId: args.orderId,
+      expectedLalamoveOrderId: order.lalamoveOrderId,
       lalamoveStatus: "CANCELLED",
     });
+    if (!saved) return { success: false, error: "Delivery changed while cancelling. Refresh the order and sync again." };
 
     return { success: true };
   },
@@ -528,12 +574,16 @@ export const syncLalamoveStatus = action({
 
     const updates: {
       orderId: typeof args.orderId;
+      expectedLalamoveOrderId: string;
+      expectedLalamoveStatus: string;
       lalamoveStatus?: string;
       lalamoveTrackingUrl?: string;
       lalamoveDriverName?: string;
       lalamoveDriverPhone?: string;
     } = {
       orderId: args.orderId,
+      expectedLalamoveOrderId: order.lalamoveOrderId,
+      expectedLalamoveStatus: order.lalamoveStatus ?? "",
       lalamoveStatus: result.data.status,
       lalamoveTrackingUrl: result.data.shareLink ?? undefined,
     };
@@ -552,7 +602,8 @@ export const syncLalamoveStatus = action({
       }
     }
 
-    await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, updates);
+    const saved = await ctx.runMutation(internal.orders.updateLalamoveDetailsInternal, updates);
+    if (!saved) return { success: false, error: "Delivery changed while syncing. Refresh the order and sync again." };
 
     return { success: true, status: result.data.status };
   },

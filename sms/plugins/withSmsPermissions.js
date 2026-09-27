@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node configuration is loaded as CommonJS. */
 const { AndroidConfig, withAndroidManifest } = require('expo/config-plugins');
 
 const SMS_PERMISSIONS = ['android.permission.SEND_SMS'];

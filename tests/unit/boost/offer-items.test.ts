@@ -9,6 +9,10 @@ describe('needsChoices', () => {
     expect(needsChoices(base())).toBe(false)
   })
 
+  it('opens pre-order items so the customer can choose a pickup date', () => {
+    expect(needsChoices(base({ presell_enabled: true }))).toBe(true)
+  })
+
   it('optional add-ons do not block a one-tap add', () => {
     expect(needsChoices(base({ addons: [{ id: 'a', name: 'Ice', price: 0 }] as MenuItem['addons'] }))).toBe(false)
   })

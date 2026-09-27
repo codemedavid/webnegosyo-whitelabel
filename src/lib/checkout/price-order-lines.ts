@@ -21,12 +21,13 @@ import {
   findOutletMenuOverride,
   type OutletMenuIndex,
 } from '@/lib/outlets/outlet-menu-overrides'
+import { priceBundleOrderLines, type CheckoutBundle } from './price-bundle-lines'
 
 /** Every `menu_items` column line pricing reads. */
 export const MENU_ITEM_PRICING_SELECT =
-  'id, name, price, discounted_price, is_available, modifier_groups, variation_types, variations, addons'
+  'id, name, category_id, price, discounted_price, is_available, modifier_groups, variation_types, variations, addons'
 
-export type StoreMenuItemRow = StoreMenuItemPricing & ModifierCatalogSource & { name?: string | null }
+export type StoreMenuItemRow = StoreMenuItemPricing & ModifierCatalogSource & { name?: string | null; category_id?: string | null }
 
 export interface PriceableOrderLine extends ModifierSelectionLine {
   menu_item_id: string
@@ -34,6 +35,13 @@ export interface PriceableOrderLine extends ModifierSelectionLine {
   price: number
   quantity: number
   subtotal: number
+  isBundleItem?: boolean
+  bundleId?: string
+  bundleName?: string
+  slotName?: string
+  bundleCartId?: string
+  bundleSlotId?: string
+  bundleQuantity?: number
 }
 
 export interface PriceOrderLinesContext {
@@ -41,6 +49,7 @@ export interface PriceOrderLinesContext {
   branchOverrides: OutletMenuIndex
   outletId: string | null
   linkedItems: ReadonlyMap<string, LinkedModifierItem>
+  bundles?: ReadonlyMap<string, CheckoutBundle>
 }
 
 export type PriceOrderLinesResult<T> =
@@ -67,6 +76,7 @@ export function priceOrderLines<T extends PriceableOrderLine>(
   const priced: T[] = []
 
   for (const line of lines) {
+    if (line.isBundleItem) continue
     const storeItem = context.storeItems.get(line.menu_item_id)
     const modifiers = storeItem
       ? priceLineModifiers(line, storeItem, context.linkedItems)
@@ -85,6 +95,13 @@ export function priceOrderLines<T extends PriceableOrderLine>(
     const menuName = typeof storeItem?.name === 'string' && storeItem.name.trim() !== '' ? storeItem.name : line.menu_item_name
     priced.push({ ...line, menu_item_name: menuName, price: result.price, subtotal: result.subtotal })
   }
+
+  const bundleResult = priceBundleOrderLines(lines.filter(line => line.isBundleItem), context)
+  if (!bundleResult.ok) return bundleResult
+  priced.push(...bundleResult.lines)
+  // Centavo allocation can split a quantity row; refuse before a backend's
+  // line cap would otherwise turn a recoverable cart into a lost order.
+  if (priced.length > 50) return { ok: false, error: 'Please split this cart into two orders.' }
 
   return {
     ok: true,

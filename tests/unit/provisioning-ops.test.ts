@@ -56,7 +56,7 @@ import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-sc
 // Under next/jest (SWC), top-level ES imports run before the in-place jest.mock
 // registers, so a static `import` of the SUT would bind the real services.
 // Retrieve the mock handles and require the SUT AFTER the mocks are registered.
-/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const { createTenantSupabase, updateTenantSupabase, listTenantsSupabase } = jest.requireMock('@/lib/tenants-service') as any
 const { createCategory, createMenuItem, updateMenuItemImage, setMenuItemImageFromData, setMenuItemImageFromUrl, updateMenuItemFields, listMenuItemsForProvisioning, listCategoriesForProvisioning, updateCategoryFields } = jest.requireMock('@/lib/admin-service') as any
 const { createTenantOwnerWithClient, listTenantUsersWithClient } = jest.requireMock('@/lib/tenant-owner-provisioning') as any
@@ -74,7 +74,7 @@ const { createSmsCampaign, listSmsCampaignsForProvisioning } = jest.requireMock(
 const { createUpsellPair, listUpsellPairsForProvisioning } = jest.requireMock('@/lib/menu-engineering-service') as any
 const { listAddonLibraryForProvisioning } = jest.requireMock('@/lib/addon-library-service') as any
 const { executeOp, listOps, PROVISIONING_OPS } = require('@/lib/mcp/provisioning-ops')
-/* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 
 const ctx = { client: {} as never } as ProvisioningCtx
 const TENANT = '11111111-1111-4111-8111-111111111111'

@@ -16,8 +16,8 @@
  * Load-bearing invariants preserved from the original monolith — do not change:
  *  - `checkoutCompleteRef.current = true` is set synchronously BEFORE `clearCart()`
  *    so the cart-empty redirect effect can't navigate away mid-confirmation.
- *  - The delivery-fee effect re-checks `deliveryAddress === customerData.delivery_address`
- *    after the async quote returns to drop stale quotes.
+ *  - The delivery quote hook invalidates a changed route before effects run
+ *    and drops superseded requests. Every submit path checks its validity.
  */
 
 import { addonLabel } from '@/lib/addon-quantity'
@@ -291,6 +291,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     deliveryOutOfRange,
     deliveryDistanceKm,
     deliveryFeeError,
+    retryDeliveryQuote,
+    getDeliveryQuoteError,
   } = useDeliveryQuote({
     tenant,
     isDeliveryOrder: selectedOrderTypeData?.type === 'delivery',
@@ -309,14 +311,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       toast.error('Lalamove delivery is unavailable with QR checkout. Please choose pickup or contact the store.')
       return true
     }
-    const message = deliveryFeeError || (deliveryOutOfRange
-      ? 'This address is outside the delivery area. Please choose a closer address or switch to pickup.'
-      : isFetchingDeliveryFee
-        ? 'Please wait for the delivery fee before continuing.'
-        : deliveryFee === null || deliveryFeeAddress !== customerData.delivery_address ||
-          (tenant.lalamove_enabled && (!quotationId || !quoteSignature))
-          ? 'Please choose a delivery address and get a valid delivery quote before continuing.'
-          : null)
+    const message = getDeliveryQuoteError()
     if (!message) return false
     toast.error(message)
     return true
@@ -720,12 +715,6 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       return
     }
 
-    // Distance-based delivery: block submit when the chosen address is outside the radius.
-    if (selectedOrderTypeData?.type === 'delivery' && deliveryOutOfRange) {
-      toast.error('This address is outside the delivery area. Please choose a closer address or switch to pickup.')
-      return
-    }
-
     // Advance order: validate the scheduled time before proceeding
     if (advanceConfig.enabled) {
       if (!advanceConfig.allowAsap && scheduleMode !== 'scheduled') {
@@ -951,6 +940,12 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       const refusal = [presellVerdict, stockVerdict].find(verdict => !verdict.ok)
       if (refusal && !refusal.ok) {
         toast.error(refusal.message)
+        setIsProcessing(false)
+        return
+      }
+      // Stock checks may outlast a quotation. Keep the cart recoverable rather
+      // than confirming a delivery whose quote expired during that request.
+      if (isDeliveryBlocked()) {
         setIsProcessing(false)
         return
       }
@@ -1264,6 +1259,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     deliveryOutOfRange,
     deliveryDistanceKm,
     deliveryFeeError,
+    retryDeliveryQuote,
     validDeliveryFee,
     grandTotal,
     orderMinimum,

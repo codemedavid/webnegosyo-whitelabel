@@ -586,6 +586,23 @@ describe('POST /api/lalamove', () => {
     })
   })
 
+  test('does not overwrite cancellation with an older in-flight status response', async () => {
+    orderRow = { ...ORDER, lalamove_order_id: 'lala-1', lalamove_status: 'ASSIGNING_DRIVER' }
+    const service = await import('@/lib/lalamove-service')
+    ;(service.getLalamoveOrder as jest.Mock).mockImplementation(async () => {
+      orderRow = { ...orderRow, lalamove_status: 'CANCELLED' }
+      return { status: 'ON_GOING' }
+    })
+    const { POST } = await import('@/app/api/lalamove/route')
+
+    const response = await POST(
+      makeRequest({ op: 'sync', tenantId: 't1', orderId: 'order-1' }, 'Bearer t'),
+    )
+
+    await expect(response.json()).resolves.toMatchObject({ success: false })
+    expect(orderRow?.lalamove_status).toBe('CANCELLED')
+  })
+
   test('cancels a booked delivery and records the cancellation', async () => {
     orderRow = { ...ORDER, lalamove_order_id: 'lala-1', lalamove_status: 'ASSIGNING_DRIVER' }
 

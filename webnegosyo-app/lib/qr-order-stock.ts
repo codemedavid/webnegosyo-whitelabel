@@ -2,11 +2,15 @@ import type { PosStockItem } from './pos-stock';
 
 /** The accepted QR cart and its inventory snapshot must describe the same lines. */
 export function qrOrderStockItems(
-  items: readonly { menuItemId: string; quantity: number }[],
+  items: readonly { menuItemId: string; quantity: number; optionIds?: string[]; addonIds?: string[]; addonQuantities?: Record<string, number> }[],
   customerData: Record<string, unknown>,
 ): Array<PosStockItem & { addonQuantities?: Record<string, number> }> {
+  // Pricing may split a combo row to distribute its last centavo. Its ids
+  // travel with that row; the older positional snapshot cannot describe it.
   const fallback = () => items.map(item => ({ menuItemId: item.menuItemId, quantity: item.quantity, optionIds: [], addonIds: [] }));
-  const snapshot = customerData._inventory_selections as { version?: unknown; items?: unknown } | undefined;
+  const snapshot = items.every(item => Array.isArray(item.optionIds) && Array.isArray(item.addonIds))
+    ? { version: 1, items }
+    : customerData._inventory_selections as { version?: unknown; items?: unknown } | undefined;
   if (snapshot?.version !== 1 || !Array.isArray(snapshot.items) || snapshot.items.length !== items.length) return fallback();
   const rows: Array<PosStockItem & { addonQuantities?: Record<string, number> }> = [];
   for (let index = 0; index < items.length; index++) {

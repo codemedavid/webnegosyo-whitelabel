@@ -25,6 +25,32 @@ async function main() {
     const row=(await db.query('select * from loyalty_earning_jobs')).rows[0]
     assert.equal(row.last_result,'credited')
     assert.ok(row.last_checked_at)
+
+    // Terminal platform jobs sleep indefinitely; transactional lifecycle
+    // triggers wake them when there is actually new work.
+    await db.exec(`insert into orders(id,tenant_id,status,customer_contact) values('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','delivered','09171234567')`)
+    const platform = (await claim())[0]
+    assert.equal(platform.backend,'platform_supabase')
+    assert.equal(await ack(platform,'credited'),true)
+    assert.equal((await db.query('select isfinite(next_attempt_at) finite from loyalty_earning_jobs where id=$1',[platform.id])).rows[0].finite,false,'Completed platform orders must not consume daily worker capacity')
+    await db.exec(`update orders set status='cancelled' where id='33333333-3333-4333-8333-333333333333'`)
+    const requeued = (await claim())[0]
+    assert.equal(requeued.id,platform.id)
+    assert.equal(requeued.last_result,null,'A real lifecycle change receives fresh-work priority')
+    assert.equal(await ack(requeued,'reversed'),true)
+
+    // Older external terminal jobs have a finite polling window.
+    await db.query("update loyalty_earning_jobs set created_at=now()-interval '31 days',next_attempt_at=now() where id=$1",[row.id])
+    const historical = (await claim())[0]
+    assert.equal(await ack(historical,'already_credited'),true)
+    assert.equal((await db.query('select isfinite(next_attempt_at) finite from loyalty_earning_jobs where id=$1',[row.id])).rows[0].finite,false,'External historical polling is bounded')
+
+    // Terminal historical work cannot occupy the whole batch ahead of a
+    // newly captured order, even if it became due much earlier.
+    await db.query("update loyalty_earning_jobs set next_attempt_at=now()-interval '1 day' where id=$1",[row.id])
+    await db.exec(`insert into orders(id,tenant_id,status) values('44444444-4444-4444-8444-444444444444','11111111-1111-4111-8111-111111111111','delivered')`)
+    const priority = (await db.query('select * from claim_loyalty_earning_jobs(1)')).rows[0]
+    assert.equal(priority.external_order_id,'44444444-4444-4444-8444-444444444444','New work wins over a historical rescan')
     await db.exec('set role authenticated')
     await assert.rejects(claim(),/permission denied/)
     console.log('Loyalty recovery SQL regressions passed')

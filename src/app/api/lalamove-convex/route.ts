@@ -14,7 +14,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid webhook payload" }, { status: 400 });
+    }
 
     // Lalamove webhook payload fields
     const {
@@ -24,6 +27,14 @@ export async function POST(request: NextRequest) {
       driverPhone,
       shareLink,
     } = body;
+
+    if (typeof lalamoveOrderId !== "string" || !lalamoveOrderId.trim() ||
+      typeof status !== "string" || !status.trim()) {
+      return NextResponse.json(
+        { error: "A provider orderId and status are required" },
+        { status: 400 }
+      );
+    }
 
     // Tenant ID passed as query param (set when configuring webhook URL)
     const tenantId = request.nextUrl.searchParams.get("tenant_id");
@@ -78,6 +89,7 @@ export async function POST(request: NextRequest) {
           path: "orders:updateLalamoveDetailsInternal",
           args: {
             orderId: convexOrderId,
+            expectedLalamoveOrderId: lalamoveOrderId,
             lalamoveOrderId: lalamoveOrderId,
             lalamoveStatus: status,
             lalamoveDriverName: driverName,
@@ -91,9 +103,23 @@ export async function POST(request: NextRequest) {
 
     const convexResult = await convexResponse.json();
 
-    if (convexResult.status === "error") {
+    if (!convexResponse.ok || convexResult.status !== "success") {
       return NextResponse.json(
-        { error: convexResult.errorMessage },
+        { error: convexResult.errorMessage ?? "Could not apply the delivery webhook update" },
+        { status: 500 }
+      );
+    }
+
+    if (convexResult.value === false) {
+      return NextResponse.json(
+        { error: "The delivery booking changed or is awaiting confirmation; webhook update was not applied" },
+        { status: 409 }
+      );
+    }
+
+    if (convexResult.value !== true) {
+      return NextResponse.json(
+        { error: "Delivery webhook update was not confirmed" },
         { status: 500 }
       );
     }

@@ -36,7 +36,7 @@ begin
   insert into loyalty_earning_jobs(tenant_id,backend,external_order_id)
   values(new.tenant_id,source_backend,source_id)
   on conflict(tenant_id,backend,external_order_id) do update set
-    revision=loyalty_earning_jobs.revision+1,next_attempt_at=now(),attempts=0,lease_token=null,lease_until=null;
+    revision=loyalty_earning_jobs.revision+1,next_attempt_at=now(),attempts=0,last_result=null,lease_token=null,lease_until=null;
   return new;
 end $$;
 revoke all on function public.enqueue_loyalty_earning_job() from public,anon,authenticated;
@@ -52,7 +52,12 @@ begin
     select j.id from loyalty_earning_jobs j join tenants t on t.id=j.tenant_id
     where j.next_attempt_at<=now() and (j.lease_until is null or j.lease_until<now())
       and t.loyalty_enabled and not t.loyalty_shadow
-    order by j.next_attempt_at,j.id for update of j skip locked limit greatest(1,least(p_limit,10))
+    -- New lifecycle events and unfinished earning take precedence over
+    -- historical external-order checks. A large backfill must not hold today's
+    -- missing stamp behind yesterday's already-credited orders.
+    order by case when j.last_result is null then 0
+                  when j.last_result in ('pending','missing_identity','failed') then 1 else 2 end,
+      j.next_attempt_at,j.id for update of j skip locked limit greatest(1,least(p_limit,10))
   ) update loyalty_earning_jobs j set lease_token=gen_random_uuid(),lease_until=now()+interval '2 minutes'
     from candidates c where j.id=c.id returning j.*;
 end $$;
@@ -66,11 +71,18 @@ begin
   end if;
   update loyalty_earning_jobs set lease_token=null,lease_until=null,last_checked_at=now(),last_result=p_result,
     attempts=case when p_result='failed' then attempts+1 else 0 end,
-    next_attempt_at=now()+case
+    next_attempt_at=case
+      -- Platform writes have a transactional trigger, so a terminal job needs
+      -- no polling. A later cancellation/payment/identity change re-enqueues
+      -- it. External sources need a finite reconciliation window because an
+      -- offline handset may not report their changes to the platform.
+      when p_result not in ('failed','pending','missing_identity')
+        and (backend='platform_supabase' or created_at<now()-interval '30 days') then 'infinity'::timestamptz
+      else now()+case
       when p_result='failed' then make_interval(secs=>least(86400,60*power(2,least(attempts,10)))::integer)
       when p_result='pending' then interval '5 minutes'
       when p_result='missing_identity' then interval '1 hour'
-      else interval '1 day' end
+      else interval '1 day' end end
   where id=p_id and lease_token=p_lease and revision=p_revision;
   get diagnostics changed=row_count;
   return changed=1;

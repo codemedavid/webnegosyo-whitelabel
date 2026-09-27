@@ -30,6 +30,12 @@ export function resolveRequoteGate(
   lalamoveOrderId: string | undefined,
   lalamoveStatus: string | undefined
 ): RequoteGate {
+  if (lalamoveStatus?.toUpperCase() === "BOOKING") {
+    return {
+      ok: false,
+      error: "A delivery booking is awaiting confirmation. Check Lalamove before booking again.",
+    };
+  }
   const bookedId = lalamoveOrderId?.trim();
   if (!bookedId) return { ok: true, retiredOrderId: null };
 

@@ -951,7 +951,9 @@ export async function createOrderConvex(
   // `order.deliveryAddress` (see convex-template/convex/lalamove.ts).
   Object.assign(mutationArgs, buildLalamoveDeliveryArgs(customerData))
 
-  const orderId = await convex.mutation<string>('orders:createOrder', mutationArgs)
+  // Only the trusted server may use this entry point. Public customer writes
+  // on Lalamove tenants cannot prove that their delivery fee was quoted.
+  const orderId = await convex.mutation<string>('orders:createOrderInternal', mutationArgs)
 
   // Roll this order into the tenant's customer profile. Convex orders never
   // reach `public.orders`, so without this the merchant's Regulars list would
@@ -973,4 +975,3 @@ export async function createOrderConvex(
 
   return { order: { id: orderId }, orderToken: undefined }
 }
-

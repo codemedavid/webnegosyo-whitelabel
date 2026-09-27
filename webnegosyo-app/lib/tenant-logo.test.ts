@@ -5,6 +5,10 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
+jest.mock("./authorized-post", () => ({
+  getAccessTokenBounded: jest.fn(async () => "merchant-token"),
+}));
+
 import {
   TENANT_LOGO_FOLDER,
   isValidLogoUrl,
@@ -110,9 +114,8 @@ describe("uploadTenantLogo", () => {
         ok: true,
         json: async () => ({
           token: "t",
-          expire: 1,
-          signature: "s",
-          publicKey: "p",
+          fields: { folder: "tenant-logos", fileName: "logo.png", useUniqueFileName: "true", overwriteFile: "false" },
+          uploadUrl: "https://upload.imagekit.io/api/v2/files/upload",
         }),
       })
       // 2nd call: the ImageKit upload itself.
@@ -129,6 +132,11 @@ describe("uploadTenantLogo", () => {
     const result = await uploadTenantLogo(picked);
 
     expect(result.url).toBe("https://ik.imagekit.io/acme/tenant-logos/logo.png");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: "Bearer merchant-token" }),
+      body: JSON.stringify({ folder: "tenant-logos", fileName: "logo.png" }),
+    });
     const body = fetchMock.mock.calls[1][1].body as FormData;
     expect(body.get("folder")).toBe("tenant-logos");
   });

@@ -18,9 +18,9 @@ jest.mock('@/lib/imagekit-server', () => ({
   uploadBase64ToImageKit,
 }))
 
-/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const { setMenuItemImageFromData } = require('@/lib/admin-service') as any
-/* eslint-enable @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any */
+/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 

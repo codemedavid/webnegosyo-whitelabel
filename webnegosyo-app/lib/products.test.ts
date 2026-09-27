@@ -14,7 +14,6 @@ import {
 } from "./products";
 
 jest.mock("./supabase", () => {
-  const chain: Record<string, jest.Mock> = {};
   const makeChain = () => {
     const c: Record<string, jest.Mock> = {};
     [
@@ -248,7 +247,7 @@ describe("calculateMargin", () => {
 describe("listProducts", () => {
   it("scopes the query to the given tenant and orders by menu order", async () => {
     const single = { data: [{ id: "1" }], error: null };
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["select", "eq", "order"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -263,7 +262,7 @@ describe("listProducts", () => {
   });
 
   it("throws when Supabase returns an error", async () => {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["select", "eq"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -285,7 +284,7 @@ describe("createProduct", () => {
   });
 
   it("inserts the product scoped to the tenant", async () => {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["insert", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -306,7 +305,7 @@ describe("createProduct", () => {
 
 describe("createProduct with modifier groups", () => {
   it("persists modifier_groups on insert", async () => {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["insert", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -364,7 +363,7 @@ describe("legacy column mirroring on save", () => {
   };
 
   function mockInsertChain() {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["insert", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -374,7 +373,7 @@ describe("legacy column mirroring on save", () => {
   }
 
   function mockUpdateChain() {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["update", "eq", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -388,7 +387,7 @@ describe("legacy column mirroring on save", () => {
 
     await createProduct("tenant-1", {
       ...validInput,
-      modifier_groups: [sizeGroup, addonGroup] as any,
+      modifier_groups: [sizeGroup, addonGroup],
     });
 
     expect(chain.insert).toHaveBeenCalledWith(
@@ -407,7 +406,7 @@ describe("legacy column mirroring on save", () => {
 
     await updateProduct("1", "tenant-1", {
       ...validInput,
-      modifier_groups: [addonGroup] as any,
+      modifier_groups: [addonGroup],
     });
 
     expect(chain.update).toHaveBeenCalledWith(
@@ -444,7 +443,7 @@ describe("legacy column mirroring on save", () => {
 
 describe("updateProduct", () => {
   it("updates only the given product for the given tenant", async () => {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["update", "eq", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -462,7 +461,7 @@ describe("updateProduct", () => {
 
 describe("deleteProduct", () => {
   it("deletes only the given product for the given tenant", async () => {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     chain.delete = jest.fn(() => chain);
     chain.eq = jest.fn(() => chain);
     // Last eq call resolves the promise
@@ -489,7 +488,7 @@ describe("toggleProductAvailability", () => {
    * or the next delivery puts it back on sale against their decision.
    */
   function stubUpdate() {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["update", "eq", "select"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
@@ -525,7 +524,7 @@ describe("toggleProductAvailability", () => {
 
 describe("listCategories", () => {
   it("scopes categories to the tenant and orders them", async () => {
-    const chain: any = {};
+    const chain: Record<string, jest.Mock> = {};
     ["select", "eq"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });

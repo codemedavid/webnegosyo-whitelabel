@@ -22,7 +22,7 @@ const sizeGroup: ModifierGroup = {
 
 describe("normalizeModifierGroups", () => {
   it("returns explicit modifier_groups untouched (sorted)", () => {
-    const groups = normalizeModifierGroups({ modifier_groups: [sizeGroup] } as any);
+    const groups = normalizeModifierGroups({ modifier_groups: [sizeGroup] });
     expect(groups).toHaveLength(1);
     expect(groups[0].name).toBe("Size");
     expect(groups[0].options.map((o) => o.name)).toEqual(["Small", "Large"]);
@@ -42,7 +42,7 @@ describe("normalizeModifierGroups", () => {
           ],
         },
       ],
-    } as any);
+    });
     expect(groups).toHaveLength(1);
     expect(groups[0].max_select).toBe(1);
     expect(groups[0].min_select).toBe(1);
@@ -51,7 +51,7 @@ describe("normalizeModifierGroups", () => {
   it("derives an unlimited multi-select group from legacy addons", () => {
     const groups = normalizeModifierGroups({
       addons: [{ id: "a1", name: "Extra Cheese", price: 20 }],
-    } as any);
+    });
     expect(groups).toHaveLength(1);
     expect(groups[0].name).toBe(LEGACY_ADDON_GROUP_NAME);
     expect(groups[0].max_select).toBeNull();
@@ -64,13 +64,13 @@ describe("normalizeModifierGroups", () => {
         { id: "v1", name: "Regular", price_modifier: 0 },
         { id: "v2", name: "Jumbo", price_modifier: 15 },
       ],
-    } as any);
+    });
     expect(groups[0].name).toBe(LEGACY_VARIATION_GROUP_NAME);
     expect(groups[0].max_select).toBe(1);
   });
 
   it("returns an empty array when the item has no modifier data", () => {
-    expect(normalizeModifierGroups({} as any)).toEqual([]);
+    expect(normalizeModifierGroups({})).toEqual([]);
   });
 });
 

@@ -16,7 +16,7 @@ const input: UseDeliveryQuoteInput = {
 
 const quotation = () => ({
   success: true,
-  data: { quotationId: 'quote-1', price: 80, currency: 'PHP', expiresAt: new Date(Date.now() + 300_000), quoteSignature: 'signed-quote' },
+  data: { quotationId: 'quote-1', price: 80, currency: 'PHP', distance: '10', duration: '30', expiresAt: new Date(Date.now() + 300_000).toISOString(), quoteSignature: 'signed-quote' },
 })
 
 beforeEach(() => {
@@ -72,4 +72,32 @@ it('never exposes the old fee when the pin changes under the same address label'
   rerender({ ...input, deliveryLat: '14.9' })
 
   expect(renderedFees.every(fee => fee === null)).toBe(true)
+})
+
+it('treats an unsigned quotation as a retryable failure instead of showing a payable fee', async () => {
+  const response = quotation()
+  jest.mocked(createQuotationAction).mockResolvedValueOnce({ ...response, data: { ...response.data, quoteSignature: '' } })
+  const { result } = renderHook(() => useDeliveryQuote(input))
+  await act(async () => {})
+
+  expect(result.current.deliveryFee).toBeNull()
+  expect(result.current.deliveryFeeError).toMatch(/valid delivery quote/i)
+})
+
+it('ignores a slower quotation for a previous delivery pin', async () => {
+  let finishOlder!: (value: ReturnType<typeof quotation>) => void
+  const newer = quotation()
+  newer.data.quotationId = 'quote-newer'
+  jest.mocked(createQuotationAction)
+    .mockImplementationOnce(() => new Promise(resolve => { finishOlder = resolve }))
+    .mockResolvedValueOnce(newer)
+  const { result, rerender } = renderHook((props: UseDeliveryQuoteInput) => useDeliveryQuote(props), { initialProps: input })
+
+  rerender({ ...input, deliveryLat: '14.9' })
+  await act(async () => {})
+  expect(result.current.quotationId).toBe('quote-newer')
+  await act(async () => finishOlder(quotation()))
+
+  expect(result.current.quotationId).toBe('quote-newer')
+  expect(result.current.getDeliveryQuoteError()).toBeNull()
 })

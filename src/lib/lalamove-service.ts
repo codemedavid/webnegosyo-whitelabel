@@ -7,6 +7,7 @@
  */
 
 import type { Tenant } from '@/types/database'
+import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 
 // Re-export types from SDK for easier access
 export interface LalamoveCoordinates {
@@ -152,9 +153,15 @@ export async function createLalamoveQuotation(
       console.log('[Lalamove] Quotation created:', quotation.id)
     }
 
+    const total = quotation.priceBreakdown?.total
+    const price = typeof total === 'string' && total.trim() ? Number(total) : NaN
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error('Lalamove returned an invalid quotation price')
+    }
+
     return {
       quotationId: quotation.id,
-      price: parseFloat(quotation.priceBreakdown.total || '0'),
+      price,
       currency: quotation.priceBreakdown.currency,
       expiresAt: new Date(quotation.expiresAt),
       distance: '0 km', // Not provided in price breakdown
@@ -209,6 +216,7 @@ export async function createLalamoveOrder(
   shareLink: string
   driverId?: string
 }> {
+  let bookingMayExist = false
   try {
     const client = await initLalamoveClient(tenant)
     const market = tenant.lalamove_market || 'PH'
@@ -218,6 +226,13 @@ export async function createLalamoveOrder(
       market,
       quotationId
     )
+    const expiry = new Date(quotation.expiresAt).getTime()
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+      throw new Error('Quotation expired. Please get a new delivery quote.')
+    }
+    if (!quotation.stops?.[0]?.id || !quotation.stops?.[1]?.id) {
+      throw new Error('Quotation has no valid pickup and delivery stops')
+    }
 
     // Build order payload using SDK's builder
     const SDKClient = await getLalamoveSDK()
@@ -241,7 +256,9 @@ export async function createLalamoveOrder(
       .build()
 
     // Create order
+    bookingMayExist = true
     const order = await client.Order.create(market, orderPayload)
+    if (!order.id) throw new Error('Lalamove did not return a booking reference')
 
     return {
       orderId: order.id,
@@ -251,10 +268,11 @@ export async function createLalamoveOrder(
     }
   } catch (error) {
     console.error('Lalamove order creation error:', error)
-    throw new Error(
+    throw new LalamoveBookingError(
       error instanceof Error
         ? `Failed to create Lalamove order: ${error.message}`
-        : 'Failed to create Lalamove order'
+        : 'Failed to create Lalamove order',
+      bookingMayExist,
     )
   }
 }
@@ -360,4 +378,3 @@ export async function cancelLalamoveOrder(
     )
   }
 }
-

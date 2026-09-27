@@ -273,7 +273,17 @@ export function OrderSummaryLines({
       {/* A refused quote has to say why: without this the customer sees a bare
           "—" and no reason their address was turned down. */}
       {showDeliveryError && (
-        <p className={skin.errorText} role="alert">{deliveryFeeError}</p>
+        <div>
+          <p className={skin.errorText} role="alert">{deliveryFeeError}</p>
+          <button
+            type="button"
+            className="mt-2 min-h-11 text-sm font-medium underline underline-offset-4"
+            style={{ color: accent }}
+            onClick={checkout.retryDeliveryQuote}
+          >
+            Retry delivery quote
+          </button>
+        </div>
       )}
 
       {serviceChargeAmount > 0 && (

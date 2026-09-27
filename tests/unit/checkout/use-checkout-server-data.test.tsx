@@ -9,7 +9,9 @@
  *  - the payment selection follows the order type;
  *  - only the newest voucher check may write its answer.
  */
-import { act, renderHook } from '@testing-library/react'
+import { createElement } from 'react'
+import { act, renderHook, render, screen, fireEvent } from '@testing-library/react'
+import { OrderSummaryLines } from '@/components/customer/checkout-templates/order-summary-lines'
 import type { CheckoutConfig } from '@/lib/checkout/checkout-config'
 import type { CustomerFormField, OrderType, PaymentMethod, Tenant } from '@/types/database'
 
@@ -92,6 +94,7 @@ function renderCheckout(tenant = TENANT) {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  jest.mocked(createQuotationAction).mockReset()
   cartState.isHydrated = false
   cartState.orderType = null
   setOrderType.mockClear()
@@ -181,6 +184,85 @@ describe('Lalamove checkout', () => {
     restaurant_longitude: 121,
   }
 
+  it.each([0, 80])('allows payment with a current signed quote priced at %s', async (price) => {
+    cartState.orderType = 'delivery'
+    cartState.isHydrated = true
+    jest.mocked(createQuotationAction).mockResolvedValueOnce({
+      success: true,
+      data: { quotationId: 'quote-1', price, currency: 'PHP', distance: '10', duration: '30', expiresAt: new Date(Date.now() + 300_000).toISOString(), quoteSignature: 'signed-quote' },
+    })
+    const { result } = renderCheckout(deliveryTenant)
+    await act(async () => {
+      result.current.setCustomerData({ delivery_address: 'Manila', delivery_lat: '14.7', delivery_lng: '121.1' })
+      result.current.setSelectedPaymentMethod('cash')
+    })
+
+    act(() => result.current.handleProceedToPayment())
+
+    expect(result.current.showPaymentDetails).toBe(true)
+    expect(result.current.grandTotal).toBe(100 + price)
+  })
+
+  it('allows pickup without a quotation even when the store enables Lalamove', () => {
+    cartState.orderType = 'pickup'
+    cartState.isHydrated = true
+    const { result } = renderCheckout(deliveryTenant)
+
+    act(() => result.current.handleProceedToPayment())
+
+    expect(result.current.showPaymentDetails).toBe(true)
+    expect(createQuotationAction).not.toHaveBeenCalled()
+  })
+
+  it.each(['pending', 'failed'] as const)('keeps payment closed while the delivery quote is %s', async (status) => {
+    cartState.orderType = 'delivery'
+    cartState.isHydrated = true
+    const log = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    jest.mocked(createQuotationAction).mockImplementationOnce(() => status === 'pending'
+      ? new Promise(() => {})
+      : Promise.resolve({ success: false, error: 'No riders available' }))
+    const { result } = renderCheckout(deliveryTenant)
+    await act(async () => {
+      result.current.setCustomerData({ delivery_address: 'Manila', delivery_lat: '14.7', delivery_lng: '121.1' })
+      result.current.setSelectedPaymentMethod('cash')
+    })
+
+    act(() => result.current.handleProceedToPayment())
+
+    expect(result.current.showPaymentDetails).toBe(false)
+    expect(clearCart).not.toHaveBeenCalled()
+    log.mockRestore()
+  })
+
+  it.each(['default', 'classic'] as const)('renews an expired quote from the %s summary without changing the address', async (variant) => {
+    jest.useFakeTimers()
+    cartState.orderType = 'delivery'
+    cartState.isHydrated = true
+    jest.mocked(createQuotationAction).mockImplementation(async () => ({
+      success: true,
+      data: { quotationId: 'quote-1', price: 80, currency: 'PHP', distance: '10', duration: '30', expiresAt: new Date(Date.now() + 300_000).toISOString(), quoteSignature: 'signed-quote' },
+    }))
+    const { result, unmount } = renderCheckout(deliveryTenant)
+    try {
+      await act(async () => result.current.setCustomerData({ delivery_address: 'Manila', delivery_lat: '14.7', delivery_lng: '121.1' }))
+      expect(result.current.deliveryFee).toBe(80)
+      act(() => jest.advanceTimersByTime(300_000))
+      expect(result.current.deliveryFeeError).toMatch(/expired/i)
+
+      const summary = render(createElement(OrderSummaryLines, { checkout: result.current, variant }))
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry delivery quote' })))
+      expect(createQuotationAction).toHaveBeenCalledTimes(2)
+      expect(result.current.deliveryFee).toBe(80)
+      expect(result.current.deliveryFeeError).toBeNull()
+      summary.rerender(createElement(OrderSummaryLines, { checkout: result.current, variant }))
+      expect(screen.queryByRole('button', { name: 'Retry delivery quote' })).not.toBeInTheDocument()
+      summary.unmount()
+    } finally {
+      unmount()
+      jest.useRealTimers()
+    }
+  })
+
   it('does not open payment details without a delivery quotation', () => {
     cartState.orderType = 'delivery'
     cartState.isHydrated = true
@@ -215,7 +297,7 @@ describe('Lalamove checkout', () => {
     cartState.isHydrated = true
     jest.mocked(createQuotationAction).mockResolvedValueOnce({
       success: true,
-      data: { quotationId: 'quote-1', price: 80, currency: 'PHP', expiresAt: new Date(Date.now() + 300_000), quoteSignature: 'signed-quote' },
+      data: { quotationId: 'quote-1', price: 80, currency: 'PHP', distance: '10', duration: '30', expiresAt: new Date(Date.now() + 300_000).toISOString(), quoteSignature: 'signed-quote' },
     })
     const { result } = renderCheckout({ ...deliveryTenant, qr_handoff_enabled: true })
     await act(async () => result.current.setCustomerData({ delivery_address: 'Manila', delivery_lat: '14.7', delivery_lng: '121.1' }))
@@ -232,7 +314,7 @@ describe('Lalamove checkout', () => {
     cartState.isHydrated = true
     jest.mocked(createQuotationAction).mockResolvedValueOnce({
       success: true,
-      data: { quotationId: 'quote-1', price: 80, currency: 'PHP', expiresAt: new Date(Date.now() + 300_000), quoteSignature: 'signed-quote' },
+      data: { quotationId: 'quote-1', price: 80, currency: 'PHP', distance: '10', duration: '30', expiresAt: new Date(Date.now() + 300_000).toISOString(), quoteSignature: 'signed-quote' },
     })
     const { result, unmount } = renderCheckout(deliveryTenant)
     await act(async () => {
@@ -248,6 +330,36 @@ describe('Lalamove checkout', () => {
     expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/expired/i))
     unmount()
     jest.useRealTimers()
+  })
+
+  it('preserves the cart if the quote expires while checkout is checking stock', async () => {
+    jest.useFakeTimers()
+    cartState.orderType = 'delivery'
+    cartState.isHydrated = true
+    jest.mocked(createQuotationAction).mockResolvedValueOnce({
+      success: true,
+      data: { quotationId: 'quote-1', price: 80, currency: 'PHP', distance: '10', duration: '30', expiresAt: new Date(Date.now() + 300_000).toISOString(), quoteSignature: 'signed-quote' },
+    })
+    let finishStock!: (value: { ok: true }) => void
+    jest.mocked(preflightCheckoutStockAction).mockImplementationOnce(() => new Promise(resolve => { finishStock = resolve }))
+    const { result, unmount } = renderCheckout(deliveryTenant)
+    try {
+      await act(async () => result.current.setCustomerData({ delivery_address: 'Manila', delivery_lat: '14.7', delivery_lng: '121.1' }))
+      let checkoutPromise!: Promise<void>
+      await act(async () => { checkoutPromise = result.current.handleCheckout() })
+      jest.setSystemTime(Date.now() + 300_001)
+      await act(async () => {
+        finishStock({ ok: true })
+        await checkoutPromise
+      })
+
+      expect(clearCart).not.toHaveBeenCalled()
+      expect(result.current.checkoutComplete).toBe(false)
+      expect(result.current.isProcessing).toBe(false)
+    } finally {
+      unmount()
+      jest.useRealTimers()
+    }
   })
 })
 

@@ -109,6 +109,7 @@ describe('lalamove server actions', () => {
           return builder
         })
         builder.is = jest.fn(() => builder)
+        builder.or = jest.fn(() => builder)
         builder.update = jest.fn((patch: unknown) => {
           updateMock(table, patch)
           return builder
@@ -125,6 +126,13 @@ describe('lalamove server actions', () => {
   })
 
   describe('syncLalamoveOrderAction', () => {
+    test('refuses to sync an unrelated provider booking', async () => {
+      const { syncLalamoveOrderAction } = await import('@/app/actions/lalamove')
+      const result = await syncLalamoveOrderAction('t1', 'order-1', 'other-booking')
+      expect(result.success).toBe(false)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.getLalamoveOrder).not.toHaveBeenCalled()
+    })
     test('a thin poll response never blanks fields already on the order', async () => {
       const service = await import('@/lib/lalamove-service')
       ;(service.getLalamoveOrder as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue({
@@ -164,6 +172,13 @@ describe('lalamove server actions', () => {
   })
 
   describe('cancelLalamoveOrderAction', () => {
+    test('refuses to cancel an unrelated provider booking', async () => {
+      const { cancelLalamoveOrderAction } = await import('@/app/actions/lalamove')
+      const result = await cancelLalamoveOrderAction('t1', 'order-1', 'other-booking')
+      expect(result.success).toBe(false)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.cancelLalamoveOrder).not.toHaveBeenCalled()
+    })
     test('refuses to cancel a delivery that has already finished', async () => {
       orderRow = { id: 'order-1', lalamove_order_id: 'lala-1', lalamove_status: 'DELIVERED' }
 
@@ -186,6 +201,17 @@ describe('lalamove server actions', () => {
 
       expect(result.success).toBe(true)
       expect(service.cancelLalamoveOrder).toHaveBeenCalled()
+    })
+  })
+
+  describe('addPriorityFeeAction', () => {
+    test('refuses to tip a booking not attached to this tenant order', async () => {
+      orderRow = null
+      const { addPriorityFeeAction } = await import('@/app/actions/lalamove')
+      const result = await addPriorityFeeAction('t1', 'unknown-booking', '50')
+      expect(result.success).toBe(false)
+      const service = await import('@/lib/lalamove-service')
+      expect(service.addLalamovePriorityFee).not.toHaveBeenCalled()
     })
   })
 
@@ -443,6 +469,24 @@ describe('lalamove server actions', () => {
   })
 
   describe('createLalamoveOrderAction', () => {
+    test('never books a nonexistent or another tenant order', async () => {
+      tenantRow = { ...TENANT, lalamove_sandbox: true }
+      orderRow = null
+      const service = await import('@/lib/lalamove-service')
+      const { createLalamoveOrderAction } = await import('@/app/actions/lalamove')
+      const result = await createLalamoveOrderAction('t1', 'missing', 'quote-1', '', '', 'Ana', '')
+      expect(result.success).toBe(false)
+      expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+    })
+
+    test('refuses a quotation that does not belong to the saved order', async () => {
+      tenantRow = { ...TENANT, lalamove_sandbox: true }
+      orderRow = { id: 'order-1', lalamove_order_id: null, lalamove_quotation_id: 'real-quote' }
+      const service = await import('@/lib/lalamove-service')
+      const { createLalamoveOrderAction } = await import('@/app/actions/lalamove')
+      await createLalamoveOrderAction('t1', 'order-1', 'other-quote', '', '', 'Ana', '')
+      expect(service.createLalamoveOrder).not.toHaveBeenCalled()
+    })
     test('books with the store phone as recipient when the order carries no customer phone', async () => {
       // The panel forwards order.customer_contact verbatim; when the checkout
       // form had no phone field that is ''. Lalamove refuses '' as a phone.
@@ -451,6 +495,7 @@ describe('lalamove server actions', () => {
         id: 'order-1',
         lalamove_order_id: null,
         customer_contact: '',
+        lalamove_quotation_id: 'quote-1',
         customer_data: { delivery_address: '12 Mabini St' },
       }
       const service = await import('@/lib/lalamove-service')
@@ -471,7 +516,7 @@ describe('lalamove server actions', () => {
 
     test('refuses to book when the store pickup phone is not a usable number', async () => {
       tenantRow = { ...TENANT, lalamove_sandbox: true, lalamove_sender_phone: 'call us' }
-      orderRow = { id: 'order-1', lalamove_order_id: null, customer_contact: '09171234567' }
+      orderRow = { id: 'order-1', lalamove_order_id: null, lalamove_quotation_id: 'quote-1', customer_contact: '09171234567' }
 
       const { createLalamoveOrderAction } = await import('@/app/actions/lalamove')
       const result = await createLalamoveOrderAction('t1', 'order-1', 'quote-1', '', '', 'Ana', '09171234567')

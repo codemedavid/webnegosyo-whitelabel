@@ -353,6 +353,20 @@ describe('createOrderAction — price integrity', () => {
       expect(createOrder).not.toHaveBeenCalled()
     })
 
+    test('cannot bypass delivery checks using an unknown order type', async () => {
+      tableRows.order_types = null
+      const result = await place(orderArgs({ orderTypeId: 'unknown-type' }))
+      expect(result).toMatchObject({ success: false, refused: true })
+      expect(createOrder).not.toHaveBeenCalled()
+    })
+
+    test('accepts a genuine signed zero-fee quotation', async () => {
+      const result = await place(orderArgs({ lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: await signedQuote(0),
+        customerData: { delivery_address: 'Home', delivery_lat: '14.7', delivery_lng: '121.1' } }))
+      expect(result.success).toBe(true)
+      expect(savedArg(5)).toBe(0)
+    })
+
     test('refuses a signature for a different quotation', async () => {
       const signature = await signedQuote(20, 'q-cheap')
 

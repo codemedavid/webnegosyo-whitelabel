@@ -23,6 +23,7 @@ import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
 import { notifyPosStockDepletion } from "../../lib/pos-stock-notify";
 import { qrOrderStockItems } from "../../lib/qr-order-stock";
+import { priceComboHandoff } from "../../lib/scan-handoff-pricing";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { supabase } from "../../lib/supabase";
 import { goTo } from "../../lib/tab-navigation";
@@ -203,6 +204,18 @@ export default function ScanScreen() {
     async (payload: QrOrderPayloadV1) => {
       setState({ mode: "validating", payload });
 
+      // Standalone catalog prices cannot validate a combo: they erase its
+      // discount. Verify its slots and exact total with the checkout pricer.
+      if (tenantId === payload.tenantId && payload.items.some(item => item.isBundleItem)) {
+        try {
+          const verdict = await priceComboHandoff(tenantId, payload.items, outletId);
+          setState({ mode: "preview", payload, items: verdict.items, total: verdict.total, pricesUpdated: verdict.pricesUpdated });
+        } catch (error) {
+          setState({ mode: "handoff-blocked", message: error instanceof Error ? error.message : HANDOFF_BLOCK_MESSAGE.catalog_unavailable });
+        }
+        return;
+      }
+
       // Store check first, before this store's catalog is even consulted —
       // the same order as the pickup path.
       const ids = [...new Set(payload.items.map((i) => i.menuItemId))];
@@ -237,7 +250,7 @@ export default function ScanScreen() {
         pricesUpdated: verdict.pricesUpdated,
       });
     },
-    [tenantId]
+    [tenantId, outletId]
   );
 
   // Pickup ticket: the token in the QR is verified server-side (this app has
