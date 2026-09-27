@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node configuration is loaded as CommonJS. */
 const { AndroidConfig, withAndroidManifest } = require("expo/config-plugins");
 
 // SEND_SMS only. Deliberately NOT READ_SMS/RECEIVE_SMS: reading the inbox would

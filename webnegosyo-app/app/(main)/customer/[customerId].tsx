@@ -191,7 +191,7 @@ export default function CustomerScreen() {
                 <Text style={styles.value} numberOfLines={1}>
                   {item.name}
                 </Text>
-                <Text style={styles.muted}>×{item.quantity}</Text>
+                <Text style={styles.muted}>Qty {item.quantity}</Text>
               </View>
             ))}
           </View>

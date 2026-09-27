@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node configuration is loaded as CommonJS. */
 const { withPodfile } = require("@expo/config-plugins");
 
 // react-native-thermal-printer vendors a pre-2020 fat static library
