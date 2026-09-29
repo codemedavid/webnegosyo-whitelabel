@@ -42,7 +42,7 @@ jest.mock('next/dynamic', () => {
     return function LazyView(props: unknown) { return React.createElement(React.Suspense, { fallback: null }, React.createElement(Lazy, props)) }
   }
 })
-jest.mock('@/components/customer/block-hero-renderer', () => ({ BlockHeroRenderer: () => <div data-testid="block-hero" /> }))
+jest.mock('@/components/hero-builder/renderer/hero-builder-renderer', () => ({ HeroBuilderRenderer: () => <div data-testid="block-hero" /> }))
 jest.mock('@/components/customer/category-submenu', () => ({ CategorySubmenu: () => null }))
 jest.mock('@/components/customer/announcement-bar', () => ({ AnnouncementBar: () => null }))
 jest.mock('@/components/customer/store-closed-banner', () => ({ StoreClosedBanner: () => null }))

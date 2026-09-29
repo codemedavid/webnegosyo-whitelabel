@@ -7,7 +7,8 @@ import type { BrandingColors } from '@/lib/branding-utils'
 import { HeroRenderer } from '@/components/customer/hero-renderer'
 import { HeroPresetSection } from '@/components/customer/hero-preset'
 import { resolveHeroPreset } from '@/lib/storefront-theme'
-import { shouldUseCustomHero } from '@/lib/hero-mode'
+import { customHeroKind } from '@/lib/hero-mode'
+import { parseStoredDesign } from '@/lib/hero-builder/load'
 import { formatPrice } from '@/lib/cart-utils'
 
 /**
@@ -16,8 +17,8 @@ import { formatPrice } from '@/lib/cart-utils'
  *
  * Decision order (matches the design):
  *   1. Hero disabled            → nothing.
- *   2. v4 block-hero design     → nothing here (rendered at the page top level).
- *   3. Legacy hero_design       → HeroRenderer.
+ *   2. 'custom' + block design  → nothing here (rendered at the page top level).
+ *   3. 'custom' + v3 design     → HeroRenderer.
  *   4. A concrete hero_preset   → the rich HeroPresetSection.
  *   5. Otherwise (no explicit hero choice):
  *        - `children` given      → the layout's own plain hero (preserves its look);
@@ -71,15 +72,13 @@ export function StorefrontHero({
 }: StorefrontHeroProps) {
   if (tenant?.hero_section_enabled === false) return null
 
-  const heroDesign = tenant?.hero_design as Record<string, unknown> | null | undefined
-  // Use the custom Hero Designer layout when the merchant picked "custom" (or a
-  // legacy design predates the dropdown). A concrete preset choice wins over a
-  // lingering design, so the preset path below handles those.
-  if (shouldUseCustomHero(tenant)) {
-    // v4 block heroes render at the page top level (BlockHeroRenderer); skip here
-    // so we never double-render.
-    if (heroDesign!.version === 4) return null
-    return <HeroRenderer design={heroDesign as unknown as HeroDesign} className={className} />
+  // 'custom' renders the merchant's Hero Builder layout. v4/v5 block heroes
+  // render at the page top level (HeroBuilderRenderer) — skip here so we never
+  // double-render; only the legacy v3 absolute layout renders in place.
+  const customKind = customHeroKind(tenant)
+  if (customKind === 'block') return null
+  if (customKind === 'legacy') {
+    return <HeroRenderer design={parseStoredDesign(tenant?.hero_design) as unknown as HeroDesign} className={className} />
   }
 
   const title = heroOverride?.title || tenant?.hero_title || defaultTitle

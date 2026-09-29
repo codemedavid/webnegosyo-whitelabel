@@ -53,7 +53,7 @@ jest.mock('@/components/customer/header-templates', () => ({
 jest.mock('@/components/customer/cart-drawer', () => ({ CartDrawer: (props: unknown) => { mockCartRender(props); return null } }))
 jest.mock('@/components/customer/product-detail-sheet', () => ({ ProductDetailSheet: (props: unknown) => { mockSheetRender(props); return null } }))
 jest.mock('@/components/customer/bundle-wizard', () => ({ BundleWizard: () => null }))
-jest.mock('@/components/customer/block-hero-renderer', () => ({ BlockHeroRenderer: () => null }))
+jest.mock('@/components/hero-builder/renderer/hero-builder-renderer', () => ({ HeroBuilderRenderer: () => null }))
 jest.mock('@/components/customer/category-submenu', () => ({ CategorySubmenu: () => null }))
 jest.mock('@/components/customer/branding-inspector', () => ({ BrandingInspector: () => null }))
 jest.mock('@/components/customer/active-order-banner', () => ({ ActiveOrderBanner: () => null }))
