@@ -13,15 +13,15 @@ import type { CardTemplate } from '@/lib/card-templates'
 import { MenuHeaderRenderer } from '@/components/customer/header-templates'
 import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/header-templates'
 import type { PageLayout } from '@/lib/page-layouts'
-import { BlockHeroRenderer } from '@/components/customer/block-hero-renderer'
-import type { HeroBlockDesign } from '@/types/hero-block-designer'
+import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
+import { loadHeroDesign } from '@/lib/hero-builder/load'
 import { useBrandingPreviewDraft, useIsMobileViewport, useMobileOverrides } from '@/hooks/use-branding-preview'
 import { resolveMobileGridColumns, resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
 import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/background-overlay'
 import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 
-import { isFullBleedHeroBand, shouldUseCustomHero } from '@/lib/hero-mode'
+import { customHeroKind, isFullBleedHeroBand } from '@/lib/hero-mode'
 import { DeferredMount } from '../../runtime/deferred-mount'
 import { useStorefrontRuntime } from '../../runtime/storefront-runtime'
 
@@ -52,6 +52,12 @@ export function LegacyMenuStorefront() {
   const card = (isMobile ? deviceLayout.mobileCard : deviceLayout.desktopCard) as CardTemplate
   const header = (isMobile ? deviceLayout.mobileHeader : deviceLayout.desktopHeader) as HeaderTemplate
   const headerConfig = useMemo<HeaderConfig>(() => getHeaderConfig(tenant), [tenant])
+  // The Hero Builder design (v4 converted on the fly). hero_design is a TEXT
+  // column, so it is parsed here — once per tenant change, not per render.
+  const blockHero = useMemo(
+    () => (customHeroKind(tenant) === 'block' ? loadHeroDesign(tenant?.hero_design) : null),
+    [tenant],
+  )
   const layoutBranding = useMemo(() => headerConfig.showSearch
     ? { ...branding, searchBar: { ...branding.searchBar, enabled: false } }
     : branding, [branding, headerConfig.showSearch])
@@ -131,21 +137,13 @@ export function LegacyMenuStorefront() {
           onCategoryChange={setActiveCategory} branding={branding} />
       )}
 
-      {/* Block Hero (v4) — rendered at the top level, above <main> content */}
-      {(() => {
-        const heroDesign = tenant?.hero_design as Record<string, unknown> | null
-        const isBlockDesign = heroDesign && heroDesign.version === 4
-        if (tenant?.hero_section_enabled !== false && shouldUseCustomHero(tenant) && heroDesign && isBlockDesign) {
-          return <BlockHeroRenderer design={heroDesign as unknown as HeroBlockDesign} />
-        }
-        return null
-      })()}
+      {/* Hero Builder (v4/v5) — one render, responsive via container queries */}
+      {blockHero && <HeroBuilderRenderer design={blockHero} />}
 
-      {/* A full-bleed hero (fullscreen custom design or a colored preset band)
-          sits flush under the header, so <main> drops its top padding. */}
+      {/* A colored preset band sits flush under the header, so <main> drops its
+          top padding. */}
       <main className={
-        (tenant?.hero_section_enabled !== false && shouldUseCustomHero(tenant) && tenant?.hero_design && (tenant.hero_design as Record<string, unknown>).layoutMode === 'fullscreen')
-          || isFullBleedHeroBand(tenant)
+        isFullBleedHeroBand(tenant)
           ? 'container mx-auto px-4 pb-12'
           : 'container mx-auto px-4 py-12'
       }>
