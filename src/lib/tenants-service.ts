@@ -10,6 +10,7 @@ import {
   type OrderBackendPreference,
 } from '@/lib/order-backend'
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
+import { checkLalamoveKey, describeLalamoveEnvironmentMismatch } from '@/lib/lalamove-keys'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -49,6 +50,32 @@ function secretsPatchFromInput(parsed: TenantInput): TenantSecretsPatch {
     lalamove_secret_key: parsed.lalamove_secret_key ?? undefined,
     loyverse_access_token: parsed.loyverse_access_token ?? undefined,
     convex_deploy_key: parsed.convex_deploy_key ?? undefined,
+  }
+}
+
+/**
+ * A typed Lalamove key must be a Lalamove key from the environment the store's
+ * sandbox switch names. The form's key inputs are password fields, and a
+ * browser-filled login password saved as the key made Lalamove fail every
+ * quote with "Unknown error". Blank keeps the stored key, so it is not checked.
+ */
+function refineLalamoveKeys(
+  val: { lalamove_api_key?: string; lalamove_secret_key?: string; lalamove_sandbox: boolean },
+  ctx: z.RefinementCtx
+) {
+  const typedKeys = [
+    { path: 'lalamove_api_key', kind: 'api', value: val.lalamove_api_key?.trim() },
+    { path: 'lalamove_secret_key', kind: 'secret', value: val.lalamove_secret_key?.trim() },
+  ] as const
+  for (const key of typedKeys) {
+    if (!key.value) continue
+    const check = checkLalamoveKey(key.value, key.kind)
+    const message = check.ok
+      ? describeLalamoveEnvironmentMismatch(check.isSandbox, val.lalamove_sandbox)
+      : check.error
+    if (message) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key.path], message })
+    }
   }
 }
 
@@ -253,7 +280,7 @@ export const tenantSchema = z.object({
   // Email notifications
   admin_email: z.string().email().optional().or(z.literal('')).nullable().optional(),
   email_notifications_enabled: z.boolean().default(false),
-}).superRefine(refineDistanceDelivery).superRefine((val, ctx) => {
+}).superRefine(refineDistanceDelivery).superRefine(refineLalamoveKeys).superRefine((val, ctx) => {
   // Loyverse must be fully connected when enabled — a half-configured tenant
   // would silently skip every catalog sync and receipt push.
   if (!val.loyverse_enabled) return

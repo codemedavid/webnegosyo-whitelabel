@@ -25,7 +25,7 @@ jest.mock('@lalamove/lalamove-js', () => ({
   },
 }))
 
-const tenant = { lalamove_enabled: true, lalamove_api_key: 'key', lalamove_secret_key: 'secret' } as Tenant
+const tenant = { lalamove_enabled: true, lalamove_api_key: 'pk_prod_key', lalamove_secret_key: 'sk_prod_secret', lalamove_sandbox: false } as Tenant
 async function book() {
   const { createLalamoveOrder } = await import('@/lib/lalamove-service')
   return createLalamoveOrder(tenant, 'q1', 'Store', '+639170000000', 'Ana', '+639170000001')
@@ -64,4 +64,14 @@ test.each([undefined, '', 'invalid', '-1'])('does not turn a missing or invalid 
   const { createLalamoveQuotation } = await import('@/lib/lalamove-service')
   await expect(createLalamoveQuotation(tenant, 'Store', { lat: 14.6, lng: 121 }, 'Home', { lat: 14.7, lng: 121.1 }))
     .rejects.toThrow(/price/i)
+})
+
+test('a malformed stored API key is refused before Lalamove is called', async () => {
+  // Lalamove answers a malformed key with a bare 502 the SDK reports as
+  // "Unknown error"; the merchant needs to know the key is what to fix.
+  const badTenant = { ...tenant, lalamove_api_key: 'admin123' } as Tenant
+  const { createLalamoveQuotation } = await import('@/lib/lalamove-service')
+  await expect(createLalamoveQuotation(badTenant, 'Store', { lat: 14.6, lng: 121 }, 'Home', { lat: 14.7, lng: 121.1 }))
+    .rejects.toThrow(/API key/)
+  expect(createQuotation).not.toHaveBeenCalled()
 })

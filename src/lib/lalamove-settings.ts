@@ -12,9 +12,13 @@
  *  - Lalamove refuses anything but bare E.164 and names no number when it
  *    does, so the phone is normalized and checked here, before a customer
  *    has checked out against a store that cannot book a rider.
+ *  - New keys must be Lalamove keys (see `lalamove-keys.ts`), and they decide
+ *    the store's sandbox switch: the merchant cannot see that switch, and
+ *    keys from one environment are refused by the other.
  */
 
 import { isE164Phone, normalizeLalamovePhone } from '@/lib/lalamove-phone'
+import { checkLalamoveKeyPair } from '@/lib/lalamove-keys'
 
 export interface LalamoveSettingsInput {
   apiKey: string
@@ -26,7 +30,8 @@ export interface LalamoveSettingsInput {
 export interface LalamoveSettingsPatch {
   /** `null` when no new keys were entered — leave the stored ones alone. */
   secrets: { lalamove_api_key: string; lalamove_secret_key: string } | null
-  tenant: { lalamove_sender_phone: string | null }
+  /** `lalamove_sandbox` is present only when new keys were entered. */
+  tenant: { lalamove_sender_phone: string | null; lalamove_sandbox?: boolean }
 }
 
 export type LalamoveSettingsResult =
@@ -59,6 +64,11 @@ export function parseLalamoveSettings(
     }
   }
 
+  const keyCheck = hasNewKeys ? checkLalamoveKeyPair({ apiKey, secretKey }) : null
+  if (keyCheck && !keyCheck.ok) {
+    return { ok: false, error: keyCheck.error }
+  }
+
   const typedPhone = input.senderPhone.trim()
   let senderPhone: string | null = null
   if (typedPhone !== '') {
@@ -78,7 +88,9 @@ export function parseLalamoveSettings(
       secrets: hasNewKeys
         ? { lalamove_api_key: apiKey, lalamove_secret_key: secretKey }
         : null,
-      tenant: { lalamove_sender_phone: senderPhone },
+      tenant: keyCheck
+        ? { lalamove_sender_phone: senderPhone, lalamove_sandbox: keyCheck.isSandbox }
+        : { lalamove_sender_phone: senderPhone },
     },
   }
 }

@@ -8,6 +8,7 @@
 
 import type { Tenant } from '@/types/database'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
+import { describeLalamoveCredentialProblem } from '@/lib/lalamove-keys'
 
 // Re-export types from SDK for easier access
 export interface LalamoveCoordinates {
@@ -55,6 +56,17 @@ async function getLalamoveSDK() {
 async function initLalamoveClient(tenant: Tenant) {
   if (!tenant.lalamove_enabled || !tenant.lalamove_api_key || !tenant.lalamove_secret_key) {
     throw new Error('Lalamove is not configured for this tenant')
+  }
+
+  // Lalamove answers a malformed key with a bare 502 the SDK reports as
+  // "Unknown error"; name the key instead, before a request is signed.
+  const credentialProblem = describeLalamoveCredentialProblem({
+    apiKey: tenant.lalamove_api_key,
+    secretKey: tenant.lalamove_secret_key,
+    isSandbox: Boolean(tenant.lalamove_sandbox),
+  })
+  if (credentialProblem) {
+    throw new Error(credentialProblem)
   }
 
   const SDKClient = await getLalamoveSDK()
