@@ -291,6 +291,7 @@ export function OrderTrackingClient({
               logoUrl={brand.logoUrl}
               view={stampView}
               card={stamps?.card ?? null}
+              wallets={stamps?.wallets ?? null}
               onClaimed={refreshStamps}
             />
           )}

@@ -13,6 +13,8 @@ import { formatPhMobileInput, toPhMobileE164 } from '@/lib/phone-display'
 import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
 import { LoyaltyProgressPanel } from '@/components/customer/loyalty-progress-panel'
 import { useLoyaltyProgress } from '@/hooks/use-loyalty-progress'
+import { AddToWalletButtons } from '@/components/customer/add-to-wallet-buttons'
+import type { WalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 
 interface LoyaltyStampCardProps {
   orderId: string
@@ -35,6 +37,8 @@ interface LoyaltyStampCardProps {
   view?: Exclude<StampCardView, 'hidden'>
   /** The saved number's live progress, including before this order earns. */
   card?: OrderStampCard | null
+  /** Which wallet passes can hold this card; null hides the buttons. */
+  wallets?: WalletAvailability | null
   /** Called after a successful claim so the page can re-read the live card. */
   onClaimed?: () => void
 }
@@ -68,6 +72,7 @@ export function LoyaltyStampCard({
   logoUrl = null,
   view = 'claim',
   card = null,
+  wallets = null,
   onClaimed,
 }: LoyaltyStampCardProps) {
   const [phone, setPhone] = useState('')
@@ -128,6 +133,7 @@ export function LoyaltyStampCard({
     return (
       <CardShell>
         <EarnedCardState card={card} storeName={storeName} logoUrl={logoUrl} />
+        <AddToWalletButtons orderId={orderId} tenantId={tenantId} trackingToken={trackingToken} wallets={wallets} />
         {tenantSlug ? <Link href={`/${tenantSlug}/loyalty`} className="block px-5 pb-5 text-sm font-semibold underline" style={{ color: 'var(--trk-accent)' }}>View rewards & use a reward</Link> : null}
       </CardShell>
     )

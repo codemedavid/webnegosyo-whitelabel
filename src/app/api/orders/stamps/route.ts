@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrderStampStatus } from '@/lib/loyalty/order-stamp-service'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+import { readWalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 
 /**
  * GET /api/orders/stamps?orderId=&tenantId=&token=
@@ -27,7 +28,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const result = await getOrderStampStatus({ orderId, tenantId, token })
   if (result.ok) {
-    return NextResponse.json({ success: true, ...result.status }, { headers: { 'Cache-Control': 'no-store' } })
+    // Wallet passes are offered only once there is a card to put in them.
+    const wallets = result.status.card ? readWalletAvailability() : null
+    return NextResponse.json({ success: true, ...result.status, wallets }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
   const status =

@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { OrderStampCard } from '@/lib/loyalty/stamp-status'
 import type { ClaimWindow } from '@/lib/loyalty/claim-window'
+import type { WalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 
 export interface OrderStampsState {
   claim: ClaimWindow
   hasContact: boolean
   card: OrderStampCard | null
+  /** Which wallet passes can be added for this card; null when none. */
+  wallets?: WalletAvailability | null
 }
 
 interface UseOrderStampsInput {
@@ -69,6 +72,7 @@ export function useOrderStamps({
           claim: body.claim as ClaimWindow,
           hasContact: body.hasContact === true,
           card: (body.card ?? null) as OrderStampCard | null,
+          wallets: body.wallets ? { apple: body.wallets.apple === true, google: body.wallets.google === true } : null,
         } })
       } catch {
         if (!cancelled) setResult(previous => ({ key,
