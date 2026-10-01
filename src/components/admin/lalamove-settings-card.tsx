@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { updateLalamoveSettingsAction } from '@/app/actions/staff'
+import { NO_AUTOFILL_INPUT_PROPS } from '@/lib/no-autofill-input'
 
 interface LalamoveSettingsCardProps {
   tenantId: string
@@ -155,7 +156,7 @@ export function LalamoveSettingsCard({
             <Input
               id="lalamove-api-key"
               type="password"
-              autoComplete="off"
+              {...NO_AUTOFILL_INPUT_PROPS}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={hasExistingKeys ? '••••••••••••' : 'pk_...'}
@@ -167,7 +168,7 @@ export function LalamoveSettingsCard({
             <Input
               id="lalamove-secret-key"
               type="password"
-              autoComplete="off"
+              {...NO_AUTOFILL_INPUT_PROPS}
               value={secretKey}
               onChange={(e) => setSecretKey(e.target.value)}
               placeholder={hasExistingKeys ? '••••••••••••' : 'sk_...'}

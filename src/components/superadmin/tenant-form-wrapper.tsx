@@ -36,6 +36,7 @@ import { deployConvexToTenantAction } from '@/app/actions/convex'
 import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/order-backend'
 import { OrderBackendPicker } from '@/components/superadmin/order-backend-picker'
 import { toast } from 'sonner'
+import { NO_AUTOFILL_INPUT_PROPS } from '@/lib/no-autofill-input'
 
 interface PrefillData {
   leadId: string
@@ -1317,6 +1318,7 @@ function LalamoveSection({
                 <Input
                   id="lalamove_api_key"
                   type="password"
+                  {...NO_AUTOFILL_INPUT_PROPS}
                   value={formData.lalamove_api_key}
                   onChange={(e) => setFormData({ ...formData, lalamove_api_key: e.target.value })}
                   placeholder="Enter new API key (blank keeps the existing one)"
@@ -1329,6 +1331,7 @@ function LalamoveSection({
                 <Input
                   id="lalamove_secret_key"
                   type="password"
+                  {...NO_AUTOFILL_INPUT_PROPS}
                   value={formData.lalamove_secret_key}
                   onChange={(e) => setFormData({ ...formData, lalamove_secret_key: e.target.value })}
                   placeholder="Enter new secret key (blank keeps the existing one)"
@@ -1515,6 +1518,7 @@ function LoyverseSection({
                   <Input
                     id="loyverse_access_token"
                     type="password"
+                    {...NO_AUTOFILL_INPUT_PROPS}
                     value={formData.loyverse_access_token}
                     onChange={(e) => setFormData({ ...formData, loyverse_access_token: e.target.value })}
                     placeholder={hasStoredToken ? 'Saved — leave blank to keep the current token' : 'Loyverse personal access token'}
@@ -1892,6 +1896,7 @@ function ConvexMobileAppSection({
           <Input
             id="convex_deploy_key"
             type="password"
+            {...NO_AUTOFILL_INPUT_PROPS}
             value={formData.convex_deploy_key}
             onChange={(e) => setFormData({ ...formData, convex_deploy_key: e.target.value })}
             placeholder={hasStoredDeployKey ? 'Saved — leave blank to keep the current key' : 'prod:your-deployment|key...'}

@@ -119,4 +119,19 @@ describe('LalamoveSettingsCard', () => {
     )
     expect(toast.success).not.toHaveBeenCalled()
   })
+
+  test('tells password managers not to fill the key fields', () => {
+    // Chrome ignores autocomplete="off" on password inputs and fills a saved
+    // login password, which then gets saved as the Lalamove API key.
+    // Arrange / Act
+    renderCard()
+
+    // Assert
+    for (const label of [/^api key/i, /^secret key/i]) {
+      const input = screen.getByLabelText(label)
+      expect(input).toHaveAttribute('autocomplete', 'new-password')
+      expect(input).toHaveAttribute('data-1p-ignore')
+      expect(input).toHaveAttribute('data-lpignore', 'true')
+    }
+  })
 })

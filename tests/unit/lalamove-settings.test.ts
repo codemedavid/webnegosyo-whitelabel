@@ -13,7 +13,7 @@ describe('parseLalamoveSettings', () => {
   test('saves both keys together', () => {
     // Arrange / Act
     const result = parseLalamoveSettings(
-      { ...blank, apiKey: '  pk_live  ', secretKey: ' sk_live ' },
+      { ...blank, apiKey: '  pk_prod_abc  ', secretKey: ' sk_prod_def ' },
       { market: 'PH', hasExistingKeys: false }
     )
 
@@ -21,8 +21,8 @@ describe('parseLalamoveSettings', () => {
     expect(result).toEqual({
       ok: true,
       patch: {
-        secrets: { lalamove_api_key: 'pk_live', lalamove_secret_key: 'sk_live' },
-        tenant: { lalamove_sender_phone: null },
+        secrets: { lalamove_api_key: 'pk_prod_abc', lalamove_secret_key: 'sk_prod_def' },
+        tenant: { lalamove_sender_phone: null, lalamove_sandbox: false },
       },
     })
   })
@@ -48,7 +48,7 @@ describe('parseLalamoveSettings', () => {
   test('refuses a half-entered key pair', () => {
     // Arrange / Act
     const result = parseLalamoveSettings(
-      { ...blank, apiKey: 'pk_live' },
+      { ...blank, apiKey: 'pk_prod_abc' },
       { market: 'PH', hasExistingKeys: true }
     )
 
@@ -76,7 +76,7 @@ describe('parseLalamoveSettings', () => {
   test('stores the pickup phone in the E.164 form Lalamove accepts', () => {
     // Arrange / Act
     const result = parseLalamoveSettings(
-      { ...blank, apiKey: 'pk', secretKey: 'sk', senderPhone: '0917 123 4567' },
+      { ...blank, apiKey: 'pk_prod_abc', secretKey: 'sk_prod_def', senderPhone: '0917 123 4567' },
       { market: 'PH', hasExistingKeys: false }
     )
 
@@ -131,5 +131,48 @@ describe('parseLalamoveSettings', () => {
       ok: true,
       patch: { tenant: { lalamove_sender_phone: '+6581234567' } },
     })
+  })
+
+  test('refuses an autofilled password in the API key field', () => {
+    // A browser filled the saved "admin123" into this password field; Lalamove
+    // then failed every quote with a bare "Unknown error".
+    // Arrange / Act
+    const result = parseLalamoveSettings(
+      { ...blank, apiKey: 'admin123', secretKey: 'sk_prod_def' },
+      { market: 'PH', hasExistingKeys: true }
+    )
+
+    // Assert
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining('API key should start with pk_prod_'),
+    })
+  })
+
+  test('switches the store to sandbox mode when sandbox keys are saved', () => {
+    // The merchant cannot see the sandbox switch, and keys from one
+    // environment are refused by the other — the keys decide.
+    // Arrange / Act
+    const result = parseLalamoveSettings(
+      { ...blank, apiKey: 'pk_test_abc', secretKey: 'sk_test_def' },
+      { market: 'PH', hasExistingKeys: false }
+    )
+
+    // Assert
+    expect(result).toMatchObject({
+      ok: true,
+      patch: { tenant: { lalamove_sandbox: true } },
+    })
+  })
+
+  test('leaves the sandbox switch alone when no new keys are entered', () => {
+    // Arrange / Act
+    const result = parseLalamoveSettings(
+      { ...blank, senderPhone: '09171234567' },
+      { market: 'PH', hasExistingKeys: true }
+    )
+
+    // Assert
+    expect(result.ok && 'lalamove_sandbox' in result.patch.tenant).toBe(false)
   })
 })
