@@ -23,6 +23,7 @@ import { earnLoyaltyForFact } from './apply'
 import { summarizeStampCard, type OrderStampCard } from './stamp-status'
 import { countAvailableLoyaltyRewards, readLoyaltyBalance } from './balance-reads'
 import { selectLiveProgram } from './live-program'
+import type { LoyaltyProgram } from './types'
 
 export interface OrderStampStatus {
   claim: ClaimWindow
@@ -36,7 +37,7 @@ export type OrderStampStatusResult =
   | { ok: true; status: OrderStampStatus }
   | { ok: false; error: 'invalid_token' | 'not_found' | 'unavailable' }
 
-interface OrderStampQuery {
+export interface OrderStampQuery {
   orderId: string
   tenantId: string
   token: string
@@ -70,9 +71,30 @@ async function readOrderEarn(
   return row ? { programId: row.program_id, customerKey: row.customer_key } : null
 }
 
-export async function getOrderStampStatus(
-  query: OrderStampQuery,
-): Promise<OrderStampStatusResult> {
+/** The member an order's receipt speaks for: the programme and ledger identity. */
+export interface OrderLoyaltyMember {
+  programId: string
+  customerKey: string
+  /** Whether this order itself earned on that programme. */
+  earnedOnOrder: boolean
+  /** Every programme the store has run, including paused/ended ones. */
+  programs: LoyaltyProgram[]
+  /** The tenant this member belongs to — always the verified query's tenant. */
+  tenantId: string
+}
+
+type OrderMemberResolution =
+  | { ok: true; base: OrderStampStatus; member: OrderLoyaltyMember | null }
+  | { ok: false; error: 'invalid_token' | 'not_found' | 'unavailable' }
+
+/**
+ * Who the order's receipt belongs to, for loyalty purposes.
+ *
+ * Shared by the stamp card and the wallet pass, so the pass a customer adds
+ * always tracks the same card the receipt shows. Null member when the store is
+ * not live, has no programme to talk about, or the order carries no phone.
+ */
+async function resolveOrderMember(query: OrderStampQuery): Promise<OrderMemberResolution> {
   if (!verifyTrackingToken(query.orderId, query.token)) {
     return { ok: false, error: 'invalid_token' }
   }
@@ -93,7 +115,7 @@ export async function getOrderStampStatus(
       loadActiveLoyaltyPrograms(admin, query.tenantId, { includeInactive: true }),
       loadLoyaltyTenantFlags(admin, query.tenantId),
     ])
-    if (!flags.isEnabled || flags.isShadow) return { ok: true, status: base }
+    if (!flags.isEnabled || flags.isShadow) return { ok: true, base, member: null }
 
     let earn = initialEarn
     const identity = data.loyaltyIdentity
@@ -131,16 +153,45 @@ export async function getOrderStampStatus(
     const programId = earn?.programId ??
       selectLiveProgram(programs, { nowMs: Date.now(), outletId: data.loyaltyIdentity.outletId })?.id
     const customerKey = earn?.customerKey ?? data.loyaltyIdentity.customerKey
-    if (!programId || !customerKey?.startsWith('phone:')) return { ok: true, status: base }
+    if (!programId || !customerKey?.startsWith('phone:')) return { ok: true, base, member: null }
 
+    return {
+      ok: true,
+      base,
+      member: { programId, customerKey, earnedOnOrder: Boolean(earn), programs, tenantId: query.tenantId },
+    }
+  } catch (err) {
+    console.error('[Order Stamps] Error:', err instanceof Error ? err.message : err)
+    return { ok: false, error: 'unavailable' }
+  }
+}
+
+/** The receipt's loyalty member, for surfaces that act on it (the wallet pass). */
+export async function resolveOrderLoyaltyMember(
+  query: OrderStampQuery,
+): Promise<{ ok: true; member: OrderLoyaltyMember | null } | { ok: false; error: 'invalid_token' | 'not_found' | 'unavailable' }> {
+  const resolution = await resolveOrderMember(query)
+  return resolution.ok ? { ok: true, member: resolution.member } : resolution
+}
+
+export async function getOrderStampStatus(
+  query: OrderStampQuery,
+): Promise<OrderStampStatusResult> {
+  const resolution = await resolveOrderMember(query)
+  if (!resolution.ok) return resolution
+  const { base, member } = resolution
+  if (!member) return { ok: true, status: base }
+
+  try {
+    const admin = createAdminClient()
     const [balance, rewardsAvailable] = await Promise.all([
-      readLoyaltyBalance(admin, query.tenantId, programId, customerKey),
-      countAvailableLoyaltyRewards(admin, query.tenantId, programId, customerKey),
+      readLoyaltyBalance(admin, member.tenantId, member.programId, member.customerKey),
+      countAvailableLoyaltyRewards(admin, member.tenantId, member.programId, member.customerKey),
     ])
 
     const card = summarizeStampCard({
-      programs,
-      earnedProgramId: programId,
+      programs: member.programs,
+      earnedProgramId: member.programId,
       balance,
       rewardsAvailable,
     })
@@ -148,7 +199,7 @@ export async function getOrderStampStatus(
       ok: true,
       status: {
         ...base,
-        card: card ? { ...card, earnedOnOrder: Boolean(earn) } : null,
+        card: card ? { ...card, earnedOnOrder: member.earnedOnOrder } : null,
       },
     }
   } catch (err) {

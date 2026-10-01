@@ -6,6 +6,7 @@ import { getTenantBranding } from '@/lib/branding-utils'
 import { buildTrackingTheme } from '@/components/customer/order-tracking/tracking-theme'
 import { describeLoyaltyOffer, type LoyaltyOffer } from '@/lib/loyalty/offer'
 import { readLoyaltyTenantFlags } from '@/lib/loyalty/tenant-flags'
+import { readWalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 import type { Tenant } from '@/types/database'
 import { OrderTrackingClient, type OrderTrackingBrand } from './order-tracking-client'
 import { OrderTrackingFallback } from './order-tracking-fallback'
@@ -75,7 +76,10 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
         tenantId={tenant.id}
         trackingToken={trackingToken}
         initialData={tracking.data}
-        initialStamps={stamps?.ok ? stamps.status : null}
+        initialStamps={stamps?.ok
+          // Same shape as /api/orders/stamps, so the wallet buttons are there on first paint.
+          ? { ...stamps.status, wallets: stamps.status.card ? readWalletAvailability() : null }
+          : null}
         brand={brand}
       />
     )
