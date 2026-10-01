@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   // belong to those projects, not Vercel's web-only install. Keep production
   // typechecking focused on the application; root tsc still checks the tests.
   typescript: { tsconfigPath: "tsconfig.build.json" },
+  // sharp picks its native binary at runtime from `@img/sharp-<platform>`, so
+  // file tracing keeps its JS but drops the `.node` file and libvips — the
+  // wallet pass routes then 500 with "Could not load the sharp module".
+  outputFileTracingIncludes: {
+    "/api/loyalty/passes/**": ["./node_modules/@img/sharp-*/**/*"],
+  },
   images: {
     // Cache optimized images longer to reduce repeated requests
     
