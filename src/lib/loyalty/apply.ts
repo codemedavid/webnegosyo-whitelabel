@@ -35,6 +35,8 @@ export interface LoyaltyLedgerEntryInput {
   externalOrderId: string | null
   threshold: number | null
   rewardTerms: LoyaltyEarnPlan['rewardTerms'] | null
+  /** Mid-card rungs; omitted or empty for a single-reward card. */
+  milestones?: LoyaltyEarnPlan['milestones']
   rewardExpiresAt: string | null
   isShadow: boolean
   actor?: string | null
@@ -165,6 +167,7 @@ export async function earnLoyaltyForFact(
       externalOrderId: fact.externalOrderId,
       threshold: plan.threshold,
       rewardTerms: plan.rewardTerms,
+      milestones: plan.milestones,
       rewardExpiresAt: plan.rewardExpiresAt,
       isShadow: ctx.isShadow,
     })

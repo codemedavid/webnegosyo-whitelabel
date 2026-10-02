@@ -78,7 +78,7 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
         initialData={tracking.data}
         initialStamps={stamps?.ok
           // Same shape as /api/orders/stamps, so the wallet buttons are there on first paint.
-          ? { ...stamps.status, wallets: stamps.status.card ? readWalletAvailability() : null }
+          ? { ...stamps.status, wallets: readWalletAvailability() }
           : null}
         brand={brand}
       />

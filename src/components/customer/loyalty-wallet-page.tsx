@@ -4,7 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { QRCodeSVG } from 'qrcode.react'
 import type { LoyaltyWallet } from '@/lib/loyalty/wallet'
+import Image from 'next/image'
 import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
+import { RewardLadder } from '@/components/customer/order-tracking/reward-ladder'
+import { RewardBurst } from '@/components/customer/order-tracking/reward-burst'
+import { cardSteps } from '@/lib/loyalty/card-progress'
 
 async function post(path: string, body: unknown) {
   const controller = new AbortController()
@@ -373,15 +377,21 @@ function WalletSession({
                     order.
                   </p>
                 ) : null}
-                {wallet.rewards.map((reward) => (
+                {wallet.rewards.map((reward, index) => (
                   <article
                     key={reward.id}
-                    className="space-y-3 rounded-2xl border border-[var(--brand-cards-border,var(--border))] bg-[var(--brand-cards,var(--card))] p-5"
+                    className="relative space-y-3 rounded-2xl border border-[var(--brand-cards-border,var(--border))] bg-[var(--brand-cards,var(--card))] p-5"
                   >
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-text-muted,var(--muted-foreground))]">
-                      {reward.programName}
-                    </p>
-                    <h3 className="text-xl font-semibold">{reward.label}</h3>
+                    {index === 0 && <RewardBurst emoji={reward.emoji} />}
+                    <div className="flex items-center gap-4">
+                      <RewardTile emoji={reward.emoji ?? '🎁'} imageUrl={reward.imageUrl ?? null} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-text-muted,var(--muted-foreground))]">
+                          {reward.programName}
+                        </p>
+                        <h3 className="text-xl font-semibold">{reward.label}</h3>
+                      </div>
+                    </div>
                     <p className="text-sm text-[var(--brand-text-secondary,var(--muted-foreground))]">
                       {reward.branchName
                         ? `At ${reward.branchName}`
@@ -434,7 +444,8 @@ function WalletSession({
                       toward {program.rewardLabel}
                     </p>
                     {program.balance < 0 && <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">Your balance includes an adjustment. New earnings first cover the {Math.abs(program.balance)} {program.earnMode === 'stamp' ? 'stamps' : 'points'} adjustment.</p>}
-                    <StampTrack threshold={program.threshold} filled={Math.max(0, program.balance)} earnMode={program.earnMode} nextIsLive={program.status === 'active'} logoUrl={logoUrl} />
+                    <StampTrack threshold={program.threshold} filled={Math.max(0, program.balance)} earnMode={program.earnMode} nextIsLive={program.status === 'active'} logoUrl={logoUrl} steps={cardSteps(program.rewardSteps, program.threshold, program.rewardLabel)} />
+                    <RewardLadder steps={cardSteps(program.rewardSteps, program.threshold, program.rewardLabel)} balance={program.balance} earnMode={program.earnMode} showHeadline={program.status === 'active'} />
                     <p className="text-xs text-[var(--brand-text-muted,var(--muted-foreground))]">
                       {program.branchName || 'All branches'}
                       {program.minSpend
@@ -457,5 +468,22 @@ function WalletSession({
         </>
       )}
     </main>
+  )
+}
+
+/** A ready reward's face: the menu photo of the free item, or its emoji. */
+function RewardTile({ emoji, imageUrl }: { emoji: string; imageUrl: string | null }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-3xl"
+      style={{ backgroundColor: 'var(--trk-accent-soft)', boxShadow: '0 0 0 3px var(--trk-accent-tint)' }}
+    >
+      {imageUrl ? (
+        <Image src={imageUrl} alt="" width={56} height={56} unoptimized className="h-full w-full object-cover" />
+      ) : (
+        emoji
+      )}
+    </span>
   )
 }

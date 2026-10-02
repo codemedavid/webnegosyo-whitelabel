@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readBody } from '@/lib/loyalty/merchant-http'
-import { validateProgramCatalog } from '@/lib/loyalty/program-catalog'
+import { resolveProgramCatalog } from '@/lib/loyalty/program-catalog'
 import { authorizeLoyaltyMerchant, readTenantId as tenantIdFrom } from '@/lib/loyalty/merchant-auth'
 
 /**
@@ -92,9 +92,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'create': {
         const parsed = manage.parseLoyaltyProgramInput(body.program)
         if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
-        const catalogError = await validateProgramCatalog(admin, tenantId, parsed.value.rules)
-        if (catalogError) return NextResponse.json({ error: catalogError }, { status: 400 })
-        const created = await repo.createLoyaltyProgram(admin, tenantId, parsed.value, caller.userId)
+        const catalog = await resolveProgramCatalog(admin, tenantId, parsed.value.rules)
+        if ('error' in catalog) return NextResponse.json({ error: catalog.error }, { status: 400 })
+        const created = await repo.createLoyaltyProgram(admin, tenantId, { ...parsed.value, rules: catalog.rules }, caller.userId)
         return NextResponse.json({ success: true, ...created })
       }
       case 'revise': {
@@ -106,9 +106,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (body.expectedVersion !== null && (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1)) {
           return NextResponse.json({ error: 'Reload the program before editing.' }, { status: 409 })
         }
-        const catalogError = await validateProgramCatalog(admin, tenantId, rules.value)
-        if (catalogError) return NextResponse.json({ error: catalogError }, { status: 400 })
-        const revised = await repo.reviseLoyaltyProgram(admin, tenantId, programId, rules.value, caller.userId, body.expectedVersion as number | null)
+        const catalog = await resolveProgramCatalog(admin, tenantId, rules.value)
+        if ('error' in catalog) return NextResponse.json({ error: catalog.error }, { status: 400 })
+        const revised = await repo.reviseLoyaltyProgram(admin, tenantId, programId, catalog.rules, caller.userId, body.expectedVersion as number | null)
         return NextResponse.json({ success: true, ...revised })
       }
       case 'set_status': {

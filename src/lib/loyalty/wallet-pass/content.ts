@@ -11,7 +11,9 @@
  */
 
 import { createHash } from 'node:crypto'
+import { rewardSteps } from '../ladder'
 import { describeLoyaltyReward } from '../offer'
+import { nextRewardStep } from '../ladder'
 import type { LoyaltyEarnMode, LoyaltyProgram } from '../types'
 import { encodeMemberCode } from './member-code'
 
@@ -20,6 +22,8 @@ const LIGHT_TEXT = '#FFFFFF'
 const DARK_TEXT = '#111111'
 /** WCAG AA for large text — card values are large and bold. */
 const MIN_CONTRAST = 3
+/** Above this many slots a stamp grid stops reading (same limit as the tracking page). */
+export const MAX_STAMP_GRID_SLOTS = 12
 
 export type WalletProgramStatus = 'active' | 'paused' | 'ended'
 
@@ -36,6 +40,13 @@ export interface WalletPassContentInput {
   /** Expiry of each reward the member holds (null = never expires). */
   rewardExpiries: ReadonlyArray<string | null>
   nowMs: number
+}
+
+/** The punch grid drawn on the pass; slot numbers are 1-based. */
+export interface WalletStampCard {
+  filled: number
+  total: number
+  rewardSlots: number[]
 }
 
 export interface WalletPassContent {
@@ -55,6 +66,10 @@ export interface WalletPassContent {
   rewardsAvailable: number
   nextRewardExpiresAt: string | null
   headline: { label: string; value: string }
+  /** "Collect 10 stamps, get ₱200 off". */
+  offerText: string
+  /** Null for points programmes and cards too long to draw as a grid. */
+  stampCard: WalletStampCard | null
   programStatus: WalletProgramStatus
   statusNote: string | null
 }
@@ -66,7 +81,8 @@ function normalizeHex(value: string): string | null {
   return `#${hex.toUpperCase()}`
 }
 
-function luminance(hex: string): number {
+/** WCAG relative luminance of a #RRGGBB colour. */
+export function luminance(hex: string): number {
   const channel = (offset: number) => {
     const value = parseInt(hex.slice(offset, offset + 2), 16) / 255
     return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
@@ -128,18 +144,37 @@ function liveRewardExpiries(expiries: ReadonlyArray<string | null>, nowMs: numbe
     .sort((a, b) => (a ?? Infinity) - (b ?? Infinity))
 }
 
+/** A ladder's ready rewards differ, so they are counted rather than named. */
+function readyValue(count: number, rewardLabel: string, hasLadder: boolean): string {
+  if (hasLadder) return count === 1 ? '1 reward' : `${count} rewards`
+  return count === 1 ? rewardLabel : `${count} × ${rewardLabel}`
+}
+
+function stampCardFor(rules: LoyaltyProgram['version']['rules'], balance: number): WalletStampCard | null {
+  if (rules.earnMode !== 'stamp' || rules.threshold > MAX_STAMP_GRID_SLOTS) return null
+  return {
+    filled: Math.min(Math.floor(balance), rules.threshold),
+    total: rules.threshold,
+    rewardSlots: rewardSteps(rules).map((step) => step.at),
+  }
+}
+
 export function buildWalletPassContent(input: WalletPassContentInput): WalletPassContent {
   const { rules } = input.program.version
   const balance = Number.isFinite(input.balance) ? Math.max(Number(input.balance), 0) : 0
-  const remaining = Math.max(rules.threshold - balance, 0)
   const rewardLabel = describeLoyaltyReward(rules.reward)
+  // On a reward ladder the card talks about the NEXT rung, not the top one.
+  const hasLadder = (rules.milestones?.length ?? 0) > 0
+  const next = nextRewardStep(rules, balance)
+  const remaining = next ? next.remaining : Math.max(rules.threshold - balance, 0)
+  const nextLabel = next?.step.label ?? rewardLabel
   const rewards = liveRewardExpiries(input.rewardExpiries, input.nowMs)
   const nextExpiry = rewards[0] ?? null
   const programStatus = resolveStatus(input.program, input.nowMs)
 
   const headline = rewards.length > 0
-    ? { label: 'REWARDS READY', value: rewards.length === 1 ? rewardLabel : `${rewards.length} × ${rewardLabel}` }
-    : { label: 'NEXT REWARD', value: rewardLabel }
+    ? { label: 'REWARDS READY', value: readyValue(rewards.length, rewardLabel, hasLadder) }
+    : { label: 'NEXT REWARD', value: nextLabel }
 
   return {
     serial: input.serial,
@@ -160,6 +195,8 @@ export function buildWalletPassContent(input: WalletPassContentInput): WalletPas
     rewardsAvailable: rewards.length,
     nextRewardExpiresAt: nextExpiry === null ? null : new Date(nextExpiry).toISOString(),
     headline,
+    offerText: `Collect ${formatAmount(rules.threshold)} ${unitWord(rules.earnMode, rules.threshold)}, get ${rewardLabel}`,
+    stampCard: stampCardFor(rules, balance),
     programStatus,
     statusNote: statusNoteFor(programStatus, rules.earnMode),
   }

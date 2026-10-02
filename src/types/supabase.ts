@@ -1204,6 +1204,7 @@ export type Database = {
       }
       loyalty_balances: {
         Row: {
+          cycle: number
           balance: number
           created_at: string
           customer_id: string | null
@@ -1216,6 +1217,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cycle?: number
           balance?: number
           created_at?: string
           customer_id?: string | null
@@ -1228,6 +1230,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cycle?: number
           balance?: number
           created_at?: string
           customer_id?: string | null
@@ -1265,6 +1268,8 @@ export type Database = {
       }
       loyalty_entitlements: {
         Row: {
+          cycle: number | null
+          milestone_at: number | null
           consumed_at: string | null
           consumed_order_backend: string | null
           consumed_order_id: string | null
@@ -1283,6 +1288,8 @@ export type Database = {
           version_id: string | null
         }
         Insert: {
+          cycle?: number | null
+          milestone_at?: number | null
           consumed_at?: string | null
           consumed_order_backend?: string | null
           consumed_order_id?: string | null
@@ -1301,6 +1308,8 @@ export type Database = {
           version_id?: string | null
         }
         Update: {
+          cycle?: number | null
+          milestone_at?: number | null
           consumed_at?: string | null
           consumed_order_backend?: string | null
           consumed_order_id?: string | null
@@ -6713,9 +6722,11 @@ export type Database = {
           p_delta: number
           p_external_order_id: string
           p_kind: string
+          p_milestones?: Json
           p_note?: string
           p_order_backend: string
           p_program_id: string
+          p_request_id?: string
           p_reward_expires_at: string
           p_reward_terms: Json
           p_shadow: boolean

@@ -2,7 +2,7 @@ import { resolveTenantFavicon } from '@/lib/tenant-favicon'
 
 // The favicon helper turns a tenant's logo into `icons` metadata so the
 // browser-tab favicon becomes the merchant's own logo. When there is no logo,
-// it must return undefined so Next.js falls back to the platform favicon.ico.
+// it must return undefined so the root layout's platform favicon.ico applies.
 
 describe('resolveTenantFavicon', () => {
   const IMAGEKIT_LOGO = 'https://ik.imagekit.io/webnegosyo/logos/acme.png'

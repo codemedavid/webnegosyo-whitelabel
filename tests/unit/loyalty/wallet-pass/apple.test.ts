@@ -83,6 +83,32 @@ describe('buildApplePassJson', () => {
     expect(expiry?.dateStyle).toBe('PKDateStyleMedium')
   })
 
+  test('a stamp card leaves the strip to the stamp grid and states the offer under it', () => {
+    const earning = buildApplePassJson({
+      ...content,
+      rewardsAvailable: 0,
+      nextRewardExpiresAt: null,
+      headline: { label: 'NEXT REWARD', value: '₱100 off' },
+    }, OPTIONS)
+    expect(earning.storeCard.primaryFields).toEqual([])
+    expect(earning.storeCard.secondaryFields).toEqual([
+      expect.objectContaining({ key: 'headline', label: 'OFFER', value: 'Collect 10 stamps, get ₱100 off' }),
+    ])
+    expect(earning.storeCard.auxiliaryFields).toEqual([])
+  })
+
+  test('a ready reward replaces the offer line', () => {
+    expect(pass.storeCard.primaryFields).toEqual([])
+    expect(pass.storeCard.secondaryFields).toEqual([
+      expect.objectContaining({ key: 'headline', label: 'REWARD READY', value: '₱100 off' }),
+    ])
+  })
+
+  test('a points card keeps the big headline because it has no stamp grid', () => {
+    const points = buildApplePassJson({ ...content, stampCard: null }, OPTIONS)
+    expect(points.storeCard.primaryFields).toEqual([expect.objectContaining({ key: 'headline', label: 'REWARDS READY' })])
+  })
+
   test('never embeds a phone number', () => {
     expect(JSON.stringify(pass)).not.toMatch(/\+639|phone:/)
   })

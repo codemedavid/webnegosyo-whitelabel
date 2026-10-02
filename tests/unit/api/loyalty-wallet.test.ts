@@ -26,3 +26,17 @@ it('does not expose storage failures', async () => {
  expect(response.status).toBe(503)
  expect(JSON.stringify(await response.json())).not.toContain('private database')
 })
+it('projects the reward ladder and reward icons with explicit fields only', async () => {
+ rpc.mockResolvedValue({data:{ok:true,programs:[{id:'p1',name:'Coffee Club',status:'active',branchName:null,balance:4,secret:'x',rules:{
+   earnMode:'stamp',threshold:10,
+   reward:{type:'free_item',menuItemId:'meal',itemName:'Meal',imageUrl:'https://img/meal.jpg'},
+   milestones:[{at:5,reward:{type:'free_item',menuItemId:'tea',itemName:'Iced Tea',emoji:'🥤'}}],
+ }}],rewards:[{id:'r1',expiresAt:null,branchName:null,terms:{programName:'Coffee Club',reward:{type:'free_item',menuItemId:'tea',itemName:'Iced Tea',emoji:'🥤'}}}]},error:null})
+ const body = await (await POST(request())).json()
+ expect(body.programs[0].rewardSteps).toEqual([
+   {at:5,label:'Free Iced Tea',emoji:'🥤',imageUrl:null,isFinal:false},
+   {at:10,label:'Free Meal',emoji:'🎁',imageUrl:'https://img/meal.jpg',isFinal:true},
+ ])
+ expect(body.programs[0]).not.toHaveProperty('secret')
+ expect(body.rewards[0]).toMatchObject({label:'Free Iced Tea',emoji:'🥤',imageUrl:null,freeItem:true})
+})

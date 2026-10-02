@@ -44,8 +44,8 @@ it('returns the live offer and the number\'s own progress', async () => {
   expect(await getPhoneLoyaltyProgress(query)).toEqual({
     ok: true,
     progress: {
-      offer: { programName: 'Coffee Club', earnMode: 'stamp', threshold: 8, rewardLabel: '₱100 off', minSpend: null },
-      card: { earnedOnOrder: false, programName: 'Coffee Club', earnMode: 'stamp', balance: 5, threshold: 8, rewardsAvailable: 1, rewardLabel: '₱100 off' },
+      offer: { programName: 'Coffee Club', earnMode: 'stamp', threshold: 8, rewardLabel: '₱100 off', minSpend: null, rewardSteps: [{ at: 8, label: '₱100 off', emoji: '💸', imageUrl: null, isFinal: true }] },
+      card: { earnedOnOrder: false, programName: 'Coffee Club', earnMode: 'stamp', balance: 5, threshold: 8, rewardsAvailable: 1, rewardLabel: '₱100 off', rewardSteps: [{ at: 8, label: '₱100 off', emoji: '💸', imageUrl: null, isFinal: true }] },
     },
   })
 })

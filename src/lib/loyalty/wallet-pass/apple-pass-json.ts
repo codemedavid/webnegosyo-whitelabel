@@ -68,12 +68,14 @@ export function hexToAppleRgb(hex: string): string {
 function backFields(content: WalletPassContent): ApplePassField[] {
   const unit = content.earnMode === 'stamp' ? 'a stamp' : 'points'
   const fields: ApplePassField[] = [
+    { key: 'progress', label: 'Progress', value: `${content.balanceText} — ${content.remainingText}` },
     {
       key: 'how',
       label: 'How it works',
       value: `Show this card at the counter, or order online with the same phone number, to collect ${unit}. Reach the goal and you get: ${content.rewardLabel}.`,
     },
   ]
+  fields.push({ key: 'programme_name', label: 'Programme', value: content.programName })
   if (content.statusNote) fields.push({ key: 'status', label: 'Programme status', value: content.statusNote })
   if (content.storeUrl) {
     fields.push({
@@ -87,18 +89,59 @@ function backFields(content: WalletPassContent): ApplePassField[] {
   return fields
 }
 
+function expiryField(content: WalletPassContent): ApplePassField[] {
+  if (!content.nextRewardExpiresAt) return []
+  return [{
+    key: 'expires',
+    label: 'REWARD EXPIRES',
+    value: content.nextRewardExpiresAt,
+    dateStyle: 'PKDateStyleMedium',
+    textAlignment: 'PKTextAlignmentRight',
+  }]
+}
+
+function headlineChangeMessage(content: WalletPassContent): string {
+  return content.rewardsAvailable > 0 ? 'Reward ready: %@' : 'Next reward: %@'
+}
+
+/**
+ * A stamp card: the strip image is the punch grid, so nothing is drawn over
+ * it. One line under the grid says what the stamps are for — or, once a
+ * reward is waiting, what is ready.
+ */
+function stampCardFields(content: WalletPassContent): Pick<ApplePassJson['storeCard'], 'primaryFields' | 'secondaryFields' | 'auxiliaryFields'> {
+  const isReady = content.rewardsAvailable > 0
+  return {
+    primaryFields: [],
+    secondaryFields: [{
+      key: 'headline',
+      label: isReady ? 'REWARD READY' : 'OFFER',
+      value: isReady ? content.headline.value : content.offerText,
+      changeMessage: isReady ? headlineChangeMessage(content) : '%@',
+    }],
+    auxiliaryFields: expiryField(content),
+  }
+}
+
+/** Points (or a card too long for a grid): the next reward is the big line. */
+function headlineFields(content: WalletPassContent): Pick<ApplePassJson['storeCard'], 'primaryFields' | 'secondaryFields' | 'auxiliaryFields'> {
+  return {
+    primaryFields: [{
+      key: 'headline',
+      label: content.headline.label,
+      value: content.headline.value,
+      changeMessage: headlineChangeMessage(content),
+    }],
+    secondaryFields: [
+      { key: 'remaining', label: 'TO GO', value: content.remainingText },
+      { key: 'rewards', label: 'REWARDS', value: content.rewardsAvailable, textAlignment: 'PKTextAlignmentRight' },
+    ],
+    auxiliaryFields: [{ key: 'programme', label: 'PROGRAMME', value: content.programName }, ...expiryField(content)],
+  }
+}
+
 export function buildApplePassJson(content: WalletPassContent, options: ApplePassOptions): ApplePassJson {
   const unit = content.balanceLabel.toLowerCase()
-  const auxiliaryFields: ApplePassField[] = [{ key: 'programme', label: 'PROGRAMME', value: content.programName }]
-  if (content.nextRewardExpiresAt) {
-    auxiliaryFields.push({
-      key: 'expires',
-      label: 'REWARD EXPIRES',
-      value: content.nextRewardExpiresAt,
-      dateStyle: 'PKDateStyleMedium',
-      textAlignment: 'PKTextAlignmentRight',
-    })
-  }
 
   return {
     formatVersion: 1,
@@ -129,17 +172,7 @@ export function buildApplePassJson(content: WalletPassContent, options: ApplePas
         changeMessage: `You now have %@ ${unit}`,
         textAlignment: 'PKTextAlignmentRight',
       }],
-      primaryFields: [{
-        key: 'headline',
-        label: content.headline.label,
-        value: content.headline.value,
-        changeMessage: content.rewardsAvailable > 0 ? 'Reward ready: %@' : 'Next reward: %@',
-      }],
-      secondaryFields: [
-        { key: 'remaining', label: 'TO GO', value: content.remainingText },
-        { key: 'rewards', label: 'REWARDS', value: content.rewardsAvailable, textAlignment: 'PKTextAlignmentRight' },
-      ],
-      auxiliaryFields,
+      ...(content.stampCard ? stampCardFields(content) : headlineFields(content)),
       backFields: backFields(content),
     },
   }

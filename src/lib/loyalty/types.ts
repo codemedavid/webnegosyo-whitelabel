@@ -14,11 +14,33 @@ export type LoyaltyProgramScope = 'business' | 'branch'
 
 export type LoyaltyProgramStatus = 'draft' | 'active' | 'paused' | 'ended'
 
+/**
+ * How a reward is drawn on the card. Cosmetic only — redemption never reads
+ * it — so an old reward without one simply falls back to a type emoji.
+ */
+interface LoyaltyRewardLook {
+  emoji?: string | null
+}
+
 export type LoyaltyReward =
-  | { type: 'fixed'; amount: number }
-  | { type: 'percent'; percent: number; maxAmount?: number | null }
-  /** Waives ONE base unit of the item. Upgrades and add-ons stay payable. */
-  | { type: 'free_item'; menuItemId: string; itemName: string }
+  | ({ type: 'fixed'; amount: number } & LoyaltyRewardLook)
+  | ({ type: 'percent'; percent: number; maxAmount?: number | null } & LoyaltyRewardLook)
+  /**
+   * Waives ONE base unit of the item. Upgrades and add-ons stay payable.
+   * `imageUrl` is the menu photo, snapshotted from the catalog at save time.
+   */
+  | ({ type: 'free_item'; menuItemId: string; itemName: string; imageUrl?: string | null } & LoyaltyRewardLook)
+
+/**
+ * A reward unlocked part-way along the card. Reaching it issues the reward
+ * and spends nothing: the card keeps filling toward `threshold`, which is the
+ * only rung that resets it.
+ */
+export interface LoyaltyMilestone {
+  /** Stamps or points into the card, strictly between 0 and `threshold`. */
+  at: number
+  reward: LoyaltyReward
+}
 
 /** The rules a version stores. Validated by `parseLoyaltyRules`. */
 export interface LoyaltyRules {
@@ -29,7 +51,10 @@ export interface LoyaltyRules {
   pointsPerPeso: number | null
   /** Net merchandise subtotal the order must reach to earn at all. */
   minSpend: number | null
+  /** The top rung: reaching `threshold` issues this and starts a new card. */
   reward: LoyaltyReward
+  /** Rewards on the way to the top rung, sorted by `at`. Absent = none. */
+  milestones?: LoyaltyMilestone[]
   /** Days an issued reward stays claimable; null = never expires. */
   rewardExpiryDays: number | null
   /** True (default): the reward will not share a sale with a voucher. */
@@ -67,6 +92,8 @@ export interface LoyaltyEntitlementTerms {
   versionNumber: number
   reward: LoyaltyReward
   isExclusive: boolean
+  /** The rung that issued it; absent for the top (card-resetting) reward. */
+  milestoneAt?: number
 }
 
 export type LoyaltyQualificationReason =
@@ -89,5 +116,12 @@ export interface LoyaltyEarnPlan {
   delta: number
   threshold: number
   rewardTerms: LoyaltyEntitlementTerms
+  /** Mid-card rungs, each with its own frozen terms. Empty for a single-reward card. */
+  milestones: LoyaltyMilestonePlan[]
   rewardExpiresAt: string | null
+}
+
+export interface LoyaltyMilestonePlan {
+  at: number
+  terms: LoyaltyEntitlementTerms
 }

@@ -8,6 +8,7 @@ import { loadLoyaltyClaimCrypto } from '@/lib/loyalty/server-keys'
 import { readBody, respond } from '@/lib/loyalty/merchant-http'
 import { parseLoyaltyRules } from '@/lib/loyalty/rules'
 import { describeLoyaltyReward } from '@/lib/loyalty/offer'
+import { rewardEmoji, rewardSteps } from '@/lib/loyalty/ladder'
 
 const schema = z
   .object({
@@ -59,6 +60,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         balance: Number(row.balance),
         rewardLabel: describeLoyaltyReward(rules.value.reward),
         minSpend: rules.value.minSpend,
+        rewardSteps: rewardSteps(rules.value).map((step) => ({
+          at: step.at,
+          label: step.label,
+          emoji: step.emoji,
+          imageUrl: step.imageUrl,
+          isFinal: step.isFinal,
+        })),
       }
     })
     const rewards = (data.rewards as Record<string, unknown>[]).map((row) => {
@@ -76,6 +84,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         expiresAt: row.expiresAt,
         branchName: row.branchName,
         freeItem: rules.value.reward.type === 'free_item',
+        emoji: rewardEmoji(rules.value.reward),
+        imageUrl: rules.value.reward.type === 'free_item' ? rules.value.reward.imageUrl ?? null : null,
       }
     })
     const claimsAvailable =

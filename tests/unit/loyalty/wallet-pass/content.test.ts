@@ -124,6 +124,33 @@ describe('buildWalletPassContent', () => {
     expect(buildWalletPassContent(input({ logoUrl: 'javascript:alert(1)' })).logoUrl).toBeNull()
   })
 
+  test('a stamp programme carries the stamp grid the pass strip draws', () => {
+    const content = buildWalletPassContent(input())
+    expect(content.stampCard).toEqual({ filled: 7, total: 10, rewardSlots: [10] })
+    expect(content.offerText).toBe('Collect 10 stamps, get Free Iced Latte')
+  })
+
+  test('milestone rewards are marked on their own slots', () => {
+    const content = buildWalletPassContent(input({
+      program: program({}, { milestones: [{ at: 5, reward: { type: 'fixed', amount: 50 } }] }),
+    }))
+    expect(content.stampCard?.rewardSlots).toEqual([5, 10])
+  })
+
+  test('a stamp grid never shows more stamps than the card holds', () => {
+    expect(buildWalletPassContent(input({ balance: 14 })).stampCard?.filled).toBe(10)
+    expect(buildWalletPassContent(input({ balance: -2 })).stampCard?.filled).toBe(0)
+  })
+
+  test('points programmes and very long stamp cards get no stamp grid', () => {
+    const points = buildWalletPassContent(input({
+      program: program({}, { earnMode: 'points', threshold: 500, pointsPerPeso: 1 }),
+    }))
+    expect(points.stampCard).toBeNull()
+    expect(points.offerText).toBe('Collect 500 points, get Free Iced Latte')
+    expect(buildWalletPassContent(input({ program: program({}, { threshold: 20 }) })).stampCard).toBeNull()
+  })
+
   test('carries the member code, never a phone number', () => {
     const content = buildWalletPassContent(input())
     expect(content.memberCode).toBe(`WNLC1.${'A'.repeat(24)}`)
@@ -140,5 +167,26 @@ describe('hashWalletPassContent', () => {
   test('changes when the balance moves', () => {
     expect(hashWalletPassContent(buildWalletPassContent(input({ balance: 7 }))))
       .not.toBe(hashWalletPassContent(buildWalletPassContent(input({ balance: 8 }))))
+  })
+})
+
+describe('buildWalletPassContent — reward ladder', () => {
+  const ladder = program({}, { milestones: [{ at: 5, reward: { type: 'free_item', menuItemId: 'tea', itemName: 'Iced Tea', emoji: '🥤' } }] })
+
+  test('points the card at the next rung, not the top reward', () => {
+    const content = buildWalletPassContent(input({ program: ladder, balance: 3 }))
+    expect(content.headline).toEqual({ label: 'NEXT REWARD', value: 'Free Iced Tea' })
+    expect(content.remainingText).toBe('2 more stamps')
+  })
+
+  test('moves on to the top reward once the middle rung is passed', () => {
+    const content = buildWalletPassContent(input({ program: ladder, balance: 7 }))
+    expect(content.headline.value).toBe('Free Iced Latte')
+    expect(content.remainingText).toBe('3 more stamps')
+  })
+
+  test('counts ready rewards rather than naming one', () => {
+    const content = buildWalletPassContent(input({ program: ladder, balance: 2, rewardExpiries: [null, null] }))
+    expect(content.headline).toEqual({ label: 'REWARDS READY', value: '2 rewards' })
   })
 })

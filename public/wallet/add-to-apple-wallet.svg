@@ -1,0 +1,11 @@
+<svg width="144" height="44" viewBox="0 0 144 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+<title>Add to Apple Wallet</title>
+<rect x="0.5" y="0.5" width="143" height="43" rx="8" fill="#000" stroke="#A6A6A6"/>
+<rect x="11" y="11" width="24" height="7" rx="1.6" fill="#1BA1E2"/>
+<rect x="11" y="13.6" width="24" height="7" rx="1.6" fill="#FFB400"/>
+<rect x="11" y="16.2" width="24" height="7" rx="1.6" fill="#34C759"/>
+<rect x="11" y="18.8" width="24" height="7" rx="1.6" fill="#FF3B30"/>
+<path d="M11 22H17.6C19 22 19.7 24.6 23 24.6C26.3 24.6 27 22 28.4 22H35V31.4C35 32.3 34.3 33 33.4 33H12.6C11.7 33 11 32.3 11 31.4V22Z" fill="#D9D9DE"/>
+<text x="43" y="19" fill="#fff" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="500">Add to</text>
+<text x="43" y="33" fill="#fff" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif" font-size="15.5" font-weight="600" letter-spacing="-0.2">Apple Wallet</text>
+</svg>

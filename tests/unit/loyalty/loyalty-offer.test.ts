@@ -74,6 +74,7 @@ describe('describeLoyaltyOffer', () => {
       threshold: 8,
       rewardLabel: 'Free Iced Latte',
       minSpend: null,
+      rewardSteps: [{ at: 8, label: 'Free Iced Latte', emoji: '🎁', imageUrl: null, isFinal: true }],
     })
   })
 

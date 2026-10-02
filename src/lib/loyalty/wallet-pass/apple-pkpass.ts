@@ -27,7 +27,7 @@ export async function buildSignedPkpass(
     webServiceURL: config.webServiceURL,
     authenticationToken: deriveAppleAuthToken(config.authSecret, content.serial),
   })
-  const images = await loadPassImages(content.logoUrl, fallbackLogoUrl)
+  const images = await loadPassImages(content, fallbackLogoUrl)
 
   const pass = new PKPass(
     { 'pass.json': Buffer.from(JSON.stringify(passJson)), ...images },

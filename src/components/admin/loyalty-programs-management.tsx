@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { LoyaltySyncStatus } from './loyalty-sync-status'
 import { createClient } from '@/lib/supabase/client'
 import { parseLoyaltyProgramInput } from '@/lib/loyalty/manage'
-import { describeLoyaltyReward } from '@/lib/loyalty/offer'
+import { rewardSteps } from '@/lib/loyalty/ladder'
 import type { LoyaltyProgramSummary } from '@/lib/loyalty/repository'
 import type { LoyaltyRules } from '@/lib/loyalty/types'
 const initialRules: LoyaltyRules = {
@@ -16,6 +16,18 @@ const initialRules: LoyaltyRules = {
   rewardExpiryDays: null,
   isExclusive: true,
 }
+/**
+ * Swapping the top reward keeps the icon the merchant picked in the app. The
+ * menu photo is NOT carried: the server re-reads it from the catalog for the
+ * item actually chosen.
+ */
+function keepRewardLook(
+  previous: LoyaltyRules['reward'],
+  next: LoyaltyRules['reward'],
+): LoyaltyRules['reward'] {
+  return previous.emoji ? { ...next, emoji: previous.emoji } : next
+}
+
 const control =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 disabled:opacity-60'
 const button =
@@ -237,6 +249,17 @@ export function LoyaltyProgramsManagement({
               original terms.
             </p>
           ) : null}
+          {rules.milestones?.length ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="ladder-note">
+              This card also gives{' '}
+              {rewardSteps(rules)
+                .filter((step) => !step.isFinal)
+                .map((step) => `${step.emoji} ${step.label} at ${step.at}`)
+                .join(' · ')}{' '}
+              along the way. They are kept when you save — edit the reward
+              ladder in the merchant app.
+            </p>
+          ) : null}
           <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1 text-sm">
               Program name
@@ -360,12 +383,14 @@ export function LoyaltyProgramsManagement({
                 onChange={(e) =>
                   setRules({
                     ...rules,
-                    reward:
+                    reward: keepRewardLook(
+                      rules.reward,
                       e.target.value === 'free_item'
                         ? { type: 'free_item', menuItemId: '', itemName: '' }
                         : e.target.value === 'percent'
                           ? { type: 'percent', percent: 10, maxAmount: null }
                           : { type: 'fixed', amount: 50 },
+                    ),
                   })
                 }
               >
@@ -387,7 +412,7 @@ export function LoyaltyProgramsManagement({
                   onChange={(e) =>
                     setRules({
                       ...rules,
-                      reward: { type: 'fixed', amount: Number(e.target.value) },
+                      reward: keepRewardLook(rules.reward, { type: 'fixed', amount: Number(e.target.value) }),
                     })
                   }
                 />
@@ -455,14 +480,14 @@ export function LoyaltyProgramsManagement({
                   onChange={(e) =>
                     setRules({
                       ...rules,
-                      reward: {
+                      reward: keepRewardLook(rules.reward, {
                         type: 'free_item',
                         menuItemId: e.target.value,
                         itemName:
                           choices.items.find(
                             (item) => item.id === e.target.value,
                           )?.name ?? '',
-                      },
+                      }),
                     })
                   }
                 >
@@ -555,11 +580,29 @@ export function LoyaltyProgramsManagement({
                 {program.status}
               </span>
             </div>
-            <p>
-              {program.rules
-                ? `${program.rules.threshold} ${program.earnMode === 'stamp' ? 'stamps' : 'points'} → ${describeLoyaltyReward(program.rules.reward)}`
-                : 'Reward rules are missing. Edit this program to set them.'}
-            </p>
+            {program.rules ? (
+              <ol className="space-y-1.5" aria-label="Rewards on this card" data-testid="program-ladder">
+                {rewardSteps(program.rules).map((step) => (
+                  <li key={step.at} className="flex items-center gap-2 text-sm">
+                    <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-base">
+                      {step.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- tiny catalog thumbnail
+                        <img src={step.imageUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        step.emoji
+                      )}
+                    </span>
+                    <span className="font-medium">{step.label}</span>
+                    <span className="text-gray-500">
+                      at {step.at} {program.earnMode === 'stamp' ? 'stamps' : 'points'}
+                      {step.isFinal ? ' · new card' : ''}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>Reward rules are missing. Edit this program to set them.</p>
+            )}
             <p className="text-sm text-gray-500">
               {program.members} members · {program.rewardsOutstanding} rewards
               unclaimed · Rules v{program.versionNumber ?? '—'}

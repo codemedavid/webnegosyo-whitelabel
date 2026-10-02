@@ -8,6 +8,12 @@ export interface VisibilityPollOptions {
   baseMs: number
   /** False stops the poll entirely (e.g. the order reached a final state). */
   isEnabled: boolean
+  /**
+   * Keep polling while the page is hidden. Only for a poll the customer asked
+   * to be alerted by (the tracking page's ready alarm) — the browser still
+   * throttles hidden timers, but a switched-away customer is still rung.
+   */
+  isPollingWhileHidden?: boolean
   /** Fixed jitter seed for tests; defaults to one random value per mount. */
   jitterSeed?: number
 }
@@ -15,7 +21,7 @@ export interface VisibilityPollOptions {
 /**
  * Run `poll` on an interval while the page is visible.
  *
- * - Hidden tab: no timer at all. A backgrounded tab or a locked phone used to
+ * - Hidden tab: no timer at all (unless `isPollingWhileHidden`). A backgrounded tab or a locked phone used to
  *   keep polling at full rate for as long as the page stayed open.
  * - Shown again: polls immediately (the data may be minutes old), then resumes.
  * - `poll` resolves `true` on success; `false` or a throw counts as a failure
@@ -25,7 +31,7 @@ export interface VisibilityPollOptions {
  * never overlap the next request.
  */
 export function useVisibilityPoll(poll: () => Promise<boolean>, options: VisibilityPollOptions): void {
-  const { baseMs, isEnabled } = options
+  const { baseMs, isEnabled, isPollingWhileHidden = false } = options
   const pollRef = useRef(poll)
   const jitterSeedRef = useRef(options.jitterSeed ?? Math.random())
 
@@ -48,7 +54,7 @@ export function useVisibilityPoll(poll: () => Promise<boolean>, options: Visibil
 
     const schedule = () => {
       clear()
-      if (isDisposed || document.hidden) return
+      if (isDisposed || (document.hidden && !isPollingWhileHidden)) return
       const delay = computePollDelayMs({ baseMs, consecutiveFailures, jitterSeed: jitterSeedRef.current })
       timer = setTimeout(run, delay)
     }
@@ -70,8 +76,11 @@ export function useVisibilityPoll(poll: () => Promise<boolean>, options: Visibil
     }
 
     const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (!isPollingWhileHidden) clear()
+        return
+      }
       clear()
-      if (document.hidden) return
       void run()
     }
 
@@ -83,5 +92,5 @@ export function useVisibilityPoll(poll: () => Promise<boolean>, options: Visibil
       clear()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [baseMs, isEnabled])
+  }, [baseMs, isEnabled, isPollingWhileHidden])
 }

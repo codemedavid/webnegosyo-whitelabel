@@ -28,8 +28,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const result = await getOrderStampStatus({ orderId, tenantId, token })
   if (result.ok) {
-    // Wallet passes are offered only once there is a card to put in them.
-    const wallets = result.status.card ? readWalletAvailability() : null
+    // Which wallets are configured. The card shows the "Add to …" badges only
+    // once there is a card to put in them; before that it only names them.
+    const wallets = readWalletAvailability()
     return NextResponse.json({ success: true, ...result.status, wallets }, { headers: { 'Cache-Control': 'no-store' } })
   }
 

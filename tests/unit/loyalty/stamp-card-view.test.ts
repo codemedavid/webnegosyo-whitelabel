@@ -93,6 +93,7 @@ describe('summarizeStampCard', () => {
       threshold: 8,
       rewardsAvailable: 1,
       rewardLabel: '₱100 off',
+      rewardSteps: [{ at: 8, label: '₱100 off', emoji: '💸', imageUrl: null, isFinal: true }],
     })
   })
 

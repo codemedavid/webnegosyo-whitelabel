@@ -13,6 +13,8 @@ import { isTabAllowed } from "./staff-permissions";
 import { WORKSPACES } from "./workspaces";
 
 const source = fs.readFileSync(path.join(__dirname, "..", "app", "(main)", "loyalty.tsx"), "utf8");
+// Each programme's status move lives on its card.
+const cardSource = fs.readFileSync(path.join(__dirname, "..", "components", "loyalty", "ProgramCard.tsx"), "utf8");
 
 describe("loyalty screen", () => {
   it("is gated by loyalty_manage, not by customers and not left unmapped", () => {
@@ -37,6 +39,6 @@ describe("loyalty screen", () => {
   });
 
   it("offers only the status move the program's state allows", () => {
-    expect(source).toMatch(/nextStatusAction\(program\.status\)/);
+    expect(cardSource).toMatch(/nextStatusAction\(program\.status\)/);
   });
 });

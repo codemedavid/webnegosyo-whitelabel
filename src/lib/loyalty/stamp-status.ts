@@ -11,6 +11,7 @@
  */
 
 import { describeLoyaltyReward } from './offer'
+import { rewardSteps, type LoyaltyRewardStep } from './ladder'
 import type { LoyaltyEarnMode, LoyaltyProgram, LoyaltyProgramStatus } from './types'
 
 export interface OrderStampCard {
@@ -26,6 +27,8 @@ export interface OrderStampCard {
   /** Rewards the customer holds and has not used yet. */
   rewardsAvailable: number
   rewardLabel: string
+  /** Every reward on the card, lowest rung first. Absent on older responses. */
+  rewardSteps?: LoyaltyRewardStep[]
 }
 
 export interface StampCardInput {
@@ -62,5 +65,6 @@ export function summarizeStampCard(input: StampCardInput): OrderStampCard | null
     threshold: rules.threshold,
     rewardsAvailable: clampCount(input.rewardsAvailable),
     rewardLabel: describeLoyaltyReward(rules.reward),
+    rewardSteps: rewardSteps(rules),
   }
 }
