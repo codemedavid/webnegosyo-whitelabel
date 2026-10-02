@@ -132,6 +132,12 @@ async function loadUpdateTenantAction() {
   ;(createClient as unknown as jest.Mock<(...args: unknown[]) => Promise<unknown>>).mockResolvedValue(
     fakeSupabaseClient()
   )
+  // The session client authorises the caller; the tenant write itself goes
+  // through the service role (platform staff have no RLS write on tenants).
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  ;(createAdminClient as unknown as jest.Mock<(...args: unknown[]) => unknown>).mockReturnValue(
+    fakeSupabaseClient()
+  )
   const { updateTenantAction } = await import('@/actions/tenants')
   return updateTenantAction
 }

@@ -75,7 +75,7 @@ function supabaseDeps(
 }
 
 export async function importIngredientBatch(tenantId: string, rawBatch: unknown): Promise<ImportRowResult[]> {
-  const { user, userRole } = await verifyTenantPermission(tenantId, 'menu')
+  const { user, userRole } = await verifyTenantPermission(tenantId, 'menu', 'create')
   const batch = importBatchSchema.parse(rawBatch)
 
   const actor: MovementActor = {

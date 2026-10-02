@@ -2,15 +2,25 @@
  * @jest-environment node
  *
  * GET /api/superadmin/tenants and /api/superadmin/tenants/metrics.
- * Route handlers are public URLs, so each must re-check the superadmin role
- * and validate its query string before touching the database.
+ * Route handlers are public URLs, so each must re-check the caller's console
+ * grant (tenants.view) and validate its query string before touching the
+ * database.
  */
 
 import { NextRequest } from 'next/server'
 
-const getCurrentUserRole = jest.fn()
-jest.mock('@/lib/admin-service', () => ({
-  getCurrentUserRole: () => getCurrentUserRole(),
+// The real platform-staff guard runs; only the session and app_users read
+// beneath it are stubbed.
+const sessionUser = jest.fn()
+const appUserRow = jest.fn()
+jest.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: sessionUser() }, error: null }) },
+  }),
+}))
+jest.mock('@/lib/queries/fetch-app-user-scope', () => ({
+  asAppUserQueryClient: (client: unknown) => client,
+  fetchAppUserScope: async () => ({ appUser: appUserRow() }),
 }))
 
 const getTenants = jest.fn()
@@ -37,27 +47,43 @@ async function metricsRoute() {
 }
 
 beforeEach(() => {
-  getCurrentUserRole.mockReset().mockResolvedValue({ role: 'superadmin' })
+  sessionUser.mockReset().mockReturnValue({ id: 'user-1', email: 'a@b.c' })
+  appUserRow.mockReset().mockReturnValue({ role: 'superadmin', platform_permissions: null })
   getTenants.mockReset().mockResolvedValue({ data: [{ id: ID }], count: 1, error: null })
   getTenantMetrics.mockReset().mockResolvedValue({ [ID]: { tenantId: ID } })
 })
 
 describe('GET /api/superadmin/tenants', () => {
-  test('refuses a caller who is not a superadmin, without querying', async () => {
-    getCurrentUserRole.mockResolvedValue({ role: 'admin' })
+  test('refuses a store admin (not a console account), without querying', async () => {
+    appUserRow.mockReturnValue({ role: 'admin', platform_permissions: null })
     const { GET } = await listRoute()
 
     const response = await GET(request('/api/superadmin/tenants?q=sea'))
 
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(401)
     expect(getTenants).not.toHaveBeenCalled()
   })
 
   test('refuses a signed-out caller', async () => {
-    getCurrentUserRole.mockResolvedValue(null)
+    sessionUser.mockReturnValue(null)
+    const { GET } = await listRoute()
+
+    expect((await GET(request('/api/superadmin/tenants'))).status).toBe(401)
+  })
+
+  test('refuses platform staff without tenants.view', async () => {
+    appUserRow.mockReturnValue({ role: 'platform_staff', platform_permissions: ['leads.view'] })
     const { GET } = await listRoute()
 
     expect((await GET(request('/api/superadmin/tenants'))).status).toBe(403)
+    expect(getTenants).not.toHaveBeenCalled()
+  })
+
+  test('admits platform staff holding tenants.view', async () => {
+    appUserRow.mockReturnValue({ role: 'platform_staff', platform_permissions: ['tenants.view'] })
+    const { GET } = await listRoute()
+
+    expect((await GET(request('/api/superadmin/tenants'))).status).toBe(200)
   })
 
   test('rejects an invalid filter with 400', async () => {
@@ -104,13 +130,13 @@ describe('GET /api/superadmin/tenants', () => {
 })
 
 describe('GET /api/superadmin/tenants/metrics', () => {
-  test('refuses a caller who is not a superadmin', async () => {
-    getCurrentUserRole.mockResolvedValue({ role: 'admin' })
+  test('refuses a store admin (not a console account)', async () => {
+    appUserRow.mockReturnValue({ role: 'admin', platform_permissions: null })
     const { GET } = await metricsRoute()
 
     const response = await GET(request(`/api/superadmin/tenants/metrics?ids=${ID}`))
 
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(401)
     expect(getTenantMetrics).not.toHaveBeenCalled()
   })
 

@@ -18,6 +18,8 @@ import {
   Megaphone,
   GraduationCap,
   MapPinned,
+  Activity,
+  UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -29,6 +31,8 @@ import {
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { signOutThisDevice } from '@/lib/supabase/sign-out'
+import { platformPermissionForPath } from '@/lib/platform-staff/permissions'
+import { usePlatformAccess, type PlatformAccess } from '@/components/superadmin/platform-access-context'
 
 interface SidebarItem {
   label: string
@@ -48,6 +52,7 @@ const navGroups: SidebarGroup[] = [
     items: [
       { label: 'Dashboard', href: '/superadmin', icon: LayoutDashboard },
       { label: 'Analytics', href: '/superadmin/analytics', icon: BarChart3 },
+      { label: 'Store Activity', href: '/superadmin/activity', icon: Activity },
       { label: 'Client Map', href: '/superadmin/map', icon: MapPinned },
     ],
   },
@@ -61,9 +66,18 @@ const navGroups: SidebarGroup[] = [
       { label: 'Subscriptions', href: '/superadmin/subscriptions', icon: CreditCard },
       { label: "What's New", href: '/superadmin/whats-new', icon: Megaphone },
       { label: 'University', href: '/superadmin/university', icon: GraduationCap },
+      { label: 'Team', href: '/superadmin/team', icon: UserCog },
     ],
   },
 ]
+
+/** Whether the console account may open `href` — the middleware's own rule. */
+function canSeeNavItem(access: PlatformAccess, href: string): boolean {
+  const required = platformPermissionForPath(href)
+  if (required === null) return true
+  if (required === 'superadmin') return access.isSuperadmin
+  return access.can(required)
+}
 
 const settingsItem: SidebarItem = {
   label: 'Settings',
@@ -76,6 +90,10 @@ export function SuperAdminSidebar() {
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const access = usePlatformAccess()
+  const visibleGroups = navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => canSeeNavItem(access, item.href)) }))
+    .filter((group) => group.items.length > 0)
 
   // The login screen lives under this layout — render it full-bleed (no chrome).
   if (pathname === '/superadmin/login') return null
@@ -162,7 +180,7 @@ export function SuperAdminSidebar() {
 
         {/* Navigation — grouped */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {navGroups.map((group, idx) => (
+          {visibleGroups.map((group, idx) => (
             <div key={group.label} className={cn(idx > 0 && 'mt-5')}>
               {collapsed ? (
                 <div className="mx-2 mb-1.5 h-px bg-white/[0.06]" aria-hidden />

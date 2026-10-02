@@ -11,6 +11,7 @@
  */
 
 import { useState, type ReactNode } from 'react'
+import { ToggleRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -50,6 +51,10 @@ import { DishMoreOptions, type DishBoosts } from '@/components/admin/menu-editor
 import { LegacyOptionsSections } from '@/components/admin/menu-editor/legacy-options-sections'
 import { useLegacyOptions } from '@/components/admin/menu-editor/use-legacy-options'
 import { SaveBar } from '@/components/admin/menu-editor/save-bar'
+import { DishPreviewCard, SectionNavChips, SectionNavList } from '@/components/admin/menu-editor/dish-editor-rail'
+import { DISH_SECTION_IDS } from '@/components/admin/menu-editor/dish-sections'
+import { describeChoiceCount, summarizeLegacyOptions, summarizeModifierGroups } from '@/lib/menu-editor/option-summary'
+import { buildSectionNav } from '@/lib/menu-editor/section-nav'
 import { DeleteDishSection } from '@/components/admin/menu-editor/delete-dish-section'
 
 interface MenuItemFormProps {
@@ -109,6 +114,12 @@ function focusField(field: keyof DishBasics | undefined) {
   if (!field) return
   const elementId = FIELD_ELEMENT_ID[field]
   if (elementId) document.getElementById(elementId)?.focus()
+}
+
+/** How many of the required fields are still unfilled or invalid. */
+function countMissingDetails(basics: DishBasics): number {
+  const parsed = menuItemFormSchema.safeParse(basics)
+  return parsed.success ? 0 : new Set(parsed.error.issues.map((issue) => issue.path[0])).size
 }
 
 function errorsFromIssues(issues: readonly { path: readonly PropertyKey[]; message: string }[]): DishBasicsErrors {
@@ -400,78 +411,114 @@ export function MenuItemForm({
     onRecipeSaved: refreshCosts,
   }
   const price = parseFloat(basics.price) || 0
+  const choiceCount = legacy.useGroupedVariations ? legacy.variationTypes.length : legacy.variations.length
+  const optionLines = modifierGroupsEnabled
+    ? summarizeModifierGroups(modifierGroups)
+    : summarizeLegacyOptions({
+        isGrouped: legacy.useGroupedVariations,
+        variations: legacy.variations,
+        variationTypes: legacy.variationTypes,
+        addons: legacy.addons,
+      })
+  const navEntries = buildSectionNav({
+    missingDetailCount: countMissingDetails(basics),
+    isAvailable,
+    hasUnifiedOptions: Boolean(modifierGroupsEnabled),
+    choiceStatus: describeChoiceCount(legacy.useGroupedVariations, choiceCount),
+    addonCount: legacy.addons.length,
+    optionGroupCount: modifierGroups.length,
+  })
+  const categoryName = categories.find((category) => category.id === basics.category_id)?.name
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="space-y-5">
-        <DishBasicsSection values={basics} errors={errors} categories={categories} onChange={updateBasics} />
+    <div className="mx-auto max-w-6xl">
+      <SectionNavChips entries={navEntries} />
 
-        <EditorSection title="Availability">
-          <div className="divide-y rounded-lg border">
-            <SettingSwitch
-              id="is_available"
-              label="Available to order"
-              description="Turn off when you run out. It stays on your menu, marked out of stock."
-              checked={isAvailable}
-              onCheckedChange={setIsAvailable}
-            />
-            <SettingSwitch
-              id="is_featured"
-              label="Featured"
-              description="Highlight this dish on your menu."
-              checked={isFeatured}
-              onCheckedChange={setIsFeatured}
-            />
-          </div>
-        </EditorSection>
+      <div className="mt-4 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-8">
+        <div className="min-w-0 space-y-5">
+          <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="space-y-5">
+            <DishBasicsSection values={basics} errors={errors} categories={categories} onChange={updateBasics} />
 
-        {modifierGroupsEnabled ? (
-          <ModifierGroupsEditor
-            groups={modifierGroups}
-            onChange={setModifierGroups}
-            basePrice={price}
-            recipeContext={recipeContext}
-            optionRecipeCosts={optionRecipeCosts}
-            headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
-            onSaveGroupToLibrary={saveGroupToLibrary}
-            linkableItems={linkableItems?.filter((candidate) => candidate.id !== item?.id)}
+            <EditorSection id={DISH_SECTION_IDS.availability} icon={ToggleRight} title="Availability">
+              <div className="divide-y rounded-xl border">
+                <SettingSwitch
+                  id="is_available"
+                  label="Available to order"
+                  description="Turn off when you run out. It stays on your menu, marked out of stock."
+                  checked={isAvailable}
+                  onCheckedChange={setIsAvailable}
+                />
+                <SettingSwitch
+                  id="is_featured"
+                  label="Featured"
+                  description="Highlight this dish on your menu."
+                  checked={isFeatured}
+                  onCheckedChange={setIsFeatured}
+                />
+              </div>
+            </EditorSection>
+
+            {modifierGroupsEnabled ? (
+              <ModifierGroupsEditor
+                groups={modifierGroups}
+                onChange={setModifierGroups}
+                basePrice={price}
+                recipeContext={recipeContext}
+                optionRecipeCosts={optionRecipeCosts}
+                headerAction={<ModifierLibraryPicker tenantId={tenantId} onAttach={attachGroupsFromLibrary} />}
+                onSaveGroupToLibrary={saveGroupToLibrary}
+                linkableItems={linkableItems?.filter((candidate) => candidate.id !== item?.id)}
+              />
+            ) : (
+              <LegacyOptionsSections
+                options={legacy}
+                addonLibraryPicker={<AddonLibraryPicker tenantId={tenantId} onAttach={attachAddonsFromLibrary} />}
+                recipeContext={recipeContext}
+              />
+            )}
+          </form>
+
+          <DishMoreOptions
+            itemId={item?.id}
+            tenantId={tenantId}
+            tenantSlug={tenantSlug}
+            convexUrl={convexUrl}
+            price={price}
+            discountedPrice={parseFloat(basics.discounted_price) || undefined}
+            inventoryEnabled={inventoryEnabled}
+            hasRecipe={hasRecipe}
+            onRecipeSaved={refreshCosts}
+            presell={presellEnabled ? {
+              isEnabled: isPresellOn,
+              onToggle: setIsPresellOn,
+              savedAllocations,
+              draft: presellDraft,
+              onDraftChange: setPresellDraft,
+              loadError: presellLoadError,
+            } : undefined}
+            menuEngineeringEnabled={menuEngineeringEnabled}
+            boosts={boosts}
+            onBoostsChange={setBoosts}
+            branchesSlot={branchesPanel}
           />
-        ) : (
-          <LegacyOptionsSections
-            options={legacy}
-            addonLibraryPicker={<AddonLibraryPicker tenantId={tenantId} onAttach={attachAddonsFromLibrary} />}
-            recipeContext={recipeContext}
+
+          {item && (
+            <DeleteDishSection itemId={item.id} itemName={item.name} tenantId={tenantId} tenantSlug={tenantSlug} />
+          )}
+        </div>
+
+        {/* Beside the form on a wide screen: the dish as a customer sees it, and where everything is. */}
+        <aside className="hidden lg:sticky lg:top-6 lg:block lg:max-h-[calc(100dvh-3rem)] lg:space-y-4 lg:overflow-y-auto">
+          <DishPreviewCard
+            basics={basics}
+            categoryName={categoryName}
+            isAvailable={isAvailable}
+            isFeatured={isFeatured}
+            optionLines={optionLines}
           />
-        )}
-      </form>
-
-      <DishMoreOptions
-        itemId={item?.id}
-        tenantId={tenantId}
-        tenantSlug={tenantSlug}
-        convexUrl={convexUrl}
-        price={price}
-        discountedPrice={parseFloat(basics.discounted_price) || undefined}
-        inventoryEnabled={inventoryEnabled}
-        hasRecipe={hasRecipe}
-        onRecipeSaved={refreshCosts}
-        presell={presellEnabled ? {
-          isEnabled: isPresellOn,
-          onToggle: setIsPresellOn,
-          savedAllocations,
-          draft: presellDraft,
-          onDraftChange: setPresellDraft,
-          loadError: presellLoadError,
-        } : undefined}
-        menuEngineeringEnabled={menuEngineeringEnabled}
-        boosts={boosts}
-        onBoostsChange={setBoosts}
-        branchesSlot={branchesPanel}
-      />
-
-      {item && (
-        <DeleteDishSection itemId={item.id} itemName={item.name} tenantId={tenantId} tenantSlug={tenantSlug} />
-      )}
+          <SectionNavList entries={navEntries} />
+        </aside>
+      </div>
 
       <SaveBar
         formId={FORM_ID}

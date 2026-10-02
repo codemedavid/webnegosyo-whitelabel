@@ -36,7 +36,8 @@ it.each(['create', 'update'])('allows an authorized %s with tenant-owned referen
   expect(result).toEqual(saved)
   expect(writes).toContain('bundles')
   expect(writes).toContain('bundle_slots')
-  expect(verifyTenantPermission).toHaveBeenCalledWith('tenant', 'menu')
+  const expected = operation === 'create' ? ['tenant', 'menu', 'create'] : ['tenant', 'menu']
+  expect(verifyTenantPermission).toHaveBeenCalledWith(...expected)
 })
 
 it.each(['one', 'all'])('rejects unauthorized admin bundle reads (%s) before querying', async (mode) => {

@@ -5,8 +5,11 @@ import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { pushOrderToLoyverseBestEffort } from '@/lib/loyverse/push-service'
 import { buildLoyverseOrderItemsFromConvexOrder } from '@/lib/loyverse/convex-order-lines'
+import { loyversePushBodySchema } from '@/lib/loyverse/push-request'
 import type { OrderItem } from '@/types/database'
 import { isUuid } from '@/lib/uuid'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /** Nothing was pushed, and that is not an error the merchant can act on. */
 function skipped(reason: string): NextResponse {
@@ -86,18 +89,13 @@ async function loadConvexOrderItems(
  *                                       status transition / tender completion).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const body = await request.json().catch(() => null)
-  const tenantId: unknown = body?.tenantId
-  const orderId: unknown = body?.orderId
-  const orderNumber: unknown = body?.orderNumber
-  const items: unknown = body?.items
-
-  if (typeof tenantId !== 'string') {
-    return NextResponse.json({ error: 'tenantId is required' }, { status: 400 })
+  const parsed = loyversePushBodySchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    const message = issue?.path[0] === 'tenantId' ? 'tenantId is required' : (issue?.message ?? 'Invalid request')
+    return NextResponse.json({ error: message }, { status: 400 })
   }
-  if (typeof orderId !== 'string' && !Array.isArray(items)) {
-    return NextResponse.json({ error: 'orderId or items is required' }, { status: 400 })
-  }
+  const { tenantId, orderId, orderNumber, items, context } = parsed.data
 
   const authHeader = request.headers.get('authorization')
   if (!authHeader) {
@@ -116,26 +114,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id')
-    .eq('user_id', user.id)
-    .single()
-  const isAuthorized =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
+  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, 'create')
   if (!isAuthorized) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  let orderItems: OrderItem[]
+  let orderItems: OrderItem[] = items ?? []
   let platformOrderId: string | null = null
 
   // The app sends whatever ids it has. Resolution runs platform row → caller-
   // supplied items → the tenant's Convex deployment, so a surface that holds
   // the lines spends no extra round trip and one that holds only an order id
   // (the orders list, the register drawer) still pushes.
-  if (typeof orderId === 'string') {
+  if (orderId) {
     const admin = createAdminClient()
     // A Convex id is not a uuid; asking Postgres for it is a 400, not a miss.
     const { data: orderRow } = isUuid(orderId)
@@ -152,30 +144,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // server's own copy.
       platformOrderId = (orderRow as { id: string }).id
       orderItems = []
-    } else if (Array.isArray(items)) {
-      orderItems = items as OrderItem[]
-    } else {
+    } else if (!items) {
       const convexItems = await loadConvexOrderItems(tenantId, orderId)
       if (!convexItems) return skipped('Order lines could not be read')
       orderItems = convexItems
     }
-  } else {
-    orderItems = items as OrderItem[]
   }
 
   // POS counter sales are complete the moment they are tendered — they never
   // pass through "confirmed", so they always push. Online-order confirmations
   // stay gated by the tenant's push mode (an on_create tenant already pushed
   // at checkout; pushing again here would double-count the sale).
-  const context: unknown = body?.context
-  const trigger = context === 'pos_sale' ? 'manual' : 'confirm'
-
   const result = await pushOrderToLoyverseBestEffort({
     tenantId,
     orderId: platformOrderId,
-    orderNumber: typeof orderNumber === 'string' ? orderNumber : undefined,
+    orderNumber,
     items: orderItems,
-    trigger,
+    trigger: context === 'pos_sale' ? 'manual' : 'confirm',
   })
 
   return NextResponse.json({

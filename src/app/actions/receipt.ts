@@ -50,7 +50,7 @@ export async function saveReceiptLayoutAction(
 
 export async function getReceiptContext(tenantId: string): Promise<ReceiptContext | null> {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantAdmin(tenantId, 'view')
 
     const admin = createAdminClient()
     const { data } = await admin

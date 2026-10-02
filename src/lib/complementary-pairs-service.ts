@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import type { PlatformAction } from '@/lib/platform-staff/permissions'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import type { MenuItem, ComplementaryPairWithDetails } from '@/types/database'
 import { resolveRuleBasedSuggestions } from '@/lib/pairing-rules-service'
@@ -163,9 +164,12 @@ export async function getComplementaryPairsByTenant(
  * so the caller must hold the tenant's analytics permission. Reported in the
  * same {success,error} shape the writers return, which the UI already reads.
  */
-async function refusedWriter(tenantId: string): Promise<{ success: false; error: string } | null> {
+async function refusedWriter(
+  tenantId: string,
+  action: PlatformAction
+): Promise<{ success: false; error: string } | null> {
   try {
-    await verifyTenantPermission(tenantId, 'analytics')
+    await verifyTenantPermission(tenantId, 'analytics', action)
     return null
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Unauthorized' }
@@ -178,7 +182,7 @@ export async function createComplementaryPairs(
   sourceId: string,
   targetItemIds: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  const refused = await refusedWriter(tenantId)
+  const refused = await refusedWriter(tenantId, 'create')
   if (refused) return refused
 
   const supabase = createAdminClient()
@@ -210,7 +214,7 @@ export async function deleteComplementaryPair(
   id: string,
   tenantId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const refused = await refusedWriter(tenantId)
+  const refused = await refusedWriter(tenantId, 'delete')
   if (refused) return refused
 
   const supabase = createAdminClient()
@@ -237,7 +241,7 @@ export async function deleteComplementaryPairsForSource(
   sourceType: 'item' | 'category',
   sourceId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const refused = await refusedWriter(tenantId)
+  const refused = await refusedWriter(tenantId, 'delete')
   if (refused) return refused
 
   const supabase = createAdminClient()

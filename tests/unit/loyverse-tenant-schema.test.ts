@@ -27,9 +27,21 @@ describe('tenantSchema — Loyverse fields', () => {
       loyverse_enabled: true,
       loyverse_access_token: 'tok_1',
       loyverse_store_id: 'store_1',
+      loyverse_payment_type_id: 'pt_1',
       loyverse_push_mode: 'on_create',
     })
     expect(parsed.loyverse_push_mode).toBe('on_create')
+  })
+
+  it('rejects enabling Loyverse without a payment type — every receipt would be refused', () => {
+    expect(() =>
+      tenantSchema.parse({
+        ...baseTenant,
+        loyverse_enabled: true,
+        loyverse_access_token: 'tok_1',
+        loyverse_store_id: 'store_1',
+      })
+    ).toThrow(/payment type/i)
   })
 
   it('rejects unknown push modes instead of coercing at the write boundary', () => {

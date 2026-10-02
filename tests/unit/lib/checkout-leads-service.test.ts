@@ -1,8 +1,4 @@
-import { submitCheckoutForm } from '@/app/actions/checkout-leads'
 import { getCheckoutPayableAmount } from '@/lib/checkout-leads/payment-terms'
-import { createCheckoutLead } from '@/lib/checkout-leads/checkout-leads-service'
-import { captureCheckoutLeadCreated } from '@/lib/posthog'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: jest.fn(),
@@ -11,6 +7,30 @@ jest.mock('@/lib/supabase/admin', () => ({
 jest.mock('@/lib/posthog', () => ({
   captureCheckoutLeadCreated: jest.fn().mockResolvedValue(undefined),
 }))
+
+// The actions module imports `@/lib/platform-staff/guard`, which imports
+// `next/server` — unloadable under jsdom. Stub it as an authorized superadmin.
+const SUPERADMIN_CALLER = { user: { id: 'user-1' }, appUser: { role: 'superadmin', platform_permissions: null } }
+jest.mock('@/lib/platform-staff/guard', () => ({
+  getConsoleCaller: jest.fn(async () => SUPERADMIN_CALLER),
+  requirePlatformPermission: jest.fn(async () => SUPERADMIN_CALLER),
+  requireFullSuperadmin: jest.fn(async () => SUPERADMIN_CALLER),
+  platformPermissionResponse: jest.fn(async () => null),
+  PlatformAccessError: class PlatformAccessError extends Error {},
+}))
+
+// next/jest does not hoist jest.mock above static imports — load lazily.
+let submitCheckoutForm: typeof import('@/app/actions/checkout-leads')['submitCheckoutForm']
+let createCheckoutLead: typeof import('@/lib/checkout-leads/checkout-leads-service')['createCheckoutLead']
+let captureCheckoutLeadCreated: typeof import('@/lib/posthog')['captureCheckoutLeadCreated']
+let createAdminClient: typeof import('@/lib/supabase/admin')['createAdminClient']
+
+beforeAll(async () => {
+  ;({ submitCheckoutForm } = await import('@/app/actions/checkout-leads'))
+  ;({ createCheckoutLead } = await import('@/lib/checkout-leads/checkout-leads-service'))
+  ;({ captureCheckoutLeadCreated } = await import('@/lib/posthog'))
+  ;({ createAdminClient } = await import('@/lib/supabase/admin'))
+})
 
 describe('createCheckoutLead', () => {
   beforeEach(() => {

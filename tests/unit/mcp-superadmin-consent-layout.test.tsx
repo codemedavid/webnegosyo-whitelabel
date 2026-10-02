@@ -24,7 +24,7 @@ describe('superadmin OAuth consent layout', () => {
     pathname = '/superadmin/mcp/authorize'
 
     render(
-      <SuperAdminLayoutShell>
+      <SuperAdminLayoutShell role="superadmin" permissions={null}>
         <div>OAuth consent</div>
       </SuperAdminLayoutShell>,
     )
@@ -39,7 +39,7 @@ describe('superadmin OAuth consent layout', () => {
     pathname = '/superadmin/tenants'
 
     render(
-      <SuperAdminLayoutShell>
+      <SuperAdminLayoutShell role="superadmin" permissions={null}>
         <div>Tenant list</div>
       </SuperAdminLayoutShell>,
     )

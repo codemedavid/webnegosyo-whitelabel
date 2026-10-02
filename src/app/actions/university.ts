@@ -4,15 +4,14 @@
  * Superadmin server actions for SmartMenu University.
  *
  * Server Actions are public POST endpoints whatever the page gate says, so
- * every one asserts the superadmin role itself before touching the
+ * every one asserts its console grant (`university.*`) before touching the
  * service-role client. Input crosses the boundary as `unknown` and is parsed
  * by the shared content model before it reaches the database. Every write
  * purges the public portal's cache tag.
  */
 import { revalidatePath, revalidateTag } from 'next/cache'
-import { getCurrentUserRole } from '@/lib/admin-service'
+import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 import {
   parseCourseInput,
   parseLessonInput,
@@ -48,19 +47,6 @@ import {
 
 const LIST_PATH = '/superadmin/university'
 
-async function assertSuperadmin(): Promise<void> {
-  const role = (await getCurrentUserRole()) as { role?: string } | null
-  if (!role || role.role !== 'superadmin') {
-    throw new Error('Forbidden: Superadmin access required')
-  }
-}
-
-async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  return data.user?.id ?? null
-}
-
 function purge(courseId?: string): void {
   revalidateTag(UNIVERSITY_CACHE_TAG)
   revalidatePath(LIST_PATH)
@@ -72,42 +58,42 @@ function purge(courseId?: string): void {
 // -----------------------------------------------------------------------------
 
 export async function listCoursesAction(): Promise<CourseSummary[]> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.view')
   return listCourses(createAdminClient())
 }
 
 export async function getCourseAction(id: string): Promise<CourseWithCurriculum | null> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.view')
   return getCourseById(createAdminClient(), id)
 }
 
 export async function saveCourseAction(id: string | null, input: unknown): Promise<CourseRecord> {
-  await assertSuperadmin()
+  const caller = await requirePlatformPermission(id ? 'university.edit' : 'university.create')
   const parsed = parseCourseInput(input)
   if (!parsed.ok) throw new Error(parsed.error)
   const admin = createAdminClient()
   const saved = id
     ? await updateCourse(admin, id, parsed.input)
-    : await createCourse(admin, parsed.input, await currentUserId())
+    : await createCourse(admin, parsed.input, caller.user.id)
   purge(saved.id)
   return saved
 }
 
 export async function setCourseStatusAction(id: string, status: PublishStatus): Promise<CourseRecord> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.edit')
   const updated = await setCourseStatus(createAdminClient(), id, status)
   purge(id)
   return updated
 }
 
 export async function deleteCourseAction(id: string): Promise<void> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.delete')
   await deleteCourse(createAdminClient(), id)
   purge()
 }
 
 export async function reorderCoursesAction(ids: string[]): Promise<void> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.edit')
   await reorderCourses(createAdminClient(), ids)
   purge()
 }
@@ -117,7 +103,7 @@ export async function reorderCoursesAction(ids: string[]): Promise<void> {
 // -----------------------------------------------------------------------------
 
 export async function createModuleAction(courseId: string, input: unknown): Promise<ModuleRecord> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.create')
   const parsed = parseModuleInput(input)
   if (!parsed.ok) throw new Error(parsed.error)
   const created = await createModule(createAdminClient(), courseId, parsed.input)
@@ -126,7 +112,7 @@ export async function createModuleAction(courseId: string, input: unknown): Prom
 }
 
 export async function updateModuleAction(courseId: string, id: string, input: unknown): Promise<ModuleRecord> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.edit')
   const parsed = parseModuleInput(input)
   if (!parsed.ok) throw new Error(parsed.error)
   const updated = await updateModule(createAdminClient(), id, parsed.input)
@@ -135,13 +121,13 @@ export async function updateModuleAction(courseId: string, id: string, input: un
 }
 
 export async function deleteModuleAction(courseId: string, id: string): Promise<void> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.delete')
   await deleteModule(createAdminClient(), id)
   purge(courseId)
 }
 
 export async function reorderModulesAction(courseId: string, ids: string[]): Promise<void> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.edit')
   await reorderModules(createAdminClient(), courseId, ids)
   purge(courseId)
 }
@@ -151,7 +137,7 @@ export async function reorderModulesAction(courseId: string, ids: string[]): Pro
 // -----------------------------------------------------------------------------
 
 export async function getLessonAction(id: string): Promise<LessonRecord | null> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.view')
   return getLesson(createAdminClient(), id)
 }
 
@@ -161,7 +147,7 @@ export async function getLessonAction(id: string): Promise<LessonRecord | null> 
  * suffixed until it is unique within the course.
  */
 export async function createLessonAction(courseId: string, moduleId: string, title: string): Promise<LessonRecord> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.create')
   const admin = createAdminClient()
   const course = await getCourseById(admin, courseId)
   if (!course) throw new Error('Course not found')
@@ -186,7 +172,7 @@ export async function createLessonAction(courseId: string, moduleId: string, tit
 }
 
 export async function saveLessonAction(id: string, input: unknown): Promise<LessonRecord> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.edit')
   const parsed = parseLessonInput(input)
   if (!parsed.ok) throw new Error(parsed.error)
   const saved = await updateLesson(createAdminClient(), id, parsed.input)
@@ -195,20 +181,20 @@ export async function saveLessonAction(id: string, input: unknown): Promise<Less
 }
 
 export async function setLessonStatusAction(id: string, status: PublishStatus): Promise<LessonRecord> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.edit')
   const updated = await setLessonStatus(createAdminClient(), id, status)
   purge(updated.courseId)
   return updated
 }
 
 export async function deleteLessonAction(courseId: string, id: string): Promise<void> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.delete')
   await deleteLesson(createAdminClient(), id)
   purge(courseId)
 }
 
 export async function reorderLessonsAction(courseId: string, moduleId: string, ids: string[]): Promise<void> {
-  await assertSuperadmin()
+  await requirePlatformPermission('university.edit')
   await reorderLessons(createAdminClient(), moduleId, ids)
   purge(courseId)
 }

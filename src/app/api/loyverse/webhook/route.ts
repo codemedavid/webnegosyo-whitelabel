@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { importLoyverseCatalog } from '@/lib/loyverse/catalog-import'
-import type { Tenant } from '@/types/database'
+import { isValidLoyverseWebhookSignature } from '@/lib/loyverse/secret-compare'
+import { loadLoyverseTenant } from '@/lib/loyverse/tenant'
 
 /**
- * POST /api/loyverse/webhook?tenant_id=...&secret=...
+ * POST /api/loyverse/webhook?tenant_id=...&sig=...
  *
- * Inbound Loyverse webhooks (registered per merchant in Back Office with this
- * URL). PAT-created webhooks carry no signature, so authentication follows the
- * lalamove-convex precedent: a platform shared secret plus the tenant id in
- * the query string, verified against the tenant's own Loyverse config.
+ * Inbound Loyverse webhooks, auto-registered per tenant by the sync (see
+ * webhooks.ts). PAT-created webhooks carry no Loyverse signature, so the URL
+ * is the credential: `sig` = HMAC(LOYVERSE_WEBHOOK_SECRET, tenant_id). It used
+ * to carry the platform secret itself, which every merchant could read in
+ * their own Back Office and replay against any other tenant.
  *
  * On items.update we re-import the whole catalog rather than trusting the
- * batched payload shape — the import is idempotent and a full pull is well
- * within Loyverse's per-merchant rate limit.
+ * batched payload shape — the import is idempotent, and unchanged dishes are
+ * skipped, so a re-import costs reads rather than writes.
  *
  * Loyverse retries for 48h and then disables the webhook on persistent
  * non-2xx, so config errors return 200 with an ignored marker.
@@ -23,49 +25,43 @@ import type { Tenant } from '@/types/database'
 // budget rather than the lambda default.
 export const maxDuration = 300
 
-export async function POST(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get('secret')
-  const tenantId = request.nextUrl.searchParams.get('tenant_id')
+const inventoryLevelSchema = z.object({
+  variant_id: z.string().min(1),
+  store_id: z.string().min(1),
+  in_stock: z.number().nullable().optional(),
+})
 
-  const expected = process.env.LOYVERSE_WEBHOOK_SECRET
-  if (!expected || secret !== expected) {
+const webhookBodySchema = z.object({
+  type: z.string().optional(),
+  inventory_levels: z.array(z.unknown()).optional(),
+})
+
+export async function POST(request: NextRequest) {
+  const tenantId = request.nextUrl.searchParams.get('tenant_id')
+  const signature = request.nextUrl.searchParams.get('sig')
+  if (!isValidLoyverseWebhookSignature(process.env.LOYVERSE_WEBHOOK_SECRET, tenantId, signature)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (!tenantId) {
-    return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 })
-  }
+  const verifiedTenantId = tenantId as string
 
-  let eventType: string | undefined
-  let inventoryLevels: unknown
-  try {
-    const body = (await request.json()) as { type?: string; inventory_levels?: unknown }
-    eventType = body?.type
-    inventoryLevels = body?.inventory_levels
-  } catch {
+  const parsed = webhookBodySchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
+  const { type: eventType, inventory_levels: inventoryLevels } = parsed.data
 
   const admin = createAdminClient()
-  const { data: tenant, error } = await admin
-    .from('tenants')
-    .select('*')
-    .eq('id', tenantId)
-    .maybeSingle()
-  if (error || !tenant) {
+  const tenant = await loadLoyverseTenant(admin, verifiedTenantId).catch(() => null)
+  if (!tenant) {
     // 200 so Loyverse does not retry a permanently wrong registration for 48h.
     return NextResponse.json({ ignored: true, reason: 'tenant not found' })
   }
-
-  const tenantRow: Tenant = mergeTenantSecrets(
-    tenant as unknown as Tenant,
-    await getTenantSecrets(admin, tenantId)
-  )
-  if (!tenantRow.loyverse_enabled) {
+  if (!tenant.loyverse_enabled) {
     return NextResponse.json({ ignored: true, reason: 'loyverse disabled' })
   }
 
   if (eventType === 'items.update') {
-    const report = await importLoyverseCatalog(tenantRow)
+    const report = await importLoyverseCatalog(tenant)
     return NextResponse.json({
       ok: report.success,
       itemsCreated: report.itemsCreated,
@@ -74,25 +70,22 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  if (eventType === 'inventory_levels.update' && Array.isArray(inventoryLevels)) {
-    if (!tenantRow.loyverse_store_id) {
+  if (eventType === 'inventory_levels.update' && inventoryLevels) {
+    if (!tenant.loyverse_store_id) {
       return NextResponse.json({ ignored: true, reason: 'no store mapped' })
     }
+    const levels = inventoryLevels.flatMap((level) => {
+      const result = inventoryLevelSchema.safeParse(level)
+      return result.success ? [result.data] : []
+    })
     const { applyLoyverseInventoryLevels } = await import('@/lib/loyverse/inventory-sync')
-    const outcome = await applyLoyverseInventoryLevels(
-      tenantId,
-      tenantRow.loyverse_store_id,
-      inventoryLevels.filter(
-        (level): level is { variant_id: string; store_id: string; in_stock?: number | null } =>
-          Boolean(level && typeof level === 'object' && 'variant_id' in level && 'store_id' in level)
-      )
-    )
+    const outcome = await applyLoyverseInventoryLevels(verifiedTenantId, tenant.loyverse_store_id, levels)
     // The menu is ISR (revalidate = 300), so without this a dish stays
     // orderable for up to five minutes after Loyverse says it is dry.
-    if ((outcome.disabled > 0 || outcome.restored > 0) && tenantRow.slug) {
+    if ((outcome.disabled > 0 || outcome.restored > 0) && tenant.slug) {
       const { revalidatePath } = await import('next/cache')
-      revalidatePath(`/${tenantRow.slug}/menu`)
-      revalidatePath(`/${tenantRow.slug}/admin/menu`)
+      revalidatePath(`/${tenant.slug}/menu`)
+      revalidatePath(`/${tenant.slug}/admin/menu`)
     }
     return NextResponse.json({ ok: true, ...outcome })
   }

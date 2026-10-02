@@ -51,7 +51,9 @@ export function judgeShift(shift: StaffShiftRecord): ShiftVerdict {
 /** Cash this shift took, net of the float it started with. Null until known. */
 export function shiftTurnover(shift: StaffShiftRecord): number | null {
   if (shift.expectedCash === null) return null
-  return Math.max(0, round2(shift.expectedCash - shift.openingFloat))
+  // A zero-balance till keeps nothing back; pickups were handed over mid-shift.
+  const floatKept = shift.isZeroBalance ? 0 : shift.openingFloat
+  return round2(Math.max(0, round2(shift.expectedCash - floatKept)) + (shift.collected ?? 0))
 }
 
 /** How long the drawer was theirs — up to now while it is still open. */

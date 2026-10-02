@@ -187,7 +187,7 @@ export function LalamoveSettingsCard({
           </Button>
           {!hasPickupCoordinates && (
             <Button asChild variant="outline">
-              <Link href={`/${tenantSlug}/admin/settings#store-location`}>Set store location</Link>
+              <Link href={`/${tenantSlug}/admin/settings/delivery#store-location`}>Set store location</Link>
             </Button>
           )}
         </div>

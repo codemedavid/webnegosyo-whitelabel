@@ -19,6 +19,10 @@ function shift(overrides: Partial<ShiftRecord> = {}): ShiftRecord {
     expectedCash: 1500,
     closingCount: 1500,
     note: null,
+    drawerId: null,
+    drawerName: null,
+    isZeroBalance: false,
+    closedByName: null,
     openedAt: new Date(OPENED).toISOString(),
     closedAt: new Date(OPENED + 8 * 3_600_000).toISOString(),
     ...overrides,
@@ -109,5 +113,20 @@ describe("summarizeShifts", () => {
 
   it("reads an empty history as zero, not as a crash", () => {
     expect(summarizeShifts([], OPENED).count).toBe(0);
+  });
+});
+
+describe("drawer policy and pickups in the history", () => {
+  it("counts cash collected mid-shift as handed over", () => {
+    expect(shiftTurnover(shift({ expectedCash: 1500, moves: { payIn: 0, payOut: 0, collected: 2000 } }))).toBe(3000);
+  });
+
+  it("hands over the whole drawer on a zero-balance shift", () => {
+    expect(shiftTurnover(shift({ openingFloat: 0, isZeroBalance: true, expectedCash: 1800 }))).toBe(1800);
+  });
+
+  it("judges the count against the expectation frozen at close, pickups already netted", () => {
+    expect(verdictForShift(shift({ expectedCash: 1500, closingCount: 1480, moves: { payIn: 0, payOut: 0, collected: 2000 } })))
+      .toEqual({ kind: "short", variance: -20 });
   });
 });

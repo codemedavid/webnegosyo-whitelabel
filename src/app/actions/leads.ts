@@ -9,22 +9,22 @@ import {
   getLeadHistory,
 } from '@/lib/leads/leads-service'
 import type { LeadStatus } from '@/lib/leads/types'
-import { verifySuperadmin } from '@/lib/admin-service'
+import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 
 // The lead pipeline is prospective merchants' PII, read through the
-// service-role client. Every entry point is superadmin-only.
+// service-role client. Every entry point checks its console grant.
 
 export async function fetchLeads(options: {
   status?: LeadStatus
   search?: string
   page?: number
 }) {
-  await verifySuperadmin()
+  await requirePlatformPermission('leads.view')
   return getLeads(options)
 }
 
 export async function fetchLeadDetail(id: string) {
-  await verifySuperadmin()
+  await requirePlatformPermission('leads.view')
   const [lead, notes, history] = await Promise.all([
     getLeadById(id),
     getLeadNotes(id),
@@ -39,11 +39,11 @@ export async function changeLeadStatus(
   newStatus: LeadStatus,
   userId?: string
 ) {
-  await verifySuperadmin()
+  await requirePlatformPermission('leads.edit')
   return updateLeadStatus(leadId, oldStatus as LeadStatus, newStatus, userId)
 }
 
 export async function addLeadNote(leadId: string, note: string, userId?: string) {
-  await verifySuperadmin()
+  await requirePlatformPermission('leads.create')
   return addNote(leadId, note, userId)
 }

@@ -96,6 +96,14 @@ export interface StaffShiftRecord {
   note: string | null
   openedAt: string
   closedAt: string | null
+  /** The till held ("Cashier 1"), snapshotted at clock-in. Absent = personal drawer. */
+  drawerName?: string | null
+  /** Started empty; everything counted was handed over at close. */
+  isZeroBalance?: boolean
+  /** Who counted and closed it, when a manager closed on the cashier's behalf. */
+  closedByName?: string | null
+  /** Cash taken out to the owner mid-shift (pickups). */
+  collected?: number
 }
 
 interface ShiftRow {
@@ -110,6 +118,10 @@ interface ShiftRow {
   note: string | null
   opened_at: string
   closed_at: string | null
+  drawer_name?: string | null
+  is_zero_balance?: boolean | null
+  closed_by_name?: string | null
+  shift_cash_movements?: { kind: string; amount: number | string }[] | null
 }
 
 export function toStaffShift(row: ShiftRow): StaffShiftRecord {
@@ -125,6 +137,14 @@ export function toStaffShift(row: ShiftRow): StaffShiftRecord {
     note: row.note,
     openedAt: row.opened_at,
     closedAt: row.closed_at,
+    drawerName: row.drawer_name ?? null,
+    isZeroBalance: row.is_zero_balance === true,
+    closedByName: row.closed_by_name ?? null,
+    collected: Math.round(
+      (row.shift_cash_movements ?? [])
+        .filter((move) => move.kind === 'collect')
+        .reduce((sum, move) => sum + Number(move.amount), 0) * 100,
+    ) / 100,
   }
 }
 
@@ -136,7 +156,7 @@ export async function loadStaffShifts(
   let request = createAdminClient()
     .from('staff_shifts')
     .select(
-      'id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at',
+      'id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_name, is_zero_balance, closed_by_name, shift_cash_movements(kind, amount)',
     )
     .eq('tenant_id', tenantId)
     .or(`closed_at.is.null,closed_at.gte.${query.sinceIso}`)

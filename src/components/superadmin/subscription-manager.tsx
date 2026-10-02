@@ -22,7 +22,11 @@ import type { AllowanceRow } from '@/lib/billing/tenant-allowances'
 import { MarkPaidDialog } from '@/components/superadmin/mark-paid-dialog'
 import { BillingAnchorDialog } from '@/components/superadmin/billing-anchor-dialog'
 import { AllowanceDialog } from '@/components/superadmin/allowance-dialog'
-import { Panel } from '@/components/superadmin/ui/primitives'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
+import type { CollectionsInsight, CollectionsSummary } from '@/lib/billing/collections-insight'
+import type { MonthCollection } from '@/lib/billing/payment-history'
+import { SubscriptionStats } from '@/components/superadmin/subscriptions/subscription-stats'
+import { ActivityCell, LastPaymentCell } from '@/components/superadmin/subscriptions/insight-cells'
 
 /**
  * Translucent fills rather than solid pastels: this screen sits on the pure
@@ -40,6 +44,9 @@ const STATE_LABELS: Record<RosterRow['state'], string> = {
   paused: 'Paused',
 }
 
+/** Open, but nobody has ever set up billing — neither paid nor late. */
+const UNBILLED_STYLE = 'border-white/15 bg-white/[0.06] text-white/60'
+
 /**
  * What closed this tenant, in the owner's words.
  *
@@ -48,6 +55,7 @@ const STATE_LABELS: Record<RosterRow['state'], string> = {
  * simply forgot to pay call for different conversations.
  */
 function statusLabel(row: RosterRow): string {
+  if (row.isUnbilled) return 'Not billed'
   if (row.manualBlock === 'cancelled') return 'Cancelled'
   if (row.state === 'paused' && row.manualBlock === null) return 'Lapsed'
   return STATE_LABELS[row.state]
@@ -76,9 +84,40 @@ function formatDayKey(dayKey: string | null): string {
   })
 }
 
+/** Trading unpaid outranks due-soon: one is money leaking, the other a reminder. */
+function rowTone(row: RosterRow, insight: CollectionsInsight | undefined): string {
+  if (insight?.isTradingUnpaid) return 'bg-red-400/[0.05] transition-colors hover:bg-red-400/[0.08]'
+  if (row.isDueSoon) return 'bg-amber-400/[0.06] transition-colors hover:bg-amber-400/10'
+  return 'transition-colors hover:bg-white/[0.03]'
+}
+
 /** Anyone the owner has a reason to contact about money. */
 function needsChasing(row: RosterRow): boolean {
   return row.state !== 'active' || row.isDueSoon
+}
+
+type RosterFilter = 'all' | 'chase' | 'tradingUnpaid' | 'neverPaid' | 'unbilled' | 'dormant'
+
+type Insights = Readonly<Record<string, CollectionsInsight>>
+
+type RowFilter = (row: RosterRow, insight: CollectionsInsight | undefined) => boolean
+
+const FILTERS: Record<RosterFilter, RowFilter> = {
+  all: () => true,
+  chase: (row) => needsChasing(row),
+  tradingUnpaid: (_row, insight) => insight?.isTradingUnpaid ?? false,
+  neverPaid: (_row, insight) => insight?.hasNeverPaid ?? false,
+  unbilled: (row) => row.isUnbilled,
+  dormant: (_row, insight) => insight?.isDormant ?? false,
+}
+
+const EMPTY_MESSAGES: Record<RosterFilter, string> = {
+  all: 'No tenants match.',
+  chase: `Nobody needs chasing — every tenant is paid beyond the next ${DUE_SOON_WINDOW_DAYS} days.`,
+  tradingUnpaid: 'No store is trading without paying.',
+  neverPaid: 'Every tenant has at least one payment on record.',
+  unbilled: 'Every tenant has billing set up.',
+  dormant: 'Every readable store took an order in the last 30 days.',
 }
 
 /**
@@ -121,24 +160,66 @@ interface SubscriptionManagerProps {
    * the collections table, which is the job this screen cannot fail at.
    */
   allowances?: readonly AllowanceRow[]
+  /**
+   * Ledger + order activity per tenant. Optional for the same reason as
+   * `allowances`: without it the table still says who owes.
+   */
+  insights?: Insights
+  collections?: CollectionsSummary
+  collected?: MonthCollection
+  /** When the numbers were read, so "last order" labels match the server. */
+  nowIso?: string
 }
 
-export function SubscriptionManager({ rows, summary, allowances }: SubscriptionManagerProps) {
+export function SubscriptionManager({
+  rows,
+  summary,
+  allowances,
+  insights,
+  collections,
+  collected,
+  nowIso,
+}: SubscriptionManagerProps) {
   const router = useRouter()
+  const canEdit = usePlatformAccess().can('subscriptions.edit')
   const [selected, setSelected] = useState<RosterRow | null>(null)
   const [editingAllowance, setEditingAllowance] = useState<AllowanceRow | null>(null)
   const [editingAnchor, setEditingAnchor] = useState<RosterRow | null>(null)
-  const [isChaseOnly, setIsChaseOnly] = useState(false)
+  const [filter, setFilter] = useState<RosterFilter>('all')
+  const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pendingTenantId, setPendingTenantId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  const visibleRows = useMemo(
-    () => (isChaseOnly ? rows.filter(needsChasing) : rows),
-    [rows, isChaseOnly]
+  const isActivityKnown = collections?.isActivityKnown ?? false
+  const referenceNow = nowIso ?? new Date().toISOString()
+
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        (Object.keys(FILTERS) as RosterFilter[]).map((key) => [
+          key,
+          rows.filter((row) => FILTERS[key](row, insights?.[row.tenantId])).length,
+        ])
+      ) as Record<RosterFilter, number>,
+    [rows, insights]
   )
 
-  const chaseCount = useMemo(() => rows.filter(needsChasing).length, [rows])
+  const visibleRows = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const matching = rows.filter(
+      (row) =>
+        FILTERS[filter](row, insights?.[row.tenantId]) &&
+        (needle === '' || row.name.toLowerCase().includes(needle) || row.slug.includes(needle))
+    )
+    if (!insights) return matching
+    // A store using the product without paying for it is the call to make
+    // first; otherwise the roster's urgency order stands (sort is stable).
+    const isTradingUnpaid = (row: RosterRow) => (insights[row.tenantId]?.isTradingUnpaid ? 1 : 0)
+    return [...matching].sort((a, b) => isTradingUnpaid(b) - isTradingUnpaid(a))
+  }, [rows, insights, filter, query])
+
+  const hasInsights = insights !== undefined
 
   const allowanceByTenant = useMemo(
     () => new Map((allowances ?? []).map((allowance) => [allowance.tenantId, allowance])),
@@ -166,31 +247,56 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-        <Stat label="Paying" value={String(summary.active)} />
-        <Stat
-          label={`Due in ${DUE_SOON_WINDOW_DAYS}d`}
-          value={String(summary.dueSoon)}
-          testId="stat-due-soon"
-        />
-        <Stat label="In grace" value={String(summary.inGrace)} />
-        <Stat label="Paused" value={String(summary.paused)} />
-        <Stat label="MRR" value={peso(summary.mrrPhp)} />
-      </div>
+      <SubscriptionStats summary={summary} collections={collections} collected={collected} />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
           <FilterTab
             label="All tenants"
-            isActive={!isChaseOnly}
-            onClick={() => setIsChaseOnly(false)}
+            isActive={filter === 'all'}
+            onClick={() => setFilter('all')}
           />
           <FilterTab
-            label={`Needs payment (${chaseCount})`}
-            isActive={isChaseOnly}
-            onClick={() => setIsChaseOnly(true)}
+            label={`Needs payment (${counts.chase})`}
+            isActive={filter === 'chase'}
+            onClick={() => setFilter('chase')}
           />
+          {isActivityKnown && (
+            <FilterTab
+              label={`Trading, not paid (${counts.tradingUnpaid})`}
+              isActive={filter === 'tradingUnpaid'}
+              onClick={() => setFilter('tradingUnpaid')}
+            />
+          )}
+          {hasInsights && (
+            <FilterTab
+              label={`Never paid (${counts.neverPaid})`}
+              isActive={filter === 'neverPaid'}
+              onClick={() => setFilter('neverPaid')}
+            />
+          )}
+          <FilterTab
+            label={`Not billed (${counts.unbilled})`}
+            isActive={filter === 'unbilled'}
+            onClick={() => setFilter('unbilled')}
+          />
+          {isActivityKnown && (
+            <FilterTab
+              label={`No orders 30d (${counts.dormant})`}
+              isActive={filter === 'dormant'}
+              onClick={() => setFilter('dormant')}
+            />
+          )}
         </div>
+
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search tenants…"
+          aria-label="Search tenants"
+          className="w-full max-w-[220px] rounded-lg border border-white/15 bg-black px-3 py-1.5 text-sm text-white placeholder:text-white/35 focus:border-white/40 focus:outline-none"
+        />
 
         {summary.dueSoonPhp > 0 && (
           <p className="text-sm text-white/55">
@@ -217,16 +323,19 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
 
       {visibleRows.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-white/15 px-4 py-12 text-center text-sm text-white/55">
-          Nobody needs chasing — every tenant is paid beyond the next{' '}
-          {DUE_SOON_WINDOW_DAYS} days.
+          {query.trim() ? 'No tenants match your search.' : EMPTY_MESSAGES[filter]}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
-          <table className="w-full min-w-[980px] text-sm">
+          <table
+            className={`w-full text-sm ${hasInsights ? 'min-w-[1240px]' : 'min-w-[980px]'}`}
+          >
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.02] text-left text-[11px] font-semibold uppercase tracking-wider text-white/45">
                 <th className="px-4 py-2.5">Tenant</th>
                 <th className="px-4 py-2.5">Status</th>
+                {hasInsights && <th className="whitespace-nowrap px-4 py-2.5">Orders (30d)</th>}
+                {hasInsights && <th className="whitespace-nowrap px-4 py-2.5">Last payment</th>}
                 <th className="whitespace-nowrap px-4 py-2.5">Billing since</th>
                 <th className="whitespace-nowrap px-4 py-2.5">Paid through</th>
                 <th className="whitespace-nowrap px-4 py-2.5">Due in</th>
@@ -240,143 +349,161 @@ export function SubscriptionManager({ rows, summary, allowances }: SubscriptionM
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.06]">
-              {visibleRows.map((row) => (
-                <tr
-                  key={row.tenantId}
-                  className={
-                    row.isDueSoon
-                      ? 'bg-amber-400/[0.06] transition-colors hover:bg-amber-400/10'
-                      : 'transition-colors hover:bg-white/[0.03]'
-                  }
-                >
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-white">{row.name}</div>
-                    <div className="text-xs text-white/45">
-                      {/* The dim ink is named on the slug itself, not merely
-                          inherited: this row sits on a pure black shell, and a
-                          later refactor that lifts the span out of this div
-                          must not silently take its legibility with it. */}
-                      <span className="text-white/45">/{row.slug}</span>
-                      {row.joinedDayKey && (
-                        <span data-testid={`joined-${row.tenantId}`}>
-                          {` · joined ${formatDayKey(row.joinedDayKey)}`}
+              {visibleRows.map((row) => {
+                const insight = insights?.[row.tenantId]
+                return (
+                  <tr key={row.tenantId} className={rowTone(row, insight)}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-white">{row.name}</div>
+                      <div className="text-xs text-white/45">
+                        {/* The dim ink is named on the slug itself, not merely
+                            inherited: this row sits on a pure black shell, and a
+                            later refactor that lifts the span out of this div
+                            must not silently take its legibility with it. */}
+                        <span className="text-white/45">/{row.slug}</span>
+                        {row.joinedDayKey && (
+                          <span data-testid={`joined-${row.tenantId}`}>
+                            {` · joined ${formatDayKey(row.joinedDayKey)}`}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${
+                          row.isUnbilled ? UNBILLED_STYLE : STATE_STYLES[row.state]
+                        }`}
+                      >
+                        {statusLabel(row)}
+                      </span>
+                      {insight?.isTradingUnpaid && (
+                        <div
+                          className="mt-1 whitespace-nowrap text-xs font-medium text-red-300"
+                          data-testid={`trading-unpaid-${row.tenantId}`}
+                        >
+                          Still taking orders
+                        </div>
+                      )}
+                    </td>
+                    {hasInsights && (
+                      <ActivityCell insight={insight} nowIso={referenceNow} tenantId={row.tenantId} />
+                    )}
+                    {hasInsights && <LastPaymentCell insight={insight} tenantId={row.tenantId} />}
+                    {/* Clickable, because it is the one date on this row the
+                        owner sets rather than reads. An unanchored client shows
+                        the prompt instead of an em dash: "—" reads as missing
+                        data, when it actually means a billing rule that has not
+                        been chosen yet. */}
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditingAnchor(row)}
+                          data-testid={`billing-anchor-${row.tenantId}`}
+                          className="rounded-lg px-2 py-1 text-left text-white/60 underline decoration-white/20 underline-offset-4 transition-colors hover:bg-white/[0.06] hover:text-white"
+                        >
+                          {row.anchorDayKey ? formatDayKey(row.anchorDayKey) : 'Set date'}
+                        </button>
+                      ) : (
+                        <span className="px-2 py-1 text-white/60">
+                          {row.anchorDayKey ? formatDayKey(row.anchorDayKey) : '—'}
                         </span>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${STATE_STYLES[row.state]}`}
-                    >
-                      {statusLabel(row)}
-                    </span>
-                  </td>
-                  {/* Clickable, because it is the one date on this row the
-                      owner sets rather than reads. An unanchored client shows
-                      the prompt instead of an em dash: "—" reads as missing
-                      data, when it actually means a billing rule that has not
-                      been chosen yet. */}
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setEditingAnchor(row)}
-                      data-testid={`billing-anchor-${row.tenantId}`}
-                      className="rounded-lg px-2 py-1 text-left text-white/60 underline decoration-white/20 underline-offset-4 transition-colors hover:bg-white/[0.06] hover:text-white"
-                    >
-                      {row.anchorDayKey ? formatDayKey(row.anchorDayKey) : 'Set date'}
-                    </button>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-white/60">
-                    {row.paidThroughDayKey ?? '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">
-                    {row.daysUntilDue === null ? (
-                      <span className="text-white/60">—</span>
-                    ) : (
-                      <span
-                        className={
-                          row.isDueSoon ? 'font-semibold text-amber-300' : 'text-white/60'
-                        }
-                      >
-                        {row.daysUntilDue}d
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-white/60">
-                    {row.daysOverdue > 0 ? `${row.daysOverdue}d` : '—'}
-                  </td>
-                  {(() => {
-                    const allowance = allowanceByTenant.get(row.tenantId)
-                    if (!allowance) {
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-white/60">
+                      {row.paidThroughDayKey ?? '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                      {row.daysUntilDue === null ? (
+                        <span className="text-white/60">—</span>
+                      ) : (
+                        <span
+                          className={
+                            row.isDueSoon ? 'font-semibold text-amber-300' : 'text-white/60'
+                          }
+                        >
+                          {row.daysUntilDue}d
+                        </span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-white/60">
+                      {row.daysOverdue > 0 ? `${row.daysOverdue}d` : '—'}
+                    </td>
+                    {(() => {
+                      const allowance = allowanceByTenant.get(row.tenantId)
+                      if (!allowance) {
+                        return (
+                          <>
+                            <td className="px-4 py-3 text-white/30">—</td>
+                            <td className="px-4 py-3 text-white/30">—</td>
+                          </>
+                        )
+                      }
                       return (
                         <>
-                          <td className="px-4 py-3 text-white/30">—</td>
-                          <td className="px-4 py-3 text-white/30">—</td>
+                          <AllowanceCell
+                            used={allowance.outletsUsed}
+                            limit={allowance.outletLimit}
+                            isOver={allowance.isOverOutlets}
+                            testId={`allowance-outlets-${row.tenantId}`}
+                          />
+                          <AllowanceCell
+                            used={allowance.peakBranchStaff}
+                            limit={allowance.staffLimit}
+                            isOver={allowance.isOverStaff}
+                            testId={`allowance-staff-${row.tenantId}`}
+                          />
                         </>
                       )
-                    }
-                    return (
-                      <>
-                        <AllowanceCell
-                          used={allowance.outletsUsed}
-                          limit={allowance.outletLimit}
-                          isOver={allowance.isOverOutlets}
-                          testId={`allowance-outlets-${row.tenantId}`}
-                        />
-                        <AllowanceCell
-                          used={allowance.peakBranchStaff}
-                          limit={allowance.staffLimit}
-                          isOver={allowance.isOverStaff}
-                          testId={`allowance-staff-${row.tenantId}`}
-                        />
-                      </>
-                    )
-                  })()}
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelected(row)}
-                        className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black transition-opacity hover:opacity-90"
-                      >
-                        Mark paid
-                      </button>
+                    })()}
+                    <td className="px-4 py-3">
+                      {canEdit && (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelected(row)}
+                            className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black transition-opacity hover:opacity-90"
+                          >
+                            Mark paid
+                          </button>
 
-                      {allowanceByTenant.has(row.tenantId) && (
-                        <button
-                          type="button"
-                          data-testid={`allowance-edit-${row.tenantId}`}
-                          onClick={() =>
-                            setEditingAllowance(allowanceByTenant.get(row.tenantId) ?? null)
-                          }
-                          className={SECONDARY_ACTION}
-                        >
-                          Allowances
-                        </button>
-                      )}
+                          {allowanceByTenant.has(row.tenantId) && (
+                            <button
+                              type="button"
+                              data-testid={`allowance-edit-${row.tenantId}`}
+                              onClick={() =>
+                                setEditingAllowance(allowanceByTenant.get(row.tenantId) ?? null)
+                              }
+                              className={SECONDARY_ACTION}
+                            >
+                              Allowances
+                            </button>
+                          )}
 
-                      {/* Exactly one row in three gets a lever.
-                          - hand-paused: Resume, because the owner pulled it.
-                          - cancelled:   nothing. Resume would write `active`
-                            and resurrect a closed account; Pause would write a
-                            status nobody chose. Reopening is a decision, not a
-                            click on a collections table.
-                          - everyone else: Pause. A tenant the dates closed
-                            needs paying, so they get no way back in here. */}
-                      {row.manualBlock !== 'cancelled' && (
-                        <button
-                          type="button"
-                          onClick={() => handlePausedChange(row, row.manualBlock !== 'paused')}
-                          disabled={isPending && pendingTenantId === row.tenantId}
-                          className={`${SECONDARY_ACTION} disabled:opacity-50`}
-                        >
-                          {row.manualBlock === 'paused' ? 'Resume' : 'Pause'}
-                        </button>
+                          {/* Exactly one row in three gets a lever.
+                              - hand-paused: Resume, because the owner pulled it.
+                              - cancelled:   nothing. Resume would write `active`
+                                and resurrect a closed account; Pause would write a
+                                status nobody chose. Reopening is a decision, not a
+                                click on a collections table.
+                              - everyone else: Pause. A tenant the dates closed
+                                needs paying, so they get no way back in here. */}
+                          {row.manualBlock !== 'cancelled' && (
+                            <button
+                              type="button"
+                              onClick={() => handlePausedChange(row, row.manualBlock !== 'paused')}
+                              disabled={isPending && pendingTenantId === row.tenantId}
+                              className={`${SECONDARY_ACTION} disabled:opacity-50`}
+                            >
+                              {row.manualBlock === 'paused' ? 'Resume' : 'Pause'}
+                            </button>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -438,14 +565,5 @@ function FilterTab({
     >
       {label}
     </button>
-  )
-}
-
-function Stat({ label, value, testId }: { label: string; value: string; testId?: string }) {
-  return (
-    <Panel hover padding="p-5" testId={testId}>
-      <p className="text-xs uppercase tracking-wide text-white/45">{label}</p>
-      <p className="mt-2 text-2xl font-bold tracking-tight text-white">{value}</p>
-    </Panel>
   )
 }

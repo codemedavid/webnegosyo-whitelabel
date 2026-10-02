@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
 import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 import { hasPermission } from '@/lib/staff-permissions'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
@@ -52,8 +53,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!user) return json({ error: 'Unauthorized' }, 401)
 
   const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-  const isStoreAdmin = appUser?.role === 'superadmin' || (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
-  const mayRingSales = appUser !== null && isStoreAdmin && hasPermission({
+  const mayRingSales = appUser !== null && canAccessStoreAdmin(appUser, tenantId, 'view') && hasPermission({
     role: appUser.role,
     is_owner: appUser.is_owner ?? false,
     permissions: appUser.permissions ?? null,

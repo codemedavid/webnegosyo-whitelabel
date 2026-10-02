@@ -15,32 +15,54 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { Tenant } from '@/types/database'
 import { resolveLoyverseConfig } from '@/lib/loyverse/config'
 import { loyverseListAll } from '@/lib/loyverse/client'
+import type { LoyverseTenant } from '@/lib/loyverse/tenant'
+import type { EnsureWebhooksResult } from '@/lib/loyverse/webhooks'
 import {
   mapLoyverseCatalog,
   type LoyverseCatalogCategory,
+  type LoyverseCatalogInput,
   type LoyverseCatalogItem,
+  type LoyverseCatalogMapping,
   type LoyverseCatalogModifier,
   type LoyverseCatalogStockLevel,
   type MappedLoyverseItem,
 } from '@/lib/loyverse/catalog-mapper'
+import {
+  categoriesToCreate,
+  createAdopter,
+  findRetiredMenuItemIds,
+  isMenuItemInSync,
+  isVariantMapInSync,
+  type ExistingMenuRow,
+  type ExistingVariantMapRow,
+  type MenuItemSyncFields,
+  type UnclaimedRow,
+} from '@/lib/loyverse/catalog-import-plan'
+import { forEachWithConcurrency } from '@/lib/loyverse/concurrency'
 import { shouldMirrorLoyverseImage, mirrorLoyverseImage } from '@/lib/loyverse/image-mirror'
+
+type Db = ReturnType<typeof createAdminClient>
 
 export interface LoyverseSyncReport {
   success: boolean
   error?: string
   categoriesCreated: number
   itemsCreated: number
+  /** Dishes matched to an existing local row (written or already in sync). */
   itemsUpdated: number
+  /** Of itemsUpdated, how many were already in sync and needed no write. */
+  itemsUnchanged?: number
+  /** Dishes whose Loyverse item is gone, now marked unavailable. */
+  itemsRetired?: number
   itemsSkipped: number
   warnings: string[]
-  /** Webhook auto-registration outcome; set by the sync action, not the import. */
-  webhooks?: { registered: number; alreadyActive: number; error?: string }
+  /** Webhook auto-registration outcome; set by the sync orchestrator, not the import. */
+  webhooks?: EnsureWebhooksResult
 }
 
-const emptyReport = (error?: string): LoyverseSyncReport => ({
+export const emptyReport = (error?: string): LoyverseSyncReport => ({
   success: !error,
   error,
   categoriesCreated: 0,
@@ -60,6 +82,7 @@ export interface LoyverseMapRowInsert {
   loyverse_modifier_id: string | null
   loyverse_modifier_option_id: string | null
   loyverse_sku: string | null
+  in_stock?: number | null
 }
 
 /**
@@ -92,26 +115,6 @@ export function buildMapRowInserts(
   return rows
 }
 
-interface ExistingCategoryRow {
-  id: string
-  name: string
-}
-
-/** A local dish that already carries its Loyverse identity. */
-interface ExistingIdentityRow {
-  id: string
-  loyverse_item_id: string | null
-  image_url: string | null
-}
-
-/** A local dish with no Loyverse identity yet — adoptable by name. */
-interface UnclaimedRow {
-  id: string
-  name: string | null
-  category_id: string | null
-  image_url: string | null
-}
-
 /**
  * Mirrors per run are capped so image re-hosting can never starve the import
  * of its timeout budget again. A stored Loyverse hotlink still reads as
@@ -120,12 +123,385 @@ interface UnclaimedRow {
  */
 export const DEFAULT_IMAGE_MIRROR_LIMIT = 25
 
+/**
+ * Dish writes (and image mirrors) run a few at a time: sequential round trips
+ * are what let a large catalog outrun the function timeout; unbounded
+ * parallelism would swamp the connection pool.
+ */
+const WRITE_CONCURRENCY = 4
+
+/** Every catalog item lands on the menu; "no category" means this one, never a skip. */
+const FALLBACK_CATEGORY_NAME = 'Menu'
+
+const MENU_ROW_COLUMNS =
+  'id, loyverse_item_id, name, description, price, category_id, modifier_groups, is_available, image_url'
+
 export interface ImportLoyverseCatalogOptions {
   imageMirrorLimit?: number
 }
 
+async function fetchCatalog(accessToken: string, storeId: string): Promise<LoyverseCatalogInput> {
+  const [categories, items, modifiers, inventoryLevels] = await Promise.all([
+    loyverseListAll<LoyverseCatalogCategory>(accessToken, '/categories', 'categories'),
+    loyverseListAll<LoyverseCatalogItem>(accessToken, '/items', 'items'),
+    loyverseListAll<LoyverseCatalogModifier>(accessToken, '/modifiers', 'modifiers'),
+    // Levels feed initial availability (and the remembered stock on the map)
+    // so a dish that is already dry never shows orderable while waiting for
+    // its first webhook.
+    loyverseListAll<LoyverseCatalogStockLevel>(accessToken, '/inventory', 'inventory_levels', {
+      query: { store_ids: storeId },
+    }),
+  ])
+  return { storeId, categories, items, modifiers, inventoryLevels }
+}
+
+interface LocalState {
+  /** Dishes that already carry a Loyverse identity. */
+  identified: ExistingMenuRow[]
+  unclaimed: UnclaimedRow[]
+  /** Stored variant map rows, by Loyverse item id. */
+  variantMapByItem: Map<string, ExistingVariantMapRow[]>
+}
+
+/**
+ * Identity is read from menu_items.loyverse_item_id, NOT from the map table:
+ * the map is derived data, and an interrupted sync that leaves it unwritten
+ * must not make the next sync duplicate the catalog (migration 20260828130000).
+ * Unclaimed dishes are read too — a tenant whose sync never completed has
+ * nothing claimed, and adopting by name is what stops a re-insert.
+ */
+async function readLocalState(db: Db, tenantId: string): Promise<LocalState> {
+  const [identified, unclaimed, variantMap] = await Promise.all([
+    db.from('menu_items').select(MENU_ROW_COLUMNS).eq('tenant_id', tenantId).not('loyverse_item_id', 'is', null),
+    db.from('menu_items').select('id, name, category_id, image_url').eq('tenant_id', tenantId).is('loyverse_item_id', null),
+    db
+      .from('loyverse_item_map')
+      .select('menu_item_id, loyverse_item_id, loyverse_variant_id, local_key, loyverse_sku, in_stock')
+      .eq('tenant_id', tenantId)
+      .eq('kind', 'variant'),
+  ])
+  if (identified.error) throw new Error(`Failed to read menu items: ${identified.error.message}`)
+  if (unclaimed.error) throw new Error(`Failed to read menu items: ${unclaimed.error.message}`)
+  if (variantMap.error) throw new Error(`Failed to read the Loyverse item map: ${variantMap.error.message}`)
+
+  const variantMapByItem = new Map<string, ExistingVariantMapRow[]>()
+  for (const row of (variantMap.data ?? []) as ExistingVariantMapRow[]) {
+    if (!row.loyverse_item_id) continue
+    const list = variantMapByItem.get(row.loyverse_item_id)
+    if (list) list.push(row)
+    else variantMapByItem.set(row.loyverse_item_id, [row])
+  }
+  return {
+    identified: ((identified.data ?? []) as unknown as ExistingMenuRow[]).filter((row) => row.id),
+    unclaimed: (unclaimed.data ?? []) as unknown as UnclaimedRow[],
+    variantMapByItem,
+  }
+}
+
+async function insertCategories(
+  db: Db,
+  tenantId: string,
+  names: string[],
+  firstOrder: number
+): Promise<{ created: Array<{ id: string; name: string }>; failures: string[] }> {
+  if (names.length === 0) return { created: [], failures: [] }
+  const rows = names.map((name, index) => ({ tenant_id: tenantId, name, is_active: true, order: firstOrder + index }))
+  const { data, error } = await db.from('categories').insert(rows).select('id, name')
+  if (!error && data) return { created: data as Array<{ id: string; name: string }>, failures: [] }
+
+  // One bad name must not cost every category: retry one at a time.
+  const created: Array<{ id: string; name: string }> = []
+  const failures: string[] = []
+  for (const row of rows) {
+    const single = await db.from('categories').insert(row).select('id, name').single()
+    if (single.error || !single.data) {
+      failures.push(`Failed to create category "${row.name}": ${single.error?.message ?? 'unknown'}`)
+    } else {
+      created.push(single.data as { id: string; name: string })
+    }
+  }
+  return { created, failures }
+}
+
+/** Creates the missing categories up front and returns a name → id resolver. */
+async function prepareCategories(
+  db: Db,
+  tenantId: string,
+  mapping: LoyverseCatalogMapping,
+  report: LoyverseSyncReport
+): Promise<(item: MappedLoyverseItem) => string | null> {
+  const { data: existing, error } = await db.from('categories').select('id, name').eq('tenant_id', tenantId)
+  if (error) throw new Error(`Failed to read categories: ${error.message}`)
+
+  const idByName = new Map<string, string>()
+  for (const category of (existing ?? []) as Array<{ id: string; name: string }>) {
+    idByName.set(category.name.toLowerCase(), category.id)
+  }
+  const nameOf = (item: MappedLoyverseItem): string | undefined =>
+    item.categoryLoyverseId ? mapping.categoryNames[item.categoryLoyverseId] : undefined
+
+  // Every named category is either existing or about to be created, so only
+  // items with no (live) category need the fallback bucket.
+  const names = categoriesToCreate(mapping.items, mapping.categoryNames, new Set(idByName.keys()))
+  const fallbackKey = FALLBACK_CATEGORY_NAME.toLowerCase()
+  const needsFallback = mapping.items.some((item) => !nameOf(item))
+  const fallbackPlanned = idByName.has(fallbackKey) || names.some((name) => name.toLowerCase() === fallbackKey)
+  if (needsFallback && !fallbackPlanned) names.push(FALLBACK_CATEGORY_NAME)
+
+  const { created, failures } = await insertCategories(db, tenantId, names, idByName.size)
+  for (const category of created) idByName.set(category.name.toLowerCase(), category.id)
+  report.categoriesCreated += created.length
+  report.warnings.push(...failures)
+
+  return (item) => {
+    const name = nameOf(item)
+    return (name ? idByName.get(name.toLowerCase()) : undefined) ?? idByName.get(fallbackKey) ?? null
+  }
+}
+
+interface PlannedItem {
+  item: MappedLoyverseItem
+  categoryId: string
+  /** The local row this item writes over; null = insert a new dish. */
+  existing: ExistingMenuRow | null
+  /** Matched by name, so its identity must be stamped even if nothing else changed. */
+  adopted: boolean
+}
+
+interface ImportContext {
+  db: Db
+  tenantId: string
+  report: LoyverseSyncReport
+  variantMapByItem: Map<string, ExistingVariantMapRow[]>
+  menuItemIdByLoyverseId: Record<string, string>
+  pendingMirrors: Array<{ menuItemId: string; itemName: string; imageUrl: string }>
+}
+
+/** Writes (or skips) one dish; returns its local id, or null when it failed. */
+async function upsertMenuItem(ctx: ImportContext, planned: PlannedItem): Promise<string | null> {
+  const { db, tenantId, report } = ctx
+  const { item, categoryId, existing } = planned
+
+  // Images are NOT mirrored here: the item is written with the Loyverse
+  // hotlink (renderable via next.config remotePatterns) and queued for a
+  // capped mirror pass after the whole catalog has landed.
+  const wantsMirror = shouldMirrorLoyverseImage(existing?.image_url ?? '', item.imageUrl)
+  const fields: MenuItemSyncFields = {
+    name: item.name,
+    description: item.description,
+    price: item.price,
+    category_id: categoryId,
+    modifier_groups: item.modifierGroups,
+    is_available: item.isAvailable,
+    ...(wantsMirror ? { image_url: item.imageUrl as string } : {}),
+  }
+
+  let menuItemId: string
+  if (existing && !planned.adopted && isMenuItemInSync(existing, fields)) {
+    menuItemId = existing.id
+    report.itemsUpdated++
+    report.itemsUnchanged = (report.itemsUnchanged ?? 0) + 1
+  } else if (existing) {
+    const { error } = await db
+      .from('menu_items')
+      // Stamps identity onto a dish adopted by name; a no-op re-write otherwise.
+      // `as never`: ModifierGroup[] is not structurally the generated Json type.
+      .update({ ...fields, loyverse_item_id: item.loyverseItemId } as never)
+      .eq('id', existing.id)
+      .eq('tenant_id', tenantId)
+    if (error) {
+      report.warnings.push(`Failed to update "${item.name}": ${error.message}`)
+      report.itemsSkipped++
+      return null
+    }
+    menuItemId = existing.id
+    report.itemsUpdated++
+  } else {
+    const { data, error } = await db
+      .from('menu_items')
+      .insert({
+        tenant_id: tenantId,
+        image_url: '',
+        ...fields,
+        // The match key, written in the same statement that creates the dish
+        // — so an interrupted sync leaves nothing unmatchable.
+        loyverse_item_id: item.loyverseItemId,
+        variations: [],
+        addons: [],
+        order: 0,
+      } as never)
+      .select('id')
+      .single()
+    if (error || !data) {
+      report.warnings.push(`Failed to create "${item.name}": ${error?.message ?? 'unknown'}`)
+      report.itemsSkipped++
+      return null
+    }
+    menuItemId = (data as { id: string }).id
+    report.itemsCreated++
+  }
+
+  ctx.menuItemIdByLoyverseId[item.loyverseItemId] = menuItemId
+  if (wantsMirror) {
+    ctx.pendingMirrors.push({ menuItemId, itemName: item.name, imageUrl: item.imageUrl as string })
+  }
+  return menuItemId
+}
+
+/**
+ * The item's own variant rows, written right after the dish rather than after
+ * the whole catalog, so an interrupted sync leaves a partial-but-correct map.
+ * Rows already in sync are left alone — which also keeps their remembered
+ * stock instead of wiping it on every re-sync.
+ */
+async function syncItemVariantMap(ctx: ImportContext, item: MappedLoyverseItem): Promise<void> {
+  const { db, tenantId, report } = ctx
+  const desired = buildMapRowInserts(tenantId, [item], ctx.menuItemIdByLoyverseId).filter(
+    (row) => row.kind === 'variant'
+  )
+  const existing = ctx.variantMapByItem.get(item.loyverseItemId) ?? []
+  if (isVariantMapInSync(existing, desired)) return
+
+  const { error: clearError } = await db
+    .from('loyverse_item_map')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('kind', 'variant')
+    .eq('loyverse_item_id', item.loyverseItemId)
+  if (clearError) {
+    report.warnings.push(`Failed to clear item map for "${item.name}": ${clearError.message}`)
+    return
+  }
+  if (desired.length === 0) return
+  const { error: insertError } = await db.from('loyverse_item_map').insert(desired)
+  if (insertError) {
+    report.warnings.push(`Failed to write item map for "${item.name}": ${insertError.message}`)
+  }
+}
+
+/**
+ * Shared modifier-option rows are tenant-wide, so they are rebuilt once at the
+ * end. Losing them mid-run costs only modifier resolution on receipts, which
+ * the next sync repairs.
+ */
+async function syncModifierMap(ctx: ImportContext, items: MappedLoyverseItem[]): Promise<void> {
+  const { db, tenantId, report } = ctx
+  const rows = buildMapRowInserts(tenantId, items, ctx.menuItemIdByLoyverseId).filter(
+    (row) => row.kind === 'modifier_option'
+  )
+  const { error: deleteError } = await db
+    .from('loyverse_item_map')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('kind', 'modifier_option')
+  if (deleteError) {
+    report.warnings.push(`Failed to clear modifier map: ${deleteError.message}`)
+    return
+  }
+  if (rows.length === 0) return
+  const { error: insertError } = await db.from('loyverse_item_map').insert(rows)
+  if (insertError) report.warnings.push(`Failed to write modifier map: ${insertError.message}`)
+}
+
+/** Marks dishes whose Loyverse item is gone unavailable, and drops their variant rows. */
+async function retireRemovedItems(
+  ctx: ImportContext,
+  identified: readonly ExistingMenuRow[],
+  mapping: LoyverseCatalogMapping
+): Promise<void> {
+  const { db, tenantId, report } = ctx
+  const live = new Set(mapping.items.map((item) => item.loyverseItemId))
+  const identity = identified.map((row) => ({ id: row.id, loyverse_item_id: row.loyverse_item_id ?? null }))
+  const retiredIds = findRetiredMenuItemIds(identity, live)
+  if (retiredIds.length === 0) return
+
+  const retired = new Set(retiredIds)
+  const toDisable = identified.filter((row) => retired.has(row.id) && row.is_available !== false)
+  if (toDisable.length > 0) {
+    const { error } = await db
+      .from('menu_items')
+      .update({ is_available: false })
+      .eq('tenant_id', tenantId)
+      .in('id', toDisable.map((row) => row.id))
+    if (error) {
+      report.warnings.push(`Failed to retire dishes removed from Loyverse: ${error.message}`)
+    } else {
+      report.itemsRetired = toDisable.length
+      report.warnings.push(
+        `${toDisable.length} dish(es) no longer in Loyverse were marked unavailable: ${toDisable.map((row) => row.name ?? row.id).join(', ')}`
+      )
+    }
+  }
+
+  // Stale variant rows would keep feeding the stock check and receipt lines
+  // with variants Loyverse no longer has.
+  const { error: mapError } = await db
+    .from('loyverse_item_map')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('kind', 'variant')
+    .in('menu_item_id', retiredIds)
+  if (mapError) report.warnings.push(`Failed to clear map rows of retired dishes: ${mapError.message}`)
+}
+
+/**
+ * Capped mirror pass: cosmetic, after the sync is already complete. Failures
+ * and the deferred tail both leave the hotlink in place, which the next
+ * sync/reconcile recognizes as still needing a mirror.
+ */
+async function mirrorPendingImages(ctx: ImportContext, limit: number): Promise<void> {
+  const { db, tenantId, report, pendingMirrors } = ctx
+  const now = pendingMirrors.slice(0, limit)
+  await forEachWithConcurrency(now, WRITE_CONCURRENCY, async (pending) => {
+    const mirrored = await mirrorLoyverseImage(tenantId, pending.imageUrl)
+    if (!mirrored) {
+      report.warnings.push(`Image for "${pending.itemName}" could not be re-hosted; using the Loyverse link`)
+      return
+    }
+    const { error } = await db
+      .from('menu_items')
+      .update({ image_url: mirrored })
+      .eq('id', pending.menuItemId)
+      .eq('tenant_id', tenantId)
+    if (error) {
+      report.warnings.push(`Failed to save mirrored image for "${pending.itemName}": ${error.message}`)
+    }
+  })
+  if (pendingMirrors.length > now.length) {
+    report.warnings.push(`${pendingMirrors.length - now.length} images deferred to the next sync`)
+  }
+}
+
+/**
+ * Pairs every mapped item with its category and the local row it lands on.
+ * Sequential and pure-ish on purpose: adoption hands each unclaimed dish out
+ * at most once, which must not race.
+ */
+function planItems(
+  mapping: LoyverseCatalogMapping,
+  resolveCategoryId: (item: MappedLoyverseItem) => string | null,
+  state: LocalState,
+  report: LoyverseSyncReport
+): PlannedItem[] {
+  const byLoyverseId = new Map(state.identified.map((row) => [row.loyverse_item_id as string, row]))
+  const adopt = createAdopter(state.unclaimed)
+  const planned: PlannedItem[] = []
+  for (const item of mapping.items) {
+    const categoryId = resolveCategoryId(item)
+    if (!categoryId) {
+      report.warnings.push(`Skipped "${item.name}": no category available`)
+      report.itemsSkipped++
+      continue
+    }
+    const identified = byLoyverseId.get(item.loyverseItemId) ?? null
+    const adopted = identified ? null : adopt(item.name, categoryId)
+    planned.push({ item, categoryId, existing: identified ?? adopted, adopted: Boolean(adopted) })
+  }
+  return planned
+}
+
 export async function importLoyverseCatalog(
-  tenant: Tenant,
+  tenant: LoyverseTenant,
   options: ImportLoyverseCatalogOptions = {}
 ): Promise<LoyverseSyncReport> {
   const resolved = resolveLoyverseConfig(tenant)
@@ -135,329 +511,57 @@ export async function importLoyverseCatalog(
   }
   const { accessToken, storeId } = resolved.config
 
-  let categories: LoyverseCatalogCategory[]
-  let items: LoyverseCatalogItem[]
-  let modifiers: LoyverseCatalogModifier[]
-  let inventoryLevels: LoyverseCatalogStockLevel[]
+  let mapping: LoyverseCatalogMapping
   try {
-    ;[categories, items, modifiers, inventoryLevels] = await Promise.all([
-      loyverseListAll<LoyverseCatalogCategory>(accessToken, '/categories', 'categories'),
-      loyverseListAll<LoyverseCatalogItem>(accessToken, '/items', 'items'),
-      loyverseListAll<LoyverseCatalogModifier>(accessToken, '/modifiers', 'modifiers'),
-      // Levels feed initial availability so a dish that is already dry in
-      // Loyverse never shows orderable while waiting for its first webhook.
-      loyverseListAll<LoyverseCatalogStockLevel>(accessToken, '/inventory', 'inventory_levels', {
-        query: { store_ids: storeId },
-      }),
-    ])
+    mapping = mapLoyverseCatalog(await fetchCatalog(accessToken, storeId))
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch the Loyverse catalog'
-    return emptyReport(message)
+    return emptyReport(error instanceof Error ? error.message : 'Failed to fetch the Loyverse catalog')
   }
 
-  const mapping = mapLoyverseCatalog({ storeId, categories, modifiers, items, inventoryLevels })
   const report: LoyverseSyncReport = {
     ...emptyReport(),
     itemsSkipped: mapping.warnings.length,
     warnings: [...mapping.warnings],
   }
+  const db = createAdminClient()
 
-  const supabase = createAdminClient()
-
-  // --- Categories: match by name (case-insensitive), create the missing ones.
-  const { data: existingCategories, error: categoriesError } = await supabase
-    .from('categories')
-    .select('id, name')
-    .eq('tenant_id', tenant.id)
-  if (categoriesError) return emptyReport(`Failed to read categories: ${categoriesError.message}`)
-
-  const categoryIdByName = new Map<string, string>()
-  for (const category of (existingCategories ?? []) as ExistingCategoryRow[]) {
-    categoryIdByName.set(category.name.toLowerCase(), category.id)
+  let resolveCategoryId: (item: MappedLoyverseItem) => string | null
+  let state: LocalState
+  try {
+    ;[resolveCategoryId, state] = await Promise.all([
+      prepareCategories(db, tenant.id, mapping, report),
+      readLocalState(db, tenant.id),
+    ])
+  } catch (error: unknown) {
+    return emptyReport(error instanceof Error ? error.message : 'Failed to read the local menu')
   }
 
-  const neededCategoryNames = new Set<string>()
-  for (const item of mapping.items) {
-    const name = item.categoryLoyverseId ? mapping.categoryNames[item.categoryLoyverseId] : null
-    if (name && !categoryIdByName.has(name.toLowerCase())) neededCategoryNames.add(name)
+  const ctx: ImportContext = {
+    db,
+    tenantId: tenant.id,
+    report,
+    variantMapByItem: state.variantMapByItem,
+    menuItemIdByLoyverseId: {},
+    pendingMirrors: [],
   }
 
-  let nextOrder = categoryIdByName.size
-  for (const name of neededCategoryNames) {
-    const { data: created, error: createError } = await supabase
-      .from('categories')
-      .insert({ tenant_id: tenant.id, name, is_active: true, order: nextOrder } as never)
-      .select('id')
-      .single()
-    if (createError || !created) {
-      report.warnings.push(`Failed to create category "${name}": ${createError?.message ?? 'unknown'}`)
-      continue
-    }
-    categoryIdByName.set(name.toLowerCase(), (created as ExistingCategoryRow).id)
-    report.categoriesCreated++
-    nextOrder++
-  }
+  const planned = planItems(mapping, resolveCategoryId, state, report)
+  await forEachWithConcurrency(planned, WRITE_CONCURRENCY, async (entry) => {
+    const menuItemId = await upsertMenuItem(ctx, entry)
+    if (menuItemId) await syncItemVariantMap(ctx, entry.item)
+  })
 
-  // Fallback bucket for items whose Loyverse category is missing/deleted —
-  // every catalog item must land on the menu, so the answer to "no category"
-  // is a lazily created "Menu" category, never a skip.
-  const FALLBACK_CATEGORY_NAME = 'Menu'
-  const ensureFallbackCategoryId = async (): Promise<string | null> => {
-    const cached = categoryIdByName.get(FALLBACK_CATEGORY_NAME.toLowerCase())
-    if (cached) return cached
-    const { data: created, error: createError } = await supabase
-      .from('categories')
-      .insert({
-        tenant_id: tenant.id,
-        name: FALLBACK_CATEGORY_NAME,
-        is_active: true,
-        order: nextOrder,
-      } as never)
-      .select('id')
-      .single()
-    if (createError || !created) return null
-    nextOrder++
-    report.categoriesCreated++
-    const id = (created as ExistingCategoryRow).id
-    categoryIdByName.set(FALLBACK_CATEGORY_NAME.toLowerCase(), id)
-    return id
-  }
-
-  const resolveCategoryId = async (item: MappedLoyverseItem): Promise<string | null> => {
-    const name = item.categoryLoyverseId ? mapping.categoryNames[item.categoryLoyverseId] : null
-    const matched = name ? (categoryIdByName.get(name.toLowerCase()) ?? null) : null
-    return matched ?? (await ensureFallbackCategoryId())
-  }
-
-  // The generated Supabase types lag new migrations (loyverse_item_map is not
-  // in src/types/supabase.ts yet), so these queries go through `any` the same
-  // way bulk-menu-import does.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapTable = () => (supabase as any).from('loyverse_item_map')
-
-  // --- Existing links: loyverse item -> local menu item.
-  //
-  // Read from menu_items.loyverse_item_id, NOT from the map table. The map is
-  // derived data rebuilt on every sync; identity has to outlive it, or an
-  // interrupted sync (which leaves dishes created and the map unwritten)
-  // makes the next sync duplicate the entire catalog. See migration
-  // 20260828130000.
-  const { data: identifiedRows, error: identityError } = await supabase
-    .from('menu_items')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select('id, loyverse_item_id, image_url' as any)
-    .eq('tenant_id', tenant.id)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .not('loyverse_item_id' as any, 'is', null)
-  if (identityError) return emptyReport(`Failed to read menu items: ${identityError.message}`)
-
-  // --- Unclaimed local dishes, available for adoption by name.
-  //
-  // A tenant whose sync never completed has an empty map, so the identity
-  // backfill in 20260828130000 claimed nothing for it — every dish would be
-  // re-inserted here. Adopting by name is what migrates those tenants onto
-  // the identity column without duplicating their menu a second time.
-  const { data: unclaimedRows } = await supabase
-    .from('menu_items')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select('id, name, category_id, image_url' as any)
-    .eq('tenant_id', tenant.id)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .is('loyverse_item_id' as any, null)
-
-  const unclaimed = (unclaimedRows ?? []) as unknown as UnclaimedRow[]
-  const adoptedIds = new Set<string>()
-
-  /**
-   * Prefers a same-category match; falls back to a tenant-wide unique name so
-   * a dish whose category drifted is adopted rather than duplicated. Ambiguity
-   * is resolved deterministically (first match) because the alternative —
-   * inserting — is the duplication this whole change exists to stop.
-   */
-  const adoptUnclaimed = (name: string, categoryId: string | null): UnclaimedRow | null => {
-    const target = name.trim().toLowerCase()
-    const available = unclaimed.filter(
-      (row) => !adoptedIds.has(row.id) && (row.name ?? '').trim().toLowerCase() === target
-    )
-    if (available.length === 0) return null
-    const sameCategory = available.find((row) => row.category_id === categoryId)
-    const chosen = sameCategory ?? available[0]
-    adoptedIds.add(chosen.id)
-    return chosen
-  }
-
-  const menuItemIdByLoyverseId: Record<string, string> = {}
-  const imageByMenuItemId = new Map<string, string>()
-  for (const row of (identifiedRows ?? []) as unknown as ExistingIdentityRow[]) {
-    if (!row.loyverse_item_id || !row.id) continue
-    menuItemIdByLoyverseId[row.loyverse_item_id] = row.id
-    imageByMenuItemId.set(row.id, row.image_url ?? '')
-  }
-
-  // --- Upsert menu items.
-  const pendingMirrors: Array<{ menuItemId: string; itemName: string; imageUrl: string }> = []
-  for (const item of mapping.items) {
-    const categoryId = await resolveCategoryId(item)
-    if (!categoryId) {
-      report.warnings.push(`Skipped "${item.name}": no category available`)
-      report.itemsSkipped++
-      continue
-    }
-
-    // Identity match first; then adoption of an unclaimed local dish by name.
-    const adopted = menuItemIdByLoyverseId[item.loyverseItemId]
-      ? null
-      : adoptUnclaimed(item.name, categoryId)
-    if (adopted) {
-      menuItemIdByLoyverseId[item.loyverseItemId] = adopted.id
-      imageByMenuItemId.set(adopted.id, adopted.image_url ?? '')
-    }
-    const existingId = menuItemIdByLoyverseId[item.loyverseItemId]
-
-    // Images are NOT mirrored here. The mirror is a network fetch per item;
-    // awaiting it inside this loop is what let a 244-item catalog outrun the
-    // function timeout and never finish. The item is written with the
-    // Loyverse hotlink (renderable via next.config remotePatterns) and queued
-    // for a capped mirror pass after the whole catalog has landed.
-    const currentImage = existingId ? (imageByMenuItemId.get(existingId) ?? '') : ''
-    const wantsMirror = shouldMirrorLoyverseImage(currentImage, item.imageUrl)
-    const imageField: { image_url: string } | Record<string, never> = wantsMirror
-      ? { image_url: item.imageUrl as string }
-      : {}
-
-    const commonFields = {
-      name: item.name,
-      description: item.description,
-      price: item.price,
-      category_id: categoryId,
-      modifier_groups: item.modifierGroups,
-      is_available: item.isAvailable,
-      ...imageField,
-    }
-
-    if (existingId) {
-      const { error: updateError } = await supabase
-        .from('menu_items')
-        .update({
-          ...commonFields,
-          // Stamps identity onto a dish adopted by name; a no-op re-write for
-          // one that already matched by id.
-          loyverse_item_id: item.loyverseItemId,
-        } as never)
-        .eq('id', existingId)
-        .eq('tenant_id', tenant.id)
-      if (updateError) {
-        report.warnings.push(`Failed to update "${item.name}": ${updateError.message}`)
-        report.itemsSkipped++
-        continue
-      }
-      report.itemsUpdated++
-    } else {
-      const { data: created, error: insertError } = await supabase
-        .from('menu_items')
-        .insert({
-          tenant_id: tenant.id,
-          image_url: '',
-          ...commonFields,
-          // The match key, written in the same statement that creates the
-          // dish — so an interrupted sync leaves nothing unmatchable.
-          loyverse_item_id: item.loyverseItemId,
-          variations: [],
-          addons: [],
-          order: 0,
-        } as never)
-        .select('id')
-        .single()
-      if (insertError || !created) {
-        report.warnings.push(`Failed to create "${item.name}": ${insertError?.message ?? 'unknown'}`)
-        report.itemsSkipped++
-        continue
-      }
-      menuItemIdByLoyverseId[item.loyverseItemId] = (created as { id: string }).id
-      report.itemsCreated++
-    }
-
-    if (wantsMirror) {
-      pendingMirrors.push({
-        menuItemId: menuItemIdByLoyverseId[item.loyverseItemId],
-        itemName: item.name,
-        imageUrl: item.imageUrl as string,
-      })
-    }
-
-    // --- Map rows for THIS item, written now rather than after every item.
-    // Scoped to the item's own variant rows, so an interrupted sync leaves a
-    // partial-but-correct map instead of an empty one.
-    const itemMapRows = buildMapRowInserts(tenant.id, [item], menuItemIdByLoyverseId).filter(
-      (row) => row.kind === 'variant'
-    )
-    const { error: clearItemMapError } = await mapTable()
-      .delete()
-      .eq('tenant_id', tenant.id)
-      .eq('kind', 'variant')
-      .eq('loyverse_item_id', item.loyverseItemId)
-    if (clearItemMapError) {
-      report.warnings.push(`Failed to clear item map for "${item.name}": ${clearItemMapError.message}`)
-    } else if (itemMapRows.length > 0) {
-      const { error: insertItemMapError } = await mapTable().insert(itemMapRows)
-      if (insertItemMapError) {
-        report.warnings.push(`Failed to write item map for "${item.name}": ${insertItemMapError.message}`)
-      }
-    }
-  }
-
-  // --- Shared modifier-option rows: tenant-wide, not per item, so they are
-  // rebuilt once at the end. Losing these mid-run no longer costs identity —
-  // only receipt-line resolution for modifiers, which the next sync repairs.
-  const modifierMapRows = buildMapRowInserts(tenant.id, mapping.items, menuItemIdByLoyverseId).filter(
-    (row) => row.kind === 'modifier_option'
-  )
-  const { error: deleteError } = await mapTable()
-    .delete()
-    .eq('tenant_id', tenant.id)
-    .eq('kind', 'modifier_option')
-  if (deleteError) {
-    report.warnings.push(`Failed to clear modifier map: ${deleteError.message}`)
-  } else if (modifierMapRows.length > 0) {
-    const { error: insertMapError } = await mapTable().insert(modifierMapRows)
-    if (insertMapError) {
-      report.warnings.push(`Failed to write modifier map: ${insertMapError.message}`)
-    }
-  }
+  await syncModifierMap(ctx, mapping.items)
+  await retireRemovedItems(ctx, state.identified, mapping)
 
   // The catalog is fully landed; the sync is complete regardless of images.
-  await supabase
+  const { error: stampError } = await db
     .from('tenants')
     .update({ loyverse_last_synced_at: new Date().toISOString() } as never)
     .eq('id', tenant.id)
+  if (stampError) report.warnings.push(`Failed to record the sync time: ${stampError.message}`)
 
-  // --- Capped mirror pass: cosmetic, after the sync is already complete.
-  // Failures and the deferred tail both leave the hotlink in place, which the
-  // next sync/reconcile recognizes as still needing a mirror.
-  const mirrorLimit = options.imageMirrorLimit ?? DEFAULT_IMAGE_MIRROR_LIMIT
-  const mirrorsNow = pendingMirrors.slice(0, mirrorLimit)
-  for (const pending of mirrorsNow) {
-    const mirrored = await mirrorLoyverseImage(tenant.id, pending.imageUrl)
-    if (!mirrored) {
-      report.warnings.push(
-        `Image for "${pending.itemName}" could not be re-hosted; using the Loyverse link`
-      )
-      continue
-    }
-    const { error: imageError } = await supabase
-      .from('menu_items')
-      .update({ image_url: mirrored } as never)
-      .eq('id', pending.menuItemId)
-      .eq('tenant_id', tenant.id)
-    if (imageError) {
-      report.warnings.push(`Failed to save mirrored image for "${pending.itemName}": ${imageError.message}`)
-    }
-  }
-  if (pendingMirrors.length > mirrorsNow.length) {
-    report.warnings.push(
-      `${pendingMirrors.length - mirrorsNow.length} images deferred to the next sync`
-    )
-  }
+  await mirrorPendingImages(ctx, options.imageMirrorLimit ?? DEFAULT_IMAGE_MIRROR_LIMIT)
 
   report.success = true
   return report

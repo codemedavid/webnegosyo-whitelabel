@@ -1,4 +1,11 @@
-import { productHref, productPerformanceHref, NEW_PRODUCT_ID } from "./navigation";
+import {
+  productHref,
+  productPerformanceHref,
+  NEW_PRODUCT_ID,
+  ingredientHref,
+  ingredientEditorHref,
+  NEW_INGREDIENT_ID,
+} from "./navigation";
 
 /**
  * Regression guard for the "Unmatched Route" crash when opening a product from
@@ -52,5 +59,20 @@ describe("productPerformanceHref", () => {
 
   it("encodes an id that is not URL-safe", () => {
     expect(productPerformanceHref("a/b", "today")).toBe("/(main)/product-performance/a%2Fb?period=today");
+  });
+});
+
+describe("ingredient hrefs", () => {
+  it("builds the ingredient page path with the id interpolated", () => {
+    expect(ingredientHref("abc-123")).toBe("/(main)/ingredient/abc-123");
+  });
+
+  it("builds the editor path, with 'new' for create mode", () => {
+    expect(ingredientEditorHref("abc")).toBe("/(main)/ingredient/edit/abc");
+    expect(ingredientEditorHref(NEW_INGREDIENT_ID)).toBe("/(main)/ingredient/edit/new");
+  });
+
+  it("encodes characters that would break the path", () => {
+    expect(ingredientHref("a/b")).toBe("/(main)/ingredient/a%2Fb");
   });
 });

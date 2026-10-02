@@ -48,7 +48,12 @@ import type { ExportOrderItemInput } from "../../lib/export/orders-export";
 import type { DateRangePreset } from "../../lib/product-analytics-filters";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useOptimisticOrderCache } from "../../lib/query/optimistic-order-status";
-import { claimOrderBusy, releaseOrderBusy, resolveExportSource } from "../../lib/orders-list-actions";
+import {
+  claimOrderBusy,
+  releaseOrderBusy,
+  resolveExportSource,
+  resolveListAdvance,
+} from "../../lib/orders-list-actions";
 import { useOrderCustomers } from "../../lib/query/use-order-customers";
 import { describeOrderCustomerBadge, type OrderCustomerBadge } from "../../lib/loyalty/order-customers";
 
@@ -350,11 +355,20 @@ export default function OrdersScreen() {
 
   // The next status is read from the order's current one, so the row never
   // has to hold the transition table.
+  // Confirming or handing over an UNPAID order asks about the money first,
+  // which needs the order screen (its payment details and the collect sheet),
+  // so those open the order with the question already on screen.
   const handleAdvance = useCallback(
     (orderId: string) => {
       const order = allOrders.find((candidate) => candidate._id === orderId);
       const nextStatus = order ? NEXT_STATUS[order.status] : undefined;
-      if (order && nextStatus) void handleUpdateStatus(order, nextStatus);
+      if (!order || !nextStatus) return;
+      const route = resolveListAdvance(order, nextStatus);
+      if (route.kind === "open") {
+        router.push(`/(main)/order/${orderId}?intent=${route.intent}`);
+        return;
+      }
+      void handleUpdateStatus(order, nextStatus);
     },
     [allOrders, handleUpdateStatus],
   );

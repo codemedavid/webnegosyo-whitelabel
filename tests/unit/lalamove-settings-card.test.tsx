@@ -80,7 +80,7 @@ describe('LalamoveSettingsCard', () => {
     expect(screen.getByText(/not pinned/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /set store location/i })).toHaveAttribute(
       'href',
-      '/foodify/admin/settings#store-location'
+      '/foodify/admin/settings/delivery#store-location'
     )
   })
 

@@ -81,8 +81,12 @@ function renderBody(
           takenSourceIds={new Set(workspace.pairings.flatMap((group) => group.sourceIds))}
         />
       )
-    case 'last_call':
-      return <LastCallEditor {...env} lastCall={workspace.lastCall} />
+    case 'last_call': {
+      // An AI suggestion opens the editor on its own picks and copy.
+      const settings = target.fromIdea?.kind === 'last_call' ? target.fromIdea.settings : undefined
+      const lastCall = settings ? { ...workspace.lastCall, ...settings, enabled: true } : workspace.lastCall
+      return <LastCallEditor key={target.fromIdea?.id ?? 'current'} {...env} lastCall={lastCall} />
+    }
   }
 }
 

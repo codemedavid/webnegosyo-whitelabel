@@ -21,7 +21,7 @@ import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getBundlesAction(tenantId: string): Promise<{ success: true; data: BundleWithSlots[] } | { success: false; error: string }> {
     try {
-        await verifyTenantPermission(tenantId, 'menu')
+        await verifyTenantPermission(tenantId, 'menu', 'view')
         const bundles = await getBundlesByTenant(tenantId)
         return { success: true, data: bundles }
     } catch (error) {
@@ -31,7 +31,7 @@ export async function getBundlesAction(tenantId: string): Promise<{ success: tru
 
 export async function getBundleAction(bundleId: string, tenantId: string): Promise<{ success: true; data: BundleWithSlots } | { success: false; error: string }> {
     try {
-        await verifyTenantPermission(tenantId, 'menu')
+        await verifyTenantPermission(tenantId, 'menu', 'view')
         const bundle = await getBundleById(bundleId, tenantId)
         return { success: true, data: bundle }
     } catch (error) {

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 /**
  * DELETE /api/tenants/[id]
  * Deletes a tenant and all associated data (cascade via RLS/FK).
- * Requires superadmin role.
+ * Requires the `tenants.delete` console grant.
  */
 export async function DELETE(
   request: NextRequest,
@@ -19,28 +20,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'Tenant ID is required' }, { status: 400 })
     }
 
-    // Verify user is superadmin
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    // Verify the console caller may delete restaurants
+    const caller = await getConsoleCaller()
 
-    if (!user) {
+    if (!caller) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: appUser } = await supabase
-      .from('app_users')
-      .select('role')
-      .eq('user_id', user.id)
-      .single() as { data: { role: string } | null }
-
-    if (!appUser || appUser.role !== 'superadmin') {
+    if (!hasPlatformPermission(caller.appUser, 'tenants.delete')) {
       return NextResponse.json(
-        { error: 'Superadmin access required' },
+        { error: 'You do not have access to delete restaurants' },
         { status: 403 }
       )
     }
+    const { user } = caller
 
     // Use admin client for deletion to bypass RLS
     const adminClient = createAdminClient()

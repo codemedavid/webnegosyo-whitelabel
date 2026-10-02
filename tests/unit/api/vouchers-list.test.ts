@@ -64,7 +64,7 @@ describe('POST /api/vouchers/list', () => {
     mockCreateClient.mockReturnValue({
       auth: { getUser: getUserMock },
       from: jest.fn(() => {
-        const builder: Record<string, unknown> = { single: appUserSingleMock }
+        const builder: Record<string, unknown> = { single: appUserSingleMock, maybeSingle: appUserSingleMock }
         builder.select = jest.fn(() => builder)
         builder.eq = jest.fn(() => builder)
         return builder

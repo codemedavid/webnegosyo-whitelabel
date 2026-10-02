@@ -6,6 +6,7 @@ import { useBranchContextStore } from "../stores/branch-context-store";
 import { resourceKey } from "./backends/query-keys";
 import { useResource } from "./query/use-resource";
 import type { PortfolioOutlet } from "./portfolio-rows";
+import { isNetworkFailure } from "./offline/network-error";
 
 /** Cache name shared by every `useOutlets` caller; see `invalidateResource`. */
 export const OUTLETS_RESOURCE = "outlets";
@@ -48,7 +49,13 @@ export async function fetchOutlets(tenantId: string): Promise<PortfolioOutlet[]>
     .eq("is_active", true)
     .order("name");
 
-  if (error) throw new Error("Could not load your branches");
+  if (error) {
+    // A lost connection passes through as it came, so the offline snapshot
+    // recognises it and answers with the saved branches; the friendly wording
+    // is only for a real refusal.
+    if (isNetworkFailure(error)) throw error;
+    throw new Error("Could not load your branches");
+  }
   return (data ?? []) as PortfolioOutlet[];
 }
 

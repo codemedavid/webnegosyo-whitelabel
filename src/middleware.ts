@@ -4,6 +4,12 @@ import { resolveTenantSlugFromRequest } from '@/lib/tenant'
 import { hasPermission, permissionForAdminPath } from '@/lib/staff-permissions'
 import { canViewBranchDirectory, isStoreWideAdminPath } from '@/lib/outlets/branch-scope'
 import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
+import {
+  canOpenConsolePath,
+  firstPermittedConsolePath,
+  hasPlatformPermission,
+  isConsoleUser,
+} from '@/lib/platform-staff/permissions'
 import { isMcpProtocolRoute } from '@/lib/mcp/route-isolation'
 import { rewriteMcpPathWellKnown } from '@/lib/mcp/mcp-path-well-known'
 import { createTimedFetch } from '@/lib/supabase/timed-fetch'
@@ -137,7 +143,11 @@ function withFrameProtection(response: NextResponse, servedPathname: string): Ne
   return response
 }
 
-/** `/superadmin/*` requires a signed-in user with the `superadmin` role. */
+/**
+ * `/superadmin/*` requires a superadmin, or a platform staff account holding
+ * the grant the page needs (`platformPermissionForPath`). Staff sent away from
+ * a page land on the first section they can open, never on a redirect loop.
+ */
 async function guardSuperadmin(
   request: NextRequest,
   supabase: SupabaseMiddlewareClient,
@@ -147,9 +157,10 @@ async function guardSuperadmin(
   if (isPublicRoute(pathname)) return null
   if (!user) return redirectTo(request, '/superadmin/login')
 
-  const { data: roleRow } = await supabase.from('app_users').select('role').eq('user_id', user.id).maybeSingle()
-  if (roleRow?.role !== 'superadmin') return redirectTo(request, '/superadmin/login', { unauthorized: '1' })
-  return null
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
+  if (!appUser || !isConsoleUser(appUser)) return redirectTo(request, '/superadmin/login', { unauthorized: '1' })
+  if (canOpenConsolePath(appUser, pathname)) return null
+  return redirectTo(request, firstPermittedConsolePath(appUser), { denied: '1' })
 }
 
 /**
@@ -175,6 +186,19 @@ async function guardTenantAdmin(
   if (appUser?.role === 'superadmin') return null
 
   const unauthorized = () => redirectTo(request, `/${tenantSlug}/login`, { unauthorized: '1' })
+
+  // Platform staff may open any store's admin with `stores.view`, then narrowed
+  // by the same per-feature list tenant staff use. What they may change is
+  // decided per action (verifyTenantAdmin) and by RLS, not here.
+  if (appUser?.role === 'platform_staff') {
+    if (!hasPlatformPermission(appUser, 'stores.view')) return unauthorized()
+    const staffPermission = permissionForAdminPath(pathname)
+    if (staffPermission && !hasPermission(appUser, staffPermission)) {
+      return redirectTo(request, `/${tenantSlug}/admin`, { denied: staffPermission })
+    }
+    return null
+  }
+
   if (appUser?.role !== 'admin') return unauthorized()
 
   const { data: tenant } = await supabase.from('tenants').select('id').eq('slug', tenantSlug).eq('is_active', true).maybeSingle()

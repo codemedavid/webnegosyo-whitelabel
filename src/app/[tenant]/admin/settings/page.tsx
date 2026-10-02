@@ -1,275 +1,28 @@
-import Link from 'next/link'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
-import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
-import { createClient } from '@/lib/supabase/server'
-import { getTenantSecrets } from '@/lib/tenant-secrets'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { FacebookConnectionCard } from '@/components/admin/facebook-connection-card'
-import { MessengerModeCard } from '@/components/admin/messenger-mode-card'
-import { FlashScreenCard } from '@/components/admin/flash-screen-card'
-import { FooterManagerCard } from '@/components/admin/footer/footer-manager-card'
-import { OperatingHoursCard } from '@/components/admin/operating-hours-card'
-import { PickupScanCard } from '@/components/admin/pickup-scan-card'
-import { DeliverySettingsForm } from '@/components/admin/delivery-settings-form'
-import { StaffManagementCard } from '@/components/admin/staff-management-card'
-import { AccountSettingsCard } from '@/components/admin/account-settings-card'
-import { LalamoveSettingsCard } from '@/components/admin/lalamove-settings-card'
-import { DeleteOrdersCard } from '@/components/admin/order-deletion/delete-orders-card'
-import { decideOwnerAccess } from '@/lib/order-deletion/access'
-import { resolveOrderBackend } from '@/lib/order-backend'
-import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
-import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
-import { listStaffAction } from '@/app/actions/staff'
-import type { StaffRecord } from '@/lib/staff-service'
+import { SettingsOverview } from '@/components/admin/settings/settings-overview'
+import { loadSettingsContext } from '@/lib/settings/load-settings-context'
 
-async function hasStoredLalamoveKeys(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  tenantId: string,
-): Promise<boolean> {
-  try {
-    const secrets = await getTenantSecrets(supabase, tenantId)
-    return Boolean(secrets?.lalamove_api_key && secrets?.lalamove_secret_key)
-  } catch (error) {
-    // The card still renders; it just offers to set keys rather than replace them.
-    console.error('[settings] could not read Lalamove keys:', error instanceof Error ? error.message : error)
-    return false
-  }
+export const metadata = {
+  title: 'Settings',
 }
 
-export default async function SettingsPage({
-  params,
-}: {
-  params: Promise<{ tenant: string }>
-}) {
+export default async function SettingsPage({ params }: { params: Promise<{ tenant: string }> }) {
   const { tenant: tenantSlug } = await params
+  const context = await loadSettingsContext(tenantSlug)
 
-  const tenant = await getCachedTenantBySlug(tenantSlug)
-
-  if (!tenant) {
+  if (!context) {
     return <div>Tenant not found</div>
-  }
-
-  const userRole = await getCachedCurrentUserRole()
-  const caller = userRole ?? { role: 'admin', tenant_id: null }
-  const isOwner = canManageStaff(caller)
-  const hasSettingsAccess = hasPermission(caller, 'settings')
-  // Deleting orders is the store owner's alone — not staff, not a superadmin.
-  const isStoreOwner = decideOwnerAccess(
-    { role: caller.role, tenant_id: caller.tenant_id, is_owner: caller.is_owner ?? null },
-    tenant.id
-  ).allowed
-  // A branch admin manages its own branch's people, so it needs the card too.
-  const canManageAnyStaff =
-    isOwner || canManageBranchStaff(caller, caller.outlet_id ?? null)
-
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // Only a "has keys" boolean ever reaches the page; the keys themselves stay
-  // in tenant_secrets, which RLS grants this store's own admins.
-  const hasLalamoveKeys = isOwner && tenant.lalamove_enabled
-    ? await hasStoredLalamoveKeys(supabase, tenant.id)
-    : false
-
-  let staff: StaffRecord[] = []
-  let outlets: { id: string; name: string }[] = []
-  if (canManageAnyStaff) {
-    const staffResult = await listStaffAction(tenant.id)
-    staff = staffResult.success ? staffResult.data : []
-
-    // Empty for every single-location store, which is what makes the card
-    // render exactly as it does today.
-    const { data: outletRows } = await supabase
-      .from('outlets')
-      .select('id, name')
-      .eq('tenant_id', tenant.id)
-      .order('sort_order', { ascending: true })
-    outlets = (outletRows as { id: string; name: string }[] | null) ?? []
   }
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs
-        items={[
-          { label: 'Dashboard', href: `/${tenantSlug}/admin` },
-          { label: 'Settings' },
-        ]}
+      <Breadcrumbs items={[{ label: 'Dashboard', href: `/${tenantSlug}/admin` }, { label: 'Settings' }]} />
+      <SettingsOverview
+        storeName={context.tenant.name}
+        catalog={context.catalog}
+        tenant={context.tenant}
+        accountEmail={context.accountEmail}
       />
-
-      <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage your restaurant settings</p>
-      </div>
-
-      {/* Restaurant Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Restaurant Information</CardTitle>
-          <CardDescription>Your restaurant details are managed by the platform administrator</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-sm font-medium">Restaurant Name</p>
-            <p className="text-sm text-muted-foreground">{tenant.name}</p>
-          </div>
-          <div>
-            <p className="text-sm font-medium">URL Slug</p>
-            <p className="text-sm text-muted-foreground">{tenant.slug}</p>
-          </div>
-          {tenant.domain && (
-            <div>
-              <p className="text-sm font-medium">Custom Domain</p>
-              <p className="text-sm text-muted-foreground">{tenant.domain}</p>
-            </div>
-          )}
-          <div>
-            <p className="text-sm font-medium">Status</p>
-            <Badge variant={tenant.is_active ? 'default' : 'secondary'}>
-              {tenant.is_active ? 'Active' : 'Inactive'}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Staff & Permissions — the owner, or a branch admin for its own branch */}
-      {canManageAnyStaff && (
-        <StaffManagementCard
-          tenantId={tenant.id}
-          tenantSlug={tenantSlug}
-          staff={staff}
-          outlets={outlets}
-        />
-      )}
-
-      {/* Account — every admin manages their own credentials */}
-      <AccountSettingsCard currentEmail={user?.email ?? ''} />
-
-      {/* Lalamove delivery — owner only, when the feature is enabled */}
-      {isOwner && tenant.lalamove_enabled && (
-        <LalamoveSettingsCard
-          tenantId={tenant.id}
-          tenantSlug={tenantSlug}
-          hasExistingKeys={hasLalamoveKeys}
-          senderPhone={tenant.lalamove_sender_phone ?? ''}
-          fallbackPhone={tenant.footer_phone || tenant.footer_whatsapp || ''}
-          pickupAddress={tenant.restaurant_address ?? ''}
-          // Lalamove quotes from coordinates, not from the address text, so a
-          // typed address with no pin is still an unbookable store.
-          hasPickupCoordinates={
-            tenant.restaurant_latitude != null && tenant.restaurant_longitude != null
-          }
-        />
-      )}
-
-      {/* Branding moved to the Branding Studio workspace */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Branding</CardTitle>
-          <CardDescription>
-            Colors, cards, and storefront appearance now live in the Branding Studio.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline">
-            <Link href={`/${tenantSlug}/admin/branding`}>Open Branding Studio</Link>
-          </Button>
-        </CardContent>
-      </Card>
-
-      {hasSettingsAccess && (
-        <>
-          {/* Storefront Footer */}
-          <FooterManagerCard tenant={tenant} />
-
-          {/* Facebook Messenger Integration */}
-          <FacebookConnectionCard tenant={tenant} />
-
-          {/* Messenger Redirect Mode */}
-          <MessengerModeCard
-            tenantId={tenant.id}
-            currentMode={tenant.messenger_redirect_mode || (
-              // Default to 'direct' when no Facebook page is connected (only username configured)
-              // This enables pre-filled message mode by default for simpler setups
-              tenant.facebook_page_id ? 'webhook' : 'direct'
-            )}
-            currentRedirectEnabled={tenant.messenger_redirect_enabled ?? true}
-            currentUsername={tenant.messenger_username ?? ''}
-          />
-
-          {/* Operating Hours (drives advance-order scheduling slots) */}
-          <OperatingHoursCard
-            tenantId={tenant.id}
-            initialHours={tenant.operating_hours ?? null}
-            initialTimezone={tenant.timezone ?? null}
-            initialEnforce={tenant.enforce_operating_hours === true}
-          />
-
-          {/* Receipt Studio */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Receipt Studio</CardTitle>
-              <CardDescription>
-                Design your thermal receipt — formats, custom blocks, and a
-                scannable order-tracking QR.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline">
-                <Link href={`/${tenantSlug}/admin/receipt-editor`}>Open Receipt Studio</Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Scan-to-collect pickup */}
-          <PickupScanCard
-            tenantId={tenant.id}
-            initialEnabled={tenant.pickup_scan_enabled !== false}
-          />
-
-          {/* Distance-Based Delivery Fee */}
-          <DeliverySettingsForm
-            tenantId={tenant.id}
-            tenantSlug={tenant.slug}
-            mapboxEnabled={tenant.mapbox_enabled ?? true}
-            lalamoveEnabled={tenant.lalamove_enabled ?? false}
-            initial={{
-              distance_delivery_enabled: tenant.distance_delivery_enabled ?? false,
-              delivery_price_per_km: tenant.delivery_price_per_km ?? null,
-              delivery_min_fee: tenant.delivery_min_fee ?? null,
-              delivery_radius_km: tenant.delivery_radius_km ?? null,
-              restaurant_address: tenant.restaurant_address ?? '',
-              restaurant_latitude: tenant.restaurant_latitude ?? null,
-              restaurant_longitude: tenant.restaurant_longitude ?? null,
-            }}
-          />
-
-          {tenant.flash_screen_feature_enabled && (
-            <FlashScreenCard
-              tenantId={tenant.id}
-              initialSettings={{
-                isActive: tenant.flash_screen_is_active ?? false,
-                title: tenant.flash_screen_title || 'Loading menu...',
-                subtitle: tenant.flash_screen_subtitle || '',
-                imageUrl: tenant.flash_screen_image_url || '',
-                backgroundColor: tenant.flash_screen_background_color || '#111111',
-                textColor: tenant.flash_screen_text_color || '#ffffff',
-                durationMs: tenant.flash_screen_duration_ms || 2000,
-              }}
-            />
-          )}
-        </>
-      )}
-
-      {isStoreOwner && (
-        <DeleteOrdersCard
-          tenantSlug={tenantSlug}
-          isAvailable={resolveOrderBackend(tenant) === 'platform'}
-        />
-      )}
     </div>
   )
 }

@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { recordStockMovementWith } from '@/lib/inventory/stock-service'
 import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
 import { resolveBranchScope, type BranchScopedUser } from '@/lib/outlets/branch-scope'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/inventory/movement
@@ -84,11 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, permissions, is_owner, outlet_id')
-    .eq('user_id', user.id)
-    .single()
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
 
   // Belonging to the tenant is not enough. Every staff member here is
   // `role='admin'` — a deliberate choice, since a new role string would have
@@ -101,9 +99,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   //
   // `menu` is the same key that gates both of those surfaces, so the door and
   // the UI now agree rather than merely looking like they do.
-  const isTenantMember =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
+  const isTenantMember = canAccessStoreAdmin(appUser, tenantId, 'create')
 
   if (!isTenantMember || !hasPermission(appUser as PermissionHolder, 'menu')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -159,6 +155,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         inventory_count_id:
           typeof body?.inventory_count_id === 'string' ? body.inventory_count_id : undefined,
         note: typeof body?.note === 'string' ? body.note : undefined,
+        // What a delivery cost per unit, so a receipt recorded on the phone
+        // moves the moving-average cost like one recorded on the web. Anything
+        // that is not a finite number is dropped — omitted means "unchanged",
+        // never "free". The schema still refuses a negative.
+        unit_cost:
+          typeof body?.unit_cost === 'number' && Number.isFinite(body.unit_cost)
+            ? body.unit_cost
+            : undefined,
         // The phone's key for this one save. A retry after a timeout carries
         // the same key, and the database refuses to record it a second time.
         // The schema rejects anything that is not a uuid.

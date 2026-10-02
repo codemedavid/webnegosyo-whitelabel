@@ -1,5 +1,6 @@
 import {
   fetchAppUserScope,
+  APP_USER_PLATFORM_SELECT,
   APP_USER_SCOPE_SELECT,
   APP_USER_LEGACY_SELECT,
 } from '@/lib/queries/fetch-app-user-scope'
@@ -51,14 +52,28 @@ const ROW = {
 }
 
 describe('fetchAppUserScope', () => {
-  it('returns the row including its branch', async () => {
-    const { client } = makeClient({ [APP_USER_SCOPE_SELECT]: { data: ROW, error: null } })
+  it('returns the row including its branch and platform grants', async () => {
+    const row = { ...ROW, platform_permissions: null }
+    const { client, projections } = makeClient({ [APP_USER_PLATFORM_SELECT]: { data: row, error: null } })
+
+    const result = await fetchAppUserScope(client, 'user-1')
+
+    expect(result.appUser).toEqual(row)
+    expect(result.error).toBeNull()
+    expect(result.isDegraded).toBe(false)
+    expect(projections).toEqual([APP_USER_PLATFORM_SELECT])
+  })
+
+  it('keeps the branch when only the platform-staff column is missing', async () => {
+    const { client, projections } = makeClient({ [APP_USER_SCOPE_SELECT]: { data: ROW, error: null } })
 
     const result = await fetchAppUserScope(client, 'user-1')
 
     expect(result.appUser).toEqual(ROW)
+    expect(result.appUser?.outlet_id).toBe('outlet-north')
     expect(result.error).toBeNull()
     expect(result.isDegraded).toBe(false)
+    expect(projections).toEqual([APP_USER_PLATFORM_SELECT, APP_USER_SCOPE_SELECT])
   })
 
   it('falls back to the pre-branch projection when outlet_id does not exist yet', async () => {
@@ -78,7 +93,7 @@ describe('fetchAppUserScope', () => {
     expect(result.appUser).toEqual(legacyRow)
     expect(result.isDegraded).toBe(true)
     expect(result.error).toBeNull()
-    expect(projections).toEqual([APP_USER_SCOPE_SELECT, APP_USER_LEGACY_SELECT])
+    expect(projections).toEqual([APP_USER_PLATFORM_SELECT, APP_USER_SCOPE_SELECT, APP_USER_LEGACY_SELECT])
   })
 
   it('reads a degraded row as store-wide rather than branch-locked', async () => {
@@ -97,18 +112,18 @@ describe('fetchAppUserScope', () => {
 
   it('does not retry on an unrelated error', async () => {
     const { client, projections } = makeClient({
-      [APP_USER_SCOPE_SELECT]: { data: null, error: { code: '08006', message: 'connection lost' } },
+      [APP_USER_PLATFORM_SELECT]: { data: null, error: { code: '08006', message: 'connection lost' } },
     })
 
     const result = await fetchAppUserScope(client, 'user-1')
 
     expect(result.appUser).toBeNull()
     expect(result.error).toBe('connection lost')
-    expect(projections).toEqual([APP_USER_SCOPE_SELECT])
+    expect(projections).toEqual([APP_USER_PLATFORM_SELECT])
   })
 
   it('reports a missing row without an error (an account with no admin row)', async () => {
-    const { client } = makeClient({ [APP_USER_SCOPE_SELECT]: { data: null, error: null } })
+    const { client } = makeClient({ [APP_USER_PLATFORM_SELECT]: { data: null, error: null } })
 
     const result = await fetchAppUserScope(client, 'user-1')
 

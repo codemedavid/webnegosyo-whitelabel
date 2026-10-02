@@ -18,11 +18,7 @@
 import type { ModifierGroup, OrderItem } from '@/types/database'
 import type { LoyverseConfig } from '@/lib/loyverse/config'
 import { loyverseRequest } from '@/lib/loyverse/client'
-
-const VARIANT_OPTION_PREFIX = 'lv-'
-const MODIFIER_OPTION_PREFIX = 'lvm-'
-/** Group ids also start with lv- (`lv-group-…`); only leaf option ids name variants. */
-const GROUP_ID_PREFIXES = ['lv-group-', 'lvm-group-']
+import { parseModifierOptionId, parseVariantOptionId } from '@/lib/loyverse/option-ids'
 
 export interface LoyverseReceiptCatalogEntry {
   baseVariantId: string | null
@@ -59,22 +55,19 @@ export interface BuiltLoyverseReceipt {
   unmapped: string[]
 }
 
-function selectedValues(item: OrderItem): string[] {
-  const values = Object.values(item.variations ?? {})
-  if (item.variation) values.push(item.variation)
-  return values.filter(Boolean)
+function selectedValues(item: OrderItem): Set<string> {
+  const values = new Set(Object.values(item.variations ?? {}).filter(Boolean))
+  if (item.variation) values.add(item.variation)
+  return values
 }
 
 function findVariantId(entry: LoyverseReceiptCatalogEntry, item: OrderItem): string | null {
   const values = selectedValues(item)
-  for (const group of entry.modifierGroups) {
-    for (const option of group.options) {
-      const isVariantOption =
-        option.id.startsWith(VARIANT_OPTION_PREFIX) &&
-        !GROUP_ID_PREFIXES.some((prefix) => option.id.startsWith(prefix)) &&
-        !option.id.startsWith(MODIFIER_OPTION_PREFIX)
-      if (isVariantOption && values.includes(option.name)) {
-        return option.id.slice(VARIANT_OPTION_PREFIX.length)
+  if (values.size > 0) {
+    for (const group of entry.modifierGroups) {
+      for (const option of group.options) {
+        const variantId = parseVariantOptionId(option.id)
+        if (variantId && values.has(option.name)) return variantId
       }
     }
   }
@@ -82,14 +75,15 @@ function findVariantId(entry: LoyverseReceiptCatalogEntry, item: OrderItem): str
 }
 
 function findModifierOptionIds(entry: LoyverseReceiptCatalogEntry, item: OrderItem): string[] {
-  const names = new Set(item.addons ?? [])
+  // Guard the shape: caller-supplied lines are validated, but a legacy row
+  // with a non-array here must not spread a string into characters.
+  const names = new Set(Array.isArray(item.addons) ? item.addons : [])
   if (names.size === 0) return []
   const ids: string[] = []
   for (const group of entry.modifierGroups) {
     for (const option of group.options) {
-      if (option.id.startsWith(MODIFIER_OPTION_PREFIX) && names.has(option.name)) {
-        ids.push(option.id.slice(MODIFIER_OPTION_PREFIX.length))
-      }
+      const optionId = parseModifierOptionId(option.id)
+      if (optionId && names.has(option.name)) ids.push(optionId)
     }
   }
   return ids

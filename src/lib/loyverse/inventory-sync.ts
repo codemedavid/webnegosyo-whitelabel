@@ -15,12 +15,13 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  anyVariantSellable,
+  groupVariantsByMenuItem,
+  type StockLevel,
+} from '@/lib/loyverse/stock-levels'
 
-export interface LoyverseInventoryLevel {
-  variant_id: string
-  store_id: string
-  in_stock?: number | null
-}
+export type LoyverseInventoryLevel = StockLevel
 
 export interface AvailabilityMapRow {
   kind: string
@@ -48,20 +49,14 @@ export function partitionAvailabilityChanges(
   storeId: string,
   mapRows: readonly AvailabilityMapRow[]
 ): AvailabilityChanges {
+  const variantsByMenuItem = groupVariantsByMenuItem(mapRows)
   const menuItemByVariant = new Map<string, string>()
-  const variantsByMenuItem = new Map<string, string[]>()
-  for (const row of mapRows) {
-    if (row.kind !== 'variant' || !row.menu_item_id || !row.loyverse_variant_id) continue
-    menuItemByVariant.set(row.loyverse_variant_id, row.menu_item_id)
-    const list = variantsByMenuItem.get(row.menu_item_id) ?? []
-    variantsByMenuItem.set(row.menu_item_id, [...list, row.loyverse_variant_id])
-  }
-
   // Last known level per variant, from the map. `undefined` = unknown.
   const knownStock = new Map<string, number | undefined>()
   for (const row of mapRows) {
     if (row.kind !== 'variant' || !row.loyverse_variant_id) continue
     knownStock.set(row.loyverse_variant_id, row.in_stock ?? undefined)
+    if (row.menu_item_id) menuItemByVariant.set(row.loyverse_variant_id, row.menu_item_id)
   }
 
   // Merge this batch over remembered state. Loyverse sends one delta per
@@ -80,25 +75,29 @@ export function partitionAvailabilityChanges(
     touchedMenuItems.add(menuItemId)
   }
 
-  const makeAvailable = new Set<string>()
-  const makeUnavailable = new Set<string>()
+  const makeAvailable: string[] = []
+  const makeUnavailable: string[] = []
   for (const menuItemId of touchedMenuItems) {
-    const allVariants = variantsByMenuItem.get(menuItemId) ?? []
-    // Unknown counts as sellable: a dish stuck invisible because Loyverse
-    // never reported a variant is a worse failure than one oversold.
-    const anySellable = allVariants.some((variantId) => {
-      const stock = knownStock.get(variantId)
-      return stock === undefined || stock > 0
-    })
-    if (anySellable) makeAvailable.add(menuItemId)
-    else makeUnavailable.add(menuItemId)
+    const variants = variantsByMenuItem.get(menuItemId) ?? []
+    if (anyVariantSellable(variants, (variantId) => knownStock.get(variantId))) {
+      makeAvailable.push(menuItemId)
+    } else {
+      makeUnavailable.push(menuItemId)
+    }
   }
 
-  return {
-    makeUnavailable: [...makeUnavailable],
-    makeAvailable: [...makeAvailable],
-    stockUpdates,
+  return { makeUnavailable, makeAvailable, stockUpdates }
+}
+
+/** Groups stock writes by level: one UPDATE per distinct value, not per variant. */
+export function groupStockUpdatesByLevel(updates: readonly VariantStockUpdate[]): Map<number, string[]> {
+  const grouped = new Map<number, string[]>()
+  for (const update of updates) {
+    const list = grouped.get(update.in_stock)
+    if (list) list.push(update.variant_id)
+    else grouped.set(update.in_stock, [update.variant_id])
   }
+  return grouped
 }
 
 /**
@@ -111,45 +110,44 @@ export async function applyLoyverseInventoryLevels(
   levels: readonly LoyverseInventoryLevel[]
 ): Promise<{ disabled: number; restored: number }> {
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: mapRows } = await (admin as any)
+  const { data: mapRows, error: mapError } = await admin
     .from('loyverse_item_map')
     .select('kind, local_key, menu_item_id, loyverse_variant_id, in_stock')
     .eq('tenant_id', tenantId)
     .eq('kind', 'variant')
+  if (mapError) throw new Error(`Failed to read the Loyverse item map: ${mapError.message}`)
 
-  const changes = partitionAvailabilityChanges(
-    levels,
-    storeId,
-    (mapRows ?? []) as AvailabilityMapRow[]
-  )
+  const changes = partitionAvailabilityChanges(levels, storeId, (mapRows ?? []) as AvailabilityMapRow[])
 
-  if (changes.makeUnavailable.length > 0) {
-    await admin
+  const setAvailability = async (ids: string[], isAvailable: boolean): Promise<void> => {
+    if (ids.length === 0) return
+    const { error } = await admin
       .from('menu_items')
-      .update({ is_available: false } as never)
+      .update({ is_available: isAvailable })
       .eq('tenant_id', tenantId)
-      .in('id', changes.makeUnavailable)
-  }
-  if (changes.makeAvailable.length > 0) {
-    await admin
-      .from('menu_items')
-      .update({ is_available: true } as never)
-      .eq('tenant_id', tenantId)
-      .in('id', changes.makeAvailable)
+      .in('id', ids)
+    if (error) throw new Error(`Failed to update availability: ${error.message}`)
   }
 
   // Remember the levels so the NEXT single-variant delta can reason about the
   // whole dish. Without this the merge above has nothing to merge over.
-  for (const update of changes.stockUpdates) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin as any)
-      .from('loyverse_item_map')
-      .update({ in_stock: update.in_stock })
-      .eq('tenant_id', tenantId)
-      .eq('kind', 'variant')
-      .eq('loyverse_variant_id', update.variant_id)
-  }
+  const rememberLevels = [...groupStockUpdatesByLevel(changes.stockUpdates)].map(
+    async ([inStock, variantIds]) => {
+      const { error } = await admin
+        .from('loyverse_item_map')
+        .update({ in_stock: inStock })
+        .eq('tenant_id', tenantId)
+        .eq('kind', 'variant')
+        .in('loyverse_variant_id', variantIds)
+      if (error) throw new Error(`Failed to remember stock levels: ${error.message}`)
+    }
+  )
+
+  await Promise.all([
+    setAvailability(changes.makeUnavailable, false),
+    setAvailability(changes.makeAvailable, true),
+    ...rememberLevels,
+  ])
 
   return { disabled: changes.makeUnavailable.length, restored: changes.makeAvailable.length }
 }

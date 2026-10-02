@@ -23,6 +23,10 @@ const eslintConfig = [
       "tests/sql/**",
       ".worktrees/**",
       "webnegosyo-desktop/out/**",
+      // Remotion marketing videos — standalone package with its own deps
+      "videos/**",
+      // White-label customer app — Expo project with its own lint (npx expo lint)
+      "customer-app/**",
     ],
   },
 ];

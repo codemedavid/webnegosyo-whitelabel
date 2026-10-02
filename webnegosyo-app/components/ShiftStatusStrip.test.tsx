@@ -31,6 +31,10 @@ const openShiftRow = {
   closingCount: null,
   expectedCash: null,
   note: null,
+  drawerId: null,
+  drawerName: null,
+  isZeroBalance: false,
+  closedByName: null,
 };
 
 beforeEach(() => jest.clearAllMocks());

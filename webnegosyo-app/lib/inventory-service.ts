@@ -22,7 +22,8 @@ import {
   type StockItemView,
 } from "./inventory-stock";
 
-const ITEM_COLUMNS = "id, name, current_qty, reorder_level, is_active, stock_unit_id";
+const ITEM_COLUMNS =
+  "id, name, current_qty, reorder_level, is_active, stock_unit_id, category, unit_cost, is_prep";
 const STOCK_COLUMNS = "inventory_item_id, outlet_id, current_qty, reorder_level";
 
 /**

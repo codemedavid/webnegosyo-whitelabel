@@ -55,7 +55,7 @@ export async function createModifierGroupLibraryEntry(
   input: ModifierGroupLibraryInput,
   ctx?: ProvisioningCtx,
 ): Promise<ModifierGroupLibraryEntry> {
-  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu', 'create')
   const validated = modifierGroupLibraryEntrySchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
 
@@ -94,7 +94,7 @@ export async function deleteModifierGroupLibraryEntry(
   entryId: string,
   tenantId: string,
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
   const { error } = await supabase

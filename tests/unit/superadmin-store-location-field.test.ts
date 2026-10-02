@@ -1,7 +1,28 @@
-import {
-  applyStoreLocationChange,
-  parseCoordinateInput,
-} from '@/components/superadmin/tenant-form-wrapper'
+import { jest } from '@jest/globals'
+
+type TenantFormWrapper = typeof import('@/components/superadmin/tenant-form-wrapper')
+
+// The form imports server actions that load `@/lib/platform-staff/guard`, which
+// imports `next/server` — unloadable under jsdom. These tests exercise pure
+// helpers only, so the guard is stubbed as an authorized superadmin.
+const SUPERADMIN_CALLER = { user: { id: 'user-1' }, appUser: { role: 'superadmin', platform_permissions: null } }
+jest.mock('@/lib/platform-staff/guard', () => ({
+  getConsoleCaller: async () => SUPERADMIN_CALLER,
+  requirePlatformPermission: async () => SUPERADMIN_CALLER,
+  requireFullSuperadmin: async () => SUPERADMIN_CALLER,
+  platformPermissionResponse: async () => null,
+  PlatformAccessError: class PlatformAccessError extends Error {},
+}))
+
+// next/jest does not hoist jest.mock above static imports — load lazily.
+let applyStoreLocationChange: TenantFormWrapper['applyStoreLocationChange']
+let parseCoordinateInput: TenantFormWrapper['parseCoordinateInput']
+
+beforeAll(async () => {
+  const mod = await import('@/components/superadmin/tenant-form-wrapper')
+  applyStoreLocationChange = mod.applyStoreLocationChange
+  parseCoordinateInput = mod.parseCoordinateInput
+})
 
 /**
  * The superadmin tenant form's address box is a `MapboxAddressAutocomplete`,

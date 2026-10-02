@@ -2,22 +2,38 @@ import 'server-only'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient as createCookieClient } from '@/lib/supabase/server'
 import { createTimedFetch } from '@/lib/supabase/timed-fetch'
+import { hasPlatformPermission, type PlatformPermission } from '@/lib/platform-staff/permissions'
 
 /**
  * Who is asking for ImageKit upload credentials.
  *
  * Accepts either credential the product actually has: the web admin's cookie
  * session, or the merchant app's Supabase access token as
- * `Authorization: Bearer <token>`. Only `app_users` admins and superadmins
- * qualify — the only roles that exist besides anonymous customers, whose
- * payment-proof uploads go through /api/payment-proof/upload instead.
+ * `Authorization: Bearer <token>`. Only `app_users` admins, superadmins and
+ * platform staff holding an upload-bearing grant qualify; anonymous
+ * customers' payment-proof uploads go through /api/payment-proof/upload.
  */
 
 export interface ImageKitUploader {
   userId: string
-  role: 'admin' | 'superadmin'
+  role: 'admin' | 'superadmin' | 'platform_staff'
   tenantId: string | null
 }
+
+/**
+ * Platform staff upload from the console screens these grants open: restaurant
+ * logos, store menus, What's New covers and University lessons.
+ */
+const STAFF_UPLOAD_GRANTS: readonly PlatformPermission[] = [
+  'tenants.create',
+  'tenants.edit',
+  'stores.create',
+  'stores.edit',
+  'whats_new.create',
+  'whats_new.edit',
+  'university.create',
+  'university.edit',
+]
 
 export type UploaderResolution =
   | { status: 'authorized'; uploader: ImageKitUploader }
@@ -34,7 +50,9 @@ interface AuthCapableClient {
   from: (table: 'app_users') => {
     select: (columns: string) => {
       eq: (column: string, value: string) => {
-        maybeSingle: () => PromiseLike<{ data: { role?: string | null; tenant_id?: string | null } | null }>
+        maybeSingle: () => PromiseLike<{
+          data: { role?: string | null; tenant_id?: string | null; platform_permissions?: string[] | null } | null
+        }>
       }
     }
   }
@@ -57,12 +75,31 @@ async function resolveWith(client: AuthCapableClient): Promise<UploaderResolutio
     .maybeSingle()
 
   const role = member?.role
+  if (role === 'platform_staff') return resolveStaff(client, user.id)
   if (role !== 'admin' && role !== 'superadmin') return { status: 'denied' }
 
   return {
     status: 'authorized',
     uploader: { userId: user.id, role, tenantId: member?.tenant_id ?? null },
   }
+}
+
+/**
+ * Grants are read in a second query, only for staff, so an admin's upload never
+ * depends on the newer platform_permissions column.
+ */
+async function resolveStaff(client: AuthCapableClient, userId: string): Promise<UploaderResolution> {
+  const { data: staff } = await client
+    .from('app_users')
+    .select('role, platform_permissions')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const holder = { role: staff?.role ?? '', platform_permissions: staff?.platform_permissions ?? null }
+  const canUpload = STAFF_UPLOAD_GRANTS.some((grant) => hasPlatformPermission(holder, grant))
+  if (!canUpload) return { status: 'denied' }
+
+  return { status: 'authorized', uploader: { userId, role: 'platform_staff', tenantId: null } }
 }
 
 function bearerClient(authorization: string): AuthCapableClient {

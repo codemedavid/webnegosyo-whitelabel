@@ -116,7 +116,7 @@ beforeEach(() => {
   authFrom.mockImplementation(() => ({
     select: () => ({
       eq: () => ({
-        single: () =>
+        maybeSingle: () =>
           Promise.resolve({ data: { role: 'admin', tenant_id: TENANT }, error: null }),
       }),
     }),
@@ -250,7 +250,7 @@ describe('POST /api/loyverse — authorization is unchanged', () => {
     authFrom.mockImplementation(() => ({
       select: () => ({
         eq: () => ({
-          single: () =>
+          maybeSingle: () =>
             Promise.resolve({ data: { role: 'admin', tenant_id: 'other' }, error: null }),
         }),
       }),

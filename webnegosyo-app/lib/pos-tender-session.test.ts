@@ -61,4 +61,13 @@ describe("freshTenderSession", () => {
     expect(second.clientOrderId).not.toBe(first.clientOrderId);
     expect(second.clientOrderId).toMatch(/^pos-/);
   });
+
+  test("every sale starts as a pay-now sale", () => {
+    // Act
+    const session = freshTenderSession();
+
+    // Assert — a "pay later" left over from the previous customer would put
+    // the next customer's paid sale in the kitchen as unpaid.
+    expect(session.mode).toBe("now");
+  });
 });

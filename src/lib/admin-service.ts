@@ -17,6 +17,7 @@ import {
   fetchAppUserScope,
 } from '@/lib/queries/fetch-app-user-scope'
 import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
+import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/permissions'
 import { assertSubscriptionActive } from '@/lib/billing/subscription-gate'
 import { fetchSubscription } from '@/lib/billing/subscription-repository'
 import { z } from 'zod'
@@ -198,9 +199,15 @@ export type MenuItemUpdateInput = z.input<typeof menuItemUpdateSchema>
 // ============================================
 
 /**
- * Verify user is authenticated and has admin access to the tenant
+ * Verify user is authenticated and has admin access to the tenant.
+ *
+ * `action` is what the caller is about to do. It only narrows platform staff
+ * (held to their `stores.<action>` grant); the store's own admins and
+ * superadmins pass whatever it says. It defaults to `edit` so an action that
+ * forgets to name its verb is treated as a write — a view-only account can
+ * never slip through a default.
  */
-export async function verifyTenantAdmin(tenantId: string) {
+export async function verifyTenantAdmin(tenantId: string, action: PlatformAction = 'edit') {
   const supabase = await createClient()
   
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -227,13 +234,10 @@ export async function verifyTenantAdmin(tenantId: string) {
     is_owner?: boolean | null
     permissions?: string[] | null
     outlet_id?: string | null
+    platform_permissions?: string[] | null
   } = appUser
 
-  const isAuthorized =
-    userRole.role === 'superadmin' ||
-    (userRole.role === 'admin' && userRole.tenant_id === tenantId)
-
-  if (!isAuthorized) {
+  if (!canAccessStoreAdmin(userRole, tenantId, action)) {
     throw new Error('Unauthorized: Not admin of this tenant')
   }
 
@@ -284,9 +288,10 @@ export async function verifySuperadmin() {
  */
 export async function verifyTenantPermission(
   tenantId: string,
-  permission: StaffPermissionKey
+  permission: StaffPermissionKey,
+  action: PlatformAction = 'edit'
 ) {
-  const result = await verifyTenantAdmin(tenantId)
+  const result = await verifyTenantAdmin(tenantId, action)
   if (!hasPermission(result.userRole, permission)) {
     throw new Error('Unauthorized: Missing permission for this feature')
   }

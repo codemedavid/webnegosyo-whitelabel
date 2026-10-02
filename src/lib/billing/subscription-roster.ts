@@ -43,6 +43,15 @@ export interface RosterRow {
   /** Current, but lapsing inside `DUE_SOON_WINDOW_DAYS`. Never true when late. */
   isDueSoon: boolean
   /**
+   * No paid-through date and no manual block: nobody has ever set up this
+   * client's billing.
+   *
+   * The gate keeps such a tenant open (`state: 'active'`) — every uncertain
+   * case resolves to open — but that is access, not payment. The screen must
+   * not call them "Paid", and MRR must not count money they never sent.
+   */
+  isUnbilled: boolean
+  /**
    * Which deliberate act closed this tenant, or null if the calendar did it.
    *
    * All three land on `state: 'paused'`, but only `'paused'` may be lifted
@@ -65,7 +74,10 @@ export interface RosterRow {
 
 export interface RosterSummary {
   total: number
+  /** Tenants paid up through a real date. Excludes the never-billed. */
   active: number
+  /** Tenants open with no billing set up at all. */
+  unbilled: number
   inGrace: number
   paused: number
   /** Tenants still current, but lapsing inside the window. */
@@ -152,6 +164,7 @@ function toRow(input: RosterInput, nowIso: string): RosterRow {
     // unbilled, the late and the manually paused alike — so this cannot
     // mistake an unconfigured account for a renewal falling due today.
     isDueSoon: access.daysUntilDue !== null && access.daysUntilDue <= DUE_SOON_WINDOW_DAYS,
+    isUnbilled: access.paidThroughDayKey === null && resolveManualBlock(input.status) === null,
     manualBlock: resolveManualBlock(input.status),
     paidThroughDayKey: access.paidThroughDayKey,
     monthlyPricePhp: input.monthlyPricePhp ?? MONTHLY_PRICE_PHP,
@@ -193,6 +206,11 @@ export function buildSubscriptionRoster(
     })
 }
 
+/** Current on a real paid-through date — open AND billed. */
+function isPaying(row: RosterRow): boolean {
+  return row.state === 'active' && !row.isUnbilled
+}
+
 /**
  * The headline figures.
  *
@@ -204,11 +222,12 @@ export function summarizeRoster(rows: readonly RosterRow[]): RosterSummary {
   return rows.reduce<RosterSummary>(
     (summary, row) => ({
       total: summary.total + 1,
-      active: summary.active + (row.state === 'active' ? 1 : 0),
+      active: summary.active + (isPaying(row) ? 1 : 0),
+      unbilled: summary.unbilled + (row.isUnbilled ? 1 : 0),
       inGrace: summary.inGrace + (row.state === 'grace' ? 1 : 0),
       paused: summary.paused + (row.state === 'paused' ? 1 : 0),
       dueSoon: summary.dueSoon + (row.isDueSoon ? 1 : 0),
-      mrrPhp: summary.mrrPhp + (row.state === 'active' ? row.monthlyPricePhp : 0),
+      mrrPhp: summary.mrrPhp + (isPaying(row) ? row.monthlyPricePhp : 0),
       dueSoonPhp: summary.dueSoonPhp + (row.isDueSoon ? row.monthlyPricePhp : 0),
       // Anyone past their date owes, grace or not. Grace buys them access, not
       // forgiveness.
@@ -224,6 +243,16 @@ export function summarizeRoster(rows: readonly RosterRow[]): RosterSummary {
         summary.overduePhp +
         (row.daysOverdue > 0 || row.state === 'paused' ? row.monthlyPricePhp : 0),
     }),
-    { total: 0, active: 0, inGrace: 0, paused: 0, dueSoon: 0, mrrPhp: 0, overduePhp: 0, dueSoonPhp: 0 }
+    {
+      total: 0,
+      active: 0,
+      unbilled: 0,
+      inGrace: 0,
+      paused: 0,
+      dueSoon: 0,
+      mrrPhp: 0,
+      overduePhp: 0,
+      dueSoonPhp: 0,
+    }
   )
 }

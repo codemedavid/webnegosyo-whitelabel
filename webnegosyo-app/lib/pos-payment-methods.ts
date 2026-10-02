@@ -28,6 +28,39 @@ export interface PosPaymentMethod {
   order_index: number;
 }
 
+/**
+ * A payment method with the order types it may be taken on — the register's
+ * one read of them (`listRegisterPaymentMethods`), filtered on the device so a
+ * single saved copy serves every channel offline.
+ */
+export interface RegisterPaymentMethod extends PosPaymentMethod {
+  orderTypeIds: string[];
+}
+
+export interface TenderMethodScope {
+  orderTypeId: string | null;
+  /** Settling an edited order: every active method, linked or not. */
+  isEditing: boolean;
+}
+
+/**
+ * The methods the tender screen offers.
+ *
+ * A new sale gets only methods LINKED to its order type, exactly as the
+ * storefront's inner join does — a method with no link is offered for none.
+ * An edit settles against any method: a GCash delivery order topped up at the
+ * counter is paid in cash, and refusing that would strand the cashier.
+ */
+export function methodsForTender<T extends RegisterPaymentMethod>(
+  methods: readonly T[],
+  scope: TenderMethodScope,
+): T[] {
+  if (scope.isEditing) return [...methods];
+  const { orderTypeId } = scope;
+  if (orderTypeId === null) return [];
+  return methods.filter((method) => method.orderTypeIds.includes(orderTypeId));
+}
+
 /** What the tender screen collected before completing the sale. */
 export interface TenderInput {
   cashTendered?: number;

@@ -6,7 +6,7 @@ let mockCaller = { role: 'admin', tenant_id: 'tenant', permissions: ['customers'
 const mockFacts = jest.fn().mockResolvedValue({ facts: [], coverage: { complete: true } })
 jest.mock('@supabase/supabase-js', () => ({ createClient: () => ({
   auth: { getUser: async () => ({ data: { user: { id: 'user' } } }) },
-  from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: mockCaller }) }) }) }),
+  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: mockCaller }) }) }) }),
 }) }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({
   from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: {

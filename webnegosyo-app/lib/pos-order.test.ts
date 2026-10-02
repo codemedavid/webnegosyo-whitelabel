@@ -1,6 +1,7 @@
 import {
   buildPosOrder,
   readPosPayment,
+  isPosPayLater,
   POS_WALK_IN_NAME,
   type PosTender,
 } from "./pos-order";
@@ -306,5 +307,35 @@ describe("buildPosOrder — the service charge is stored, not just spent", () =>
     });
 
     expect(order.serviceCharge).toBe(36.75);
+  });
+});
+
+/**
+ * "Pay later": the order goes to the kitchen now and is paid afterwards. No
+ * tender exists yet, so nothing may claim a payment method, cash or change —
+ * the order must read UNPAID everywhere until it is collected.
+ */
+describe("buildPosOrder — pay later", () => {
+  const payLaterContext = { ...context, tender: null };
+
+  it("writes no payment method and marks the payload as pay-later", () => {
+    const args = buildPosOrder(payLaterContext);
+    expect(args.paymentMethod).toBeUndefined();
+    expect("paymentMethod" in args).toBe(false);
+    expect(args.customerData.pos).toEqual({ payLater: true, cashierId: "user-9" });
+  });
+
+  it("still prices the sale in full", () => {
+    const paid = buildPosOrder(context);
+    const later = buildPosOrder(payLaterContext);
+    expect(later.total).toBe(paid.total);
+    expect(later.items).toEqual(paid.items);
+  });
+
+  it("reads back as pay-later", () => {
+    const args = buildPosOrder(payLaterContext);
+    expect(readPosPayment(args.customerData)?.payLater).toBe(true);
+    expect(isPosPayLater(args.customerData)).toBe(true);
+    expect(isPosPayLater(buildPosOrder(context).customerData)).toBe(false);
   });
 });

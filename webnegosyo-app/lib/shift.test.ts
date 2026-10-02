@@ -139,6 +139,40 @@ describe("reconcileShift", () => {
 });
 
 
+describe("reconcileShift with cash moves and drawer policy", () => {
+  it("nets pay ins, pay outs and pickups into what the drawer should hold", () => {
+    const r = reconcileShift({
+      openingFloat: 2000,
+      cashCollected: 5000,
+      moves: { payIn: 300, payOut: 150, collected: 3000 },
+    });
+    expect(r.expectedInDrawer).toBe(4150);
+    // The float stays; the rest goes to the owner at close.
+    expect(r.expectedTurnover).toBe(2150);
+    expect(r.floatToKeep).toBe(2000);
+  });
+
+  it("hands over the whole drawer on a zero-balance drawer", () => {
+    const r = reconcileShift({ openingFloat: 0, cashCollected: 3200, isZeroBalance: true, countedCash: 3200 });
+    expect(r.floatToKeep).toBe(0);
+    expect(r.expectedTurnover).toBe(3200);
+    expect(r.handOver).toBe(3200);
+    expect(r.verdict).toBe("balanced");
+  });
+
+  it("says what is actually handed over once counted, keeping the float back", () => {
+    const r = reconcileShift({ openingFloat: 500, cashCollected: 1000, countedCash: 1480 });
+    expect(r.handOver).toBe(980);
+    expect(r.variance).toBe(-20);
+  });
+
+  it("never asks for a negative turnover when pickups emptied the drawer below the float", () => {
+    const r = reconcileShift({ openingFloat: 1000, cashCollected: 500, moves: { payIn: 0, payOut: 0, collected: 1200 } });
+    expect(r.expectedInDrawer).toBe(300);
+    expect(r.expectedTurnover).toBe(0);
+  });
+});
+
 describe("parseCashInput", () => {
   it.each([
     ["125", 125],

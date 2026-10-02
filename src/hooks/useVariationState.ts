@@ -117,6 +117,10 @@ export function useVariationState({ item, category }: UseVariationStateOptions) 
         setQuantity(prev => Math.max(1, prev - 1))
     }, [])
 
+    const changeAddonQuantity = useCallback((addon: Addon, portions: number) => {
+        setSelectedAddons(prev => setAddonQuantity(prev, addon, portions))
+    }, [])
+
     const handleIncreaseQuantity = useCallback(() => {
         setQuantity(prev => Math.min(prev + 1, 99))
     }, [])
@@ -143,7 +147,7 @@ export function useVariationState({ item, category }: UseVariationStateOptions) 
         handleVariationTypeSelect,
         handleLegacyVariationSelect,
         toggleAddon,
-        changeAddonQuantity: (addon: Addon, portions: number) => setSelectedAddons(prev => setAddonQuantity(prev, addon, portions)),
+        changeAddonQuantity,
         handleDecreaseQuantity,
         handleIncreaseQuantity,
     }

@@ -9,6 +9,21 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSubscriptionRoster, summarizeRoster, type RosterInput } from '@/lib/billing/subscription-roster'
 import {
+  collectedInMonth,
+  recentPayments,
+  summarizePaymentsByTenant,
+  type PaymentLedgerRow,
+} from '@/lib/billing/payment-history'
+import {
+  DORMANT_AFTER_DAYS,
+  buildCollectionsInsights,
+  summarizeCollections,
+  type TenantActivitySnapshot,
+} from '@/lib/billing/collections-insight'
+import { resolveActivityWindow } from '@/lib/activity/activity-window'
+import { getTenantActivity } from '@/lib/activity/tenant-activity-server'
+import { RecentPaymentsPanel } from '@/components/superadmin/subscriptions/recent-payments-panel'
+import {
   buildAllowanceRows,
   type AllowanceStaffMember,
 } from '@/lib/billing/tenant-allowances'
@@ -17,6 +32,63 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { PageHeader } from '@/components/superadmin/ui/primitives'
 
 export const dynamic = 'force-dynamic'
+
+const LEDGER_PAGE = 1000
+const MAX_LEDGER_ROWS = 50000
+const RECENT_PAYMENTS_SHOWN = 10
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+/**
+ * Every payment ever recorded, paged past PostgREST's 1000-row cap — at one
+ * row per client per month the ledger outgrows a single page within a year.
+ *
+ * Null on failure, not an empty list: an unreadable ledger must not render
+ * every client as "Never paid".
+ */
+async function loadPaymentLedger(admin: AdminClient): Promise<PaymentLedgerRow[] | null> {
+  const rows: PaymentLedgerRow[] = []
+  for (let from = 0; from < MAX_LEDGER_ROWS; from += LEDGER_PAGE) {
+    const { data, error } = await admin
+      .from('subscription_payments')
+      .select('tenant_id, amount_php, period_start, period_end, paid_at, created_at, method, reference')
+      .order('created_at', { ascending: false })
+      .range(from, from + LEDGER_PAGE - 1)
+    if (error) {
+      console.error('[subscriptions] payment ledger read failed:', error.message)
+      return null
+    }
+    const batch = (data ?? []) as unknown as PaymentLedgerRow[]
+    rows.push(...batch)
+    if (batch.length < LEDGER_PAGE) break
+  }
+  return rows
+}
+
+/**
+ * Orders per store over the last 30 days. Null on failure: the collections
+ * table must still say who owes when the order backends cannot be read.
+ */
+async function loadActivitySnapshots(
+  nowIso: string
+): Promise<Map<string, TenantActivitySnapshot> | null> {
+  const window = resolveActivityWindow({ range: `${DORMANT_AFTER_DAYS}d` }, nowIso)
+  try {
+    const report = await getTenantActivity({ startMs: window.startMs, endMs: window.endMs })
+    return new Map(
+      report.rows.map((row) => [
+        row.tenantId,
+        { source: row.source, orders30d: row.orders, lastOrderAt: row.lastOrderAt },
+      ])
+    )
+  } catch (error) {
+    console.error(
+      '[subscriptions] activity read failed:',
+      error instanceof Error ? error.message : error
+    )
+    return null
+  }
+}
 
 interface TenantRowShape {
   id: string
@@ -38,9 +110,16 @@ interface SubscriptionRowShape {
 
 export default async function SubscriptionsPage() {
   const supabase = createAdminClient()
+  const nowIso = new Date().toISOString()
 
-  const [{ data: tenants }, { data: subscriptions }, { data: outlets }, { data: staff }] =
-    await Promise.all([
+  const [
+    { data: tenants },
+    { data: subscriptions },
+    { data: outlets },
+    { data: staff },
+    ledger,
+    activity,
+  ] = await Promise.all([
       supabase.from('tenants').select('id, name, slug, max_outlets, max_staff_per_branch, created_at').order('name'),
       supabase
         .from('tenant_subscriptions')
@@ -52,6 +131,8 @@ export default async function SubscriptionsPage() {
       // Revisit if either grows a zero.
       supabase.from('outlets').select('id, tenant_id'),
       supabase.from('app_users').select('tenant_id, outlet_id, is_owner'),
+      loadPaymentLedger(supabase),
+      loadActivitySnapshots(nowIso),
     ])
 
   const byTenant = new Map<string, SubscriptionRowShape>(
@@ -75,7 +156,12 @@ export default async function SubscriptionsPage() {
     }
   )
 
-  const rows = buildSubscriptionRoster(inputs, new Date().toISOString())
+  const rows = buildSubscriptionRoster(inputs, nowIso)
+
+  const insights = ledger
+    ? buildCollectionsInsights(rows, summarizePaymentsByTenant(ledger), activity)
+    : undefined
+  const tenantNames = Object.fromEntries(rows.map((row) => [row.tenantId, row.name]))
 
   // Group once per table rather than filtering inside the tenant loop, so the
   // page stays linear in rows instead of quadratic as the platform grows.
@@ -116,14 +202,35 @@ export default async function SubscriptionsPage() {
       <PageHeader
         eyebrow="Billing"
         title="Subscriptions"
-        subtitle="Overdue tenants first. Marking a client paid extends their access immediately."
+        subtitle="Stores trading without paying first, then overdue. Marking a client paid extends their access immediately."
       />
+
+      {!ledger && (
+        <p
+          role="alert"
+          className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300"
+        >
+          The payment ledger could not be read, so payment history is hidden. Who owes is still
+          accurate.
+        </p>
+      )}
 
       <SubscriptionManager
         rows={rows}
         summary={summarizeRoster(rows)}
         allowances={allowances}
+        insights={insights}
+        collections={insights ? summarizeCollections(rows, insights) : undefined}
+        collected={ledger ? collectedInMonth(ledger, nowIso) : undefined}
+        nowIso={nowIso}
       />
+
+      {ledger && (
+        <RecentPaymentsPanel
+          payments={recentPayments(ledger, RECENT_PAYMENTS_SHOWN)}
+          tenantNames={tenantNames}
+        />
+      )}
     </div>
   )
 }

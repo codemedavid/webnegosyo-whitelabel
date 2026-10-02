@@ -9,6 +9,7 @@ import { MANAGE_SECTIONS, hubSections } from "../../lib/hubs";
 import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { tabPresentation } from "../../lib/workspace-presentation";
 import { canOpenTeam } from "../../lib/staff-service";
+import { canManageCash } from "../../lib/cash-drawers";
 import { hasPermission } from "../../lib/staff-permissions";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
@@ -45,6 +46,7 @@ export default function ManageScreen() {
   const sections = hubSections(MANAGE_SECTIONS, ctx);
   const showTeam = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
   const canDesignReceipt = hasPermission({ role, isOwner, permissions }, "store_setup");
+  const showCashDrawers = !isDemo && canManageCash({ role, isOwner, permissions });
   const chapters = useTutorialChapters();
   const { progress: tutorialProgress } = useTutorialProgress();
   const tour = progressSummary(tutorialProgress, chapters.map((c) => c.id));
@@ -128,6 +130,15 @@ export default function ManageScreen() {
                 title="Team"
                 subtitle="Staff accounts and what each can do"
                 onPress={() => router.push("/(main)/team")}
+                grouped
+              />
+            ) : null}
+            {showCashDrawers ? (
+              <ListRow
+                icon="drawer"
+                title="Cash drawers"
+                subtitle="Cashier 1, Cashier 2, floats and zero-balance"
+                onPress={() => router.push("/(main)/cash-drawers")}
                 grouped
               />
             ) : null}

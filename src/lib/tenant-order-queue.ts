@@ -34,7 +34,7 @@ export async function getTenantSupabaseOrdersPage(
 ): Promise<TenantOrdersPage> {
   // The verified row carries the caller's branch, so the scope is resolved from
   // the same gate that authorized the read — a screen cannot pass its own.
-  const { userRole } = await verifyTenantPermission(tenant.id, "orders");
+  const { userRole } = await verifyTenantPermission(tenant.id, "orders", "view");
 
   const client = createTenantOrderWriteClient(tenant);
   return fetchTenantOrdersPage(client, tenant.id, params, resolveBranchScope(userRole));
@@ -43,7 +43,7 @@ export async function getTenantSupabaseOrdersPage(
 export async function getTenantSupabaseOrderStats(
   tenant: TenantOrderSource
 ): Promise<OrderStats> {
-  const { userRole } = await verifyTenantPermission(tenant.id, "orders");
+  const { userRole } = await verifyTenantPermission(tenant.id, "orders", "view");
 
   const client = createTenantOrderWriteClient(tenant);
   return fetchTenantOrderStats(client, tenant.id, new Date(), resolveBranchScope(userRole));

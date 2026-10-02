@@ -22,6 +22,7 @@ import { RecipeEditor } from '@/components/admin/recipe-editor'
 import { TagManager } from '@/components/admin/tag-manager'
 import { MenuItemPresellSection, SettingSwitch } from '@/components/admin/menu-item-presell-section'
 import { OptionalSection, OptionalSectionList } from '@/components/admin/menu-editor/editor-section'
+import { DISH_SECTION_IDS } from '@/components/admin/menu-editor/dish-sections'
 
 const BCG_CHOICES: readonly { value: BcgClassification; label: string }[] = [
   { value: 'unclassified', label: 'Not set' },
@@ -66,7 +67,7 @@ interface DishMoreOptionsProps {
 export function DishMoreOptions(props: DishMoreOptionsProps) {
   const { inventoryEnabled, presell, branchesSlot } = props
   return (
-    <OptionalSectionList title="More options">
+    <OptionalSectionList id={DISH_SECTION_IDS.more} title="More options">
       <CostRow {...props} />
       {inventoryEnabled && <IngredientsRow {...props} />}
       {presell && <PresellRow presell={presell} />}

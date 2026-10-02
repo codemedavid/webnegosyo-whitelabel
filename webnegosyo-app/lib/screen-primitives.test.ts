@@ -47,7 +47,6 @@ const NOT_YET_CONVERTED: Readonly<Record<string, readonly string[]>> = {
     "campaign/[campaignId].tsx",
     "daily-report.tsx",
     "growth.tsx",
-    "inventory.tsx",
     "kitchen.tsx",
     "order/[orderId].tsx",
     "payment/[methodId].tsx",

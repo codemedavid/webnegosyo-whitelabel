@@ -40,11 +40,12 @@ import { useRefetchOnScreenFocus } from "../../lib/query/use-screen-focus";
 import { PLATFORM_STALE_MS } from "../../lib/query/query-client";
 import { displayPriceForOrderType } from "../../lib/pos-order-type-pricing";
 import { quantityByItem, type PosCartSelection } from "../../lib/pos-cart";
-import { fetchPosStockCeilings } from "../../lib/pos-stock-ceilings";
-import {
-  resolvePosStockWarning,
-  type PosStockCeilings,
-} from "../../lib/pos-stock-warning";
+import { usePosSaleTotals } from "../../lib/use-pos-sale-totals";
+import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
+import { SaleCompleteBanner } from "../../components/pos/SaleCompleteBanner";
+import { useOutbox } from "../../lib/offline/use-outbox-sync";
+import { usePosStockCeilings } from "../../lib/query/use-pos-stock-ceilings";
+import { resolvePosStockWarning } from "../../lib/pos-stock-warning";
 import { formatPeso } from "../../lib/format";
 import { resolvePosLayout } from "../../lib/pos-layout";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -59,6 +60,8 @@ import { ProductTile } from "../../components/pos/ProductTile";
 import { EmptyState } from "../../components/EmptyState";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { OfflineBanner } from "../../components/pos/OfflineBanner";
+import { OfflineReadyStatus } from "../../components/pos/OfflineReadyStatus";
+import { isNetworkFailure } from "../../lib/offline/network-error";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { Icon } from "../../components/Icon";
 
@@ -72,9 +75,6 @@ const INITIAL_ROWS = 6;
 // TODO: Replace double assertion with a generated Convex function reference once
 // codegen is wired into the mobile app (same workaround used across the screens).
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
-
-/** No stock read yet, or none possible. Read as "no opinion", never as empty shelves. */
-const EMPTY_CEILINGS: PosStockCeilings = new Map();
 
 /** No exact per-order-type prices loaded yet — every type prices by markup alone. */
 const EMPTY_PRICE_INDEX: OrderTypePriceIndex = {};
@@ -102,7 +102,16 @@ export default function PosScreen() {
 
   const lines = usePosCartStore((s) => s.lines);
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
-  const serviceCharge = usePosCartStore((s) => s.serviceCharge);
+  // Sales still on their way to the server (written behind).
+  const outbox = useOutbox();
+  // Warm the tender screen's payment methods while items are still being
+  // added, so Charge opens on the amount due instead of a spinner. Keyed the
+  // way the tender screen reads them (impersonation included).
+  useTenderPaymentMethods(
+    useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId),
+    orderTypeId,
+    false,
+  );
   const add = usePosCartStore((s) => s.add);
   const setQty = usePosCartStore((s) => s.setQty);
   const reset = usePosCartStore((s) => s.reset);
@@ -163,37 +172,14 @@ export default function PosScreen() {
     [scope, queue],
   );
 
-  const totals = useMemo(
-    () => usePosCartStore.getState().totals(),
-    // Recompute whenever the sale changes; `totals()` reads the live store.
-    // `discount` belongs here too: applying a code changes the total without
-    // touching a line, and leaving it out would show the undiscounted amount.
-    // `delivery` too: attaching a fee changes the total and what a
-    // free-delivery voucher is worth, without touching a line.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge, discount, delivery],
-  );
-
-  // Priced against the current cart, so a voucher that stops qualifying after
-  // a line is voided disappears from the sheet rather than being billed.
-  const discountLines = useMemo(
-    () => usePosCartStore.getState().sessionDiscount().lines,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge, discount, delivery],
-  );
+  // Totals, the discount rows inside them, and an edit's balance — re-priced
+  // on every store change (lib/use-pos-sale-totals.ts), the same source the
+  // tender screen reads, so the cart and "Amount due" cannot disagree.
+  // Every judgement about an edit comes from `pos-edit-mode.ts`, which is
+  // unit tested; nothing about the money is decided in this file.
+  const { totals, discountLines, edit } = usePosSaleTotals();
 
   const inSale = useMemo(() => quantityByItem(lines), [lines]);
-
-  // Every judgement about the edit — what it now costs, what is owed, whether
-  // it may be saved — comes from `pos-edit-mode.ts`, which is unit tested.
-  // Nothing about the money is decided in this file.
-  // `discount` is a dependency because applying a code changes the edit's total
-  // without touching a line — leaving it out would show the undiscounted bill.
-  const edit = useMemo(
-    () => usePosCartStore.getState().editTotals(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, editContext, discount],
-  );
 
   // The register rings up the branch it belongs to. A store-wide account (the
   // owner, a single-location merchant) gets the store-wide menu, exactly as
@@ -235,17 +221,8 @@ export default function PosScreen() {
   // A WARNING, never a refusal: the cashier is facing a paying customer and can
   // see the shelf, so the software says its piece and the human decides. The
   // web checkout refuses instead, because nobody is standing over that customer.
-  // Refetched whenever the cart changes, since every sale moves the number.
-  const [stockCeilings, setStockCeilings] = useState<PosStockCeilings>(EMPTY_CEILINGS);
-  useEffect(() => {
-    let cancelled = false;
-    void fetchPosStockCeilings(tenantId, registerOutletId).then((ceilings) => {
-      if (!cancelled) setStockCeilings(ceilings);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId, registerOutletId, lines]);
+  // Debounce dish changes; changing a quantity does not change kitchen stock.
+  const stockCeilings = usePosStockCeilings(tenantId, registerOutletId, lines);
 
   const stockWarning = useMemo(
     () => resolvePosStockWarning(lines, stockCeilings),
@@ -384,9 +361,21 @@ export default function PosScreen() {
   }
 
   if (loadError) {
+    // No connection AND no copy saved on this device: say what fixes it,
+    // rather than a raw "Network request failed".
+    const message = isNetworkFailure(loadError)
+      ? "No internet, and this device has not saved the menu yet. Connect once — the register then saves its menu, prices and payment methods so it can sell offline."
+      : `Could not load the menu. ${loadError}`;
     return (
       <View style={styles.center}>
-        <EmptyState message={`Could not load the menu. ${loadError}`} />
+        <EmptyState
+          message={message}
+          actionLabel="Try again"
+          onAction={() => {
+            void refetchCatalog();
+            void refetchPricing();
+          }}
+        />
       </View>
     );
   }
@@ -428,6 +417,17 @@ export default function PosScreen() {
           )}
         </View>
       </ScreenHeader>
+
+      {/* Whether this device can sell without internet, and the button that makes it so. */}
+      <OfflineReadyStatus />
+
+      {/* The sale just swiped through: change to hand over, or "unpaid". */}
+      <View style={styles.saleNotice}>
+        <SaleCompleteBanner
+          onOpenOrder={(id) => router.push(`/(main)/order/${id}`)}
+          isSaving={(id) => outbox.sales.some((queued) => queued.localId === id)}
+        />
+      </View>
 
       <ScrollView
         horizontal
@@ -758,6 +758,7 @@ export default function PosScreen() {
 }
 
 const styles = StyleSheet.create({
+  saleNotice: { paddingHorizontal: spacing.lg },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,

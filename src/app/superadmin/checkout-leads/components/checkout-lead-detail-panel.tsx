@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatCurrency } from '@/components/superadmin/ui/format'
 import { fetchCheckoutLeadDetail, changeCheckoutLeadStatus } from '@/app/actions/checkout-leads'
 import { CheckoutLeadStatusBadge } from './checkout-lead-status-badge'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import { getPaymentTermLabel } from './payment-term'
 import type {
   CheckoutLeadStatus,
@@ -53,6 +54,7 @@ export function CheckoutLeadDetailPanel({
   onOpenChange,
   onStatusChange,
 }: CheckoutLeadDetailPanelProps) {
+  const canChangeStatus = usePlatformAccess().can('checkout_leads.edit')
   const [lead, setLead] = useState<CheckoutLeadWithPaymentMethod | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
@@ -225,32 +227,34 @@ export function CheckoutLeadDetailPanel({
             </div>
 
             {/* Status changer */}
-            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-              <SectionLabel>Update status</SectionLabel>
-              <Select
-                value={lead.status}
-                onValueChange={(val) => handleStatusChange(val as CheckoutLeadStatus)}
-                disabled={isChangingStatus}
-              >
-                <SelectTrigger aria-label="Change lead status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ALL_STATUSES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {canChangeStatus && (
+              <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <SectionLabel>Update status</SectionLabel>
+                <Select
+                  value={lead.status}
+                  onValueChange={(val) => handleStatusChange(val as CheckoutLeadStatus)}
+                  disabled={isChangingStatus}
+                >
+                  <SelectTrigger aria-label="Change lead status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ALL_STATUSES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-              {isChangingStatus && (
-                <div className="flex items-center gap-2 text-xs text-white/45">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Updating status…
-                </div>
-              )}
-            </div>
+                {isChangingStatus && (
+                  <div className="flex items-center gap-2 text-xs text-white/45">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Updating status…
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Timestamps */}
             <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-white/[0.06] pt-4 text-[11px] text-white/40">

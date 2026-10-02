@@ -33,6 +33,7 @@ import {
   type LoyverseWebhookStatusFields,
 } from '@/lib/loyverse/webhook-status'
 import { deployConvexToTenantAction } from '@/app/actions/convex'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/order-backend'
 import { OrderBackendPicker } from '@/components/superadmin/order-backend-picker'
 import { toast } from 'sonner'
@@ -61,6 +62,7 @@ interface TenantFormWrapperProps {
   usersSlot?: ReactNode
   importSlot?: ReactNode
   statsSlot?: ReactNode
+  domainSlot?: ReactNode
 }
 
 // Common Lalamove vehicle service types. Names are shared across markets; the
@@ -248,11 +250,14 @@ function ColorInput({
 function BasicInfoSection({
   formData,
   setFormData,
-  isPending
+  isPending,
+  domainSlot,
 }: {
   formData: TenantFormData
   setFormData: SetFormData
   isPending: boolean
+  /** The self-serve custom domain panel; absent while creating a tenant. */
+  domainSlot?: ReactNode
 }) {
   const generateSlug = () => {
     const slug = formData.name
@@ -301,19 +306,12 @@ function BasicInfoSection({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="domain">Custom Domain (Optional)</Label>
-          <Input
-            id="domain"
-            value={formData.domain}
-            onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-            placeholder="bellaitalia.com"
-            disabled={isPending}
-          />
-          <p className="text-xs text-muted-foreground">
-            Enter your custom domain (e.g., bellaitalia.com). The system will automatically handle www and non-www variants.
-            <br />
-            <span className="font-medium">Important:</span> After adding the domain here, you must configure DNS to point to your Vercel deployment.
-          </p>
+          <Label>Custom Domain</Label>
+          {domainSlot ?? (
+            <p className="text-xs text-muted-foreground">
+              Save the restaurant first, then connect its custom domain here (or the owner can from their Settings).
+            </p>
+          )}
         </div>
 
         <ImageUpload
@@ -1439,6 +1437,7 @@ function LoyverseSection({
 }) {
   const [isTesting, setIsTesting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const canEditTenants = usePlatformAccess().can('tenants.edit')
   const [connection, setConnection] = useState<LoyverseConnectionTest | null>(null)
 
   const handleSyncNow = async () => {
@@ -1524,14 +1523,16 @@ function LoyverseSection({
                     placeholder={hasStoredToken ? 'Saved — leave blank to keep the current token' : 'Loyverse personal access token'}
                     disabled={isPending}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleTestConnection}
-                    disabled={isPending || isTesting || !formData.loyverse_access_token.trim()}
-                  >
-                    {isTesting ? 'Testing…' : 'Test connection'}
-                  </Button>
+                  {canEditTenants && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleTestConnection}
+                      disabled={isPending || isTesting || !formData.loyverse_access_token.trim()}
+                    >
+                      {isTesting ? 'Testing…' : 'Test connection'}
+                    </Button>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Back Office → Integrations → Access tokens. Test the connection to load stores and payment types.
@@ -1636,14 +1637,16 @@ function LoyverseSection({
                       Pull items, categories and modifiers from Loyverse into this menu. Save the token first.
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleSyncNow}
-                    disabled={isPending || isSyncing}
-                  >
-                    {isSyncing ? 'Syncing…' : 'Sync now'}
-                  </Button>
+                  {canEditTenants && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSyncNow}
+                      disabled={isPending || isSyncing}
+                    >
+                      {isSyncing ? 'Syncing…' : 'Sync now'}
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -1852,6 +1855,7 @@ function ConvexMobileAppSection({
 }) {
   const [isDeploying, setIsDeploying] = useState(false)
   const [deployStatus, setDeployStatus] = useState<string | null>(null)
+  const canDeploy = usePlatformAccess().can('tenants.edit')
 
   const handleDeployConvex = async () => {
     if (!tenant?.id) return
@@ -1913,7 +1917,7 @@ function ConvexMobileAppSection({
           </div>
         )}
 
-        {tenant?.id && (
+        {tenant?.id && canDeploy && (
           <div className="space-y-2">
             <Button
               type="button"
@@ -1964,9 +1968,12 @@ export function TenantFormWrapper({
   usersSlot,
   importSlot,
   statsSlot,
+  domainSlot,
 }: TenantFormWrapperProps) {
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
+  // Saving an existing tenant is tenants.edit; creating one is tenants.create.
+  const canSave = usePlatformAccess().can(tenant ? 'tenants.edit' : 'tenants.create')
 
   const [formData, setFormData] = useState<TenantFormData>({
     name: tenant?.name || prefill?.name || '',
@@ -2067,7 +2074,9 @@ export function TenantFormWrapper({
     const input = {
       name: formData.name,
       slug: formData.slug,
-      domain: formData.domain || '',
+      // Managed by the custom-domain panel (Vercel + DNS status); re-sending the
+      // form's copy would overwrite a domain connected or removed meanwhile.
+      domain: null,
       logo_url: formData.logo_url || undefined,
       primary_color: formData.primary_color,
       secondary_color: formData.secondary_color,
@@ -2245,14 +2254,16 @@ export function TenantFormWrapper({
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              className="bg-white text-black hover:bg-white/90"
-              onClick={() => handleSubmit()}
-              disabled={isPending}
-            >
-              {isPending ? 'Saving…' : tenant ? 'Save changes' : 'Create tenant'}
-            </Button>
+            {canSave && (
+              <Button
+                type="button"
+                className="bg-white text-black hover:bg-white/90"
+                onClick={() => handleSubmit()}
+                disabled={isPending}
+              >
+                {isPending ? 'Saving…' : tenant ? 'Save changes' : 'Create tenant'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -2274,6 +2285,7 @@ export function TenantFormWrapper({
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}
+            domainSlot={domainSlot}
           />
         </TabsContent>
 

@@ -21,6 +21,7 @@ import {
  slugifyWhileTyping } from '@/lib/university/blocks'
 import type { CourseRecord, CourseWithCurriculum } from '@/lib/university/service'
 import { CurriculumPanel } from './curriculum-panel'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 
 interface Props {
   initial: CourseWithCurriculum | null
@@ -67,6 +68,8 @@ function toInput(draft: Draft): CourseInput {
 
 export function CourseEditor({ initial, categories }: Props) {
   const router = useRouter()
+  const access = usePlatformAccess()
+  const canEdit = access.can('university.edit')
   const [record, setRecord] = useState<CourseRecord | null>(initial)
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial))
   const [isSlugLocked, setIsSlugLocked] = useState(initial ? initial.slug !== slugify(initial.title) : false)
@@ -76,6 +79,7 @@ export function CourseEditor({ initial, categories }: Props) {
   const validation = useMemo(() => parseCourseInput(toInput(draft)), [draft])
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(draftFrom(record)), [draft, record])
   const isPublished = record?.status === 'published'
+  const canSave = record ? canEdit : access.can('university.create')
   const publishedLessons = initial?.modules.reduce(
     (sum, module) => sum + module.lessons.filter((lesson) => lesson.status === 'published').length,
     0
@@ -146,21 +150,23 @@ export function CourseEditor({ initial, categories }: Props) {
               View
             </Link>
           ) : null}
-          {record && isPublished ? (
+          {record && isPublished && canEdit ? (
             <button type="button" onClick={unpublish} disabled={isPending} className="rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50">
               Unpublish
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={() => save(false)}
-            disabled={isPending || (!isDirty && record !== null)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
-          >
-            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            {record ? 'Save' : 'Create course'}
-          </button>
-          {record && !isPublished ? (
+          {canSave ? (
+            <button
+              type="button"
+              onClick={() => save(false)}
+              disabled={isPending || (!isDirty && record !== null)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
+            >
+              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {record ? 'Save' : 'Create course'}
+            </button>
+          ) : null}
+          {record && !isPublished && canEdit ? (
             <button
               type="button"
               onClick={() => save(true)}

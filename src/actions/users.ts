@@ -1,7 +1,6 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import {
@@ -11,6 +10,12 @@ import {
   type OwnershipUser,
 } from '@/lib/tenant-ownership'
 import { transferOwnership, type OwnershipStore } from '@/lib/tenant-ownership-service'
+import {
+  PlatformAccessError,
+  requireFullSuperadmin,
+  requirePlatformPermission,
+} from '@/lib/platform-staff/guard'
+import type { PlatformPermission } from '@/lib/platform-staff/permissions'
 
 // Schema for creating new admin user
 const createUserSchema = z.object({
@@ -44,35 +49,34 @@ export interface TenantUser {
 }
 
 /**
- * The superadmin gate every action in this file sits behind.
+ * The console gate every action in this file sits behind: the caller must hold
+ * `grant` (superadmins always do), or be a full superadmin for `'superadmin'`.
  *
  * Returns the caller on success and an error envelope on failure, so each
  * action keeps its existing `{ error }` contract with the client.
  */
-async function requireSuperadmin(): Promise<
-  { currentUser: { id: string }; error: null } | { currentUser: null; error: string }
+async function requireConsoleGrant(grant: PlatformPermission | 'superadmin'): Promise<
+  | { currentUser: { id: string }; isSuperadmin: boolean; error: null }
+  | { currentUser: null; isSuperadmin: false; error: string }
 > {
-  const supabase = await createClient()
-  const {
-    data: { user: currentUser },
-  } = await supabase.auth.getUser()
-  if (!currentUser) {
-    return { currentUser: null, error: 'Unauthorized: Not authenticated' }
+  try {
+    const caller =
+      grant === 'superadmin' ? await requireFullSuperadmin() : await requirePlatformPermission(grant)
+    return {
+      currentUser: caller.user,
+      isSuperadmin: caller.appUser.role === 'superadmin',
+      error: null,
+    }
+  } catch (err) {
+    if (err instanceof PlatformAccessError) {
+      return { currentUser: null, isSuperadmin: false, error: err.message }
+    }
+    throw err
   }
-
-  const { data: roleData } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', currentUser.id)
-    .maybeSingle()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!roleData || (roleData as any).role !== 'superadmin') {
-    return { currentUser: null, error: 'Unauthorized: Only superadmins can manage tenant users' }
-  }
-
-  return { currentUser, error: null }
 }
+
+/** Store logins only: platform staff never touch console accounts. */
+const TENANT_LOGIN_ROLE = 'admin'
 
 /** Reads and writes `app_users` ownership rows with service-role access. */
 function makeOwnershipStore(): OwnershipStore {
@@ -104,7 +108,7 @@ function makeOwnershipStore(): OwnershipStore {
  * Get all users for a specific tenant
  */
 export async function getTenantUsers(tenantId: string): Promise<TenantUser[]> {
-  const auth = await requireSuperadmin()
+  const auth = await requireConsoleGrant('tenant_users.view')
   if (auth.error) {
     console.error('getTenantUsers:', auth.error)
     return []
@@ -173,7 +177,7 @@ export async function createTenantUser(input: {
     // Validate input
     const parsed = createUserSchema.parse(input)
 
-    const auth = await requireSuperadmin()
+    const auth = await requireConsoleGrant('tenant_users.create')
     if (!auth.currentUser) {
       return { error: auth.error }
     }
@@ -254,7 +258,7 @@ export async function createTenantUser(input: {
  */
 export async function removeTenantUser(userId: string, tenantId: string) {
   try {
-    const auth = await requireSuperadmin()
+    const auth = await requireConsoleGrant('tenant_users.delete')
     if (!auth.currentUser) {
       return { error: auth.error }
     }
@@ -274,13 +278,17 @@ export async function removeTenantUser(userId: string, tenantId: string) {
     // reported the account as missing while leaving it in place.
     const adminClient = createAdminClient()
 
-    // Delete from app_users
-    const { data: deletedRows, error } = await adminClient
+    // Delete from app_users. Platform staff may remove store logins only,
+    // never a console account that happens to carry this tenant_id.
+    const deleteQuery = adminClient
       .from('app_users')
       .delete()
       .eq('user_id', userId)
       .eq('tenant_id', tenantId)
-      .select()
+    const { data: deletedRows, error } = await (auth.isSuperadmin
+      ? deleteQuery
+      : deleteQuery.eq('role', TENANT_LOGIN_ROLE)
+    ).select()
 
     if (error) {
       return { error: error.message }
@@ -316,7 +324,8 @@ export async function updateTenantUser(input: {
     // Validate input
     const parsed = updateUserSchema.parse(input)
 
-    const auth = await requireSuperadmin()
+    // Changes a role (up to 'superadmin'): no platform staff grant covers it.
+    const auth = await requireConsoleGrant('superadmin')
     if (!auth.currentUser) {
       return { error: auth.error }
     }
@@ -375,12 +384,22 @@ export async function setTenantOwner(input: { tenant_id: string; user_id: string
   try {
     const parsed = setOwnerSchema.parse(input)
 
-    const auth = await requireSuperadmin()
+    const auth = await requireConsoleGrant('tenant_users.edit')
     if (!auth.currentUser) {
       return { error: auth.error }
     }
 
-    await transferOwnership(makeOwnershipStore(), parsed.tenant_id, parsed.user_id)
+    const store = makeOwnershipStore()
+    if (!auth.isSuperadmin) {
+      const target = (await store.listTenantUsers(parsed.tenant_id)).find(
+        (user) => user.user_id === parsed.user_id
+      )
+      if (target && target.role !== TENANT_LOGIN_ROLE) {
+        return { error: 'Only store logins can own a store' }
+      }
+    }
+
+    await transferOwnership(store, parsed.tenant_id, parsed.user_id)
 
     revalidatePath(`/superadmin/tenants/${parsed.tenant_id}`)
     revalidatePath('/superadmin/tenants')

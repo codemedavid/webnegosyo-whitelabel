@@ -38,10 +38,12 @@
     "node_modules",
     "sms",
     "mobile",
+    "customer-app",
     "mcp",
     "convex-template",
     "webnegosyo-app",
     "webnegosyo-desktop",
-    "supabase/functions"
+    "supabase/functions",
+    "videos"
   ]
 }

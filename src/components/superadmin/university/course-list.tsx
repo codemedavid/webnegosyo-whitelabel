@@ -10,6 +10,7 @@ import { EmptyState, Panel } from '@/components/superadmin/ui/primitives'
 import { deleteCourseAction, reorderCoursesAction, setCourseStatusAction } from '@/app/actions/university'
 import { COURSE_LEVEL_LABEL } from '@/lib/university/blocks'
 import type { CourseSummary } from '@/lib/university/service'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 
 interface Props {
   initialItems: CourseSummary[]
@@ -28,6 +29,10 @@ function swap<T>(items: T[], from: number, to: number): T[] {
 }
 
 export function CourseList({ initialItems }: Props) {
+  const access = usePlatformAccess()
+  const canCreate = access.can('university.create')
+  const canEdit = access.can('university.edit')
+  const canDelete = access.can('university.delete')
   const [items, setItems] = useState(initialItems)
   const [isPending, startTransition] = useTransition()
 
@@ -78,10 +83,12 @@ export function CourseList({ initialItems }: Props) {
           title="No courses yet"
           description="Create the first course, add modules and lessons, then publish it to the public portal."
           action={
-            <Link href="/superadmin/university/new" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90">
-              <Plus className="h-4 w-4" />
-              Create a course
-            </Link>
+            canCreate ? (
+              <Link href="/superadmin/university/new" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90">
+                <Plus className="h-4 w-4" />
+                Create a course
+              </Link>
+            ) : undefined
           }
         />
       </Panel>
@@ -136,26 +143,34 @@ export function CourseList({ initialItems }: Props) {
               <div className="mt-auto flex items-center gap-2 pt-1">
                 <Link href={`/superadmin/university/${item.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10">
                   <Pencil className="h-3.5 w-3.5" />
-                  Edit
+                  {canEdit ? 'Edit' : 'View'}
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => toggleStatus(item)}
-                  disabled={isPending}
-                  className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-                >
-                  {isPublished ? 'Unpublish' : 'Publish'}
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(item)}
+                    disabled={isPending}
+                    className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {isPublished ? 'Unpublish' : 'Publish'}
+                  </button>
+                )}
                 <div className="ml-auto flex items-center">
-                  <button type="button" onClick={() => move(index, index - 1)} disabled={index === 0 || isPending} aria-label="Move up" className="rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-30">
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button type="button" onClick={() => move(index, index + 1)} disabled={index === items.length - 1 || isPending} aria-label="Move down" className="rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-30">
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </button>
-                  <button type="button" onClick={() => remove(item)} disabled={isPending} aria-label={`Delete ${item.title}`} className="rounded-md p-1.5 text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {canEdit && (
+                    <>
+                      <button type="button" onClick={() => move(index, index - 1)} disabled={index === 0 || isPending} aria-label="Move up" className="rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-30">
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" onClick={() => move(index, index + 1)} disabled={index === items.length - 1 || isPending} aria-label="Move down" className="rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-30">
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                  {canDelete && (
+                    <button type="button" onClick={() => remove(item)} disabled={isPending} aria-label={`Delete ${item.title}`} className="rounded-md p-1.5 text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

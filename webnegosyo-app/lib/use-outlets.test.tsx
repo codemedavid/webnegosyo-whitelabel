@@ -28,7 +28,8 @@ jest.mock("./supabase", () => {
 import { createAppQueryClient } from "./query/query-client";
 import { useAuthStore } from "../stores/auth-store";
 import { useBranchContextStore } from "../stores/branch-context-store";
-import { useOutlets } from "./use-outlets";
+import { fetchOutlets, useOutlets } from "./use-outlets";
+import { isNetworkFailure } from "./offline/network-error";
 
 let client: QueryClient;
 
@@ -99,6 +100,12 @@ describe("useOutlets", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.error).toBe("Could not load your branches");
     expect(result.current.outlets).toEqual([]);
+  });
+
+  it("keeps a lost connection recognisable, so the saved branch list can answer", async () => {
+    mockQueued = [{ data: null, error: { message: "TypeError: Network request failed" } }];
+    const failure = await fetchOutlets("t1").catch((error: unknown) => error);
+    expect(isNetworkFailure(failure)).toBe(true);
   });
 
   it("reload() reads again", async () => {

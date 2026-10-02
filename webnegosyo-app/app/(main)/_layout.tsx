@@ -193,6 +193,8 @@ export default function MainLayout() {
         <Tabs.Screen name="product/[productId]" options={{ href: null, title: "Product" }} />
         <Tabs.Screen name="product-performance/[productId]" options={{ href: null, title: "Product performance" }} />
         <Tabs.Screen name="product/recipe/[productId]" options={{ href: null, title: "Recipe" }} />
+        <Tabs.Screen name="ingredient/[ingredientId]" options={{ href: null, title: "Ingredient" }} />
+        <Tabs.Screen name="ingredient/edit/[ingredientId]" options={{ href: null, title: "Edit ingredient" }} />
         <Tabs.Screen name="payment/[methodId]" options={{ href: null, title: "Payment Method" }} />
         <Tabs.Screen name="voucher/[voucherId]" options={{ href: null, title: "Voucher" }} />
         <Tabs.Screen name="category/[categoryId]" options={{ href: null, title: "Category" }} />
@@ -214,6 +216,8 @@ export default function MainLayout() {
         />
         <Tabs.Screen name="account" options={{ href: null, title: "Account" }} />
         <Tabs.Screen name="team" options={{ href: null, title: "Team" }} />
+        {/* Tills (Cashier 1, Cashier 2, zero-balance) — pushed from Manage or the Drawer. */}
+        <Tabs.Screen name="cash-drawers" options={{ href: null, title: "Cash drawers" }} />
         {/* Owner-only order deletion — pushed from Account. */}
         <Tabs.Screen name="delete-orders" options={{ href: null, title: "Delete orders" }} />
         {/* One colleague's shifts, activity and access — pushed from Team. */}

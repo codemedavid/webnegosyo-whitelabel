@@ -6,18 +6,26 @@ import { SuperAdminSidebar } from '@/components/superadmin/superadmin-sidebar'
 import { SuperAdminTopbar } from '@/components/superadmin/superadmin-topbar'
 import { NavigationProgress } from '@/components/shared/navigation-progress'
 import { SUPERADMIN_MCP_CONSENT_PATH } from '@/lib/mcp/supabase-oauth-config'
+import { PlatformAccessProvider } from '@/components/superadmin/platform-access-context'
 
 const CHROME_FREE_PATHS = new Set([
   '/superadmin/login',
   SUPERADMIN_MCP_CONSENT_PATH,
 ])
 
-export function SuperAdminLayoutShell({ children }: { children: ReactNode }) {
+interface SuperAdminLayoutShellProps {
+  role: string | null
+  permissions: string[] | null
+  children: ReactNode
+}
+
+export function SuperAdminLayoutShell({ role, permissions, children }: SuperAdminLayoutShellProps) {
   const pathname = usePathname()
 
   if (CHROME_FREE_PATHS.has(pathname)) return <>{children}</>
 
   return (
+    <PlatformAccessProvider role={role} permissions={permissions}>
     <div className="superadmin-shell relative flex h-screen overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none fixed inset-0 z-0">
         <div className="absolute left-1/2 top-0 h-[480px] w-[760px] -translate-x-1/2 rounded-full bg-white/[0.05] blur-[140px]" />
@@ -42,5 +50,6 @@ export function SuperAdminLayoutShell({ children }: { children: ReactNode }) {
         <div className="mx-auto max-w-7xl px-6 py-8">{children}</div>
       </main>
     </div>
+    </PlatformAccessProvider>
   )
 }

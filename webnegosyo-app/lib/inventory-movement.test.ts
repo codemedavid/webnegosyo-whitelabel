@@ -13,6 +13,7 @@
 
 import {
   MANUAL_MOVEMENT_REASONS,
+  bumpQuantity,
   buildMovementPayload,
   describeMovementOutcome,
   isOvercountedWaste,
@@ -176,3 +177,44 @@ describe("attaching a count to its session", () => {
     ).not.toHaveProperty("inventory_count_id");
   });
 })
+
+describe("pricing a delivery", () => {
+  it("sends the price per stock unit with a delivery, reading peso signs and commas", () => {
+    const payload = buildMovementPayload(
+      { reason: "receive", quantity: "10", note: "", unitCost: "₱1,050.50" },
+      flour,
+    );
+    expect(payload.unit_cost).toBe(1050.5);
+  });
+
+  it("omits the price when left blank — blank means unchanged, never free", () => {
+    const payload = buildMovementPayload({ reason: "receive", quantity: "10", note: "", unitCost: " " }, flour);
+    expect(payload).not.toHaveProperty("unit_cost");
+  });
+
+  it("never prices a count or waste, which did not buy anything", () => {
+    const payload = buildMovementPayload({ reason: "waste", quantity: "1", note: "", unitCost: "40" }, flour);
+    expect(payload).not.toHaveProperty("unit_cost");
+  });
+
+  it("refuses a price that is not a positive number", () => {
+    expect(() =>
+      buildMovementPayload({ reason: "receive", quantity: "10", note: "", unitCost: "-3" }, flour),
+    ).toThrow("price");
+  });
+});
+
+describe("quick amounts", () => {
+  it("adds a step to what was typed", () => {
+    expect(bumpQuantity("2.5", 5)).toBe("7.5");
+  });
+
+  it("starts from zero when the field is blank or not a number", () => {
+    expect(bumpQuantity("", 10)).toBe("10");
+    expect(bumpQuantity("abc", 1)).toBe("1");
+  });
+
+  it("does not leave floating-point dust behind", () => {
+    expect(bumpQuantity("0.1", 0.2)).toBe("0.3");
+  });
+});

@@ -45,7 +45,7 @@ export async function listOrderTypeItemPrices(
   tenantId: string,
   orderTypeId: string
 ): Promise<OrderTypeItemPrice[]> {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'view')
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -63,7 +63,7 @@ export async function setOrderTypeItemPrice(
   orderTypeId: string,
   input: OrderTypeItemPriceInput
 ): Promise<OrderTypeItemPrice> {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'create')
   const validated = orderTypeItemPriceSchema.parse(input)
   const supabase = await createClient()
 
@@ -90,7 +90,7 @@ export async function clearOrderTypeItemPrice(
   orderTypeId: string,
   menuItemId: string
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'delete')
   const supabase = await createClient()
 
   const { error } = await supabase

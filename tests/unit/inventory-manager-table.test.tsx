@@ -10,6 +10,19 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 
+const mockTableRender = jest.fn()
+jest.mock('@/components/admin/inventory-table', () => {
+  const { InventoryTable } = jest.requireActual('@/components/admin/inventory-table')
+  const { Profiler } = jest.requireActual('react')
+  return {
+    InventoryTable: (props: React.ComponentProps<typeof InventoryTable>) => (
+      <Profiler id="inventory-table" onRender={mockTableRender}>
+        <InventoryTable {...props} />
+      </Profiler>
+    ),
+  }
+})
+
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }))
 jest.mock('@/components/admin/recipe-editor', () => ({
@@ -65,6 +78,20 @@ function renderManager(
 beforeEach(() => jest.clearAllMocks())
 
 describe('InventoryManager table', () => {
+  it.each(['ingredient', 'stock'])('keeps the table idle while typing a %s draft', (form) => {
+    renderManager()
+    fireEvent.click(screen.getByRole('button', {
+      name: form === 'ingredient' ? /add ingredient/i : /record stock for broccoli/i,
+    }))
+    mockTableRender.mockClear()
+
+    fireEvent.change(screen.getByLabelText(form === 'ingredient' ? /^name$/i : /^quantity$/i), {
+      target: { value: form === 'ingredient' ? 'Carrots' : '20' },
+    })
+
+    expect(mockTableRender).not.toHaveBeenCalled()
+  })
+
   it('renders ingredients as table rows rather than cards', () => {
     renderManager()
 
@@ -121,6 +148,20 @@ describe('InventoryManager table', () => {
     fireEvent.click(screen.getByRole('button', { name: /record stock for broccoli/i }))
 
     expect(screen.getByRole('dialog')).toHaveTextContent(/stock — broccoli/i)
+  })
+
+  it('starts a fresh stock draft when navigation opens a different ingredient', () => {
+    const props = {
+      tenantId: 't1', tenantSlug: 'demo', initialUnits: [KG],
+      initialIngredients: [BROCCOLI, item({ id: 'i2', name: 'Carrots' })],
+    }
+    const { rerender } = render(<InventoryManager {...props} stockItemId="i1" />)
+    fireEvent.change(screen.getByLabelText(/^quantity$/i), { target: { value: '20' } })
+
+    rerender(<InventoryManager {...props} stockItemId="i2" />)
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Stock — Carrots')
+    expect(screen.getByLabelText(/^quantity$/i)).toHaveValue(null)
   })
 
   it('opens the recipe editor for a prep item from the row menu', () => {

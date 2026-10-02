@@ -326,3 +326,81 @@ describe('importLoyverseCatalog — re-sync idempotency', () => {
     expect(second.itemsCreated).toBe(0)
   })
 })
+
+describe('importLoyverseCatalog — steady-state re-sync', () => {
+  it('skips the write for a dish that is already in sync', async () => {
+    await importLoyverseCatalog(TENANT)
+    // Any UPDATE to menu_items would now fail loudly in the report.
+    db.failures['menu_items:update'] = 'no writes expected'
+
+    const second = await importLoyverseCatalog(TENANT)
+    delete db.failures['menu_items:update']
+
+    expect(second.warnings.filter((w) => w.startsWith('Failed to update'))).toEqual([])
+    expect(second.itemsUpdated).toBe(1)
+    expect(second.itemsUnchanged).toBe(1)
+  })
+
+  it('still writes a dish whose Loyverse data changed', async () => {
+    await importLoyverseCatalog(TENANT)
+    catalog.items = [loyverseItem('item_1', 'Americano Grande')]
+
+    const second = await importLoyverseCatalog(TENANT)
+
+    expect(second.itemsUnchanged ?? 0).toBe(0)
+    expect(menuItems()[0]).toMatchObject({ name: 'Americano Grande' })
+  })
+
+  it('stores the synced stock level on the variant map instead of wiping it', async () => {
+    catalog.items = [{ ...loyverseItem('item_1', 'Americano'), track_stock: true }]
+    catalog.inventory = [{ variant_id: 'item_1_var', store_id: STORE, in_stock: 3 }]
+
+    await importLoyverseCatalog(TENANT)
+
+    expect(mapRows().find((row) => row.kind === 'variant')).toMatchObject({ in_stock: 3 })
+  })
+})
+
+describe('importLoyverseCatalog — items removed from Loyverse', () => {
+  it('marks a dish whose Loyverse item is gone unavailable and drops its variant rows', async () => {
+    catalog.items = [loyverseItem('item_1', 'Americano'), loyverseItem('item_2', 'Latte')]
+    await importLoyverseCatalog(TENANT)
+
+    catalog.items = [loyverseItem('item_1', 'Americano')]
+    const second = await importLoyverseCatalog(TENANT)
+
+    const latte = menuItems().find((row) => row.name === 'Latte')
+    expect(latte).toMatchObject({ is_available: false })
+    expect(second.itemsRetired).toBe(1)
+    expect(mapRows().some((row) => row.loyverse_item_id === 'item_2')).toBe(false)
+    expect(menuItems().find((row) => row.name === 'Americano')).toMatchObject({ is_available: true })
+  })
+
+  it('retires nothing when Loyverse returns an empty catalog (likely a wrong token)', async () => {
+    await importLoyverseCatalog(TENANT)
+    catalog.items = []
+
+    const second = await importLoyverseCatalog(TENANT)
+
+    expect(second.itemsRetired).toBeUndefined()
+    expect(menuItems()[0]).toMatchObject({ is_available: true })
+  })
+})
+
+describe('importLoyverseCatalog — categories', () => {
+  it('creates one category for names that differ only by case', async () => {
+    catalog.categories = [
+      { id: 'cat_1', name: 'Drinks' },
+      { id: 'cat_2', name: 'drinks' },
+    ]
+    catalog.items = [
+      loyverseItem('item_1', 'Americano'),
+      { ...loyverseItem('item_2', 'Latte'), category_id: 'cat_2' },
+    ]
+
+    const report = await importLoyverseCatalog(TENANT)
+
+    expect(report.categoriesCreated).toBe(1)
+    expect(db.rows('categories')).toHaveLength(1)
+  })
+})

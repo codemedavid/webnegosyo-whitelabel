@@ -36,6 +36,7 @@ import { sanitizeCustomerData } from '@/lib/checkout/customer-data-guard'
 import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
+import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import {
   CHECKOUT_ORDER_TYPE_SELECT,
   advanceConfigOf,
@@ -144,24 +145,30 @@ async function depleteStockForOrder(
 /**
  * Loyverse twin of depleteStockForOrder: every backend branch funnels through
  * here so an "on order placed" push behaves identically wherever the order
- * row lives. The push service itself checks the tenant flag, the on_create
- * push mode, and idempotency; platformOrderId is null for Convex and
- * tenant-Supabase orders, whose receipt outcome has no platform row to land on.
+ * row lives. The push service checks the on_create push mode and
+ * idempotency; platformOrderId is null for Convex and tenant-Supabase orders,
+ * whose receipt outcome has no platform row to land on.
+ *
+ * `loyverse` is the tenant snapshot checkout already read — null when the
+ * tenant does not use Loyverse, which skips the push service (and its
+ * tenant/secret re-reads) entirely.
  *
  * Best-effort by design: the order is already saved when this runs.
  */
 async function pushLoyverseOnCreate(
-  tenantId: string,
+  loyverse: LoyverseTenant | null,
   platformOrderId: string | null,
   items: OrderItem[],
 ) {
+  if (!loyverse) return
   try {
     const { pushOrderToLoyverseBestEffort } = await import('@/lib/loyverse/push-service')
     await pushOrderToLoyverseBestEffort({
-      tenantId,
+      tenantId: loyverse.id,
       orderId: platformOrderId,
       items,
       trigger: 'create',
+      tenant: loyverse,
     })
   } catch (error) {
     console.error('[createOrderAction] Loyverse push failed:', error)
@@ -294,7 +301,7 @@ export async function createOrderAction(
     const supabaseAdmin = createAdminClient()
     const { data: tenantConfigData } = await supabaseAdmin
       .from('tenants')
-      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude, multi_branch_enabled')
+      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude, multi_branch_enabled, loyverse_enabled, loyverse_store_id, loyverse_payment_type_id, loyverse_push_mode')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
@@ -358,31 +365,30 @@ export async function createOrderAction(
     // ── Live Loyverse stock verification (authoritative; every order backend) ──
     // The synced mirror can always be stale — a webhook may be unregistered or
     // disabled by Loyverse after 48h of failures. One live read here is the
-    // only check that cannot be stale, and it costs a single request against a
-    // 300 req / 300 s per-merchant budget.
+    // only check that cannot be stale; it asks only for the ordered dishes'
+    // variants and is time-bounded, so a slow Loyverse never stalls checkout.
     //
-    // Deliberately a SEPARATE select: the loyverse_* columns are not in the
-    // tenantConfig projection above, and a column missing from a SELECT fails
-    // silently rather than loudly.
+    // The same snapshot later drives the on-create receipt push, so a tenant
+    // without Loyverse pays for neither.
+    const loyverseTenant: LoyverseTenant | null = tenantConfig.loyverse_enabled === true
+      ? {
+          id: tenantId,
+          loyverse_enabled: true,
+          loyverse_access_token: tenantSecrets?.loyverse_access_token ?? null,
+          loyverse_store_id: tenantConfig.loyverse_store_id ?? null,
+          loyverse_payment_type_id: tenantConfig.loyverse_payment_type_id ?? null,
+          loyverse_push_mode: tenantConfig.loyverse_push_mode ?? null,
+        }
+      : null
     {
-      const { data: loyverseRow } = await supabaseAdmin
-        .from('tenants')
-        .select('loyverse_enabled, loyverse_store_id')
-        .eq('id', tenantId)
-        .maybeSingle()
-
-      const loyverse = loyverseRow as {
-        loyverse_enabled?: boolean | null
-        loyverse_store_id?: string | null
-      } | null
-      const loyverseToken = tenantSecrets?.loyverse_access_token ?? null
-
-      if (loyverse?.loyverse_enabled && loyverseToken && loyverse.loyverse_store_id) {
+      const loyverseToken = loyverseTenant?.loyverse_access_token
+      const loyverseStoreId = loyverseTenant?.loyverse_store_id
+      if (loyverseToken && loyverseStoreId) {
         const { findLiveOutOfStockLines } = await import('@/lib/loyverse/stock-check')
         const blocked = await findLiveOutOfStockLines(
           tenantId,
           loyverseToken,
-          loyverse.loyverse_store_id,
+          loyverseStoreId,
           items.map((item) => ({
             menu_item_id: item.menu_item_id,
             menu_item_name: item.menu_item_name,
@@ -844,7 +850,7 @@ export async function createOrderAction(
       })
 
       await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
-      await pushLoyverseOnCreate(tenantId, null, items)
+      await pushLoyverseOnCreate(loyverseTenant, null, items)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -880,7 +886,7 @@ export async function createOrderAction(
       orderPersisted = true
       await burnFor(result.order.id)
       await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
-      await pushLoyverseOnCreate(tenantId, null, items)
+      await pushLoyverseOnCreate(loyverseTenant, null, items)
       await firePostHogNotification(result.order.id, items)
       let trackingToken: string | undefined
       try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
@@ -931,7 +937,7 @@ export async function createOrderAction(
     await burnFor(result.order.id)
     // Return both order and token for secure public API access
     await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
-    await pushLoyverseOnCreate(tenantId, result.order.id, items)
+    await pushLoyverseOnCreate(loyverseTenant, result.order.id, items)
     await firePostHogNotification(result.order.id, items)
     let trackingToken: string | undefined
     try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }

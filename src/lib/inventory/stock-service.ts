@@ -111,7 +111,7 @@ export async function recordStockMovement(
   tenantId: string,
   input: StockMovementInput,
 ): Promise<StockMovementResult> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'create')
   const supabase = await createClient()
   return recordStockMovementWith(supabase, tenantId, input)
 }

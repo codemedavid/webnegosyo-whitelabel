@@ -40,6 +40,14 @@ export interface CoachProductInput {
   bcgClassification?: string;
 }
 
+/** An AI offer idea from the Offer ideas card (`lib/boost-ai.ts`), already in words. */
+export interface CoachOfferIdeaInput {
+  kind: "combo" | "upgrade" | "pairing" | "last_call";
+  status: "pending" | "approved" | "rejected" | "applied";
+  title: string;
+  detail: string;
+}
+
 export interface CoachFeatureFlags {
   bundlesEnabled?: boolean;
   menuEngineeringEnabled?: boolean;
@@ -56,6 +64,15 @@ export interface BuildFactsInput {
   customers?: CoachCustomerInput;
   products?: readonly CoachProductInput[];
   features?: CoachFeatureFlags;
+  /** Ideas the AI already drafted from real baskets — the coach points at them, never invents its own. */
+  offerIdeas?: readonly CoachOfferIdeaInput[];
+}
+
+export interface CoachOfferIdea {
+  type: CoachOfferIdeaInput["kind"];
+  offer: string;
+  /** Already live for customers; otherwise one tap on the Offer ideas card. */
+  isLive: boolean;
 }
 
 export interface CoachTopProduct {
@@ -93,11 +110,13 @@ export interface GrowthCoachFacts {
     walkInOrders?: number;
   };
   topProducts?: CoachTopProduct[];
+  offerIdeas?: CoachOfferIdea[];
   features: { bundlesEnabled: boolean; menuEngineeringEnabled: boolean };
   hasData: boolean;
 }
 
 const TOP_PRODUCT_LIMIT = 5;
+const OFFER_IDEA_LIMIT = 6;
 const PESO_SUFFIX_MULTIPLIER: Record<string, number> = { k: 1_000, m: 1_000_000 };
 
 /** Round to a whole number, guarding against NaN/Infinity noise in the prompt. */
@@ -138,6 +157,18 @@ function topProducts(products: readonly CoachProductInput[]): CoachTopProduct[] 
       ...(p.marginPercent !== undefined
         ? { marginPercent: Math.round(p.marginPercent) }
         : {}),
+    }));
+}
+
+/** Dismissed ideas dropped; the rest as one line each, capped to keep the payload small. */
+function offerIdeas(ideas: readonly CoachOfferIdeaInput[]): CoachOfferIdea[] {
+  return ideas
+    .filter((idea) => idea.status !== "rejected")
+    .slice(0, OFFER_IDEA_LIMIT)
+    .map((idea) => ({
+      type: idea.kind,
+      offer: `${idea.title} — ${idea.detail}`,
+      isLive: idea.status === "applied",
     }));
 }
 
@@ -191,6 +222,11 @@ export function buildGrowthCoachFacts(input: BuildFactsInput): GrowthCoachFacts 
   const products = topProducts(input.products ?? []);
   if (products.length > 0) {
     facts.topProducts = products;
+  }
+
+  const ideas = offerIdeas(input.offerIdeas ?? []);
+  if (ideas.length > 0) {
+    facts.offerIdeas = ideas;
   }
 
   return facts;

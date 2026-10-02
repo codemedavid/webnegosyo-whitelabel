@@ -18,7 +18,7 @@ type FacebookPagesUpdate = Database['public']['Tables']['facebook_pages']['Updat
  */
 export async function getFacebookPagesAction(tenantId: string) {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantAdmin(tenantId, 'view')
 
     const supabase = await createClient()
     const { data: pages, error } = await ((supabase
@@ -281,7 +281,7 @@ export async function verifyWebhookSubscriptionAction(
   pageId: string
 ) {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantAdmin(tenantId, 'view')
 
     const pageData = await getTenantActivePageById(tenantId, pageId)
 

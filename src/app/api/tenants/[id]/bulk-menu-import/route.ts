@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
 import type { ParsedMenuData } from '@/types/ai-menu-parser'
 
 /**
@@ -13,23 +15,20 @@ export async function POST(
     try {
         const { id: tenantId } = await params
 
-        // Verify user is superadmin
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        // Verify the console caller may add menu data to a store. The writes
+        // below stay on the session client: RLS admits platform staff to
+        // categories/menu_items only with stores.create.
+        const caller = await getConsoleCaller()
 
-        if (!user) {
+        if (!caller) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const { data: appUser } = await supabase
-            .from('app_users')
-            .select('role')
-            .eq('user_id', user.id)
-            .single() as { data: { role: string } | null }
-
-        if (!appUser || appUser.role !== 'superadmin') {
-            return NextResponse.json({ error: 'Superadmin access required' }, { status: 403 })
+        if (!hasPlatformPermission(caller.appUser, 'stores.create')) {
+            return NextResponse.json({ error: 'You do not have access to import menus' }, { status: 403 })
         }
+
+        const supabase = await createClient()
 
         // Verify tenant exists
         const { data: tenant, error: tenantError } = await supabase

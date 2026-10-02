@@ -19,8 +19,8 @@ interface SaveBarProps {
 
 export function SaveBar({ formId, isSaving, isNew, onCancel }: SaveBarProps) {
   return (
-    <div className="sticky bottom-0 z-20 -mx-4 border-t bg-background px-4 py-3 md:-mx-6 md:px-6">
-      <div className="mx-auto flex max-w-3xl items-center justify-end gap-2">
+    <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6">
+      <div className="mx-auto flex max-w-6xl items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel} disabled={isSaving} className="h-11">
           Cancel
         </Button>

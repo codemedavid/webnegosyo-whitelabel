@@ -12,6 +12,8 @@ import {
 import { ChangePasswordForm } from '@/components/superadmin/change-password-form'
 import { TagPresetsManager } from '@/components/superadmin/tag-presets'
 import { PageHeader, Panel, SectionHeader } from '@/components/superadmin/ui/primitives'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
 
 interface EnvCheck {
   label: string
@@ -33,9 +35,9 @@ const envChecks: EnvCheck[] = [
 ]
 
 const sections = [
-  { id: 'security', label: 'Account & Security', icon: KeyRound },
-  { id: 'taxonomy', label: 'Tag Presets', icon: Tag },
-  { id: 'system', label: 'System Status', icon: Server },
+  { id: 'security', label: 'Account & Security', icon: KeyRound, isPlatform: false },
+  { id: 'taxonomy', label: 'Tag Presets', icon: Tag, isPlatform: true },
+  { id: 'system', label: 'System Status', icon: Server, isPlatform: true },
 ]
 
 function StatTile({
@@ -219,7 +221,13 @@ function SettingsSkeleton() {
   )
 }
 
-export default function SuperAdminSettingsPage() {
+export default async function SuperAdminSettingsPage() {
+  // Every console user may open this page to change their own password; the
+  // platform sections below need settings.view.
+  const caller = await getConsoleCaller()
+  const canViewPlatform = hasPlatformPermission(caller?.appUser, 'settings.view')
+  const visibleSections = sections.filter((section) => canViewPlatform || !section.isPlatform)
+
   return (
     <div className="space-y-8">
       <Breadcrumbs
@@ -245,7 +253,7 @@ export default function SuperAdminSettingsPage() {
             <p className="px-3 pb-2 text-[10px] font-medium uppercase tracking-widest text-white/35">
               On this page
             </p>
-            {sections.map((section) => {
+            {visibleSections.map((section) => {
               const Icon = section.icon
               return (
                 <a
@@ -266,13 +274,17 @@ export default function SuperAdminSettingsPage() {
             <ChangePasswordForm />
           </div>
 
-          <div id="taxonomy" className="scroll-mt-6">
-            <TagPresetsManager />
-          </div>
+          {canViewPlatform && (
+            <>
+              <div id="taxonomy" className="scroll-mt-6">
+                <TagPresetsManager />
+              </div>
 
-          <Suspense fallback={<SettingsSkeleton />}>
-            <SystemStatus />
-          </Suspense>
+              <Suspense fallback={<SettingsSkeleton />}>
+                <SystemStatus />
+              </Suspense>
+            </>
+          )}
         </div>
       </div>
     </div>

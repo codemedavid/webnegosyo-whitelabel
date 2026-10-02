@@ -144,3 +144,36 @@ META_TEST_EVENT_CODE=your_test_event_code_here
 Note: Google Places has better coverage of commercial establishments,
 shopping malls, and landmarks in Philippines. Use as fallback when
 Mapbox doesn't find specific places.
+
+========================================
+  CUSTOM DOMAINS (VERCEL DOMAINS API)
+========================================
+
+Lets store owners and superadmins connect their own domain from
+Settings → Custom domain (and the superadmin tenant page). Without these,
+the card says custom domains are not enabled; nothing else changes.
+
+VERCEL_API_TOKEN=     # vercel.com/account/tokens — scope it to the team below
+VERCEL_PROJECT_ID=    # prj_74v8Xo8wpvNWxpj8CVjmiZu0LIXO (webnegosyo-whitelabel)
+VERCEL_TEAM_ID=       # team_7LbkpqMFpexa6YcoodORZOA1
+
+Server-only (never NEXT_PUBLIC_). Set for Production in Vercel project settings.
+
+# Loyalty wallet passes (Optional - Apple Wallet / Google Wallet loyalty cards)
+# Each wallet is OFF until every one of its values is set and valid; the
+# "Add to ... Wallet" button simply does not appear otherwise.
+# PEM/JSON values are base64-encoded single lines: `base64 -i file.pem | tr -d '\n'`
+WALLET_PUBLIC_BASE_URL=https://www.webnegosyo.com   # must be https; the pg_net triggers post to www.webnegosyo.com
+# Apple (Apple Developer > Identifiers > Pass Type IDs, then create its certificate)
+APPLE_WALLET_PASS_TYPE_ID=pass.com.webnegosyo.loyalty
+APPLE_WALLET_TEAM_ID=XXXXXXXXXX                      # 10-char Apple team id
+APPLE_WALLET_CERT_PEM_B64=                           # pass type certificate (PEM), base64
+APPLE_WALLET_KEY_PEM_B64=                            # its private key (PEM), base64
+APPLE_WALLET_KEY_PASSPHRASE=                         # only if the key is encrypted
+APPLE_WALLET_WWDR_PEM_B64=                           # Apple WWDR intermediate (G4) PEM, base64
+WALLET_PASS_AUTH_SECRET=                             # >= 32 random bytes, base64: `openssl rand -base64 32`
+WALLET_PASS_SYNC_SECRET=                             # >= 32 chars; ALSO store it in Supabase Vault:
+#   select vault.create_secret('<same value>', 'wallet_pass_sync_secret');
+# Google (Google Pay & Wallet Console issuer + a service account with Wallet access)
+GOOGLE_WALLET_ISSUER_ID=                             # numeric issuer id
+GOOGLE_WALLET_SERVICE_ACCOUNT_JSON_B64=              # service-account key JSON, base64

@@ -54,6 +54,11 @@ export async function fetchPosCatalog(
   return { items: buildRegisterItems(products), categories };
 }
 
+/** The cache key a register's menu lives on (shared with the offline download). */
+export function posCatalogKey(tenantId: string, outletId: string | null) {
+  return resourceKey(POS_CATALOG_RESOURCE, tenantId, outletId ?? STORE_WIDE);
+}
+
 export function usePosCatalog(
   tenantId: string | null,
   outletId: string | null
@@ -63,7 +68,7 @@ export function usePosCatalog(
     [tenantId, outletId]
   );
   return useResource<PosCatalog>(
-    tenantId ? resourceKey(POS_CATALOG_RESOURCE, tenantId, outletId ?? STORE_WIDE) : null,
+    tenantId ? posCatalogKey(tenantId, outletId) : null,
     fetcher,
     // The register must open without a connection: sell from the last menu
     // this device saw. Keyed per branch, so a branch never sells store prices.

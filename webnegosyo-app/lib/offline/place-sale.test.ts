@@ -76,4 +76,25 @@ describe("placeCounterSale", () => {
     expect(enqueue).not.toHaveBeenCalled();
     expect(getConnectivity().status).toBe("unknown");
   });
+  /**
+   * Write-behind: the register does not wait on the server at all. The sale
+   * lands in the outbox (a local disk write) and the background sync writes
+   * it moments later — the cashier gets the till back in milliseconds instead
+   * of three database round trips. Only safe where the id is minted on the
+   * device (the platform backend), so the paper and the row share one id.
+   */
+  it("queues without waiting on the server when the sale is written behind", async () => {
+    const createOrder = jest.fn();
+    const enqueue = jest.fn().mockResolvedValue(undefined);
+    const outcome = await placeCounterSale({
+      createOrder,
+      sale,
+      enqueue,
+      isOffline: () => false,
+      writeBehind: true,
+    });
+    expect(outcome).toEqual({ kind: "queued", localId: "local-1" });
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(enqueue).toHaveBeenCalledWith({ ...sale, attempts: 0, lastError: null });
+  });
 });

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenants } from '@/lib/queries/tenants-server'
 import { parseTenantListQuery } from '@/lib/superadmin/tenant-search'
-import {
-  NO_STORE_HEADERS,
-  requireSuperadminResponse,
-} from '@/lib/superadmin/require-superadmin'
+import { NO_STORE_HEADERS } from '@/lib/superadmin/require-superadmin'
+import { platformPermissionResponse } from '@/lib/platform-staff/guard'
 
 /**
  * GET /api/superadmin/tenants?q=&page=&status=&feature=&sort=
@@ -15,7 +13,7 @@ import {
  * user keeps typing.
  */
 export async function GET(request: NextRequest) {
-  const denied = await requireSuperadminResponse()
+  const denied = await platformPermissionResponse('tenants.view')
   if (denied) return denied
 
   const parsed = parseTenantListQuery(request.nextUrl.searchParams)

@@ -11,6 +11,7 @@ import {
 } from '@/lib/order-backend'
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 import { checkLalamoveKey, describeLalamoveEnvironmentMismatch } from '@/lib/lalamove-keys'
+import { detachTenantDomains, type TenantDomainColumns } from '@/lib/domains/detach-tenant-domains'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -289,6 +290,11 @@ export const tenantSchema = z.object({
   }
   if (!val.loyverse_store_id?.trim()) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loyverse_store_id'], message: 'Loyverse store is required when Loyverse is enabled' })
+  }
+  // Loyverse rejects any receipt without a payment line, so a tenant saved
+  // without one fails every push (see src/lib/loyverse/config.ts).
+  if (!val.loyverse_payment_type_id?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loyverse_payment_type_id'], message: 'Loyverse payment type is required when Loyverse is enabled' })
   }
 })
 
@@ -620,14 +626,15 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
 export async function deleteTenantSupabase(id: string): Promise<void> {
   const supabase = await createClient()
 
-  // Get tenant domain before deleting to clear cache
+  // Get tenant domains before deleting to clear cache and detach from Vercel.
+  // `*` because pending_domain is newer than the generated types.
   const { data: tenantData } = await supabase
     .from('tenants')
-    .select('domain')
+    .select('*')
     .eq('id', id)
     .maybeSingle()
 
-  const tenant = tenantData as { domain: string | null } | null
+  const tenant = tenantData as TenantDomainColumns | null
 
   const { error } = await supabase
     .from('tenants')
@@ -640,4 +647,5 @@ export async function deleteTenantSupabase(id: string): Promise<void> {
   if (tenant?.domain) {
     clearDomainCache(tenant.domain)
   }
+  await detachTenantDomains(tenant)
 }

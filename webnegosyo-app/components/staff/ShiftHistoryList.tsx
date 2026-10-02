@@ -65,6 +65,12 @@ export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName }: ShiftHis
                 <Text style={styles.day}>
                   {formatDayLabel(toBusinessDayKey(shift.openedAt), nowIso)}
                 </Text>
+                {shift.drawerName ? (
+                  <Text style={styles.drawer} numberOfLines={1}>
+                    {shift.drawerName}
+                    {shift.isZeroBalance ? " · Zero balance" : ""}
+                  </Text>
+                ) : null}
                 <Text style={styles.when} numberOfLines={1}>
                   {formatClock(shift.openedAt)} –{" "}
                   {shift.closedAt ? formatClock(shift.closedAt) : "still open"} ·{" "}
@@ -84,7 +90,7 @@ export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName }: ShiftHis
 
             <View style={styles.figures}>
               <View style={styles.figure}>
-                <Text style={styles.figureLabel}>Float</Text>
+                <Text style={styles.figureLabel}>{shift.isZeroBalance ? "Started" : "Float"}</Text>
                 <Text style={styles.figureValue}>{formatPeso(shift.openingFloat)}</Text>
               </View>
               <View style={styles.figure}>
@@ -101,12 +107,23 @@ export function ShiftHistoryList({ shifts, nowMs, nowIso, branchName }: ShiftHis
               </View>
             </View>
 
+            {extras(shift) ? <Text style={styles.extras}>{extras(shift)}</Text> : null}
             {shift.note ? <Text style={styles.note}>“{shift.note}”</Text> : null}
           </View>
         );
       })}
     </View>
   );
+}
+
+/** Pickups, pay ins/outs and who closed it — only the parts that happened. */
+function extras(shift: ShiftRecord): string | null {
+  const parts: string[] = [];
+  if (shift.moves?.collected) parts.push(`${formatPeso(shift.moves.collected)} collected mid-shift`);
+  if (shift.moves?.payOut) parts.push(`${formatPeso(shift.moves.payOut)} paid out`);
+  if (shift.moves?.payIn) parts.push(`${formatPeso(shift.moves.payIn)} paid in`);
+  if (shift.closedByName && shift.closedByName !== shift.staffName) parts.push(`closed by ${shift.closedByName}`);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 const styles = StyleSheet.create({
@@ -120,6 +137,8 @@ const styles = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   headCopy: { flex: 1, gap: 2 },
   day: { ...typography.heading, color: colors.textPrimary },
+  drawer: { ...typography.caption, fontWeight: "700", color: colors.textPrimary },
+  extras: { ...typography.caption, color: colors.textSecondary },
   when: { ...typography.caption, color: colors.textSecondary },
   pill: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 4 },
   pillText: { ...typography.small, fontWeight: "700" },

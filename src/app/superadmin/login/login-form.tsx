@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { signOutThisDevice } from '@/lib/supabase/sign-out'
+import { isConsoleUser } from '@/lib/platform-staff/permissions'
 import { cn } from '@/lib/utils'
 import { Shield, Loader2, AlertCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react'
 
@@ -58,14 +59,16 @@ export default function LoginForm() {
         return
       }
 
-      interface AppUserRoleRow { role: 'superadmin' | 'admin' }
+      interface AppUserRoleRow { role: 'superadmin' | 'platform_staff' | 'admin' }
       const { data: roleRow, error: roleErr } = await supabase
         .from('app_users')
         .select('role')
         .eq('user_id', user.id)
         .maybeSingle<AppUserRoleRow>()
 
-      if (roleErr || !roleRow || roleRow.role !== 'superadmin') {
+      // Superadmins and platform staff; the middleware sends staff without the
+      // dashboard grant on to their first permitted section.
+      if (roleErr || !isConsoleUser(roleRow)) {
         setErrorMessage('This account is not authorized for platform administration.')
         await signOutThisDevice(supabase)
         return

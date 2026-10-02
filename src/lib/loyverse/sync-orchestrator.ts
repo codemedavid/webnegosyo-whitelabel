@@ -13,16 +13,16 @@
  * visible in the superadmin form instead of buried in a one-shot report.
  */
 
-import type { Tenant } from '@/types/database'
+import type { LoyverseTenant } from '@/lib/loyverse/tenant'
 import type { LoyverseSyncReport } from '@/lib/loyverse/catalog-import'
 import type { EnsureWebhooksResult } from '@/lib/loyverse/webhooks'
 
 export interface LoyverseSyncDeps {
-  importCatalog: (tenant: Tenant) => Promise<LoyverseSyncReport>
+  importCatalog: (tenant: LoyverseTenant) => Promise<LoyverseSyncReport>
   ensureWebhooks: (
     accessToken: string,
     tenantId: string,
-    appUrlOverride?: string
+    fallbackAppUrl?: string
   ) => Promise<EnsureWebhooksResult>
   recordWebhookStatus: (
     tenantId: string,
@@ -53,15 +53,15 @@ export function buildWebhookStatusUpdate(
  * attached.
  */
 export async function runLoyverseSync(
-  tenant: Tenant,
-  appUrlOverride: string | undefined,
+  tenant: LoyverseTenant,
+  fallbackAppUrl: string | undefined,
   deps: LoyverseSyncDeps
 ): Promise<LoyverseSyncReport> {
   const now = deps.nowIso ?? (() => new Date().toISOString())
 
   let webhooks: EnsureWebhooksResult | undefined
   if (tenant.loyverse_access_token) {
-    webhooks = await deps.ensureWebhooks(tenant.loyverse_access_token, tenant.id, appUrlOverride)
+    webhooks = await deps.ensureWebhooks(tenant.loyverse_access_token, tenant.id, fallbackAppUrl)
     await deps.recordWebhookStatus(tenant.id, buildWebhookStatusUpdate(webhooks, now()))
   }
 

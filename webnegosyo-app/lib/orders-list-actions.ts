@@ -11,6 +11,9 @@
  *   it really holds, not the deep read's cap.
  */
 
+import { isOrderUnpaid, type OrderPaidStateLike } from "./order-paid-state";
+import { paymentPromptFor } from "./order-payment-prompt";
+
 export interface BusyClaim {
   /** False when the order already had a change in flight — do nothing. */
   isClaimed: boolean;
@@ -51,4 +54,26 @@ export function resolveExportSource<T>(
   }
   const orders = queueOrders ?? [];
   return { orders, fetchLimit: orders.length, isDeepRead: false };
+}
+
+export type ListAdvance =
+  | { kind: "advance" }
+  | { kind: "open"; intent: "confirm" | "deliver" };
+
+/**
+ * What a quick status button on the list does.
+ *
+ * Confirming or handing over an UNPAID order carries a payment decision
+ * (`order-payment-prompt.ts`), and answering it needs the order's payment
+ * details and the collect sheet — both on the order screen. So those two open
+ * the order with the question already asked; every other step stays one tap.
+ */
+export function resolveListAdvance(
+  order: OrderPaidStateLike & { status: string },
+  nextStatus: string,
+): ListAdvance {
+  const prompt = paymentPromptFor(order, nextStatus, { isUnpaid: isOrderUnpaid(order) });
+  if (prompt === "confirm") return { kind: "open", intent: "confirm" };
+  if (prompt === "handover") return { kind: "open", intent: "deliver" };
+  return { kind: "advance" };
 }

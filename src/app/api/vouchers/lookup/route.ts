@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
 import { normalizeVoucherCodes } from '@/lib/vouchers/resolve'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/vouchers/lookup
@@ -63,15 +65,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id')
-    .eq('user_id', user.id)
-    .single()
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
 
-  const isAuthorized =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
+  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, 'view')
 
   if (!isAuthorized) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

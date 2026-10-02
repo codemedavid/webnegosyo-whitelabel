@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProductDetailContent } from '@/components/customer/product-detail-content'
 import type { MenuItem, Category } from '@/types/database'
@@ -21,9 +21,10 @@ jest.mock('next/navigation', () => ({
 }))
 
 // Mock cart hook
+const mockAddItem = jest.fn(() => ({ ok: true }))
 jest.mock('@/hooks/useCart', () => ({
     useCart: () => ({
-        addItem: jest.fn(),
+        addItem: mockAddItem,
         setTenantContext: jest.fn(),
         // The real hook always returns a list; a mock that omits it would let
         // the component pass here while crashing on a live storefront.
@@ -88,6 +89,7 @@ jest.mock('@/components/customer/product-detail-lazy', () => ({
 }))
 
 describe('ProductDetailContent', () => {
+    beforeEach(() => mockAddItem.mockClear())
     const mockTenant: SelectedTenant = {
         id: 'tenant-1',
         slug: 'test-restaurant',
@@ -224,6 +226,32 @@ const renderWithQuery = (ui: React.ReactElement) =>
             {ui}
         </QueryClientProvider>,
     )
+
+    it.each(['legacy', 'grouped'])('adds the chosen %s variation and addon portions to the cart', (system) => {
+        const small = { id: 'small', name: 'Small', price_modifier: 0, is_default: true, display_order: 0 }
+        const large = { id: 'large', name: 'Large', price_modifier: 5, is_default: false, display_order: 1 }
+        const cheese = { id: 'cheese', name: 'Cheese', price: 2 }
+        const item = createMockItem({
+            variations: system === 'legacy' ? [small, large] : [],
+            variation_types: system === 'grouped' ? [{
+                id: 'size', name: 'Size', is_required: true, display_order: 0, options: [small, large],
+            }] : [],
+            addons: [cheese],
+        })
+        renderWithQuery(<ProductDetailContent tenant={mockTenant} item={item} branding={mockBranding} />)
+
+        fireEvent.click(screen.getByRole('button', { name: /^Large/ }))
+        fireEvent.click(screen.getByRole('button', { name: 'Increase Cheese' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Increase Cheese' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Increase quantity' }))
+        fireEvent.click(screen.getByRole('button', { name: /add to cart/i }))
+
+        expect(mockAddItem).toHaveBeenCalledTimes(1)
+        expect(mockAddItem.mock.calls[0]).toEqual([
+            item, system === 'grouped' ? { size: large } : large,
+            [{ ...cheese, quantity: 2 }], 2, undefined, undefined, undefined, undefined,
+        ])
+    })
 
     it('should render basic item information', () => {
         const item = createMockItem()

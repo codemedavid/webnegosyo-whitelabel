@@ -29,6 +29,7 @@ import {
   type DrawerSale,
 } from "../../lib/drawer-view";
 import { canConfirmFromDrawer, selectDrawerIncoming } from "../../lib/drawer-intake";
+import { resolveListAdvance } from "../../lib/orders-list-actions";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { type IncomingOrder, type RealtimeQueue } from "../../lib/pos-incoming";
 import { describeIncomingOrder } from "../../lib/pos-incoming";
@@ -144,6 +145,15 @@ export default function PosSalesScreen() {
       return;
     }
 
+    // An unpaid order carries a payment decision ("payment received" or
+    // "confirm only"), asked on the order screen where its payment details
+    // and the collect sheet are.
+    const route = resolveListAdvance({ ...order, status: order.status ?? "pending" }, "confirmed");
+    if (route.kind === "open") {
+      router.push(`/(main)/order/${order._id}?intent=${route.intent}`);
+      return;
+    }
+
     setConfirmingId(order._id);
     try {
       await updateStatus({ orderId: order._id, status: "confirmed" });
@@ -201,7 +211,7 @@ export default function PosSalesScreen() {
         <ShiftCard orders={data ?? []} pageLimit={SHIFT_ORDER_LIMIT} />
         {/* The money first: it is the only reason this screen is open. */}
         <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>Expected in drawer · Cash</Text>
+          <Text style={styles.heroEyebrow}>Today at this counter · Cash</Text>
           <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit>
             {formatPeso(summary.cashTotal)}
           </Text>

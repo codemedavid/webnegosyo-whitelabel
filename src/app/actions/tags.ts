@@ -12,6 +12,7 @@ import {
   getItemTags,
 } from '@/lib/tags-service'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
+import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 
 export async function getTagDefinitionsAction(tenantId: string) {
   try {
@@ -24,6 +25,9 @@ export async function getTagDefinitionsAction(tenantId: string) {
 
 export async function getPresetTagsAction() {
   try {
+    // Only the console's settings page lists presets on their own; stores read
+    // them through getTagDefinitionsAction.
+    await requirePlatformPermission('settings.view')
     const data = await getPresetTags()
     return { success: true as const, data }
   } catch (error) {

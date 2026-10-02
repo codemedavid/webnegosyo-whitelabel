@@ -49,7 +49,7 @@ export async function createAddonLibraryEntry(
   input: AddonLibraryInput,
   ctx?: ProvisioningCtx,
 ): Promise<AddonLibraryEntry> {
-  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu', 'create')
   const validated = addonLibraryEntrySchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
 
@@ -85,7 +85,7 @@ export async function updateAddonLibraryEntry(
 }
 
 export async function deleteAddonLibraryEntry(entryId: string, tenantId: string): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
   const { error } = await supabase

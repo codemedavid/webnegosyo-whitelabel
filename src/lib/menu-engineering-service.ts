@@ -176,7 +176,7 @@ export async function getMenuItemsByBcgClassification(
 // ============================================
 
 export async function createUpsellPair(tenantId: string, input: UpsellPairInput, ctx?: ProvisioningCtx) {
-  if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics', 'create')
   const validated = upsellPairInputSchema.parse(input)
 
   if (validated.source_item_id === validated.target_item_id) {
@@ -245,7 +245,7 @@ export async function updateUpsellPair(
 }
 
 export async function deleteUpsellPair(pairId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'analytics')
+  await verifyTenantPermission(tenantId, 'analytics', 'delete')
 
   const supabase = await createClient()
   const { error } = await supabase
@@ -563,7 +563,7 @@ export interface PairSuggestion {
 export async function generateSmartPairSuggestions(
   tenantId: string
 ): Promise<PairSuggestion[]> {
-  await verifyTenantPermission(tenantId, 'analytics')
+  await verifyTenantPermission(tenantId, 'analytics', 'view')
   const supabase = createAdminClient()
 
   const { data: items } = await supabase
@@ -645,7 +645,7 @@ export async function acceptPairSuggestion(
   targetItemId: string,
   strategy: string
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'analytics')
+  await verifyTenantPermission(tenantId, 'analytics', 'create')
   const supabase = createAdminClient()
   await supabase.from('upsell_pairs').insert({
     tenant_id: tenantId,
@@ -662,7 +662,7 @@ export async function bulkAcceptPairSuggestions(
   tenantId: string,
   suggestions: Array<{ sourceItemId: string; targetItemId: string; strategy: string }>
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'analytics')
+  await verifyTenantPermission(tenantId, 'analytics', 'create')
   const supabase = createAdminClient()
   const rows = suggestions.map(s => ({
     tenant_id: tenantId,
@@ -742,12 +742,13 @@ export async function getSmartUpgradeSuggestionsRanked(
 
 export async function updateCheckoutUpsellSettings(
   tenantId: string,
-  input: CheckoutUpsellSettingsInput
+  input: CheckoutUpsellSettingsInput,
+  ctx?: ProvisioningCtx
 ) {
-  await verifyTenantPermission(tenantId, 'analytics')
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
   const validated = checkoutUpsellSettingsSchema.parse(input)
 
-  const supabase = await createClient()
+  const supabase = ctx?.client ?? (await createClient())
   const { data, error } = await supabase
     .from('tenants')
     .update(validated as any) // eslint-disable-line @typescript-eslint/no-explicit-any

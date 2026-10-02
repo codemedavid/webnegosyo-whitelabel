@@ -1,9 +1,7 @@
 /**
- * These cover the two Supabase reads the register depends on. The payment
- * method query in particular MUST stay an inner join on
- * payment_method_order_types — the storefront filters that way, and a
- * divergence would let the register accept payments the customer-facing
- * checkout refuses.
+ * These cover the Supabase reads the register depends on. The payment-method
+ * read carries each method's order-type links so the storefront's inner-join
+ * rule can be applied on the device (`methodsForTender`, tested with it).
  */
 
 const chainCalls: { method: string; args: unknown[] }[] = [];
@@ -35,8 +33,8 @@ jest.mock("./supabase", () => {
 import {
   listOrderTypeItemPrices,
   listOrderTypes,
-  listPaymentMethods,
   listRegisterOrderTypes,
+  listRegisterPaymentMethods,
 } from "./pos-catalog";
 
 function argsFor(method: string): unknown[][] {
@@ -178,108 +176,70 @@ describe("listOrderTypes", () => {
   });
 });
 
-describe("listPaymentMethods", () => {
-  it("filters to active methods linked to the chosen order type", async () => {
-    await listPaymentMethods("t-1", "ot-1");
+describe("listRegisterPaymentMethods", () => {
+  it("reads every active method once, with its order-type links, for the offline copy", async () => {
+    await listRegisterPaymentMethods("t-1");
 
     expect(argsFor("from")[0]).toEqual(["payment_methods"]);
     expect(argsFor("eq")).toEqual([
       ["tenant_id", "t-1"],
       ["is_active", true],
-      ["payment_method_order_types.order_type_id", "ot-1"],
     ]);
-  });
-
-  it("inner-joins the order-type link so unlinked methods are never offered", async () => {
-    await listPaymentMethods("t-1", "ot-1");
-
     const select = String(argsFor("select")[0][0]);
-    expect(select).toContain("payment_method_order_types!inner(order_type_id)");
-  });
-
-  it("returns methods in the merchant's configured order", async () => {
-    await listPaymentMethods("t-1", "ot-1");
+    expect(select).toContain("payment_method_order_types(order_type_id)");
+    expect(select).not.toContain("!inner");
     expect(argsFor("order")[0]).toEqual(["order_index", { ascending: true }]);
   });
 
-  it("surfaces a query error instead of silently returning nothing", async () => {
-    queryResult = { data: null, error: new Error("boom") };
-    await expect(listPaymentMethods("t-1", "ot-1")).rejects.toThrow("boom");
-  });
-
-  it("returns an empty list when no method is enabled for the order type", async () => {
-    queryResult = { data: null, error: null };
-    expect(await listPaymentMethods("t-1", "ot-1")).toEqual([]);
-  });
-});
-
-describe("listRegisterOrderTypes", () => {
-  it("narrows the register's chips to enabled, POS-available order types", async () => {
-    await listRegisterOrderTypes("t-1");
-
-    expect(argsFor("from")[0]).toEqual(["order_types"]);
-    expect(argsFor("eq")).toEqual([
-      ["tenant_id", "t-1"],
-      ["is_enabled", true],
-      ["available_on_pos", true],
-    ]);
-  });
-
-  it("selects the POS markup and maps it like the shared reader", async () => {
+  it("flattens the links into orderTypeIds", async () => {
     queryResult = {
       data: [
         {
-          id: "ot-grab",
-          type: "grab",
-          name: "Grab",
-          service_charge_enabled: false,
-          service_charge_type: null,
-          service_charge_value: null,
-          pos_markup_percent: "25.50",
+          id: "cash",
+          name: "Cash",
+          details: null,
+          qr_code_url: null,
+          require_payment_proof: false,
+          order_index: 0,
+          payment_method_order_types: [{ order_type_id: "ot-1" }, { order_type_id: "ot-2" }],
+        },
+        {
+          id: "bank",
+          name: "Bank",
+          details: null,
+          qr_code_url: null,
+          require_payment_proof: true,
+          order_index: 1,
+          payment_method_order_types: null,
         },
       ],
       error: null,
     };
 
-    const [orderType] = await listRegisterOrderTypes("t-1");
-    expect(String(argsFor("select")[0][0])).toContain("pos_markup_percent");
-    expect(orderType.markupPercent).toBe(25.5);
-  });
-
-  it("keeps the merchant's configured order", async () => {
-    await listRegisterOrderTypes("t-1");
-    expect(argsFor("order")[0]).toEqual(["order_index", { ascending: true }]);
+    expect(await listRegisterPaymentMethods("t-1")).toEqual([
+      {
+        id: "cash",
+        name: "Cash",
+        details: null,
+        qr_code_url: null,
+        require_payment_proof: false,
+        order_index: 0,
+        orderTypeIds: ["ot-1", "ot-2"],
+      },
+      {
+        id: "bank",
+        name: "Bank",
+        details: null,
+        qr_code_url: null,
+        require_payment_proof: true,
+        order_index: 1,
+        orderTypeIds: [],
+      },
+    ]);
   });
 
   it("surfaces a query error instead of silently returning nothing", async () => {
-    queryResult = { data: null, error: new Error("permission denied") };
-    await expect(listRegisterOrderTypes("t-1")).rejects.toThrow("permission denied");
-  });
-});
-
-describe("listOrderTypeItemPrices", () => {
-  it("reads the tenant's exact per-order-type item prices", async () => {
-    await listOrderTypeItemPrices("t-1");
-
-    expect(argsFor("from")[0]).toEqual(["order_type_item_prices"]);
-    expect(String(argsFor("select")[0][0])).toBe("order_type_id, menu_item_id, price");
-    expect(argsFor("eq")).toEqual([["tenant_id", "t-1"]]);
-  });
-
-  it("hands the rows through untouched for the pure index builder", async () => {
-    const rows = [{ order_type_id: "ot-grab", menu_item_id: "m-1", price: "110.00" }];
-    queryResult = { data: rows, error: null };
-
-    expect(await listOrderTypeItemPrices("t-1")).toEqual(rows);
-  });
-
-  it("returns an empty list when the tenant has no overrides", async () => {
-    queryResult = { data: null, error: null };
-    expect(await listOrderTypeItemPrices("t-1")).toEqual([]);
-  });
-
-  it("throws on a query error — an empty set would silently charge list prices", async () => {
-    queryResult = { data: null, error: new Error("permission denied") };
-    await expect(listOrderTypeItemPrices("t-1")).rejects.toThrow("permission denied");
+    queryResult = { data: null, error: new Error("boom") };
+    await expect(listRegisterPaymentMethods("t-1")).rejects.toThrow("boom");
   });
 });

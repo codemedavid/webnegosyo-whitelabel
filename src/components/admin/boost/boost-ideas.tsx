@@ -5,7 +5,7 @@ import { Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { BoostIdea } from '@/lib/boost/ideas'
 import { DishStack } from './dish'
-import { MOMENT_BY_KIND, listNames, peso, type ItemLookup } from './boost-model'
+import { MOMENT_BY_KIND, describeIdea, type ItemLookup } from './boost-model'
 
 const INITIAL_SHOWN = 3
 
@@ -17,35 +17,6 @@ interface BoostIdeasProps {
   onActivate: (idea: BoostIdea) => void
   onEdit: (idea: BoostIdea) => void
   onDismiss: (idea: BoostIdea) => void
-}
-
-function describe(idea: BoostIdea, itemsById: ItemLookup): { title: string; detail: string } {
-  switch (idea.kind) {
-    case 'combo':
-      return {
-        title: idea.name,
-        detail: [
-          idea.picks
-            .map((pick) => (pick.itemIds.length > 1
-              ? `any ${pick.count ?? 1} ${pick.label.toLowerCase()}`
-              : itemsById.get(pick.itemIds[0])?.name ?? pick.label))
-            .join(' + '),
-          `${peso(idea.price)}${idea.savings ? `, saves ${peso(idea.savings.amount)}` : ''}`,
-        ].join(' · '),
-      }
-    case 'upgrade':
-      return {
-        title: `${itemsById.get(idea.sourceId)?.name} → ${itemsById.get(idea.targetId)?.name}`,
-        detail: `“${idea.header}” · +${peso(idea.priceDifference)} each time`,
-      }
-    case 'pairing':
-      return {
-        title: `After any ${idea.categoryName}`,
-        detail: `Suggest ${listNames(idea.targetIds, itemsById)}`,
-      }
-    case 'last_call':
-      return { title: 'Quick add-ons in the cart', detail: 'Picked for each cart automatically' }
-  }
 }
 
 /**
@@ -69,7 +40,7 @@ export function BoostIdeas({ ideas, itemsById, historyOrders, busyId, onActivate
       </div>
       <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0 md:pb-0 xl:grid-cols-3 [scrollbar-width:none]">
         {shown.map((idea) => {
-          const { title, detail } = describe(idea, itemsById)
+          const { title, detail } = describeIdea(idea, itemsById)
           const moment = MOMENT_BY_KIND[idea.kind]
           const Icon = moment.icon
           const isBusy = busyId === idea.id

@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
@@ -6,6 +7,11 @@ import { getBoostWorkspace } from '@/lib/boost/workspace'
 import { cartOfferThemeFromBranding, offerThemeFromBranding } from '@/components/customer/offers/offer-theme'
 import { BoostHome } from '@/components/admin/boost/boost-home'
 import type { EditorTarget } from '@/components/admin/boost/boost-model'
+import { PickedTogetherSection, PickedTogetherSkeleton } from '@/components/admin/boost/picked-together-section'
+import { listBoostAiLog, type BoostAiLog } from '@/lib/boost/ai/store'
+
+// An AI generation runs inside this page's server action: room for the model call.
+export const maxDuration = 60
 
 interface BoostSalesPageProps {
   params: Promise<{ tenant: string }>
@@ -26,6 +32,16 @@ function initialEditorFrom({ new: create, edit }: { new?: string; edit?: string 
   return null
 }
 
+/** The log is an add-on: if it cannot be read, the rest of Boost Sales still works. */
+async function readAiLog(tenantId: string): Promise<BoostAiLog | null> {
+  try {
+    return await listBoostAiLog(tenantId)
+  } catch (error) {
+    console.error('[boost-ai] log read failed:', error)
+    return null
+  }
+}
+
 export default async function BoostSalesPage({ params, searchParams }: BoostSalesPageProps) {
   const [{ tenant: tenantSlug }, query] = await Promise.all([params, searchParams])
   const tenant = await getCachedTenantBySlug(tenantSlug)
@@ -33,7 +49,7 @@ export default async function BoostSalesPage({ params, searchParams }: BoostSale
 
   // Never a redirect: a store without Boost Sales gets the welcome screen,
   // with offers already drafted from its menu, and turns it on itself.
-  const workspace = await getBoostWorkspace(tenant)
+  const [workspace, aiLog] = await Promise.all([getBoostWorkspace(tenant), readAiLog(tenant.id)])
   const branding = getTenantBranding(tenant)
 
   return (
@@ -51,6 +67,12 @@ export default async function BoostSalesPage({ params, searchParams }: BoostSale
         theme={offerThemeFromBranding(branding)}
         cartTheme={cartOfferThemeFromBranding(branding)}
         initialEditor={workspace.isEnabled ? initialEditorFrom(query) : null}
+        aiLog={aiLog}
+        insights={
+          <Suspense fallback={<PickedTogetherSkeleton />}>
+            <PickedTogetherSection tenant={tenant} />
+          </Suspense>
+        }
       />
     </div>
   )

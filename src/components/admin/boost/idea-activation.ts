@@ -7,7 +7,7 @@ import {
   saveBoostPairingAction,
   saveBoostUpgradeAction,
 } from '@/app/actions/boost'
-import { comboDraftFromIdea, comboDraftToInput } from '@/lib/boost/combo-draft'
+import { ideaToWrite } from '@/lib/boost/idea-writes'
 import type { BoostIdea } from '@/lib/boost/ideas'
 import type { BoostLastCall } from '@/lib/boost/workspace'
 import type { ItemLookup } from './boost-model'
@@ -32,64 +32,53 @@ async function ignoreResult(promise: Promise<unknown>): Promise<void> {
 /** Turn one "Ready to go" idea into a live offer, with a way back. */
 export async function activateIdea(idea: BoostIdea, ctx: ActivationContext): Promise<ActivationResult> {
   const { tenantId, tenantSlug } = ctx
+  const write = ideaToWrite(idea, ctx.itemsById, ctx.lastCall)
 
-  if (idea.kind === 'combo') {
-    const draft = comboDraftToInput(comboDraftFromIdea(idea), ctx.itemsById)
-    if (!draft.ok) return { status: 'needs-edit' }
-    const response = await saveBoostComboAction(tenantId, tenantSlug, null, draft.input)
-    if (!response.success) return { status: 'failed', error: response.error }
-    const comboId = response.data
-    return {
-      status: 'live',
-      message: `${idea.name} is live on your menu`,
-      undo: () => (comboId ? ignoreResult(deleteBoostComboAction(tenantId, tenantSlug, comboId)) : Promise.resolve()),
+  switch (write.kind) {
+    case 'needs-edit':
+      return { status: 'needs-edit' }
+
+    case 'combo': {
+      const response = await saveBoostComboAction(tenantId, tenantSlug, null, write.input)
+      if (!response.success) return { status: 'failed', error: response.error }
+      const comboId = response.data
+      return {
+        status: 'live',
+        message: `${write.input.name} is live on your menu`,
+        undo: () => (comboId ? ignoreResult(deleteBoostComboAction(tenantId, tenantSlug, comboId)) : Promise.resolve()),
+      }
     }
-  }
 
-  if (idea.kind === 'upgrade') {
-    const response = await saveBoostUpgradeAction(tenantId, tenantSlug, {
-      sourceId: idea.sourceId,
-      targetId: idea.targetId,
-      header: idea.header,
-      sourceLabel: null,
-      targetLabel: null,
-      isActive: true,
-    })
-    if (!response.success) return { status: 'failed', error: response.error }
-    const upgradeId = response.data
-    return {
-      status: 'live',
-      message: 'Upgrade is live on the item page',
-      undo: () => (upgradeId ? ignoreResult(deleteBoostUpgradeAction(tenantId, tenantSlug, upgradeId)) : Promise.resolve()),
+    case 'upgrade': {
+      const response = await saveBoostUpgradeAction(tenantId, tenantSlug, write.input)
+      if (!response.success) return { status: 'failed', error: response.error }
+      const upgradeId = response.data
+      return {
+        status: 'live',
+        message: 'Upgrade is live on the item page',
+        undo: () => (upgradeId ? ignoreResult(deleteBoostUpgradeAction(tenantId, tenantSlug, upgradeId)) : Promise.resolve()),
+      }
     }
-  }
 
-  if (idea.kind === 'pairing') {
-    const response = await saveBoostPairingAction(tenantId, tenantSlug, {
-      previousSourceIds: [],
-      sourceIds: idea.sourceIds,
-      targetIds: idea.targetIds,
-      isActive: true,
-    })
-    if (!response.success) return { status: 'failed', error: response.error }
-    return {
-      status: 'live',
-      message: `Customers adding ${idea.categoryName} now see suggestions`,
-      undo: () => ignoreResult(deleteBoostPairingAction(tenantId, tenantSlug, idea.sourceIds)),
+    case 'pairing': {
+      const response = await saveBoostPairingAction(tenantId, tenantSlug, write.input)
+      if (!response.success) return { status: 'failed', error: response.error }
+      const label = idea.kind === 'pairing' ? idea.categoryName : 'these dishes'
+      return {
+        status: 'live',
+        message: `Customers adding ${label} now see suggestions`,
+        undo: () => ignoreResult(deleteBoostPairingAction(tenantId, tenantSlug, write.input.sourceIds)),
+      }
     }
-  }
 
-  const settings = {
-    title: ctx.lastCall.title,
-    subtitle: ctx.lastCall.subtitle,
-    maxItems: Math.min(8, Math.max(2, ctx.lastCall.maxItems)),
-    pickedItemIds: ctx.lastCall.pickedItemIds,
-  }
-  const response = await saveBoostLastCallAction(tenantId, tenantSlug, { ...settings, enabled: true })
-  if (!response.success) return { status: 'failed', error: response.error }
-  return {
-    status: 'live',
-    message: 'Your cart now suggests add-ons',
-    undo: () => ignoreResult(saveBoostLastCallAction(tenantId, tenantSlug, { ...settings, enabled: false })),
+    case 'last_call': {
+      const response = await saveBoostLastCallAction(tenantId, tenantSlug, write.input)
+      if (!response.success) return { status: 'failed', error: response.error }
+      return {
+        status: 'live',
+        message: 'Your cart now suggests add-ons',
+        undo: () => ignoreResult(saveBoostLastCallAction(tenantId, tenantSlug, write.undo)),
+      }
+    }
   }
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  Activity,
   ArrowRight,
   BarChart3,
   CornerDownLeft,
@@ -18,6 +19,11 @@ import {
 } from 'lucide-react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { cn } from '@/lib/utils'
+import { platformPermissionForPath } from '@/lib/platform-staff/permissions'
+import {
+  usePlatformAccess,
+  type PlatformAccess,
+} from '@/components/superadmin/platform-access-context'
 
 interface CommandDestination {
   id: string
@@ -47,6 +53,15 @@ const DESTINATIONS: CommandDestination[] = [
     icon: BarChart3,
     group: 'Overview',
     keywords: ['gmv', 'revenue', 'charts', 'metrics'],
+  },
+  {
+    id: 'store-activity',
+    label: 'Store Activity',
+    hint: 'Active stores & order counts by date',
+    href: '/superadmin/activity',
+    icon: Activity,
+    group: 'Overview',
+    keywords: ['active', 'orders', 'stores', 'tenants', '7 days', 'dates'],
   },
   {
     id: 'client-map',
@@ -106,6 +121,14 @@ const DESTINATIONS: CommandDestination[] = [
 
 const GROUP_ORDER: CommandDestination['group'][] = ['Overview', 'Operations', 'Actions']
 
+/** The sidebar's rule (and the middleware's): only paths the caller may open. */
+function canOpen(access: PlatformAccess, href: string): boolean {
+  const required = platformPermissionForPath(href)
+  if (required === null) return true
+  if (required === 'superadmin') return access.isSuperadmin
+  return access.can(required)
+}
+
 interface CommandItem {
   id: string
   label: string
@@ -123,6 +146,7 @@ export function CommandPalette({
   onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
+  const access = usePlatformAccess()
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -141,7 +165,7 @@ export function CommandPalette({
     const q = query.trim().toLowerCase()
     const result: CommandItem[] = []
 
-    if (q.length > 0) {
+    if (q.length > 0 && canOpen(access, '/superadmin/tenants')) {
       result.push({
         id: 'search-restaurants',
         label: `Search restaurants for “${query.trim()}”`,
@@ -153,6 +177,7 @@ export function CommandPalette({
     }
 
     const matched = DESTINATIONS.filter((d) => {
+      if (!canOpen(access, d.href)) return false
       if (q.length === 0) return true
       const haystack = [d.label, d.hint, ...(d.keywords ?? [])].join(' ').toLowerCase()
       return haystack.includes(q)
@@ -170,7 +195,7 @@ export function CommandPalette({
     }
 
     return result
-  }, [query, go])
+  }, [query, go, access])
 
   // Group the flat items for rendering while keeping a stable flat index for keyboard nav.
   const groups = useMemo(() => {

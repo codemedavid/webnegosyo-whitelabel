@@ -1,7 +1,8 @@
 'use server'
 
 /**
- * Superadmin-only writes: marking a client paid, and setting their allowances.
+ * Console writes (`subscriptions.edit`): marking a client paid, and setting
+ * their allowances.
  *
  * Authorization is checked HERE, read from the caller's own session, and never
  * from an argument — a `tenantId` supplied by the client says nothing about who
@@ -15,7 +16,8 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { hasPlatformPermission, type PlatformPermission } from '@/lib/platform-staff/permissions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSupabaseSubscriptionStore } from '@/lib/billing/subscription-repository'
 import { markPaid } from '@/lib/billing/subscription-service'
@@ -30,34 +32,22 @@ import {
 } from '@/lib/billing/tenant-allowances'
 import type { Database } from '@/types/database'
 
-const NOT_ALLOWED = 'Only a platform superadmin can manage subscriptions.'
+const NOT_ALLOWED = 'You do not have access to manage subscriptions.'
 
 function fail(error: unknown, fallback: string) {
   return { success: false as const, error: error instanceof Error ? error.message : fallback }
 }
 
 /**
- * The signed-in superadmin's id, or null.
+ * The signed-in console caller's id when they hold `permission`, or null.
  *
  * Returns the id rather than a boolean because the payment ledger records who
  * wrote the row — an unattributed payment is one nobody can question later.
  */
-async function requireSuperadmin(): Promise<string | null> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return null
-
-  const { data, error } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (error || !data || data.role !== 'superadmin') return null
-  return user.id
+async function requireSubscriptionGrant(permission: PlatformPermission): Promise<string | null> {
+  const caller = await getConsoleCaller()
+  if (!caller || !hasPlatformPermission(caller.appUser, permission)) return null
+  return caller.user.id
 }
 
 export interface MarkPaidActionInput {
@@ -71,7 +61,7 @@ export interface MarkPaidActionInput {
 
 /** Records a payment and extends the tenant's access. */
 export async function markTenantPaidAction(input: MarkPaidActionInput) {
-  const superadminId = await requireSuperadmin()
+  const superadminId = await requireSubscriptionGrant('subscriptions.edit')
   if (!superadminId) return { success: false as const, error: NOT_ALLOWED }
 
   try {
@@ -101,7 +91,7 @@ export async function markTenantPaidAction(input: MarkPaidActionInput) {
  * working until their page happened to expire.
  */
 export async function setTenantPausedAction(tenantId: string, isPaused: boolean) {
-  const superadminId = await requireSuperadmin()
+  const superadminId = await requireSubscriptionGrant('subscriptions.edit')
   if (!superadminId) return { success: false as const, error: NOT_ALLOWED }
 
   try {
@@ -138,7 +128,7 @@ export async function setTenantBillingAnchorAction(
   tenantId: string,
   anchorDate: string | null
 ) {
-  const superadminId = await requireSuperadmin()
+  const superadminId = await requireSubscriptionGrant('subscriptions.edit')
   if (!superadminId) return { success: false as const, error: NOT_ALLOWED }
 
   try {
@@ -164,7 +154,7 @@ export async function updateTenantLimitsAction(
   tenantId: string,
   limits: { maxOutlets?: number; maxStaffPerBranch?: number }
 ) {
-  const superadminId = await requireSuperadmin()
+  const superadminId = await requireSubscriptionGrant('subscriptions.edit')
   if (!superadminId) return { success: false as const, error: NOT_ALLOWED }
 
   try {

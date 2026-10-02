@@ -34,7 +34,7 @@ export async function createIngredient(
   input: IngredientInput,
   ctx?: ProvisioningCtx,
 ): Promise<InventoryItem> {
-  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu', 'create')
   const validated = ingredientInputSchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
 
@@ -70,7 +70,7 @@ export async function updateIngredient(
 }
 
 export async function deleteIngredient(ingredientId: string, tenantId: string): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
   const { error } = await supabase

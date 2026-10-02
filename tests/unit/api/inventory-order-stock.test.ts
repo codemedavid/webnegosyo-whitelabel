@@ -86,7 +86,7 @@ describe('POST /api/inventory/order-stock', () => {
       from: jest.fn((table: string) => {
         const builder: Record<string, unknown> = {
           single: table === 'tenants' ? tenantSingleMock : appUserSingleMock,
-          maybeSingle: orderMaybeSingleMock,
+          maybeSingle: table === 'app_users' ? appUserSingleMock : orderMaybeSingleMock,
         }
         builder.select = jest.fn(() => builder)
         builder.eq = jest.fn(() => builder)

@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { BarChart3, Plus, Store, Zap, type LucideIcon } from 'lucide-react'
 import { Panel, SectionHeader } from '@/components/superadmin/ui/primitives'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { canOpenConsolePath } from '@/lib/platform-staff/permissions'
 
 interface QuickAction {
   href: string
@@ -33,12 +35,17 @@ const ACTIONS: QuickAction[] = [
 ]
 
 /** Quick navigation shortcuts for common superadmin tasks. */
-export function QuickActions() {
+export async function QuickActions() {
+  // Same rule as the sidebar and the middleware: only paths the caller may open.
+  const appUser = (await getConsoleCaller())?.appUser
+  const actions = ACTIONS.filter((action) => canOpenConsolePath(appUser, action.href))
+  if (actions.length === 0) return null
+
   return (
     <Panel>
       <SectionHeader icon={Zap} title="Quick actions" />
       <div className="mt-4 grid gap-2">
-        {ACTIONS.map((action) => {
+        {actions.map((action) => {
           const Icon = action.icon
           return (
             <Link

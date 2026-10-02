@@ -49,6 +49,20 @@ jest.mock('@/lib/supabase/server', () => ({
     createClient: jest.fn(),
 }))
 
+// The console caller (superadmin or platform staff); the route checks its grant.
+jest.mock('@/lib/platform-staff/guard', () => ({
+    getConsoleCaller: jest.fn(),
+}))
+
+type ConsoleCallerMock = jest.Mock<() => Promise<unknown>>
+
+async function mockConsoleCaller(caller: unknown): Promise<void> {
+    const { getConsoleCaller } = await import('@/lib/platform-staff/guard') as unknown as { getConsoleCaller: ConsoleCallerMock }
+    getConsoleCaller.mockResolvedValue(caller)
+}
+
+const SUPERADMIN_CALLER = { user: { id: 'user-1' }, appUser: { role: 'superadmin', platform_permissions: null } }
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -66,6 +80,7 @@ describe('POST /api/ai/parse-menu', () => {
         mockCreateClient = createClient
 
         // Default: authenticated superadmin
+        await mockConsoleCaller(SUPERADMIN_CALLER)
         mockCreateClient.mockResolvedValue({
             auth: {
                 getUser: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
@@ -87,6 +102,7 @@ describe('POST /api/ai/parse-menu', () => {
     // -----------------------------------------------------------------------
 
     test('returns 401 when user is not authenticated', async () => {
+        await mockConsoleCaller(null)
         mockCreateClient.mockResolvedValue({
             auth: { getUser: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { user: null } }) },
             from: jest.fn(),
@@ -103,7 +119,11 @@ describe('POST /api/ai/parse-menu', () => {
         expect(res.status).toBe(401)
     })
 
-    test('returns 403 when user is not superadmin', async () => {
+    test('returns 403 when platform staff lacks stores.create', async () => {
+        await mockConsoleCaller({
+            user: { id: 'user-1' },
+            appUser: { role: 'platform_staff', platform_permissions: ['stores.view', 'tenants.view'] },
+        })
         mockCreateClient.mockResolvedValue({
             auth: { getUser: jest.fn<() => Promise<unknown>>().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
             from: jest.fn<() => unknown>().mockReturnValue({

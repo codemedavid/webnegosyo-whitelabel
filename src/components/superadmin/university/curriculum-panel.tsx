@@ -18,6 +18,7 @@ import {
 } from '@/app/actions/university'
 import { lessonKind } from '@/lib/university/blocks'
 import type { LessonListItem, ModuleWithLessons } from '@/lib/university/service'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 
 interface Props {
   courseId: string
@@ -46,6 +47,7 @@ function swap<T>(items: T[], from: number, to: number): T[] {
  * changes are applied optimistically and persisted per module.
  */
 export function CurriculumPanel({ courseId, initialModules }: Props) {
+  const canCreate = usePlatformAccess().can('university.create')
   const [modules, setModules] = useState(initialModules)
   const [isAddingModule, setIsAddingModule] = useState(false)
   const [newModuleTitle, setNewModuleTitle] = useState('')
@@ -145,7 +147,7 @@ export function CurriculumPanel({ courseId, initialModules }: Props) {
         title="Curriculum"
         subtitle="Modules are the chapters; lessons are what learners open."
         action={
-          !isAddingModule ? (
+          !isAddingModule && canCreate ? (
             <button type="button" onClick={() => setIsAddingModule(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10">
               <Plus className="h-3.5 w-3.5" />
               Add module
@@ -161,10 +163,12 @@ export function CurriculumPanel({ courseId, initialModules }: Props) {
             title="No modules yet"
             description="Start with a module like “Getting started”, then add lessons to it."
             action={
-              <button type="button" onClick={() => setIsAddingModule(true)} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90">
-                <Plus className="h-4 w-4" />
-                Add the first module
-              </button>
+              canCreate ? (
+                <button type="button" onClick={() => setIsAddingModule(true)} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90">
+                  <Plus className="h-4 w-4" />
+                  Add the first module
+                </button>
+              ) : undefined
             }
           />
         ) : null}
@@ -246,6 +250,10 @@ function ModuleCard({
   onToggleLesson: (lesson: LessonListItem) => void
   onRemoveLesson: (lesson: LessonListItem) => void
 }) {
+  const access = usePlatformAccess()
+  const canCreate = access.can('university.create')
+  const canEdit = access.can('university.edit')
+  const canDelete = access.can('university.delete')
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState(module.title)
   const [description, setDescription] = useState(module.description ?? '')
@@ -300,18 +308,24 @@ function ModuleCard({
         </div>
         {!isEditing ? (
           <div className="flex shrink-0 items-center gap-0.5">
-            <IconButton label="Move module up" onClick={onMoveUp} disabled={isFirst || isPending}>
-              <ArrowUp className="h-3.5 w-3.5" />
-            </IconButton>
-            <IconButton label="Move module down" onClick={onMoveDown} disabled={isLast || isPending}>
-              <ArrowDown className="h-3.5 w-3.5" />
-            </IconButton>
-            <IconButton label="Edit module" onClick={() => setIsEditing(true)}>
-              <Pencil className="h-3.5 w-3.5" />
-            </IconButton>
-            <IconButton label="Delete module" onClick={onRemove} disabled={isPending} danger>
-              <Trash2 className="h-3.5 w-3.5" />
-            </IconButton>
+            {canEdit ? (
+              <>
+                <IconButton label="Move module up" onClick={onMoveUp} disabled={isFirst || isPending}>
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </IconButton>
+                <IconButton label="Move module down" onClick={onMoveDown} disabled={isLast || isPending}>
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </IconButton>
+                <IconButton label="Edit module" onClick={() => setIsEditing(true)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </IconButton>
+              </>
+            ) : null}
+            {canDelete ? (
+              <IconButton label="Delete module" onClick={onRemove} disabled={isPending} danger>
+                <Trash2 className="h-3.5 w-3.5" />
+              </IconButton>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -339,26 +353,32 @@ function ModuleCard({
                 <button
                   type="button"
                   onClick={() => onToggleLesson(lesson)}
-                  disabled={isPending}
+                  disabled={isPending || !canEdit}
                   className={cn(
                     'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest transition-colors disabled:opacity-50',
                     isLive ? 'border-emerald-400/30 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30' : 'border-white/15 bg-white/[0.06] text-white/60 hover:bg-white/10',
                   )}
-                  title={isLive ? 'Click to unpublish' : 'Click to publish'}
+                  title={canEdit ? (isLive ? 'Click to unpublish' : 'Click to publish') : undefined}
                 >
                   <span className={cn('h-1.5 w-1.5 rounded-full', isLive ? 'bg-emerald-400' : 'bg-white/40')} />
                   {isLive ? 'Live' : 'Draft'}
                 </button>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  <IconButton label="Move lesson up" onClick={() => onMoveLesson(lessonIndex, lessonIndex - 1)} disabled={lessonIndex === 0 || isPending}>
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </IconButton>
-                  <IconButton label="Move lesson down" onClick={() => onMoveLesson(lessonIndex, lessonIndex + 1)} disabled={lessonIndex === module.lessons.length - 1 || isPending}>
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </IconButton>
-                  <IconButton label="Delete lesson" onClick={() => onRemoveLesson(lesson)} disabled={isPending} danger>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </IconButton>
+                  {canEdit ? (
+                    <>
+                      <IconButton label="Move lesson up" onClick={() => onMoveLesson(lessonIndex, lessonIndex - 1)} disabled={lessonIndex === 0 || isPending}>
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </IconButton>
+                      <IconButton label="Move lesson down" onClick={() => onMoveLesson(lessonIndex, lessonIndex + 1)} disabled={lessonIndex === module.lessons.length - 1 || isPending}>
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </IconButton>
+                    </>
+                  ) : null}
+                  {canDelete ? (
+                    <IconButton label="Delete lesson" onClick={() => onRemoveLesson(lesson)} disabled={isPending} danger>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconButton>
+                  ) : null}
                 </div>
               </li>
             )
@@ -385,12 +405,12 @@ function ModuleCard({
               Cancel
             </button>
           </div>
-        ) : (
+        ) : canCreate ? (
           <button type="button" onClick={() => setIsAddingLesson(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-medium text-white/60 hover:bg-white/10 hover:text-white">
             <Plus className="h-3.5 w-3.5" />
             Add lesson
           </button>
-        )}
+        ) : null}
       </div>
     </div>
   )

@@ -1,4 +1,6 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { PickedTogetherSection, PickedTogetherSkeleton } from '@/components/admin/boost/picked-together-section'
 import { ProductAnalyticsWrapper } from '@/components/admin/product-analytics-wrapper'
 
 interface ProductAnalyticsPageProps {
@@ -19,12 +21,23 @@ export default async function ProductAnalyticsPage({ params }: ProductAnalyticsP
   // Convex. The advanced BCG/cost/recommendation layer is gated separately by
   // menu_engineering_enabled inside the content component, so we no longer
   // redirect away when the flag is off.
-  if (!tenantData?.convex_deployment_url) {
+  if (!tenantData) return null
+
+  // "Picked together" reads whichever order backend the store uses, so every
+  // store gets it — not only the ones with Convex.
+  const pickedTogether = (
+    <Suspense fallback={<PickedTogetherSkeleton />}>
+      <PickedTogetherSection tenant={{ id: tenantData.id }} className="mb-6" />
+    </Suspense>
+  )
+
+  if (!tenantData.convex_deployment_url) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold">Product Analytics</h1>
-        <p className="text-muted-foreground mt-2">
-          Product analytics requires Convex to be configured for this tenant.
+        <h1 className="mb-4 text-2xl font-bold">Product Analytics</h1>
+        {pickedTogether}
+        <p className="text-muted-foreground">
+          Per-product sales reporting requires Convex to be configured for this tenant.
           Please contact support to enable real-time features.
         </p>
       </div>
@@ -48,6 +61,7 @@ export default async function ProductAnalyticsPage({ params }: ProductAnalyticsP
 
   return (
     <div className="p-6">
+      {pickedTogether}
       <ProductAnalyticsWrapper
         convexUrl={tenantData.convex_deployment_url}
         menuItems={menuItems}

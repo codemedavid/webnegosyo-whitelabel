@@ -18,6 +18,7 @@ import {
     Trash2,
 } from 'lucide-react'
 import type { ParsedMenuData } from '@/types/ai-menu-parser'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 
 const MAX_IMAGES = 3
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
@@ -48,6 +49,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export function BulkMenuImport({ tenantId, tenantName }: BulkMenuImportProps) {
+    const canImport = usePlatformAccess().can('stores.create')
     const [mode, setMode] = useState<InputMode>('text')
     const [menuText, setMenuText] = useState('')
     const [imageNotes, setImageNotes] = useState('')
@@ -176,6 +178,9 @@ export function BulkMenuImport({ tenantId, tenantName }: BulkMenuImportProps) {
     }
 
     const itemCount = parsedData?.items.length ?? 0
+
+    // Import writes menu data into the store: stores.create.
+    if (!canImport) return null
 
     return (
         <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">

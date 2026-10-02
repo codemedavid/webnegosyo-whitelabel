@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, memo } from 'react'
+import { useState, useCallback, memo, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
   ChevronLeft,
@@ -61,6 +61,7 @@ import {
 } from '@/actions/tenants'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import type { Tenant } from '@/types/database'
 import type { TenantMetrics } from '@/lib/queries/tenant-metrics-server'
 import type {
@@ -85,6 +86,11 @@ interface TenantManagerProps {
 /* -----------------------------------------------------------------------------
    Row actions (shared between table rows and cards)
 ----------------------------------------------------------------------------- */
+/** Selection only feeds the bulk bar, whose every action is tenants.delete. */
+function BulkSelectGate({ children }: { children: ReactNode }) {
+  return usePlatformAccess().can('tenants.delete') ? <>{children}</> : null
+}
+
 function TenantRowMenu({
   tenant,
   onDelete,
@@ -92,6 +98,7 @@ function TenantRowMenu({
   tenant: Tenant
   onDelete: (tenant: Tenant) => void
 }) {
+  const canDelete = usePlatformAccess().can('tenants.delete')
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -118,17 +125,21 @@ function TenantRowMenu({
             View live menu
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="text-red-400 focus:text-red-400"
-          onClick={(e) => {
-            e.preventDefault()
-            onDelete(tenant)
-          }}
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete tenant
-        </DropdownMenuItem>
+        {canDelete ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-red-400 focus:text-red-400"
+              onClick={(e) => {
+                e.preventDefault()
+                onDelete(tenant)
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete tenant
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -199,20 +210,22 @@ const TenantTableRow = memo(
       />
 
       {/* Select checkbox */}
-      <div
-        className="relative z-[1] flex w-5 shrink-0 items-center"
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          onToggleSelect(tenant.id)
-        }}
-      >
-        <Checkbox
-          checked={selected}
-          aria-label={`Select ${tenant.name}`}
-          className="border-white/20"
-        />
-      </div>
+      <BulkSelectGate>
+        <div
+          className="relative z-[1] flex w-5 shrink-0 items-center"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onToggleSelect(tenant.id)
+          }}
+        >
+          <Checkbox
+            checked={selected}
+            aria-label={`Select ${tenant.name}`}
+            className="border-white/20"
+          />
+        </div>
+      </BulkSelectGate>
 
       <TenantMonogram tenant={tenant} size="sm" className="relative z-[1]" />
 
@@ -293,20 +306,22 @@ const TenantCard = memo(
 
       <div className="relative z-[1] flex items-start gap-3">
         {/* Select checkbox (top-left) */}
-        <div
-          className="flex shrink-0 items-center pt-0.5"
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            onToggleSelect(tenant.id)
-          }}
-        >
-          <Checkbox
-            checked={selected}
-            aria-label={`Select ${tenant.name}`}
-            className="border-white/20"
-          />
-        </div>
+        <BulkSelectGate>
+          <div
+            className="flex shrink-0 items-center pt-0.5"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onToggleSelect(tenant.id)
+            }}
+          >
+            <Checkbox
+              checked={selected}
+              aria-label={`Select ${tenant.name}`}
+              className="border-white/20"
+            />
+          </div>
+        </BulkSelectGate>
 
         <TenantMonogram tenant={tenant} size="sm" />
 
@@ -408,6 +423,7 @@ export function TenantManager({
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [isBulkBusy, setIsBulkBusy] = useState(false)
   const deleteMutation = useDeleteTenant()
+  const canBulkEdit = usePlatformAccess().can('tenants.delete')
 
   /* Persist view choice */
   const changeView = useCallback((next: TenantView) => {
@@ -567,7 +583,8 @@ export function TenantManager({
     }
   }, [selected, clearSelection, updateCurrentPage, invalidateLists])
 
-  const hasSelection = selected.size > 0
+  // Every bulk action (activate, deactivate, delete) is tenants.delete.
+  const hasSelection = selected.size > 0 && canBulkEdit
 
   return (
     <div className="space-y-5">
@@ -734,19 +751,21 @@ export function TenantManager({
               )}
             >
               <div className="flex items-center gap-4 border-b border-white/[0.06] px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider text-white/35">
-                <div
-                  className="flex w-5 shrink-0 items-center"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleSelectAll()
-                  }}
-                >
-                  <Checkbox
-                    checked={allSelected}
-                    aria-label="Select all on this page"
-                    className="border-white/20"
-                  />
-                </div>
+                <BulkSelectGate>
+                  <div
+                    className="flex w-5 shrink-0 items-center"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleSelectAll()
+                    }}
+                  >
+                    <Checkbox
+                      checked={allSelected}
+                      aria-label="Select all on this page"
+                      className="border-white/20"
+                    />
+                  </div>
+                </BulkSelectGate>
                 <span className="w-10" />
                 <span className="flex-1">Restaurant</span>
                 <span className="hidden w-[160px] md:block">Activity</span>

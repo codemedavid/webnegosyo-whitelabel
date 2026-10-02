@@ -27,7 +27,7 @@ export interface PaymentMethodWithOrderTypes extends PaymentMethod {
 // ============================================
 
 export async function getPaymentMethodsByTenant(tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'view')
   
   const supabase = await createClient()
   
@@ -53,7 +53,7 @@ export async function getPaymentMethodsByTenant(tenantId: string) {
 }
 
 export async function getPaymentMethodById(paymentMethodId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'view')
   
   const supabase = await createClient()
   
@@ -89,7 +89,7 @@ export async function createPaymentMethod(
   skipPaymentDetails: boolean = false,
   ctx?: ProvisioningCtx
 ) {
-  if (!ctx) await verifyTenantPermission(tenantId, 'store_setup')
+  if (!ctx) await verifyTenantPermission(tenantId, 'store_setup', 'create')
 
   const supabase = ctx?.client ?? (await createClient())
 
@@ -177,7 +177,7 @@ export async function updatePaymentMethodOrderTypes(
   tenantId: string,
   orderTypeIds: string[]
 ) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'delete')
   
   const supabase = await createClient()
 
@@ -223,7 +223,7 @@ export async function updatePaymentMethodOrderTypes(
 }
 
 export async function deletePaymentMethod(paymentMethodId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'delete')
   
   const supabase = await createClient()
 
@@ -353,7 +353,7 @@ function syncFailure(error: string): LoyversePaymentMethodSyncReport {
 export async function syncPaymentMethodsFromLoyverse(
   tenantId: string
 ): Promise<LoyversePaymentMethodSyncReport> {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'create')
 
   const admin = createAdminClient()
   const { data: tenant, error: tenantError } = await admin

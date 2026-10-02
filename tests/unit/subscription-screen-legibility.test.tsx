@@ -17,6 +17,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { buildSubscriptionRoster, summarizeRoster } from '@/lib/billing/subscription-roster'
 import { SubscriptionManager } from '@/components/superadmin/subscription-manager'
+import { PlatformAccessProvider } from '@/components/superadmin/platform-access-context'
 import { MarkPaidDialog } from '@/components/superadmin/mark-paid-dialog'
 import { AllowanceDialog } from '@/components/superadmin/allowance-dialog'
 import type { AllowanceRow } from '@/lib/billing/tenant-allowances'
@@ -87,8 +88,11 @@ function offendingTokens(container: HTMLElement): string[] {
 
 function renderScreen() {
   const rows = buildSubscriptionRoster([TENANT], NOW)
+  // The row's actions are gated on subscriptions.edit; read it as a superadmin.
   return render(
-    <SubscriptionManager rows={rows} summary={summarizeRoster(rows)} allowances={[ALLOWANCE]} />
+    <PlatformAccessProvider role="superadmin" permissions={null}>
+      <SubscriptionManager rows={rows} summary={summarizeRoster(rows)} allowances={[ALLOWANCE]} />
+    </PlatformAccessProvider>
   )
 }
 

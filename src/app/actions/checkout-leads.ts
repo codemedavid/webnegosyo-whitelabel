@@ -18,31 +18,9 @@ import {
   reorderPlatformPaymentMethods,
 } from '@/lib/checkout-leads/platform-payment-methods-service'
 import { getCheckoutPayableAmount } from '@/lib/checkout-leads/payment-terms'
-import { createClient } from '@/lib/supabase/server'
+import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import type { CheckoutLeadStatus } from '@/types/database'
 import { captureCheckoutLeadCreated } from '@/lib/posthog'
-
-async function verifySuperadmin() {
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    throw new Error('Unauthorized: Not authenticated')
-  }
-
-  const { data: userRole } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  const role = userRole as { role: string } | null
-  if (!role || role.role !== 'superadmin') {
-    throw new Error('Forbidden: Superadmin access required')
-  }
-
-  return user
-}
 
 // ---- Checkout Leads ----
 
@@ -68,12 +46,12 @@ export async function fetchCheckoutLeads(options: {
   search?: string
   page?: number
 }) {
-  await verifySuperadmin()
+  await requirePlatformPermission('checkout_leads.view')
   return getCheckoutLeads(options)
 }
 
 export async function fetchCheckoutLeadDetail(id: string) {
-  await verifySuperadmin()
+  await requirePlatformPermission('checkout_leads.view')
   const lead = await getCheckoutLeadById(id)
   return { lead: lead.data }
 }
@@ -86,7 +64,7 @@ export async function changeCheckoutLeadStatus(
   leadId: string,
   newStatus: CheckoutLeadStatus
 ) {
-  await verifySuperadmin()
+  await requirePlatformPermission('checkout_leads.edit')
   return updateCheckoutLeadStatus(leadId, newStatus)
 }
 
@@ -109,7 +87,7 @@ export async function fetchActivePlatformPaymentMethods() {
 }
 
 export async function fetchAllPlatformPaymentMethods() {
-  await verifySuperadmin()
+  await requirePlatformPermission('payment_methods.view')
   return getAllPlatformPaymentMethods()
 }
 
@@ -119,7 +97,7 @@ export async function addPlatformPaymentMethod(input: {
   details?: string
   qr_code_url?: string
 }) {
-  await verifySuperadmin()
+  await requirePlatformPermission('payment_methods.create')
   return createPlatformPaymentMethod(input)
 }
 
@@ -133,16 +111,16 @@ export async function editPlatformPaymentMethod(
     is_active?: boolean
   }
 ) {
-  await verifySuperadmin()
+  await requirePlatformPermission('payment_methods.edit')
   return updatePlatformPaymentMethod(id, input)
 }
 
 export async function removePlatformPaymentMethod(id: string) {
-  await verifySuperadmin()
+  await requirePlatformPermission('payment_methods.delete')
   return deletePlatformPaymentMethod(id)
 }
 
 export async function savePlatformPaymentMethodOrder(orderedIds: string[]) {
-  await verifySuperadmin()
+  await requirePlatformPermission('payment_methods.edit')
   return reorderPlatformPaymentMethods(orderedIds)
 }

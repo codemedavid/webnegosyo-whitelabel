@@ -11,6 +11,7 @@
  * a misleading zero.
  */
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getMenuItemsByBcgClassification, getUpsellPairsByTenant } from '@/lib/menu-engineering-service'
 import { getBundlesByTenant, type BundleWithSlots } from '@/lib/bundles-service'
@@ -19,13 +20,12 @@ import { buildBasketStats, type BasketStats } from './basket-stats'
 import { buildBoostIdeas, type BoostIdea } from './ideas'
 import { classifyMenuRole, type MenuRole } from './menu-roles'
 import { groupPairings, type PairingGroup } from './pairing-groups'
+import { readRecentOrderRows } from './order-baskets'
 
 const HISTORY_DAYS = 90
 const PERFORMANCE_DAYS = 30
 /** Enough baskets to see patterns without pulling a large store's whole history. */
 const MAX_HISTORY_ORDERS = 4000
-/** The platform API's per-request row cap. */
-const PAGE_SIZE = 1000
 /** Ideas are computed generously; the client hides dismissed ones and shows a few. */
 const IDEA_POOL_SIZE = 12
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -114,41 +114,13 @@ interface OrderHistory {
   performance: BoostPerformance
 }
 
-/**
- * The platform API returns at most 1000 rows per request whatever `limit`
- * asks for, so a single read would quietly stop at 1000 orders and undercount
- * a busy store. Page through, ordered down to a unique column.
- */
-async function readRecentOrders(tenantId: string): Promise<HistoryOrderRow[] | null> {
-  const since = new Date(Date.now() - HISTORY_DAYS * DAY_MS).toISOString()
-  const client = createAdminClient()
-  const rows: HistoryOrderRow[] = []
-
-  while (rows.length < MAX_HISTORY_ORDERS) {
-    const from = rows.length
-    const { data, error } = await client
-      .from('orders')
-      .select('id, created_at, order_items(menu_item_id, is_upsell_item, bundle_id, subtotal)')
-      .eq('tenant_id', tenantId)
-      .neq('status', 'cancelled')
-      .gte('created_at', since)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .range(from, Math.min(from + PAGE_SIZE, MAX_HISTORY_ORDERS) - 1)
-
-    if (error) {
-      console.error('[boost] order history read failed:', error.message)
-      return rows.length > 0 ? rows : null
-    }
-    const page = (data ?? []) as unknown as HistoryOrderRow[]
-    rows.push(...page)
-    if (page.length < PAGE_SIZE) break
-  }
-  return rows
-}
-
 async function loadOrderHistory(tenantId: string): Promise<OrderHistory | null> {
-  const rows = await readRecentOrders(tenantId)
+  const rows = await readRecentOrderRows<HistoryOrderRow>(
+    createAdminClient() as unknown as SupabaseClient,
+    tenantId,
+    'id, created_at, order_items(menu_item_id, is_upsell_item, bundle_id, subtotal)',
+    { days: HISTORY_DAYS, maxOrders: MAX_HISTORY_ORDERS }
+  )
   if (!rows) return null
   const baskets = rows.map((row) =>
     (row.order_items ?? []).map((line) => line.menu_item_id).filter((id): id is string => !!id)
@@ -187,6 +159,37 @@ function comboItemIds(bundles: readonly BundleWithSlots[]): Set<string> {
   return ids
 }
 
+type MenuItemRow = Awaited<ReturnType<typeof getMenuItemsByBcgClassification>>[number]
+
+function toBoostItem(item: MenuItemRow): BoostItem {
+  return {
+    id: item.id,
+    name: item.name,
+    price: Number(item.price ?? 0),
+    imageUrl: item.image_url?.trim() || null,
+    categoryId: item.category_id ?? null,
+    categoryName: item.category?.name ?? null,
+    isAvailable: item.is_available !== false,
+    role: classifyMenuRole({ categoryName: item.category?.name, itemName: item.name }),
+  }
+}
+
+function lastCallFromTenant(tenant: BoostTenantFields, menuItems: readonly MenuItemRow[]): BoostLastCall {
+  return {
+    enabled: tenant.checkout_upsell_enabled === true,
+    title: tenant.checkout_upsell_title?.trim() || 'Add to your order',
+    subtitle: tenant.checkout_upsell_subtitle?.trim() || '',
+    maxItems: tenant.checkout_upsell_max_items ?? 4,
+    pickedItemIds: menuItems.filter((item) => item.show_in_checkout_upsell).map((item) => item.id),
+  }
+}
+
+/** The menu and the cart settings alone — what applying one offer needs, without order history. */
+export async function getBoostMenu(tenant: BoostTenantFields): Promise<{ items: BoostItem[]; lastCall: BoostLastCall }> {
+  const menuItems = await getMenuItemsByBcgClassification(tenant.id)
+  return { items: menuItems.map(toBoostItem), lastCall: lastCallFromTenant(tenant, menuItems) }
+}
+
 export async function getBoostWorkspace(tenant: BoostTenantFields): Promise<BoostWorkspace> {
   const hasPlatformHistory = resolveOrderBackend(tenant) === 'platform'
 
@@ -197,16 +200,7 @@ export async function getBoostWorkspace(tenant: BoostTenantFields): Promise<Boos
     hasPlatformHistory ? loadOrderHistory(tenant.id) : Promise.resolve(null),
   ])
 
-  const items: BoostItem[] = menuItems.map((item) => ({
-    id: item.id,
-    name: item.name,
-    price: Number(item.price ?? 0),
-    imageUrl: item.image_url?.trim() || null,
-    categoryId: item.category_id ?? null,
-    categoryName: item.category?.name ?? null,
-    isAvailable: item.is_available !== false,
-    role: classifyMenuRole({ categoryName: item.category?.name, itemName: item.name }),
-  }))
+  const items = menuItems.map(toBoostItem)
 
   const upgrades: BoostUpgrade[] = pairs
     .filter((pair) => pair.pair_type === 'upgrade')
@@ -222,13 +216,7 @@ export async function getBoostWorkspace(tenant: BoostTenantFields): Promise<Boos
 
   const pairings = groupPairings(pairs.filter((pair) => pair.pair_type === 'complementary'))
 
-  const lastCall: BoostLastCall = {
-    enabled: tenant.checkout_upsell_enabled === true,
-    title: tenant.checkout_upsell_title?.trim() || 'Add to your order',
-    subtitle: tenant.checkout_upsell_subtitle?.trim() || '',
-    maxItems: tenant.checkout_upsell_max_items ?? 4,
-    pickedItemIds: menuItems.filter((item) => item.show_in_checkout_upsell).map((item) => item.id),
-  }
+  const lastCall = lastCallFromTenant(tenant, menuItems)
 
   const ideas = buildBoostIdeas({
     items: menuItems.map((item, index) => ({

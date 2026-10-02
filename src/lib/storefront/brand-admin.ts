@@ -1,13 +1,10 @@
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /** Prefix of every cookie `@supabase/ssr` writes. */
 const SUPABASE_COOKIE_PREFIX = 'sb-'
-
-interface AppUserRole {
-  role: string
-  tenant_id: string | null
-}
 
 /** The slice of a Supabase client the check needs; injectable for tests. */
 export interface BrandAdminClient {
@@ -19,16 +16,16 @@ export interface BrandAdminClient {
   }
 }
 
-/** Whether the client's signed-in user administers `tenantId`. */
+/**
+ * Whether the client's signed-in user administers `tenantId`. The affordance
+ * is the inline branding editor, so platform staff need `stores.edit`.
+ */
 export async function isBrandAdminFor(client: BrandAdminClient, tenantId: string): Promise<boolean> {
   const { data: { user } } = await client.auth.getUser()
   if (!user) return false
 
-  const { data } = await client.from('app_users').select('role, tenant_id').eq('user_id', user.id).maybeSingle()
-  const role = data as AppUserRole | null
-  if (!role) return false
-
-  return role.role === 'superadmin' || (role.role === 'admin' && role.tenant_id === tenantId)
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(client), user.id)
+  return canAccessStoreAdmin(appUser, tenantId, 'edit')
 }
 
 /**

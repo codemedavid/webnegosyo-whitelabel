@@ -260,7 +260,7 @@ export async function createLalamoveOrderAction(
 ) {
   try {
     const { verifyTenantPermission } = await import('@/lib/admin-service')
-    await verifyTenantPermission(tenantId, 'orders')
+    await verifyTenantPermission(tenantId, 'orders', 'create')
 
     const supabase = await createClient()
 

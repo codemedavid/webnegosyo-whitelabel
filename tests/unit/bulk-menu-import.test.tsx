@@ -17,6 +17,11 @@ jest.mock('sonner', () => ({
     toast: { success: jest.fn(), error: jest.fn() },
 }))
 
+// The import is gated on stores.create; these specs run as a superadmin.
+jest.mock('@/components/superadmin/platform-access-context', () => ({
+    usePlatformAccess: () => ({ role: 'superadmin', isSuperadmin: true, can: () => true }),
+}))
+
 const parsedResponse = {
     success: true,
     data: {

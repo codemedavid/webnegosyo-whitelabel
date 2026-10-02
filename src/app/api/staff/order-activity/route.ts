@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { parseOrderActivityRequest } from '@/lib/staff-activity/order-activity-request'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/staff/order-activity
@@ -38,15 +40,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id')
-    .eq('user_id', user.id)
-    .single()
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
 
-  const isAuthorized =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === activity.tenantId)
+  const isAuthorized = canAccessStoreAdmin(appUser, activity.tenantId, 'create')
   if (!isAuthorized) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

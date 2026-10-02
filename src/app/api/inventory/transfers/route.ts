@@ -9,6 +9,8 @@ import {
 import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
 import { transferDraftSchema, receiptCountsSchema } from '@/lib/inventory/schemas'
 import { z } from 'zod'
+import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/inventory/transfers
@@ -40,6 +42,17 @@ import { z } from 'zod'
 
 const ACTIONS = ['create', 'send', 'receive', 'cancel'] as const
 type TransferAction = (typeof ACTIONS)[number]
+
+/**
+ * The platform-staff `stores.*` verb each step needs. Sending and receiving
+ * append ledger legs, so they are creates; a cancel only moves the status.
+ */
+const TRANSFER_VERBS: Record<TransferAction, PlatformAction> = {
+  create: 'create',
+  send: 'create',
+  receive: 'create',
+  cancel: 'edit',
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json().catch(() => null)
@@ -80,11 +93,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, permissions, is_owner')
-    .eq('user_id', user.id)
-    .single()
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
 
   // Belonging to the tenant is not enough — every staff member here is
   // `role='admin'`, so reach lives in `permissions`. A cashier holding only
@@ -92,8 +101,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // another's book. `menu` is the same key that gates the inventory tab, so the
   // door and the UI agree rather than merely looking like they do.
   const isTenantMember =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
+    canAccessStoreAdmin(appUser, tenantId, TRANSFER_VERBS[action as TransferAction])
 
   if (!isTenantMember || !hasPermission(appUser as PermissionHolder, 'menu')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

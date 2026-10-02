@@ -180,3 +180,56 @@ describe("running a stock count from the shelf screen", () => {
     expect(screen).toMatch(/loadOpenCount\(\s*tenantId[^)]*outletId/s);
   });
 });
+
+describe("ingredient page and editor", () => {
+  const layout = read("app", "(main)", "_layout.tsx");
+  const detail = read("app", "(main)", "ingredient", "[ingredientId].tsx");
+  const editor = read("app", "(main)", "ingredient", "edit", "[ingredientId].tsx");
+  const shelf = read("app", "(main)", "inventory.tsx");
+
+  it("registers both routes off the bar", () => {
+    expect(layout).toMatch(/name="ingredient\/\[ingredientId\]" options=\{\{ href: null/);
+    expect(layout).toMatch(/name="ingredient\/edit\/\[ingredientId\]" options=\{\{ href: null/);
+  });
+
+  it("opens an ingredient from the shelf and creates from the header", () => {
+    expect(shelf).toMatch(/ingredientHref\(/);
+    expect(shelf).toMatch(/ingredientEditorHref\(NEW_INGREDIENT_ID\)/);
+  });
+
+  it("reloads the shelf on focus, so edits made elsewhere show on return", () => {
+    // Tab screens stay mounted; a mount-only load would show the old figures.
+    expect(shelf).toMatch(/useFocusEffect/);
+    expect(detail).toMatch(/useFocusEffect/);
+    expect(editor).toMatch(/useFocusEffect/);
+  });
+
+  it("reads the ingredient's figures through the same branch-aware shelf read", () => {
+    // A second query for the quantity would be a second opinion on it.
+    expect(detail).toMatch(/loadInventoryStock\(tenantId, outletId\)/);
+    expect(detail).not.toMatch(/from\("inventory_items"\)/);
+  });
+
+  it("files a count entered on the ingredient page under the running count", () => {
+    expect(detail).toMatch(/loadOpenCount\(/);
+    expect(detail).toMatch(/openCountId=\{openCountId\}/);
+  });
+
+  it("writes through the ingredient service and validates with the shared rules", () => {
+    expect(editor).not.toMatch(/from\("inventory_items"\)/);
+    expect(editor).toMatch(/buildIngredientPayload\(/);
+    expect(editor).toMatch(/canChangeStockUnit\(/);
+  });
+
+  it("records opening stock as a count through the ledger, never as a bare quantity", () => {
+    expect(editor).toMatch(/reason: "stocktake"/);
+    expect(editor).toMatch(/submitStockMovement\(/);
+    expect(editor).not.toMatch(/current_qty:/);
+  });
+
+  it("archives instead of deleting, and offers the way back", () => {
+    expect(editor).toMatch(/setIngredientActive\(/);
+    expect(editor).not.toMatch(/\.delete\(/);
+    expect(shelf).toMatch(/<ArchivedIngredientsSheet/);
+  });
+});

@@ -29,6 +29,7 @@ import { reportOffline } from "./connectivity";
 import { isNetworkFailure } from "./network-error";
 import {
   getOutbox,
+  isPaidAtTender,
   markBookkeepingDone,
   markSaleWritten,
   needsAttention,
@@ -77,8 +78,14 @@ async function writeOrder(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Pro
   const orderId = String(await withDeadline(deps.createOrder(sale.orderArgs), 12_000));
 
   assertActive(deps);
-  // Any payment refusal leaves the sale queued for retry/reconciliation.
-  await withDeadline(deps.updatePaymentStatus({ orderId, paymentStatus: "paid" }), 12_000);
+  // A pay-later sale is written unpaid on purpose — the cashier collects it
+  // from the order screen. A platform insert that already carried `paid`
+  // needs no second write. Anything else (Convex, and platform sales queued
+  // before payment rode on the insert) is marked paid here; a refusal leaves
+  // the sale queued for retry/reconciliation.
+  if (isPaidAtTender(sale) && sale.orderArgs.paymentStatus !== "paid") {
+    await withDeadline(deps.updatePaymentStatus({ orderId, paymentStatus: "paid" }), 12_000);
+  }
 
   await deps.markWritten(sale.localId, orderId);
   return orderId;
@@ -104,9 +111,26 @@ async function syncOne(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Promis
 }
 
 let inFlight: Promise<SyncOutboxResult> | null = null;
+/**
+ * A trigger arrived while a run was in flight. With write-behind every sale
+ * passes through here, so a sale rung up during the previous sale's sync is
+ * written by a follow-up run straight away rather than on the retry timer.
+ */
+let isRerunRequested = false;
+let rerunDeps: Required<SyncOutboxDeps> | null = null;
 
-async function runSync(deps: Required<SyncOutboxDeps>): Promise<SyncOutboxResult> {
-  const mine = deps.listSales().filter((sale) => sale.tenantId === deps.tenantId);
+/**
+ * One pass over the queue. `attempted` is the cycle's record of the sales it
+ * has already tried — a follow-up pass skips them, so a refusal waits for the
+ * retry timer instead of being hammered in a loop.
+ */
+async function runSync(
+  deps: Required<SyncOutboxDeps>,
+  attempted: Set<string>
+): Promise<SyncOutboxResult> {
+  const mine = deps
+    .listSales()
+    .filter((sale) => sale.tenantId === deps.tenantId && !attempted.has(sale.localId));
   const result: SyncOutboxResult = {
     synced: 0,
     refused: 0,
@@ -118,6 +142,7 @@ async function runSync(deps: Required<SyncOutboxDeps>): Promise<SyncOutboxResult
     .filter((sale) => !needsAttention(sale) && sale.backend === deps.backend)
     .sort((a, b) => a.createdAt - b.createdAt);
   for (const sale of eligible) {
+    attempted.add(sale.localId);
     try {
       assertActive(deps);
       await syncOne(sale, deps);
@@ -136,9 +161,8 @@ async function runSync(deps: Required<SyncOutboxDeps>): Promise<SyncOutboxResult
   return result;
 }
 
-export function syncOutbox(deps: SyncOutboxDeps): Promise<SyncOutboxResult> {
-  if (inFlight) return inFlight;
-  const resolved: Required<SyncOutboxDeps> = {
+function resolveDeps(deps: SyncOutboxDeps): Required<SyncOutboxDeps> {
+  return {
     isActive: () => true,
     bookkeeping: runPosSaleBookkeeping,
     listSales: () => getOutbox().sales,
@@ -148,8 +172,36 @@ export function syncOutbox(deps: SyncOutboxDeps): Promise<SyncOutboxResult> {
     markBookkeepingDone,
     ...deps,
   };
-  inFlight = runSync(resolved).finally(() => {
+}
+
+async function runCycle(deps: Required<SyncOutboxDeps>): Promise<SyncOutboxResult> {
+  const attempted = new Set<string>();
+  let result = await runSync(deps, attempted);
+  while (isRerunRequested && !result.stoppedOffline) {
+    isRerunRequested = false;
+    const followUp = await runSync(rerunDeps ?? deps, attempted);
+    result = {
+      synced: result.synced + followUp.synced,
+      refused: result.refused + followUp.refused,
+      stuck: followUp.stuck,
+      stoppedOffline: followUp.stoppedOffline,
+    };
+  }
+  return result;
+}
+
+export function syncOutbox(deps: SyncOutboxDeps): Promise<SyncOutboxResult> {
+  if (inFlight) {
+    isRerunRequested = true;
+    rerunDeps = resolveDeps(deps);
+    return inFlight;
+  }
+  isRerunRequested = false;
+  rerunDeps = null;
+  inFlight = runCycle(resolveDeps(deps)).finally(() => {
     inFlight = null;
+    isRerunRequested = false;
+    rerunDeps = null;
   });
   return inFlight;
 }
@@ -157,4 +209,6 @@ export function syncOutbox(deps: SyncOutboxDeps): Promise<SyncOutboxResult> {
 /** Test seam. */
 export function resetSyncForTests(): void {
   inFlight = null;
+  isRerunRequested = false;
+  rerunDeps = null;
 }

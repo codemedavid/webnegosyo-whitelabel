@@ -170,3 +170,90 @@ describe("CollectPaymentSheet", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Cash at the counter — the "pay later" sale being settled, the delivery paid
+ * on arrival. The cashier enters what was handed over and is told the change,
+ * as at the register. The payment recorded is what was collected.
+ */
+describe("CollectPaymentSheet — cash", () => {
+  const CASH_METHODS = [
+    { id: "gcash", name: "GCash", isCash: false },
+    { id: "cash", name: "Cash", isCash: true },
+  ];
+
+  function renderCash(props: Partial<React.ComponentProps<typeof CollectPaymentSheet>> = {}) {
+    return renderSheet({ methods: CASH_METHODS, balanceDue: 450, ...props });
+  }
+
+  it("opens on cash and works out the change from the cash received", async () => {
+    const { onSubmit } = renderCash();
+
+    fireEvent.changeText(screen.getByLabelText("Cash received"), "500");
+    expect(screen.getByLabelText("Change ₱50.00")).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Record payment"));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({
+        amount: 450,
+        methodId: "cash",
+        methodName: "Cash",
+        cashTendered: 500,
+        changeDue: 50,
+      }),
+    );
+  });
+
+  it("fills the cash from a quick-amount chip", async () => {
+    const { onSubmit } = renderCash();
+
+    fireEvent.press(screen.getByText("Exact ₱450.00"));
+    fireEvent.press(screen.getByText("Record payment"));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ cashTendered: 450, changeDue: 0 })),
+    );
+  });
+
+  it("refuses cash that does not cover the bill", async () => {
+    const { onSubmit } = renderCash();
+
+    fireEvent.changeText(screen.getByLabelText("Cash received"), "400");
+    fireEvent.press(screen.getByText("Record payment"));
+
+    expect(await screen.findByText(/does not cover/)).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("lets the cashier collect part of the bill, and says what stays owed", async () => {
+    const { onSubmit } = renderCash();
+
+    fireEvent.press(screen.getByText("Collect less"));
+    fireEvent.changeText(screen.getByLabelText("Amount to collect"), "200");
+    fireEvent.changeText(screen.getByLabelText("Cash received"), "200");
+
+    expect(screen.getByText("₱250.00 will still be owed after this.")).toBeTruthy();
+    fireEvent.press(screen.getByText("Record payment"));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ amount: 200, changeDue: 0 })),
+    );
+  });
+
+  it("pre-selects the method the customer picked at checkout, with their reference", async () => {
+    const { onSubmit } = renderCash({ preferredMethodName: "GCash", initialReference: "GC-1" });
+
+    expect(screen.queryByLabelText("Cash received")).toBeNull();
+    fireEvent.press(screen.getByText("Record payment"));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ methodId: "gcash", reference: "GC-1", amount: 450 }),
+      ),
+    );
+  });
+
+  it("uses the caller's wording when it confirms an order at the same time", () => {
+    renderCash({ title: "Confirm & collect", submitLabel: "Confirm order & record payment" });
+    expect(screen.getByText("Confirm & collect")).toBeTruthy();
+    expect(screen.getByText("Confirm order & record payment")).toBeTruthy();
+  });
+});

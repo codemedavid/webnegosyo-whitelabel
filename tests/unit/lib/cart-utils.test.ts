@@ -459,17 +459,17 @@ describe('cart-utils', () => {
       expect(isMessengerRedirectEnabled({ messenger_redirect_enabled: false })).toBe(false)
     })
 
-    test('defaults to true when the flag is undefined (backward compatible)', () => {
-      expect(isMessengerRedirectEnabled({})).toBe(true)
+    test('defaults to false when the flag is undefined (Messenger is opt-in)', () => {
+      expect(isMessengerRedirectEnabled({})).toBe(false)
     })
 
-    test('defaults to true when the flag is null', () => {
-      expect(isMessengerRedirectEnabled({ messenger_redirect_enabled: null })).toBe(true)
+    test('defaults to false when the flag is null', () => {
+      expect(isMessengerRedirectEnabled({ messenger_redirect_enabled: null })).toBe(false)
     })
 
-    test('defaults to true when the tenant is null or undefined', () => {
-      expect(isMessengerRedirectEnabled(null)).toBe(true)
-      expect(isMessengerRedirectEnabled(undefined)).toBe(true)
+    test('defaults to false when the tenant is null or undefined', () => {
+      expect(isMessengerRedirectEnabled(null)).toBe(false)
+      expect(isMessengerRedirectEnabled(undefined)).toBe(false)
     })
   })
 })

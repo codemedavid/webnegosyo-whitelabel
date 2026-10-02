@@ -73,7 +73,7 @@ export async function getOrdersByTenant(
   tenantId: string,
   params?: OrdersPaginationParams
 ): Promise<OrderWithItems[] | PaginatedOrdersResult> {
-  const { userRole } = await verifyTenantPermission(tenantId, 'orders')
+  const { userRole } = await verifyTenantPermission(tenantId, 'orders', 'view')
 
   // A branch-scoped account reads only its own branch. Applied to the query
   // rather than the result so the row never leaves the database, and so the
@@ -156,7 +156,7 @@ export async function getOrdersByTenant(
 }
 
 export async function getOrderById(orderId: string, tenantId: string) {
-  const { userRole } = await verifyTenantPermission(tenantId, 'orders')
+  const { userRole } = await verifyTenantPermission(tenantId, 'orders', 'view')
 
   const supabase = await createClient()
 
@@ -435,7 +435,7 @@ export async function updateOrderStatus(
 }
 
 export const getOrderStats = cache(async function getOrderStats(tenantId: string) {
-  await verifyTenantPermission(tenantId, 'orders')
+  await verifyTenantPermission(tenantId, 'orders', 'view')
 
   const supabase = await createClient()
 

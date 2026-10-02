@@ -13,6 +13,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { buildSubscriptionRoster, summarizeRoster } from '@/lib/billing/subscription-roster'
 import { SubscriptionManager } from '@/components/superadmin/subscription-manager'
+import { PlatformAccessProvider } from '@/components/superadmin/platform-access-context'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 jest.mock('@/components/superadmin/mark-paid-dialog', () => ({ MarkPaidDialog: () => null }))
@@ -54,9 +55,24 @@ const CANCELLED = {
   paidThrough: '2026-12-31',
 }
 
-function renderScreen(inputs: Parameters<typeof buildSubscriptionRoster>[0]) {
+/** The console account viewing the screen; a superadmin unless a test says otherwise. */
+interface Viewer {
+  role: string
+  permissions: string[] | null
+}
+
+const SUPERADMIN: Viewer = { role: 'superadmin', permissions: null }
+
+function renderScreen(
+  inputs: Parameters<typeof buildSubscriptionRoster>[0],
+  viewer: Viewer = SUPERADMIN
+) {
   const rows = buildSubscriptionRoster(inputs, NOW)
-  return render(<SubscriptionManager rows={rows} summary={summarizeRoster(rows)} />)
+  return render(
+    <PlatformAccessProvider role={viewer.role} permissions={viewer.permissions}>
+      <SubscriptionManager rows={rows} summary={summarizeRoster(rows)} />
+    </PlatformAccessProvider>
+  )
 }
 
 function rowFor(name: string): HTMLElement {
@@ -197,5 +213,21 @@ describe('pausing and resuming a tenant', () => {
     fireEvent.click(within(rowFor('Foxtrot Fry')).getByRole('button', { name: /^pause$/i }))
 
     expect(await screen.findByText(/only a platform superadmin/i)).toBeInTheDocument()
+  })
+})
+
+describe('a console account without subscriptions.edit', () => {
+  it('sees who owes but is offered no lever to record, pause or resume', () => {
+    // Arrange
+    const viewOnly: Viewer = { role: 'platform_staff', permissions: ['subscriptions.view'] }
+
+    // Act
+    renderScreen([DUE_IN_2, MANUALLY_PAUSED], viewOnly)
+
+    // Assert
+    expect(screen.getByText('Echo Eatery')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /mark paid/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^pause$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^resume$/i })).not.toBeInTheDocument()
   })
 })

@@ -50,7 +50,7 @@ const PATH_PERIOD = 'orders:getDashboardStatsByPeriodInternal'
 const PATH_TRENDS = 'analytics:getTrendsInternal'
 const PATH_BREAKDOWN = 'analytics:getRevenueBreakdownInternal'
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Convex query timed out after ${ms}ms`)), ms)
     promise.then(
@@ -104,7 +104,7 @@ async function fetchOneTenant(
 }
 
 /** Run `worker` over `items` with a bounded number of concurrent executions. */
-async function mapWithConcurrency<I, O>(
+export async function mapWithConcurrency<I, O>(
   items: I[],
   concurrency: number,
   worker: (item: I) => Promise<O>,

@@ -10,6 +10,7 @@ import { Panel, EmptyState } from '@/components/superadmin/ui/primitives'
 import { deleteAnnouncementAction, setAnnouncementStatusAction } from '@/app/actions/announcements'
 import type { AnnouncementSummary } from '@/lib/announcements/service'
 import { SendPushButton } from './send-push-button'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 
 interface Props {
   initialItems: AnnouncementSummary[]
@@ -25,6 +26,10 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 export function AnnouncementList({ initialItems }: Props) {
+  const access = usePlatformAccess()
+  const canCreate = access.can('whats_new.create')
+  const canEdit = access.can('whats_new.edit')
+  const canDelete = access.can('whats_new.delete')
   const [items, setItems] = useState(initialItems)
   const [isPending, startTransition] = useTransition()
 
@@ -65,10 +70,12 @@ export function AnnouncementList({ initialItems }: Props) {
           title="Nothing written yet"
           description="Your first post greets every merchant the next time they open the app."
           action={
-            <Link href="/superadmin/whats-new/new" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90">
-              <Plus className="h-4 w-4" />
-              Write the first post
-            </Link>
+            canCreate ? (
+              <Link href="/superadmin/whats-new/new" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90">
+                <Plus className="h-4 w-4" />
+                Write the first post
+              </Link>
+            ) : undefined
           }
         />
       </Panel>
@@ -137,29 +144,35 @@ export function AnnouncementList({ initialItems }: Props) {
                   className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10"
                 >
                   <Pencil className="h-3.5 w-3.5" />
-                  Edit
+                  {canEdit ? 'Edit' : 'View'}
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => toggleStatus(item)}
-                  disabled={isPending}
-                  className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-                >
-                  {isPublished ? 'Unpublish' : 'Publish'}
-                </button>
-                <SendPushButton
-                  announcement={item}
-                  onSent={(count) => replace({ ...item, pushSentAt: new Date().toISOString(), pushRecipientCount: count })}
-                />
-                <button
-                  type="button"
-                  onClick={() => remove(item)}
-                  disabled={isPending}
-                  aria-label={`Delete ${item.title}`}
-                  className="ml-auto rounded-xl p-2 text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(item)}
+                    disabled={isPending}
+                    className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {isPublished ? 'Unpublish' : 'Publish'}
+                  </button>
+                )}
+                {canEdit && (
+                  <SendPushButton
+                    announcement={item}
+                    onSent={(count) => replace({ ...item, pushSentAt: new Date().toISOString(), pushRecipientCount: count })}
+                  />
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => remove(item)}
+                    disabled={isPending}
+                    aria-label={`Delete ${item.title}`}
+                    className="ml-auto rounded-xl p-2 text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           </Panel>

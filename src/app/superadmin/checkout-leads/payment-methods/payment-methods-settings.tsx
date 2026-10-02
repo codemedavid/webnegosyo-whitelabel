@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SectionHeader, EmptyState } from '@/components/superadmin/ui/primitives'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import {
   addPlatformPaymentMethod,
   editPlatformPaymentMethod,
@@ -62,6 +63,10 @@ interface FormState {
 const emptyForm: FormState = { name: '', type: 'qr_code', details: '', qr_code_url: '' }
 
 export function PaymentMethodsSettings({ initialMethods }: PaymentMethodsSettingsProps) {
+  const access = usePlatformAccess()
+  const canCreate = access.can('payment_methods.create')
+  const canEdit = access.can('payment_methods.edit')
+  const canDelete = access.can('payment_methods.delete')
   const [methods, setMethods] = useState(initialMethods)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -195,10 +200,12 @@ export function PaymentMethodsSettings({ initialMethods }: PaymentMethodsSetting
                 : `${methods.length} configured · ${activeCount} active · drag to reorder`
             }
             action={
-              <Button size="sm" onClick={openCreate}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add Method
-              </Button>
+              canCreate ? (
+                <Button size="sm" onClick={openCreate}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Add Method
+                </Button>
+              ) : undefined
             }
           />
         </div>
@@ -209,10 +216,12 @@ export function PaymentMethodsSettings({ initialMethods }: PaymentMethodsSetting
             title="No payment methods yet"
             description="Add one to display it on the checkout page."
             action={
-              <Button size="sm" onClick={openCreate}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add Method
-              </Button>
+              canCreate ? (
+                <Button size="sm" onClick={openCreate}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Add Method
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -223,21 +232,23 @@ export function PaymentMethodsSettings({ initialMethods }: PaymentMethodsSetting
               return (
                 <div
                   key={method.id}
-                  draggable
-                  onDragStart={() => handleDragStart(idx)}
-                  onDragOver={(e) => handleDragOver(e, idx)}
-                  onDragEnd={handleDragEnd}
+                  draggable={canEdit}
+                  onDragStart={canEdit ? () => handleDragStart(idx) : undefined}
+                  onDragOver={canEdit ? (e) => handleDragOver(e, idx) : undefined}
+                  onDragEnd={canEdit ? handleDragEnd : undefined}
                   className={`flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-white/[0.04] ${
                     !method.is_active ? 'opacity-50' : ''
                   } ${isDragging ? 'bg-white/[0.04]' : ''}`}
                 >
-                  <button
-                    type="button"
-                    className="cursor-grab text-white/30 transition-colors hover:text-white/60 active:cursor-grabbing"
-                    aria-label={`Reorder ${method.name}`}
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="cursor-grab text-white/30 transition-colors hover:text-white/60 active:cursor-grabbing"
+                      aria-label={`Reorder ${method.name}`}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                  )}
 
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
                     <Icon className="h-5 w-5 text-white" />
@@ -271,30 +282,35 @@ export function PaymentMethodsSettings({ initialMethods }: PaymentMethodsSetting
                   <Switch
                     checked={method.is_active}
                     onCheckedChange={(checked) => handleToggleActive(method.id, checked)}
+                    disabled={!canEdit}
                     aria-label={`Toggle ${method.name} active`}
                   />
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openEdit(method)}
-                    aria-label={`Edit ${method.name}`}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(method.id)}
-                    disabled={deletingId === method.id}
-                    aria-label={`Delete ${method.name}`}
-                  >
-                    {deletingId === method.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                    )}
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEdit(method)}
+                      aria-label={`Edit ${method.name}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(method.id)}
+                      disabled={deletingId === method.id}
+                      aria-label={`Delete ${method.name}`}
+                    >
+                      {deletingId === method.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               )
             })}

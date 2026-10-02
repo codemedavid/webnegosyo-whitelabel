@@ -38,6 +38,10 @@ export interface InventoryItemRow {
   reorder_level: number;
   is_active: boolean;
   stock_unit_id: string | null;
+  /** Optional so the narrower reads that predate them keep type-checking. */
+  category?: string | null;
+  unit_cost?: number;
+  is_prep?: boolean;
 }
 
 export interface InventoryUnitRow {
@@ -139,6 +143,12 @@ export interface StockItemView {
   /** Empty for an ingredient with no meaningful unit to show. */
   unitAbbreviation: string;
   level: StockLevel;
+  /** The merchant's own grouping; null or blank = uncategorised. */
+  category?: string | null;
+  /** Moving-average cost per stock unit. Absent = unknown, never free. */
+  unitCost?: number;
+  /** Made in-house from other ingredients (a sauce, a dough). */
+  isPrep?: boolean;
 }
 
 export interface StockSummary {
@@ -201,6 +211,9 @@ export function buildStockViews(
       unitAbbreviation:
         (item.stock_unit_id ? abbreviationById.get(item.stock_unit_id) : undefined) ?? "",
       level: evaluateStockLevel(item),
+      category: item.category ?? null,
+      unitCost: item.unit_cost === undefined ? undefined : Number(item.unit_cost),
+      isPrep: item.is_prep ?? false,
     }));
 }
 

@@ -62,7 +62,7 @@ const OWNER_ROW = {
  * `jest.mock` is not hoisted above the static imports next/jest emits, so the
  * action module is required lazily once the clients are in place.
  */
-function loadAction(rlsResult: TableResult, adminResult: TableResult) {
+function loadAction(rlsResult: TableResult, adminResult: TableResult, role = 'superadmin') {
   const log: string[] = []
   jest.resetModules()
   jest.doMock('@/lib/supabase/server', () => ({
@@ -70,6 +70,18 @@ function loadAction(rlsResult: TableResult, adminResult: TableResult) {
   }))
   jest.doMock('@/lib/supabase/admin', () => ({
     createAdminClient: () => makeClient(adminResult, log, 'admin'),
+  }))
+  // The console gate is covered by the platform-staff guard's own tests; here
+  // the caller is a superadmin so each action reaches its write.
+  const caller = { user: { id: 'superadmin_1' }, appUser: { role } }
+  class PlatformAccessError extends Error {}
+  jest.doMock('@/lib/platform-staff/guard', () => ({
+    PlatformAccessError,
+    requirePlatformPermission: async () => caller,
+    requireFullSuperadmin: async () => {
+      if (role !== 'superadmin') throw new PlatformAccessError('Forbidden: Superadmin access required')
+      return caller
+    },
   }))
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -116,5 +128,18 @@ describe('updateTenantUser', () => {
     expect(result).toEqual({ success: true })
     expect(log.some((entry) => entry.startsWith('admin:update'))).toBe(true)
     expect(log.some((entry) => entry.startsWith('rls:update'))).toBe(false)
+  })
+
+  it('refuses platform staff: only a full superadmin may change a role', async () => {
+    const { actions, log } = loadAction(BLOCKED, { data: [OWNER_ROW], error: null }, 'platform_staff')
+
+    const result = await actions.updateTenantUser({
+      user_id: USER_ID,
+      role: 'superadmin',
+      tenant_id: TENANT_ID,
+    })
+
+    expect(result).toEqual({ error: 'Forbidden: Superadmin access required' })
+    expect(log).toHaveLength(0)
   })
 })

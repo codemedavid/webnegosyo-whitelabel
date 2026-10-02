@@ -1,16 +1,17 @@
 /**
  * Supabase reads the register needs beyond the product catalog: the tenant's
- * order types and the payment methods available for the chosen one.
+ * order types, their prices, and the payment methods.
  *
- * The payment-method query mirrors the web's `getPaymentMethodsByOrderTypeClient`
- * exactly — an INNER join on payment_method_order_types, so a method with no
- * order-type link is offered for none. Diverging here would let the register
- * take payments the storefront refuses.
+ * Payment methods are read ONCE with their order-type links; the storefront's
+ * rule (the web's `getPaymentMethodsByOrderTypeClient`, an INNER join on
+ * payment_method_order_types, so a method with no link is offered for none) is
+ * applied on the device by `methodsForTender`. Diverging from it would let the
+ * register take payments the storefront refuses.
  */
 
 import { supabase } from "./supabase";
 import type { ServiceCharge } from "./pos-cart";
-import type { PosPaymentMethod } from "./pos-payment-methods";
+import type { PosPaymentMethod, RegisterPaymentMethod } from "./pos-payment-methods";
 import type { OrderTypeItemPriceRow } from "./order-type-pricing";
 
 export interface PosOrderType {
@@ -122,45 +123,36 @@ export async function listOrderTypeItemPrices(
   return (data ?? []) as unknown as OrderTypeItemPriceRow[];
 }
 
-/** Active payment methods the merchant allows for this order type. */
-export async function listPaymentMethods(
-  tenantId: string,
-  orderTypeId: string,
-): Promise<PosPaymentMethod[]> {
-  const { data, error } = await supabase
-    .from("payment_methods")
-    .select(
-      "id, name, details, qr_code_url, require_payment_proof, order_index, payment_method_order_types!inner(order_type_id)",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .eq("payment_method_order_types.order_type_id", orderTypeId)
-    .order("order_index", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as unknown as PosPaymentMethod[];
+interface RegisterPaymentMethodRow extends PosPaymentMethod {
+  payment_method_order_types: { order_type_id: string }[] | null;
 }
 
 /**
- * Every active payment method for the tenant, with no order-type filter.
+ * Every active payment method with the order types it is linked to, in ONE
+ * read — the register's source (`use-tender-payment-methods.ts`).
  *
- * Settling an edited order is deliberately NOT narrowed the way ringing up a
- * new sale is: a customer who paid a delivery order by GCash may hand over cash
- * for the ₱120 difference, and refusing that would leave the cashier unable to
- * close the bill at all. The order-type restriction exists to stop the
- * storefront offering a method for the wrong channel, which is a different
- * question from how a shortfall is squared at the counter.
+ * A LEFT join on purpose: the order-type filter the storefront applies with
+ * an inner join is applied on the device (`methodsForTender`), so one saved
+ * copy answers for every order type when the register is offline, and an
+ * edit can still settle against a method with no link.
  */
-export async function listAllPaymentMethods(
+export async function listRegisterPaymentMethods(
   tenantId: string,
-): Promise<PosPaymentMethod[]> {
+): Promise<RegisterPaymentMethod[]> {
   const { data, error } = await supabase
     .from("payment_methods")
-    .select("id, name, details, qr_code_url, require_payment_proof, order_index")
+    .select(
+      "id, name, details, qr_code_url, require_payment_proof, order_index, payment_method_order_types(order_type_id)",
+    )
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("order_index", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as unknown as PosPaymentMethod[];
+  return ((data ?? []) as unknown as RegisterPaymentMethodRow[]).map(
+    ({ payment_method_order_types: links, ...method }) => ({
+      ...method,
+      orderTypeIds: (links ?? []).map((link) => link.order_type_id),
+    }),
+  );
 }

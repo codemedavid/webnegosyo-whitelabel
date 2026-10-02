@@ -22,6 +22,8 @@ import {
 } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import type { Database, Tenant } from '@/types/database'
+import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/lalamove
@@ -47,6 +49,15 @@ import type { Database, Tenant } from '@/types/database'
 type LalamoveOp = 'book' | 'sync' | 'cancel' | 'priority_fee' | 'requote'
 
 const OPS: readonly LalamoveOp[] = ['book', 'sync', 'cancel', 'priority_fee', 'requote']
+
+/** The platform-staff `stores.*` verb each op needs: a booking is new. */
+const LALAMOVE_OP_VERBS: Record<LalamoveOp, PlatformAction> = {
+  book: 'create',
+  sync: 'edit',
+  cancel: 'edit',
+  priority_fee: 'edit',
+  requote: 'edit',
+}
 
 interface OrderRow {
   id: string
@@ -112,15 +123,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id')
-    .eq('user_id', user.id)
-    .single()
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
 
-  const isAuthorized =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
+  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, LALAMOVE_OP_VERBS[op as LalamoveOp])
 
   if (!isAuthorized) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

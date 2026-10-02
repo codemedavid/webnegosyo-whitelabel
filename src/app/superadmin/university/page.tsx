@@ -3,11 +3,14 @@ import { BookOpen, Clock, GraduationCap, Layers, Plus } from 'lucide-react'
 import { KpiCard, PageHeader } from '@/components/superadmin/ui/primitives'
 import { CourseList } from '@/components/superadmin/university/course-list'
 import { listCoursesAction } from '@/app/actions/university'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
 
 export const dynamic = 'force-dynamic'
 
 export default async function UniversityPage() {
-  const courses = await listCoursesAction()
+  const [courses, caller] = await Promise.all([listCoursesAction(), getConsoleCaller()])
+  const canCreate = hasPlatformPermission(caller?.appUser, 'university.create')
   const live = courses.filter((course) => course.status === 'published' && course.publishedLessonCount > 0)
   const lessons = courses.reduce((sum, course) => sum + course.lessonCount, 0)
   const liveLessons = courses.reduce((sum, course) => sum + course.publishedLessonCount, 0)
@@ -24,10 +27,12 @@ export default async function UniversityPage() {
             <Link href="/university" target="_blank" className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10">
               Open portal
             </Link>
-            <Link href="/superadmin/university/new" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-white/90">
-              <Plus className="h-4 w-4" />
-              New course
-            </Link>
+            {canCreate ? (
+              <Link href="/superadmin/university/new" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-white/90">
+                <Plus className="h-4 w-4" />
+                New course
+              </Link>
+            ) : null}
           </>
         }
       />

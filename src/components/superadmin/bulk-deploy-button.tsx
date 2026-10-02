@@ -5,8 +5,10 @@ import { AlertTriangle, CheckCircle2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, SectionHeader } from "@/components/superadmin/ui/primitives";
 import { bulkDeployConvexAction } from "@/app/actions/convex";
+import { usePlatformAccess } from "@/components/superadmin/platform-access-context";
 
 export function BulkDeployButton() {
+  const canDeploy = usePlatformAccess().can("tenants.edit");
   const [deploying, setDeploying] = useState(false);
   const [result, setResult] = useState<{
     success: boolean;
@@ -32,6 +34,8 @@ export function BulkDeployButton() {
   const hasErrors = !!result?.errors && result.errors.length > 0;
   const isOk = !!result?.success && !hasErrors;
   const isPartial = !!result?.success && hasErrors;
+
+  if (!canDeploy) return null;
 
   return (
     <Panel>

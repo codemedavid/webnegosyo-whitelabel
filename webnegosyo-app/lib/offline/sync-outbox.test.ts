@@ -201,6 +201,96 @@ describe("syncOutbox", () => {
 });
 
 /**
+ * "Pay later" sales ride the same outbox as paid ones. Replaying them must not
+ * invent a payment: the order is written and stays unpaid until the cashier
+ * collects it from the order screen.
+ */
+describe("marking a replayed sale paid", () => {
+  beforeEach(() => {
+    resetConnectivityForTests();
+    resetSyncForTests();
+  });
+
+  it("never marks a pay-later sale paid", async () => {
+    const h = harness([{ ...sale("a"), paidAtTender: false }]);
+    await syncOutbox(h.deps);
+    expect(h.createOrder).toHaveBeenCalledTimes(1);
+    expect(h.updatePaymentStatus).not.toHaveBeenCalled();
+    expect(h.remove).toHaveBeenCalledWith("a");
+  });
+
+  it("skips the second write when the insert itself already carried the payment", async () => {
+    const paidOnInsert = sale("a");
+    const h = harness([
+      { ...paidOnInsert, orderArgs: { ...paidOnInsert.orderArgs, paymentStatus: "paid" } },
+    ]);
+    await syncOutbox(h.deps);
+    expect(h.updatePaymentStatus).not.toHaveBeenCalled();
+  });
+
+  it("still marks a sale queued before the flag existed as paid", async () => {
+    const legacy = sale("a");
+    delete (legacy as Partial<QueuedSale>).paidAtTender;
+    const h = harness([legacy]);
+    await syncOutbox(h.deps);
+    expect(h.updatePaymentStatus).toHaveBeenCalledWith({ orderId: "server-pos-a", paymentStatus: "paid" });
+  });
+});
+
+/**
+ * With write-behind every sale goes through the outbox, so a sale rung up
+ * while the previous one is still syncing must not wait for the 20-second
+ * retry timer — that would leave it off the Orders list and the kitchen's
+ * screens for no reason.
+ */
+describe("a sale queued while a run is in flight", () => {
+  beforeEach(() => {
+    resetConnectivityForTests();
+    resetSyncForTests();
+  });
+
+  it("is written by a follow-up run as soon as the current one finishes", async () => {
+    const queue: QueuedSale[] = [sale("a")];
+    const h = harness(queue);
+    let release: (value: string) => void = () => {};
+    h.createOrder.mockImplementationOnce(
+      () => new Promise<string>((resolve) => (release = resolve))
+    );
+    h.remove.mockImplementation(async (localId: string) => {
+      const index = queue.findIndex((candidate) => candidate.localId === localId);
+      if (index >= 0) queue.splice(index, 1);
+    });
+
+    const first = syncOutbox(h.deps);
+    queue.push(sale("b"));
+    const second = syncOutbox(h.deps);
+    release("server-pos-a");
+    await first;
+    await second;
+    // Let the follow-up run settle.
+    await syncOutbox(h.deps);
+
+    expect(h.createOrder.mock.calls.map(([args]) => (args as { clientOrderId: string }).clientOrderId))
+      .toEqual(["pos-a", "pos-b"]);
+  });
+
+  it("does not replay a sale the run already refused", async () => {
+    const h = harness([sale("a")]);
+    let release: (reason: Error) => void = () => {};
+    h.createOrder.mockImplementationOnce(
+      () => new Promise<string>((_, reject) => (release = reject))
+    );
+    const first = syncOutbox(h.deps);
+    void syncOutbox(h.deps);
+    release(new Error("check constraint violated"));
+    await first;
+    // The follow-up pass skipped it: one attempt, one recorded refusal.
+    expect(h.createOrder).toHaveBeenCalledTimes(1);
+    expect(h.recordFailure).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
  * A sale the server REFUSES is not a sale the connection lost. The money is
  * already in the till and the receipt is already in the customer's hand, so
  * the sale is never dropped — but it must stop being replayed forever and
