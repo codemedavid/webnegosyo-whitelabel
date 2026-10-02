@@ -932,7 +932,8 @@ export interface Order {
   // Loyverse receipt push outcome (migration 20260821120000). Presence of a
   // receipt number = already pushed; guards double-pushing.
   loyverse_receipt_number?: string | null;
-  loyverse_push_status?: 'pending' | 'pushed' | 'failed' | 'skipped' | null;
+  // unconfirmed = the POST may have created the receipt; checked in Loyverse before any resend.
+  loyverse_push_status?: 'pending' | 'pushed' | 'failed' | 'skipped' | 'unconfirmed' | null;
   loyverse_pushed_at?: string | null;
   loyverse_push_error?: string | null;
   // Payment fields

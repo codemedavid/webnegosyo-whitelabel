@@ -39,7 +39,7 @@ export const PLATFORM_SECTIONS = {
     description: 'The restaurant list and each restaurant’s platform settings.',
     actions: ['view', 'create', 'edit', 'delete'],
     actionHints: {
-      edit: 'Change details, feature flags, deploys and integrations',
+      edit: 'Change details, feature flags, deploys and integrations (not where orders go: backend and Convex stay superadmin-only)',
       delete: 'Deactivate or permanently delete restaurants',
     },
     path: '/superadmin/tenants',

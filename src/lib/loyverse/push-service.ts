@@ -10,6 +10,14 @@
  * receipt, not two. A claim older than CLAIM_TTL_MS is treated as abandoned
  * (the function died mid-push) and may be re-taken.
  *
+ * Unknown outcomes: a receipt POST that timed out, dropped or got a 5xx may
+ * still have created the receipt, so it is recorded `unconfirmed`, not
+ * `failed`. That attempt — like an abandoned `pending` claim — is re-claimable
+ * only after CLAIM_TTL_MS, and the retry first asks Loyverse for a receipt
+ * carrying this order's label; it sends only when Loyverse confirms there is
+ * none. Platform receipts are labelled from the order row (daily number, else
+ * short id), never a caller-sent number, so every trigger derives the same one.
+ *
  * Convex / tenant-Supabase orders have no platform row (orderId is null);
  * their single-call guarantee is the status transition that triggers the push.
  */
@@ -17,9 +25,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ModifierGroup, OrderItem } from '@/types/database'
 import { isUuid } from '@/lib/uuid'
+import { formatDailyOrderNumber } from '@/lib/order-number'
 import { resolveLoyverseConfig, type LoyversePushMode } from '@/lib/loyverse/config'
 import { loadLoyverseTenant, type LoyverseTenant } from '@/lib/loyverse/tenant'
 import {
+  findLoyverseReceiptForOrder,
   sendLoyverseReceipt,
   type LoyverseReceiptCatalog,
   type LoyversePushResult,
@@ -31,6 +41,10 @@ export type LoyversePushTrigger = 'create' | 'confirm' | 'manual'
 
 /** How long an in-flight claim blocks a second push before it counts as abandoned. */
 export const CLAIM_TTL_MS = 2 * 60 * 1000
+/** Look this far before the earlier attempt, for clock skew between us and Loyverse. */
+const RECEIPT_LOOKUP_SKEW_MS = 10 * 60 * 1000
+/** Statuses whose last attempt may have created a receipt. */
+const UNKNOWN_OUTCOME_STATUSES: readonly string[] = ['pending', 'unconfirmed']
 
 export interface LoyversePushRequest {
   tenantId: string
@@ -145,9 +159,39 @@ async function loadPlatformOrderItems(admin: AdminClient, orderId: string): Prom
   }))
 }
 
+interface ClaimedPush {
+  /** The receipt's `order` label — how a retry finds it again. */
+  orderLabel: string
+  /** When an earlier attempt that may have created the receipt was made. */
+  earlierAttemptAt: string | null
+}
+
 type ClaimResult =
-  | { claimed: true }
+  | ({ claimed: true } & ClaimedPush)
   | { claimed: false; receiptNumber?: string; reason: string }
+
+interface OrderPushState {
+  loyverse_receipt_number: string | null
+  loyverse_push_status: string | null
+  loyverse_pushed_at: string | null
+  daily_number: number | null
+}
+
+async function readPushState(admin: AdminClient, orderId: string, tenantId: string): Promise<OrderPushState | null> {
+  const { data, error } = await admin
+    .from('orders')
+    .select('loyverse_receipt_number, loyverse_push_status, loyverse_pushed_at, daily_number')
+    .eq('id', orderId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) throw new Error(`Failed to read the order's Loyverse state: ${error.message}`)
+  return (data as OrderPushState | null) ?? null
+}
+
+const isAlreadyPushed = (state: OrderPushState) =>
+  Boolean(state.loyverse_receipt_number) || state.loyverse_push_status === 'pushed'
+
+type ClaimQuery = ReturnType<ReturnType<ReturnType<AdminClient['from']>['update']>['eq']>
 
 async function claimPlatformOrder(
   admin: AdminClient,
@@ -155,8 +199,18 @@ async function claimPlatformOrder(
   tenantId: string,
   now: Date
 ): Promise<ClaimResult> {
+  const before = await readPushState(admin, orderId, tenantId)
+  if (!before) return { claimed: false, reason: 'Order not found' }
+  if (isAlreadyPushed(before)) {
+    return { claimed: false, receiptNumber: before.loyverse_receipt_number ?? undefined, reason: 'Already pushed' }
+  }
+
   const staleBefore = new Date(now.getTime() - CLAIM_TTL_MS).toISOString()
-  const { data: claimed, error } = await admin
+  const unchangedSinceRead = (query: ClaimQuery) =>
+    before.loyverse_push_status == null
+      ? query.is('loyverse_push_status', null)
+      : query.eq('loyverse_push_status', before.loyverse_push_status)
+  const update = admin
     .from('orders')
     .update({
       loyverse_push_status: 'pending',
@@ -168,28 +222,67 @@ async function claimPlatformOrder(
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
     .is('loyverse_receipt_number', null)
-    // Claimable: never tried, failed, or an abandoned claim. `pushed` is never
+  // The status must still be the one read above: whether this push checks
+  // Loyverse for an earlier receipt is decided from that read.
+  const { data: claimed, error } = await unchangedSinceRead(update)
+    // Claimable: never tried, failed, or an unknown-outcome attempt (abandoned
+    // claim / unconfirmed POST) past the claim window. `pushed` is never
     // re-claimed even without a receipt number (Loyverse's reply may omit it).
     .or(
       `loyverse_push_status.is.null,loyverse_push_status.in.(failed,skipped),` +
-        `and(loyverse_push_status.eq.pending,loyverse_pushed_at.lt."${staleBefore}")`
+        `and(loyverse_push_status.eq.pending,loyverse_pushed_at.lt."${staleBefore}"),` +
+        `and(loyverse_push_status.eq.unconfirmed,loyverse_pushed_at.lt."${staleBefore}")`
     )
     .select('id')
     .maybeSingle()
   if (error) throw new Error(`Failed to claim the order for Loyverse: ${error.message}`)
-  if (claimed) return { claimed: true }
+  if (claimed) {
+    const isOutcomeUnknown = UNKNOWN_OUTCOME_STATUSES.includes(before.loyverse_push_status ?? '')
+    return {
+      claimed: true,
+      orderLabel: formatDailyOrderNumber(before.daily_number, orderId),
+      earlierAttemptAt: isOutcomeUnknown ? before.loyverse_pushed_at : null,
+    }
+  }
 
-  const { data: current } = await admin
-    .from('orders')
-    .select('loyverse_receipt_number, loyverse_push_status')
-    .eq('id', orderId)
-    .eq('tenant_id', tenantId)
-    .maybeSingle()
+  const current = await readPushState(admin, orderId, tenantId)
   if (!current) return { claimed: false, reason: 'Order not found' }
-  if (current.loyverse_receipt_number || current.loyverse_push_status === 'pushed') {
+  if (isAlreadyPushed(current)) {
     return { claimed: false, receiptNumber: current.loyverse_receipt_number ?? undefined, reason: 'Already pushed' }
   }
+  if (current.loyverse_push_status === 'unconfirmed') {
+    return { claimed: false, reason: 'Loyverse did not confirm the last push; it will be checked before retrying' }
+  }
   return { claimed: false, reason: 'A Loyverse push for this order is already in progress' }
+}
+
+function pushStatusOf(result: LoyversePushResult): 'pushed' | 'unconfirmed' | 'failed' {
+  if (result.success) return 'pushed'
+  return result.isOutcomeUnknown ? 'unconfirmed' : 'failed'
+}
+
+/**
+ * Before resending an attempt whose outcome is unknown: the receipt it may
+ * have created, or null when Loyverse confirms there is none. An outcome means
+ * "do not send" (found, or the lookup could not complete).
+ */
+async function reconcileEarlierAttempt(
+  config: Extract<ReturnType<typeof resolveLoyverseConfig>, { status: 'ready' }>['config'],
+  claim: ClaimedPush & { earlierAttemptAt: string }
+): Promise<LoyversePushOutcome | null> {
+  const since = new Date(new Date(claim.earlierAttemptAt).getTime() - RECEIPT_LOOKUP_SKEW_MS).toISOString()
+  const lookup = await findLoyverseReceiptForOrder(config, claim.orderLabel, since)
+  if (!lookup.ok) {
+    return {
+      success: false,
+      skipped: false,
+      unmapped: [],
+      isOutcomeUnknown: true,
+      error: `Could not check Loyverse for the earlier receipt, so nothing was resent: ${lookup.error}`,
+    }
+  }
+  if (!lookup.receiptNumber) return null
+  return { success: true, skipped: false, unmapped: [], receiptNumber: lookup.receiptNumber }
 }
 
 async function recordOutcome(
@@ -202,8 +295,10 @@ async function recordOutcome(
     .from('orders')
     .update({
       loyverse_receipt_number: result.receiptNumber ?? null,
-      loyverse_push_status: result.success ? 'pushed' : 'failed',
-      loyverse_pushed_at: result.success ? new Date().toISOString() : null,
+      loyverse_push_status: pushStatusOf(result),
+      // For `unconfirmed` this is the attempt time: CLAIM_TTL_MS and the
+      // retry's receipt lookup both measure from it.
+      loyverse_pushed_at: result.success || result.isOutcomeUnknown ? new Date().toISOString() : null,
       loyverse_push_error: result.error ?? null,
     })
     .eq('id', orderId)
@@ -214,10 +309,16 @@ async function recordOutcome(
 async function pushClaimed(
   admin: AdminClient,
   request: LoyversePushRequest,
-  tenant: LoyverseTenant
+  tenant: LoyverseTenant,
+  claim: ClaimedPush | null
 ): Promise<LoyversePushOutcome> {
   const resolved = resolveLoyverseConfig(tenant)
   if (resolved.status !== 'ready') return skippedOutcome('Loyverse is not configured')
+
+  if (claim?.earlierAttemptAt) {
+    const reconciled = await reconcileEarlierAttempt(resolved.config, { ...claim, earlierAttemptAt: claim.earlierAttemptAt })
+    if (reconciled) return reconciled
+  }
 
   let orderItems = request.items
   if (orderItems.length === 0 && request.orderId) {
@@ -228,7 +329,7 @@ async function pushClaimed(
   const catalog = await loadReceiptCatalog(admin, request.tenantId, receiptMenuItemIds(orderItems))
   const result = await sendLoyverseReceipt(
     resolved.config,
-    { orderNumber: request.orderNumber, items: orderItems },
+    { orderNumber: claim?.orderLabel ?? request.orderNumber, items: orderItems },
     catalog
   )
   if (!result.success) console.error('[Loyverse] receipt push failed:', result.error)
@@ -239,6 +340,7 @@ export async function pushOrderToLoyverseBestEffort(
   request: LoyversePushRequest
 ): Promise<LoyversePushOutcome> {
   let claimedOrderId: string | null = null
+  let claim: ClaimedPush | null = null
   let admin: AdminClient | null = null
   try {
     admin = createAdminClient()
@@ -253,12 +355,13 @@ export async function pushOrderToLoyverseBestEffort(
     if (!triggerMatchesMode(request.trigger, resolved.config.pushMode)) return skippedOutcome()
 
     if (request.orderId) {
-      const claim = await claimPlatformOrder(admin, request.orderId, request.tenantId, new Date())
-      if (!claim.claimed) return skippedOutcome(claim.reason, claim.receiptNumber)
+      const claimed = await claimPlatformOrder(admin, request.orderId, request.tenantId, new Date())
+      if (!claimed.claimed) return skippedOutcome(claimed.reason, claimed.receiptNumber)
       claimedOrderId = request.orderId
+      claim = { orderLabel: claimed.orderLabel, earlierAttemptAt: claimed.earlierAttemptAt }
     }
 
-    const outcome = await pushClaimed(admin, request, tenant)
+    const outcome = await pushClaimed(admin, request, tenant, claim)
     if (claimedOrderId) {
       await recordOutcome(admin, claimedOrderId, request.tenantId, outcome.skipped
         ? { ...outcome, success: false }

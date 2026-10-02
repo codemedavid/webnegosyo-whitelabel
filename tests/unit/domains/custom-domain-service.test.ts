@@ -22,6 +22,7 @@ function row(overrides: Partial<TenantDomainRow> = {}): TenantDomainRow {
     pendingToken: null,
     pendingClaimedAt: null,
     domainVerifiedAt: null,
+    vercelNames: [],
     ...overrides,
   }
 }
@@ -228,6 +229,21 @@ describe('connect', () => {
     expect(rows().find((r) => r.id === 't1')).toMatchObject({ pendingDomain: 'bella.com' })
   })
 
+  it('takes over the Vercel names a released stale claim created', async () => {
+    const stale = new Date(NOW - PENDING_CLAIM_TTL_MS - 1000).toISOString()
+    const { store, rows } = fakeStore([
+      row(),
+      pendingRow('bella.com', { id: 't2', pendingClaimedAt: stale, vercelNames: ['bella.com', 'www.bella.com'] }),
+    ])
+    // Still on the project from t2's claim, so t1 adopts rather than creates.
+    const vercel = fakeVercel({ addDomain: jest.fn(async () => fail(400, 'domain_already_exists')) })
+
+    await service(store, vercel).connect('t1', 'bella.com')
+
+    expect(rows().find((r) => r.id === 't2')?.vercelNames).toEqual([])
+    expect(rows().find((r) => r.id === 't1')?.vercelNames).toEqual(['bella.com', 'www.bella.com'])
+  })
+
   it('explains a domain held by another Vercel account and claims nothing', async () => {
     const { store, updates } = fakeStore([row()])
     const vercel = fakeVercel({
@@ -241,11 +257,46 @@ describe('connect', () => {
     expect(updates).toHaveLength(0)
   })
 
-  it('adopts a domain that is already on the project', async () => {
-    const { store } = fakeStore([row()])
+  it('adopts a domain that is already on the project without taking ownership of it', async () => {
+    const { store, rows } = fakeStore([row()])
     const vercel = fakeVercel({ addDomain: jest.fn(async () => fail(400, 'domain_already_exists')) })
 
     expect((await service(store, vercel).connect('t1', 'order.bella.com')).ok).toBe(true)
+    expect(rows()[0].vercelNames).toEqual([])
+  })
+
+  it('records the names it created on the project (apex and www alias)', async () => {
+    const { store, rows } = fakeStore([row()])
+
+    await service(store, fakeVercel()).connect('t1', 'bella.com')
+
+    expect(rows()[0].vercelNames).toEqual(['bella.com', 'www.bella.com'])
+  })
+
+  it('does not own a www alias that was already on the project', async () => {
+    const { store, rows } = fakeStore([row()])
+    const vercel = fakeVercel({
+      addDomain: jest.fn(async (name: string) =>
+        name.startsWith('www.')
+          ? fail(400, 'domain_already_exists')
+          : ok({ name, apexName: name, verified: true, verification: [] }),
+      ),
+    })
+
+    await service(store, vercel).connect('t1', 'bella.com')
+
+    expect(rows()[0].vercelNames).toEqual(['bella.com'])
+  })
+
+  it('an adopted domain survives connect then disconnect', async () => {
+    const { store } = fakeStore([row()])
+    const vercel = fakeVercel({ addDomain: jest.fn(async () => fail(400, 'domain_already_exists')) })
+    const domains = service(store, vercel)
+
+    await domains.connect('t1', 'shop.example.com')
+    await domains.disconnect('t1')
+
+    expect(vercel.removeDomain).not.toHaveBeenCalled()
   })
 
   it('reports a lost race on the unique index as taken', async () => {
@@ -298,6 +349,7 @@ describe('check', () => {
     expect(vercel.addDomain).toHaveBeenCalledWith('bella.com')
     expect(result).toMatchObject({ ok: true, view: { status: 'active', isDnsReady: true } })
     expect(rows()[0].domain).toBe('bella.com')
+    expect(rows()[0].vercelNames).toEqual(['bella.com', 'www.bella.com'])
   })
 
   it('lists the Vercel TXT challenge for a pending domain it cannot verify yet', async () => {
@@ -344,7 +396,9 @@ describe('check', () => {
 
 describe('disconnect', () => {
   it('stops routing the domain and detaches it and its www alias', async () => {
-    const { store, rows } = fakeStore([row({ domain: 'bella.com', domainVerifiedAt: NOW_ISO })])
+    const { store, rows } = fakeStore([
+      row({ domain: 'bella.com', domainVerifiedAt: NOW_ISO, vercelNames: ['bella.com', 'www.bella.com'] }),
+    ])
     const vercel = fakeVercel()
 
     const result = await service(store, vercel).disconnect('t1')
@@ -360,7 +414,7 @@ describe('disconnect', () => {
   })
 
   it('cancels a pending claim without touching routing', async () => {
-    const { store, rows } = fakeStore([pendingRow('order.bella.com')])
+    const { store, rows } = fakeStore([pendingRow('order.bella.com', { vercelNames: ['order.bella.com'] })])
     const vercel = fakeVercel()
 
     const result = await service(store, vercel).disconnect('t1')
@@ -371,10 +425,44 @@ describe('disconnect', () => {
   })
 
   it('still frees the store when Vercel cannot detach', async () => {
-    const { store, rows } = fakeStore([row({ domain: 'bella.com' })])
+    const { store, rows } = fakeStore([row({ domain: 'bella.com', vercelNames: ['bella.com', 'www.bella.com'] })])
     const vercel = fakeVercel({ removeDomain: jest.fn(async () => fail(500, 'internal')) })
 
     expect((await service(store, vercel).disconnect('t1')).ok).toBe(true)
     expect(rows()[0].domain).toBeNull()
+    // Kept, so the next disconnect retries them.
+    expect(rows()[0].vercelNames).toEqual(['bella.com', 'www.bella.com'])
+  })
+
+  it('leaves a domain it adopted (never created) on the shared project', async () => {
+    const { store, rows } = fakeStore([row({ domain: 'www.webnegosyo.net', vercelNames: [] })])
+    const vercel = fakeVercel()
+
+    expect((await service(store, vercel).disconnect('t1')).ok).toBe(true)
+
+    expect(rows()[0].domain).toBeNull()
+    expect(vercel.removeDomain).not.toHaveBeenCalled()
+  })
+
+  it('never detaches a name another store holds', async () => {
+    const { store } = fakeStore([
+      row({ domain: 'bella.com', vercelNames: ['bella.com', 'www.bella.com'] }),
+      row({ id: 't2', domain: 'www.bella.com' }),
+    ])
+    const vercel = fakeVercel()
+
+    await service(store, vercel).disconnect('t1')
+
+    expect(vercel.removeDomain.mock.calls.map(([name]) => name)).toEqual(['bella.com'])
+  })
+
+  it('retries names left over from an earlier failed detach', async () => {
+    const { store, rows } = fakeStore([row({ vercelNames: ['bella.com'] })])
+    const vercel = fakeVercel()
+
+    await service(store, vercel).disconnect('t1')
+
+    expect(vercel.removeDomain).toHaveBeenCalledWith('bella.com')
+    expect(rows()[0].vercelNames).toEqual([])
   })
 })

@@ -23,6 +23,7 @@ import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secre
 import { syncTenantConvexConfig, convexConfigSyncWarning } from '@/lib/convex-config-sync'
 import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import type { PlatformPermission } from '@/lib/platform-staff/permissions'
+import { superadminOnlyRefusal, superadminOnlyTenantChanges } from '@/lib/platform-staff/tenant-edit-scope'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -73,8 +74,8 @@ function secretsPatchFromForm(parsed: TenantInput): TenantSecretsPatch {
  * Throws an error if not authenticated or not permitted.
  */
 async function verifyConsolePermission(permission: PlatformPermission) {
-  const { user } = await requirePlatformPermission(permission)
-  return { user }
+  const { user, appUser } = await requirePlatformPermission(permission)
+  return { user, isSuperadmin: appUser.role === 'superadmin' }
 }
 
 export async function createTenantAction(input: TenantInput, leadId?: string) {
@@ -82,7 +83,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
     // Verify console access before proceeding. Writes go through the service
     // role: platform staff have no RLS insert on tenants, and the privileged-
     // column trigger refuses anyone but a superadmin session.
-    await verifyConsolePermission('tenants.create')
+    const { isSuperadmin } = await verifyConsolePermission('tenants.create')
     const supabase = createAdminClient()
 
     // Validate input. A raw ZodError must never leave a server action: the
@@ -92,6 +93,12 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       return { error: describeTenantValidationError(validation.error) }
     }
     const parsed = validation.data
+
+    // Where a store's orders go is superadmin-only (tenant-edit-scope.ts).
+    const backendChanges = superadminOnlyTenantChanges(null, parsed)
+    if (!isSuperadmin && backendChanges.length > 0) {
+      return { error: superadminOnlyRefusal(backendChanges) }
+    }
 
     // Check if slug is taken
     const { data: existing, error: checkError } = await supabase
@@ -111,7 +118,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
     const insertPayload: TenantsInsert & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn & LoyverseColumns = {
       name: parsed.name,
       slug: parsed.slug,
-      domain: parsed.domain || undefined,
+      // No `domain`: the custom-domain flow (TXT ownership proof) is its only writer.
       logo_url: parsed.logo_url || '',
       primary_color: parsed.primary_color,
       secondary_color: parsed.secondary_color,
@@ -272,7 +279,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
 export async function updateTenantAction(id: string, input: TenantInput) {
   // Verify console access before proceeding; the write itself goes through the
   // service role (see createTenantAction).
-  await verifyConsolePermission('tenants.edit')
+  const { isSuperadmin } = await verifyConsolePermission('tenants.edit')
   const supabase = createAdminClient()
 
   // Validate input. `parse` threw the ZodError straight out of the action,
@@ -303,16 +310,23 @@ export async function updateTenantAction(id: string, input: TenantInput) {
   // saving an unrelated field would demote a `supabase` tenant to `platform`.
   const { data: currentBackendRow } = await supabase
     .from('tenants')
-    .select('order_backend, slug')
+    .select('order_backend, slug, convex_deployment_url')
     .eq('id', id)
     .maybeSingle()
+
+  // Where a store's orders go is superadmin-only (tenant-edit-scope.ts): a
+  // staff save may carry these fields only unchanged.
+  const backendChanges = superadminOnlyTenantChanges(currentBackendRow, parsed)
+  if (!isSuperadmin && backendChanges.length > 0) {
+    return { error: superadminOnlyRefusal(backendChanges) }
+  }
 
   const previousSlug = (currentBackendRow as { slug?: string } | null)?.slug ?? null
 
   const updatePayload: TenantsUpdate & DeliveryFeeColumns & OrderBackendColumn & OutletTimingColumn & LoyverseColumns = {
     name: parsed.name,
     slug: parsed.slug,
-    domain: parsed.domain || undefined,
+    // No `domain`: the custom-domain flow (TXT ownership proof) is its only writer.
     logo_url: parsed.logo_url || '',
     primary_color: parsed.primary_color,
     secondary_color: parsed.secondary_color,

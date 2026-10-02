@@ -1855,7 +1855,10 @@ function ConvexMobileAppSection({
 }) {
   const [isDeploying, setIsDeploying] = useState(false)
   const [deployStatus, setDeployStatus] = useState<string | null>(null)
-  const canDeploy = usePlatformAccess().can('tenants.edit')
+  const access = usePlatformAccess()
+  const canDeploy = access.can('tenants.edit')
+  // Where orders go is superadmin-only; the server refuses a staff change too.
+  const isRoutingLocked = !access.isSuperadmin
 
   const handleDeployConvex = async () => {
     if (!tenant?.id) return
@@ -1882,6 +1885,11 @@ function ConvexMobileAppSection({
         <p className="text-sm text-muted-foreground mt-1">
           Configure Convex backend for real-time order tracking and mobile app support
         </p>
+        {isRoutingLocked && (
+          <p className="text-sm text-amber-400 mt-1">
+            Only a superadmin can change where this store&apos;s orders go (Convex URL, deploy key, order backend).
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
@@ -1891,7 +1899,7 @@ function ConvexMobileAppSection({
             value={formData.convex_deployment_url}
             onChange={(e) => setFormData({ ...formData, convex_deployment_url: e.target.value })}
             placeholder="https://your-project.convex.cloud"
-            disabled={isPending}
+            disabled={isPending || isRoutingLocked}
           />
         </div>
 
@@ -1904,7 +1912,7 @@ function ConvexMobileAppSection({
             value={formData.convex_deploy_key}
             onChange={(e) => setFormData({ ...formData, convex_deploy_key: e.target.value })}
             placeholder={hasStoredDeployKey ? 'Saved — leave blank to keep the current key' : 'prod:your-deployment|key...'}
-            disabled={isPending}
+            disabled={isPending || isRoutingLocked}
           />
         </div>
 
@@ -1946,7 +1954,7 @@ function ConvexMobileAppSection({
           value={formData.order_backend}
           onChange={(order_backend) => setFormData({ ...formData, order_backend })}
           hasConvexUrl={Boolean(formData.convex_deployment_url)}
-          isPending={isPending}
+          isPending={isPending || isRoutingLocked}
         />
 
         {!formData.convex_deployment_url && (
