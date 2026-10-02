@@ -9,7 +9,7 @@
 
 import type { CustomerOrderFact } from '@/lib/customer-order-facts'
 import { qualifyOrderForProgram } from './qualify'
-import { snapshotRewardTerms } from './versioning'
+import { snapshotMilestoneTerms, snapshotRewardTerms } from './versioning'
 import type { LoyaltyEarnPlan, LoyaltyProgram, LoyaltyRules } from './types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -60,17 +60,14 @@ export function planEarning(
     const delta = computeEarnDelta(rules, fact.netTotal)
     if (delta <= 0) continue
 
+    const source = { id: program.id, name: program.name, versionNumber: program.version.version, rules }
     plans.push({
       programId: program.id,
       versionId: program.version.id,
       delta,
       threshold: rules.threshold,
-      rewardTerms: snapshotRewardTerms({
-        id: program.id,
-        name: program.name,
-        versionNumber: program.version.version,
-        rules,
-      }),
+      rewardTerms: snapshotRewardTerms(source),
+      milestones: snapshotMilestoneTerms(source),
       rewardExpiresAt: rewardExpiry(rules, fact.completedAt ?? fact.updatedAt),
     })
   }

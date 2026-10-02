@@ -53,6 +53,16 @@ describe('LoyaltyStampCard', () => {
     expect(screen.getByRole('button', { name: /claim my stamp/i })).toBeInTheDocument()
   })
 
+  it('shows how to keep the card in a phone wallet before the stamp is claimed', () => {
+    render(<LoyaltyStampCard {...BASE} offer={OFFER} wallets={{ apple: true, google: true }} />)
+    expect(screen.getByTestId('wallet-hint')).toBeInTheDocument()
+  })
+
+  it('shows no wallet hint without a live offer', () => {
+    render(<LoyaltyStampCard {...BASE} offer={null} wallets={{ apple: true, google: true }} />)
+    expect(screen.queryByTestId('wallet-hint')).not.toBeInTheDocument()
+  })
+
   it('makes no stamp promise when there is no live offer', () => {
     render(<LoyaltyStampCard {...BASE} offer={null} />)
     expect(screen.queryByTestId('stamp-track')).not.toBeInTheDocument()

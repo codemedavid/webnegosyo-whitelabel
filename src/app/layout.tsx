@@ -21,6 +21,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "WebNegosyo",
   description: "Sell More with Smart Menu",
+  // Declared here (not as src/app/favicon.ico) so a tenant layout's `icons`
+  // replaces it: the file convention is injected into every route and
+  // browsers pick it over the merchant's logo.
+  icons: "/favicon.ico",
 };
 
 export default function RootLayout({

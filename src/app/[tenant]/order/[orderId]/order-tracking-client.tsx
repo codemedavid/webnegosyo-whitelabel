@@ -21,9 +21,10 @@ import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import { decideStampCardView } from '@/lib/loyalty/stamp-card-view'
 import { isClaimWindowOpen } from '@/lib/loyalty/claim-window'
 import { useOrderStamps, type OrderStampsState } from '@/hooks/use-order-stamps'
-import { shouldRingForTransition } from '@/lib/order-ready-alert'
+import { buildReadyNotice, shouldRingForTransition, type ReadyNotice } from '@/lib/order-ready-alert'
 import { describePrepPromise } from '@/lib/prep-time'
-import { playNotificationSound, requestNotificationPermission } from '@/lib/notification-utils'
+import { useReadyAlarm } from '@/hooks/use-ready-alarm'
+import { ReadyAlertOverlay } from '@/components/customer/order-tracking/ready-alert-overlay'
 import { formatOrderTrackingTime, ORDER_TRACKING_TIME_ZONE } from '@/lib/order-tracking-time'
 import { useVisibilityPoll } from '@/hooks/use-visibility-poll'
 
@@ -62,20 +63,17 @@ export function OrderTrackingClient({
   const router = useRouter()
   const [trackingData, setTrackingData] = useState<TrackingData>(initialData)
   const isTerminalRef = useRef(initialData.isTerminal)
-  // Ready-alert: opt-in (audio needs a user gesture) and rings exactly once,
-  // on the transition into `ready` observed by the poll.
-  const [alertsEnabled, setAlertsEnabled] = useState(false)
+  // Ready-alert: opt-in (audio needs a user gesture), armed by the tap, and
+  // rung once — on the transition into `ready` observed by the poll — until
+  // the customer acknowledges it.
+  const { isArmed: isAlarmArmed, arm: armAlarm, ring: ringAlarm, stop: stopAlarm } = useReadyAlarm()
+  const [readyNotice, setReadyNotice] = useState<ReadyNotice | null>(null)
   const lastStatusRef = useRef<string>(initialData.status)
-  const alertsEnabledRef = useRef(false)
 
-  const handleEnableAlerts = useCallback(async () => {
-    setAlertsEnabled(true)
-    alertsEnabledRef.current = true
-    // Unlock the Web Audio context inside the tap, and ask for notifications.
-    try {
-      await requestNotificationPermission()
-    } catch { /* alerts still ring via audio/vibration */ }
-  }, [])
+  const acknowledgeReady = useCallback(() => {
+    stopAlarm()
+    setReadyNotice(null)
+  }, [stopAlarm])
 
   // Remove from localStorage when terminal
   const cleanupLocalStorage = useCallback(() => {
@@ -114,23 +112,19 @@ export function OrderTrackingClient({
 
       const data: TrackingData = await res.json()
 
-      if (
-        alertsEnabledRef.current &&
-        shouldRingForTransition(lastStatusRef.current, data.status)
-      ) {
-        try {
-          playNotificationSound()
-        } catch { /* ring is best-effort */ }
-        try {
-          navigator.vibrate?.([200, 100, 200])
-        } catch { /* not every device vibrates */ }
-        try {
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification('Your order is ready! 🎉', {
-              body: `Order #${orderId.slice(0, 8).toUpperCase()} is ready for pickup.`,
-            })
-          }
-        } catch { /* notification is best-effort */ }
+      if (isAlarmArmed && shouldRingForTransition(lastStatusRef.current, data.status)) {
+        const notice = buildReadyNotice({
+          shortId: formatDailyOrderNumber(data.dailyNumber, orderId).replace(/^#/, ''),
+          storeName: brand.storeName,
+          kind: data.orderTypeKind,
+        })
+        setReadyNotice(notice)
+        ringAlarm({
+          ...notice,
+          url: window.location.href,
+          tag: `order-ready-${orderId}`,
+          icon: brand.logoUrl,
+        })
       }
       lastStatusRef.current = data.status
 
@@ -148,15 +142,22 @@ export function OrderTrackingClient({
       // Network failure — the poller backs off; the page keeps its last data.
       return false
     }
-  }, [orderId, trackingToken, tenantId, tenantSlug, cleanupLocalStorage])
+  }, [orderId, trackingToken, tenantId, tenantSlug, cleanupLocalStorage, isAlarmArmed, ringAlarm, brand.storeName, brand.logoUrl])
 
-  // Poll faster once the customer asked to be rung — the alert is the point.
-  // Paused while the tab is hidden (refreshes the moment it is shown again)
-  // and stopped once the order reaches a final state.
+  // Poll faster once the customer asked to be rung — the alert is the point —
+  // and keep polling while they switch apps (the browser throttles it, but
+  // they still get rung). Otherwise paused while hidden, refreshing the moment
+  // the page is shown again. Stopped once the order reaches a final state.
   useVisibilityPoll(fetchStatus, {
-    baseMs: alertsEnabled ? POLL_ALERT_MS : POLL_MS,
+    baseMs: isAlarmArmed ? POLL_ALERT_MS : POLL_MS,
     isEnabled: !trackingData.isTerminal,
+    isPollingWhileHidden: isAlarmArmed,
   })
+
+  // A finished or cancelled order needs no alarm (and no awake screen).
+  useEffect(() => {
+    if (trackingData.isTerminal) stopAlarm()
+  }, [trackingData.isTerminal, stopAlarm])
 
   // The device clock is adopted only AFTER mount. Reading `Date.now()` during
   // render would diverge between the server HTML and hydration, which is a
@@ -246,29 +247,36 @@ export function OrderTrackingClient({
 
           {/* Ready-alert opt-in — audio needs a tap, so it can't be automatic */}
           {!trackingData.isTerminal && trackingData.status !== 'ready' && !isCancelled && (
-            <button
-              type="button"
-              onClick={handleEnableAlerts}
-              disabled={alertsEnabled}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 text-sm font-semibold transition-colors disabled:cursor-default"
-              style={
-                alertsEnabled
-                  ? { borderColor: 'var(--trk-success)', backgroundColor: 'var(--trk-success-soft)', color: 'var(--trk-success)' }
-                  : { borderColor: 'var(--trk-accent)', backgroundColor: 'var(--trk-card)', color: 'var(--trk-accent)' }
-              }
-            >
-              {alertsEnabled ? (
-                <>
-                  <BellRing className="h-4 w-4" aria-hidden="true" />
-                  You&apos;ll be alerted when it&apos;s ready
-                </>
-              ) : (
-                <>
-                  <Bell className="h-4 w-4" aria-hidden="true" />
-                  Ring me when my order is ready
-                </>
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={armAlarm}
+                disabled={isAlarmArmed}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 text-sm font-semibold transition-colors disabled:cursor-default"
+                style={
+                  isAlarmArmed
+                    ? { borderColor: 'var(--trk-success)', backgroundColor: 'var(--trk-success-soft)', color: 'var(--trk-success)' }
+                    : { borderColor: 'var(--trk-accent)', backgroundColor: 'var(--trk-card)', color: 'var(--trk-accent)' }
+                }
+              >
+                {isAlarmArmed ? (
+                  <>
+                    <BellRing className="h-4 w-4" aria-hidden="true" />
+                    We&apos;ll ring &amp; vibrate when it&apos;s ready
+                  </>
+                ) : (
+                  <>
+                    <Bell className="h-4 w-4" aria-hidden="true" />
+                    Ring me when my order is ready
+                  </>
+                )}
+              </button>
+              {isAlarmArmed && (
+                <p className="text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
+                  Keep this page open and your volume up.
+                </p>
               )}
-            </button>
+            </div>
           )}
 
           {/* The store's loyalty card: claim, live balance, or the closed window */}
@@ -329,6 +337,10 @@ export function OrderTrackingClient({
           </div>
         </div>
       </main>
+
+      {readyNotice && (
+        <ReadyAlertOverlay title={readyNotice.title} body={readyNotice.body} onAcknowledge={acknowledgeReady} />
+      )}
     </div>
   )
 }

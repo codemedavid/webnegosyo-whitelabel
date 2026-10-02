@@ -7,10 +7,17 @@
 export type LoyaltyEarnMode = "stamp" | "points";
 export type LoyaltyProgramStatus = "draft" | "active" | "paused" | "ended";
 
+/** `emoji` / `imageUrl` only decorate the card; redemption never reads them. */
 export type LoyaltyReward =
-  | { type: "fixed"; amount: number }
-  | { type: "percent"; percent: number; maxAmount?: number | null }
-  | { type: "free_item"; menuItemId: string; itemName: string };
+  | { type: "fixed"; amount: number; emoji?: string | null }
+  | { type: "percent"; percent: number; maxAmount?: number | null; emoji?: string | null }
+  | { type: "free_item"; menuItemId: string; itemName: string; imageUrl?: string | null; emoji?: string | null };
+
+/** A reward part-way along the card; only the top reward resets it. */
+export interface LoyaltyMilestone {
+  at: number;
+  reward: LoyaltyReward;
+}
 
 export interface LoyaltyRules {
   earnMode: LoyaltyEarnMode;
@@ -18,6 +25,7 @@ export interface LoyaltyRules {
   pointsPerPeso: number | null;
   minSpend: number | null;
   reward: LoyaltyReward;
+  milestones?: LoyaltyMilestone[];
   rewardExpiryDays: number | null;
   isExclusive: boolean;
 }
@@ -67,7 +75,43 @@ export function describeProgramRules(rules: LoyaltyRules | null): string {
       ? `Every ${rules.threshold} order${rules.threshold === 1 ? "" : "s"}`
       : `Every ${rules.threshold} points (${rules.pointsPerPeso ?? 0} pt per ₱)`;
   const minimum = rules.minSpend ? `, orders of ${pesos(rules.minSpend)}+` : "";
-  return `${earning}${minimum} → ${describeReward(rules.reward)}`;
+  const extra = rules.milestones?.length ?? 0;
+  const ladder = extra ? ` (+${extra} reward${extra === 1 ? "" : "s"} on the way)` : "";
+  return `${earning}${minimum} → ${describeReward(rules.reward)}${ladder}`;
+}
+
+/** One rung on the card as the merchant and the customer see it. */
+export interface RewardStep {
+  at: number;
+  label: string;
+  emoji: string;
+  imageUrl: string | null;
+  isFinal: boolean;
+}
+
+const TYPE_EMOJI: Record<LoyaltyReward["type"], string> = { free_item: "🎁", fixed: "💸", percent: "🏷️" };
+
+export function rewardEmoji(reward: LoyaltyReward): string {
+  return reward.emoji?.trim() || TYPE_EMOJI[reward.type];
+}
+
+function toStep(at: number, reward: LoyaltyReward, isFinal: boolean): RewardStep {
+  return {
+    at,
+    label: describeReward(reward),
+    emoji: rewardEmoji(reward),
+    imageUrl: reward.type === "free_item" ? reward.imageUrl ?? null : null,
+    isFinal,
+  };
+}
+
+/** Same ladder the web draws (`src/lib/loyalty/ladder.ts`): lowest rung first, the reset last. */
+export function rewardSteps(rules: LoyaltyRules): RewardStep[] {
+  const middle = (rules.milestones ?? [])
+    .filter(milestone => milestone.at > 0 && milestone.at < rules.threshold)
+    .sort((a, b) => a.at - b.at)
+    .map(milestone => toStep(milestone.at, milestone.reward, false));
+  return [...middle, toStep(rules.threshold, rules.reward, true)];
 }
 
 export const STATUS_LABELS: Record<LoyaltyProgramStatus, string> = {
@@ -93,7 +137,27 @@ export function nextStatusAction(
   }
 }
 
-/** What the setup form collects. Strings, because they come off text inputs. */
+/** One reward being edited. Strings, because they come off text inputs. */
+export interface RewardDraft {
+  type: "fixed" | "percent" | "free_item";
+  value: string;
+  cap: string;
+  itemId: string;
+  itemName: string;
+  imageUrl: string;
+  emoji: string;
+}
+
+export const EMPTY_REWARD: RewardDraft = {
+  type: "free_item", value: "", cap: "", itemId: "", itemName: "", imageUrl: "", emoji: "",
+};
+
+export interface MilestoneDraft {
+  at: number;
+  reward: RewardDraft;
+}
+
+/** What the setup form collects. */
 export interface ProgramForm {
   name: string;
   earnMode: LoyaltyEarnMode;
@@ -102,14 +166,13 @@ export interface ProgramForm {
   minSpend: string;
   scope: "business" | "branch";
   outletId: string;
-  rewardType: "fixed" | "percent" | "free_item";
-  rewardItemId: string;
-  rewardItemName: string;
+  /** The top reward, on the last slot. */
+  reward: RewardDraft;
+  /** Rewards on the way, keyed by the stamp they sit on. */
+  milestones: MilestoneDraft[];
   rewardExpiryDays: string;
   activatesAt: string;
   endsAt: string;
-  rewardValue: string;
-  rewardCap: string;
 }
 
 export const EMPTY_FORM: ProgramForm = {
@@ -120,14 +183,11 @@ export const EMPTY_FORM: ProgramForm = {
   minSpend: "",
   scope: "business",
   outletId: "",
-  rewardItemId: "",
-  rewardItemName: "",
+  reward: EMPTY_REWARD,
+  milestones: [],
   rewardExpiryDays: "",
   activatesAt: "",
   endsAt: "",
-  rewardType: "fixed",
-  rewardValue: "",
-  rewardCap: "",
 };
 
 export type ProgramInput = { name: string; scope: "business" | "branch"; outletId?: string; activatesAt?: string; endsAt?: string; rules: LoyaltyRules };
@@ -144,6 +204,38 @@ function optional(value: string): number | null | undefined {
   if (!value.trim()) return null;
   const number = Number(value.trim());
   return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+type RewardParse = { ok: true; reward: LoyaltyReward } | { ok: false; error: string };
+
+/** A draft into platform terms, with the same refusals `parseLoyaltyRules` makes. */
+export function parseRewardDraft(draft: RewardDraft): RewardParse {
+  const emoji = draft.emoji.trim();
+  const look = emoji ? { emoji } : {};
+  if (draft.type === "free_item") {
+    if (!draft.itemId || !draft.itemName.trim()) return { ok: false, error: "Choose the free menu item." };
+    const imageUrl = draft.imageUrl.startsWith("https://") ? { imageUrl: draft.imageUrl } : {};
+    return { ok: true, reward: { type: "free_item", menuItemId: draft.itemId, itemName: draft.itemName.trim(), ...imageUrl, ...look } };
+  }
+  const value = positive(draft.value);
+  if (!value) return { ok: false, error: "What is the reward worth?" };
+  if (draft.type === "fixed") return { ok: true, reward: { type: "fixed", amount: value, ...look } };
+  if (value > 100) return { ok: false, error: "A percent reward cannot exceed 100%." };
+  const cap = optional(draft.cap);
+  if (cap === undefined) return { ok: false, error: "The cap must be a positive amount." };
+  return { ok: true, reward: { type: "percent", percent: value, maxAmount: cap || null, ...look } };
+}
+
+export function rewardToDraft(reward: LoyaltyReward): RewardDraft {
+  return {
+    type: reward.type,
+    value: reward.type === "fixed" ? String(reward.amount) : reward.type === "percent" ? String(reward.percent) : "",
+    cap: reward.type === "percent" && reward.maxAmount != null ? String(reward.maxAmount) : "",
+    itemId: reward.type === "free_item" ? reward.menuItemId : "",
+    itemName: reward.type === "free_item" ? reward.itemName : "",
+    imageUrl: reward.type === "free_item" ? reward.imageUrl ?? "" : "",
+    emoji: reward.emoji ?? "",
+  };
 }
 
 /**
@@ -176,23 +268,21 @@ export function parseProgramForm(form: ProgramForm): FormParse {
   const minSpend = optional(form.minSpend);
   if (minSpend === undefined) return { ok: false, error: "Minimum spend must be a positive amount." };
 
-  const rewardValue = positive(form.rewardValue);
-  if (form.rewardType !== "free_item" && !rewardValue) return { ok: false, error: "What is the reward worth?" };
-  if (form.rewardType === "percent" && rewardValue! > 100) {
-    return { ok: false, error: "A percent reward cannot exceed 100%." };
+  const top = parseRewardDraft(form.reward);
+  if (!top.ok) return { ok: false, error: `Big reward: ${top.error}` };
+
+  const unit = form.earnMode === "stamp" ? "stamp" : "point";
+  const milestones: LoyaltyMilestone[] = [];
+  for (const milestone of [...form.milestones].sort((a, b) => a.at - b.at)) {
+    if (!(milestone.at > 0) || milestone.at >= threshold) return { ok: false, error: `The reward at ${unit} ${milestone.at} is past the end of the card.` };
+    const parsed = parseRewardDraft(milestone.reward);
+    if (!parsed.ok) return { ok: false, error: `Reward at ${unit} ${milestone.at}: ${parsed.error}` };
+    milestones.push({ at: milestone.at, reward: parsed.reward });
   }
-  const rewardCap = optional(form.rewardCap);
-  if (form.rewardType === "percent" && rewardCap === undefined) return { ok: false, error: "The cap must be a positive amount." };
-  if (form.rewardType === "free_item" && (!form.rewardItemId || !form.rewardItemName.trim())) return { ok: false, error: "Choose the free menu item." };
+  if (milestones.length > MAX_MILESTONES) return { ok: false, error: `A card holds at most ${MAX_MILESTONES + 1} rewards.` };
+
   const expiry = optional(form.rewardExpiryDays);
   if (expiry === undefined || (expiry !== null && (!Number.isInteger(expiry) || expiry < 1))) return { ok: false, error: "Reward expiry must be a whole number of days above zero, or blank." };
-
-  const reward: LoyaltyReward =
-    form.rewardType === "free_item"
-      ? { type: "free_item", menuItemId: form.rewardItemId, itemName: form.rewardItemName.trim() }
-      : form.rewardType === "percent"
-        ? { type: "percent", percent: rewardValue!, maxAmount: rewardCap || null }
-        : { type: "fixed", amount: rewardValue! };
 
   return {
     ok: true,
@@ -206,7 +296,8 @@ export function parseProgramForm(form: ProgramForm): FormParse {
         threshold,
         pointsPerPeso,
         minSpend: minSpend || null,
-        reward,
+        reward: top.reward,
+        ...(milestones.length ? { milestones } : {}),
         rewardExpiryDays: expiry,
         isExclusive: true,
       },
@@ -214,20 +305,20 @@ export function parseProgramForm(form: ProgramForm): FormParse {
   };
 }
 
+/** Mirrors `MAX_LOYALTY_MILESTONES` on the platform. */
+export const MAX_MILESTONES = 4;
+
 /** Existing rules are loaded in full; editing never resets hidden reward terms. */
 export function programToForm(program: LoyaltyProgramSummary): ProgramForm {
   const rules = program.rules;
   if (!rules) return { ...EMPTY_FORM, name: program.name, earnMode: program.earnMode, scope: program.scope, outletId: program.outletId ?? "" };
-  const reward = rules.reward;
   return {
-    activatesAt: "", endsAt: "",
+    ...EMPTY_FORM,
     name: program.name, earnMode: rules.earnMode, scope: program.scope, outletId: program.outletId ?? "",
     threshold: String(rules.threshold), pointsPerPeso: String(rules.pointsPerPeso ?? 1),
-    minSpend: rules.minSpend == null ? "" : String(rules.minSpend), rewardType: reward.type,
-    rewardValue: reward.type === "fixed" ? String(reward.amount) : reward.type === "percent" ? String(reward.percent) : "",
-    rewardCap: reward.type === "percent" && reward.maxAmount != null ? String(reward.maxAmount) : "",
-    rewardItemId: reward.type === "free_item" ? reward.menuItemId : "",
-    rewardItemName: reward.type === "free_item" ? reward.itemName : "",
+    minSpend: rules.minSpend == null ? "" : String(rules.minSpend),
+    reward: rewardToDraft(rules.reward),
+    milestones: (rules.milestones ?? []).map(milestone => ({ at: milestone.at, reward: rewardToDraft(milestone.reward) })),
     rewardExpiryDays: rules.rewardExpiryDays == null ? "" : String(rules.rewardExpiryDays),
   };
 }

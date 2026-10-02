@@ -12,8 +12,8 @@ type FaviconTenant = {
  * Build the `icons` metadata for a tenant so the browser-tab favicon becomes
  * the merchant's own logo.
  *
- * Returns `undefined` when the tenant has no logo, letting Next.js fall back to
- * the platform's default `favicon.ico`. ImageKit/Cloudinary logos are downsized
+ * Returns `undefined` when the tenant has no logo, so the root layout's
+ * platform `favicon.ico` applies. ImageKit/Cloudinary logos are downsized
  * to a small square via a transform; other URLs pass through unchanged.
  */
 export function resolveTenantFavicon(

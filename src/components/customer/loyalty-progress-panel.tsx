@@ -5,6 +5,9 @@ import Link from 'next/link'
 import type { LoyaltyOffer } from '@/lib/loyalty/offer'
 import type { OrderStampCard } from '@/lib/loyalty/stamp-status'
 import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
+import { RewardLadder } from '@/components/customer/order-tracking/reward-ladder'
+import { RewardBurst } from '@/components/customer/order-tracking/reward-burst'
+import { cardSteps } from '@/lib/loyalty/card-progress'
 
 interface LoyaltyProgressPanelProps {
   /** The store's live offer, or null when it promises nothing today. */
@@ -64,18 +67,20 @@ export function LoyaltyProgressPanel({
   const unit = card.earnMode === 'stamp' ? 'stamps' : 'points'
   const earningActive = !card.programStatus || card.programStatus === 'active'
   const hasReward = card.rewardsAvailable > 0
+  const steps = cardSteps(card.rewardSteps, card.threshold, card.rewardLabel)
 
   return (
     <section
       data-testid="loyalty-progress-panel"
       aria-label="Your stamp card"
-      className="overflow-hidden rounded-2xl border"
+      className="relative overflow-hidden rounded-2xl border"
       style={{ backgroundColor: 'var(--trk-card)', borderColor: 'var(--trk-card-border)' }}
     >
       <div
         className="flex items-center gap-2 px-4 py-2.5"
         style={{ backgroundColor: 'var(--trk-accent-soft)', color: 'var(--trk-accent)' }}
       >
+        {hasReward && <RewardBurst emoji={steps[0]?.emoji} />}
         {hasReward ? <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" /> : <Stamp className="h-4 w-4 shrink-0" aria-hidden="true" />}
         <p className="text-[11px] font-bold uppercase tracking-[0.14em]">{card.programName}</p>
       </div>
@@ -93,7 +98,9 @@ export function LoyaltyProgressPanel({
           earnMode={card.earnMode}
           nextIsLive={earningActive}
           logoUrl={logoUrl}
+          steps={steps}
         />
+        <RewardLadder steps={steps} balance={card.balance} earnMode={card.earnMode} showHeadline={earningActive} />
         <p className="text-xs" style={{ color: 'var(--trk-text-muted)' }}>
           {earningActive ? 'Use this number every time and your stamps add up automatically.' : card.programStatus === 'ended' ? 'This program has ended.' : 'Earning is paused for this program.'}
         </p>

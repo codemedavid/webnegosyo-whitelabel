@@ -20,6 +20,7 @@ import type { LoyaltyEarningDeps } from './apply'
 import { parseLoyaltyRules } from './rules'
 import { readLoyaltyTenantFlags, type LoyaltyTenantFlags, type LoyaltyTenantRow } from './tenant-flags'
 import type { LoyaltyProgram } from './types'
+import { toMilestoneArg } from './versioning'
 
 const PROGRAM_SELECT =
   'id, tenant_id, name, scope, outlet_id, status, activates_at, ends_at, current_version_id'
@@ -140,6 +141,9 @@ export function createSupabaseLoyaltyDeps(client: SupabaseClient): LoyaltyEarnin
         p_shadow: entry.isShadow,
         p_actor: entry.actor ?? null,
         p_note: entry.note ?? null,
+        // Sent only when the card has rungs, so a single-reward card keeps
+        // working against a database that predates the ladder migration.
+        ...(entry.milestones?.length ? { p_milestones: toMilestoneArg(entry.milestones) } : {}),
       })
       if (error) throw new Error(`apply_loyalty_earning failed: ${error.message}`)
       const result = (data ?? {}) as { applied?: boolean; reason?: string; entitlementsIssued?: number; balance?: number }
@@ -241,3 +245,4 @@ export async function loadLoyaltyOrderFact(
   const phoneE164 = fact.customerId ? await loadCustomerPhone(client, ref.tenantId, fact.customerId) : null
   return { ...fact, phoneE164 }
 }
+

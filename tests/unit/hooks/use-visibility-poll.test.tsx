@@ -147,3 +147,53 @@ describe('useVisibilityPoll', () => {
     expect(second).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('useVisibilityPoll while a ready alarm is armed', () => {
+  let isHidden = false
+
+  beforeAll(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => isHidden })
+  })
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    isHidden = false
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  async function advance(ms: number) {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(ms)
+    })
+  }
+
+  test('keeps polling while hidden, so a switched-away customer still hears the ring', async () => {
+    const poll = jest.fn(async () => true)
+    renderHook(() => useVisibilityPoll(poll, { baseMs: 1000, isEnabled: true, isPollingWhileHidden: true }))
+
+    await act(async () => {
+      isHidden = true
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await advance(3000)
+
+    expect(poll).toHaveBeenCalledTimes(3)
+  })
+
+  test('still refreshes immediately when shown again', async () => {
+    const poll = jest.fn(async () => true)
+    renderHook(() => useVisibilityPoll(poll, { baseMs: 1000, isEnabled: true, isPollingWhileHidden: true }))
+    await advance(500)
+
+    await act(async () => {
+      isHidden = false
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await advance(0)
+
+    expect(poll).toHaveBeenCalledTimes(1)
+  })
+})

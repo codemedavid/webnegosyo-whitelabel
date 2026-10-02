@@ -1,6 +1,7 @@
 /**
  * The store logo as Apple Wallet wants it: `logo.png` (≤160×50pt) and the
- * square `icon.png` used in lock-screen notifications, at 1×/2×/3×.
+ * square `icon.png` used in lock-screen notifications, at 1×/2×/3× — plus,
+ * for a stamp card, the `strip.png` punch grid stamped with that same logo.
  *
  * The logo URL is merchant-controlled, so it is fetched like any untrusted
  * URL: public addresses only (checked at connect time), no redirects, bounded
@@ -14,6 +15,8 @@ import sharp from 'sharp'
 import { get as httpsGet } from 'node:https'
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'node:dns'
 import { assertPublicHttpUrl } from '@/lib/imagekit-remote'
+import type { WalletPassContent } from './content'
+import { renderStampStripFiles } from './stamp-strip'
 
 const FETCH_TIMEOUT_MS = 5000
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024
@@ -22,7 +25,12 @@ const CACHE_MAX_ENTRIES = 50
 
 export type PassImageFiles = Record<string, Buffer>
 
-const cache = new Map<string, { files: PassImageFiles; expiresAt: number }>()
+interface LoadedLogo {
+  source: Buffer
+  files: PassImageFiles
+}
+
+const cache = new Map<string, { logo: LoadedLogo; expiresAt: number }>()
 
 /** Rejects any address that is private, loopback, link-local or metadata. */
 function assertPublicAddress(address: string, family: number): void {
@@ -101,13 +109,13 @@ async function renderFiles(source: Buffer): Promise<PassImageFiles> {
   return files
 }
 
-function remember(key: string, files: PassImageFiles): PassImageFiles {
+function remember(key: string, logo: LoadedLogo): LoadedLogo {
   if (cache.size >= CACHE_MAX_ENTRIES) cache.delete(cache.keys().next().value as string)
-  cache.set(key, { files, expiresAt: Date.now() + CACHE_TTL_MS })
-  return files
+  cache.set(key, { logo, expiresAt: Date.now() + CACHE_TTL_MS })
+  return logo
 }
 
-export async function loadPassImages(logoUrl: string | null, fallbackLogoUrl: string): Promise<PassImageFiles> {
+async function loadLogo(logoUrl: string | null, fallbackLogoUrl: string): Promise<LoadedLogo> {
   for (const url of [logoUrl, fallbackLogoUrl]) {
     if (!url) continue
     const cached = cache.get(url)
@@ -115,13 +123,33 @@ export async function loadPassImages(logoUrl: string | null, fallbackLogoUrl: st
       // Re-insert so eviction drops the least recently USED logo, not the oldest.
       cache.delete(url)
       cache.set(url, cached)
-      return cached.files
+      return cached.logo
     }
     try {
-      return remember(url, await renderFiles(await fetchImage(url)))
+      const source = await fetchImage(url)
+      return remember(url, { source, files: await renderFiles(source) })
     } catch (error) {
       console.error('[wallet-pass] logo unavailable, trying fallback:', error instanceof Error ? error.message : error)
     }
   }
   throw new Error('no usable logo for the wallet pass')
+}
+
+/**
+ * Every image the pass needs. A strip that fails to render is logged and left
+ * out: the pass is still valid without it, just plainer.
+ */
+export async function loadPassImages(
+  content: Pick<WalletPassContent, 'logoUrl' | 'stampCard' | 'colors'>,
+  fallbackLogoUrl: string,
+): Promise<PassImageFiles> {
+  const logo = await loadLogo(content.logoUrl, fallbackLogoUrl)
+  if (!content.stampCard) return logo.files
+  try {
+    const strip = await renderStampStripFiles(logo.source, content.stampCard, content.colors)
+    return { ...logo.files, ...strip }
+  } catch (error) {
+    console.error('[wallet-pass] stamp strip could not be drawn:', error instanceof Error ? error.message : error)
+    return logo.files
+  }
 }

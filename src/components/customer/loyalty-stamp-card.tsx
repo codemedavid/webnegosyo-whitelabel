@@ -11,9 +11,12 @@ import type { StampCardView } from '@/lib/loyalty/stamp-card-view'
 import { CLAIM_WINDOW_CLOSED_MESSAGE } from '@/lib/loyalty/claim-window'
 import { formatPhMobileInput, toPhMobileE164 } from '@/lib/phone-display'
 import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
+import { RewardLadder } from '@/components/customer/order-tracking/reward-ladder'
+import { RewardBurst } from '@/components/customer/order-tracking/reward-burst'
+import { cardSteps } from '@/lib/loyalty/card-progress'
 import { LoyaltyProgressPanel } from '@/components/customer/loyalty-progress-panel'
 import { useLoyaltyProgress } from '@/hooks/use-loyalty-progress'
-import { AddToWalletButtons } from '@/components/customer/add-to-wallet-buttons'
+import { AddToWalletButtons, WalletHint } from '@/components/customer/add-to-wallet-buttons'
 import type { WalletAvailability } from '@/lib/loyalty/wallet-pass/config'
 
 interface LoyaltyStampCardProps {
@@ -37,7 +40,7 @@ interface LoyaltyStampCardProps {
   view?: Exclude<StampCardView, 'hidden'>
   /** The saved number's live progress, including before this order earns. */
   card?: OrderStampCard | null
-  /** Which wallet passes can hold this card; null hides the buttons. */
+  /** Which wallet passes can hold this card; null hides the buttons and the hint. */
   wallets?: WalletAvailability | null
   /** Called after a successful claim so the page can re-read the live card. */
   onClaimed?: () => void
@@ -166,6 +169,11 @@ export function LoyaltyStampCard({
     return (
       <CardShell>
         <AwaitingState offer={offer} storeName={storeName} isOrderComplete={isOrderComplete} logoUrl={logoUrl} />
+        {offer && (
+          <div className="px-5 pb-5">
+            <WalletHint wallets={wallets} />
+          </div>
+        )}
       </CardShell>
     )
   }
@@ -207,7 +215,7 @@ export function LoyaltyStampCard({
                 the customer's own card. The row stays put while the lookup
                 runs — a track that blinks out mid-type reads as a fault. */}
             {offer && (
-              <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} />
+              <OfferTrack offer={offer} logoUrl={logoUrl} />
             )}
             {(typedProgress.isLoading || typedProgress.error) && (
               <LoyaltyProgressPanel offer={null} card={null} isLoading={typedProgress.isLoading} error={typedProgress.error} onRetry={typedProgress.refresh} storeName={storeName} />
@@ -296,6 +304,8 @@ export function LoyaltyStampCard({
           )}
         </motion.button>
 
+        {offer && <WalletHint wallets={wallets} />}
+
         <p className="flex items-center justify-center gap-1.5 text-[11px]" style={{ color: 'var(--trk-text-faint)' }}>
           <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
           Only used for your rewards and order updates. No spam.
@@ -322,13 +332,15 @@ function EarnedCardState({
   const hasReward = card.rewardsAvailable > 0
   const filled = card.balance
   const earningActive = !card.programStatus || card.programStatus === 'active'
+  const steps = cardSteps(card.rewardSteps, card.threshold, card.rewardLabel)
 
   return (
     <div data-testid="stamp-card-earned">
       <div
-        className="px-5 pb-4 pt-5 text-center"
+        className="relative px-5 pb-4 pt-5 text-center"
         style={{ background: 'linear-gradient(135deg, var(--trk-accent), var(--trk-accent-strong))', color: 'var(--trk-on-accent)' }}
       >
+        {hasReward && <RewardBurst emoji={steps[0]?.emoji} />}
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-80">{card.programName}</p>
         <h2 className="mt-1 text-2xl font-extrabold leading-tight">
           {hasReward ? 'Reward ready!' : card.earnedOnOrder === true ? 'Stamp collected!' : 'Your reward progress'}
@@ -341,7 +353,10 @@ function EarnedCardState({
       </div>
       <div className="p-5">
         {hasReward && <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-text)' }}>{card.balance} of {card.threshold} {unit} toward your next {card.rewardLabel}</p>}
-        <StampTrack threshold={card.threshold} filled={filled} earnMode={card.earnMode} logoUrl={logoUrl} />
+        <StampTrack threshold={card.threshold} filled={filled} earnMode={card.earnMode} logoUrl={logoUrl} steps={steps} nextIsLive={earningActive} />
+        <div className="mt-4">
+          <RewardLadder steps={steps} balance={card.balance} earnMode={card.earnMode} showHeadline={earningActive} />
+        </div>
         {card.balance < 0 && <p className="mt-3 text-xs" style={{ color: 'var(--trk-text-muted)' }}>Your balance includes an adjustment. New earnings first cover the {Math.abs(card.balance)} {unit} adjustment.</p>}
         <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
           {earningActive ? 'Use the same number when you order and your stamps add up automatically.' : card.programStatus === 'ended' ? 'This program has ended.' : 'Earning is paused for this program.'}
@@ -377,8 +392,8 @@ function AwaitingState({
           : 'It lands as soon as your order is completed. Come back to this page any time.'}
       </p>
       {offer && (
-        <div className="mt-4">
-          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} />
+        <div className="mt-4 text-left">
+          <OfferTrack offer={offer} logoUrl={logoUrl} />
         </div>
       )}
     </div>
@@ -440,9 +455,7 @@ function OfferHeader({ offer, storeName }: { offer: LoyaltyOffer | null; storeNa
           <h2 className="mt-1 text-2xl font-extrabold leading-tight">Claim your stamp for this order</h2>
           <p className="mt-1.5 flex items-center gap-1.5 text-sm opacity-90">
             <Gift className="h-4 w-4 shrink-0" aria-hidden="true" />
-            {offer.earnMode === 'stamp'
-              ? `${offer.threshold} stamps = ${offer.rewardLabel}`
-              : `${offer.threshold} points = ${offer.rewardLabel}`}
+            {offerSummary(offer)}
           </p>
         </>
       ) : (
@@ -497,7 +510,10 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
         </div>
         <div className="p-5">
           {loyalty.rewardUnlocked && loyalty.balance != null && <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--trk-text)' }}>{loyalty.balance} of {offer.threshold} {unit} toward your next {offer.rewardLabel}</p>}
-          <StampTrack threshold={offer.threshold} filled={filled} earnMode={offer.earnMode} animateLast logoUrl={logoUrl} />
+          <StampTrack threshold={offer.threshold} filled={filled} earnMode={offer.earnMode} animateLast logoUrl={logoUrl} steps={cardSteps(offer.rewardSteps, offer.threshold, offer.rewardLabel)} />
+          <div className="mt-4 text-left">
+            <RewardLadder steps={cardSteps(offer.rewardSteps, offer.threshold, offer.rewardLabel)} balance={filled} earnMode={offer.earnMode} />
+          </div>
           <p className="mt-3 text-center text-xs" style={{ color: 'var(--trk-text-muted)' }}>
             Use the same number when you order and your stamps add up automatically.
           </p>
@@ -520,8 +536,8 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
             ? `Stamps count on qualifying orders from now on at ${storeName}.`
             : 'Your stamp lands when your order is completed. Keep this page open or come back later.'}
         </p>
-        <div className="mt-4">
-          <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} />
+        <div className="mt-4 text-left">
+          <OfferTrack offer={offer} logoUrl={logoUrl} />
         </div>
       </div>
     )
@@ -538,6 +554,25 @@ function SavedState({ loyalty, offer, isOrderComplete, storeName, logoUrl }: Sav
       <p className="mt-1 text-sm" style={{ color: 'var(--trk-text-muted)' }}>
         {storeName} can reach you if anything comes up.
       </p>
+    </div>
+  )
+}
+
+/** "10 stamps = Free Meal", or "3 rewards on one card" for a reward ladder. */
+function offerSummary(offer: LoyaltyOffer): string {
+  const steps = cardSteps(offer.rewardSteps, offer.threshold, offer.rewardLabel)
+  const unit = offer.earnMode === 'stamp' ? 'stamps' : 'points'
+  if (steps.length > 1) return `${steps.length} rewards on one card — up to ${offer.rewardLabel} at ${offer.threshold} ${unit}`
+  return `${offer.threshold} ${unit} = ${offer.rewardLabel}`
+}
+
+/** The store's card before this customer has a stamp: every reward on its slot. */
+function OfferTrack({ offer, logoUrl }: { offer: LoyaltyOffer; logoUrl: string | null }) {
+  const steps = cardSteps(offer.rewardSteps, offer.threshold, offer.rewardLabel)
+  return (
+    <div className="space-y-3">
+      <StampTrack threshold={offer.threshold} filled={0} nextIsLive earnMode={offer.earnMode} logoUrl={logoUrl} steps={steps} />
+      <RewardLadder steps={steps} balance={0} earnMode={offer.earnMode} showHeadline={false} />
     </div>
   )
 }

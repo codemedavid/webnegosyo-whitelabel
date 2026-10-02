@@ -93,11 +93,20 @@ async function write(tenantId: string, body: Record<string, unknown>): Promise<P
   return { ok: false, error };
 }
 
-export function createLoyaltyProgram(
+export type ProgramCreateResult = { ok: true; programId: string | null } | { ok: false; error: string };
+
+/** `programId` lets the wizard launch the card in the same tap; null if the platform did not say. */
+export async function createLoyaltyProgram(
   tenantId: string,
   program: ProgramInput,
-): Promise<ProgramWriteResult> {
-  return write(tenantId, { action: "create", program });
+): Promise<ProgramCreateResult> {
+  const result = await callLoyaltyApi(PROGRAMS_PATH, "POST", { tenantId, body: { action: "create", program } });
+  if (result.status === 200) {
+    const programId = typeof result.body?.programId === "string" ? result.body.programId : null;
+    return { ok: true, programId };
+  }
+  const error = typeof result.body?.error === "string" ? result.body.error : "Could not reach the platform.";
+  return { ok: false, error };
 }
 
 export function reviseLoyaltyProgram(tenantId: string, programId: string, rules: LoyaltyRules, expectedVersion: number | null): Promise<ProgramWriteResult> {

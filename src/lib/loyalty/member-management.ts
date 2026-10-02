@@ -13,8 +13,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { parseLoyaltyRules } from './rules'
-import { snapshotRewardTerms } from './versioning'
-import type { LoyaltyEntitlementTerms } from './types'
+import { snapshotMilestoneTerms, snapshotRewardTerms, toMilestoneArg } from './versioning'
+import type { LoyaltyEntitlementTerms, LoyaltyMilestonePlan } from './types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_ADJUSTMENT = 10_000
@@ -114,6 +114,7 @@ export async function loadAdjustmentTerms(
       versionId: string | null
       threshold: number
       terms: LoyaltyEntitlementTerms | null
+      milestones: LoyaltyMilestonePlan[]
       expiresAt: string | null
     }
   | { ok: false; error: string }
@@ -132,7 +133,7 @@ export async function loadAdjustmentTerms(
   if (!program.current_version_id) {
     // A program with no rules cannot mint anything. The adjustment still
     // applies — the stamps are real — it simply issues nothing.
-    return { ok: true, versionId: null, threshold: 0, terms: null, expiresAt: null }
+    return { ok: true, versionId: null, threshold: 0, terms: null, milestones: [], expiresAt: null }
   }
 
   const { data: versionRow, error: versionError } = await client
@@ -145,20 +146,17 @@ export async function loadAdjustmentTerms(
   const version = versionRow as { id: string; version: number; rules: unknown } | null
   const parsed = version ? parseLoyaltyRules(version.rules) : null
   if (!version || !parsed?.ok) {
-    return { ok: true, versionId: version?.id ?? null, threshold: 0, terms: null, expiresAt: null }
+    return { ok: true, versionId: version?.id ?? null, threshold: 0, terms: null, milestones: [], expiresAt: null }
   }
 
   const rules = parsed.value
+  const source = { id: program.id, name: program.name, versionNumber: version.version, rules }
   return {
     ok: true,
     versionId: version.id,
     threshold: rules.threshold,
-    terms: snapshotRewardTerms({
-      id: program.id,
-      name: program.name,
-      versionNumber: version.version,
-      rules,
-    }),
+    terms: snapshotRewardTerms(source),
+    milestones: snapshotMilestoneTerms(source),
     expiresAt:
       rules.rewardExpiryDays == null
         ? null
@@ -202,6 +200,7 @@ export async function adjustMemberBalance(
     p_actor: actor,
     p_note: input.note,
     p_request_id: input.requestId,
+    ...(terms.milestones.length ? { p_milestones: toMilestoneArg(terms.milestones) } : {}),
   })
 
   if (error) throw new Error(`Balance adjustment failed: ${error.message}`)

@@ -7,7 +7,11 @@
  * promise the ledger will not keep is worse than no promise.
  */
 import type { LoyaltyTenantFlags } from './tenant-flags'
-import type { LoyaltyEarnMode, LoyaltyProgram, LoyaltyReward } from './types'
+import { describeLoyaltyReward } from './reward-label'
+import { rewardSteps, type LoyaltyRewardStep } from './ladder'
+import type { LoyaltyEarnMode, LoyaltyProgram } from './types'
+
+export { describeLoyaltyReward }
 
 export interface LoyaltyOffer {
   programName: string
@@ -18,23 +22,8 @@ export interface LoyaltyOffer {
   rewardLabel: string
   /** Net spend an order must reach to earn; null when any order earns. */
   minSpend: number | null
-}
-
-function formatPeso(amount: number): string {
-  const isWhole = Number.isInteger(amount)
-  return `₱${isWhole ? amount.toString() : amount.toFixed(2)}`
-}
-
-/** A reward as the customer reads it. */
-export function describeLoyaltyReward(reward: LoyaltyReward): string {
-  switch (reward.type) {
-    case 'fixed':
-      return `${formatPeso(reward.amount)} off`
-    case 'percent':
-      return `${reward.percent}% off${reward.maxAmount ? ` (up to ${formatPeso(reward.maxAmount)})` : ''}`
-    case 'free_item':
-      return `Free ${reward.itemName}`
-  }
+  /** Every reward on the card, lowest rung first. */
+  rewardSteps?: LoyaltyRewardStep[]
 }
 
 /**
@@ -65,5 +54,6 @@ export function describeLoyaltyOffer(
     threshold: rules.threshold,
     rewardLabel: describeLoyaltyReward(rules.reward),
     minSpend: rules.minSpend,
+    rewardSteps: rewardSteps(rules),
   }
 }
