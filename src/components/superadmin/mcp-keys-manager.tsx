@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Panel } from '@/components/superadmin/ui/primitives'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import {
   createMcpKeyAction,
   revokeMcpKeyAction,
@@ -35,6 +36,9 @@ function formatDate(value: string | null): string {
 }
 
 export function McpKeysManager({ initialKeys, connectUrl }: Props) {
+  const access = usePlatformAccess()
+  const canCreate = access.isSuperadmin
+  const canRevoke = access.can('mcp_keys.delete')
   const [keys, setKeys] = useState<McpKeySummary[]>(initialKeys)
   const [label, setLabel] = useState('')
   const [freshKey, setFreshKey] = useState<string | null>(null)
@@ -111,30 +115,32 @@ export function McpKeysManager({ initialKeys, connectUrl }: Props) {
       ) : null}
 
       {/* Create */}
-      <Panel>
-        <label htmlFor="mcp-key-label" className="text-sm font-medium text-white/80">
-          Create a new key
-        </label>
-        <p className="mt-1 text-xs text-white/45">
-          Label it by where it will live (e.g. “Angelo’s laptop – Claude”). Use it as the Bearer token when connecting
-          Claude or ChatGPT to <code className="font-mono text-white/60">{connectUrl}</code>.
-        </p>
-        <div className="mt-3 flex items-center gap-2">
-          <Input
-            id="mcp-key-label"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            placeholder="Key label"
-            maxLength={120}
-            disabled={isPending}
-          />
-          <Button onClick={handleCreate} disabled={isPending || !label.trim()}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            Generate
-          </Button>
-        </div>
-      </Panel>
+      {canCreate && (
+        <Panel>
+          <label htmlFor="mcp-key-label" className="text-sm font-medium text-white/80">
+            Create a new key
+          </label>
+          <p className="mt-1 text-xs text-white/45">
+            Label it by where it will live (e.g. “Angelo’s laptop – Claude”). Use it as the Bearer token when connecting
+            Claude or ChatGPT to <code className="font-mono text-white/60">{connectUrl}</code>.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Input
+              id="mcp-key-label"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              placeholder="Key label"
+              maxLength={120}
+              disabled={isPending}
+            />
+            <Button onClick={handleCreate} disabled={isPending || !label.trim()}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Generate
+            </Button>
+          </div>
+        </Panel>
+      )}
 
       {/* List */}
       <Panel padding="p-0">
@@ -166,7 +172,7 @@ export function McpKeysManager({ initialKeys, connectUrl }: Props) {
                       {key.lastUsedAt ? `  ·  last used ${formatDate(key.lastUsedAt)}` : ''}
                     </p>
                   </div>
-                  {!isRevoked ? (
+                  {!isRevoked && canRevoke ? (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="sm" variant="ghost" className="text-white/50 hover:text-red-400" disabled={isPending}>

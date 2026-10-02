@@ -2,7 +2,12 @@
  * The one decision that makes the register offline-first: write the sale
  * now, or keep it on the device and write it later.
  *
- * Order of preference, deliberately server-first:
+ * Order of preference:
+ * 0. Written behind (`writeBehind`) → queue immediately, whatever the
+ *    connection. The background sync (`use-outbox-sync.ts`) writes it moments
+ *    later. Only for a backend whose order id is minted on this device (the
+ *    platform database), so the receipt, the kitchen chit and the row all
+ *    carry the same id whether the write lands now or in a minute.
  * 1. Believed offline → queue immediately. No 12-second wait at the counter.
  * 2. Otherwise try the write, bounded — the Convex client queues a mutation
  *    forever while disconnected, and forever is a frozen till.
@@ -34,6 +39,12 @@ export interface PlaceSaleInput {
   isOffline?: () => boolean;
   enqueue?: (sale: QueuedSale) => Promise<string | void>;
   timeoutMs?: number;
+  /**
+   * Hand the till back without waiting on the server at all. The sale is
+   * complete the moment it is on disk; three sequential round trips (the
+   * idempotency read, the order, its items) move off the counter.
+   */
+  writeBehind?: boolean;
 }
 
 export async function placeCounterSale(input: PlaceSaleInput): Promise<PlaceSaleOutcome> {
@@ -41,7 +52,7 @@ export async function placeCounterSale(input: PlaceSaleInput): Promise<PlaceSale
   const enqueue = input.enqueue ?? enqueueSale;
   const queued: QueuedSale = { ...input.sale, attempts: 0, lastError: null };
 
-  if (isOffline()) {
+  if (input.writeBehind || isOffline()) {
     const savedId = await enqueue(queued);
     return { kind: "queued", localId: savedId ?? queued.localId };
   }

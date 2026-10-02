@@ -221,22 +221,29 @@ export async function listProducts(
   tenantId: string,
   outletId?: string | null,
 ): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from("menu_items")
-    .select("*, category:categories(*)")
-    .eq("tenant_id", tenantId)
-    .order("order", { ascending: true });
+  // Neither read depends on the other. Start both together so a branch
+  // register waits for the slower read, rather than two network round trips.
+  const [{ data, error }, overrides] = await Promise.all([
+    supabase
+      .from("menu_items")
+      .select("*, category:categories(*)")
+      .eq("tenant_id", tenantId)
+      .order("order", { ascending: true }),
+    outletId
+      ? supabase
+          .from("outlet_menu_items")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .eq("outlet_id", outletId)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
   if (error) throw error;
   const products = (data ?? []) as unknown as Product[];
 
   if (!outletId) return products;
 
-  const { data: overrideRows, error: overrideError } = await supabase
-    .from("outlet_menu_items")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .eq("outlet_id", outletId);
+  const { data: overrideRows, error: overrideError } = overrides;
 
   // Not swallowed: an empty override set is the claim "this branch sells at the
   // store-wide price", which after a failed query rings up the wrong money.

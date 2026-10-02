@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/lib/supabase/client'
 import { signOutThisDevice } from '@/lib/supabase/sign-out'
 import { resolveTenantLoginRedirect } from '@/lib/login-redirect'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 import { toast } from 'sonner'
 import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 
@@ -62,25 +64,21 @@ export function TenantLoginForm({ tenantSlug, tenantId, redirect, unauthorized }
       }
 
       // Check if user has access to this specific tenant
-      const { data: userRoleData, error: roleError } = await supabase
-        .from('app_users')
-        .select('role, tenant_id')
-        .eq('user_id', data.user.id)
-        .maybeSingle()
+      const { appUser: userRole, error: roleError } = await fetchAppUserScope(
+        asAppUserQueryClient(supabase),
+        data.user.id
+      )
 
-      if (roleError || !userRoleData) {
+      if (roleError || !userRole) {
         await signOutThisDevice(supabase)
         setError('You do not have access to this admin panel.')
         setIsLoading(false)
         return
       }
 
-      const userRole: { role: string; tenant_id: string | null } = userRoleData
-
-      // Verify authorization: must be superadmin OR admin of THIS specific tenant
-      const isAuthorized =
-        userRole.role === 'superadmin' ||
-        (userRole.role === 'admin' && userRole.tenant_id === tenantId)
+      // Superadmin, an admin of THIS tenant, or platform staff who may open
+      // store dashboards (stores.view) — the same gate the admin layout applies.
+      const isAuthorized = canAccessStoreAdmin(userRole, tenantId, 'view')
 
       if (!isAuthorized) {
         await signOutThisDevice(supabase)

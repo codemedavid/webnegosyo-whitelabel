@@ -19,6 +19,15 @@ const UNDEFINED_COLUMN_CODE = '42703'
 
 export const APP_USER_LEGACY_SELECT = 'role, tenant_id, is_owner, permissions'
 export const APP_USER_SCOPE_SELECT = `${APP_USER_LEGACY_SELECT}, outlet_id`
+/**
+ * Adds the platform-staff grants. Its own tier, tried first, so a missing
+ * `platform_permissions` column falls back to the branch-aware read instead of
+ * dropping every admin to the pre-branch one.
+ */
+export const APP_USER_PLATFORM_SELECT = `${APP_USER_SCOPE_SELECT}, platform_permissions`
+
+/** Tried in order; each step drops the newest column on an undefined-column error. */
+const PROJECTION_TIERS = [APP_USER_PLATFORM_SELECT, APP_USER_SCOPE_SELECT, APP_USER_LEGACY_SELECT] as const
 
 export interface AppUserScopeRow {
   role: string
@@ -27,6 +36,8 @@ export interface AppUserScopeRow {
   permissions?: string[] | null
   /** Absent when the row was read through the pre-branch fallback. */
   outlet_id?: string | null
+  /** platform_staff grants (`section.action`); absent before its migration. */
+  platform_permissions?: string[] | null
 }
 
 interface QueryError {
@@ -71,29 +82,26 @@ export async function fetchAppUserScope(
   client: AppUserQueryClient,
   userId: string
 ): Promise<AppUserScopeResult> {
-  const { data, error } = await queryAppUser(client, userId, APP_USER_SCOPE_SELECT)
+  for (const projection of PROJECTION_TIERS) {
+    const { data, error } = await queryAppUser(client, userId, projection)
 
-  if (!error) {
-    return { appUser: (data as AppUserScopeRow | null) ?? null, isDegraded: false, error: null }
+    if (!error) {
+      return {
+        appUser: (data as AppUserScopeRow | null) ?? null,
+        // Only the pre-branch read loses information that changes access.
+        isDegraded: projection === APP_USER_LEGACY_SELECT,
+        error: null,
+      }
+    }
+
+    if (error.code !== UNDEFINED_COLUMN_CODE || projection === APP_USER_LEGACY_SELECT) {
+      return { appUser: null, isDegraded: false, error: error.message }
+    }
+
+    console.error(
+      `[fetch-app-user-scope] app_users projection "${projection}" rejected — a column is missing from the database (likely an unapplied migration). Retrying with an older projection. Original error: ${error.message}`
+    )
   }
 
-  if (error.code !== UNDEFINED_COLUMN_CODE) {
-    return { appUser: null, isDegraded: false, error: error.message }
-  }
-
-  console.error(
-    `[fetch-app-user-scope] app_users projection rejected — the branch column is missing from the database (likely an unapplied migration). Falling back to a store-wide read. Original error: ${error.message}`
-  )
-
-  const fallback = await queryAppUser(client, userId, APP_USER_LEGACY_SELECT)
-
-  if (fallback.error) {
-    return { appUser: null, isDegraded: false, error: fallback.error.message }
-  }
-
-  return {
-    appUser: (fallback.data as AppUserScopeRow | null) ?? null,
-    isDegraded: true,
-    error: null,
-  }
+  return { appUser: null, isDegraded: false, error: 'app_users read exhausted every projection' }
 }

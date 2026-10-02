@@ -7,14 +7,14 @@
  * count match. Answering that in each component is how one shift comes to
  * read "Short ₱50" on the profile and "closed" on the list.
  *
- * The verdict itself is `shift.ts`'s `reconcileShift`, not a second opinion:
+ * The verdict itself is `shift.ts`'s `judgeCount`, not a second opinion:
  * the cashier's own drawer screen and the owner's report must never disagree
  * about whether a shift balanced.
  *
  * Mirrors `src/lib/staff-activity/shift-summary.ts` on the web.
  */
 
-import { reconcileShift } from "../shift";
+import { judgeCount } from "../shift";
 import type { ShiftRecord } from "../shift-service";
 
 function round2(value: number): number {
@@ -29,10 +29,16 @@ export interface ShiftVerdict {
   variance: number | null;
 }
 
-/** Cash this shift took, net of the float it started with. Null until known. */
+/**
+ * Cash this shift handed over: what was collected from the drawer mid-shift,
+ * plus what was left above the float at close (the whole drawer on a
+ * zero-balance till). Null until the drawer was closed.
+ */
 export function shiftTurnover(shift: ShiftRecord): number | null {
   if (shift.expectedCash === null) return null;
-  return Math.max(0, round2(shift.expectedCash - shift.openingFloat));
+  const floatKept = shift.isZeroBalance ? 0 : shift.openingFloat;
+  const atClose = Math.max(0, round2(shift.expectedCash - floatKept));
+  return round2(atClose + (shift.moves?.collected ?? 0));
 }
 
 /**
@@ -40,20 +46,17 @@ export function shiftTurnover(shift: ShiftRecord): number | null {
  *
  * `uncounted` is its own answer rather than a zero variance: a closed shift
  * nobody counted is a missing fact, and printing ₱0 would report it as a
- * perfectly reconciled drawer.
+ * perfectly reconciled drawer. The variance is the count against the
+ * expectation frozen at close — judgeCount, the same rule the close sheet
+ * showed the cashier.
  */
 export function verdictForShift(shift: ShiftRecord): ShiftVerdict {
   if (shift.status === "open") return { kind: "open", variance: null };
+  if (shift.expectedCash === null || shift.closingCount === null) return { kind: "uncounted", variance: null };
 
-  const collected = shiftTurnover(shift);
-  if (collected === null) return { kind: "uncounted", variance: null };
-
-  const reconciled = reconcileShift({
-    openingFloat: shift.openingFloat,
-    cashCollected: collected,
-    countedCash: shift.closingCount,
-  });
-  return { kind: reconciled.verdict, variance: reconciled.variance };
+  const floatKept = shift.isZeroBalance ? 0 : shift.openingFloat;
+  const judged = judgeCount(shift.expectedCash, floatKept, shift.closingCount);
+  return { kind: judged.verdict, variance: judged.variance };
 }
 
 /** How long the drawer was theirs — up to now while it is still open. */

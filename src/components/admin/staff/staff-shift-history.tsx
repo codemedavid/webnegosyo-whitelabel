@@ -68,6 +68,12 @@ export function StaffShiftHistory({ shifts, nowMs, nowIso, outlets }: StaffShift
               <div className="min-w-0">
                 <p className="text-sm font-medium">
                   {formatDayLabel(toBusinessDayKey(shift.openedAt), nowIso)}
+                  {shift.drawerName ? (
+                    <span className="ml-2 text-xs font-semibold text-muted-foreground">
+                      {shift.drawerName}
+                      {shift.isZeroBalance ? ' · Zero balance' : ''}
+                    </span>
+                  ) : null}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatClock(shift.openedAt)} →{' '}
@@ -99,6 +105,16 @@ export function StaffShiftHistory({ shifts, nowMs, nowIso, outlets }: StaffShift
               </div>
             </dl>
 
+            {(shift.collected ?? 0) > 0 || (shift.closedByName && shift.closedByName !== shift.staffName) ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {[
+                  (shift.collected ?? 0) > 0 ? `${formatPrice(shift.collected ?? 0)} collected mid-shift` : null,
+                  shift.closedByName && shift.closedByName !== shift.staffName ? `closed by ${shift.closedByName}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            ) : null}
             {shift.note && <p className="mt-2 text-xs italic text-muted-foreground">“{shift.note}”</p>}
           </li>
         )

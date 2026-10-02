@@ -66,6 +66,10 @@ describe("loadInventoryStock", () => {
         stockUnitId: "u1",
         unitAbbreviation: "kg",
         level: "low",
+        // Absent columns read as uncategorised, unknown cost, not prep.
+        category: null,
+        unitCost: undefined,
+        isPrep: false,
       },
     ]);
   });

@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
     // Redirect to settings page with selection mode
     // The UI will fetch pages using the stored token
     // Use baseUrl to ensure we redirect to the correct domain (not localhost)
-    const redirectUrl = new URL(`/${tenantData.slug}/admin/settings`, baseUrl)
+    const redirectUrl = new URL(`/${tenantData.slug}/admin/settings/messenger`, baseUrl)
     redirectUrl.searchParams.set('facebook_connect', 'true')
     redirectUrl.searchParams.set('temp_id', tempRecordData?.id || '')
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -28,6 +28,8 @@ import {
   setBoostPairingActiveAction,
   setBoostUpgradeActiveAction,
 } from '@/app/actions/boost'
+import { markBoostAiProposalAppliedAction } from '@/app/actions/boost-ai'
+import type { BoostAiLog, BoostAiProposal } from '@/lib/boost/ai/store'
 import type { BoostIdea } from '@/lib/boost/ideas'
 import type { BoostWorkspace } from '@/lib/boost/workspace'
 import type { OfferTheme } from '@/components/customer/offers/offer-theme'
@@ -37,6 +39,7 @@ import { BoostIdeas } from './boost-ideas'
 import { OfferSections, offerKey } from './boost-offers'
 import { OfferEditorSheet } from './offer-editor-sheet'
 import { activateIdea } from './idea-activation'
+import { BoostAiPanel } from './ai/boost-ai-panel'
 import { peso, type BoostMoment, type EditorTarget, type OfferKind } from './boost-model'
 
 export interface BoostHomeProps {
@@ -46,6 +49,10 @@ export interface BoostHomeProps {
   theme: OfferTheme
   cartTheme: OfferTheme
   initialEditor?: EditorTarget | null
+  /** The AI generation log; null when it could not be read. */
+  aiLog: BoostAiLog | null
+  /** Server-rendered "Picked together" analytics, streamed in. */
+  insights?: ReactNode
 }
 
 const dismissedKey = (tenantId: string) => `boost:dismissed-ideas:${tenantId}`
@@ -73,7 +80,7 @@ function newTarget(kind: OfferKind, fromIdea?: BoostIdea): EditorTarget {
     case 'combo': return { kind, comboId: null, fromIdea }
     case 'upgrade': return { kind, upgradeId: null, fromIdea }
     case 'pairing': return { kind, groupKey: null, fromIdea }
-    case 'last_call': return { kind }
+    case 'last_call': return { kind, fromIdea }
   }
 }
 
@@ -83,9 +90,13 @@ function countStatus(total: number, live: number): MomentStatus {
   return { label: `${live} live`, isActive: true }
 }
 
-export function BoostHome({ workspace, tenantId, tenantSlug, theme, cartTheme, initialEditor = null }: BoostHomeProps) {
+export function BoostHome({
+  workspace, tenantId, tenantSlug, theme, cartTheme, initialEditor = null, aiLog, insights,
+}: BoostHomeProps) {
   const router = useRouter()
   const [editor, setEditor] = useState<EditorTarget | null>(initialEditor)
+  /** The approved AI proposal being edited; saving the editor puts it live. */
+  const [editingProposalId, setEditingProposalId] = useState<string | null>(null)
   const [liveOverrides, setLiveOverrides] = useState<Record<string, boolean>>({})
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [busyIdeaId, setBusyIdeaId] = useState<string | null>(null)
@@ -127,11 +138,26 @@ export function BoostHome({ workspace, tenantId, tenantSlug, theme, cartTheme, i
 
   const refresh = useCallback(() => router.refresh(), [router])
 
-  const handleSaved = useCallback((message: string) => {
+  const handleSaved = useCallback(async (message: string) => {
     setEditor(null)
     toast.success(message)
+    if (editingProposalId) {
+      setEditingProposalId(null)
+      const response = await markBoostAiProposalAppliedAction(tenantId, tenantSlug, editingProposalId)
+      if (!response.success) toast.error(response.error)
+    }
     refresh()
-  }, [refresh])
+  }, [editingProposalId, refresh, tenantId, tenantSlug])
+
+  const closeEditor = useCallback(() => {
+    setEditor(null)
+    setEditingProposalId(null)
+  }, [])
+
+  const editProposal = useCallback((proposal: BoostAiProposal) => {
+    setEditingProposalId(proposal.id)
+    setEditor(newTarget(proposal.idea.kind, proposal.idea))
+  }, [])
 
   const handleToggle = async (key: string, isLive: boolean) => {
     setLiveOverrides((current) => ({ ...current, [key]: isLive }))
@@ -229,7 +255,7 @@ export function BoostHome({ workspace, tenantId, tenantSlug, theme, cartTheme, i
         onSaved: handleSaved,
       }}
       onChoose={(kind) => setEditor(newTarget(kind))}
-      onClose={() => setEditor(null)}
+      onClose={closeEditor}
     />
   )
 
@@ -282,6 +308,14 @@ export function BoostHome({ workspace, tenantId, tenantSlug, theme, cartTheme, i
 
       <BoostJourney status={journeyStatus} />
 
+      <BoostAiPanel
+        log={aiLog}
+        tenantId={tenantId}
+        tenantSlug={tenantSlug}
+        itemsById={itemsById}
+        onEdit={editProposal}
+      />
+
       <BoostIdeas
         ideas={visibleIdeas}
         itemsById={itemsById}
@@ -307,6 +341,8 @@ export function BoostHome({ workspace, tenantId, tenantSlug, theme, cartTheme, i
         onEditLastCall={() => setEditor({ kind: 'last_call' })}
         onCreate={(moment) => setEditor(newTarget(({ menu: 'combo', item: 'upgrade', added: 'pairing', cart: 'last_call' } as const)[moment]))}
       />
+
+      {insights}
 
       {sheet}
 

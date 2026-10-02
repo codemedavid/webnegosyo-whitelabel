@@ -43,7 +43,7 @@ export interface VoucherListResult {
 /** Every voucher for a tenant, newest first, with targets attached. */
 export async function listVouchersAction(tenantId: string): Promise<VoucherListResult> {
   try {
-    await verifyTenantPermission(tenantId, 'vouchers')
+    await verifyTenantPermission(tenantId, 'vouchers', 'view')
     const supabase = createAdminClient()
 
     const { data: rows, error } = await supabase
@@ -79,7 +79,7 @@ export async function saveVoucherAction(
   voucherId?: string
 ): Promise<VoucherAdminResult> {
   try {
-    await verifyTenantPermission(tenantId, 'vouchers')
+    await verifyTenantPermission(tenantId, 'vouchers', voucherId ? 'edit' : 'create')
 
     // The form validates too, but a server action is reachable without it.
     const { errors } = validateVoucherDraft(draft)

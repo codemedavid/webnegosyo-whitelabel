@@ -209,3 +209,36 @@ describe("summarizeCounterSales — online orders confirmed at the register", ()
     expect(summary.cashTotal).toBe(350);
   });
 });
+
+/**
+ * "Pay later" counter sales: rung up at the register, paid afterwards. The
+ * drawer must hold only what was actually collected — the bill is not cash in
+ * the till until the customer hands it over.
+ */
+describe("summarizeCounterSales — pay-later counter sales", () => {
+  const payLater = (overrides: Partial<CounterSale> = {}) =>
+    posSale({
+      paymentMethod: undefined,
+      customerData: { pos: { payLater: true } },
+      amountPaid: 0,
+      ...overrides,
+    });
+
+  it("adds nothing to the drawer while the sale is unpaid, but still counts the sale", () => {
+    const summary = summarizeCounterSales([payLater()]);
+    expect(summary).toMatchObject({ saleCount: 1, grossTotal: 100, cashTotal: 0, nonCashTotal: 0 });
+  });
+
+  it("counts what was collected once the customer pays", () => {
+    const summary = summarizeCounterSales([payLater({ amountPaid: 100 })]);
+    expect(summary.cashTotal + summary.nonCashTotal).toBe(100);
+  });
+
+  it("puts a cash collection in the cash column when the ledger is given", () => {
+    const payments: CounterPayment[] = [
+      { orderId: "pos-1", kind: "charge", amount: 100, paymentMethodName: "Cash" },
+    ];
+    const summary = summarizeCounterSales([payLater({ amountPaid: 100 })], payments);
+    expect(summary).toMatchObject({ cashTotal: 100, nonCashTotal: 0 });
+  });
+});

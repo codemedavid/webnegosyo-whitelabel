@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { Panel, SectionHeader } from '@/components/superadmin/ui/primitives'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import { saveAppReleaseAction } from '@/app/actions/app-releases'
 import {
   APP_RELEASE_PLATFORMS,
@@ -83,6 +84,7 @@ function PlatformCard({
   platform: AppReleasePlatform
   record: AppReleaseRecord | undefined
 }) {
+  const canEdit = usePlatformAccess().can('app_releases.edit')
   const [draft, setDraft] = useState<Draft>(() => toDraft(record))
   const [saved, setSaved] = useState<string | null>(record?.updatedAt ?? null)
   const [error, setError] = useState<string | null>(null)
@@ -136,6 +138,7 @@ function PlatformCard({
               id={`${platform}-latest`}
               value={draft.latestVersion}
               onChange={(e) => patch({ latestVersion: e.target.value })}
+              readOnly={!canEdit}
               className={FIELD}
               placeholder="1.0.9"
               inputMode="decimal"
@@ -151,6 +154,7 @@ function PlatformCard({
               id={`${platform}-minimum`}
               value={draft.minimumVersion}
               onChange={(e) => patch({ minimumVersion: e.target.value })}
+              readOnly={!canEdit}
               className={cn(FIELD, isForcing && 'border-amber-400/40')}
               placeholder="1.0.0"
               inputMode="decimal"
@@ -167,6 +171,7 @@ function PlatformCard({
             id={`${platform}-store`}
             value={draft.storeUrl}
             onChange={(e) => patch({ storeUrl: e.target.value })}
+            readOnly={!canEdit}
             className={FIELD}
             placeholder={STORE_PLACEHOLDER[platform]}
           />
@@ -180,6 +185,7 @@ function PlatformCard({
             id={`${platform}-notes`}
             value={draft.releaseNotes}
             onChange={(e) => patch({ releaseNotes: e.target.value })}
+            readOnly={!canEdit}
             maxLength={MAX_RELEASE_NOTES_LENGTH}
             rows={3}
             className={cn(FIELD, 'resize-y')}
@@ -201,18 +207,20 @@ function PlatformCard({
           <p className="rounded-xl border border-red-400/25 bg-red-400/[0.06] p-3 text-xs text-red-200/90">{error}</p>
         ) : null}
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={save}
-            disabled={isPending || validation !== null}
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-white/90 disabled:opacity-40"
-          >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Save {PLATFORM_LABEL[platform].split(' ')[0]}
-          </button>
-          {validation && !error ? <span className="text-xs text-white/40">{validation}</span> : null}
-        </div>
+        {canEdit && (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={save}
+              disabled={isPending || validation !== null}
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-white/90 disabled:opacity-40"
+            >
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Save {PLATFORM_LABEL[platform].split(' ')[0]}
+            </button>
+            {validation && !error ? <span className="text-xs text-white/40">{validation}</span> : null}
+          </div>
+        )}
       </div>
     </Panel>
   )

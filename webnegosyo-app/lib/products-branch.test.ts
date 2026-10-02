@@ -83,6 +83,35 @@ describe("listProducts — branch pricing", () => {
     expect(products[0].price).toBe(160);
   });
 
+  it("starts the branch price read before a slow product read completes", async () => {
+    let releaseProducts!: (value: { data: unknown[]; error: null }) => void;
+    const pending = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+      releaseProducts = resolve;
+    });
+    const productsQuery = chain([]);
+    productsQuery.then = pending.then.bind(pending);
+    let overridesStarted = false;
+    const overridesQuery = chain([OVERRIDE]);
+    const resolveOverrides = overridesQuery.then as Promise<unknown>["then"];
+    overridesQuery.then = (...args: Parameters<Promise<unknown>["then"]>) => {
+      overridesStarted = true;
+      return resolveOverrides(...args);
+    };
+    from.mockImplementation((table: string) =>
+      table === "outlet_menu_items" ? overridesQuery : productsQuery,
+    );
+
+    const loading = listProducts("t1", "branch-a");
+    await Promise.resolve();
+    await Promise.resolve();
+    const startedWhileProductsPending = overridesStarted;
+    releaseProducts({ data: [PRODUCT], error: null });
+    const products = await loading;
+
+    expect(startedWhileProductsPending).toBe(true);
+    expect(products[0].price).toBe(160);
+  });
+
   it("drops a dish this branch does not carry", async () => {
     from.mockImplementation((table: string) =>
       chain(
@@ -95,6 +124,17 @@ describe("listProducts — branch pricing", () => {
     const products = await listProducts("t1", "branch-a");
 
     expect(products).toHaveLength(0);
+  });
+
+  it("refuses a failed branch price read instead of offering store-wide prices", async () => {
+    const overridesQuery = chain([]);
+    const failure = Promise.resolve({ data: null, error: new Error("Branch prices unavailable") });
+    overridesQuery.then = failure.then.bind(failure);
+    from.mockImplementation((table: string) =>
+      table === "outlet_menu_items" ? overridesQuery : chain([PRODUCT]),
+    );
+
+    await expect(listProducts("t1", "branch-a")).rejects.toThrow("Branch prices unavailable");
   });
 
   it("marks a dish this branch has run out of unavailable", async () => {

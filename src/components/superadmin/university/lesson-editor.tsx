@@ -18,6 +18,7 @@ import {
  slugifyWhileTyping } from '@/lib/university/blocks'
 import type { CourseRecord, LessonRecord } from '@/lib/university/service'
 import { LessonBlockEditor } from './lesson-block-editor'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import { ResourcePanel } from './resource-panel'
 import { VideoField } from './video-field'
 
@@ -67,6 +68,7 @@ function toInput(draft: Draft): LessonInput {
 }
 
 export function LessonEditor({ course, initial }: Props) {
+  const canEdit = usePlatformAccess().can('university.edit')
   const [record, setRecord] = useState(initial)
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial))
   const [isSlugLocked, setIsSlugLocked] = useState(initial.slug !== slugify(initial.title))
@@ -139,21 +141,23 @@ export function LessonEditor({ course, initial }: Props) {
               View
             </Link>
           ) : null}
-          {isPublished ? (
+          {isPublished && canEdit ? (
             <button type="button" onClick={unpublish} disabled={isPending} className="rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50">
               Unpublish
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={() => save(false)}
-            disabled={isPending || !isDirty}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
-          >
-            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save
-          </button>
-          {!isPublished ? (
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => save(false)}
+              disabled={isPending || !isDirty}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
+            >
+              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Save
+            </button>
+          ) : null}
+          {!isPublished && canEdit ? (
             <button
               type="button"
               onClick={() => save(true)}

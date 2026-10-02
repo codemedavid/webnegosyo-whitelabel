@@ -1,71 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { importLoyverseCatalog } from '@/lib/loyverse/catalog-import'
 import { ensureLoyverseWebhooks } from '@/lib/loyverse/webhooks'
 import { runLoyverseSync } from '@/lib/loyverse/sync-orchestrator'
 import { isAuthorizedReconcileRequest } from '@/lib/loyverse/reconcile-auth'
-import type { Tenant } from '@/types/database'
+import { listLoyverseTenants, type LoyverseTenant } from '@/lib/loyverse/tenant'
+import { forEachWithConcurrency } from '@/lib/loyverse/concurrency'
 
-// Sequential full-catalog pulls across tenants; well beyond a lambda default.
 export const maxDuration = 300
 
 /**
- * GET /api/loyverse/reconcile?secret=...
+ * Tenants are independent (Loyverse rate limits are per merchant account), so
+ * a few run side by side; more would contend for this function's CPU and the
+ * database pool.
+ */
+const TENANT_CONCURRENCY = 3
+/**
+ * Stop STARTING tenants once this much of maxDuration is gone, so in-flight
+ * imports finish instead of being killed mid-write. Whoever is left over is
+ * the stalest next time (tenants are listed stalest-first).
+ */
+const START_BUDGET_MS = 200_000
+
+interface ReconcileResult {
+  tenantId: string
+  ok: boolean
+  itemsCreated?: number
+  itemsUpdated?: number
+  warnings?: number
+  error?: string
+}
+
+/**
+ * GET /api/loyverse/reconcile — `Authorization: Bearer $CRON_SECRET`
  *
  * Safety net behind the webhooks: Loyverse disables a webhook after 48 hours
  * of failed deliveries and never re-enables it, which would freeze a tenant's
- * menu and stock silently. A periodic run (Vercel cron, e.g. every 6h)
- * re-imports every Loyverse tenant's catalog AND re-registers any disabled
- * webhook, so the steady state self-heals.
- *
- * Sequential on purpose: rate limits are per merchant account, but the
- * fetches share this deployment's CPU, and there is no hurry.
+ * menu and stock silently. The 6-hourly Vercel cron re-imports every Loyverse
+ * tenant's catalog AND re-registers any disabled webhook, so the steady state
+ * self-heals.
  */
 export async function GET(request: NextRequest) {
-  const authorized = isAuthorizedReconcileRequest(
-    request.nextUrl.searchParams.get('secret'),
-    request.headers.get('authorization'),
-    {
-      webhookSecret: process.env.LOYVERSE_WEBHOOK_SECRET,
-      cronSecret: process.env.CRON_SECRET,
-    }
-  )
-  if (!authorized) {
+  if (!isAuthorizedReconcileRequest(request.headers.get('authorization'), process.env.CRON_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const startedAt = Date.now()
   const admin = createAdminClient()
-  const { data: tenants, error } = await admin
-    .from('tenants')
-    .select('*')
-    .eq('loyverse_enabled', true)
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  let tenants: LoyverseTenant[]
+  try {
+    tenants = await listLoyverseTenants(admin)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to list tenants'
+    console.error('[Loyverse] reconcile could not list tenants:', message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 
-  const results: Array<{
-    tenantId: string
-    ok: boolean
-    itemsCreated?: number
-    itemsUpdated?: number
-    warnings?: number
-    error?: string
-  }> = []
-
-  const tenantRows = (tenants ?? []) as unknown as Tenant[]
-  // Access tokens live in tenant_secrets; one read covers every tenant here.
-  const secretsByTenant = await listTenantSecrets(
-    admin,
-    tenantRows.map((row) => row.id)
-  )
-
-  for (const tenantRow of tenantRows) {
-    const row: Tenant = mergeTenantSecrets(tenantRow, secretsByTenant.get(tenantRow.id) ?? null)
+  const results: ReconcileResult[] = []
+  const reconcileTenant = async (tenant: LoyverseTenant): Promise<void> => {
     try {
       // Webhooks first: registration is cheap and idempotent, and must not be
       // hostage to a catalog import that can time out on large menus.
-      const report = await runLoyverseSync(row, undefined, {
+      const report = await runLoyverseSync(tenant, undefined, {
         importCatalog: importLoyverseCatalog,
         ensureWebhooks: ensureLoyverseWebhooks,
         recordWebhookStatus: async (id, update) => {
@@ -73,21 +69,33 @@ export async function GET(request: NextRequest) {
         },
       })
       results.push({
-        tenantId: row.id,
+        tenantId: tenant.id,
         ok: report.success,
         itemsCreated: report.itemsCreated,
         itemsUpdated: report.itemsUpdated,
         warnings: report.warnings.length,
         error: report.error,
       })
-    } catch (err: unknown) {
+    } catch (error: unknown) {
       results.push({
-        tenantId: row.id,
+        tenantId: tenant.id,
         ok: false,
-        error: err instanceof Error ? err.message : 'reconcile crashed',
+        error: error instanceof Error ? error.message : 'reconcile crashed',
       })
     }
   }
 
-  return NextResponse.json({ tenants: results.length, results })
+  const started = await forEachWithConcurrency(
+    tenants,
+    TENANT_CONCURRENCY,
+    reconcileTenant,
+    () => Date.now() - startedAt < START_BUDGET_MS
+  )
+
+  return NextResponse.json({
+    tenants: tenants.length,
+    reconciled: results.length,
+    deferred: tenants.length - started,
+    results,
+  })
 }

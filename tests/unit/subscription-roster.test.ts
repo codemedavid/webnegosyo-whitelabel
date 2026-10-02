@@ -137,3 +137,32 @@ describe('summarizeRoster', () => {
     expect(summarizeRoster([])).toMatchObject({ total: 0, mrrPhp: 0, overduePhp: 0 })
   })
 })
+
+describe('tenants who have never been billed', () => {
+  // 96 stores on the platform have no subscription row at all. The gate lets
+  // them in (every uncertain case resolves to open), which made the screen
+  // label them "Paid" and add ₱649 each to MRR for money nobody ever sent.
+  const UNBILLED = { tenantId: 't9', name: 'Echo Eats', slug: 'echo' }
+
+  it('flags a tenant with no paid-through date as not billed', () => {
+    const [row] = buildSubscriptionRoster([UNBILLED], NOW)
+
+    expect(row).toMatchObject({ state: 'active', isUnbilled: true })
+  })
+
+  it('does not flag a paying tenant', () => {
+    expect(buildSubscriptionRoster([PAID], NOW)[0].isUnbilled).toBe(false)
+  })
+
+  it('does not flag a manually paused tenant, whose missing date is not the story', () => {
+    const [row] = buildSubscriptionRoster([{ ...UNBILLED, status: 'paused' }], NOW)
+
+    expect(row.isUnbilled).toBe(false)
+  })
+
+  it('leaves them out of the paying count and MRR, and counts them separately', () => {
+    const summary = summarizeRoster(buildSubscriptionRoster([PAID, UNBILLED], NOW))
+
+    expect(summary).toMatchObject({ active: 1, unbilled: 1, mrrPhp: 649, overduePhp: 0 })
+  })
+})

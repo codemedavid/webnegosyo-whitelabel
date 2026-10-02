@@ -1,4 +1,5 @@
 import {
+  methodsForTender,
   isCashMethod,
   isProofOutstanding,
   requiresProof,
@@ -129,5 +130,47 @@ describe("toTender", () => {
 
   it("leaves methodDetails off when the merchant configured none", () => {
     expect(toTender(method({ details: null }), {}).methodDetails).toBeUndefined();
+  });
+});
+
+describe("methodsForTender", () => {
+  const linked = (id: string, orderTypeIds: string[]) => ({
+    id,
+    name: id,
+    details: null,
+    qr_code_url: null,
+    require_payment_proof: false,
+    order_index: 0,
+    orderTypeIds,
+  });
+  const CASH = linked("cash", ["dine-in", "takeout"]);
+  const GCASH = linked("gcash", ["takeout"]);
+  const UNLINKED = linked("bank", []);
+  const ALL = [CASH, GCASH, UNLINKED];
+
+  it("offers only the methods linked to the sale's order type", () => {
+    expect(methodsForTender(ALL, { orderTypeId: "dine-in", isEditing: false }).map((m) => m.id)).toEqual([
+      "cash",
+    ]);
+    expect(methodsForTender(ALL, { orderTypeId: "takeout", isEditing: false }).map((m) => m.id)).toEqual([
+      "cash",
+      "gcash",
+    ]);
+  });
+
+  it("never offers a method with no order-type link on a new sale — the storefront refuses it too", () => {
+    expect(methodsForTender(ALL, { orderTypeId: "grab", isEditing: false })).toEqual([]);
+  });
+
+  it("offers nothing on a new sale until an order type is chosen", () => {
+    expect(methodsForTender(ALL, { orderTypeId: null, isEditing: false })).toEqual([]);
+  });
+
+  it("settles an edit against every active method, linked or not", () => {
+    expect(methodsForTender(ALL, { orderTypeId: "dine-in", isEditing: true }).map((m) => m.id)).toEqual([
+      "cash",
+      "gcash",
+      "bank",
+    ]);
   });
 });

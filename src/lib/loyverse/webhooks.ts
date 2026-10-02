@@ -15,8 +15,10 @@
  */
 
 import { loyverseRequest, loyverseListAll } from '@/lib/loyverse/client'
+import { signLoyverseWebhook } from '@/lib/loyverse/secret-compare'
 
 export const LOYVERSE_WEBHOOK_EVENTS = ['items.update', 'inventory_levels.update'] as const
+export const LOYVERSE_WEBHOOK_PATH = '/api/loyverse/webhook'
 
 export interface LoyverseExistingWebhook {
   id: string
@@ -32,34 +34,75 @@ export interface WebhookRegistration {
   existingId?: string
 }
 
-export function buildLoyverseWebhookUrl(appUrl: string, tenantId: string, secret: string): string {
-  const url = new URL('/api/loyverse/webhook', appUrl)
+export interface WebhookPlan {
+  register: WebhookRegistration[]
+  /** Ids of our own endpoint's registrations under a superseded URL. */
+  remove: string[]
+}
+
+/** The URL carries a per-tenant signature, never the platform secret (see secret-compare.ts). */
+export function buildLoyverseWebhookUrl(appUrl: string, tenantId: string, platformSecret: string): string {
+  const url = new URL(LOYVERSE_WEBHOOK_PATH, appUrl)
   url.searchParams.set('tenant_id', tenantId)
-  url.searchParams.set('secret', secret)
+  url.searchParams.set('sig', signLoyverseWebhook(platformSecret, tenantId))
   return url.toString()
 }
 
-/** Pure: which registrations are missing or dead, given what Loyverse has. */
+function isOurEndpoint(candidate: string, current: URL): boolean {
+  try {
+    const parsed = new URL(candidate)
+    return parsed.origin === current.origin && parsed.pathname === current.pathname
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Pure: which registrations are missing or dead, and which of OUR endpoint's
+ * registrations are stale (an older URL shape, e.g. the legacy `?secret=`
+ * one) and must go, so every event is delivered exactly once. Webhooks on
+ * any other origin belong to someone else and are never touched.
+ */
 export function planWebhookRegistrations(
   existing: readonly LoyverseExistingWebhook[],
   url: string
-): WebhookRegistration[] {
-  const plan: WebhookRegistration[] = []
+): WebhookPlan {
+  const current = new URL(url)
+  const register: WebhookRegistration[] = []
   for (const type of LOYVERSE_WEBHOOK_EVENTS) {
     const match = existing.find((webhook) => webhook.type === type && webhook.url === url)
     if (!match) {
-      plan.push({ type, url })
+      register.push({ type, url })
     } else if (match.status === 'DISABLED') {
-      plan.push({ type, url, existingId: match.id })
+      register.push({ type, url, existingId: match.id })
     }
   }
-  return plan
+  const remove = existing
+    .filter((webhook) => webhook.url !== url && isOurEndpoint(webhook.url, current))
+    .map((webhook) => webhook.id)
+  return { register, remove }
 }
 
 export interface EnsureWebhooksResult {
   registered: number
   alreadyActive: number
+  removed?: number
   error?: string
+}
+
+/**
+ * The public origin Loyverse delivers to. Configuration wins over the
+ * request's Host: a sync run from a preview or alias deployment used to
+ * register webhooks at THAT host, which then double-delivered every event
+ * (or died with the preview and got the webhook disabled).
+ */
+export function resolveWebhookAppUrl(fallbackAppUrl?: string): string | undefined {
+  const rootDomain = process.env.PLATFORM_ROOT_DOMAIN
+  return (
+    process.env.PLATFORM_APP_URL ||
+    (rootDomain ? `https://www.${rootDomain}` : undefined) ||
+    fallbackAppUrl
+  )
 }
 
 /**
@@ -70,17 +113,11 @@ export interface EnsureWebhooksResult {
 export async function ensureLoyverseWebhooks(
   accessToken: string,
   tenantId: string,
-  /** Absolute https origin of this deployment; derived from env when omitted. */
-  appUrlOverride?: string
+  /** Used only when no app URL is configured (see resolveWebhookAppUrl). */
+  fallbackAppUrl?: string
 ): Promise<EnsureWebhooksResult> {
   const secret = process.env.LOYVERSE_WEBHOOK_SECRET
-  // Same derivation family as the Facebook OAuth redirect: explicit env first,
-  // then the platform root domain the middleware already runs on.
-  const rootDomain = process.env.PLATFORM_ROOT_DOMAIN
-  const appUrl =
-    appUrlOverride ||
-    process.env.PLATFORM_APP_URL ||
-    (rootDomain ? `https://www.${rootDomain}` : undefined)
+  const appUrl = resolveWebhookAppUrl(fallbackAppUrl)
   if (!secret) {
     return { registered: 0, alreadyActive: 0, error: 'LOYVERSE_WEBHOOK_SECRET is not set — continuous sync is off until webhooks are registered' }
   }
@@ -96,7 +133,8 @@ export async function ensureLoyverseWebhooks(
       'webhooks'
     )
     const plan = planWebhookRegistrations(existing, url)
-    for (const registration of plan) {
+    // Register before removing, so a failure never leaves the tenant with none.
+    for (const registration of plan.register) {
       await loyverseRequest(accessToken, {
         path: '/webhooks',
         method: 'POST',
@@ -108,9 +146,16 @@ export async function ensureLoyverseWebhooks(
         },
       })
     }
+    for (const webhookId of plan.remove) {
+      await loyverseRequest(accessToken, {
+        path: `/webhooks/${encodeURIComponent(webhookId)}`,
+        method: 'DELETE',
+      })
+    }
     return {
-      registered: plan.length,
-      alreadyActive: LOYVERSE_WEBHOOK_EVENTS.length - plan.length,
+      registered: plan.register.length,
+      alreadyActive: LOYVERSE_WEBHOOK_EVENTS.length - plan.register.length,
+      removed: plan.remove.length,
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Webhook registration failed'

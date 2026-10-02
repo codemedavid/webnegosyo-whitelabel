@@ -6,6 +6,7 @@
  */
 
 import type { ReactNode } from 'react'
+import { UtensilsCrossed } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -16,6 +17,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import type { Category } from '@/types/database'
 import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import { DishPhotoField } from '@/components/admin/menu-editor/dish-photo-field'
+import { DISH_SECTION_IDS } from '@/components/admin/menu-editor/dish-sections'
 
 export const MIN_DESCRIPTION_LENGTH = 10
 
@@ -44,7 +46,12 @@ export function DishBasicsSection({ values, errors, categories, onChange }: Dish
   const descriptionShortBy = MIN_DESCRIPTION_LENGTH - values.description.trim().length
 
   return (
-    <EditorSection title="Dish details">
+    <EditorSection
+      id={DISH_SECTION_IDS.details}
+      icon={UtensilsCrossed}
+      title="Dish details"
+      description="What customers see on your menu."
+    >
       <div className="grid gap-5 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
         <div>
           <DishPhotoField

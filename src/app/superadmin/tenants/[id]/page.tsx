@@ -6,9 +6,11 @@ import { TenantStats } from '@/components/superadmin/tenant-stats'
 import { TenantUsersList } from '@/components/superadmin/tenant-users-list'
 import { BulkMenuImport } from '@/components/superadmin/bulk-menu-import'
 import { getTenant } from '@/lib/queries/tenants-server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { getTenantUsers } from '@/actions/users'
+import { CustomDomainPanel } from '@/components/admin/custom-domain/custom-domain-panel'
+import { readVercelDomainsConfig } from '@/lib/domains/vercel-domains'
 
 // Force dynamic rendering to avoid Cloudinary prerendering issues
 export const dynamic = 'force-dynamic'
@@ -56,9 +58,10 @@ async function TenantData({ id }: { id: string }) {
 
   // TenantFormWrapper is a client component, so anything passed to it is
   // serialised into the page. The integration tabs therefore get only WHETHER
-  // a credential is stored (tenant_secrets, readable by the superadmin's own
-  // session), never the credential; blank on save means keep.
-  const secrets = await getTenantSecrets(await createClient(), id)
+  // a credential is stored, never the credential; blank on save means keep.
+  // Read with the service role: platform staff cannot read tenant_secrets (by
+  // design); the middleware gates this page on tenants.view.
+  const secrets = await getTenantSecrets(createAdminClient(), id)
 
   return (
     <TenantFormWrapper
@@ -78,6 +81,13 @@ async function TenantData({ id }: { id: string }) {
         </Suspense>
       }
       importSlot={<BulkMenuImport tenantId={tenant.id} tenantName={tenant.name} />}
+      domainSlot={
+        <CustomDomainPanel
+          tenantId={tenant.id}
+          initialDomain={tenant.domain ?? null}
+          isAvailable={readVercelDomainsConfig() !== null}
+        />
+      }
     />
   )
 }

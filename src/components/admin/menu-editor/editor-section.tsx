@@ -15,22 +15,46 @@ import { ChevronDown, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface EditorSectionProps {
+  /** Anchor for the editor's section navigation. */
+  id?: string
+  icon?: LucideIcon
   title: string
   description?: string
+  /** Short state beside the title, e.g. "3 sizes". */
+  meta?: string
   /** Rendered on the heading's right, e.g. an "Add" button. */
   action?: ReactNode
   children: ReactNode
   className?: string
 }
 
-export function EditorSection({ title, description, action, children, className }: EditorSectionProps) {
+/** Clears the sticky mobile header + section chips when jumped to. */
+export const SECTION_SCROLL_MARGIN = 'scroll-mt-32 lg:scroll-mt-6'
+
+export function EditorSection({ id, icon: Icon, title, description, meta, action, children, className }: EditorSectionProps) {
   const headingId = useId()
   return (
-    <section aria-labelledby={headingId} className={cn('rounded-xl border bg-card p-4 shadow-xs sm:p-5', className)}>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h2 id={headingId} className="text-base font-semibold leading-tight">{title}</h2>
-          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      className={cn('rounded-2xl border bg-card p-4 shadow-sm sm:p-6', SECTION_SCROLL_MARGIN, className)}
+    >
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          {Icon && (
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Icon className="h-[18px] w-[18px]" aria-hidden />
+            </span>
+          )}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id={headingId} className="text-base font-semibold leading-tight tracking-tight sm:text-lg">{title}</h2>
+              {meta && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{meta}</span>
+              )}
+            </div>
+            {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+          </div>
         </div>
         {action && <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{action}</div>}
       </div>
@@ -89,7 +113,7 @@ export function OptionalSection({
         onClick={toggle}
         aria-expanded={isOpen}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none sm:px-5"
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none sm:px-6"
       >
         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
           <Icon className="h-4 w-4" aria-hidden />
@@ -107,7 +131,7 @@ export function OptionalSection({
         />
       </button>
       {wasOpened && (
-        <div id={panelId} hidden={!isOpen} className="space-y-4 px-4 pb-5 pt-1 sm:px-5">
+        <div id={panelId} hidden={!isOpen} className="space-y-4 px-4 pb-5 pt-1 sm:px-6">
           {children}
         </div>
       )}
@@ -116,11 +140,15 @@ export function OptionalSection({
 }
 
 /** The card that holds a stack of `OptionalSection` rows. */
-export function OptionalSectionList({ title, children }: { title: string; children: ReactNode }) {
+export function OptionalSectionList({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
   const headingId = useId()
   return (
-    <section aria-labelledby={headingId} className="overflow-hidden rounded-xl border bg-card shadow-xs">
-      <h2 id={headingId} className="border-b px-4 py-3 text-base font-semibold sm:px-5">{title}</h2>
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      className={cn('overflow-hidden rounded-2xl border bg-card shadow-sm', SECTION_SCROLL_MARGIN)}
+    >
+      <h2 id={headingId} className="border-b px-4 py-3.5 text-base font-semibold tracking-tight sm:px-6 sm:text-lg">{title}</h2>
       {children}
     </section>
   )

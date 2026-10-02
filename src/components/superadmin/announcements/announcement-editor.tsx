@@ -21,6 +21,7 @@ import { CoverPicker } from './cover-picker'
 import { AnnouncementPreview } from './announcement-preview'
 import { ReadinessCard, type ReadinessItem } from './readiness-card'
 import { SendPushButton } from './send-push-button'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 
 interface Props {
   initial: AnnouncementRecord | null
@@ -112,6 +113,7 @@ function readinessFor(draft: Draft, tenantCount: number): ReadinessItem[] {
 
 export function AnnouncementEditor({ initial, tenants }: Props) {
   const router = useRouter()
+  const access = usePlatformAccess()
   const [record, setRecord] = useState(initial)
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial))
   const [isPending, startTransition] = useTransition()
@@ -147,6 +149,8 @@ export function AnnouncementEditor({ initial, tenants }: Props) {
         isDirty={isDirty}
         isPending={isPending}
         isReady={validation.ok}
+        canSave={access.can(record ? 'whats_new.edit' : 'whats_new.create')}
+        canEdit={access.can('whats_new.edit')}
         onSave={() => save(false)}
         onPublish={() => save(true)}
         onSent={(count) => record && setRecord({ ...record, pushSentAt: new Date().toISOString(), pushRecipientCount: count })}
@@ -286,6 +290,8 @@ function EditorHeader({
   isDirty,
   isPending,
   isReady,
+  canSave,
+  canEdit,
   onSave,
   onPublish,
   onSent,
@@ -295,6 +301,10 @@ function EditorHeader({
   isDirty: boolean
   isPending: boolean
   isReady: boolean
+  /** Create (new post) or edit (existing post) — hides Save. */
+  canSave: boolean
+  /** Publishing and sending are edits. */
+  canEdit: boolean
   onSave: () => void
   onPublish: () => void
   onSent: (count: number) => void
@@ -320,16 +330,18 @@ function EditorHeader({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={isPending || (!isDirty && record !== null)}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-40"
-          >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {isPublished ? 'Save changes' : 'Save draft'}
-          </button>
-          {!isPublished ? (
+          {canSave ? (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={isPending || (!isDirty && record !== null)}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-40"
+            >
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {isPublished ? 'Save changes' : 'Save draft'}
+            </button>
+          ) : null}
+          {!isPublished && canSave && canEdit ? (
             <button
               type="button"
               onClick={onPublish}
@@ -341,7 +353,7 @@ function EditorHeader({
               Publish
             </button>
           ) : null}
-          {record ? <SendPushButton announcement={record} onSent={onSent} size="md" /> : null}
+          {record && canEdit ? <SendPushButton announcement={record} onSent={onSent} size="md" /> : null}
         </div>
       </div>
     </div>

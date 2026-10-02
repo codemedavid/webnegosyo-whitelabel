@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchLeadDetail, changeLeadStatus, addLeadNote } from '@/app/actions/leads'
 import { LEAD_STATUS_CONFIG } from './lead-status-badge'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import type { LeadStatus, Lead, LeadNote, LeadStatusHistoryEntry } from '@/lib/leads/types'
 
 interface LeadDetailPanelProps {
@@ -92,6 +93,10 @@ export function LeadDetailPanel({
   onOpenChange,
   onStatusChange,
 }: LeadDetailPanelProps) {
+  const access = usePlatformAccess()
+  const canChangeStatus = access.can('leads.edit')
+  const canAddNote = access.can('leads.create')
+  const canConvert = access.can('tenants.create')
   const [lead, setLead] = useState<Lead | null>(null)
   const [notes, setNotes] = useState<LeadNote[]>([])
   const [history, setHistory] = useState<LeadStatusHistoryEntry[]>([])
@@ -215,7 +220,7 @@ export function LeadDetailPanel({
                     <button
                       key={opt.value}
                       type="button"
-                      disabled={isChangingStatus}
+                      disabled={isChangingStatus || !canChangeStatus}
                       aria-pressed={isActive}
                       onClick={() => handleStatusChange(opt.value)}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
@@ -273,28 +278,32 @@ export function LeadDetailPanel({
                   No notes yet — add the first one below.
                 </div>
               )}
-              <Textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Add a note about this lead..."
-                rows={3}
-                aria-label="New note"
-              />
-              <Button
-                size="sm"
-                disabled={!noteText.trim() || isSavingNote}
-                onClick={handleSaveNote}
-                className="mt-2 gap-1.5"
-              >
-                {isSavingNote ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Note'
-                )}
-              </Button>
+              {canAddNote && (
+                <>
+                  <Textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="Add a note about this lead..."
+                    rows={3}
+                    aria-label="New note"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!noteText.trim() || isSavingNote}
+                    onClick={handleSaveNote}
+                    className="mt-2 gap-1.5"
+                  >
+                    {isSavingNote ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Note'
+                    )}
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* 5. Status history */}
@@ -328,7 +337,7 @@ export function LeadDetailPanel({
             )}
 
             {/* 6. Convert to Tenant */}
-            {lead.status !== 'converted' && (
+            {lead.status !== 'converted' && canConvert && (
               <div className="pt-1">
                 <Link
                   href={`/superadmin/tenants/new?lead_id=${lead.id}&name=${encodeURIComponent(lead.name)}&email=${encodeURIComponent(lead.email)}`}

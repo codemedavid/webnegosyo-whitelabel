@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/customers/hub-overview
@@ -51,17 +53,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, permissions, is_owner, outlet_id')
-    .eq('user_id', user.id)
-    .single()
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
 
-  const isAuthorized =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
-
-  if (!isAuthorized) {
+  if (!appUser || !canAccessStoreAdmin(appUser, tenantId, 'view')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -70,9 +64,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { hasPermission } = await import('@/lib/staff-permissions')
   const permitted = hasPermission(
     {
-      role: appUser?.role ?? null,
-      is_owner: appUser?.is_owner ?? false,
-      permissions: (appUser?.permissions as string[] | null) ?? null,
+      role: appUser.role,
+      is_owner: appUser.is_owner ?? false,
+      permissions: appUser.permissions ?? null,
     },
     'customers',
   )

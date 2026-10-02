@@ -3,6 +3,8 @@ import { isUuid } from '@/lib/uuid'
 import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import { parseStockAuditSource, type StockAuditContext } from '@/lib/inventory/stock-audit'
 import { createClient } from '@supabase/supabase-js'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/inventory/order-stock
@@ -129,15 +131,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: appUser } = await supabase
-    .from('app_users')
-    .select('role, tenant_id, outlet_id')
-    .eq('user_id', user.id)
-    .single()
+  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
 
-  const isAuthorized =
-    appUser?.role === 'superadmin' ||
-    (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
+  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, 'edit')
 
   if (!isAuthorized) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

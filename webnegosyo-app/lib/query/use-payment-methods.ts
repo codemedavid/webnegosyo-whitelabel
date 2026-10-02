@@ -21,6 +21,8 @@ import { invalidateResources, setResourceData } from "./resource-cache";
 
 export const PAYMENT_METHODS_RESOURCE = "payment-methods";
 export const PAYMENT_METHOD_RESOURCE = "payment-method";
+/** The tender screen's per-order-type copy (`use-tender-payment-methods.ts`). */
+export const TENDER_PAYMENT_METHODS_RESOURCE = "pos-payment-methods";
 
 const NO_METHODS: ManagedPaymentMethod[] = [];
 
@@ -32,9 +34,17 @@ export interface PaymentMethodsResult extends Omit<ResourceResult<ManagedPayment
   invalidate: () => Promise<void>;
 }
 
-/** Every copy of the tenant's list and any row loaded on its own re-reads. */
+/**
+ * Every copy of the tenant's list, any row loaded on its own, and the tender
+ * screen's cached methods re-read — an edit in Payments must reach the
+ * register's next checkout.
+ */
 export function invalidatePaymentMethods(client: QueryClient, tenantId: string): Promise<void> {
-  return invalidateResources(client, [PAYMENT_METHODS_RESOURCE, PAYMENT_METHOD_RESOURCE], tenantId);
+  return invalidateResources(
+    client,
+    [PAYMENT_METHODS_RESOURCE, PAYMENT_METHOD_RESOURCE, TENDER_PAYMENT_METHODS_RESOURCE],
+    tenantId
+  );
 }
 
 export function usePaymentMethods(tenantId: string | null): PaymentMethodsResult {

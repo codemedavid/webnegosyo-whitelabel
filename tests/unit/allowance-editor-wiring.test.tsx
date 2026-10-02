@@ -15,6 +15,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { buildSubscriptionRoster, summarizeRoster } from '@/lib/billing/subscription-roster'
 import { buildAllowanceRows } from '@/lib/billing/tenant-allowances'
 import { SubscriptionManager } from '@/components/superadmin/subscription-manager'
+import { PlatformAccessProvider } from '@/components/superadmin/platform-access-context'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 jest.mock('@/components/superadmin/mark-paid-dialog', () => ({ MarkPaidDialog: () => null }))
@@ -50,8 +51,11 @@ function renderScreen(
     },
   ])
 
+  // Editing is gated on subscriptions.edit; these specs run as a superadmin.
   return render(
-    <SubscriptionManager rows={rows} summary={summarizeRoster(rows)} allowances={allowances} />
+    <PlatformAccessProvider role="superadmin" permissions={null}>
+      <SubscriptionManager rows={rows} summary={summarizeRoster(rows)} allowances={allowances} />
+    </PlatformAccessProvider>
   )
 }
 

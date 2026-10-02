@@ -29,6 +29,7 @@ The entire app is multi-tenant. Tenant resolution happens in `src/middleware.ts`
 - Subdomains use `PLATFORM_ROOT_DOMAIN` env var. Local dev uses `<tenant>.localhost`.
 - Reserved subdomains: `www`, `superadmin`, `app`, `admin`
 - Custom domains resolve through `src/lib/tenant-domains.ts`: ONE query loads every active custom domain into a per-runtime directory (5 min TTL, stale-on-error, 10s retry back-off). Subdomains are pure parsing (`src/lib/tenant-host.ts`) — the middleware never validates a slug; the storefront's cached tenant read renders "not found".
+- Connecting a custom domain is self-serve (owner or superadmin, Settings → Custom domain): `src/lib/domains/`. A claim sits in `tenants.pending_domain` (NEVER routed) until the owner publishes the claim token as TXT `_webnegosyo.<domain>` AND Vercel verifies it — only then does it move into `tenants.domain`. DNS pointing at the shared Vercel project proves the platform, not the store; never route on it alone. No cron (card-driven checks; unproven claims >7 days are released lazily). `pending_domain*`/`domain_verified_at` are privileged columns. Needs `VERCEL_API_TOKEN` + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID`).
 - Middleware rewrites subdomain/custom domain requests to path-based routes (`/[tenant]/...`) and gates `/admin` on the SERVED path (the rewrite target). Route classification lives in `src/lib/middleware/routes.ts`.
 - Every Supabase client used on a request path has a bounded fetch (`src/lib/supabase/timed-fetch.ts`). Admin layouts (`superadmin`, `[tenant]/admin`) are `force-dynamic` so a build never renders against the live database.
 
@@ -93,6 +94,18 @@ One merchant screen, `/[tenant]/admin/boost-sales` (sidebar: Menu → Boost Sale
 - **Theming**: diner offers never hard-code colours — `offer-theme.ts` (modal colours; the cart row uses `checkout_modal_*`).
 - Analytics sources kept for report continuity: `inline_upgrade` (item page), `post_add` (after adding), `checkout_modal` (cart row).
 - `/admin/bundles/new` and `/admin/bundles/[id]` redirect into the Boost Sales editor (`?new=combo`, `?edit=combo:<id>`). Pairing rules (`pairing_rules_enabled`) still feed the after-add moment as a fallback but have no admin UI.
+- **AI generations** (`src/lib/boost/ai/`, `src/app/actions/boost-ai.ts`): `FREE_BOOST_AI_GENERATIONS` (3, lifetime per store) runs via OpenRouter (`src/lib/ai/openrouter.ts`, same models as the menu parser). The model sees short item refs (`i12`), never UUIDs; `proposals.ts` drops anything that fails validation. Runs + proposals live in `boost_ai_generations` / `boost_ai_proposals` — service-role writes only (the log IS the quota); `claim_boost_ai_generation` reserves a slot atomically and failed runs don't count. Proposals go pending → approved → applied (never live without approval); apply reads the payload from the DB and goes through the same `ideaToWrite` mapping as one-tap ideas.
+- **Picked together** (`pair-insights.ts` share/support/lift, `order-baskets.ts` reads baskets from the store's real backend — platform, tenant Supabase or Convex `orders:getAllOrderItemsInternal`, Redis-cached 10 min) renders on Boost Sales and Product Analytics.
+
+### Loyalty wallet passes (Apple Wallet / Google Wallet)
+
+A loyalty member can add their stamp card to Apple or Google Wallet from the order-tracking page (`AddToWalletButtons` inside `LoyaltyStampCard`); the POS attaches a guest by scanning it (`CustomerPickerSheet` → `MemberCardScanner`).
+
+- **Engine** `src/lib/loyalty/wallet-pass/` (pure parts tested in `tests/unit/loyalty/wallet-pass/`): `content` renders ONE platform-neutral card (both wallets draw from it; its sha256 decides whether anything is pushed), `apple-pass-json` / `google-objects` format it, `apple-ws-route` + `apple-ws-handler` implement Apple's PassKit web service, `sync-plan` decides who hears about a change.
+- **Identity**: a pass carries only a random 144-bit serial (QR `WNLC1.<serial>`), never the phone. Passes are issued ONLY for a receipt proven by its tracking token, for the number already on that order (`resolveOrderLoyaltyMember`, shared with the stamp card) — never for a typed number. Apple's per-pass token is HMAC-derived (`WALLET_PASS_AUTH_SECRET`), not stored.
+- **Keeping cards current**: pg_net triggers on `loyalty_balances` / `loyalty_entitlements` / `loyalty_programs` post an id to `/api/loyalty/passes/sync` (ids only, everything re-read; gated by `X-Wallet-Sync-Secret` = Vault `wallet_pass_sync_secret` = env `WALLET_PASS_SYNC_SECRET`). Apple = APNs empty push with the pass certificate, device then pulls; Google = PATCH the object. Per-wallet watermarks (`apple_pushed_hash`, `google_synced_hash`); Google is only called for members who asked for a Google pass.
+- **Routes**: `GET /api/loyalty/passes/{apple,google}` (issue), `/api/loyalty/passes/apple-ws/v1/...` (device web service), `POST /api/loyalty/passes/sync`, `POST /api/loyalty/passes/identify` (bearer, same tenant + `pos`).
+- **Config** (`config.ts`) fails closed per wallet; see ENV_VARIABLES_NEEDED.txt. Swap the text buttons for Apple's/Google's official badge artwork before launch.
 
 ### Convex (Real-Time Backend)
 

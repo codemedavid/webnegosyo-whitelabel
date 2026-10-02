@@ -8,6 +8,8 @@
  * the arithmetic, mirroring pos-sales.ts.
  */
 
+import type { CashMoveTotals } from "./cash-drawers";
+
 /** Same centavo rounding as pos-sales.ts, so the two never disagree. */
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -100,19 +102,35 @@ export interface ReconcileInput {
   cashCollected: number;
   /** What the drawer held when counted at close. Absent until counted. */
   countedCash?: number | null;
+  /**
+   * Cash that moved without a sale: added (pay in), spent (pay out), or taken
+   * out to the owner mid-shift (collected). Absent = none.
+   */
+  moves?: CashMoveTotals;
+  /**
+   * A zero-balance drawer keeps nothing at close: every peso counted is
+   * handed over, so the turnover is the whole drawer, not the drawer less
+   * the float.
+   */
+  isZeroBalance?: boolean;
 }
 
 export type ShiftVerdict = "uncounted" | "balanced" | "over" | "short";
 
 export interface ShiftReconciliation {
-  /** What the drawer should hold at close: float plus cash taken. */
+  /** What the drawer should hold at close: float + cash taken + pay ins − pay outs − pickups. */
   expectedInDrawer: number;
   /**
-   * What the staff member hands over: the cash they COLLECTED. The float goes
-   * back in the drawer for the next shift — calling the whole drawer
-   * "turnover" would accuse every cashier of keeping the float.
+   * What the staff member hands over at close. The float goes back in the
+   * drawer for the next shift — calling the whole drawer "turnover" would
+   * accuse every cashier of keeping the float. On a zero-balance drawer
+   * nothing goes back, so it is the whole drawer.
    */
   expectedTurnover: number;
+  /** What stays in the drawer for the next shift. 0 on a zero-balance drawer. */
+  floatToKeep: number;
+  /** What is actually handed over once counted (count − float kept). Null until counted. */
+  handOver: number | null;
   /** counted − expected, in pesos. Null until the drawer is counted. */
   variance: number | null;
   verdict: ShiftVerdict;
@@ -125,19 +143,36 @@ export interface ShiftReconciliation {
  * arithmetic can never flag a correctly counted drawer as short.
  */
 export function reconcileShift(input: ReconcileInput): ShiftReconciliation {
-  const expectedInDrawer = round2(input.openingFloat + input.cashCollected);
-  const expectedTurnover = round2(input.cashCollected);
+  const moves = input.moves ?? { payIn: 0, payOut: 0, collected: 0 };
+  const expectedInDrawer = round2(
+    input.openingFloat + input.cashCollected + moves.payIn - moves.payOut - moves.collected,
+  );
+  const floatToKeep = input.isZeroBalance ? 0 : round2(input.openingFloat);
+  const expectedTurnover = Math.max(0, round2(expectedInDrawer - floatToKeep));
 
   // `?? null` and an explicit null-check rather than falsiness: a counted
   // drawer of zero pesos is a count, not an uncounted drawer.
   const counted = input.countedCash ?? null;
   if (counted === null) {
-    return { expectedInDrawer, expectedTurnover, variance: null, verdict: "uncounted" };
+    return { expectedInDrawer, expectedTurnover, floatToKeep, handOver: null, variance: null, verdict: "uncounted" };
   }
 
-  const variance = round2(counted - expectedInDrawer);
-  const verdict: ShiftVerdict =
-    variance === 0 ? "balanced" : variance > 0 ? "over" : "short";
+  return { expectedInDrawer, expectedTurnover, floatToKeep, ...judgeCount(expectedInDrawer, floatToKeep, counted) };
+}
 
-  return { expectedInDrawer, expectedTurnover, variance, verdict };
+export interface CountJudgement {
+  variance: number;
+  verdict: Exclude<ShiftVerdict, "uncounted">;
+  handOver: number;
+}
+
+/**
+ * One count against one expectation — what the close sheet shows live as
+ * the cashier types, and what reconcileShift records. One function, so the
+ * preview can never promise a different verdict from the one saved.
+ */
+export function judgeCount(expectedInDrawer: number, floatToKeep: number, counted: number): CountJudgement {
+  const variance = round2(counted - expectedInDrawer);
+  const verdict = variance === 0 ? "balanced" : variance > 0 ? "over" : "short";
+  return { variance, verdict, handOver: Math.max(0, round2(counted - floatToKeep)) };
 }

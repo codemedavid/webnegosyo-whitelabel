@@ -9,45 +9,16 @@ import {
 import { tenantsNeedingDeploy } from "@/lib/convex-deploy-selection";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTenantSecrets, listTenantSecrets, mergeTenantSecrets } from "@/lib/tenant-secrets";
-import { createClient } from "@/lib/supabase/server";
+import { requirePlatformPermission } from "@/lib/platform-staff/guard";
 import {
   buildTenantConfigPayload,
   CONVEX_CONFIG_TENANT_COLUMNS,
   type ConvexTenantConfigSource,
 } from "@/lib/convex-tenant-config";
 
-/**
- * Verify the current user is a superadmin.
- * Throws if not authenticated or not a superadmin.
- */
-async function verifySuperadmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    throw new Error("Unauthorized: Not authenticated");
-  }
-
-  const { data: userRole } = await supabase
-    .from("app_users")
-    .select("role")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  const role = userRole as { role: string } | null;
-  if (!role || role.role !== "superadmin") {
-    throw new Error("Forbidden: Superadmin access required");
-  }
-
-  return { user, supabase };
-}
-
 export async function deployConvexToTenantAction(tenantId: string) {
-  // Verify superadmin access before proceeding
-  await verifySuperadmin();
+  // Deploys change a restaurant's platform setup: tenants.edit.
+  await requirePlatformPermission("tenants.edit");
 
   const supabase = createAdminClient();
 
@@ -126,8 +97,8 @@ export async function deployConvexToTenantAction(tenantId: string) {
 }
 
 export async function bulkDeployConvexAction() {
-  // Verify superadmin access before proceeding
-  await verifySuperadmin();
+  // Deploys change a restaurant's platform setup: tenants.edit.
+  await requirePlatformPermission("tenants.edit");
 
   const supabase = createAdminClient();
 

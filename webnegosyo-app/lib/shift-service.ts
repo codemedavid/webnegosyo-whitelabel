@@ -15,6 +15,7 @@
 import { supabase } from "./supabase";
 import { validateCashAmount } from "./shift";
 import { withDeadline } from "./offline/deadline";
+import { NO_CASH_MOVES, summarizeCashMoves, type CashMoveKind, type CashMoveTotals } from "./cash-drawers";
 
 /**
  * How long a shift read or write may take before the cashier is told. An
@@ -27,7 +28,10 @@ const SHIFT_REQUEST_MS = 15_000;
 type Db = Pick<typeof supabase, "from">;
 
 const SHIFT_COLUMNS =
-  "id, tenant_id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at";
+  "id, tenant_id, outlet_id, staff_user_id, staff_name, status, opening_float, expected_cash, closing_count, note, opened_at, closed_at, drawer_id, drawer_name, is_zero_balance, closed_by_name";
+
+/** History rows also carry their cash moves, so turnover counts mid-shift pickups. */
+const HISTORY_COLUMNS = `${SHIFT_COLUMNS}, shift_cash_movements(kind, amount)`;
 
 /** One shift, as the screens consume it. */
 export interface ShiftRecord {
@@ -45,6 +49,16 @@ export interface ShiftRecord {
   note: string | null;
   openedAt: string;
   closedAt: string | null;
+  /** The till held, or null for a personal drawer (no tills set up). */
+  drawerId: string | null;
+  /** The till's name at clock-in. */
+  drawerName: string | null;
+  /** Started empty; everything counted is handed over at close. */
+  isZeroBalance: boolean;
+  /** Who counted and closed it, when that was recorded. */
+  closedByName: string | null;
+  /** Pay ins / outs / pickups — present on history reads only. */
+  moves?: CashMoveTotals;
 }
 
 interface ShiftRow {
@@ -59,6 +73,11 @@ interface ShiftRow {
   note: string | null;
   opened_at: string;
   closed_at: string | null;
+  drawer_id?: string | null;
+  drawer_name?: string | null;
+  is_zero_balance?: boolean | null;
+  closed_by_name?: string | null;
+  shift_cash_movements?: { kind: string; amount: number | string }[] | null;
 }
 
 /**
@@ -84,6 +103,19 @@ function toShift(row: ShiftRow): ShiftRecord {
     note: row.note,
     openedAt: row.opened_at,
     closedAt: row.closed_at,
+    drawerId: row.drawer_id ?? null,
+    drawerName: row.drawer_name ?? null,
+    isZeroBalance: row.is_zero_balance === true,
+    closedByName: row.closed_by_name ?? null,
+    ...(row.shift_cash_movements
+      ? {
+          moves: row.shift_cash_movements.length
+            ? summarizeCashMoves(
+                row.shift_cash_movements.map((m) => ({ kind: m.kind as CashMoveKind, amount: Number(m.amount) })),
+              )
+            : NO_CASH_MOVES,
+        }
+      : {}),
   };
 }
 
@@ -157,6 +189,12 @@ export interface OpenShiftInput {
   staffName: string;
   /** Cash in the drawer before the first sale. */
   openingFloat: number;
+  /**
+   * The till taken, or null/absent for a personal drawer. The server
+   * snapshots its name and zero-balance policy (and forces a zero-balance
+   * till's float to 0) — the client's word on either is never trusted.
+   */
+  drawerId?: string | null;
 }
 
 /**
@@ -192,6 +230,7 @@ export async function openShift(
           staff_name: input.staffName,
           status: "open",
           opening_float: float.amount,
+          drawer_id: input.drawerId ?? null,
         } as never)
         .select(SHIFT_COLUMNS)
         .single(),
@@ -199,15 +238,28 @@ export async function openShift(
     SHIFT_REQUEST_MS,
   );
 
-  if (error) throw asError(error, "The shift could not be started.");
+  if (error) throw asError(error, describeOpenRefusal(error));
   if (!data) throw new Error("The shift could not be started. Try again.");
 
   return toShift(data as unknown as ShiftRow);
 }
 
+/**
+ * The one refusal a cashier can act on, said plainly: someone else took this
+ * till between the board loading and the tap.
+ */
+function describeOpenRefusal(error: { code?: string; message?: string }): string {
+  if (error.code === "23505" && /drawer/.test(error.message ?? "")) {
+    return "Someone else just opened this drawer. Pick another one.";
+  }
+  return "The shift could not be started.";
+}
+
 export interface CloseShiftInput {
   /** What the drawer held when counted. */
   closingCount: number;
+  /** Who counted it — the server stamps the account, this is the display name. */
+  closedByName?: string | null;
   /** What shift-drawer.ts said it should hold, frozen at the moment of close. */
   expectedCash: number;
   note: string | null;
@@ -245,6 +297,7 @@ export async function closeShift(
           closing_count: counted.amount,
           expected_cash: input.expectedCash,
           note: input.note,
+          closed_by_name: input.closedByName ?? null,
         } as never)
         .eq("tenant_id", tenantId)
         .eq("id", shiftId)
@@ -281,7 +334,7 @@ export async function listShifts(
 ): Promise<ShiftRecord[]> {
   let query = db
     .from("staff_shifts")
-    .select(SHIFT_COLUMNS)
+    .select(HISTORY_COLUMNS)
     .eq("tenant_id", tenantId)
     .order("opened_at", { ascending: false });
 
@@ -295,4 +348,50 @@ export async function listShifts(
   if (error) throw asError(error, "The shift history could not be read.");
 
   return ((data ?? []) as unknown as ShiftRow[]).map(toShift);
+}
+
+/**
+ * Every drawer open right now in this store (or one branch), oldest first —
+ * the owner's floor view and the till picker both read it.
+ *
+ * THROWS: the picker must not offer a till as free because the read failed.
+ */
+export async function listOpenShifts(
+  tenantId: string,
+  outletId: string | null | undefined,
+  db: Db = supabase,
+): Promise<ShiftRecord[]> {
+  let query = db
+    .from("staff_shifts")
+    .select(SHIFT_COLUMNS)
+    .eq("tenant_id", tenantId)
+    .eq("status", "open")
+    .order("opened_at", { ascending: true });
+  if (outletId !== undefined) {
+    query = outletId === null ? query.is("outlet_id", null) : query.eq("outlet_id", outletId);
+  }
+
+  const { data, error } = await withDeadline(Promise.resolve(query), SHIFT_REQUEST_MS);
+  if (error) throw asError(error, "The open drawers could not be read.");
+  return ((data ?? []) as unknown as ShiftRow[]).map(toShift);
+}
+
+/**
+ * Whether one shift is still open — THROWING on a failed read, for deciding
+ * whether a close that timed out actually landed (fetchOpenShift's rule,
+ * keyed on the shift because a manager may close someone else's).
+ */
+export async function isShiftStillOpen(
+  tenantId: string,
+  shiftId: string,
+  db: Db = supabase,
+): Promise<boolean> {
+  const { data, error } = await withDeadline(
+    Promise.resolve(
+      db.from("staff_shifts").select("status").eq("tenant_id", tenantId).eq("id", shiftId).maybeSingle(),
+    ),
+    SHIFT_REQUEST_MS,
+  );
+  if (error) throw asError(error, "The shift could not be read.");
+  return (data as { status?: string } | null)?.status === "open";
 }

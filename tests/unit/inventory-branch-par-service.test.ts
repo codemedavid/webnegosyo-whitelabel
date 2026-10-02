@@ -134,6 +134,6 @@ describe('setBranchReorderLevel', () => {
 
     await setBranchReorderLevel(TENANT, FLOUR, SOUTH, 5)
 
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu')
+    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu', 'create')
   })
 })

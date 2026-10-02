@@ -77,7 +77,7 @@ export async function saveProductDetailSettings(
     settings: Partial<ProductDetailSettings>
 ): Promise<ActionResult> {
     try {
-        await verifyTenantPermission(tenantId, 'store_setup')
+        await verifyTenantPermission(tenantId, 'store_setup', 'create')
 
         const parsed = productDetailSettingsWriteSchema.safeParse(stripToDBColumns(settings))
         if (!parsed.success) {
@@ -119,7 +119,7 @@ export async function resetProductDetailSettings(
     _tenantSlug: string
 ): Promise<ActionResult<Partial<ProductDetailSettings>>> {
     try {
-        await verifyTenantPermission(tenantId, 'store_setup')
+        await verifyTenantPermission(tenantId, 'store_setup', 'delete')
 
         const supabase = await createClient()
         

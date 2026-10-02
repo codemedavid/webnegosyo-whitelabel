@@ -12,7 +12,13 @@
  * collection with a minus sign — it has its own permission.
  */
 
-import { canCollectPayment, validateCollectAmount } from "./order-collect";
+import {
+  canCollectPayment,
+  collectLedgerNote,
+  defaultCollectMethodId,
+  validateCashCollect,
+  validateCollectAmount,
+} from "./order-collect";
 import type { StaffPermissionHolder } from "./staff-permissions";
 
 const OWNER: StaffPermissionHolder = { role: "admin", isOwner: true, permissions: null };
@@ -186,5 +192,93 @@ describe("validateCollectAmount", () => {
     // 149.00 typed against a balance that computed to 148.999999 is the same
     // money, and refusing it would strand the cashier on the last payment.
     expect(validateCollectAmount("149", 148.999999).ok).toBe(true);
+  });
+});
+
+
+/**
+ * Collecting cash at the counter: the cashier types what the customer handed
+ * over and is told the change, exactly as at the register. What is recorded
+ * is the amount COLLECTED — the change went back, so it never counts as paid.
+ */
+describe("validateCashCollect", () => {
+  it("records the balance and works out the change", () => {
+    expect(validateCashCollect({ amountRaw: "450", cashRaw: "500", balanceDue: 450 })).toEqual({
+      ok: true,
+      amount: 450,
+      cashTendered: 500,
+      changeDue: 50,
+    });
+  });
+
+  it("accepts exact cash with no change", () => {
+    expect(validateCashCollect({ amountRaw: "450", cashRaw: "450", balanceDue: 450 })).toMatchObject({
+      ok: true,
+      changeDue: 0,
+    });
+  });
+
+  it("asks for the cash before anything else is judged", () => {
+    expect(validateCashCollect({ amountRaw: "450", cashRaw: "", balanceDue: 450 })).toEqual({
+      ok: false,
+      error: "Enter the cash the customer handed over.",
+    });
+  });
+
+  it("refuses cash that does not cover what is being collected", () => {
+    expect(validateCashCollect({ amountRaw: "450", cashRaw: "400", balanceDue: 450 })).toEqual({
+      ok: false,
+      error: "₱400.00 does not cover ₱450.00. Enter more cash, or collect a smaller amount.",
+    });
+  });
+
+  it("keeps the amount rules: never more than is owed", () => {
+    expect(validateCashCollect({ amountRaw: "500", cashRaw: "500", balanceDue: 450 })).toEqual({
+      ok: false,
+      error: "Only ₱450.00 is still owed on this order.",
+    });
+  });
+
+  it("allows a part payment when the cashier lowers the amount", () => {
+    expect(validateCashCollect({ amountRaw: "200", cashRaw: "500", balanceDue: 450 })).toEqual({
+      ok: true,
+      amount: 200,
+      cashTendered: 500,
+      changeDue: 300,
+    });
+  });
+});
+
+describe("collectLedgerNote", () => {
+  it("records the cash handed over and the change on the ledger row", () => {
+    expect(collectLedgerNote({ cashTendered: 500, changeDue: 50 })).toBe(
+      "Cash received ₱500.00 · change ₱50.00",
+    );
+  });
+
+  it("writes nothing for a non-cash payment", () => {
+    expect(collectLedgerNote({})).toBeUndefined();
+  });
+});
+
+describe("defaultCollectMethodId", () => {
+  const methods = [
+    { id: "gcash", name: "GCash", isCash: false },
+    { id: "cash", name: "Cash", isCash: true },
+  ];
+
+  it("pre-selects the method the customer chose at checkout", () => {
+    expect(defaultCollectMethodId(methods, "gcash")).toBe("gcash");
+    expect(defaultCollectMethodId(methods, " GCASH ")).toBe("gcash");
+  });
+
+  it("falls back to cash — most bills settled later are settled at the counter", () => {
+    expect(defaultCollectMethodId(methods, undefined)).toBe("cash");
+    expect(defaultCollectMethodId(methods, "Maya")).toBe("cash");
+  });
+
+  it("falls back to the first method, then to none", () => {
+    expect(defaultCollectMethodId([methods[0]], undefined)).toBe("gcash");
+    expect(defaultCollectMethodId([], "Cash")).toBeNull();
   });
 });

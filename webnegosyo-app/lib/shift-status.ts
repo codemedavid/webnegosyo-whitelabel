@@ -42,7 +42,7 @@ function formatClock(at: number): string {
  * @param nowMs the moment to measure against, injected so this stays pure
  */
 export function describeShiftStatus(
-  shift: { openedAt: string } | null,
+  shift: { openedAt: string; drawerName?: string | null } | null,
   nowMs: number,
 ): ShiftStatusView {
   if (!shift) {
@@ -56,12 +56,17 @@ export function describeShiftStatus(
   const openedAt = Date.parse(shift.openedAt);
   if (!Number.isFinite(openedAt)) {
     // The row exists, so the drawer is open; only its stamp is unreadable.
-    return { isOpen: true, title: "On shift", detail: "Drawer open" };
+    return { isOpen: true, title: onShiftTitle(shift.drawerName), detail: "Drawer open" };
   }
 
   return {
     isOpen: true,
-    title: "On shift",
+    title: onShiftTitle(shift.drawerName),
     detail: `Since ${formatClock(openedAt)} · ${formatShiftElapsed(nowMs - openedAt)}`,
   };
+}
+
+/** "On shift · Cashier 1" when the shift holds a named till. */
+function onShiftTitle(drawerName: string | null | undefined): string {
+  return drawerName ? `On shift · ${drawerName}` : "On shift";
 }

@@ -8,7 +8,12 @@
  *   coverage against the deep 2000-row cap — so a 50-row fallback page
  *   claimed to cover the whole month.
  */
-import { claimOrderBusy, releaseOrderBusy, resolveExportSource } from "./orders-list-actions";
+import {
+  claimOrderBusy,
+  releaseOrderBusy,
+  resolveExportSource,
+  resolveListAdvance,
+} from "./orders-list-actions";
 
 describe("claimOrderBusy", () => {
   it("claims an idle order and returns a new set holding it", () => {
@@ -91,5 +96,42 @@ describe("resolveExportSource", () => {
 
     expect(source.orders).toEqual([]);
     expect(source.isDeepRead).toBe(true);
+  });
+});
+
+/**
+ * A quick "Confirm" or "Delivered" on an unpaid order is not a one-tap status
+ * change: the merchant must say whether the money came in. The list holds no
+ * ledger and no collect sheet, so it opens the order screen with the question
+ * already asked.
+ */
+describe("resolveListAdvance", () => {
+  const unpaid = { status: "pending", paymentStatus: "pending", total: 450, customerData: {} };
+
+  it("opens the order to ask about payment before confirming an unpaid order", () => {
+    expect(resolveListAdvance(unpaid, "confirmed")).toEqual({ kind: "open", intent: "confirm" });
+  });
+
+  it("opens the order to collect before handing over an unpaid one", () => {
+    expect(resolveListAdvance({ ...unpaid, status: "ready" }, "delivered")).toEqual({
+      kind: "open",
+      intent: "deliver",
+    });
+  });
+
+  it("moves a paid order straight on", () => {
+    expect(resolveListAdvance({ ...unpaid, paymentStatus: "paid" }, "confirmed")).toEqual({
+      kind: "advance",
+    });
+  });
+
+  it("moves an order straight on between the kitchen steps", () => {
+    expect(resolveListAdvance({ ...unpaid, status: "confirmed" }, "preparing")).toEqual({
+      kind: "advance",
+    });
+  });
+
+  it("reads an order settled on the ledger as paid", () => {
+    expect(resolveListAdvance({ ...unpaid, amountPaid: 450 }, "confirmed")).toEqual({ kind: "advance" });
   });
 });

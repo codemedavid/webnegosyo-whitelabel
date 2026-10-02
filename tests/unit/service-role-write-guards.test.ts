@@ -24,6 +24,11 @@ jest.mock('@/lib/admin-service', () => ({
 }))
 
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }))
+
+const requirePlatformPermission = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+jest.mock('@/lib/platform-staff/guard', () => ({
+  requirePlatformPermission: (...args: unknown[]) => requirePlatformPermission(...args),
+}))
 jest.mock('@/lib/redis-cache', () => ({
   getCached: jest.fn(),
   setCached: jest.fn(),
@@ -88,6 +93,7 @@ beforeEach(() => {
   fake = makeFakeAdmin()
   verifyTenantPermission.mockReset().mockResolvedValue(undefined)
   verifySuperadmin.mockReset().mockResolvedValue(undefined)
+  requirePlatformPermission.mockReset().mockResolvedValue(undefined)
 })
 
 const rule = {
@@ -109,7 +115,7 @@ describe('pairing rules', () => {
     await createPairingRule('tenant-1', rule)
 
     // Assert
-    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'analytics')
+    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'analytics', 'create')
     expect(fake.writes[0]).toMatchObject({ table: 'pairing_rules', op: 'insert' })
   })
 
@@ -145,7 +151,7 @@ describe('pairing rules', () => {
     await updatePairingRule('r1', 'tenant-1', rule)
 
     // Assert
-    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'analytics')
+    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'analytics', 'edit')
     const updateIndex = fake.filters.findIndex(
       (f) => f.table === 'pairing_rules' && f.op === 'eq' && f.args[0] === 'tenant_id' && f.args[1] === 'tenant-1'
     )
@@ -163,7 +169,7 @@ describe('pairing rules', () => {
     await togglePairingRule('r1', false)
 
     // Assert
-    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-9', 'analytics')
+    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-9', 'analytics', 'edit')
     expect(fake.writes).toEqual([
       expect.objectContaining({ table: 'pairing_rules', op: 'update' }),
     ])
@@ -191,7 +197,7 @@ describe('tags', () => {
     await setItemTags('item-1', 'tenant-1', ['tag-1'])
 
     // Assert
-    expect(verifyTenantPermission).toHaveBeenNthCalledWith(1, 'tenant-1', 'menu')
+    expect(verifyTenantPermission).toHaveBeenNthCalledWith(1, 'tenant-1', 'menu', 'create')
     expect(verifyTenantPermission).toHaveBeenNthCalledWith(2, 'tenant-1', 'menu')
   })
 
@@ -208,14 +214,16 @@ describe('tags', () => {
     expect(fake.writes).toHaveLength(0)
   })
 
-  test('preset tags — the list every store sees — are superadmin only', async () => {
+  test('preset tags — the list every store sees — need the platform settings.edit grant', async () => {
     // Arrange
     const { createPresetTag, deletePresetTag } = await import('@/lib/tags-service')
-    verifySuperadmin.mockRejectedValue(new Error('Forbidden'))
+    requirePlatformPermission.mockRejectedValue(new Error('Forbidden'))
 
     // Act / Assert
     await expect(createPresetTag('Diet', 'Halal')).rejects.toThrow('Forbidden')
     await expect(deletePresetTag('preset-1')).rejects.toThrow('Forbidden')
+    expect(requirePlatformPermission).toHaveBeenNthCalledWith(1, 'settings.edit')
+    expect(requirePlatformPermission).toHaveBeenNthCalledWith(2, 'settings.edit')
     expect(fake.writes).toHaveLength(0)
   })
 })
@@ -231,10 +239,11 @@ describe('complementary pairs', () => {
     await svc.deleteComplementaryPairsForSource('tenant-1', 'item', 'src')
 
     // Assert
-    expect(verifyTenantPermission).toHaveBeenCalledTimes(3)
-    for (const call of verifyTenantPermission.mock.calls) {
-      expect(call).toEqual(['tenant-1', 'analytics'])
-    }
+    expect(verifyTenantPermission.mock.calls).toEqual([
+      ['tenant-1', 'analytics', 'create'],
+      ['tenant-1', 'analytics', 'delete'],
+      ['tenant-1', 'analytics', 'delete'],
+    ])
   })
 
   test('a refused caller gets a failure result and no write', async () => {
@@ -265,7 +274,8 @@ describe('menu engineering pair suggestions', () => {
 
     // Assert
     expect(verifyTenantPermission).toHaveBeenCalledTimes(3)
-    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'analytics')
+    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'analytics', 'create')
+    expect(verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'analytics', 'view')
   })
 
   test('a refused caller inserts nothing', async () => {
@@ -280,16 +290,22 @@ describe('menu engineering pair suggestions', () => {
 })
 
 describe('leads', () => {
-  test('the lead pipeline is superadmin only, read and write', async () => {
+  test('the lead pipeline needs the matching leads grant, read and write', async () => {
     // Arrange
     const actions = await import('@/app/actions/leads')
-    verifySuperadmin.mockRejectedValue(new Error('Forbidden'))
+    requirePlatformPermission.mockRejectedValue(new Error('Forbidden'))
 
     // Act / Assert
     await expect(actions.fetchLeads({})).rejects.toThrow('Forbidden')
     await expect(actions.fetchLeadDetail('lead-1')).rejects.toThrow('Forbidden')
     await expect(actions.changeLeadStatus('lead-1', 'new', 'lost')).rejects.toThrow('Forbidden')
     await expect(actions.addLeadNote('lead-1', 'hi')).rejects.toThrow('Forbidden')
+    expect(requirePlatformPermission.mock.calls.map(([permission]) => permission)).toEqual([
+      'leads.view',
+      'leads.view',
+      'leads.edit',
+      'leads.create',
+    ])
     expect(fake.client.from).not.toHaveBeenCalled()
   })
 })

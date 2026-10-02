@@ -30,6 +30,9 @@ import {
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { Card } from "../../components/Card";
 import { GrowthCoachCard } from "../../components/GrowthCoachCard";
+import { BoostIdeasCard } from "../../components/BoostIdeasCard";
+import { useBoostAi } from "../../lib/query/use-boost-ai";
+import { useAuthStore } from "../../stores/auth-store";
 import { StatCard } from "../../components/StatCard";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
@@ -174,11 +177,17 @@ export default function GrowthScreen() {
   const { data: productRows, refetch: refetchProducts } =
     useSafeQuery<ProductAnalyticsRow[]>(getProductAnalyticsRef, { period: "30d" });
 
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const isDemo = useAuthStore((s) => s.isDemo);
+  // Demo has no session to call the web app with — read nothing.
+  const boost = useBoostAi(isDemo ? null : tenantId);
+  const { refetch: refetchBoost } = boost;
+
   const [refreshing, setRefreshing] = useState(false);
   // Pull-to-refresh re-reads every query this screen holds.
   const onRefresh = useCallback(
-    () => refreshWithMinSpinner([refetchTrends, refetchCustomers, refetchProducts], setRefreshing),
-    [refetchTrends, refetchCustomers, refetchProducts]
+    () => refreshWithMinSpinner([refetchTrends, refetchCustomers, refetchProducts, refetchBoost], setRefreshing),
+    [refetchTrends, refetchCustomers, refetchProducts, refetchBoost]
   );
 
   const summary = computeGrowthSummary(trends ?? [], { periodDays: daysBack });
@@ -343,8 +352,18 @@ export default function GrowthScreen() {
               marginPercent: r.marginPercent,
               bcgClassification: r.bcgClassification,
             }))}
+            features={
+              boost.state
+                ? { bundlesEnabled: boost.state.boostEnabled, menuEngineeringEnabled: boost.state.boostEnabled }
+                : undefined
+            }
+            offerIdeas={boost.state?.proposals}
             initialTarget={targetMonthlyRevenue}
           />
+
+          {/* AI offer ideas — combos, upgrades and add-ons from real baskets, one tap to create */}
+          <Text style={styles.eyebrow}>Sell more per order</Text>
+          <BoostIdeasCard boost={boost} isDemo={isDemo} />
 
           {/* Averages — what a selling day looks like, then the run-rate */}
           <Text style={styles.eyebrow}>On a selling day</Text>

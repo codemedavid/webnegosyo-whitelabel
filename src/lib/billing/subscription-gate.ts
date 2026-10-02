@@ -47,14 +47,15 @@ export class SubscriptionPausedError extends Error {
  *
  * A superadmin is always let through: they are the only account that can clear
  * an unpaid subscription, and a gate that locks out its own remedy cannot be
- * fixed from inside the product.
+ * fixed from inside the product. Platform staff are the same platform operators
+ * acting on the store's behalf, already held to their own grants.
  */
 export function assertSubscriptionActive(
   subscription: SubscriptionRecord | null | undefined,
   caller: GateCaller,
   nowIso: string = new Date().toISOString()
 ): void {
-  if (caller.role === 'superadmin') return
+  if (caller.role === 'superadmin' || caller.role === 'platform_staff') return
 
   const access = resolveSubscriptionAccess(subscription, nowIso)
   if (!access.isBlocked) return

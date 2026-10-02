@@ -2,18 +2,16 @@
 
 import { revalidatePath } from 'next/cache'
 import { ZodError } from 'zod'
-import { invalidateComplementaryPairsCache } from '@/lib/complementary-pairs-service'
-import { deleteUpsellPair, invalidateCheckoutUpsellCache, updateUpsellPair } from '@/lib/menu-engineering-service'
+import { deleteUpsellPair, updateUpsellPair } from '@/lib/menu-engineering-service'
 import {
   createBundle,
   deleteBundle,
-  invalidateBundlesCache,
   toggleBundleActive,
   updateBundle,
   type BundleInput,
 } from '@/lib/bundles-service'
 import { invalidateTenantCache } from '@/lib/cache'
-import { revalidateStorefront, revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
+import { refreshOfferCaches } from '@/lib/boost/refresh-offer-caches'
 import {
   deleteBoostPairing,
   saveBoostLastCall,
@@ -35,19 +33,6 @@ function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ZodError) return error.issues[0]?.message ?? fallback
   if (error instanceof Error && error.message) return error.message
   return fallback
-}
-
-/** Every offer surface reads through these caches; clear them together. */
-async function refreshOfferCaches(tenantId: string, tenantSlug: string): Promise<void> {
-  await Promise.all([
-    invalidateComplementaryPairsCache(tenantId),
-    invalidateCheckoutUpsellCache(tenantId),
-    invalidateBundlesCache(tenantId),
-  ])
-  // The cached public menu (combo cards) is keyed by slug, product pages by id.
-  revalidateStorefront({ slug: tenantSlug, id: tenantId })
-  revalidatePath(`/${tenantSlug}/admin/boost-sales`)
-  revalidateStorefrontMenu(tenantSlug)
 }
 
 async function run<T>(

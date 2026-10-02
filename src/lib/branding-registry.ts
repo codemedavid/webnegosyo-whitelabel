@@ -253,7 +253,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           color('hero_cta_primary_color', 'Primary button color', null, 'accent_color'),
           color('hero_cta_primary_text_color', 'Primary button text', null, 'button_primary_text_color'),
           color('hero_cta_secondary_text_color', 'Secondary button text', null, 'hero_title_color'),
-          note('note_hero_designer', 'Kicker and buttons appear on the richer hero styles (editorial, split, collage, centered, banner, minimal). A featured product turns the hero tile into a product card (image, price, Add to cart). With no product, paste a Fallback image URL (and optional link) to show a clickable image instead. Pick the "custom" style to render the layout you built in the Hero Designer (block-level, fully custom) — it opens from Admin → Hero Designer.'),
+          note('note_hero_designer', 'Kicker and buttons appear on the richer hero styles (editorial, split, collage, centered, banner, minimal). A featured product turns the hero tile into a product card (image, price, Add to cart). With no product, paste a Fallback image URL (and optional link) to show a clickable image instead. "custom" shows the hero you built and published in the Hero Builder (Admin → Hero Builder) — publishing there switches this to custom for you.'),
         ],
       },
       {

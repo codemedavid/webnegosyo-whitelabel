@@ -36,6 +36,9 @@ const config = {
     '<rootDir>/.worktrees/',
     '<rootDir>/webnegosyo-app/',
     '<rootDir>/sms/',
+    // The customer app runs its own jest-expo suite; the contract parity test
+    // lives here in tests/unit/app-contract.
+    '<rootDir>/customer-app/',
     '<rootDir>/e2e/',
     // Worktrees under .claude/ mirror OTHER branches' test expectations but
     // resolve `@/` against THIS tree's src, so they go permanently red the

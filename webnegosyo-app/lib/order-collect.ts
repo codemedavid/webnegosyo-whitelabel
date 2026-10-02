@@ -15,6 +15,7 @@ import { isOrderInScope, type BranchScope, type ScopedOrderLike } from "./branch
 import type { OrderBackend } from "./order-backend";
 import type { LedgerState } from "./order-ledger";
 import { hasPermission, type StaffPermissionHolder } from "./staff-permissions";
+import { computeChange } from "./pos-cash";
 
 export interface CollectGate {
   allowed: boolean;
@@ -177,4 +178,91 @@ export function validateCollectAmount(raw: string, balanceDue: number): CollectA
   }
 
   return { ok: true, amount };
+}
+
+export type CashCollect =
+  | { ok: true; amount: number; cashTendered: number; changeDue: number }
+  | { ok: false; error: string };
+
+export interface CashCollectInput {
+  /** What is being collected — the balance unless the cashier lowered it. */
+  amountRaw: string;
+  /** What the customer handed over. */
+  cashRaw: string;
+  balanceDue: number;
+}
+
+/**
+ * A cash collection: the amount rules of {@link validateCollectAmount}, plus
+ * the cash handed over and the change owed on it — the same arithmetic the
+ * register's tender screen uses (`computeChange`).
+ *
+ * The ledger records `amount`, never the cash: the change went back into the
+ * customer's hand, so counting it as paid would overstate the drawer.
+ */
+export function validateCashCollect({
+  amountRaw,
+  cashRaw,
+  balanceDue,
+}: CashCollectInput): CashCollect {
+  const trimmedCash = (cashRaw ?? "").trim();
+  if (trimmedCash === "") return { ok: false, error: "Enter the cash the customer handed over." };
+
+  const cashTendered = Number(trimmedCash);
+  if (!Number.isFinite(cashTendered) || cashTendered <= 0) {
+    return { ok: false, error: "Enter the cash as a number, like 500." };
+  }
+
+  const amount = validateCollectAmount(amountRaw, balanceDue);
+  if (!amount.ok) return amount;
+
+  const change = computeChange(amount.amount, cashTendered);
+  if (!change.isSufficient) {
+    return {
+      ok: false,
+      error:
+        `${formatPesos(cashTendered)} does not cover ${formatPesos(amount.amount)}. ` +
+        "Enter more cash, or collect a smaller amount.",
+    };
+  }
+
+  return { ok: true, amount: amount.amount, cashTendered, changeDue: change.changeDue };
+}
+
+/**
+ * The line kept on the settlement row for a cash collection, so the cash and
+ * change survive on the ledger (which has no columns for them) and can be
+ * read back when the drawer does not reconcile. Nothing for other methods.
+ */
+export function collectLedgerNote({
+  cashTendered,
+  changeDue,
+}: {
+  cashTendered?: number;
+  changeDue?: number;
+}): string | undefined {
+  if (cashTendered === undefined || changeDue === undefined) return undefined;
+  return `Cash received ${formatPesos(cashTendered)} · change ${formatPesos(changeDue)}`;
+}
+
+export interface CollectMethodOption {
+  id: string;
+  name: string;
+  isCash?: boolean;
+}
+
+/**
+ * Which method the collect sheet opens on: the one the customer picked at
+ * checkout when it is still offered, else cash (most bills settled later are
+ * settled at the counter), else the first — so the common case is one tap.
+ */
+export function defaultCollectMethodId(
+  methods: readonly CollectMethodOption[],
+  preferredName: string | null | undefined,
+): string | null {
+  const wanted = preferredName?.trim().toLowerCase();
+  const byName = wanted
+    ? methods.find((method) => method.name.trim().toLowerCase() === wanted)
+    : undefined;
+  return (byName ?? methods.find((method) => method.isCash) ?? methods[0])?.id ?? null;
 }

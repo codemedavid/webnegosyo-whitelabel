@@ -11,12 +11,14 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   EMPTY_MOVEMENT_DRAFT,
   MANUAL_MOVEMENT_REASONS,
   MOVEMENT_REASON_LABELS,
   MOVEMENT_REASON_PROMPTS,
   buildMovementPayload,
+  bumpQuantity,
   describeMovementOutcome,
   isOvercountedWaste,
   type ManualMovementReason,
@@ -24,8 +26,25 @@ import {
 } from "../lib/inventory-movement";
 import { submitStockMovement } from "../lib/inventory-movement-service";
 import { newLocalOrderId } from "../lib/offline/local-id";
-import type { StockItemView } from "../lib/inventory-stock";
+import { formatStockQuantity, type StockItemView } from "../lib/inventory-stock";
 import { colors, typography, spacing, radius } from "../theme/colors";
+import { Icon, type IconName } from "./Icon";
+
+/** Chips under the amount for a delivery or waste; a count is typed exactly. */
+const QUICK_STEPS: readonly number[] = [1, 5, 10];
+
+/** The button says what will happen, not the past-tense ledger label. */
+const SAVE_LABELS: Record<ManualMovementReason, string> = {
+  receive: "Add to stock",
+  stocktake: "Save count",
+  waste: "Record waste",
+};
+
+const REASON_LOOK: Record<ManualMovementReason, { icon: IconName; ink: string; tint: string }> = {
+  receive: { icon: "arrow-down", ink: colors.success, tint: colors.successLight },
+  stocktake: { icon: "check", ink: colors.info, tint: colors.infoLight },
+  waste: { icon: "trash", ink: colors.danger, tint: colors.dangerLight },
+};
 
 interface StockMovementSheetProps {
   tenantId: string;
@@ -44,6 +63,8 @@ interface StockMovementSheetProps {
    * it leaves an honest count reading as partial.
    */
   openCountId?: string | null;
+  /** Which tab the sheet opens on — set by the shortcut that opened it. */
+  initialReason?: ManualMovementReason;
   onClose: () => void;
   /** Fired once the ledger has settled, so the shelf reloads from the server. */
   onRecorded: () => void;
@@ -53,8 +74,8 @@ interface StockMovementSheetProps {
  * Recording a delivery, a count or waste from the phone.
  *
  * Every judgement lives in lib/inventory-movement.ts; this arranges them. The
- * preview line is the reason this is a sheet rather than a bare input — a
- * merchant tapping through quickly should see "12 kg → 112 kg" before they
+ * before → after card is the reason this is a sheet rather than a bare input —
+ * a merchant tapping through quickly should see "12 kg → 112 kg" before they
  * commit, because the ledger is the source of truth for stock and a typo here
  * is not a wrong screen, it is a wrong shelf until someone counts it again.
  */
@@ -63,9 +84,11 @@ export function StockMovementSheet({
   item,
   outletId,
   openCountId,
+  initialReason,
   onClose,
   onRecorded,
 }: StockMovementSheetProps) {
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<MovementDraft>(EMPTY_MOVEMENT_DRAFT);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,11 +100,18 @@ export function StockMovementSheet({
     requestIdRef.current = null;
   }, [draft, item?.id]);
 
+  // Opening on a shortcut's reason; reopening always starts clean.
+  const itemId = item?.id;
+  useEffect(() => {
+    if (itemId) setDraft({ ...EMPTY_MOVEMENT_DRAFT, reason: initialReason ?? "receive" });
+  }, [itemId, initialReason]);
+
   const outcome = useMemo(
     () => (item ? describeMovementOutcome(draft.reason, draft.quantity, item) : null),
     [item, draft.reason, draft.quantity],
   );
   const overcounted = item ? isOvercountedWaste(draft.reason, draft.quantity, item) : false;
+  const look = REASON_LOOK[draft.reason];
 
   const close = () => {
     // Reset here rather than on open: a sheet that reopens holding the last
@@ -125,26 +155,36 @@ export function StockMovementSheet({
     }
   };
 
+  const unit = item?.unitAbbreviation ?? "";
+
   return (
-    <Modal
-      visible={item !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={close}
-    >
+    <Modal visible={item !== null} transparent animationType="slide" onRequestClose={close}>
       <KeyboardAvoidingView
         style={styles.backdrop}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <TouchableOpacity style={styles.backdropFill} onPress={close} activeOpacity={1} />
 
-        <View style={styles.sheet}>
-          <ScrollView keyboardShouldPersistTaps="handled">
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.grabber} />
-            <Text style={styles.title}>{item?.name}</Text>
-            <Text style={styles.subtitle}>
-              {item ? `${item.quantity} ${item.unitAbbreviation} on hand` : ""}
-            </Text>
+
+            <View style={styles.header}>
+              <View style={[styles.headerBadge, { backgroundColor: look.tint }]}>
+                <Icon name={look.icon} size={20} color={look.ink} strokeWidth={2} />
+              </View>
+              <View style={styles.headerCopy}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {item?.name}
+                </Text>
+                <Text style={styles.subtitle}>
+                  {item ? `${formatStockQuantity(item.quantity, unit)} on hand` : ""}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={close} style={styles.closeButton} accessibilityLabel="Close">
+                <Icon name="close" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.reasons}>
               {MANUAL_MOVEMENT_REASONS.map((reason) => {
@@ -157,6 +197,12 @@ export function StockMovementSheet({
                     accessibilityRole="button"
                     accessibilityState={{ selected: isActive }}
                   >
+                    <Icon
+                      name={REASON_LOOK[reason].icon}
+                      size={16}
+                      color={isActive ? colors.heroInkText : colors.textSecondary}
+                      strokeWidth={2}
+                    />
                     <Text style={[styles.reasonText, isActive && styles.reasonTextActive]}>
                       {MOVEMENT_REASON_LABELS[reason]}
                     </Text>
@@ -165,42 +211,100 @@ export function StockMovementSheet({
               })}
             </View>
 
-            <Text style={styles.label}>{MOVEMENT_REASON_PROMPTS[draft.reason]}</Text>
-            <View style={styles.amountRow}>
-              <TextInput
-                style={styles.amountInput}
-                value={draft.quantity}
-                onChangeText={(quantity) => setDraft((c) => ({ ...c, quantity }))}
-                placeholder="0"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
-                autoFocus
-              />
-              <Text style={styles.unit}>{item?.unitAbbreviation}</Text>
+            <View style={styles.amountCard}>
+              <Text style={styles.label}>{MOVEMENT_REASON_PROMPTS[draft.reason]}</Text>
+              <View style={styles.amountRow}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={draft.quantity}
+                  onChangeText={(quantity) => setDraft((c) => ({ ...c, quantity }))}
+                  placeholder="0"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  selectTextOnFocus
+                />
+                {unit ? (
+                  <View style={styles.unitPill}>
+                    <Text style={styles.unitText}>{unit}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {draft.reason !== "stocktake" && (
+                <View style={styles.steps}>
+                  {QUICK_STEPS.map((step) => (
+                    <TouchableOpacity
+                      key={step}
+                      style={styles.step}
+                      onPress={() => setDraft((c) => ({ ...c, quantity: bumpQuantity(c.quantity, step) }))}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add ${step}`}
+                    >
+                      <Text style={styles.stepText}>+{step}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
 
             {outcome && (
-              <Text style={styles.preview}>
-                {outcome.from} → <Text style={styles.previewTo}>{outcome.to}</Text>
-              </Text>
+              <View style={styles.preview}>
+                <View style={styles.previewSide}>
+                  <Text style={styles.previewLabel}>Now</Text>
+                  <Text style={styles.previewFrom}>{outcome.from}</Text>
+                </View>
+                <Icon name="arrow-right" size={18} color={colors.textTertiary} />
+                <View style={[styles.previewSide, styles.previewSideEnd]}>
+                  <Text style={styles.previewLabel}>After</Text>
+                  <Text style={[styles.previewTo, { color: look.ink }]}>{outcome.to}</Text>
+                </View>
+              </View>
             )}
 
             {overcounted && (
-              <Text style={styles.warning}>
-                That is more than the shelf shows. Record it if it is right — stock can go
-                negative when a delivery has not been logged yet.
-              </Text>
+              <View style={styles.warning}>
+                <Icon name="warning" size={16} color={colors.statusPending.text} />
+                <Text style={styles.warningText}>
+                  That is more than the shelf shows. Record it if it is right — stock can go
+                  negative when a delivery has not been logged yet.
+                </Text>
+              </View>
             )}
 
-            <TextInput
-              style={styles.note}
-              value={draft.note}
-              onChangeText={(note) => setDraft((c) => ({ ...c, note }))}
-              placeholder="Note (optional)"
-              placeholderTextColor={colors.textTertiary}
-            />
+            {draft.reason === "receive" && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Price per {unit || "unit"} (optional)</Text>
+                <View style={styles.fieldInputRow}>
+                  <Text style={styles.fieldPrefix}>₱</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    value={draft.unitCost ?? ""}
+                    onChangeText={(unitCost) => setDraft((c) => ({ ...c, unitCost }))}
+                    placeholder="Keeps the current cost if blank"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+            )}
 
-            {error && <Text style={styles.error}>{error}</Text>}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Note</Text>
+              <TextInput
+                style={styles.note}
+                value={draft.note}
+                onChangeText={(note) => setDraft((c) => ({ ...c, note }))}
+                placeholder={draft.reason === "waste" ? "What happened? (optional)" : "Optional"}
+                placeholderTextColor={colors.textTertiary}
+              />
+            </View>
+
+            {error && (
+              <View style={styles.errorBox}>
+                <Text style={styles.error}>{error}</Text>
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.save, isSaving && styles.saveDisabled]}
@@ -211,12 +315,8 @@ export function StockMovementSheet({
               {isSaving ? (
                 <ActivityIndicator color={colors.heroInkText} />
               ) : (
-                <Text style={styles.saveText}>Record {MOVEMENT_REASON_LABELS[draft.reason]}</Text>
+                <Text style={styles.saveText}>{SAVE_LABELS[draft.reason]}</Text>
               )}
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={close} accessibilityRole="button">
-              <Text style={styles.cancel}>Cancel</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -226,15 +326,15 @@ export function StockMovementSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" },
+  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(20,14,8,0.5)" },
   backdropFill: { ...StyleSheet.absoluteFillObject },
   sheet: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.xl,
-    paddingBottom: 40,
-    maxHeight: "90%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    maxHeight: "92%",
   },
   grabber: {
     alignSelf: "center",
@@ -244,62 +344,142 @@ const styles = StyleSheet.create({
     backgroundColor: colors.separator,
     marginBottom: spacing.lg,
   },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  header: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  headerBadge: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  headerCopy: { flex: 1 },
+  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.2, color: colors.textPrimary },
+  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 1 },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-  reasons: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg },
+  reasons: {
+    flexDirection: "row",
+    gap: 4,
+    marginTop: spacing.lg,
+    padding: 4,
+    borderRadius: radius.md + 4,
+    backgroundColor: colors.primaryLight,
+  },
   reason: {
     flex: 1,
-    paddingVertical: spacing.md,
+    flexDirection: "row",
+    gap: 6,
+    paddingVertical: 10,
     borderRadius: radius.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.separator,
     alignItems: "center",
+    justifyContent: "center",
   },
-  reasonActive: { backgroundColor: colors.heroInk, borderColor: colors.heroInk },
-  reasonText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
+  reasonActive: { backgroundColor: colors.heroInk },
+  reasonText: { fontSize: 13, color: colors.textSecondary, fontWeight: "700" },
   reasonTextActive: { color: colors.heroInkText },
 
-  label: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.lg },
+  amountCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginTop: spacing.lg,
+    gap: spacing.xs,
+  },
+  label: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
   amountRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   amountInput: {
     flex: 1,
-    fontSize: 36,
+    fontSize: 44,
     fontWeight: "800",
+    letterSpacing: -1,
     color: colors.textPrimary,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  unit: { ...typography.body, color: colors.textSecondary },
+  unitPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  unitText: { fontSize: 15, fontWeight: "700", color: colors.textPrimary },
+  steps: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs },
+  step: {
+    paddingHorizontal: 16,
+    height: 34,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.separator,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepText: { fontSize: 13, fontWeight: "700", color: colors.textPrimary },
 
-  preview: { ...typography.body, color: colors.textSecondary },
-  previewTo: { fontWeight: "800", color: colors.textPrimary },
-  warning: { ...typography.caption, color: colors.warning, marginTop: spacing.sm },
+  preview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: colors.separator,
+  },
+  previewSide: { flex: 1 },
+  previewSideEnd: { alignItems: "flex-end" },
+  previewLabel: { ...typography.eyebrow, fontSize: 10, color: colors.textTertiary },
+  previewFrom: { fontSize: 17, fontWeight: "700", color: colors.textSecondary, marginTop: 2 },
+  previewTo: { fontSize: 17, fontWeight: "800", marginTop: 2 },
 
+  warning: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningLight,
+  },
+  warningText: { flex: 1, ...typography.caption, color: colors.statusPending.text, lineHeight: 18 },
+
+  field: { marginTop: spacing.lg, gap: 6 },
+  fieldLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
+  fieldInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderRadius: radius.md + 2,
+    paddingHorizontal: spacing.lg,
+    height: 48,
+    gap: 6,
+  },
+  fieldPrefix: { fontSize: 16, fontWeight: "700", color: colors.textSecondary },
+  fieldInput: { flex: 1, ...typography.body, color: colors.textPrimary },
   note: {
     ...typography.body,
     color: colors.textPrimary,
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.md + 2,
     paddingHorizontal: spacing.lg,
-    height: 46,
-    marginTop: spacing.lg,
+    height: 48,
   },
-  error: { ...typography.caption, color: colors.danger, marginTop: spacing.md },
+  errorBox: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerLight,
+  },
+  error: { ...typography.caption, color: colors.statusCancelled.text, fontWeight: "600" },
 
   save: {
     backgroundColor: colors.heroInk,
-    borderRadius: radius.md,
-    paddingVertical: spacing.lg,
+    borderRadius: radius.lg,
+    height: 54,
     alignItems: "center",
-    marginTop: spacing.lg,
+    justifyContent: "center",
+    marginTop: spacing.xl,
   },
   saveDisabled: { opacity: 0.6 },
-  saveText: { ...typography.body, color: colors.heroInkText, fontWeight: "700" },
-  cancel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.lg,
-  },
+  saveText: { fontSize: 16, color: colors.heroInkText, fontWeight: "800" },
 });

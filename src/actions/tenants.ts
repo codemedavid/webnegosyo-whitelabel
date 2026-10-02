@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { detachTenantDomains, type TenantDomainColumns } from '@/lib/domains/detach-tenant-domains'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -20,6 +21,8 @@ import { invalidateTenantCache } from '@/lib/cache'
 import { orderBackendForSave, type OrderBackendPreference } from '@/lib/order-backend'
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 import { syncTenantConvexConfig, convexConfigSyncWarning } from '@/lib/convex-config-sync'
+import { requirePlatformPermission } from '@/lib/platform-staff/guard'
+import type { PlatformPermission } from '@/lib/platform-staff/permissions'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -66,36 +69,21 @@ function secretsPatchFromForm(parsed: TenantInput): TenantSecretsPatch {
 }
 
 /**
- * Verify the current user is a superadmin
- * Throws an error if not authenticated or not a superadmin
+ * Verify the console caller holds `permission` (superadmins always do).
+ * Throws an error if not authenticated or not permitted.
  */
-async function verifySuperadmin() {
-  const supabase = await createClient()
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    throw new Error('Unauthorized: Not authenticated')
-  }
-
-  const { data: userRole, error: roleError } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  const role = userRole as { role: string } | null
-  if (roleError || !role || role.role !== 'superadmin') {
-    throw new Error('Forbidden: Superadmin access required')
-  }
-
-  return { user, supabase }
+async function verifyConsolePermission(permission: PlatformPermission) {
+  const { user } = await requirePlatformPermission(permission)
+  return { user }
 }
 
 export async function createTenantAction(input: TenantInput, leadId?: string) {
   try {
-    // Verify superadmin access before proceeding
-    const { supabase } = await verifySuperadmin()
+    // Verify console access before proceeding. Writes go through the service
+    // role: platform staff have no RLS insert on tenants, and the privileged-
+    // column trigger refuses anyone but a superadmin session.
+    await verifyConsolePermission('tenants.create')
+    const supabase = createAdminClient()
 
     // Validate input. A raw ZodError must never leave a server action: the
     // client gets an uncaught-action crash instead of a field to fix.
@@ -282,8 +270,10 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
 }
 
 export async function updateTenantAction(id: string, input: TenantInput) {
-  // Verify superadmin access before proceeding
-  const { supabase } = await verifySuperadmin()
+  // Verify console access before proceeding; the write itself goes through the
+  // service role (see createTenantAction).
+  await verifyConsolePermission('tenants.edit')
+  const supabase = createAdminClient()
 
   // Validate input. `parse` threw the ZodError straight out of the action,
   // which Next.js surfaces as an uncaught server-action crash (Sentry:
@@ -995,7 +985,9 @@ export async function setTenantActiveAction(
   isActive: boolean
 ): Promise<{ error?: string; success?: boolean }> {
   try {
-    const { supabase } = await verifySuperadmin()
+    // Deactivation is a delete-class operation.
+    await verifyConsolePermission('tenants.delete')
+    const supabase = createAdminClient()
 
     const { error } = await supabase
       .from('tenants')
@@ -1028,7 +1020,10 @@ export async function bulkSetTenantsActiveAction(
   isActive: boolean
 ): Promise<{ error?: string; updated?: number }> {
   try {
-    const { supabase } = await verifySuperadmin()
+    // Deactivation is a delete-class operation; the write goes through the
+    // service role (see createTenantAction).
+    await verifyConsolePermission('tenants.delete')
+    const supabase = createAdminClient()
 
     if (!ids.length) {
       return { updated: 0 }
@@ -1067,7 +1062,7 @@ export async function bulkDeleteTenantsAction(
   ids: string[]
 ): Promise<{ error?: string; deleted?: number; failed?: string[] }> {
   try {
-    const { user } = await verifySuperadmin()
+    const { user } = await verifyConsolePermission('tenants.delete')
 
     if (!ids.length) {
       return { deleted: 0, failed: [] }
@@ -1079,10 +1074,11 @@ export async function bulkDeleteTenantsAction(
 
     for (const tenantId of ids) {
       try {
-        // Verify tenant exists
+        // Verify tenant exists. `*` because the custom-domain columns
+        // (pending_domain) are newer than the generated types.
         const { data: tenant, error: fetchError } = await adminClient
           .from('tenants')
-          .select('id')
+          .select('*')
           .eq('id', tenantId)
           .single()
 
@@ -1134,6 +1130,7 @@ export async function bulkDeleteTenantsAction(
           failed.push(tenantId)
         } else {
           deleted += 1
+          await detachTenantDomains(tenant as TenantDomainColumns)
         }
       } catch (innerError) {
         console.error(`Error deleting tenant ${tenantId}:`, innerError)

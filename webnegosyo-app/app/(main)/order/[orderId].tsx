@@ -1,5 +1,5 @@
 import { formatDailyOrderNumber } from "../../../lib/order-number";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from "react-native";
 import { openExternalUrl } from "../../../lib/safe-url";
 import { useLocalSearchParams, router } from "expo-router";
@@ -21,12 +21,15 @@ import { restoreStockForStatusChange } from "../../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../../lib/loyverse-confirm";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
-import {
-  CollectPaymentSheet,
-  type CollectedPayment,
-} from "../../../components/order/CollectPaymentSheet";
+import { CollectPaymentSheet } from "../../../components/order/CollectPaymentSheet";
+import { PaymentDecisionSheet } from "../../../components/order/PaymentDecisionSheet";
+import { PaymentStatusStrip } from "../../../components/order/PaymentStatusStrip";
 import { canCollectPayment } from "../../../lib/order-collect";
-import { isOrderUnpaid, shouldMarkOrderPaid } from "../../../lib/order-paid-state";
+import { isOrderUnpaid } from "../../../lib/order-paid-state";
+import { useOrderPaymentFlow } from "../../../lib/use-order-payment-flow";
+import { useTenderPaymentMethods } from "../../../lib/query/use-tender-payment-methods";
+import { isCashMethod } from "../../../lib/pos-payment-methods";
+import { isPosPayLater } from "../../../lib/pos-order";
 import {
   canCancelOrder,
   markPaidAfterHandover,
@@ -34,8 +37,6 @@ import {
 } from "../../../lib/order-status-change";
 import { resolveLedgerState, isLedgerSafeToEdit } from "../../../lib/order-ledger";
 import { summarizeSettlement } from "../../../lib/order-history-view";
-import { listAllPaymentMethods } from "../../../lib/pos-catalog";
-import type { PosPaymentMethod } from "../../../lib/pos-payment-methods";
 import {
   canEnterAppendMode,
   canEnterEditMode,
@@ -76,6 +77,26 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
   confirmed: "preparing",
   preparing: "ready",
   ready: "delivered",
+};
+
+/** What the next-step button says — the action, not the status it lands on. */
+const NEXT_ACTION_LABEL: Partial<Record<OrderStatus, string>> = {
+  confirmed: "Confirm order",
+  preparing: "Start preparing",
+  ready: "Mark as ready",
+  delivered: "Mark as delivered",
+};
+
+/**
+ * What another screen asked this one to do on arrival. The order list and the
+ * Drawer send an unpaid order here to be confirmed or handed over, because the
+ * payment question needs the order's payment details and the collect sheet.
+ */
+type OrderIntent = "confirm" | "deliver" | "collect";
+
+const INTENT_STATUS: Record<Exclude<OrderIntent, "collect">, OrderStatus> = {
+  confirm: "confirmed",
+  deliver: "delivered",
 };
 
 interface OrderItem {
@@ -368,7 +389,7 @@ const bundleStyles = StyleSheet.create({
 });
 
 export default function OrderDetailScreen() {
-  const { orderId } = useLocalSearchParams<{ orderId: string }>();
+  const { orderId, intent } = useLocalSearchParams<{ orderId: string; intent?: OrderIntent }>();
   const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
   const updateStatus = useSafeMutation(updateOrderStatusRef);
   const { printOrder, printAt, hasPrinter, feedback: printFeedback } = useOrderPrint();
@@ -409,9 +430,6 @@ export default function OrderDetailScreen() {
   // Settling the ledger is only half of it: `payment_status` is what the order
   // list, the web admin and every export read, and nothing was writing it.
   const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
-  const [isCollectOpen, setIsCollectOpen] = useState(false);
-  const [collectMethods, setCollectMethods] = useState<PosPaymentMethod[]>([]);
-
   // The same summary the card renders, so the figure the cashier is asked to
   // collect and the figure they were shown as owing cannot disagree.
   const settlement = order ? summarizeSettlement(order.total, payments ?? []) : null;
@@ -446,82 +464,19 @@ export default function OrderDetailScreen() {
       })
     : { allowed: false as const };
 
-  /**
-   * Methods are fetched only once the cashier opens the sheet. Most visits to
-   * this screen never take a payment, and the list is the same one the register
-   * uses.
-   */
-  async function handleOpenCollect() {
-    if (!tenantId) return;
-    if (isDemo) {
-      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-      return;
-    }
-
-    try {
-      setCollectMethods(await listAllPaymentMethods(tenantId));
-    } catch {
-      // A missing method list is not a reason to block the payment — cash with
-      // no method attached is still a truthful ledger row.
-      setCollectMethods([]);
-    }
-    setIsCollectOpen(true);
-  }
-
-  async function handleCollect(payment: CollectedPayment) {
-    if (!order) return;
-
-    try {
-      await recordPayment({
-        orderId: order._id,
-        kind: "charge",
-        amount: payment.amount,
-        paymentMethodId: payment.methodId,
-        paymentMethodName: payment.methodName,
-        reference: payment.reference,
-        recordedBy: useAuthStore.getState().userId ?? undefined,
-        outletId: scope.kind === "branch" ? scope.outletId : undefined,
-      });
-      setIsCollectOpen(false);
-
-      // The ledger now holds the money; the order row must say so too. Until
-      // this write existed, a collected order kept its "Unpaid" chip and read
-      // as owing its whole total — which is how two bills got collected twice.
-      //
-      // Only when the payment squares the bill: a part payment leaves the
-      // order genuinely owing, and "paid" on it would hide the rest.
-      //
-      // Its own try/catch, and never an alert: the money IS recorded, and a
-      // failure here must not read as a failed collection. The chip falls back
-      // to the ledger, which is right either way.
-      if (
-        shouldMarkOrderPaid({
-          paymentStatus: order.paymentStatus,
-          balanceAfter: balanceDue - payment.amount,
-        })
-      ) {
-        try {
-          await updatePaymentStatus({ orderId: order._id, paymentStatus: "paid" });
-        } catch (err) {
-          console.warn("[order] Payment recorded but the order still reads unpaid:", err);
-        }
-      }
-
-      // Bill-out: the money is settled, so this is the customer's receipt.
-      // Fire-and-forget — the payment is already recorded, and a dead printer
-      // must not read as a failed collection.
-      void printAt("billout", {
-        ...order,
-        paymentMethod: payment.methodName ?? order.paymentMethod,
-        paymentReference: payment.reference,
-      });
-    } catch (err) {
-      Alert.alert(
-        "Could not record the payment",
-        err instanceof Error ? err.message : "Nothing was recorded. Try again.",
-      );
-    }
-  }
+  // Every active method, cached and shared with the register's edit mode, so
+  // the collect sheet opens at once. A missing list is not a reason to block a
+  // payment — cash with no method attached is still a truthful ledger row.
+  const { methods: storeMethods } = useTenderPaymentMethods(
+    useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId),
+    null,
+    true,
+  );
+  const collectMethods = storeMethods.map((method) => ({
+    id: method.id,
+    name: method.name,
+    isCash: isCashMethod(method),
+  }));
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
 
   const gateRequest = order
@@ -661,16 +616,17 @@ export default function OrderDetailScreen() {
   const { images: itemImages } = useOrderItemImages(itemImageIds);
   const customerDetailRows = buildCustomerDetailRows(order?.customerData);
 
-  const handleUpdateStatus = async (newStatus: OrderStatus) => {
-    if (!order) return;
+  /** Resolves true once the new status is saved; every refusal is shown. */
+  const handleUpdateStatus = async (newStatus: OrderStatus): Promise<boolean> => {
+    if (!order) return false;
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-      return;
+      return false;
     }
     const plan = planOrderStatusChange(order, newStatus);
     if (!plan.allowed) {
       Alert.alert("Cannot update order", plan.reason ?? "This change is not allowed.");
-      return;
+      return false;
     }
     try {
       // Confirmation receipts print from GlobalReceiptAutoPrint, which reacts
@@ -720,10 +676,59 @@ export default function OrderDetailScreen() {
       // cancelling it never reaches the web app's updateOrderStatus where
       // stock is restored. Shared with the order list screen; never throws.
       await restoreStockForStatusChange(newStatus, String(order._id));
+      return true;
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Failed to update status");
+      return false;
     }
   };
+
+  // Confirming or handing over an unpaid order asks about the money first;
+  // collecting takes cash received and change. See lib/use-order-payment-flow.
+  const paymentFlow = useOrderPaymentFlow({
+    order: order ?? null,
+    balanceDue,
+    isUnpaid,
+    collectGate,
+    methods: collectMethods,
+    isDemo,
+    userId: useAuthStore.getState().userId,
+    outletId: scope.kind === "branch" ? scope.outletId : undefined,
+    advance: (status) => handleUpdateStatus(status as OrderStatus),
+    recordPayment,
+    updatePaymentStatus: (args) => updatePaymentStatus(args),
+    // Bill-out: the money is settled, so this is the customer's receipt, with
+    // the cash and change on it. Fire-and-forget — a dead printer must not
+    // read as a failed collection.
+    printBill: (payment) => {
+      if (!order) return;
+      void printAt("billout", {
+        ...order,
+        paymentMethod: payment.methodName ?? order.paymentMethod,
+        paymentReference: payment.reference,
+        cashTendered: payment.cashTendered,
+        changeDue: payment.changeDue,
+      });
+    },
+  });
+
+  // Arriving with an intent (from the order list or the Drawer): open the
+  // matching sheet once the order is loaded, then clear the intent so a later
+  // visit to this still-mounted tab screen does not replay it.
+  const { requestStatusChange, openCollect } = paymentFlow;
+  const runIntent = useCallback(
+    (wanted: OrderIntent) => {
+      if (wanted === "collect") openCollect();
+      else requestStatusChange(INTENT_STATUS[wanted]);
+    },
+    [openCollect, requestStatusChange],
+  );
+  const isOrderLoaded = order != null && order._id === orderId;
+  useEffect(() => {
+    if (!intent || !isOrderLoaded) return;
+    router.setParams({ intent: undefined });
+    runIntent(intent);
+  }, [intent, isOrderLoaded, runIntent]);
 
   if (error) {
     return (
@@ -759,6 +764,17 @@ export default function OrderDetailScreen() {
       <Card style={styles.section}>
         <StatusStepper currentStatus={order.status} />
       </Card>
+
+      {order.status !== "cancelled" && (
+        <View style={styles.section}>
+          <PaymentStatusStrip
+            isUnpaid={isUnpaid}
+            balanceDue={balanceDue}
+            isPayLater={isPosPayLater(order.customerData)}
+            onCollect={collectGate.allowed ? paymentFlow.openCollect : undefined}
+          />
+        </View>
+      )}
 
       <Card title="Customer" style={styles.section}>
         <Text style={styles.value}>{displayCustomerName(order.customerName)}</Text>
@@ -932,29 +948,11 @@ export default function OrderDetailScreen() {
       />
 
       {/*
-        Sits under the ledger it settles rather than with the status actions at
-        the foot of the screen: the cashier reading "Still owing ₱149.00" is
-        looking here, and the answer to it should be here too.
+        Collect lives in the payment strip at the top of the screen, where the
+        cashier deciding whether to hand the food over is already looking.
       */}
-      {collectGate.allowed && isUnpaid && (
-        <TouchableOpacity
-          style={styles.collectButton}
-          onPress={handleOpenCollect}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.collectButtonText}>
-            Collect ₱{balanceDue.toFixed(2)}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      <CollectPaymentSheet
-        visible={isCollectOpen}
-        balanceDue={balanceDue}
-        methods={collectMethods}
-        onSubmit={handleCollect}
-        onClose={() => setIsCollectOpen(false)}
-      />
+      <CollectPaymentSheet {...paymentFlow.collectSheet} />
+      <PaymentDecisionSheet {...paymentFlow.decisionSheet} />
 
       <RevisionHistoryCard revisions={revisions ?? []} />
 
@@ -1018,9 +1016,13 @@ export default function OrderDetailScreen() {
             </TouchableOpacity>
           ) : null}
           {nextStatus && (
-            <TouchableOpacity style={styles.primaryAction} onPress={() => handleUpdateStatus(nextStatus)} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.primaryAction}
+              onPress={() => paymentFlow.requestStatusChange(nextStatus)}
+              activeOpacity={0.8}
+            >
               <Text style={styles.primaryActionText}>
-                Mark as {nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)}
+                {NEXT_ACTION_LABEL[nextStatus] ?? `Mark as ${nextStatus}`}
               </Text>
             </TouchableOpacity>
           )}

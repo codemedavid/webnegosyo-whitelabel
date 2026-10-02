@@ -48,7 +48,7 @@ it('rejects unauthorized admin rule reads before service-role access', async () 
 
 it('requires analytics access for the requested tenant', async () => {
   await getPairingRules(TENANT)
-  expect(mockAuthorize).toHaveBeenCalledWith(TENANT, 'analytics')
+  expect(mockAuthorize).toHaveBeenCalledWith(TENANT, 'analytics', 'view')
 })
 
 it('refuses a tenant filter injection before public resolution reaches the database', async () => {

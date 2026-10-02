@@ -6,15 +6,10 @@
  * Uploads go through the same signed ImageKit path as every admin image.
  */
 
-import { useRef, useState } from 'react'
 import { ImagePlus, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { isImageKitConfigured, uploadImageToImageKit } from '@/lib/imagekit-upload'
-
-const VALID_TYPES = ['image/png', 'image/jpg', 'image/jpeg', 'image/webp', 'image/gif']
-const MAX_SIZE_BYTES = 5 * 1024 * 1024
+import { useImageFilePicker } from '@/components/admin/menu-editor/use-image-file-picker'
 
 interface DishPhotoFieldProps {
   imageUrl: string
@@ -23,34 +18,7 @@ interface DishPhotoFieldProps {
 }
 
 export function DishPhotoField({ imageUrl, onChange, hasError }: DishPhotoFieldProps) {
-  const [isUploading, setIsUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const isConfigured = isImageKitConfigured()
-
-  const pickFile = () => fileInputRef.current?.click()
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!VALID_TYPES.includes(file.type)) {
-      toast.error('That file is not a photo. Use a PNG, JPG, WEBP or GIF.')
-      return
-    }
-    if (file.size > MAX_SIZE_BYTES) {
-      toast.error('That photo is over 5MB. Try a smaller one.')
-      return
-    }
-    setIsUploading(true)
-    try {
-      const result = await uploadImageToImageKit(file, { folder: 'menu-items' })
-      onChange(result.url)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'The photo did not upload. Please try again.')
-    } finally {
-      setIsUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
+  const { isConfigured, isUploading, pick: pickFile, inputProps } = useImageFilePicker('menu-items', onChange)
 
   if (!isConfigured) {
     return (
@@ -62,16 +30,7 @@ export function DishPhotoField({ imageUrl, onChange, hasError }: DishPhotoFieldP
 
   return (
     <div className="space-y-2">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={VALID_TYPES.join(',')}
-        onChange={handleFile}
-        disabled={isUploading}
-        className="hidden"
-        aria-hidden
-        tabIndex={-1}
-      />
+      <input {...inputProps} />
       <button
         id="image_url"
         type="button"

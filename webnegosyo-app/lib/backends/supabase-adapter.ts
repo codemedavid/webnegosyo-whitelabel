@@ -522,10 +522,10 @@ async function createOrder(
   // Idempotency guard, mirroring Convex. A retried submit on a flaky network
   // must return the original order rather than charge the customer twice.
   if (typeof createArgs.clientOrderId === "string" && createArgs.clientOrderId) {
-    const existing = await unwrap<{ id: string } | null>(
+    const existing = await unwrap<{ id: string; payment_status: string } | null>(
       client
         .from("orders")
-        .select("id")
+        .select("id, payment_status")
         .eq("tenant_id", tenantId)
         .eq("client_order_id", createArgs.clientOrderId)
         .maybeSingle()
@@ -536,6 +536,26 @@ async function createOrder(
       // back, leaving the items unwritten. Returning early on that would make
       // the loss permanent, so finish the job before reporting success.
       await ensureOrderItems(client, tenantId, existing.id, createArgs);
+      // A retry can find a row created by the previous pending-then-paid flow.
+      // Finish that settlement without overwriting a later payment state.
+      if (
+        createArgs.source === "pos" &&
+        createArgs.paymentStatus === "paid" &&
+        existing.payment_status === "pending"
+      ) {
+        const settled = await unwrap<{ id: string }[] | null>(
+          client
+            .from("orders")
+            .update({ payment_status: "paid" })
+            .eq("tenant_id", tenantId)
+            .eq("id", existing.id)
+            .eq("payment_status", "pending")
+            .select("id")
+        );
+        if (!settled?.length) {
+          throw new Error("The sale's payment changed or could not be saved. Review the order before retrying.");
+        }
+      }
       return existing.id;
     }
   }

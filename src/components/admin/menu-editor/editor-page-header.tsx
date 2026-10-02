@@ -15,7 +15,7 @@ interface EditorPageHeaderProps {
 
 export function EditorPageHeader({ backHref, title, status }: EditorPageHeaderProps) {
   return (
-    <div className="mx-auto flex max-w-3xl items-center gap-3">
+    <div className="mx-auto flex max-w-6xl items-center gap-3">
       <Link
         href={backHref}
         aria-label="Back to menu"

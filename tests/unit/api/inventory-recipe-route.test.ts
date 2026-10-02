@@ -83,7 +83,7 @@ describe('PUT /api/inventory/recipe', () => {
       status: 200,
       body: expect.objectContaining({ success: true }),
     })
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu')
+    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu', 'delete')
     expect(saveRecipeForTarget).toHaveBeenCalledWith(TENANT, TARGET, input)
   })
 
@@ -131,7 +131,7 @@ describe('DELETE /api/inventory/recipe', () => {
     }))
 
     expect(response.status).toBe(200)
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu')
+    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu', 'delete')
     expect(deleteRecipeForTarget).toHaveBeenCalledWith(TENANT, TARGET)
   })
 })
@@ -142,7 +142,7 @@ describe('GET /api/inventory/recipe', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('private, no-store')
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu')
+    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu', 'view')
     expect(getIngredients).toHaveBeenCalledWith(TENANT)
     expect(getUnits).toHaveBeenCalledWith(TENANT)
     expect(getRecipeForTarget).toHaveBeenCalledWith(TENANT, TARGET)

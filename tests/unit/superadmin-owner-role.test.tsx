@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { TenantUsersList } from '@/components/superadmin/tenant-users-list'
 import { AddTenantUserDialog } from '@/components/superadmin/add-tenant-user-dialog'
+import { PlatformAccessProvider } from '@/components/superadmin/platform-access-context'
 import { createTenantUser, setTenantOwner, type TenantUser } from '@/actions/users'
 
 /**
@@ -39,9 +40,19 @@ function makeUser(overrides: Partial<TenantUser> = {}): TenantUser {
 const OWNER = makeUser({ user_id: 'owner_1', email: 'owner@example.com', is_owner: true })
 const ADMIN = makeUser({ user_id: 'admin_1', email: 'staff@example.com' })
 
-function renderList(users: TenantUser[]) {
+/** The console account viewing the list; a superadmin unless a test says otherwise. */
+interface Viewer {
+  role: string
+  permissions: string[] | null
+}
+
+const SUPERADMIN: Viewer = { role: 'superadmin', permissions: null }
+
+function renderList(users: TenantUser[], viewer: Viewer = SUPERADMIN) {
   return render(
-    <TenantUsersList tenantId="tenant-1" tenantName="Bear Coffee" users={users} />
+    <PlatformAccessProvider role={viewer.role} permissions={viewer.permissions}>
+      <TenantUsersList tenantId="tenant-1" tenantName="Bear Coffee" users={users} />
+    </PlatformAccessProvider>
   )
 }
 
@@ -194,5 +205,21 @@ describe('the tenant user list', () => {
       const restored = screen.getByText('owner@example.com').closest('div[class*="group"]')
       expect(within(restored as HTMLElement).getByText('Owner')).toBeInTheDocument()
     })
+  })
+})
+
+describe('a console account that may only view store logins', () => {
+  it('lists the logins and the owner, but cannot add, hand over or remove one', () => {
+    // Arrange
+    const viewOnly: Viewer = { role: 'platform_staff', permissions: ['tenant_users.view'] }
+
+    // Act
+    renderList([OWNER, ADMIN], viewOnly)
+
+    // Assert
+    const ownerRow = screen.getByText('owner@example.com').closest('div[class*="group"]')
+    expect(within(ownerRow as HTMLElement).getByText('Owner')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add user/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /make owner/i })).not.toBeInTheDocument()
   })
 })

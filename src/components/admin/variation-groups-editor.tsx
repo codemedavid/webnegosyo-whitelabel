@@ -1,181 +1,118 @@
 'use client'
 
-import { Plus, Trash2 } from 'lucide-react'
+/**
+ * Choice lists for a dish — "Size", "Spice level", "Sugar level". A customer
+ * picks one option from each list; an option can cost extra, carry a photo,
+ * and one per list can start pre-selected.
+ */
+
+import { useId } from 'react'
+import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { EditorSection } from '@/components/admin/menu-editor/editor-section'
-import { ImageUpload } from '@/components/shared/image-upload'
-import type { VariationType, VariationOption } from '@/types/database'
+import { Switch } from '@/components/ui/switch'
+import { AddRowButton, OptionList, OptionRow } from '@/components/admin/menu-editor/option-rows'
+import type { LegacyOptions } from '@/components/admin/menu-editor/use-legacy-options'
+import type { VariationType } from '@/types/database'
+
+type ChoiceHandlers = LegacyOptions['typeHandlers']
 
 interface VariationGroupsEditorProps {
   variationTypes: VariationType[]
-  onAddVariationType: () => void
-  onRemoveVariationType: (index: number) => void
-  onUpdateVariationType: (index: number, field: keyof VariationType, value: string | boolean | number) => void
-  onAddVariationOption: (typeIndex: number) => void
-  onRemoveVariationOption: (typeIndex: number, optionIndex: number) => void
-  onUpdateVariationOption: (
-    typeIndex: number,
-    optionIndex: number,
-    field: keyof VariationOption,
-    value: string | number | boolean | undefined
-  ) => void
+  handlers: ChoiceHandlers
 }
 
-export function VariationGroupsEditor({
-  variationTypes,
-  onAddVariationType,
-  onRemoveVariationType,
-  onUpdateVariationType,
-  onAddVariationOption,
-  onRemoveVariationOption,
-  onUpdateVariationOption,
-}: VariationGroupsEditorProps) {
+export function VariationGroupsEditor({ variationTypes, handlers }: VariationGroupsEditorProps) {
   return (
-    <EditorSection
-      title="Choices"
-      description="Groups like Size or Spice level. Customers pick one option from each."
-      action={
-        <Button type="button" variant="outline" size="sm" onClick={onAddVariationType}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add group
+    <div className="space-y-4">
+      {variationTypes.map((choice, index) => (
+        <ChoiceCard key={choice.id} choice={choice} index={index} handlers={handlers} />
+      ))}
+      <AddRowButton label="Add another choice" onClick={handlers.add} />
+    </div>
+  )
+}
+
+interface ChoiceCardProps {
+  choice: VariationType
+  index: number
+  handlers: ChoiceHandlers
+}
+
+function ChoiceCard({ choice, index, handlers }: ChoiceCardProps) {
+  const nameId = useId()
+  const requiredId = useId()
+  const title = choice.name.trim() || `Choice ${index + 1}`
+
+  return (
+    <div className="space-y-3 rounded-xl border bg-muted/30 p-3 sm:p-4">
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <Label htmlFor={nameId} className="text-xs font-medium text-muted-foreground">
+            Choice {index + 1} — what are customers picking?
+          </Label>
+          <Input
+            id={nameId}
+            placeholder="e.g. Size, Spice level, Sugar level"
+            value={choice.name}
+            onChange={(e) => handlers.update(index, 'name', e.target.value)}
+            className="h-10 bg-background font-medium"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Remove ${title}`}
+          onClick={() => handlers.remove(index)}
+          className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-4 w-4" />
         </Button>
-      }
-    >
-        {variationTypes.length === 0 ? (
-          <p className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">
-            No choices yet. Add a group like Size or Spice level.
+      </div>
+
+      {choice.options.length > 0 ? (
+        <OptionList>
+          {choice.options.map((option, optionIndex) => (
+            <OptionRow
+              key={option.id}
+              name={option.name}
+              onNameChange={(name) => handlers.updateOption(index, optionIndex, 'name', name)}
+              nameLabel="Option name"
+              namePlaceholder="e.g. Small, Mild, 50% sugar"
+              price={option.price_modifier}
+              onPriceChange={(price) => handlers.updateOption(index, optionIndex, 'price_modifier', price)}
+              priceLabel="Extra charge"
+              pricePrefix="+₱"
+              isDefault={option.is_default}
+              onToggleDefault={() => handlers.setDefaultOption(index, optionIndex)}
+              photo={{
+                url: option.image_url ?? '',
+                onChange: (url) => handlers.updateOption(index, optionIndex, 'image_url', url || undefined),
+              }}
+              onRemove={() => handlers.removeOption(index, optionIndex)}
+            />
+          ))}
+        </OptionList>
+      ) : (
+        <p className="text-sm text-muted-foreground">Add the options customers pick from.</p>
+      )}
+      <AddRowButton label="Add option" onClick={() => handlers.addOption(index)} />
+
+      <div className="flex items-center justify-between gap-4 rounded-lg bg-background px-3 py-2.5">
+        <div className="min-w-0">
+          <Label htmlFor={requiredId} className="text-sm font-medium">Customers must choose</Label>
+          <p className="text-xs text-muted-foreground">
+            {choice.is_required ? 'They can’t add the dish without picking one.' : 'Optional — they can skip it.'}
           </p>
-        ) : (
-          <div className="space-y-6">
-            {variationTypes.map((variationType, typeIndex) => (
-              <div key={variationType.id} className="border rounded-lg p-4 space-y-4">
-                {/* Variation Type Header */}
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 space-y-3">
-                    <Input
-                      placeholder="Group name, e.g. Size"
-                      value={variationType.name}
-                      onChange={(e) => onUpdateVariationType(typeIndex, 'name', e.target.value)}
-                      className="font-medium"
-                    />
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={variationType.is_required}
-                        onChange={(e) => onUpdateVariationType(typeIndex, 'is_required', e.target.checked)}
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm">Customer must pick one</span>
-                    </label>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onRemoveVariationType(typeIndex)}
-                    aria-label="Delete group"
-                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Variation Options */}
-                <div className="ml-4 space-y-3 border-l-2 pl-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-muted-foreground">Options</h4>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onAddVariationOption(typeIndex)}
-                    >
-                      <Plus className="mr-1 h-3 w-3" />
-                      Add Option
-                    </Button>
-                  </div>
-
-                  {variationType.options.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">
-                      No options yet. Add options like Small, Medium, Large.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {variationType.options.map((option, optionIndex) => (
-                        <div key={option.id} className="space-y-3 rounded-lg border bg-muted/30 p-3">
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="Option name (e.g., Small)"
-                              value={option.name}
-                              onChange={(e) =>
-                                onUpdateVariationOption(typeIndex, optionIndex, 'name', e.target.value)
-                              }
-                              className="flex-1"
-                            />
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="+₱0"
-                              aria-label="Extra charge"
-                              value={option.price_modifier}
-                              onChange={(e) =>
-                                onUpdateVariationOption(
-                                  typeIndex,
-                                  optionIndex,
-                                  'price_modifier',
-                                  parseFloat(e.target.value) || 0
-                                )
-                              }
-                              className="w-32"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => onRemoveVariationOption(typeIndex, optionIndex)}
-                              aria-label="Remove option"
-                              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-
-                          {/* Image Upload for Option */}
-                          <div className="space-y-2">
-                            <Label className="text-xs">Photo (optional)</Label>
-                            <ImageUpload
-                              currentImageUrl={option.image_url || ''}
-                              onImageUploaded={(url) =>
-                                onUpdateVariationOption(typeIndex, optionIndex, 'image_url', url)
-                              }
-                              label=""
-                              description="Upload an image for this option"
-                              folder={`variation-options`}
-                            />
-                          </div>
-
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={option.is_default || false}
-                              onChange={(e) =>
-                                onUpdateVariationOption(typeIndex, optionIndex, 'is_default', e.target.checked)
-                              }
-                              className="h-3 w-3"
-                            />
-                            <span className="text-xs">Default option</span>
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-    </EditorSection>
+        </div>
+        <Switch
+          id={requiredId}
+          checked={choice.is_required}
+          onCheckedChange={(checked) => handlers.update(index, 'is_required', checked)}
+        />
+      </div>
+    </div>
   )
 }

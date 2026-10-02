@@ -58,7 +58,7 @@ describe('saveProductDetailSettings', () => {
 
     const result = await m.saveProductDetailSettings('tenant-1', 'cafe', { product_name_color: '#111111' })
 
-    expect(m.verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'store_setup')
+    expect(m.verifyTenantPermission).toHaveBeenCalledWith('tenant-1', 'store_setup', 'create')
     expect(result.success).toBe(false)
     expect(m.cookie.upsert).not.toHaveBeenCalled()
   })

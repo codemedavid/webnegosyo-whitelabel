@@ -51,7 +51,7 @@ export async function setBranchReorderLevel(
   outletId: string | null,
   reorderLevel: number,
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'create')
   const level = reorderLevelSchema.parse(reorderLevel)
 
   const supabase = await createClient()

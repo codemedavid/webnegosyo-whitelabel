@@ -36,17 +36,17 @@ function makeCheckout(overrides: Partial<UseCheckoutReturn> = {}): UseCheckoutRe
 // ---- isMessengerEnabledForOrderType --------------------------------------
 
 describe('isMessengerEnabledForOrderType', () => {
-  it('defaults to enabled when the order type is missing', () => {
-    expect(isMessengerEnabledForOrderType(null)).toBe(true)
-    expect(isMessengerEnabledForOrderType(undefined)).toBe(true)
+  it('defaults to disabled when the order type is missing', () => {
+    expect(isMessengerEnabledForOrderType(null)).toBe(false)
+    expect(isMessengerEnabledForOrderType(undefined)).toBe(false)
   })
 
-  it('defaults to enabled when the column has not been backfilled yet', () => {
-    expect(isMessengerEnabledForOrderType({})).toBe(true)
-    expect(isMessengerEnabledForOrderType({ messenger_enabled: null })).toBe(true)
+  it('defaults to disabled when the column is unset (Messenger is opt-in)', () => {
+    expect(isMessengerEnabledForOrderType({})).toBe(false)
+    expect(isMessengerEnabledForOrderType({ messenger_enabled: null })).toBe(false)
   })
 
-  it('is disabled only when the order type explicitly turns Messenger off', () => {
+  it('is enabled only when the order type explicitly turns Messenger on', () => {
     expect(isMessengerEnabledForOrderType({ messenger_enabled: false })).toBe(false)
     expect(isMessengerEnabledForOrderType({ messenger_enabled: true })).toBe(true)
   })
@@ -73,8 +73,12 @@ describe('isMessengerRedirectEnabledForOrderType', () => {
     ).toBe(false)
   })
 
-  it('defaults to redirecting when neither side has been configured', () => {
-    expect(isMessengerRedirectEnabledForOrderType(null, null)).toBe(true)
+  it('does not redirect when neither side has been configured', () => {
+    expect(isMessengerRedirectEnabledForOrderType(null, null)).toBe(false)
+  })
+
+  it('does not redirect when the tenant switch is unset', () => {
+    expect(isMessengerRedirectEnabledForOrderType({}, { messenger_enabled: true })).toBe(false)
   })
 })
 

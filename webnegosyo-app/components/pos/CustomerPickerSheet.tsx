@@ -20,6 +20,12 @@ import {
 } from "../../lib/customers/repo";
 import { draftFromSearch, validateCustomerDraft } from "../../lib/customers/validation";
 import type { AttachedCustomer } from "../../lib/customers/pos-attachment";
+import {
+  describeScanFailure,
+  identifyWalletCard,
+  resolveScannedCustomer,
+} from "../../lib/loyalty/wallet-card";
+import { MemberCardScanner } from "./MemberCardScanner";
 
 interface CustomerPickerSheetProps {
   visible: boolean;
@@ -67,6 +73,8 @@ export function CustomerPickerSheet({
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isResolvingCard, setIsResolvingCard] = useState(false);
 
   const debouncedQuery = useDebouncedValue(query);
 
@@ -139,6 +147,26 @@ export function CustomerPickerSheet({
     }
   }, [query, isSaving, tenantId, onPick]);
 
+  // A scanned Wallet card resolves to the guest with that number — the same
+  // attachment a phone search would make, so the sale earns the normal way.
+  const handleCardScanned = useCallback(async (code: string) => {
+    setIsScannerOpen(false);
+    setIsResolvingCard(true);
+    setError(null);
+    try {
+      const identified = await identifyWalletCard(tenantId, code);
+      if (!identified.ok) {
+        setError(describeScanFailure(identified.reason));
+        return;
+      }
+      onPick(await resolveScannedCustomer(tenantId, identified.phoneE164));
+    } catch {
+      setError("Card recognised, but the guest could not be attached. Search their number instead.");
+    } finally {
+      setIsResolvingCard(false);
+    }
+  }, [tenantId, onPick]);
+
   const quickCreateDraft = draftFromSearch(query);
   const canQuickCreate = quickCreateDraft !== null && !isSearching && results.length === 0;
 
@@ -172,6 +200,17 @@ export function CustomerPickerSheet({
             accessibilityRole="button"
           >
             <Text style={styles.walkInText}>Walk-in — no customer</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.walkIn}
+            onPress={() => setIsScannerOpen(true)}
+            disabled={isResolvingCard}
+            accessibilityRole="button"
+          >
+            <Text style={styles.scanText}>
+              {isResolvingCard ? "Checking loyalty card…" : "Scan loyalty card (Apple / Google Wallet)"}
+            </Text>
           </TouchableOpacity>
 
           {error && <Text style={styles.error}>{error}</Text>}
@@ -221,6 +260,11 @@ export function CustomerPickerSheet({
           )}
         </View>
       </View>
+      <MemberCardScanner
+        visible={isScannerOpen}
+        onCancel={() => setIsScannerOpen(false)}
+        onScanned={handleCardScanned}
+      />
     </Modal>
   );
 }
@@ -261,6 +305,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.separator,
   },
   walkInText: { ...typography.body, color: colors.textSecondary },
+  scanText: { ...typography.body, color: colors.primary, fontWeight: "600" },
   error: { ...typography.caption, color: colors.danger, marginTop: spacing.sm },
   spinner: { marginTop: spacing.lg },
   row: {

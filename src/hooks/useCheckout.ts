@@ -23,7 +23,7 @@
 import { addonLabel } from '@/lib/addon-quantity'
 import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-order-save'
@@ -34,17 +34,7 @@ import { preflightPresellAction } from '@/app/actions/presell-checkout'
 import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
 import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
-import { validateVoucherAction } from '@/app/actions/vouchers'
-import { buildVoucherPreviewLines } from '@/lib/vouchers/checkout-preview-lines'
-import {
-  addCode,
-  cartFingerprint,
-  discountLinesFrom,
-  isPreviewStale,
-  removeCode,
-  EMPTY_CHECKOUT_VOUCHER_STATE,
-  type CheckoutVoucherState,
-} from '@/lib/vouchers/checkout-codes'
+import { useCheckoutVouchers } from '@/hooks/checkout/use-checkout-vouchers'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { useCart } from '@/hooks/useCart'
@@ -339,33 +329,17 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   const validDeliveryFee = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address)
     ? deliveryFee
     : null
-  // Vouchers. The preview is a rendering hint only — the server re-prices from
-  // the codes at order time — so it is dropped the moment the cart moves under
-  // it rather than shown stale.
-  const [voucherState, setVoucherState] = useState<CheckoutVoucherState>(
-    EMPTY_CHECKOUT_VOUCHER_STATE
-  )
-  const [isCheckingVoucher, setIsCheckingVoucher] = useState(false)
-
-  // Bundle slots are priced by the server too, so they belong in both the
-  // request and the fingerprint. Leaving them out of the fingerprint left a
-  // preview looking fresh after the customer changed a bundle under it.
-  const voucherPreviewLines = useMemo(
-    () => buildVoucherPreviewLines(items, bundleItems),
-    [items, bundleItems]
-  )
-
-  const voucherFingerprint = cartFingerprint(
-    voucherPreviewLines,
+  const {
+    voucherCodes, voucherPreview, effectiveDiscounts,
+    isCheckingVoucher, applyVoucherCode, removeVoucherCode,
+  } = useCheckoutVouchers({
+    tenantId: tenant?.id ?? null,
+    items,
+    bundleItems,
     validDeliveryFee,
-    serviceChargeAmount
-  )
-
-  // A stale preview contributes nothing: the summary shows full price for a
-  // moment rather than a discount the server will not honour.
-  const effectiveDiscounts = isPreviewStale(voucherState, voucherFingerprint)
-    ? []
-    : discountLinesFrom(voucherState.preview)
+    serviceChargeAmount,
+    outletId: outlet.selectedOutletId ?? null,
+  })
 
   const { grandTotal } = computeOrderTotals({
     subtotal: total,
@@ -382,92 +356,6 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   // Deliberately the pre-discount subtotal: a voucher must not unlock a
   // minimum the cart never actually met.
   const orderMinimum = checkOrderMinimum(total, selectedOrderTypeData)
-
-  /**
-   * Re-prices whatever codes are currently entered.
-   *
-   * Runs on every code change and whenever the cart moves, because both change
-   * what a voucher is worth. Guarded on the fingerprint captured before the
-   * request so a slow reply cannot overwrite a newer cart.
-   */
-  // Only the newest voucher request may write its answer. Applying A then B
-  // quickly used to let the slower [A] reply land last and show A's discount
-  // as if it were [A, B]'s — the fingerprint only tracks the cart, not codes.
-  const voucherRequestSeqRef = useRef(0)
-  const tenantId = tenant?.id ?? null
-
-  const refreshVoucherPreview = useCallback(
-    async (codes: readonly string[], fingerprint: string) => {
-      const requestSeq = ++voucherRequestSeqRef.current
-      if (codes.length === 0) {
-        setVoucherState({ codes: [], preview: null, previewFingerprint: null })
-        setIsCheckingVoucher(false)
-        return
-      }
-
-      if (!tenantId) return
-
-      setIsCheckingVoucher(true)
-      try {
-        const result = await validateVoucherAction({
-          tenantId,
-          codes: [...codes],
-          lines: voucherPreviewLines,
-          deliveryFee: validDeliveryFee,
-          serviceCharge: serviceChargeAmount,
-          channel: 'checkout',
-          outletId: outlet.selectedOutletId ?? null,
-        })
-        if (requestSeq !== voucherRequestSeqRef.current) return
-
-        if (!result.success || !result.data) {
-          toast.error(result.error ?? 'Could not check that voucher')
-          return
-        }
-
-        setVoucherState((prev) => ({
-          ...prev,
-          preview: result.data ?? null,
-          previewFingerprint: fingerprint,
-        }))
-      } catch (error) {
-        if (requestSeq !== voucherRequestSeqRef.current) return
-        console.error('[Checkout] Voucher check failed:', error)
-        toast.error('Could not check that voucher. Please try again.')
-      } finally {
-        // A thrown request used to leave the spinner on for good.
-        if (requestSeq === voucherRequestSeqRef.current) setIsCheckingVoucher(false)
-      }
-    },
-    [tenantId, voucherPreviewLines, validDeliveryFee, serviceChargeAmount, outlet.selectedOutletId]
-  )
-
-  const applyVoucherCode = useCallback(
-    async (raw: string) => {
-      const next = addCode(voucherState, raw)
-      if (next === voucherState) return
-      setVoucherState(next)
-      await refreshVoucherPreview(next.codes, voucherFingerprint)
-    },
-    [voucherState, refreshVoucherPreview, voucherFingerprint]
-  )
-
-  const removeVoucherCode = useCallback(
-    async (raw: string) => {
-      const next = removeCode(voucherState, raw)
-      if (next === voucherState) return
-      setVoucherState(next)
-      await refreshVoucherPreview(next.codes, voucherFingerprint)
-    },
-    [voucherState, refreshVoucherPreview, voucherFingerprint]
-  )
-
-  // The cart moved under an applied code — re-price rather than show a
-  // discount the server will not honour.
-  useEffect(() => {
-    if (!isPreviewStale(voucherState, voucherFingerprint)) return
-    void refreshVoucherPreview(voucherState.codes, voucherFingerprint)
-  }, [voucherState, voucherFingerprint, refreshVoucherPreview])
 
   // Resolve the order type once the cart has been read from storage. The
   // stored selection is shared across tenants, so it is validated against this
@@ -1121,7 +1009,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
                 : undefined,
               selectedOutletId,
               // Codes, not amounts. The server recomputes the discount from these.
-              [...voucherState.codes],
+              [...voucherCodes],
               clientOrderId,
               validQuoteSignature
             )
@@ -1264,10 +1152,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     grandTotal,
     orderMinimum,
     // vouchers
-    voucherCodes: voucherState.codes,
-    voucherPreview: isPreviewStale(voucherState, voucherFingerprint)
-      ? null
-      : voucherState.preview,
+    voucherCodes,
+    voucherPreview,
     isCheckingVoucher,
     applyVoucherCode,
     removeVoucherCode,

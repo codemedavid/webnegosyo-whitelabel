@@ -521,6 +521,80 @@ describe("runPlatformMutation — orders:createOrder", () => {
     expect(opsOf(calls, "insert")).toEqual([]);
   });
 
+  it("saves a settled counter sale as paid without another payment request", async () => {
+    const { client, calls } = fakeClient({
+      orders: [
+        { data: null, error: null },
+        { data: { id: ORDER_ID }, error: null },
+      ],
+      order_items: [{ data: null, error: null }],
+    });
+    await runPlatformMutation(client, TENANT, "orders:createOrder", {
+      ...args,
+      clientOrderId: "paid-sale",
+      paymentStatus: "paid",
+    });
+
+    expect(opsOf(calls, "insert")[0][0]).toMatchObject({ payment_status: "paid" });
+    expect(opsOf(calls, "update")).toEqual([]);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("finishes payment on a retried settled sale whose existing row is pending", async () => {
+    const { client, calls } = fakeClient({
+      orders: [
+        { data: { id: ORDER_ID, payment_status: "pending" }, error: null },
+        { data: [{ id: ORDER_ID }], error: null },
+      ],
+      order_items: [{ data: [{ id: "existing-item" }], error: null }],
+    });
+    await runPlatformMutation(client, TENANT, "orders:createOrder", {
+      ...args,
+      clientOrderId: "paid-sale",
+      paymentStatus: "paid",
+    });
+    expect(opsOf(calls, "insert")).toEqual([]);
+    expect(opsOf(calls, "update")).toEqual([[{ payment_status: "paid" }]]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+    expect(opsOf(calls, "eq")).toContainEqual(["payment_status", "pending"]);
+  });
+
+  it.each(["paid", "verified", "failed"])("preserves an existing %s payment on replay", async (status) => {
+    const { client, calls } = fakeClient({
+      orders: [{ data: { id: ORDER_ID, payment_status: status }, error: null }],
+      order_items: [{ data: [{ id: "existing-item" }], error: null }],
+    });
+    await runPlatformMutation(client, TENANT, "orders:createOrder", {
+      ...args, clientOrderId: "paid-sale", paymentStatus: "paid",
+    });
+    expect(opsOf(calls, "insert")).toEqual([]);
+    expect(opsOf(calls, "update")).toEqual([]);
+  });
+
+  it("does not report success when a pending replay cannot be settled", async () => {
+    const { client } = fakeClient({
+      orders: [
+        { data: { id: ORDER_ID, payment_status: "pending" }, error: null },
+        { data: [], error: null },
+      ],
+      order_items: [{ data: [{ id: "existing-item" }], error: null }],
+    });
+    await expect(runPlatformMutation(client, TENANT, "orders:createOrder", {
+      ...args, clientOrderId: "paid-sale", paymentStatus: "paid",
+    })).rejects.toThrow("payment changed or could not be saved");
+  });
+
+  it.each(["web", "mobile", "qr_handoff"])("keeps a new %s order pending even when paid is requested", async (source) => {
+    const { client, calls } = fakeClient({
+      orders: [{ data: { id: ORDER_ID }, error: null }],
+      order_items: [{ data: null, error: null }],
+    });
+    await runPlatformMutation(client, TENANT, "orders:createOrder", {
+      ...args, source, paymentStatus: "paid",
+    });
+    expect(opsOf(calls, "insert")[0][0]).toMatchObject({ payment_status: "pending" });
+  });
+
   it("does not leave orphan items when the item insert fails", async () => {
     // Arrange
     const { client } = fakeClient({

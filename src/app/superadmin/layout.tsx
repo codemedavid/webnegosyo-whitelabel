@@ -1,4 +1,5 @@
 import { SuperAdminLayoutShell } from '@/components/superadmin/superadmin-layout-shell'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
 
 // Every superadmin page is authenticated and per-request. Pages that read
 // through the service-role client touch no cookies and would otherwise be
@@ -6,6 +7,17 @@ import { SuperAdminLayoutShell } from '@/components/superadmin/superadmin-layout
 // 2026-09-21 production build failed. Pin the whole tree dynamic here.
 export const dynamic = 'force-dynamic'
 
-export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
-  return <SuperAdminLayoutShell>{children}</SuperAdminLayoutShell>
+export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
+  // Null on the login page. The grants only shape what the chrome shows; the
+  // middleware and every action enforce them.
+  const caller = await getConsoleCaller()
+
+  return (
+    <SuperAdminLayoutShell
+      role={caller?.appUser.role ?? null}
+      permissions={caller?.appUser.platform_permissions ?? null}
+    >
+      {children}
+    </SuperAdminLayoutShell>
+  )
 }

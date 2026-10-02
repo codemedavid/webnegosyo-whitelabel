@@ -16,18 +16,28 @@
 
 import { loyverseListAll } from '@/lib/loyverse/client'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { LoyverseCatalogStockLevel } from '@/lib/loyverse/catalog-mapper'
+import { isUuid } from '@/lib/uuid'
+import {
+  anyVariantSellable,
+  groupVariantsByMenuItem,
+  levelsForStore,
+  type StockLevel,
+  type VariantMapRow,
+} from '@/lib/loyverse/stock-levels'
 
-export interface StockCheckMapRow {
-  kind: string
-  menu_item_id: string | null
-  loyverse_variant_id: string | null
-}
+export type StockCheckMapRow = VariantMapRow
 
 export interface StockCheckLine {
   menu_item_id: string
   menu_item_name: string
 }
+
+/**
+ * The checkout waits on this read, and it is advisory (a failure lets the
+ * order through), so it gets one short attempt instead of the client's
+ * retry-with-backoff budget.
+ */
+const CHECKOUT_STOCK_TIMEOUT_MS = 4_000
 
 /**
  * Which ordered dishes Loyverse currently reports as empty.
@@ -38,22 +48,12 @@ export interface StockCheckLine {
  */
 export function findOutOfStockLines(
   lines: readonly StockCheckLine[],
-  levels: readonly LoyverseCatalogStockLevel[],
+  levels: readonly StockLevel[],
   storeId: string,
   mapRows: readonly StockCheckMapRow[]
 ): StockCheckLine[] {
-  const variantsByMenuItem = new Map<string, string[]>()
-  for (const row of mapRows) {
-    if (row.kind !== 'variant' || !row.menu_item_id || !row.loyverse_variant_id) continue
-    const list = variantsByMenuItem.get(row.menu_item_id) ?? []
-    variantsByMenuItem.set(row.menu_item_id, [...list, row.loyverse_variant_id])
-  }
-
-  const reported = new Map<string, number>()
-  for (const level of levels) {
-    if (level.store_id !== storeId) continue
-    reported.set(level.variant_id, level.in_stock ?? 0)
-  }
+  const variantsByMenuItem = groupVariantsByMenuItem(mapRows)
+  const reported = levelsForStore(levels, storeId)
 
   const blocked: StockCheckLine[] = []
   const seen = new Set<string>()
@@ -62,12 +62,7 @@ export function findOutOfStockLines(
     const variants = variantsByMenuItem.get(line.menu_item_id) ?? []
     // Not a synced dish — Loyverse has no opinion on it.
     if (variants.length === 0) continue
-
-    const anySellable = variants.some((variantId) => {
-      const stock = reported.get(variantId)
-      return stock === undefined || stock > 0
-    })
-    if (anySellable) continue
+    if (anyVariantSellable(variants, (variantId) => reported.get(variantId))) continue
 
     seen.add(line.menu_item_id)
     blocked.push({ menu_item_id: line.menu_item_id, menu_item_name: line.menu_item_name })
@@ -76,11 +71,13 @@ export function findOutOfStockLines(
 }
 
 /**
- * Fetches live levels and applies {@link findOutOfStockLines}.
+ * Fetches live levels for just the ordered dishes' variants and applies
+ * {@link findOutOfStockLines}. It used to page through the store's WHOLE
+ * inventory on every checkout.
  *
- * Best effort by construction: any failure — network, auth, rate limit —
- * resolves to "nothing blocked" so a Loyverse outage can never stop the
- * merchant taking orders.
+ * Best effort by construction: any failure — network, auth, rate limit,
+ * timeout — resolves to "nothing blocked" so a Loyverse outage can never stop
+ * the merchant taking orders.
  */
 export async function findLiveOutOfStockLines(
   tenantId: string,
@@ -88,32 +85,32 @@ export async function findLiveOutOfStockLines(
   storeId: string,
   lines: readonly StockCheckLine[]
 ): Promise<StockCheckLine[]> {
-  if (lines.length === 0) return []
+  const menuItemIds = [...new Set(lines.map((line) => line.menu_item_id))].filter((id) => isUuid(id))
+  if (menuItemIds.length === 0) return []
   try {
     const admin = createAdminClient()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: mapRows } = await (admin as any)
+    const { data: mapRows, error } = await admin
       .from('loyverse_item_map')
       .select('kind, menu_item_id, loyverse_variant_id')
       .eq('tenant_id', tenantId)
       .eq('kind', 'variant')
-      .in(
-        'menu_item_id',
-        [...new Set(lines.map((line) => line.menu_item_id))]
-      )
+      .in('menu_item_id', menuItemIds)
+    if (error) throw new Error(error.message)
 
     const rows = (mapRows ?? []) as StockCheckMapRow[]
-    if (rows.length === 0) return []
+    const variantIds = [...new Set(rows.flatMap((row) => (row.loyverse_variant_id ? [row.loyverse_variant_id] : [])))]
+    if (variantIds.length === 0) return []
 
-    const levels = await loyverseListAll<LoyverseCatalogStockLevel>(
-      accessToken,
-      '/inventory',
-      'inventory_levels',
-      { query: { store_ids: storeId } }
-    )
+    const levels = await loyverseListAll<StockLevel>(accessToken, '/inventory', 'inventory_levels', {
+      query: { store_ids: storeId, variant_ids: variantIds.join(',') },
+      maxAttempts: 1,
+      timeoutMs: CHECKOUT_STOCK_TIMEOUT_MS,
+    })
     return findOutOfStockLines(lines, levels, storeId, rows)
-  } catch {
-    // Never let a stock check be the reason an order cannot be placed.
+  } catch (error: unknown) {
+    // Never let a stock check be the reason an order cannot be placed — but
+    // say so, or a permanently broken check is indistinguishable from "fine".
+    console.error('[Loyverse] live stock check skipped:', error instanceof Error ? error.message : error)
     return []
   }
 }

@@ -170,7 +170,7 @@ export async function getBundleById(bundleId: string, tenantId: string): Promise
  * Create a new bundle with slots
  */
 export async function createBundle(tenantId: string, input: BundleInput, ctx?: ProvisioningCtx): Promise<BundleWithSlots> {
-  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu', 'create')
   const validated = bundleSchema.parse(input)
   const supabase = ctx?.client ?? createAdminClient()
 
@@ -379,7 +379,7 @@ export async function setBundleImage(
  * Delete a bundle (cascades to bundle_slots and bundle_slot_price_overrides)
  */
 export async function deleteBundle(bundleId: string, tenantId: string): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = createAdminClient()
 
   const { error } = await supabase

@@ -594,10 +594,9 @@ export function generateMessengerDirectUrl(
  * Decide whether the checkout flow should automatically redirect the customer
  * to Messenger after an order is placed.
  *
- * Controlled per-tenant via the `messenger_redirect_enabled` flag. The default
- * is ON: any tenant where the flag is undefined or null (e.g. rows created
- * before the column existed) keeps the historical auto-redirect behavior. Only
- * an explicit `false` turns the redirect off.
+ * Controlled per-tenant via the `messenger_redirect_enabled` flag. Messenger is
+ * opt-in (Facebook is optional), so the default is OFF: only an explicit `true`
+ * turns the redirect on.
  *
  * @param tenant - Tenant (or partial) carrying the redirect flag; may be null/undefined
  * @returns true when the automatic Messenger redirect should fire
@@ -605,7 +604,7 @@ export function generateMessengerDirectUrl(
 export function isMessengerRedirectEnabled(
   tenant: { messenger_redirect_enabled?: boolean | null } | null | undefined
 ): boolean {
-  return tenant?.messenger_redirect_enabled !== false
+  return tenant?.messenger_redirect_enabled === true
 }
 
 /**

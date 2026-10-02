@@ -6,7 +6,7 @@
  * drawer never held that money.
  */
 
-import { readPosPayment } from "./pos-order";
+import { isPosPayLater, readPosPayment } from "./pos-order";
 import { isCashMethod } from "./pos-payment-methods";
 
 /** The subset of an order row this summary needs. */
@@ -169,6 +169,8 @@ export function selectShiftSales(
 /**
  * What an online order put in the drawer, absent a settlement ledger.
  *
+ * Also used for a counter sale rung up "pay later".
+ *
  * Deliberately NOT `total`. A confirmed Smart Menu order is real sales, but the
  * money only exists once someone has paid; counting the bill would tell a
  * cashier to expect cash that is still in the customer's pocket. An unknown
@@ -177,7 +179,10 @@ export function selectShiftSales(
  * safe, over-stating it is a shift that will not reconcile.
  */
 function settledAmount(order: CounterSale): number {
-  return order.source === "pos" ? order.total : (order.amountPaid ?? 0);
+  // A "pay later" counter sale is, for the drawer, an online order: its money
+  // exists once it is collected, not when it was rung up.
+  const isPaidAtCounter = order.source === "pos" && !isPosPayLater(order.customerData);
+  return isPaidAtCounter ? order.total : (order.amountPaid ?? 0);
 }
 
 /**

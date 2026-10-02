@@ -62,6 +62,14 @@ describe('shiftTurnover', () => {
     expect(shiftTurnover(shift())).toBe(1000)
   })
 
+  test('adds cash picked up mid-shift to what was handed over', () => {
+    expect(shiftTurnover(shift({ collected: 2000 }))).toBe(3000)
+  })
+
+  test('is the whole drawer on a zero-balance till', () => {
+    expect(shiftTurnover(shift({ openingFloat: 0, isZeroBalance: true, expectedCash: 1800 }))).toBe(1800)
+  })
+
   test('is unknown until the register says what it expected', () => {
     expect(shiftTurnover(shift({ expectedCash: null }))).toBeNull()
   })

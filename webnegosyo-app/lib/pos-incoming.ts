@@ -18,6 +18,10 @@ export interface IncomingOrder {
   customerName?: string;
   total?: number;
   itemCount?: number;
+  /** The queue returns whole order rows; these decide "is it paid yet?". */
+  paymentStatus?: string | null;
+  amountPaid?: number | null;
+  customerData?: unknown;
 }
 
 /** `orders:getRealtimeQueue` shape — open orders bucketed by status. */

@@ -3,20 +3,21 @@
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { OptimizedImage } from '@/components/shared/optimized-image'
-import { ChevronLeft, Minus, Plus, Share2, UtensilsCrossed, Flame, Leaf, WheatOff, Heart, Pencil } from 'lucide-react'
+import { ChevronLeft, Minus, Plus, Share2, UtensilsCrossed, Flame, Leaf, WheatOff, Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/hooks/useCart'
 import { useVariationState } from '@/hooks/useVariationState'
 import { useModifierGroups } from '@/hooks/useModifierGroups'
 import type { LinkedItemSnapshot } from '@/lib/modifier-linked-options'
-import { AddonQuantityControl } from '@/components/customer/addon-quantity-control'
-import { addonQuantity, addonLabel } from '@/lib/addon-quantity'
+import { AdminEditPencil } from '@/components/customer/product-detail/admin-edit-pencil'
+import { ProductVariations, ProductAddons } from '@/components/customer/product-detail/product-options'
+import { addonLabel } from '@/lib/addon-quantity'
 import { ModifierGroupsSelector } from '@/components/customer/modifier-groups-selector'
 import { useProductDetailModals } from '@/hooks/useProductDetailModals'
 import { formatPrice } from '@/lib/cart-utils'
 import { toast } from 'sonner'
-import type { MenuItem, Variation, VariationOption, Category, UpgradeUpsell } from '@/types/database'
+import type { MenuItem, Category, UpgradeUpsell } from '@/types/database'
 import type { SelectedTenant } from '@/lib/product-detail-data'
 import { getTenantBranding, type BrandingColors } from '@/lib/branding-utils'
 import { useBrandingPreviewDraft, useBrandingPreviewTenant, useIsMobileViewport } from '@/hooks/use-branding-preview'
@@ -109,29 +110,6 @@ interface ProductDetailCustomizerOpenDetail {
     pane?: 'palette' | 'settings'
 }
 
-interface AdminEditPencilProps {
-    visible: boolean
-    onClick: () => void
-    label: string
-    className?: string
-}
-
-const AdminEditPencil = memo(function AdminEditPencil({ visible, onClick, label, className }: AdminEditPencilProps) {
-    if (!visible) return null
-
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            title={label}
-            aria-label={label}
-            className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-gray-900 ${className || ''}`}
-        >
-            <Pencil className="h-3.5 w-3.5" />
-        </button>
-    )
-})
-
 // Memoized Dietary Tag Component
 interface DietaryTagProps {
     label: string
@@ -154,91 +132,6 @@ const DietaryTag = memo(function DietaryTag({ label, icon: Icon }: DietaryTagPro
         </Badge>
     )
 })
-
-// Memoized Variation Option Button Component
-interface VariationOptionButtonProps {
-    option: VariationOption
-    isSelected: boolean
-    onSelect: () => void
-    dynamicStyles: Record<string, React.CSSProperties> | undefined
-    showUpgradeNudge?: boolean
-    currentPriceModifier?: number
-}
-
-const VariationOptionButton = memo(function VariationOptionButton({
-    option,
-    isSelected,
-    onSelect,
-    dynamicStyles,
-    showUpgradeNudge,
-    currentPriceModifier = 0,
-}: VariationOptionButtonProps) {
-    const upgradeAmount = option.price_modifier - currentPriceModifier
-    return (
-        <button
-            type="button"
-            data-branding-scope="product/variation-option"
-            onClick={onSelect}
-            className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
-            style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
-        >
-            <span className="font-semibold">{option.name}</span>
-            {option.price_modifier !== 0 && (
-                <span className="ml-1 opacity-90" style={{ color: 'var(--pd-variation-price)' }}>
-                    (+{formatPrice(option.price_modifier)})
-                </span>
-            )}
-            {showUpgradeNudge && !isSelected && option.is_upgrade_target && upgradeAmount > 0 && (
-                <span
-                    className="ml-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                    style={{
-                        backgroundColor: 'var(--pd-button-primary, var(--button-primary))',
-                        color: 'var(--pd-button-primary-text, #fff)',
-                        opacity: 0.85,
-                    }}
-                >
-                    Upgrade +{formatPrice(upgradeAmount)}
-                </span>
-            )}
-        </button>
-    )
-})
-
-// Memoized Legacy Variation Button Component
-interface LegacyVariationButtonProps {
-    variation: Variation
-    isSelected: boolean
-    onSelect: () => void
-    dynamicStyles: Record<string, React.CSSProperties> | undefined
-}
-
-const LegacyVariationButton = memo(function LegacyVariationButton({
-    variation,
-    isSelected,
-    onSelect,
-    dynamicStyles
-}: LegacyVariationButtonProps) {
-    return (
-        <button
-            type="button"
-            data-branding-scope="product/variation-option"
-            onClick={onSelect}
-            className="px-4 py-2.5 text-sm font-medium transition-all duration-150 border active:scale-[0.95]"
-            style={isSelected ? dynamicStyles?.variationButtonSelected : dynamicStyles?.variationButton}
-        >
-            <span className="font-semibold">{variation.name}</span>
-            {variation.price_modifier !== 0 && (
-                <span className="ml-1 opacity-90" style={{ color: 'var(--pd-variation-price)' }}>
-                    (+{formatPrice(variation.price_modifier)})
-                </span>
-            )}
-        </button>
-    )
-})
-
-
-
-
 
 export const ProductDetailContent = memo(function ProductDetailContent({
     tenant: tenantProp,
@@ -336,9 +229,6 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         selectedAddons,
         quantity,
         useNewVariations,
-        hasVariations,
-        hasVariationTypes,
-        hasAddons,
         hasCustomizations,
         hasDiscount,
         totalPrice,
@@ -997,134 +887,31 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                         </div>
                     )}
 
-                    {/* Variation Types (New System) */}
-                    {!useGroups && hasVariationTypes && item.variation_types && item.variation_types.map((variationType) => {
-                        const selectedOption = selectedVariations[variationType.id]
-
-                        return (
-                            <div
-                                key={variationType.id}
-                                data-branding-scope="product/variations"
-                                className="mb-6"
-                            >
-                                <div className="flex items-center justify-between gap-2 mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <h3
-                                            className="text-base font-semibold"
-                                            style={{
-                                                color: 'var(--pd-variation-title)',
-                                                fontSize: 'var(--pd-variation-title-font-size)'
-                                            }}
-                                        >
-                                            {variationType.name}
-                                        </h3>
-                                        <span
-                                            className="text-xs font-medium px-2 py-0.5 rounded"
-                                            style={{ color: 'var(--pd-variation-required)' }}
-                                        >
-                                            {variationType.is_required ? themeColors.variationRequiredText : themeColors.variationOptionalText}
-                                        </span>
-                                    </div>
-                                    <AdminEditPencil
-                                        visible={isBrandAdmin}
-                                        onClick={() => openBrandingEditor('variations')}
-                                        label="Edit variation selector branding"
-                                    />
-                                </div>
-
-                                <div className="flex flex-wrap gap-2">
-                                    {variationType.options.map((option) => (
-                                        <VariationOptionButton
-                                            key={option.id}
-                                            option={option}
-                                            isSelected={selectedOption?.id === option.id}
-                                            onSelect={() => handleVariationTypeSelect(variationType.id, option)}
-                                            dynamicStyles={dynamicStyles}
-                                            showUpgradeNudge={menuEngineeringEnabled}
-                                            currentPriceModifier={selectedOption?.price_modifier ?? 0}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        )
-                    })}
-
-                    {/* Legacy Variations */}
-                    {!useGroups && !useNewVariations && hasVariations && (
-                        <div className="mb-6">
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                                <div className="flex items-center gap-2">
-                                    <h3
-                                        className="text-base font-semibold"
-                                        style={{
-                                            color: 'var(--pd-variation-title)',
-                                            fontSize: 'var(--pd-variation-title-font-size)'
-                                        }}
-                                    >
-                                        Choose Size
-                                    </h3>
-                                    <span
-                                        className="text-xs font-medium px-2 py-0.5 rounded"
-                                        style={{ color: 'var(--pd-variation-required)' }}
-                                    >
-                                        {themeColors.variationRequiredText}
-                                    </span>
-                                </div>
-                                <AdminEditPencil
-                                    visible={isBrandAdmin}
-                                    onClick={() => openBrandingEditor('variations')}
-                                    label="Edit variation selector branding"
-                                />
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                                {item.variations.map((variation) => (
-                                    <LegacyVariationButton
-                                        key={variation.id}
-                                        variation={variation}
-                                        isSelected={selectedVariation?.id === variation.id}
-                                        onSelect={() => handleLegacyVariationSelect(variation)}
-                                        dynamicStyles={dynamicStyles}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Add-ons */}
-                    {!useGroups && hasAddons && (
-                        <div className="mb-6" data-branding-scope="product/addons">
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                                <h3
-                                    className="text-base font-semibold"
-                                    style={{
-                                        color: 'var(--pd-addon-title)',
-                                        fontSize: 'var(--pd-addon-title-font-size)'
-                                    }}
-                                >
-                                    Add-ons <span style={{ color: 'var(--pd-text-muted)' }} className="font-normal text-xs">{themeColors.addonOptionalText}</span>
-                                </h3>
-                                <AdminEditPencil
-                                    visible={isBrandAdmin}
-                                    onClick={() => openBrandingEditor('addons')}
-                                    label="Edit add-ons branding"
-                                />
-                            </div>
-
-                            <p className="mb-3 text-xs opacity-70">Quantities are per item.</p>
-                            <div className="space-y-2">
-                                {mergedAddons.map((addon) => (
-                                    <AddonQuantityControl
-                                        key={addon.id}
-                                        name={addon.name}
-                                        price={addon.price}
-                                        quantity={selectedAddons.some(a => a.id === addon.id) ? addonQuantity(selectedAddons.find(a => a.id === addon.id)!) : 0}
-                                        onChange={value => changeAddonQuantity(addon, value)}
-                                        hideCurrencySymbol={hideCurrencySymbol}
-                                    />
-                                ))}
-                            </div>
-                        </div>
+                    {!useGroups && (
+                        <>
+                            <ProductVariations
+                                variations={item.variations}
+                                variationTypes={item.variation_types}
+                                selectedVariation={selectedVariation}
+                                selectedVariations={selectedVariations}
+                                onVariationTypeSelect={handleVariationTypeSelect}
+                                onLegacyVariationSelect={handleLegacyVariationSelect}
+                                dynamicStyles={dynamicStyles}
+                                menuEngineeringEnabled={menuEngineeringEnabled}
+                                themeColors={themeColors}
+                                isBrandAdmin={isBrandAdmin}
+                                onEditBranding={openBrandingEditor}
+                            />
+                            <ProductAddons
+                                addons={mergedAddons}
+                                selectedAddons={selectedAddons}
+                                onQuantityChange={changeAddonQuantity}
+                                hideCurrencySymbol={hideCurrencySymbol}
+                                themeColors={themeColors}
+                                isBrandAdmin={isBrandAdmin}
+                                onEditBranding={openBrandingEditor}
+                            />
+                        </>
                     )}
 
                     {/* Presell date picker: a pre-order dish is sold per pickup date. */}

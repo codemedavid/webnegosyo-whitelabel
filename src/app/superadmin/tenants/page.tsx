@@ -9,6 +9,8 @@ import { getTenantsOverview } from '@/lib/queries/tenant-metrics-server'
 import { normalizeTenantSearch } from '@/lib/superadmin/tenant-search'
 import { TenantOverview } from '@/components/superadmin/tenant-overview'
 import { TenantManager } from '@/components/superadmin/tenant-manager'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
 
 function OverviewSkeleton() {
   return (
@@ -77,7 +79,7 @@ async function OverviewSection() {
  * Convex-backed tenant on the page and used to hold the whole list back for
  * seconds. The client fills them in after the rows are on screen.
  */
-async function TenantList({ search }: { search: string }) {
+async function TenantList({ search, canCreate }: { search: string; canCreate: boolean }) {
   const { data: tenants, count, error } = await getTenants({ search })
 
   if (count === 0 && !search && !error) {
@@ -88,12 +90,14 @@ async function TenantList({ search }: { search: string }) {
           title="No restaurants yet"
           description="Get started by adding your first restaurant tenant."
           action={
-            <Link href="/superadmin/tenants/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Restaurant
-              </Button>
-            </Link>
+            canCreate ? (
+              <Link href="/superadmin/tenants/new">
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Restaurant
+                </Button>
+              </Link>
+            ) : undefined
           }
         />
       </div>
@@ -119,6 +123,7 @@ interface TenantsPageProps {
 export default async function TenantsPage({ searchParams }: TenantsPageProps) {
   const { q } = await searchParams
   const search = normalizeTenantSearch(Array.isArray(q) ? q[0] : q)
+  const canCreate = hasPlatformPermission((await getConsoleCaller())?.appUser, 'tenants.create')
 
   return (
     <div className="space-y-8">
@@ -134,12 +139,14 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
         title="Restaurants"
         subtitle="Manage every restaurant tenant on the platform."
         actions={
-          <Link href="/superadmin/tenants/new">
-            <Button className="bg-white text-black hover:bg-white/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Restaurant
-            </Button>
-          </Link>
+          canCreate ? (
+            <Link href="/superadmin/tenants/new">
+              <Button className="bg-white text-black hover:bg-white/90">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Restaurant
+              </Button>
+            </Link>
+          ) : undefined
         }
       />
 
@@ -148,7 +155,7 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
       </Suspense>
 
       <Suspense fallback={<TenantListSkeleton />}>
-        <TenantList search={search} />
+        <TenantList search={search} canCreate={canCreate} />
       </Suspense>
     </div>
   )

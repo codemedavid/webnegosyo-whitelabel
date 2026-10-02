@@ -12,6 +12,13 @@
  */
 
 import type { ModifierGroup, ModifierOption } from '@/types/database'
+import {
+  modifierGroupId,
+  modifierOptionId,
+  variantGroupId,
+  variantOptionId,
+} from '@/lib/loyverse/option-ids'
+import { isSellableStock, levelsForStore } from '@/lib/loyverse/stock-levels'
 
 export interface LoyverseCatalogCategory {
   id: string
@@ -95,6 +102,12 @@ export interface LoyverseMapRow {
   loyverse_modifier_id: string | null
   loyverse_modifier_option_id: string | null
   loyverse_sku: string | null
+  /**
+   * Variant rows only: the level just read from GET /inventory (null =
+   * untracked or unreported). Written with the map so a catalog sync never
+   * wipes the stock the inventory webhook reasons over.
+   */
+  in_stock?: number | null
 }
 
 export interface MappedLoyverseItem {
@@ -161,14 +174,14 @@ function modifierToGroup(
     (a, b) => (a.position ?? 0) - (b.position ?? 0)
   )
   const options: ModifierOption[] = sortedOptions.map((option, index) => ({
-    id: `lvm-${option.id}`,
+    id: modifierOptionId(option.id),
     name: option.name,
     price_modifier: option.price ?? 0,
     display_order: index,
   }))
   const mapRows: LoyverseMapRow[] = sortedOptions.map((option) => ({
     kind: 'modifier_option',
-    local_key: `lvm-${option.id}`,
+    local_key: modifierOptionId(option.id),
     loyverse_item_id: null,
     loyverse_variant_id: null,
     loyverse_modifier_id: modifier.id,
@@ -177,7 +190,7 @@ function modifierToGroup(
   }))
   return {
     group: {
-      id: `lvm-group-${modifier.id}`,
+      id: modifierGroupId(modifier.id),
       name: modifier.name,
       display_order: displayOrder,
       min_select: 0,
@@ -202,16 +215,7 @@ export function mapLoyverseCatalog(input: LoyverseCatalogInput): LoyverseCatalog
   // Stock at the mapped store, by variant. A variant absent from the map has
   // no reported level and is treated as in stock — false "sold out" hides
   // revenue, false "available" merely fails at the register.
-  const stockByVariant = new Map<string, number>()
-  for (const level of input.inventoryLevels ?? []) {
-    if (level.store_id === input.storeId) {
-      stockByVariant.set(level.variant_id, level.in_stock ?? 0)
-    }
-  }
-  const isVariantOutOfStock = (variantId: string): boolean => {
-    const level = stockByVariant.get(variantId)
-    return level !== undefined && level <= 0
-  }
+  const stockByVariant = levelsForStore(input.inventoryLevels ?? [], input.storeId)
 
   for (const item of input.items) {
     if (item.deleted_at) continue
@@ -242,6 +246,8 @@ export function mapLoyverseCatalog(input: LoyverseCatalogInput): LoyverseCatalog
     }
 
     const basePrice = Math.min(...resolved.map((r) => r.price))
+    const rememberedStock = (variantId: string): number | null =>
+      item.track_stock ? (stockByVariant.get(variantId) ?? null) : null
     const modifierGroups: ModifierGroup[] = []
     const mapRows: LoyverseMapRow[] = []
 
@@ -255,19 +261,20 @@ export function mapLoyverseCatalog(input: LoyverseCatalogInput): LoyverseCatalog
         loyverse_modifier_id: null,
         loyverse_modifier_option_id: null,
         loyverse_sku: resolved[0].variant.sku ?? null,
+        in_stock: rememberedStock(resolved[0].variant.variant_id),
       })
     } else {
       // One axis keeps its name; 2-3 axes collapse into one combined group so
       // per-combination pricing stays exact (our groups price independently,
       // Loyverse variants price the combination).
       const options: ModifierOption[] = resolved.map((r, index) => ({
-        id: `lv-${r.variant.variant_id}`,
+        id: variantOptionId(r.variant.variant_id),
         name: variantOptionLabel(r.variant) || `Variant ${index + 1}`,
         price_modifier: r.price - basePrice,
         display_order: index,
       }))
       modifierGroups.push({
-        id: `lv-group-${item.id}`,
+        id: variantGroupId(item.id),
         name: axisGroupName(item) || 'Options',
         display_order: 0,
         min_select: 1,
@@ -277,12 +284,13 @@ export function mapLoyverseCatalog(input: LoyverseCatalogInput): LoyverseCatalog
       for (const r of resolved) {
         mapRows.push({
           kind: 'variant',
-          local_key: `lv-${r.variant.variant_id}`,
+          local_key: variantOptionId(r.variant.variant_id),
           loyverse_item_id: item.id,
           loyverse_variant_id: r.variant.variant_id,
           loyverse_modifier_id: null,
           loyverse_modifier_option_id: null,
           loyverse_sku: r.variant.sku ?? null,
+          in_stock: rememberedStock(r.variant.variant_id),
         })
       }
     }
@@ -311,7 +319,7 @@ export function mapLoyverseCatalog(input: LoyverseCatalogInput): LoyverseCatalog
       isAvailable:
         resolved.some((r) => r.isAvailable) &&
         (!item.track_stock ||
-          resolved.some((r) => !isVariantOutOfStock(r.variant.variant_id))),
+          resolved.some((r) => isSellableStock(stockByVariant.get(r.variant.variant_id)))),
       modifierGroups,
       mapRows,
     })

@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { ListChecks, PlusCircle } from 'lucide-react'
+import { Layers, ListChecks, PlusCircle } from 'lucide-react'
 import type { ModifierGroup, ModifierOption } from '@/types/database'
 import {
   createModifierGroup,
@@ -11,6 +11,7 @@ import {
 } from '@/lib/modifier-groups-form'
 import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import { ModifierGroupCard } from '@/components/admin/modifier-group-card'
+import { DISH_SECTION_IDS } from '@/components/admin/menu-editor/dish-sections'
 
 /**
  * Context needed to attach an inventory recipe to a recipe-stock option.
@@ -78,6 +79,8 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
 
   return (
     <EditorSection
+      id={DISH_SECTION_IDS.choices}
+      icon={Layers}
       title="Sizes & add-ons"
       description="Let customers pick a size or flavor, or add extras. Skip this if the dish has none."
       action={headerAction}

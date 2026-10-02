@@ -59,6 +59,7 @@ describe('POST /api/revalidate-menu', () => {
               select: jest.fn(() => ({
                 eq: jest.fn(() => ({
                   single: singleMock,
+                  maybeSingle: singleMock,
                 })),
               })),
             },

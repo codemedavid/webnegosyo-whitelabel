@@ -9,12 +9,14 @@ import { toast } from 'sonner'
 import type { TagDefinition } from '@/types/database'
 import { getPresetTagsAction, createPresetTagAction, deletePresetTagAction } from '@/app/actions/tags'
 import { Panel, SectionHeader, EmptyState } from '@/components/superadmin/ui/primitives'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import { cn } from '@/lib/utils'
 
 const fieldClass =
   'h-11 rounded-xl border-white/10 bg-white/[0.03] text-sm text-white placeholder:text-white/35 focus-visible:border-white/25 focus-visible:ring-white/10'
 
 export function TagPresetsManager() {
+  const canEdit = usePlatformAccess().can('settings.edit')
   const [tags, setTags] = useState<TagDefinition[]>([])
   const [isPending, startTransition] = useTransition()
   const [isLoaded, setIsLoaded] = useState(false)
@@ -139,67 +141,71 @@ export function TagPresetsManager() {
                   className="group inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] py-1 pl-3 pr-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/[0.06]"
                 >
                   {tag.tag_value}
-                  <button
-                    onClick={() => handleDelete(tag.id)}
-                    aria-label={`Delete tag ${tag.tag_value}`}
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-white/35 transition-colors hover:bg-red-400/10 hover:text-red-400 disabled:opacity-50"
-                    disabled={isPending}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => handleDelete(tag.id)}
+                      aria-label={`Delete tag ${tag.tag_value}`}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-white/35 transition-colors hover:bg-red-400/10 hover:text-red-400 disabled:opacity-50"
+                      disabled={isPending}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
                 </span>
               ))}
             </div>
           </div>
         ))}
 
-        <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.01] p-4">
-          <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/45">
-            Add a preset tag
-          </p>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="preset-group" className="text-xs text-white/60">
-                Group
-              </Label>
-              <Input
-                id="preset-group"
-                className={fieldClass}
-                placeholder="e.g. Flavor Profile"
-                value={newGroup}
-                onChange={(e) => setNewGroup(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isPending}
-              />
+        {canEdit && (
+          <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.01] p-4">
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/45">
+              Add a preset tag
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="preset-group" className="text-xs text-white/60">
+                  Group
+                </Label>
+                <Input
+                  id="preset-group"
+                  className={fieldClass}
+                  placeholder="e.g. Flavor Profile"
+                  value={newGroup}
+                  onChange={(e) => setNewGroup(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="preset-value" className="text-xs text-white/60">
+                  Value
+                </Label>
+                <Input
+                  id="preset-value"
+                  className={fieldClass}
+                  placeholder="e.g. bitter"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isPending}
+                />
+              </div>
+              <Button
+                onClick={handleAdd}
+                disabled={isPending || !canAdd}
+                className={cn('h-11 rounded-xl bg-white text-black hover:bg-white/90')}
+              >
+                {isPending ? (
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                )}
+                Add
+              </Button>
             </div>
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="preset-value" className="text-xs text-white/60">
-                Value
-              </Label>
-              <Input
-                id="preset-value"
-                className={fieldClass}
-                placeholder="e.g. bitter"
-                value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isPending}
-              />
-            </div>
-            <Button
-              onClick={handleAdd}
-              disabled={isPending || !canAdd}
-              className={cn('h-11 rounded-xl bg-white text-black hover:bg-white/90')}
-            >
-              {isPending ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="mr-1 h-3.5 w-3.5" />
-              )}
-              Add
-            </Button>
           </div>
-        </div>
+        )}
       </div>
     </Panel>
   )

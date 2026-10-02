@@ -34,6 +34,10 @@ const shift: ShiftRecord = {
   expectedCash: 1500,
   closingCount: 1500,
   note: null,
+  drawerId: null,
+  drawerName: null,
+  isZeroBalance: false,
+  closedByName: null,
   openedAt: "2026-09-19T01:00:00Z",
   closedAt: "2026-09-19T09:00:00Z",
 };

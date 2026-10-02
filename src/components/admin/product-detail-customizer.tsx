@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 import type { Tenant } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -82,15 +84,10 @@ export function ProductDetailCustomizer({ tenant, onPreview, onSaved, onTogglePo
         async function checkRole() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
-            const { data: role } = await supabase
-                .from('app_users')
-                .select('role, tenant_id')
-                .eq('user_id', user.id)
-                .maybeSingle()
+            const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
             if (isCancelled) return
-            const r = role as { role: string; tenant_id: string } | null
-            const allowed = !!r && (r.role === 'superadmin' || (r.role === 'admin' && r.tenant_id === tenant.id))
-            setIsAllowed(allowed)
+            // Saving upserts the settings row, so platform staff need stores.create.
+            setIsAllowed(canAccessStoreAdmin(appUser, tenant.id, 'create'))
         }
         checkRole()
         return () => { isCancelled = true }

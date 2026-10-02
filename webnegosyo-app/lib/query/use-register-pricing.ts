@@ -39,10 +39,15 @@ export async function fetchRegisterPricing(tenantId: string): Promise<RegisterPr
   return { orderTypes, priceIndex: buildOrderTypePriceIndex(priceRows) };
 }
 
+/** The cache key the channel pricing lives on (shared with the offline download). */
+export function registerPricingKey(tenantId: string) {
+  return resourceKey(REGISTER_PRICING_RESOURCE, tenantId);
+}
+
 export function useRegisterPricing(tenantId: string | null): ResourceResult<RegisterPricing> {
   const fetcher = useCallback(() => fetchRegisterPricing(tenantId as string), [tenantId]);
   return useResource<RegisterPricing>(
-    tenantId ? resourceKey(REGISTER_PRICING_RESOURCE, tenantId) : null,
+    tenantId ? registerPricingKey(tenantId) : null,
     fetcher,
     // Snapshotted WITH the catalog: an offline register charges the channel
     // prices it last saw, never list prices, on the same rule as a live read.

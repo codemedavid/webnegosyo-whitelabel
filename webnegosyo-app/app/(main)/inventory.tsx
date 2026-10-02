@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Platform,
 } from "react-native";
+import { router, useFocusEffect } from "expo-router";
 import { useAuthStore } from "../../stores/auth-store";
 import { useBranchScope, useAccountBranchScope } from "../../lib/use-branch-scope";
 import { loadInventoryStock } from "../../lib/inventory-service";
@@ -16,13 +18,30 @@ import {
   filterStockViews,
   summarizeStock,
   type StockItemView,
-  type StockLevel,
 } from "../../lib/inventory-stock";
+import { categoryChips, filterByCategory, stockValue } from "../../lib/inventory-insights";
+import {
+  loadIngredientIndex,
+  setIngredientActive,
+  type IngredientIndexRow,
+} from "../../lib/ingredient-service";
+import type { ManualMovementReason } from "../../lib/inventory-movement";
+import { ingredientEditorHref, ingredientHref, NEW_INGREDIENT_ID } from "../../lib/navigation";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { IconButton } from "../../components/IconButton";
+import { Icon } from "../../components/Icon";
+import { InventoryHero, type LevelFilter } from "../../components/inventory/InventoryHero";
+import {
+  InventoryActionBar,
+  type InventoryAction,
+} from "../../components/inventory/InventoryActionBar";
+import { CategoryChips } from "../../components/inventory/CategoryChips";
+import { IngredientPickerSheet } from "../../components/inventory/IngredientPickerSheet";
+import { ArchivedIngredientsSheet } from "../../components/inventory/ArchivedIngredientsSheet";
 import { InventoryStockCard } from "../../components/InventoryStockCard";
 import { StockMovementSheet } from "../../components/StockMovementSheet";
 import { StockCountPanel } from "../../components/StockCountPanel";
@@ -42,19 +61,6 @@ import {
   closeCount,
   type OpenCountSession,
 } from "../../lib/count-session-service";
-
-type LevelFilter = StockLevel | "all";
-
-/**
- * The three segments of the hero double as the filter. A merchant who reads
- * "2 out" and then wants to see which two should not have to look elsewhere for
- * the control — the count IS the button.
- */
-const SEGMENTS: readonly { key: Exclude<LevelFilter, "all">; label: string; tint: string }[] = [
-  { key: "out", label: "Out", tint: colors.danger },
-  { key: "low", label: "Low", tint: colors.warning },
-  { key: "ok", label: "Stocked", tint: colors.success },
-];
 
 /**
  * The merchant app's ingredient shelf.
@@ -91,6 +97,12 @@ export default function InventoryScreen() {
   const [transfers, setTransfers] = useState<TransferSummary[]>([]);
   const [transferLines, setTransferLines] = useState<Record<string, TransferLineView[]>>({});
   const [isComposing, setIsComposing] = useState(false);
+  const [category, setCategory] = useState<string | null>(null);
+  const [recordingReason, setRecordingReason] = useState<ManualMovementReason>("receive");
+  const [picking, setPicking] = useState<ManualMovementReason | null>(null);
+  const [index, setIndex] = useState<IngredientIndexRow[]>([]);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const pendingPickRef = useRef<StockItemView | null>(null);
 
   // Names for the two ends of a transfer. Deliberately NOT filtered to the
   // branch being viewed: a manager receiving from another shop has to be told
@@ -170,9 +182,24 @@ export default function InventoryScreen() {
     // roll-up is a single scalar, so there is nothing on the phone to re-filter.
   }, [tenantId, outletId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  /** Archived rows only feed the archive link, so a failed read costs just that. */
+  const loadIndex = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      setIndex(await loadIngredientIndex(tenantId));
+    } catch {
+      setIndex([]);
+    }
+  }, [tenantId]);
+
+  // On focus rather than mount: tab screens stay mounted, and coming back from
+  // the editor or an ingredient's page must show what was just changed there.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      loadIndex();
+    }, [load, loadIndex]),
+  );
 
   /**
    * What is on the move, store-wide rather than for the branch being viewed.
@@ -268,23 +295,69 @@ export default function InventoryScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     load();
+    loadIndex();
+    loadCount();
+    loadMoving();
   };
 
   const summary = useMemo(() => summarizeStock(shelf), [shelf]);
+  const value = useMemo(() => stockValue(shelf), [shelf]);
+  const chips = useMemo(() => categoryChips(shelf), [shelf]);
+  const archived = useMemo(() => index.filter((row) => !row.is_active), [index]);
   const visible = useMemo(
-    () => filterStockViews(shelf, { level: levelFilter, query: search }),
-    [shelf, levelFilter, search],
+    () => filterStockViews(filterByCategory(shelf, category), { level: levelFilter, query: search }),
+    [shelf, category, levelFilter, search],
   );
+  const isFiltered = levelFilter !== "all" || category !== null || search.trim() !== "";
 
   // Tapping the active segment again clears it — the only way back to "all"
   // without a fourth chip competing for the same row.
   const toggleLevel = (key: LevelFilter) =>
     setLevelFilter((current) => (current === key ? "all" : key));
 
-  const counts: Record<Exclude<LevelFilter, "all">, number> = {
-    out: summary.outCount,
-    low: summary.lowCount,
-    ok: summary.okCount,
+  const clearFilters = () => {
+    setLevelFilter("all");
+    setCategory(null);
+    setSearch("");
+  };
+
+  const openEditor = () => router.push(ingredientEditorHref(NEW_INGREDIENT_ID));
+  const openIngredient = (item: StockItemView) => router.push(ingredientHref(item.id));
+
+  const onAction = (action: InventoryAction) => {
+    // A new shortcut is a new intent: a pick still waiting on the last picker's
+    // dismissal must not open the sheet for the wrong ingredient.
+    pendingPickRef.current = null;
+    if (action === "transfer") {
+      setIsComposing(true);
+      return;
+    }
+    setPicking(action);
+  };
+
+  const onPicked = (item: StockItemView, reason: ManualMovementReason) => {
+    setPicking(null);
+    setRecordingReason(reason);
+    // iOS will not present a second modal while the first is still sliding
+    // away — it drops it silently and the shortcut looks broken. Wait for the
+    // picker's dismissal there; Android has no such race.
+    if (Platform.OS === "ios") {
+      pendingPickRef.current = item;
+      return;
+    }
+    setRecording(item);
+  };
+
+  const onPickerDismissed = () => {
+    const item = pendingPickRef.current;
+    pendingPickRef.current = null;
+    if (item) setRecording(item);
+  };
+
+  const onRestore = async (id: string) => {
+    if (!tenantId) return;
+    await setIngredientActive(tenantId, id, true);
+    await Promise.all([load(), loadIndex()]);
   };
 
   const body = () => {
@@ -292,24 +365,44 @@ export default function InventoryScreen() {
     if (error) return <ErrorState message={error} onRetry={load} />;
     if (shelf.length === 0) {
       return (
-        <EmptyState message="No ingredients yet. Add them in the web admin to start tracking stock." />
+        <EmptyState
+          icon="stock"
+          title="Start tracking your stock"
+          message="Add the ingredients you buy — flour, milk, cups — and see what is running low before service."
+          actionLabel="Add your first ingredient"
+          onAction={openEditor}
+        />
       );
     }
     if (visible.length === 0) {
-      return <EmptyState message="Nothing matches that filter." />;
+      return (
+        <EmptyState
+          icon="search"
+          title="Nothing matches"
+          message="No ingredient fits these filters."
+          actionLabel="Clear filters"
+          onAction={clearFilters}
+        />
+      );
     }
     return (
       <View style={styles.list}>
         {visible.map((item) => (
-          <InventoryStockCard key={item.id} item={item} onPress={setRecording} />
+          <InventoryStockCard key={item.id} item={item} onPress={openIngredient} />
         ))}
       </View>
     );
   };
 
+  const hasShelf = !isLoading && !error && shelf.length > 0;
+
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Stock" subtitle="Tap an ingredient to record stock" />
+      <ScreenHeader
+        title="Stock"
+        subtitle={scope.kind === "branch" ? "This branch's shelf" : "Ingredients, counts and deliveries"}
+        actions={<IconButton icon="plus" label="Add ingredient" tone="primary" onPress={openEditor} />}
+      />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -318,64 +411,25 @@ export default function InventoryScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
-        <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>Shelf status</Text>
-          <Text style={styles.heroHeadline}>{summary.headline}</Text>
+        {hasShelf && (
+          <>
+            <InventoryHero
+              summary={summary}
+              value={value}
+              levelFilter={levelFilter}
+              onToggleLevel={toggleLevel}
+            />
 
-          <View style={styles.segments}>
-            {SEGMENTS.map((segment) => {
-              const isActive = levelFilter === segment.key;
-              return (
-                <TouchableOpacity
-                  key={segment.key}
-                  style={[styles.segment, isActive && styles.segmentActive]}
-                  onPress={() => toggleLevel(segment.key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isActive }}
-                  accessibilityLabel={`${counts[segment.key]} ${segment.label}`}
-                >
-                  <View style={styles.segmentHead}>
-                    <View style={[styles.dot, { backgroundColor: segment.tint }]} />
-                    <Text style={styles.segmentCount}>{counts[segment.key]}</Text>
-                  </View>
-                  <Text style={styles.segmentLabel}>{segment.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+            <InventoryActionBar canTransfer={outlets.length > 1} onAction={onAction} />
 
-          {levelFilter !== "all" && (
-            <TouchableOpacity onPress={() => setLevelFilter("all")} accessibilityRole="button">
-              <Text style={styles.heroClear}>Showing one group — tap to show everything</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <View style={styles.searchWrap}>
-          <Text style={styles.searchIcon}>⌕</Text>
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search ingredients"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")} accessibilityRole="button">
-              <Text style={styles.searchClear}>Clear</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <StockCountPanel
-          progress={count?.progress ?? null}
-          isBusy={countBusy}
-          onStart={startCount}
-          onFinish={finishCount}
-        />
+            <StockCountPanel
+              progress={count?.progress ?? null}
+              isBusy={countBusy}
+              onStart={startCount}
+              onFinish={finishCount}
+            />
+          </>
+        )}
 
         {/*
           Above the shelf, because a box waiting to be counted is a job with
@@ -392,30 +446,82 @@ export default function InventoryScreen() {
           onCancel={onAbandoned}
         />
 
-        {/*
-          Outside the bench panel on purpose. That panel renders nothing until
-          stock has moved, so a compose entry inside it would leave a store that
-          has never transferred permanently unable to start one. Shown only to a
-          store with somewhere to send to.
-        */}
-        {outlets.length > 1 && (
-          <TouchableOpacity
-            style={styles.compose}
-            accessibilityRole="button"
-            onPress={() => setIsComposing(true)}
-          >
-            <Text style={styles.composeLabel}>Move stock to another branch</Text>
-          </TouchableOpacity>
+        {hasShelf && (
+          <View style={styles.filters}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Ingredients</Text>
+              <Text style={styles.sectionCount}>
+                {isFiltered ? `${visible.length} of ${shelf.length}` : shelf.length}
+              </Text>
+              {isFiltered && (
+                <TouchableOpacity onPress={clearFilters} accessibilityRole="button" style={styles.clear}>
+                  <Text style={styles.clearText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.searchWrap}>
+              <Icon name="search" size={18} color={colors.textTertiary} />
+              <TextInput
+                style={styles.searchInput}
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search ingredients"
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch("")} accessibilityLabel="Clear search">
+                  <Icon name="close" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <CategoryChips
+              chips={chips}
+              selected={category}
+              total={shelf.length}
+              onSelect={setCategory}
+            />
+          </View>
         )}
 
         {body()}
+
+        {archived.length > 0 && (
+          <TouchableOpacity
+            style={styles.archiveLink}
+            onPress={() => setIsArchiveOpen(true)}
+            accessibilityRole="button"
+          >
+            <Text style={styles.archiveText}>
+              {archived.length} archived {archived.length === 1 ? "ingredient" : "ingredients"}
+            </Text>
+            <Icon name="chevron" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
-      {/*
-        Reload from the server rather than patching the row in place: the write
-        can cross a reorder line, which re-levels the ingredient and can 86 a
-        dish, and none of that is knowable from the quantity alone.
-      */}
+      <IngredientPickerSheet
+        reason={picking}
+        shelf={shelf}
+        onPick={onPicked}
+        onClose={() => {
+          pendingPickRef.current = null;
+          setPicking(null);
+        }}
+        onDismissed={onPickerDismissed}
+      />
+
+      <ArchivedIngredientsSheet
+        visible={isArchiveOpen}
+        rows={archived}
+        onRestore={onRestore}
+        onClose={() => setIsArchiveOpen(false)}
+      />
+
       <TransferComposeSheet
         tenantId={tenantId ?? ""}
         visible={isComposing}
@@ -428,11 +534,17 @@ export default function InventoryScreen() {
         onSend={onComposed}
       />
 
+      {/*
+        Reload from the server rather than patching the row in place: the write
+        can cross a reorder line, which re-levels the ingredient and can 86 a
+        dish, and none of that is knowable from the quantity alone.
+      */}
       <StockMovementSheet
         tenantId={tenantId ?? ""}
         item={recording}
         outletId={outletId}
         openCountId={count?.id ?? null}
+        initialReason={recordingReason}
         onClose={() => setRecording(null)}
         onRecorded={() => {
           // Both: the entry re-levels the ingredient AND advances the count's
@@ -448,59 +560,35 @@ export default function InventoryScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingTop: 0, gap: spacing.lg, paddingBottom: 40 },
+  content: { padding: spacing.lg, paddingTop: 0, gap: spacing.lg, paddingBottom: 48 },
 
-  hero: {
-    backgroundColor: colors.heroInk,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    gap: spacing.lg,
-    ...shadow.md,
-  },
-  heroEyebrow: { ...typography.eyebrow, color: colors.heroInkMuted },
-  heroHeadline: { fontSize: 20, fontWeight: "800", color: colors.heroInkText, lineHeight: 26 },
-  segments: { flexDirection: "row", gap: spacing.sm },
-  segment: {
-    flex: 1,
-    backgroundColor: colors.heroInkElevated,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    gap: 2,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  segmentActive: { borderColor: colors.tabBarActive },
-  segmentHead: { flexDirection: "row", alignItems: "center", gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: radius.full },
-  segmentCount: { fontSize: 20, fontWeight: "800", color: colors.heroInkText },
-  segmentLabel: { ...typography.small, color: colors.heroInkMuted },
-  heroClear: { ...typography.caption, color: colors.tabBarActive },
+  filters: { gap: spacing.md, marginTop: spacing.xs },
+  sectionHead: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
+  sectionTitle: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3, color: colors.textPrimary },
+  sectionCount: { fontSize: 14, fontWeight: "700", color: colors.textTertiary },
+  clear: { marginLeft: "auto" },
+  clearText: { ...typography.caption, color: colors.accent, fontWeight: "700" },
 
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     backgroundColor: colors.card,
-    borderRadius: radius.full,
+    borderRadius: radius.md + 4,
     paddingHorizontal: spacing.lg,
-    height: 46,
+    height: 48,
     ...shadow.sm,
   },
-  searchIcon: { fontSize: 18, color: colors.textTertiary },
   searchInput: { flex: 1, ...typography.body, color: colors.textPrimary },
-  searchClear: { ...typography.caption, color: colors.accent, fontWeight: "600" },
 
-  compose: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    height: 48,
+  list: { gap: spacing.sm + 2 },
+
+  archiveLink: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
+    paddingVertical: spacing.md,
   },
-  composeLabel: { ...typography.caption, fontWeight: "700", color: colors.textPrimary },
-
-  list: { gap: spacing.md },
+  archiveText: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
 });

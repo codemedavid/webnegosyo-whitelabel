@@ -2,14 +2,8 @@ import React, { useMemo } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
-import { thumbUrl } from "../../lib/image-thumb";
+import { POS_TILE_THUMB_PX, thumbUrl } from "../../lib/image-thumb";
 import { getAvatarColor, getInitials } from "../../lib/order-visuals";
-
-/**
- * Requested thumbnail width in device pixels. A tile is roughly 110pt wide on a
- * phone; 320px covers a 3x panel without asking the CDN for anything larger.
- */
-const THUMB_PX = 320;
 
 interface ProductTileProps {
   name: string;
@@ -44,7 +38,7 @@ export function ProductTile({
   onPress,
 }: ProductTileProps) {
   const isInSale = quantity > 0;
-  const thumb = useMemo(() => thumbUrl(imageUrl, THUMB_PX), [imageUrl]);
+  const thumb = useMemo(() => thumbUrl(imageUrl, POS_TILE_THUMB_PX), [imageUrl]);
 
   return (
     <TouchableOpacity

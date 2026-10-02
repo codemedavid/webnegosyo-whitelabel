@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verifySuperadmin, verifyTenantPermission } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
+import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import type { TagDefinition } from '@/types/database'
 
 export async function getTagDefinitions(tenantId: string): Promise<TagDefinition[]> {
@@ -27,7 +28,7 @@ export async function getPresetTags(): Promise<TagDefinition[]> {
 }
 
 export async function createTagDefinition(tenantId: string, groupName: string, tagValue: string): Promise<TagDefinition> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'create')
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('tag_definitions')
@@ -41,7 +42,7 @@ export async function createTagDefinition(tenantId: string, groupName: string, t
 // Preset tags have no tenant: they are the list every store's editor renders,
 // so only the platform may change them.
 export async function createPresetTag(groupName: string, tagValue: string): Promise<TagDefinition> {
-  await verifySuperadmin()
+  await requirePlatformPermission('settings.edit')
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('tag_definitions')
@@ -53,7 +54,7 @@ export async function createPresetTag(groupName: string, tagValue: string): Prom
 }
 
 export async function deleteTagDefinition(id: string, tenantId: string): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('tag_definitions')
@@ -65,7 +66,7 @@ export async function deleteTagDefinition(id: string, tenantId: string): Promise
 }
 
 export async function deletePresetTag(id: string): Promise<void> {
-  await verifySuperadmin()
+  await requirePlatformPermission('settings.edit')
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('tag_definitions')

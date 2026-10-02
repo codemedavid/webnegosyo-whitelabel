@@ -15,7 +15,8 @@ import type { ReceiptOrder } from "./receipt-layout";
 export function posReceiptOrder(
   orderId: string,
   args: PosOrderArgs,
-  tender: PosTender,
+  /** `null` for a "pay later" sale: no cash, change or reference yet. */
+  tender: PosTender | null,
   createdAt: number = Date.now(),
 ): ReceiptOrder {
   return {
@@ -31,9 +32,9 @@ export function posReceiptOrder(
     // The discount breakdown rides in the blob, where `readOrderDiscount`
     // shape-checks it — the same path a re-print off the order screen takes.
     customerData: args.customerData,
-    cashTendered: tender.cashTendered,
-    changeDue: tender.changeDue,
-    paymentReference: tender.reference,
+    cashTendered: tender?.cashTendered,
+    changeDue: tender?.changeDue,
+    paymentReference: tender?.reference,
     items: args.items.map((item) => ({
       menuItemName: item.menuItemName,
       quantity: item.quantity,

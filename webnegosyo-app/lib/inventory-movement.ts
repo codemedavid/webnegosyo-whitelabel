@@ -52,12 +52,18 @@ export interface MovementDraft {
   /** Held as a string while being typed. */
   quantity: string;
   note: string;
+  /**
+   * What a delivery cost per stock unit, as typed. Only a `receive` carries
+   * one; blank means "unchanged", never "free".
+   */
+  unitCost?: string;
 }
 
 export const EMPTY_MOVEMENT_DRAFT: MovementDraft = {
   reason: "receive",
   quantity: "",
   note: "",
+  unitCost: "",
 };
 
 /** Exactly what the platform's stock movement endpoint accepts. */
@@ -68,6 +74,8 @@ export interface MovementPayload {
   quantity: number;
   unit_id: string;
   note?: string;
+  /** Delivery price per stock unit. Absent = leave the average cost alone. */
+  unit_cost?: number;
   /**
    * The count session this belongs to, when one is running. Only ever set on a
    * `stocktake` — the database refuses anything else (migration
@@ -83,6 +91,20 @@ function parseQuantity(value: string): number | null {
   if (trimmed === "") return null;
   const parsed = Number(trimmed);
   if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+/**
+ * A typed delivery price, or null when blank. Peso signs and thousands
+ * separators are read, since that is how a supplier's receipt prints them.
+ */
+function parseUnitCost(value: string): number | null {
+  const cleaned = value.replace(/[₱,\s]/g, "");
+  if (cleaned === "") return null;
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error("Enter the price as a positive number");
+  }
   return parsed;
 }
 
@@ -108,6 +130,7 @@ export function buildMovementPayload(
   }
 
   const note = draft.note.trim();
+  const unitCost = draft.reason === "receive" ? parseUnitCost(draft.unitCost ?? "") : null;
 
   // Attached automatically, never by the merchant remembering to. A tag that had
   // to be remembered would be forgotten, and a forgotten tag does not lose a
@@ -121,6 +144,7 @@ export function buildMovementPayload(
     quantity,
     unit_id: item.stockUnitId,
     note: note === "" ? undefined : note,
+    ...(unitCost !== null ? { unit_cost: unitCost } : {}),
     ...(joinsCount ? { inventory_count_id: openCountId as string } : {}),
   };
 }
@@ -179,4 +203,15 @@ export function isOvercountedWaste(
   const amount = parseQuantity(quantity);
   if (amount === null) return false;
   return amount > item.quantity;
+}
+
+/**
+ * The amount field after tapping a "+5" chip. A blank or garbled field counts
+ * as zero, and the sum is rounded to the ledger's four decimals so 0.1 + 0.2
+ * reads 0.3, not 0.30000000000000004.
+ */
+export function bumpQuantity(current: string, step: number): string {
+  const parsed = Number(current.trim());
+  const base = current.trim() !== "" && Number.isFinite(parsed) ? parsed : 0;
+  return Number((base + step).toFixed(4)).toString();
 }

@@ -24,6 +24,14 @@ import type { VoucherLookup } from '@/lib/vouchers/resolve'
 import type { Voucher } from '@/lib/vouchers/types'
 import type { CartItem, Tenant } from '@/types/database'
 import type { CheckoutConfig } from '@/lib/checkout/checkout-config'
+import { cartFingerprint } from '@/lib/vouchers/checkout-codes'
+
+// Instrument the real calculation to guard against re-scanning the entire cart
+// on every keystroke in an unrelated customer field.
+jest.mock('@/lib/vouchers/checkout-codes', () => {
+  const actual = jest.requireActual('@/lib/vouchers/checkout-codes')
+  return { ...actual, cartFingerprint: jest.fn(actual.cartFingerprint) }
+})
 
 // ---- The cart, mutable between renders -----------------------------------
 
@@ -212,6 +220,13 @@ function CheckoutHarness() {
   const checkout = useCheckout({ tenantSlug: 'acme', initialTenant: TENANT, config: CHECKOUT_CONFIG })
   return (
     <div>
+      <input
+        aria-label="Customer name"
+        value={checkout.customerData.customer_name ?? ''}
+        onChange={(event) => checkout.setCustomerData((previous) => ({
+          ...previous, customer_name: event.target.value,
+        }))}
+      />
       <OrderSummaryLines checkout={checkout} />
       <CheckoutCTA checkout={checkout} />
     </div>
@@ -244,6 +259,21 @@ beforeEach(() => {
 })
 
 describe('applying a voucher at checkout', () => {
+  it('keeps the discount without re-scanning the cart while the customer types their name', async () => {
+    const user = userEvent.setup()
+    await renderCheckout()
+    await applyCode(user, 'SAVE100')
+    await waitFor(() => expect(displayedTotal()).toBe('₱500.00'))
+    jest.mocked(cartFingerprint).mockClear()
+    validateVoucherAction.mockClear()
+
+    await user.type(screen.getByLabelText('Customer name'), 'Maria')
+
+    expect(displayedTotal()).toBe('₱500.00')
+    expect(cartFingerprint).not.toHaveBeenCalled()
+    expect(validateVoucherAction).not.toHaveBeenCalled()
+  })
+
   it('names the code, shows what it took off, and drops the total by that much', async () => {
     const user = userEvent.setup()
     await renderCheckout()
@@ -309,6 +339,32 @@ describe('applying a voucher at checkout', () => {
 })
 
 describe('a preview never outlives the cart it was computed against', () => {
+  it('ignores an in-flight preview after the customer removes its code', async () => {
+    const user = userEvent.setup()
+    const { rerender } = await renderCheckout()
+    await applyCode(user, 'SAVE100')
+    await waitFor(() => expect(displayedTotal()).toBe('₱500.00'))
+
+    let release!: () => void
+    gate = new Promise<void>((resolve) => { release = resolve })
+    await act(async () => {
+      cartItems = [cartItem('line-1', 'Tapsilog', 800)]
+      rerender(<CheckoutHarness />)
+    })
+    await waitFor(() => expect(validateVoucherAction).toHaveBeenCalledTimes(2))
+    await user.click(screen.getByRole('button', { name: 'Remove voucher SAVE100' }))
+
+    await act(async () => {
+      release()
+      gate = null
+      await validateVoucherAction.mock.results[1].value
+    })
+
+    expect(displayedTotal()).toBe('₱800.00')
+    expect(screen.queryByText('Discount')).not.toBeInTheDocument()
+    expect(screen.queryByText('SAVE100')).not.toBeInTheDocument()
+  })
+
   it('shows FULL price while the re-price is still in flight', async () => {
     // The window the fingerprint rule exists for. The cart has moved, the old
     // ₱100 was computed against a cart that no longer exists, and the server

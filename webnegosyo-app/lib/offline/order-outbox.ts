@@ -68,6 +68,17 @@ export interface QueuedSale {
    * a remote side effect and before this write can still repeat that effect.
    */
   bookkeepingDone?: boolean;
+  /**
+   * False for a "pay later" sale: the order is written UNPAID and the cashier
+   * collects it from the order screen. Absent on sales queued before the flag
+   * existed, which were all paid at the counter — see {@link isPaidAtTender}.
+   */
+  paidAtTender?: boolean;
+}
+
+/** Was the money taken when this sale was rung up? Absent means yes. */
+export function isPaidAtTender(sale: Pick<QueuedSale, "paidAtTender">): boolean {
+  return sale.paidAtTender !== false;
 }
 
 /** Refusals after which a sale is left for a person rather than retried. */

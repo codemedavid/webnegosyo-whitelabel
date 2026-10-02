@@ -10,6 +10,7 @@
  */
 
 import type { CapturedProof } from "../components/pos/ProofCapture";
+import type { TenderMode } from "./pos-tender-mode";
 
 export interface TenderSession {
   /**
@@ -23,6 +24,8 @@ export interface TenderSession {
   reference: string;
   proof: CapturedProof | null;
   editReason: string;
+  /** Collect now, or place the order unpaid and collect it later. */
+  mode: TenderMode;
 }
 
 export function newClientOrderId(): string {
@@ -38,5 +41,6 @@ export function freshTenderSession(): TenderSession {
     reference: "",
     proof: null,
     editReason: "",
+    mode: "now",
   };
 }

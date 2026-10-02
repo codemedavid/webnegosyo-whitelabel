@@ -168,4 +168,35 @@ describe("buildGrowthCoachFacts", () => {
     const facts = buildGrowthCoachFacts(withoutFeatures);
     expect(facts.features).toEqual({ bundlesEnabled: false, menuEngineeringEnabled: false });
   });
+
+  it("passes up to 6 open AI offer ideas, live ones flagged, dismissed ones dropped", () => {
+    const idea = (id: string, status: "pending" | "approved" | "rejected" | "applied") => ({
+      kind: "combo" as const,
+      status,
+      title: `Combo ${id}`,
+      detail: "Burger + Fries · ₱229",
+    });
+    const facts = buildGrowthCoachFacts({
+      ...baseInput,
+      offerIdeas: [
+        idea("1", "pending"),
+        idea("2", "rejected"),
+        idea("3", "applied"),
+        ...["4", "5", "6", "7", "8"].map((id) => idea(id, "approved")),
+      ],
+    });
+    expect(facts.offerIdeas).toHaveLength(6);
+    expect(facts.offerIdeas?.[0]).toEqual({
+      type: "combo",
+      offer: "Combo 1 — Burger + Fries · ₱229",
+      isLive: false,
+    });
+    expect(facts.offerIdeas?.[1]).toEqual(expect.objectContaining({ offer: expect.stringContaining("Combo 3"), isLive: true }));
+    expect(facts.offerIdeas?.some((i) => i.offer.includes("Combo 2"))).toBe(false);
+  });
+
+  it("omits offerIdeas when there are none", () => {
+    expect(buildGrowthCoachFacts(baseInput).offerIdeas).toBeUndefined();
+    expect(buildGrowthCoachFacts({ ...baseInput, offerIdeas: [] }).offerIdeas).toBeUndefined();
+  });
 });

@@ -37,6 +37,10 @@ const openShift = {
   expectedCash: null,
   closingCount: null,
   note: null,
+  drawerId: null,
+  drawerName: null,
+  isZeroBalance: false,
+  closedByName: null,
   openedAt: new Date(NOW - 2 * 3_600_000).toISOString(),
   closedAt: null,
 };

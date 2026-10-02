@@ -10,8 +10,10 @@
  * checkout never builds a Messenger URL, never redirects, and the CTA reads
  * "Complete Order" instead of "Send Order via Messenger".
  *
- * Both flags default to enabled so existing tenants and un-backfilled rows keep
- * their current behavior.
+ * Facebook is optional: Messenger is opt-in. Both columns default to false for
+ * new stores and order types, and an unset value means off — only an explicit
+ * `true` turns Messenger on. Stores created before the switch were stored as
+ * `true` and keep their behavior.
  */
 
 export interface MessengerOrderTypeConfig {
@@ -45,13 +47,13 @@ export interface MessengerContext {
   isKiosk?: boolean
 }
 
-/** Whether the selected order type uses Messenger. Unset → enabled. */
+/** Whether the selected order type uses Messenger. Unset → disabled. */
 export function isMessengerEnabledForOrderType(
   orderType: MessengerOrderTypeConfig | null | undefined,
   context?: MessengerContext
 ): boolean {
   if (context?.isKiosk) return false
-  return orderType?.messenger_enabled !== false
+  return orderType?.messenger_enabled === true
 }
 
 /** Auto-redirect requires BOTH the tenant switch and the order type to allow Messenger. */
@@ -61,7 +63,7 @@ export function isMessengerRedirectEnabledForOrderType(
   context?: MessengerContext
 ): boolean {
   return (
-    tenant?.messenger_redirect_enabled !== false &&
+    tenant?.messenger_redirect_enabled === true &&
     isMessengerEnabledForOrderType(orderType, context)
   )
 }

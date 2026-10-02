@@ -4,14 +4,13 @@
  * Superadmin server actions for platform "What's New" announcements.
  *
  * Server Actions are public POST endpoints whatever the page gate says, so
- * every one asserts the superadmin role itself before touching the
+ * every one asserts its console grant (`whats_new.*`) before touching the
  * service-role client. Input crosses the boundary as `unknown` and is parsed
  * by the shared content model before it reaches the database.
  */
 import { revalidatePath } from 'next/cache'
-import { getCurrentUserRole } from '@/lib/admin-service'
+import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 import { parseAnnouncementInput } from '@/lib/announcements/blocks'
 import {
   createAnnouncement,
@@ -34,31 +33,18 @@ import {
 
 const LIST_PATH = '/superadmin/whats-new'
 
-async function assertSuperadmin(): Promise<void> {
-  const role = (await getCurrentUserRole()) as { role?: string } | null
-  if (!role || role.role !== 'superadmin') {
-    throw new Error('Forbidden: Superadmin access required')
-  }
-}
-
-async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  return data.user?.id ?? null
-}
-
 export async function listAnnouncementsAction(): Promise<AnnouncementSummary[]> {
-  await assertSuperadmin()
+  await requirePlatformPermission('whats_new.view')
   return listAnnouncements(createAdminClient())
 }
 
 export async function getAnnouncementAction(id: string): Promise<AnnouncementRecord | null> {
-  await assertSuperadmin()
+  await requirePlatformPermission('whats_new.view')
   return getAnnouncement(createAdminClient(), id)
 }
 
 export async function listAudienceTenantsAction(): Promise<AudienceTenant[]> {
-  await assertSuperadmin()
+  await requirePlatformPermission('whats_new.view')
   return listAudienceTenants(createAdminClient())
 }
 
@@ -66,14 +52,14 @@ export async function saveAnnouncementAction(
   id: string | null,
   input: unknown
 ): Promise<AnnouncementRecord> {
-  await assertSuperadmin()
+  const caller = await requirePlatformPermission(id ? 'whats_new.edit' : 'whats_new.create')
   const parsed = parseAnnouncementInput(input)
   if (!parsed.ok) throw new Error(parsed.error)
 
   const admin = createAdminClient()
   const saved = id
     ? await updateAnnouncement(admin, id, parsed.input)
-    : await createAnnouncement(admin, parsed.input, await currentUserId())
+    : await createAnnouncement(admin, parsed.input, caller.user.id)
   revalidatePath(LIST_PATH)
   return saved
 }
@@ -82,14 +68,14 @@ export async function setAnnouncementStatusAction(
   id: string,
   status: AnnouncementStatus
 ): Promise<AnnouncementRecord> {
-  await assertSuperadmin()
+  await requirePlatformPermission('whats_new.edit')
   const updated = await setAnnouncementStatus(createAdminClient(), id, status)
   revalidatePath(LIST_PATH)
   return updated
 }
 
 export async function deleteAnnouncementAction(id: string): Promise<void> {
-  await assertSuperadmin()
+  await requirePlatformPermission('whats_new.delete')
   await deleteAnnouncement(createAdminClient(), id)
   revalidatePath(LIST_PATH)
 }
@@ -97,12 +83,12 @@ export async function deleteAnnouncementAction(id: string): Promise<void> {
 export async function countAnnouncementRecipientsAction(
   audienceTenantIds: string[] | null
 ): Promise<number> {
-  await assertSuperadmin()
+  await requirePlatformPermission('whats_new.view')
   return countAnnouncementRecipients(createAdminClient(), audienceTenantIds)
 }
 
 export async function sendAnnouncementPushAction(id: string): Promise<AnnouncementSendResult> {
-  await assertSuperadmin()
+  await requirePlatformPermission('whats_new.edit')
   const result = await sendAnnouncementPush(createAdminClient(), id)
   revalidatePath(LIST_PATH)
   return result

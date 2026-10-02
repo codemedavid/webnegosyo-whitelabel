@@ -64,6 +64,7 @@ jest.mock('@supabase/supabase-js', () => ({
             ? { data: appUser, error: null }
             : { data: { inventory_enabled: inventoryEnabled }, error: null },
       }
+      chain.maybeSingle = chain.single
       return chain
     },
   }),

@@ -2,6 +2,7 @@ import { ProfitInsights } from "../../components/ProfitInsights";
 import React, { useState, useMemo, useCallback } from "react";
 import { router } from "expo-router";
 import { ProductsPerformanceView } from "../../components/performance/ProductsPerformanceView";
+import { PairingsView } from "../../components/performance/PairingsView";
 import { productPerformanceHref } from "../../lib/navigation";
 import {
   View,
@@ -133,10 +134,11 @@ interface CategoryRow {
   name: string;
 }
 
-type ViewMode = "products" | "daily" | "lifetime";
+type ViewMode = "products" | "pairs" | "daily" | "lifetime";
 
 const VIEW_MODES: readonly { label: string; value: ViewMode }[] = [
   { label: "Products", value: "products" },
+  { label: "Pairs", value: "pairs" },
   { label: "Day by day", value: "daily" },
   { label: "Lifetime", value: "lifetime" },
 ];
@@ -584,6 +586,8 @@ export default function ProductAnalyticsScreen() {
             router.push(productPerformanceHref(menuItemId, periodKey))
           }
         />
+      ) : viewMode === "pairs" ? (
+        <PairingsView header={modeBlock} />
       ) : viewMode === "lifetime" ? (
         // The whole menu is one list; a virtualised list keeps a long menu
         // from mounting every row at once.

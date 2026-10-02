@@ -45,6 +45,14 @@ function cloudinaryThumb(url: string, width: number): string {
  * @param size Target width in pixels — pass the rendered width times the screen
  *   scale, not the layout width, or the image will look soft on a retina panel.
  */
+/**
+ * The register tile's thumbnail width in device pixels. A tile is roughly
+ * 110pt wide on a phone; 320px covers a 3x panel without asking the CDN for
+ * anything larger. Shared so the offline download prefetches the same URL
+ * the tile draws.
+ */
+export const POS_TILE_THUMB_PX = 320;
+
 export function thumbUrl(url: string | null | undefined, size: number): string | null {
   if (!url || url.trim() === "") return null;
   if (!isUsableSize(size)) return url;

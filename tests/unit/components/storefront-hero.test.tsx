@@ -59,16 +59,39 @@ describe('StorefrontHero — layout-independent hero decision', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders nothing for a v4 block-hero design (handled at the page top level)', () => {
+  // A renderable v4 block design: loadHeroDesign converts it to v5 on read.
+  const v4Design = JSON.stringify({
+    version: 4,
+    globalStyles: { backgroundColor: '#fff', maxWidth: 1200 },
+    sections: [{
+      id: 's', label: 'Hero',
+      settings: { contentWidth: 0, horizontalAlign: 'center', minHeight: 0, background: { type: 'color', color: '#000' }, padding: { top: 0, right: 0, bottom: 0, left: 0 }, margin: { top: 0, bottom: 0 } },
+      columns: [{ id: 'c', width: 100, widgets: [], settings: { verticalAlign: 'top', horizontalAlign: 'left', padding: { top: 0, right: 0, bottom: 0, left: 0 }, background: { type: 'none' }, borderRadius: 0 } }],
+    }],
+  })
+
+  it("renders nothing for a 'custom' v4 block design (converted to v5, rendered at the page top level)", () => {
     const { container } = render(
       <StorefrontHero
-        tenant={tenant({ hero_section_enabled: true, hero_design: { version: 4 } as unknown as Record<string, unknown> })}
+        tenant={tenant({ hero_preset: 'custom', hero_section_enabled: true, hero_design: v4Design as unknown as Tenant['hero_design'] })}
         branding={branding}
         allMenuItems={[]}
         defaultTitle="Our Menu"
       />
     )
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it("falls back to the plain hero for a lingering v4 design when 'custom' is not chosen", () => {
+    render(
+      <StorefrontHero
+        tenant={tenant({ hero_section_enabled: true, hero_design: v4Design as unknown as Tenant['hero_design'] })}
+        branding={branding}
+        allMenuItems={[]}
+        defaultTitle="Our Menu"
+      />
+    )
+    expect(screen.getByRole('heading', { name: 'Our Menu' })).toBeInTheDocument()
   })
 
   it('requireExplicit suppresses the plain fallback but still shows a chosen preset', () => {

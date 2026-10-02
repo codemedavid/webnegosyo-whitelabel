@@ -107,7 +107,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       JSON.parse(request.nextUrl.searchParams.get('target') ?? ''),
     )
 
-    await verifyTenantPermission(tenantId, 'menu')
+    await verifyTenantPermission(tenantId, 'menu', 'view')
     const [ingredients, units, recipe] = await Promise.all([
       getIngredients(tenantId),
       getUnits(tenantId),
@@ -140,7 +140,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     )
     tenantId = parsed.tenantId
     const { tenantSlug, target, input } = parsed
-    await verifyTenantPermission(tenantId, 'menu')
+    await verifyTenantPermission(tenantId, 'menu', 'delete')
     const data = await saveRecipeForTarget(tenantId, target, input)
     revalidatePath(`/${tenantSlug}/admin/inventory`)
     return NextResponse.json({ success: true, data })
@@ -158,7 +158,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     const parsed = deleteRequestSchema.parse(await request.json())
     tenantId = parsed.tenantId
     const { tenantSlug, target } = parsed
-    await verifyTenantPermission(tenantId, 'menu')
+    await verifyTenantPermission(tenantId, 'menu', 'delete')
     await deleteRecipeForTarget(tenantId, target)
     revalidatePath(`/${tenantSlug}/admin/inventory`)
     return NextResponse.json({ success: true })

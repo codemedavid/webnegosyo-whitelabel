@@ -11,7 +11,7 @@
  * overlapping triggers itself.
  */
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import type { FunctionReference } from "convex/server";
 import { useSafeMutation } from "../hooks";
@@ -25,6 +25,7 @@ import {
 } from "./order-outbox";
 import { resolveOrderBackend } from "../order-backend";
 import { syncOutbox } from "./sync-outbox";
+import { FRESH_SALE_GRACE_MS, summarizePendingSales } from "./pending-sales";
 import { useConnectivity } from "./use-connectivity";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
@@ -42,16 +43,36 @@ export interface PendingSaleCounts {
   stuck: number;
 }
 
-/** How many of this store's sales are still waiting to reach the server. */
+/**
+ * How many of this store's sales are still waiting to reach the server.
+ *
+ * A sale inside its write-behind grace period is not reported (see
+ * `pending-sales.ts`); a timer re-reads once that period is over, so a sale
+ * that really is slow still reaches the banner.
+ */
 export function usePendingSaleCounts(): PendingSaleCounts {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const outbox = useOutbox();
-  const mine = outbox.sales.filter((sale) => sale.tenantId === tenantId);
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const backend = resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl });
-  const stuck = mine.filter((sale) => needsAttention(sale) || sale.backend !== backend).length;
-  return { pending: mine.length - stuck, stuck };
+  const { status } = useConnectivity();
+  const [now, setNow] = useState(() => Date.now());
+
+  const summary = summarizePendingSales(outbox.sales, {
+    tenantId,
+    backend,
+    now,
+    isOnline: status !== "offline",
+  });
+
+  useEffect(() => {
+    if (!summary.hasFreshSales) return;
+    const timer = setTimeout(() => setNow(Date.now()), FRESH_SALE_GRACE_MS + 500);
+    return () => clearTimeout(timer);
+  }, [summary.hasFreshSales, outbox]);
+
+  return { pending: summary.pending, stuck: summary.stuck };
 }
 
 export const OUTBOX_RETRY_INTERVAL_MS = 20_000;
@@ -70,9 +91,12 @@ export function useOutboxSync(): void {
   const { status } = useConnectivity();
   const outbox = useOutbox();
 
-  const pending = outbox.sales.some(
+  // A count, not a boolean: with write-behind every counter sale passes
+  // through the outbox, and a second sale queued while the first is still
+  // syncing must trigger a run too (`syncOutbox` folds it into a follow-up).
+  const pendingCount = outbox.sales.filter(
     (sale) => sale.tenantId === tenantId && sale.backend === backend && !needsAttention(sale)
-  );
+  ).length;
 
   useEffect(() => {
     if (!tenantId || isDemo || status !== "online") {
@@ -104,5 +128,5 @@ export function useOutboxSync(): void {
       clearInterval(timer);
       subscription.remove();
     };
-  }, [tenantId, userId, isDemo, orderBackend, convexUrl, backend, status, pending]);
+  }, [tenantId, userId, isDemo, orderBackend, convexUrl, backend, status, pendingCount]);
 }

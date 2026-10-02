@@ -23,6 +23,7 @@ const rosterRow = (overrides: Partial<RosterRow> = {}): RosterRow => ({
   daysOverdue: 0,
   daysUntilDue: 21,
   isDueSoon: false,
+  isUnbilled: false,
   manualBlock: null,
   monthlyPricePhp: 649,
   paidThroughDayKey: '2026-08-31',

@@ -8,10 +8,17 @@
  *
  * Every update returns new arrays — the old handlers pushed into the existing
  * option array, which React could miss.
+ *
+ * Which shape is saved follows `useGroupedVariations`. The owner never picks a
+ * shape: a dish starts as a plain size list and becomes choice lists only when
+ * a second choice is added, with the sizes carried into the first list. (The
+ * old two-way switch saved an empty list for whichever shape was not shown, so
+ * flipping it silently dropped the sizes.)
  */
 
 import { useState } from 'react'
 import type { MenuItem, Variation, VariationOption, VariationType } from '@/types/database'
+import { sizesToChoiceGroup, withExclusiveDefault } from '@/lib/menu-editor/legacy-option-convert'
 
 export interface LegacyAddon {
   id: string
@@ -33,12 +40,24 @@ export function useLegacyOptions(item?: MenuItem) {
     Boolean(item?.variation_types && item.variation_types.length > 0),
   )
 
+  const newSize = (isFirst: boolean): Variation => ({
+    id: `temp-${Date.now()}`,
+    name: '',
+    price_modifier: 0,
+    is_default: isFirst,
+  })
+
+  const newChoice = (displayOrder: number): VariationType => ({
+    id: `type-temp-${Date.now()}`,
+    name: '',
+    is_required: false,
+    display_order: displayOrder,
+    options: [],
+  })
+
   const variationHandlers = {
-    add: () =>
-      setVariations((prev) => [
-        ...prev,
-        { id: `temp-${Date.now()}`, name: '', price_modifier: 0, is_default: prev.length === 0 },
-      ]),
+    add: () => setVariations((prev) => [...prev, newSize(prev.length === 0)]),
+    setDefault: (index: number) => setVariations((prev) => withExclusiveDefault(prev, index)),
     remove: (index: number) => setVariations((prev) => prev.filter((_, i) => i !== index)),
     update: (index: number, field: string, value: Field) =>
       setVariations((prev) => replaceAt(prev, index, { ...prev[index], [field]: value })),
@@ -52,11 +71,7 @@ export function useLegacyOptions(item?: MenuItem) {
   }
 
   const typeHandlers = {
-    add: () =>
-      setVariationTypes((prev) => [
-        ...prev,
-        { id: `type-temp-${Date.now()}`, name: '', is_required: false, display_order: prev.length, options: [] },
-      ]),
+    add: () => setVariationTypes((prev) => [...prev, newChoice(prev.length)]),
     remove: (index: number) => setVariationTypes((prev) => prev.filter((_, i) => i !== index)),
     update: (index: number, field: keyof VariationType, value: string | boolean | number) =>
       setVariationTypes((prev) => replaceAt(prev, index, { ...prev[index], [field]: value })),
@@ -84,6 +99,31 @@ export function useLegacyOptions(item?: MenuItem) {
         const options = replaceAt(type.options, optionIndex, { ...type.options[optionIndex], [field]: value })
         return replaceAt(prev, typeIndex, { ...type, options })
       }),
+    setDefaultOption: (typeIndex: number, optionIndex: number) =>
+      setVariationTypes((prev) => {
+        const type = prev[typeIndex]
+        return replaceAt(prev, typeIndex, { ...type, options: withExclusiveDefault(type.options, optionIndex) })
+      }),
+  }
+
+  /** Ways into an empty "Sizes & choices" section. */
+  const startSizes = () => {
+    setUseGroupedVariations(false)
+    setVariations((prev) => (prev.length > 0 ? prev : [newSize(true)]))
+  }
+
+  const startChoices = () => {
+    setUseGroupedVariations(true)
+    setVariationTypes((prev) => (prev.length > 0 ? prev : [newChoice(0)]))
+  }
+
+  /** "Add another choice" from a size list: the sizes become the "Size" choice. */
+  const addChoiceAfterSizes = () => {
+    const named = variations.filter((size) => size.name.trim().length > 0)
+    const sizeGroup = named.length > 0 ? [sizesToChoiceGroup(named, `type-temp-size-${Date.now()}`)] : []
+    setVariationTypes([...sizeGroup, newChoice(sizeGroup.length)])
+    setVariations([])
+    setUseGroupedVariations(true)
   }
 
   return {
@@ -92,7 +132,9 @@ export function useLegacyOptions(item?: MenuItem) {
     addons,
     setAddons,
     useGroupedVariations,
-    setUseGroupedVariations,
+    startSizes,
+    startChoices,
+    addChoiceAfterSizes,
     variationHandlers,
     addonHandlers,
     typeHandlers,

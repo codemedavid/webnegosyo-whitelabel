@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchSubscription } from '@/lib/billing/subscription-repository'
 import { resolveSubscriptionAccess } from '@/lib/billing/subscription-status'
 import type { Tenant } from '@/types/database'
+import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
 
 // Authenticated, per-request, never pre-rendered at build time (see the
 // superadmin layout for why this is pinned rather than inferred).
@@ -52,11 +53,11 @@ export default async function AdminLayout({
     permissions?: string[] | null
     /** Absent when the row came through the pre-branch fallback projection. */
     outlet_id?: string | null
+    /** platform_staff grants; `stores.view` opens any store's admin. */
+    platform_permissions?: string[] | null
   }
   const role = userRole as UserRoleType
-  const isAuthorized =
-    role.role === 'superadmin' ||
-    (role.role === 'admin' && role.tenant_id === tenant.id)
+  const isAuthorized = canAccessStoreAdmin(role, tenant.id, 'view')
 
   if (!isAuthorized) {
     redirect(`/${tenantSlug}/login?error=unauthorized`)
@@ -64,12 +65,14 @@ export default async function AdminLayout({
 
   // The subscription gate. A superadmin is exempt — they are the only account
   // that can clear an unpaid subscription, and a gate that locks out its own
-  // remedy cannot be fixed from inside the product.
+  // remedy cannot be fixed from inside the product. Platform staff are exempt
+  // for the same reason `assertSubscriptionActive` exempts them: they act for
+  // the platform, not the store.
   //
   // This is the UX half only. The boundary is `assertSubscriptionActive` inside
   // the server actions: a redirect here is a rendering decision and does not
   // stop a POST aimed straight at an action.
-  if (role.role !== 'superadmin') {
+  if (role.role !== 'superadmin' && role.role !== 'platform_staff') {
     const supabase = await createClient()
     const subscription = await fetchSubscription(supabase, tenant.id)
 

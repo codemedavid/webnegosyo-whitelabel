@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantMetrics } from '@/lib/queries/tenant-metrics-server'
 import { parseTenantMetricsIds } from '@/lib/superadmin/tenant-search'
-import {
-  NO_STORE_HEADERS,
-  requireSuperadminResponse,
-} from '@/lib/superadmin/require-superadmin'
+import { NO_STORE_HEADERS } from '@/lib/superadmin/require-superadmin'
+import { platformPermissionResponse } from '@/lib/platform-staff/guard'
 
 /**
  * GET /api/superadmin/tenants/metrics?ids=<uuid>,<uuid>
@@ -14,7 +12,7 @@ import {
  * seconds; the list renders first and the numbers fill in.
  */
 export async function GET(request: NextRequest) {
-  const denied = await requireSuperadminResponse()
+  const denied = await platformPermissionResponse('tenants.view')
   if (denied) return denied
 
   const parsed = parseTenantMetricsIds(request.nextUrl.searchParams.get('ids'))

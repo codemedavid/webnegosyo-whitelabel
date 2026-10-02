@@ -55,6 +55,7 @@ jest.mock('@supabase/supabase-js', () => ({
             ? { data: appUser, error: null }
             : { data: { inventory_enabled: true }, error: null },
       }
+      chain.maybeSingle = chain.single
       return chain
     },
   }),
@@ -310,6 +311,35 @@ describe('POST /api/inventory/movement — retries and the audit trail', () => {
       TENANT,
       expect.anything(),
       expect.objectContaining({ source: 'merchant_app' }),
+    )
+  })
+})
+
+describe('POST /api/inventory/movement — delivery price from the phone', () => {
+  const OWNER = { role: 'admin', tenant_id: TENANT, permissions: null, is_owner: true }
+
+  test('forwards the price per unit a delivery was bought at', async () => {
+    // Without it a delivery recorded on the phone never moves the moving-average
+    // cost, so the stock value and every dish cost drift from what was paid.
+    await post(OWNER as never, { unit_cost: 52.5 })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ unit_cost: 52.5 }),
+      expect.anything(),
+    )
+  })
+
+  test('leaves the cost unchanged when the phone sends none or garbage', async () => {
+    // Omitted means "unchanged", never "free".
+    await post(OWNER as never, { unit_cost: 'cheap' })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ unit_cost: undefined }),
+      expect.anything(),
     )
   })
 })

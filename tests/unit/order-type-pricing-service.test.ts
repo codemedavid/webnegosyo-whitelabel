@@ -73,7 +73,7 @@ describe('listOrderTypeItemPrices', () => {
 
     await listOrderTypeItemPrices(TENANT, ORDER_TYPE)
 
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'store_setup')
+    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'store_setup', 'view')
     expect(from).toHaveBeenCalledWith('order_type_item_prices')
     expect(chain.calls.eq).toEqual(
       expect.arrayContaining([
@@ -106,7 +106,7 @@ describe('setOrderTypeItemPrice', () => {
 
     await setOrderTypeItemPrice(TENANT, ORDER_TYPE, { menu_item_id: ITEM, price: 150 })
 
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'store_setup')
+    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'store_setup', 'create')
     const [row, options] = chain.calls.upsert[0]
     expect(row).toEqual({
       tenant_id: TENANT,
@@ -135,7 +135,7 @@ describe('clearOrderTypeItemPrice', () => {
 
     await clearOrderTypeItemPrice(TENANT, ORDER_TYPE, ITEM)
 
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'store_setup')
+    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'store_setup', 'delete')
     expect(chain.calls.delete).toHaveLength(1)
     expect(chain.calls.eq).toEqual(
       expect.arrayContaining([

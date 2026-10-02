@@ -14,6 +14,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { buildSubscriptionRoster, summarizeRoster } from '@/lib/billing/subscription-roster'
 import { SubscriptionManager } from '@/components/superadmin/subscription-manager'
+import { PlatformAccessProvider } from '@/components/superadmin/platform-access-context'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 jest.mock('@/components/superadmin/mark-paid-dialog', () => ({ MarkPaidDialog: () => null }))
@@ -45,9 +46,21 @@ const UNANCHORED = {
   joinedAt: '2026-06-05T04:00:00.000Z',
 }
 
-function renderScreen(inputs = [ANCHORED, UNANCHORED]) {
+/** The console account viewing the screen; a superadmin unless a test says otherwise. */
+interface Viewer {
+  role: string
+  permissions: string[] | null
+}
+
+const SUPERADMIN: Viewer = { role: 'superadmin', permissions: null }
+
+function renderScreen(inputs = [ANCHORED, UNANCHORED], viewer: Viewer = SUPERADMIN) {
   const rows = buildSubscriptionRoster(inputs, NOW)
-  return render(<SubscriptionManager rows={rows} summary={summarizeRoster(rows)} />)
+  return render(
+    <PlatformAccessProvider role={viewer.role} permissions={viewer.permissions}>
+      <SubscriptionManager rows={rows} summary={summarizeRoster(rows)} />
+    </PlatformAccessProvider>
+  )
 }
 
 beforeEach(() => {
@@ -151,5 +164,21 @@ describe('setting the billing start date', () => {
 
     const row = screen.getByTestId('billing-anchor-t-anchored').closest('tr')
     expect(within(row as HTMLElement).getByText('2026-08-31')).toBeInTheDocument()
+  })
+})
+
+describe('a console account without subscriptions.edit', () => {
+  it('reads the billing start date but is offered nothing to change it with', () => {
+    // Arrange
+    const viewOnly: Viewer = { role: 'platform_staff', permissions: ['subscriptions.view'] }
+
+    // Act
+    renderScreen([ANCHORED, UNANCHORED], viewOnly)
+
+    // Assert — the date is still there to read, but it is not a button
+    const row = screen.getByText('Alpha Cafe').closest('tr') as HTMLElement
+    expect(within(row).getByText('Aug 1, 2026')).toBeInTheDocument()
+    expect(screen.queryByTestId('billing-anchor-t-anchored')).not.toBeInTheDocument()
+    expect(screen.queryByText('Set date')).not.toBeInTheDocument()
   })
 })

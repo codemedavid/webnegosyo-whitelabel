@@ -72,21 +72,9 @@ export type EditorTarget =
   | { kind: 'combo'; comboId: string | null; fromIdea?: BoostIdea }
   | { kind: 'upgrade'; upgradeId: string | null; fromIdea?: BoostIdea }
   | { kind: 'pairing'; groupKey: string | null; fromIdea?: BoostIdea }
-  | { kind: 'last_call' }
+  | { kind: 'last_call'; fromIdea?: BoostIdea }
 
 export type ItemLookup = ReadonlyMap<string, BoostItem>
 
-export function peso(amount: number, hideSymbol = false): string {
-  const rounded = Math.round(amount * 100) / 100
-  const text = rounded.toLocaleString('en-PH', {
-    minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
-    maximumFractionDigits: 2,
-  })
-  return hideSymbol ? text : `₱${text}`
-}
-
-export function listNames(ids: readonly string[], items: ItemLookup, max = 3): string {
-  const names = ids.map((id) => items.get(id)?.name).filter((name): name is string => !!name)
-  if (names.length <= max) return names.join(', ')
-  return `${names.slice(0, max).join(', ')} +${names.length - max} more`
-}
+// Shared with the merchant app's AI offer ideas (/api/boost/ai).
+export { peso, listNames, describeIdea } from '@/lib/boost/describe-idea'

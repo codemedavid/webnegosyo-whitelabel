@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { AddTenantUserDialog } from '@/components/superadmin/add-tenant-user-dialog'
+import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import { Panel, SectionHeader, EmptyState } from '@/components/superadmin/ui/primitives'
 
 interface TenantUsersListProps {
@@ -32,6 +33,10 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [userToPromote, setUserToPromote] = useState<TenantUser | null>(null)
   const [isTransferring, setIsTransferring] = useState(false)
+  const access = usePlatformAccess()
+  const canCreate = access.can('tenant_users.create')
+  const canEdit = access.can('tenant_users.edit')
+  const canDelete = access.can('tenant_users.delete')
 
   const currentOwner = findTenantOwner(users)
   const isOwnerless = isTenantOwnerless(users)
@@ -91,6 +96,9 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
     ])
   }
 
+  // Without store-login access the list would read as "no admins yet".
+  if (!access.can('tenant_users.view')) return null
+
   return (
     <>
       <Panel className="overflow-hidden p-0">
@@ -107,13 +115,15 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
             }
             subtitle={`Administrators who can access ${tenantName}`}
             action={
-              <Button
-                onClick={() => setIsAddDialogOpen(true)}
-                className="rounded-xl bg-white text-black hover:bg-white/90"
-              >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Add User
-              </Button>
+              canCreate ? (
+                <Button
+                  onClick={() => setIsAddDialogOpen(true)}
+                  className="rounded-xl bg-white text-black hover:bg-white/90"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Add User
+                </Button>
+              ) : undefined
             }
           />
         </div>
@@ -135,14 +145,16 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
               title="No admin users yet"
               description={`Add the first administrator for ${tenantName}.`}
               action={
-                <Button
-                  onClick={() => setIsAddDialogOpen(true)}
-                  variant="outline"
-                  className="rounded-xl border-white/15 bg-transparent text-white hover:bg-white/10"
-                >
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Add User
-                </Button>
+                canCreate ? (
+                  <Button
+                    onClick={() => setIsAddDialogOpen(true)}
+                    variant="outline"
+                    className="rounded-xl border-white/15 bg-transparent text-white hover:bg-white/10"
+                  >
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Add User
+                  </Button>
+                ) : undefined
               }
             />
           ) : (
@@ -170,7 +182,7 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-                    {!user.is_owner && (
+                    {!user.is_owner && canEdit && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -191,16 +203,18 @@ export function TenantUsersList({ tenantId, tenantName, users: initialUsers }: T
                         {user.role}
                       </span>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setUserToDelete(user)}
-                      disabled={isDeleting}
-                      aria-label={`Remove ${user.email}`}
-                      className="h-9 w-9 rounded-xl text-white/40 hover:bg-red-400/10 hover:text-red-400 focus-visible:ring-red-400/30"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setUserToDelete(user)}
+                        disabled={isDeleting}
+                        aria-label={`Remove ${user.email}`}
+                        className="h-9 w-9 rounded-xl text-white/40 hover:bg-red-400/10 hover:text-red-400 focus-visible:ring-red-400/30"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

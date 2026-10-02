@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifySuperadmin, verifyTenantPermission } from '@/lib/admin-service'
+import type { PlatformAction } from '@/lib/platform-staff/permissions'
 import { z } from 'zod'
 import type {
   MenuItem,
@@ -36,7 +37,7 @@ const tenantIdSchema = z.string().uuid('Invalid tenant ID')
 export async function getPairingRules(
   tenantId: string
 ): Promise<PairingRuleWithDetails[]> {
-  await verifyTenantPermission(tenantId, 'analytics')
+  await verifyTenantPermission(tenantId, 'analytics', 'view')
   tenantIdSchema.parse(tenantId)
   const supabase = createAdminClient()
 
@@ -128,19 +129,22 @@ export async function getPairingRules(
  * analytics permission. Writes here run on the service-role client, so this
  * call is the only thing standing between an anonymous POST and the table.
  */
-async function verifyRuleWriter(tenantId: string | null): Promise<void> {
+async function verifyRuleWriter(
+  tenantId: string | null,
+  action: PlatformAction = 'edit'
+): Promise<void> {
   if (tenantId === null) {
     await verifySuperadmin()
     return
   }
-  await verifyTenantPermission(tenantId, 'analytics')
+  await verifyTenantPermission(tenantId, 'analytics', action)
 }
 
 export async function createPairingRule(
   tenantId: string | null,
   input: CreateRuleInput
 ): Promise<PairingRule> {
-  await verifyRuleWriter(tenantId)
+  await verifyRuleWriter(tenantId, 'create')
   const supabase = createAdminClient()
 
   if (input.targets.length === 0 || input.targets.length > 3) {
@@ -305,7 +309,7 @@ export async function deletePairingRule(
   ruleId: string,
   tenantId: string
 ): Promise<void> {
-  await verifyRuleWriter(tenantId)
+  await verifyRuleWriter(tenantId, 'delete')
   const supabase = createAdminClient()
 
   const { error } = await supabase

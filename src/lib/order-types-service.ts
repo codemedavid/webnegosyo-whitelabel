@@ -115,7 +115,7 @@ export async function getEnabledOrderTypesByTenant(tenantId: string) {
 }
 
 export async function getOrderTypeById(orderTypeId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'view')
 
   const supabase = await createClient()
 
@@ -131,7 +131,7 @@ export async function getOrderTypeById(orderTypeId: string, tenantId: string) {
 }
 
 export async function createOrderType(tenantId: string, input: OrderTypeInput) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'create')
 
   const validated = orderTypeSchema.parse(input)
   const supabase = await createClient()
@@ -170,7 +170,7 @@ export async function updateOrderType(orderTypeId: string, tenantId: string, inp
 }
 
 export async function deleteOrderType(orderTypeId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'delete')
 
   // Use admin client to bypass RLS for updating orders
   const adminClient = createAdminClient()
@@ -252,7 +252,7 @@ export async function toggleOrderTypeAdvanceOrder(orderTypeId: string, tenantId:
  * This can be called manually or automatically
  */
 export async function initializeOrderTypesForTenant(tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'create')
 
   const supabase = await createClient()
 
@@ -299,7 +299,7 @@ export async function getCustomerFormFieldsByOrderType(orderTypeId: string, tena
 }
 
 export async function getCustomerFormFieldById(fieldId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'view')
 
   const supabase = await createClient()
 
@@ -315,7 +315,7 @@ export async function getCustomerFormFieldById(fieldId: string, tenantId: string
 }
 
 export async function createCustomerFormField(tenantId: string, orderTypeId: string, input: CustomerFormFieldInput) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'create')
 
   const validated = customerFormFieldSchema.parse(input)
   const supabase = await createClient()
@@ -355,7 +355,7 @@ export async function updateCustomerFormField(fieldId: string, tenantId: string,
 }
 
 export async function deleteCustomerFormField(fieldId: string, tenantId: string) {
-  await verifyTenantPermission(tenantId, 'store_setup')
+  await verifyTenantPermission(tenantId, 'store_setup', 'delete')
 
   const supabase = await createClient()
 

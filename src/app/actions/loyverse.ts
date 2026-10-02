@@ -3,37 +3,34 @@
 /**
  * Server actions for the Loyverse POS integration.
  *
- * Superadmin-only: these run with a raw access token from the tenant form,
- * before it is saved to the tenant row, so the credential must never be
- * testable by a non-superadmin caller.
+ * Console-only (`tenants.edit`): these run with a raw access token from the
+ * tenant form, before it is saved to the tenant row, so the credential must
+ * never be testable by a caller who could not save that form.
  */
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getConsoleCaller } from '@/lib/platform-staff/guard'
+import { hasPlatformPermission } from '@/lib/platform-staff/permissions'
+import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import {
   testLoyverseConnection,
   type LoyverseConnectionTest,
 } from '@/lib/loyverse/client'
-import { importLoyverseCatalog, type LoyverseSyncReport } from '@/lib/loyverse/catalog-import'
-import type { Tenant } from '@/types/database'
+import {
+  emptyReport,
+  importLoyverseCatalog,
+  type LoyverseSyncReport,
+} from '@/lib/loyverse/catalog-import'
+import { loadLoyverseTenant } from '@/lib/loyverse/tenant'
+import { ensureLoyverseWebhooks } from '@/lib/loyverse/webhooks'
+import { runLoyverseSync } from '@/lib/loyverse/sync-orchestrator'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
-async function isSuperadmin(): Promise<boolean> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return false
-
-  const { data, error } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  return !error && data?.role === 'superadmin'
+/** The superadmin tenant page's Loyverse controls: tenants.edit. */
+async function canEditTenants(): Promise<boolean> {
+  const caller = await getConsoleCaller()
+  return hasPlatformPermission(caller?.appUser, 'tenants.edit')
 }
 
 /**
@@ -43,7 +40,7 @@ async function isSuperadmin(): Promise<boolean> {
 export async function testLoyverseConnectionAction(
   accessToken: string
 ): Promise<LoyverseConnectionTest> {
-  if (!(await isSuperadmin())) {
+  if (!(await canEditTenants())) {
     return { success: false, error: 'Not authorized' }
   }
   const token = accessToken.trim()
@@ -58,55 +55,30 @@ export async function testLoyverseConnectionAction(
  * item map. Reads the tenant with the service key so the freshly saved token
  * is used even before any cache refresh.
  */
+/** This request's https origin — only a fallback when no app URL is configured. */
+async function requestOrigin(): Promise<string | undefined> {
+  const headerList = await headers()
+  const host = headerList.get('host')
+  const proto = headerList.get('x-forwarded-proto') || 'https'
+  return host && proto === 'https' ? `https://${host}` : undefined
+}
+
+/**
+ * Pulls the tenant's Loyverse catalog into the local menu and rebuilds the
+ * item map. Reads the tenant with the service key so the freshly saved token
+ * is used even before any cache refresh.
+ */
 export async function syncLoyverseCatalogAction(tenantId: string): Promise<LoyverseSyncReport> {
-  if (!(await isSuperadmin())) {
-    return {
-      success: false,
-      error: 'Not authorized',
-      categoriesCreated: 0,
-      itemsCreated: 0,
-      itemsUpdated: 0,
-      itemsSkipped: 0,
-      warnings: [],
-    }
-  }
+  if (!(await canEditTenants())) return emptyReport('Not authorized')
 
   const admin = createAdminClient()
-  const { data: tenant, error } = await admin
-    .from('tenants')
-    .select('*')
-    .eq('id', tenantId)
-    .maybeSingle()
-  if (error || !tenant) {
-    return {
-      success: false,
-      error: 'Tenant not found',
-      categoriesCreated: 0,
-      itemsCreated: 0,
-      itemsUpdated: 0,
-      itemsSkipped: 0,
-      warnings: [],
-    }
-  }
-
-  // The access token lives in tenant_secrets, not on the row just read.
-  const tenantRow: Tenant = mergeTenantSecrets(
-    tenant as unknown as Tenant,
-    await getTenantSecrets(admin, tenantId)
-  )
+  const tenant = await loadLoyverseTenant(admin, tenantId).catch(() => null)
+  if (!tenant) return emptyReport('Tenant not found')
 
   // Webhooks are registered BEFORE the import: the import can outrun the
   // function timeout on a big catalog, and registration dying with it is how
   // merchants ended up with zero webhooks and no live sync.
-  const { ensureLoyverseWebhooks } = await import('@/lib/loyverse/webhooks')
-  const { runLoyverseSync } = await import('@/lib/loyverse/sync-orchestrator')
-  const { headers } = await import('next/headers')
-  const headerList = await headers()
-  const host = headerList.get('host')
-  const proto = headerList.get('x-forwarded-proto') || 'https'
-  const origin = host && proto === 'https' ? `https://${host}` : undefined
-
-  const report = await runLoyverseSync(tenantRow, origin, {
+  const report = await runLoyverseSync(tenant, await requestOrigin(), {
     importCatalog: importLoyverseCatalog,
     ensureWebhooks: ensureLoyverseWebhooks,
     recordWebhookStatus: async (id, update) => {
@@ -114,9 +86,9 @@ export async function syncLoyverseCatalogAction(tenantId: string): Promise<Loyve
     },
   })
 
-  if (report.success && tenantRow.slug) {
-    revalidateStorefrontMenu(tenantRow.slug)
-    revalidatePath(`/${tenantRow.slug}/admin/menu`)
+  if (report.success && tenant.slug) {
+    revalidateStorefrontMenu(tenant.slug)
+    revalidatePath(`/${tenant.slug}/admin/menu`)
   }
   return report
 }

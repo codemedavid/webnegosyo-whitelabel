@@ -113,3 +113,24 @@ export function loyaltyMemberHref(customerKey: string): `/(main)/loyalty-member/
 export function customerHref(customerId: string): `/(main)/customer/${string}` {
   return `/(main)/customer/${encodeURIComponent(customerId)}`;
 }
+
+/** Sentinel ingredientId that puts the ingredient editor into create mode. */
+export const NEW_INGREDIENT_ID = "new" as const;
+
+/**
+ * Build the href for one ingredient's page (stock, actions, history).
+ *
+ * @param ingredientId the `inventory_items` id.
+ */
+export function ingredientHref(ingredientId: string): `/(main)/ingredient/${string}` {
+  return `/(main)/ingredient/${encodeURIComponent(ingredientId)}`;
+}
+
+/**
+ * Build the href for the ingredient editor.
+ *
+ * @param ingredientId an existing ingredient id, or {@link NEW_INGREDIENT_ID}.
+ */
+export function ingredientEditorHref(ingredientId: string): `/(main)/ingredient/edit/${string}` {
+  return `/(main)/ingredient/edit/${encodeURIComponent(ingredientId)}`;
+}

@@ -102,7 +102,7 @@ export async function saveRecipeForTarget(
   input: RecipeInput,
   ctx?: ProvisioningCtx,
 ): Promise<RecipeWithComponents | null> {
-  if (!ctx) await verifyTenantPermission(tenantId, 'menu')
+  if (!ctx) await verifyTenantPermission(tenantId, 'menu', 'delete')
   const validated = recipeInputSchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
   const cols = buildRecipeTargetColumns(target)
@@ -170,7 +170,7 @@ export async function deleteRecipeForTarget(
   tenantId: string,
   target: RecipeTarget,
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu')
+  await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
   const { error } = await applyTargetFilter(

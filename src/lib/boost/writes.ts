@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import {
   createUpsellPair,
   updateUpsellPair,
@@ -61,6 +62,15 @@ export type LastCallSaveInput = z.infer<typeof lastCallSaveSchema>
 
 type ServerClient = Awaited<ReturnType<typeof createClient>>
 
+/**
+ * The client a write runs on. With a `ProvisioningCtx` the caller has already
+ * authorized the request (the merchant app's bearer route) and supplies the
+ * service-role client; without one, the merchant's own cookie session.
+ */
+async function writeClient(ctx: ProvisioningCtx | undefined): Promise<ServerClient> {
+  return ctx ? (ctx.client as unknown as ServerClient) : await createClient()
+}
+
 async function assertTenantItems(client: ServerClient, tenantId: string, ids: readonly string[]) {
   const unique = [...new Set(ids)]
   if (unique.length === 0) return
@@ -80,10 +90,10 @@ async function assertTenantItems(client: ServerClient, tenantId: string, ids: re
  * has. A failed upsert leaves the previous pairing fully intact, where a
  * delete-then-insert would have left the merchant with nothing.
  */
-export async function saveBoostPairing(tenantId: string, raw: PairingSaveInput): Promise<void> {
-  await verifyTenantPermission(tenantId, 'analytics')
+export async function saveBoostPairing(tenantId: string, raw: PairingSaveInput, ctx?: ProvisioningCtx): Promise<void> {
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics', 'delete')
   const input = pairingSaveSchema.parse(raw)
-  const client = await createClient()
+  const client = await writeClient(ctx)
   await assertTenantItems(client, tenantId, [...input.sourceIds, ...input.targetIds])
 
   const plan = planPairingSave(input)
@@ -135,7 +145,7 @@ export async function setBoostPairingActive(tenantId: string, sourceIds: string[
 }
 
 export async function deleteBoostPairing(tenantId: string, sourceIds: string[]): Promise<void> {
-  await verifyTenantPermission(tenantId, 'analytics')
+  await verifyTenantPermission(tenantId, 'analytics', 'delete')
   const ids = sourceIdsSchema.parse(sourceIds)
   const client = await createClient()
   const { error } = await client
@@ -148,10 +158,10 @@ export async function deleteBoostPairing(tenantId: string, sourceIds: string[]):
 }
 
 /** Edits in place — the old flow deleted the pair first and lost it on failure. */
-export async function saveBoostUpgrade(tenantId: string, raw: UpgradeSaveInput): Promise<string> {
+export async function saveBoostUpgrade(tenantId: string, raw: UpgradeSaveInput, ctx?: ProvisioningCtx): Promise<string> {
   const input = upgradeSaveSchema.parse(raw)
-  const client = await createClient()
-  await verifyTenantPermission(tenantId, 'analytics')
+  const client = await writeClient(ctx)
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics', input.id ? 'edit' : 'create')
   await assertTenantItems(client, tenantId, [input.sourceId, input.targetId])
 
   const fields = {
@@ -164,7 +174,7 @@ export async function saveBoostUpgrade(tenantId: string, raw: UpgradeSaveInput):
   }
 
   if (input.id) {
-    const updated = await updateUpsellPair(input.id, tenantId, { ...fields, pair_type: 'upgrade' })
+    const updated = await updateUpsellPair(input.id, tenantId, { ...fields, pair_type: 'upgrade' }, ctx)
     return updated.id
   }
   const created = await createUpsellPair(tenantId, {
@@ -173,20 +183,20 @@ export async function saveBoostUpgrade(tenantId: string, raw: UpgradeSaveInput):
     source_label: fields.source_label ?? undefined,
     target_label: fields.target_label ?? undefined,
     pair_type: 'upgrade',
-  })
+  }, ctx)
   return created.id
 }
 
-export async function saveBoostLastCall(tenantId: string, raw: LastCallSaveInput): Promise<void> {
+export async function saveBoostLastCall(tenantId: string, raw: LastCallSaveInput, ctx?: ProvisioningCtx): Promise<void> {
   const input = lastCallSaveSchema.parse(raw)
   await updateCheckoutUpsellSettings(tenantId, {
     checkout_upsell_enabled: input.enabled,
     checkout_upsell_title: input.title,
     checkout_upsell_subtitle: input.subtitle,
     checkout_upsell_max_items: input.maxItems,
-  })
+  }, ctx)
 
-  const client = await createClient()
+  const client = await writeClient(ctx)
   await assertTenantItems(client, tenantId, input.pickedItemIds)
 
   const { error: clearError } = await client
@@ -211,8 +221,8 @@ export async function saveBoostLastCall(tenantId: string, raw: LastCallSaveInput
  * `authenticated` role), so after checking the merchant's own permission the
  * write goes through the service role, which the guard lets pass.
  */
-export async function setBoostEnabled(tenantId: string, enabled: boolean): Promise<void> {
-  await verifyTenantPermission(tenantId, 'analytics')
+export async function setBoostEnabled(tenantId: string, enabled: boolean, ctx?: ProvisioningCtx): Promise<void> {
+  if (!ctx) await verifyTenantPermission(tenantId, 'analytics')
   const { error } = await createAdminClient()
     .from('tenants')
     .update({ menu_engineering_enabled: enabled, bundles_enabled: enabled })

@@ -672,6 +672,8 @@ export interface CreateOrderArgs {
   clientOrderId?: string;
   paymentMethod?: string;
   paymentMethodDetails?: string;
+  /** Platform-only: the tender screen has already collected this POS payment. */
+  paymentStatus?: "paid";
   deliveryFee?: number;
   /** The service charge already inside `total`, when one was levied. */
   serviceCharge?: number;
@@ -801,7 +803,7 @@ export function buildCreateOrderRows(
     total: args.total,
     item_count: args.itemCount,
     status: SELF_CONFIRMING_SOURCES.includes(args.source) ? "confirmed" : "pending",
-    payment_status: "pending",
+    payment_status: args.source === "pos" && args.paymentStatus === "paid" ? "paid" : "pending",
     source: args.source,
     order_type: args.orderType ?? null,
     order_type_id: args.orderTypeId ?? null,

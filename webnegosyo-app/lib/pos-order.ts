@@ -52,11 +52,18 @@ export interface PosPaymentPayload {
   proofFileId?: string;
   reference?: string;
   cashierId?: string;
+  /**
+   * Rung up now, paid afterwards. The order is written UNPAID with no method;
+   * the cashier collects it from the order screen (cash received and change
+   * are recorded then, on the settlement ledger).
+   */
+  payLater?: boolean;
 }
 
 export interface PosOrderContext {
   cart: PosCartLine[];
-  tender: PosTender;
+  /** How the sale was settled; `null` for a "pay later" sale. */
+  tender: PosTender | null;
   clientOrderId: string;
   orderType?: string;
   orderTypeId?: string;
@@ -135,7 +142,8 @@ export interface PosOrderArgs {
   source: "pos";
   clientOrderId: string;
   itemCount: number;
-  paymentMethod: string;
+  /** Absent on a "pay later" sale — nothing has been paid by any method yet. */
+  paymentMethod?: string;
   paymentMethodDetails?: string;
   items: PosOrderItem[];
 }
@@ -197,7 +205,8 @@ function toOrderItem(line: PosCartLine): PosOrderItem {
   };
 }
 
-function paymentPayload(tender: PosTender, cashierId?: string): PosPaymentPayload {
+function paymentPayload(tender: PosTender | null, cashierId?: string): PosPaymentPayload {
+  if (tender === null) return compact({ payLater: true, cashierId });
   const cash = tender.isCash
     ? { cashTendered: tender.cashTendered, changeDue: tender.changeDue }
     : {};
@@ -235,7 +244,7 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     deliveryFee,
   );
 
-  if (tender.isCash && !computeChange(total, tender.cashTendered ?? 0).isSufficient) {
+  if (tender?.isCash && !computeChange(total, tender.cashTendered ?? 0).isSufficient) {
     throw new Error("Insufficient cash tendered for this sale.");
   }
 
@@ -269,8 +278,9 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     source: "pos",
     clientOrderId: context.clientOrderId,
     itemCount,
-    paymentMethod: tender.methodName,
-    paymentMethodDetails: tender.methodDetails,
+    ...(tender
+      ? { paymentMethod: tender.methodName, paymentMethodDetails: tender.methodDetails }
+      : {}),
     items: cart.map(toOrderItem),
   };
 }
@@ -289,4 +299,9 @@ export function readPosPayment(customerData: unknown): PosPaymentPayload | null 
   if (typeof pos !== "object" || pos === null || Array.isArray(pos)) return null;
 
   return pos as PosPaymentPayload;
+}
+
+/** Was this counter sale rung up to be paid afterwards? */
+export function isPosPayLater(customerData: unknown): boolean {
+  return readPosPayment(customerData)?.payLater === true;
 }

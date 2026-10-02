@@ -1,75 +1,38 @@
 /**
  * Authorising the reconcile cron.
  *
- * The reconcile endpoint is the safety net behind Loyverse webhooks (which
- * Loyverse disables permanently after 48h of failures). It only self-heals if
- * something actually calls it on a schedule — and a Vercel cron cannot carry
- * `?secret=` without that secret being committed to vercel.json.
- *
- * So the route accepts either credential: the existing query secret, or the
- * `Authorization: Bearer $CRON_SECRET` header Vercel sends. Neither may be
- * satisfied by an unset environment variable, which is the failure mode that
- * would turn a missing config into an open endpoint.
+ * The reconcile endpoint re-imports EVERY Loyverse tenant's catalog — a
+ * five-minute, platform-wide job. It used to also accept the webhook secret
+ * as `?secret=`, and that secret was embedded in every merchant's registered
+ * webhook URL, so any merchant could start it at will. Now it takes only the
+ * Vercel cron bearer, and an unset CRON_SECRET must never open it.
  */
 
 import { isAuthorizedReconcileRequest } from '@/lib/loyverse/reconcile-auth'
 
 describe('isAuthorizedReconcileRequest', () => {
-  it('accepts the shared query secret', () => {
-    expect(
-      isAuthorizedReconcileRequest('s3cret', null, { webhookSecret: 's3cret', cronSecret: null })
-    ).toBe(true)
-  })
-
   it('accepts the Vercel cron bearer token', () => {
-    expect(
-      isAuthorizedReconcileRequest(null, 'Bearer cron-token', {
-        webhookSecret: 's3cret',
-        cronSecret: 'cron-token',
-      })
-    ).toBe(true)
-  })
-
-  it('rejects a wrong query secret', () => {
-    expect(
-      isAuthorizedReconcileRequest('nope', null, { webhookSecret: 's3cret', cronSecret: null })
-    ).toBe(false)
+    expect(isAuthorizedReconcileRequest('Bearer cron-token', 'cron-token')).toBe(true)
   })
 
   it('rejects a wrong bearer token', () => {
-    expect(
-      isAuthorizedReconcileRequest(null, 'Bearer nope', {
-        webhookSecret: null,
-        cronSecret: 'cron-token',
-      })
-    ).toBe(false)
+    expect(isAuthorizedReconcileRequest('Bearer nope', 'cron-token')).toBe(false)
+  })
+
+  it('rejects a token that is a prefix of the secret', () => {
+    expect(isAuthorizedReconcileRequest('Bearer cron', 'cron-token')).toBe(false)
   })
 
   it('rejects everything when no secret is configured', () => {
-    // The dangerous case: an unset env var must never make the endpoint open.
-    expect(
-      isAuthorizedReconcileRequest(null, null, { webhookSecret: null, cronSecret: null })
-    ).toBe(false)
-  })
-
-  it('does not let an empty query secret match an unset webhook secret', () => {
-    expect(
-      isAuthorizedReconcileRequest('', null, { webhookSecret: null, cronSecret: null })
-    ).toBe(false)
+    expect(isAuthorizedReconcileRequest(null, null)).toBe(false)
+    expect(isAuthorizedReconcileRequest('Bearer anything', undefined)).toBe(false)
   })
 
   it('does not let an empty bearer token match an unset cron secret', () => {
-    expect(
-      isAuthorizedReconcileRequest(null, 'Bearer ', { webhookSecret: null, cronSecret: null })
-    ).toBe(false)
+    expect(isAuthorizedReconcileRequest('Bearer ', '')).toBe(false)
   })
 
   it('ignores a non-bearer authorization scheme', () => {
-    expect(
-      isAuthorizedReconcileRequest(null, 'Basic cron-token', {
-        webhookSecret: null,
-        cronSecret: 'cron-token',
-      })
-    ).toBe(false)
+    expect(isAuthorizedReconcileRequest('Basic cron-token', 'cron-token')).toBe(false)
   })
 })

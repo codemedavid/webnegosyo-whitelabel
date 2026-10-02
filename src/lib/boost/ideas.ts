@@ -82,8 +82,16 @@ export interface PairingIdea extends IdeaBase {
   categoryName: string
 }
 
+export interface LastCallSettingsIdea {
+  title: string
+  subtitle: string
+  pickedItemIds: string[]
+}
+
 export interface LastCallIdea extends IdeaBase {
   kind: 'last_call'
+  /** Specific items and copy (AI suggestions); absent = automatic picks with the current copy. */
+  settings?: LastCallSettingsIdea
 }
 
 export type BoostIdea = ComboIdea | UpgradeIdea | PairingIdea | LastCallIdea

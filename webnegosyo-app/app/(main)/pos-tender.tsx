@@ -18,7 +18,6 @@ import { useAuthStore } from "../../stores/auth-store";
 import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backend";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
-import { listAllPaymentMethods, listPaymentMethods } from "../../lib/pos-catalog";
 import { canIssueRefund } from "../../lib/order-edit-guards";
 import { posCartToOrderItems } from "../../lib/order-edit-cart";
 import {
@@ -26,7 +25,6 @@ import {
   isProofOutstanding,
   requiresProof,
   toTender,
-  type PosPaymentMethod,
 } from "../../lib/pos-payment-methods";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { buildPosOrder } from "../../lib/pos-order";
@@ -42,12 +40,25 @@ import { burnPosRedemptions } from "../../lib/voucher-service";
 import { placeCounterSale } from "../../lib/offline/place-sale";
 import { newLocalOrderId } from "../../lib/offline/local-id";
 import { runPosSaleBookkeeping } from "../../lib/offline/pos-sale-bookkeeping";
-import { resourceSnapshotKey, withOfflineSnapshot } from "../../lib/offline/resource-snapshot";
+import { isOffline } from "../../lib/offline/connectivity";
+import { isNetworkFailure } from "../../lib/offline/network-error";
+import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
+import {
+  canOfferPayLater,
+  describeCompletedSale,
+  tenderBlockedReason,
+  tenderSwipeLabel,
+  type TenderMode,
+} from "../../lib/pos-tender-mode";
+import { usePosLastSaleStore } from "../../stores/pos-last-sale-store";
+import { SegmentedControl } from "../../components/SegmentedControl";
+import { Icon } from "../../components/Icon";
 import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
 import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
 import { posStockRevision } from "../../lib/pos-stock-revision";
 import { freshTenderSession } from "../../lib/pos-tender-session";
+import { usePosSaleTotals } from "../../lib/use-pos-sale-totals";
 import { formatPeso } from "../../lib/format";
 import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
@@ -64,10 +75,15 @@ const updatePaymentStatusRef =
 const reviseOrderRef = "orders:reviseOrder" as unknown as FunctionReference<"mutation">;
 const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
 
+const TENDER_MODE_OPTIONS = [
+  { label: "Pay now", value: "now" as TenderMode },
+  { label: "Pay later", value: "later" as TenderMode },
+] as const;
+
 /**
  * Post-sale bookkeeping (stock, Loyverse, vouchers, guest capture, receipt)
  * runs after the cashier has the till back. None of it can fail the sale —
- * the order is already saved and paid — so a failure is logged, never shown.
+ * the order is already saved — so a failure is logged, never shown.
  */
 async function settleSaleInBackground(settle: () => Promise<void>): Promise<void> {
   try {
@@ -111,14 +127,12 @@ export default function PosTenderScreen() {
   const orderTypeId = usePosCartStore((s) => s.orderTypeId);
   const orderTypeName = usePosCartStore((s) => s.orderTypeName);
   const serviceCharge = usePosCartStore((s) => s.serviceCharge);
-  const delivery = usePosCartStore((s) => s.delivery);
   const customerName = usePosCartStore((s) => s.customerName);
   const setCustomerName = usePosCartStore((s) => s.setCustomerName);
   const attachedCustomer = usePosCartStore((s) => s.attachedCustomer);
   const setAttachedCustomer = usePosCartStore((s) => s.setAttachedCustomer);
   const reset = usePosCartStore((s) => s.reset);
   const editContext = usePosCartStore((s) => s.editContext);
-  const discount = usePosCartStore((s) => s.discount);
   const endEdit = usePosCartStore((s) => s.endEdit);
 
   const role = useAuthStore((s) => s.role);
@@ -131,9 +145,7 @@ export default function PosTenderScreen() {
   const recordPayment = useSafeMutation(recordPaymentRef);
   const { printOrder, shouldPrint } = useOrderPrint();
 
-  const [methods, setMethods] = useState<PosPaymentMethod[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [tenderedText, setTenderedText] = useState("");
   const [reference, setReference] = useState("");
   const [proof, setProof] = useState<CapturedProof | null>(null);
@@ -141,6 +153,9 @@ export default function PosTenderScreen() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   /** Why the order was changed. Edit mode only; written to the audit row. */
   const [editReason, setEditReason] = useState("");
+  /** Take the money now, or place the order unpaid and collect it later. */
+  const [mode, setMode] = useState<TenderMode>("now");
+  const showLastSale = usePosLastSaleStore((s) => s.show);
 
   // A fresh idempotency key per visit: a retry after a network blip reuses it,
   // so createOrder returns the existing order instead of charging twice.
@@ -163,27 +178,16 @@ export default function PosTenderScreen() {
       setReference(session.reference);
       setProof(session.proof);
       setEditReason(session.editReason);
+      setMode(session.mode);
     }, []),
   );
 
-  const totals = useMemo(
-    () => usePosCartStore.getState().totals(),
-    // `delivery` belongs here: backing out to attach a fee and returning moves
-    // no line, and a stale total would show an amount due the charge then
-    // refuses as insufficient.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, serviceCharge, delivery],
-  );
-
-  // Editing a placed order: what it is now worth, and what still has to move.
-  // Every part of that judgement lives in `pos-edit-mode.ts` and is tested.
-  // `discount` belongs in the deps: a code applied during the edit changes the
-  // balance to settle without touching a line.
-  const edit = useMemo(
-    () => usePosCartStore.getState().editTotals(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, editContext, discount],
-  );
+  // Re-priced on every store change. This tab stays mounted between sales, so
+  // a hand-kept dependency list that missed the discount showed the full
+  // price here after a voucher was applied on the register.
+  // Editing a placed order: `edit` is what it is now worth, and what still has
+  // to move. Every part of that judgement lives in `pos-edit-mode.ts`.
+  const { totals, discountLines: shownDiscountLines, edit } = usePosSaleTotals();
 
   const isRefund = edit?.intent === "refund";
   const isAlreadySettled = edit?.intent === "settled";
@@ -195,52 +199,30 @@ export default function PosTenderScreen() {
     [role, isOwner, permissions],
   );
 
+  // Cached per order type and warmed by the register while items are still
+  // being added, so Charge opens on the amount due rather than a spinner.
+  // An edit settles against ANY method (see use-tender-payment-methods.ts).
+  const {
+    methods,
+    isLoading: isLoadingMethods,
+    error: methodsError,
+    refetch: refetchMethods,
+  } = useTenderPaymentMethods(
+    tenantId,
+    orderTypeId,
+    editContext !== null,
+  );
+
+  // One method means no choice to make: pre-select it. Re-checked whenever the
+  // list changes, and only while nothing (or a method that has since gone) is
+  // selected, so a cashier's own pick is never overwritten.
   useEffect(() => {
-    if (!tenantId) {
-      setIsLoading(false);
-      return;
-    }
-    // An edit is settled against ANY method, not the ones the original order
-    // type allows: a GCash delivery order topped up at the counter is paid in
-    // cash, and refusing that would strand the cashier.
-    if (!editContext && !orderTypeId) {
-      setIsLoading(false);
-      return;
-    }
-    let cancelled = false;
+    const isSelectionValid = methods.some((candidate) => candidate.id === selectedId);
+    if (!isSelectionValid) setSelectedId(methods.length === 1 ? methods[0].id : null);
+  }, [methods, selectedId]);
 
-    // Snapshotted like the menu: with no connection the tender screen still
-    // offers the methods it last saw, instead of an empty picker that blocks
-    // the swipe (lib/offline/resource-snapshot.ts).
-    const snapshotKey = resourceSnapshotKey([
-      "resource",
-      "payment-methods",
-      tenantId,
-      editContext ? "all" : (orderTypeId as string),
-    ]);
-    const load = withOfflineSnapshot(snapshotKey, () =>
-      editContext
-        ? listAllPaymentMethods(tenantId)
-        : listPaymentMethods(tenantId, orderTypeId as string)
-    );
-
-    load
-      .then((rows) => {
-        if (cancelled) return;
-        setMethods(rows);
-        if (rows.length === 1) setSelectedId(rows[0].id);
-      })
-      .catch(() => {
-        if (!cancelled) setMethods([]);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId, orderTypeId, editContext]);
+  const isPayLaterOffered = canOfferPayLater({ isEditing: editContext !== null });
+  const isPayLater = isPayLaterOffered && mode === "later";
 
   const method = methods.find((m) => m.id === selectedId) ?? null;
   const isCash = method ? isCashMethod(method) : false;
@@ -255,23 +237,20 @@ export default function PosTenderScreen() {
   const wantsCashPad = isCash && !isRefund && !isAlreadySettled;
 
   // Every reason the sale cannot be completed, in the order the cashier hits
-  // them. A settled edit needs no payment at all, so it skips the lot.
-  const blockedReason = isAlreadySettled
-    ? undefined
-    : isRefund && !refundGate.allowed
-      ? refundGate.reason
-      : !method
-        ? "Choose a payment method"
-        : wantsCashPad && !change.isSufficient
-          ? "Enter the cash received"
-          : !isRefund &&
-              method &&
-              isProofOutstanding(method, {
-                reference,
-                hasProof: proof !== null,
-              })
-            ? "Enter the reference number or photograph the confirmation"
-            : undefined;
+  // them. A settled edit needs no payment at all, and a pay-later sale takes
+  // none now — see `pos-tender-mode.ts`.
+  const blockedReason = tenderBlockedReason({
+    mode: isPayLater ? "later" : "now",
+    isAlreadySettled,
+    isRefund,
+    refundGate,
+    hasMethod: method !== null,
+    wantsCashPad,
+    isCashSufficient: change.isSufficient,
+    isProofOutstanding:
+      method !== null &&
+      isProofOutstanding(method, { reference, hasProof: proof !== null }),
+  });
 
   /**
    * Save an edited order and settle the difference.
@@ -418,7 +397,9 @@ export default function PosTenderScreen() {
   ]);
 
   const handleComplete = useCallback(async () => {
-    if (!method || isCompleting) return;
+    if (isCompleting) return;
+    // A pay-later sale needs no method; a paid one cannot go without.
+    if (!isPayLater && !method) return;
 
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
@@ -442,18 +423,30 @@ export default function PosTenderScreen() {
 
     setIsCompleting(true);
     try {
-      if (tenantId && userId && (await readPendingLoyaltySale(tenantId, userId) || await readReservedLoyaltyQuote(tenantId, userId))) {
-        setIsCompleting(false);
-        router.push("/(main)/pos-loyalty");
-        return;
+      if (tenantId && userId) {
+        // Both are local disk reads; read together rather than one after the other.
+        const [pendingLoyaltySale, reservedQuote] = await Promise.all([
+          readPendingLoyaltySale(tenantId, userId),
+          readReservedLoyaltyQuote(tenantId, userId),
+        ]);
+        if (pendingLoyaltySale || reservedQuote) {
+          setIsCompleting(false);
+          router.push("/(main)/pos-loyalty");
+          return;
+        }
       }
-      const tender = toTender(method, {
-        cashTendered: tendered,
-        changeDue: change.changeDue,
-        proofUrl: proof?.url,
-        proofFileId: proof?.fileId,
-        reference: reference.trim() || undefined,
-      });
+      // `null` for a pay-later sale: nothing has been handed over yet, so no
+      // method, cash, change or proof may be claimed on the order.
+      const tender =
+        isPayLater || !method
+          ? null
+          : toTender(method, {
+              cashTendered: tendered,
+              changeDue: change.changeDue,
+              proofUrl: proof?.url,
+              proofFileId: proof?.fileId,
+              reference: reference.trim() || undefined,
+            });
 
       // Read at tender time rather than held in state: the engine re-prices
       // against the current cart, so a line voided after a code was typed is
@@ -493,20 +486,26 @@ export default function PosTenderScreen() {
         order_backend: orderBackend,
         convex_deployment_url: convexUrl,
       });
+      const isPlatform = backend === "platform";
+      const isPaidNow = tender !== null;
       const localId = newLocalOrderId();
       const createdAt = Date.now();
       // The platform database keeps the id the register prints and the moment
-      // the sale was taken, so a sale written later (offline) still lands on
-      // the right day under the id on the customer's receipt. Convex validates
-      // its arguments strictly and takes neither, so it is told nothing new.
-      const platformFields =
-        backend === "platform"
-          ? { id: localId, createdAt: new Date(createdAt).toISOString() }
-          : {};
+      // the sale was taken, so a sale written later lands on the right day
+      // under the id on the customer's receipt. Convex validates its arguments
+      // strictly, so these fields stay platform-only. A paid sale carries its
+      // payment on the insert itself; a pay-later sale is inserted unpaid.
+      const platformFields = isPlatform
+        ? {
+            id: localId,
+            createdAt: new Date(createdAt).toISOString(),
+            ...(isPaidNow ? { paymentStatus: "paid" as const } : {}),
+          }
+        : {};
       const orderArgs = { ...rest, ...serviceChargeArg(builtCharge), ...platformFields };
       // Everything the sale owes the platform after the row exists, computed
-      // NOW from the cart, so a sale replayed after an outage reports exactly
-      // what a live one would (lib/offline/pos-sale-bookkeeping.ts).
+      // NOW from the cart, so a sale written behind reports exactly what a
+      // live one would (lib/offline/pos-sale-bookkeeping.ts).
       const bookkeeping = {
         stockItems: buildPosStockItems(lines),
         loyverseLines: posLinesToLoyverseOrderLines(lines),
@@ -520,23 +519,39 @@ export default function PosTenderScreen() {
         captureItems: lines.map((line) => ({ name: line.name, quantity: line.quantity })),
       };
 
-      // Server first; kept on this device only when the server cannot be
-      // reached (lib/offline/place-sale.ts). A refusal still throws to the
-      // alert below, exactly as before.
+      // The platform register does not wait on the server: the id is minted
+      // here, so the sale is complete the moment it is on this device and the
+      // outbox writes it in the background (moments later, or after an
+      // outage). Convex mints its own ids, so it is still written first and
+      // only kept locally when the server cannot be reached. A refusal throws
+      // to the alert below either way (lib/offline/place-sale.ts).
       const outcome = await placeCounterSale({
         createOrder,
-        sale: { localId, tenantId, backend, clientOrderId, createdAt, orderArgs, bookkeeping },
+        writeBehind: isPlatform,
+        sale: {
+          localId,
+          tenantId,
+          backend,
+          clientOrderId,
+          createdAt,
+          orderArgs,
+          bookkeeping,
+          paidAtTender: isPaidNow,
+        },
       });
       const orderId = outcome.kind === "written" ? outcome.orderId : outcome.localId;
+      // Written behind on the platform, the row will exist under this id in a
+      // moment; a sale kept only because the connection is down will not.
+      const isSavedOffline = outcome.kind === "queued" && (!isPlatform || isOffline());
 
-      // Paper starts NOW — before the paid-status write, the bookkeeping and
-      // the navigation. The customer is standing at the counter, and every
-      // round trip this used to wait behind was a second of them waiting. A
-      // counter sale is created confirmed and paid in one swipe, so it prints
-      // under every trigger except "never".
-      const receiptPrinted = shouldPrint("counterSale")
-        ? printOrder(posReceiptOrder(String(orderId), args, tender, createdAt))
-        : Promise.resolve(false);
+      // Paper starts NOW, before anything else. A paid counter sale prints its
+      // receipt under every trigger except "never". A pay-later order prints
+      // no receipt yet — its bill prints when it is collected from the order
+      // screen, with the cash and change on it.
+      const receiptPrinted =
+        tender && shouldPrint("counterSale")
+          ? printOrder(posReceiptOrder(String(orderId), args, tender, createdAt))
+          : Promise.resolve(false);
       // The kitchen chit too, from the lines this register already holds,
       // instead of waiting for the auto-print watcher to hear about the sale
       // from the server.
@@ -547,42 +562,46 @@ export default function PosTenderScreen() {
         readPosKitchenPrintDeps(useAuthStore.getState().isDemo),
       );
 
-      // Counter sales are settled at the drawer, so they are paid on creation.
-      // A failure here must not lose the sale — the order already exists. A
-      // queued sale is marked paid when it is written (lib/offline/sync-outbox.ts).
-      if (outcome.kind === "written") {
-        try {
-          await updatePaymentStatus({ orderId, paymentStatus: "paid" });
-        } catch (err) {
-          console.warn("[pos] Could not mark the sale paid:", err);
-        }
-      }
-
-      // The sale is saved and paid: hand the till back NOW. Everything below
-      // is bookkeeping the cashier never needs to watch. It used to run before
-      // the spinner cleared — four platform round-trips and then a Bluetooth
-      // print, each with its own deadline — so a swipe at a busy counter sat
-      // on "completing" for many seconds and read as the POS hanging.
+      // Hand the till back NOW: an empty register, ready for the next customer,
+      // with a line saying what just happened. Everything below is bookkeeping
+      // the cashier never needs to watch.
+      showLastSale({
+        orderId: String(orderId),
+        notice: describeCompletedSale({
+          total: args.total,
+          changeDue: tender?.changeDue,
+          isPayLater: !isPaidNow,
+          isSavedOffline,
+        }),
+        canOpenOrder: !isSavedOffline,
+      });
       reset();
       // navigate, not replace: replacing into a sibling tab renames the tab
       // navigator's state key and remounts it mid-transition, which crashes with
       // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.
-      goTo(router, "/(main)/pos-sales");
+      goTo(router, "/(main)/pos");
 
       void settleSaleInBackground(async () => {
-        // Everything the sale owes the platform — stock, Loyverse, voucher
-        // burns, the activity line, customer capture — reported together
-        // through the one runner the offline replay also uses. A sale kept on
-        // the device owes it later, once the server holds the order.
         if (outcome.kind === "written") {
+          // Convex takes no payment status on create, so a paid sale is marked
+          // paid here. A failure must not lose the sale — it already exists.
+          if (isPaidNow) {
+            try {
+              await updatePaymentStatus({ orderId, paymentStatus: "paid" });
+            } catch (err) {
+              console.warn("[pos] Could not mark the sale paid:", err);
+            }
+          }
+          // Stock, Loyverse, voucher burns, the activity line, customer
+          // capture — through the one runner the outbox replay also uses. A
+          // queued sale owes it later, once the server holds the order.
           await runPosSaleBookkeeping({ tenantId, orderId, backend, createdAt, bookkeeping });
         }
 
         // The print queue serialises against the kitchen chit, and a dead
-        // printer only logs — the sale is already in the drawer. Built from the
+        // printer only logs — the sale is already saved. Built from the
         // arguments the sale was written with, so the paper carries every
-        // figure the order does — delivery fee, service charge and discount
-        // included. See `lib/pos-receipt.ts`.
+        // figure the order does. See `lib/pos-receipt.ts`.
         await receiptPrinted;
       });
     } catch (err) {
@@ -595,6 +614,7 @@ export default function PosTenderScreen() {
   }, [
     serviceChargeArg,
     method,
+    isPayLater,
     isCompleting,
     hasOrderBackend,
     tenantId,
@@ -618,15 +638,15 @@ export default function PosTenderScreen() {
     // up against a stale (or absent) branch.
     outletId,
     saleOutlet,
-    // Which backend wrote the order, which decides how its guest is captured.
-    // Listed for the same reason as the branch: a session that resolves its
-    // backend late must not keep capturing sales against a stale answer.
+    // Which backend wrote the order, which decides how it is saved and how
+    // its guest is captured.
     convexUrl,
     orderBackend,
     createOrder,
     updatePaymentStatus,
     shouldPrint,
     printOrder,
+    showLastSale,
     reset,
   ]);
 
@@ -644,9 +664,7 @@ export default function PosTenderScreen() {
     );
   }
 
-  if (isLoading) {
-    return <LoadingState fullScreen message="Loading sale..." />;
-  }
+  const editIntent = isAlreadySettled ? "settled" : isRefund ? "refund" : edit ? "collect" : null;
 
   return (
     <View style={styles.screen}>
@@ -661,11 +679,45 @@ export default function PosTenderScreen() {
         </Text>
         <Text style={styles.total}>{formatPeso(amountDue)}</Text>
 
+        {/*
+          The discounts inside that figure, named, so the cashier can see the
+          voucher from the cart made it to the payment — not a total that is
+          merely lower with nothing saying why.
+        */}
+        {!edit && shownDiscountLines.length > 0 && (
+          <View style={styles.discounts} accessibilityLabel="Discounts applied">
+            {shownDiscountLines.map((line) => (
+              <View key={line.code ?? line.label} style={styles.discountRow}>
+                <Text style={styles.discountLabel} numberOfLines={1}>
+                  {line.code && line.code !== line.label ? `${line.label} (${line.code})` : line.label}
+                </Text>
+                <Text style={styles.discountAmount}>−{formatPeso(line.amount)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {edit && editContext && (
           <Text style={styles.editMeta}>
             This order was {formatPeso(editContext.originalTotal)} and is now{" "}
             {formatPeso(edit.newTotal)}.
           </Text>
+        )}
+
+        {/*
+          The first decision at the counter: is the money changing hands now?
+          "Pay later" sends the order to the kitchen unpaid; it is collected
+          from the order screen, where the cash and change are entered.
+        */}
+        {isPayLaterOffered && (
+          <View style={styles.modeBlock}>
+            <SegmentedControl
+              options={TENDER_MODE_OPTIONS}
+              value={mode}
+              onChange={setMode}
+              accessibilityPrefix="Customer pays"
+            />
+          </View>
         )}
 
         {edit ? (
@@ -680,7 +732,11 @@ export default function PosTenderScreen() {
           <>
             <TextInput
               style={styles.nameInput}
-              placeholder="Customer name (optional)"
+              placeholder={
+                isPayLater
+                  ? "Customer name or table (recommended)"
+                  : "Customer name (optional)"
+              }
               placeholderTextColor={colors.textTertiary}
               value={customerName}
               onChangeText={setCustomerName}
@@ -705,12 +761,47 @@ export default function PosTenderScreen() {
           </>
         )}
 
-        {isAlreadySettled ? null : (
+        {isPayLater && (
+          <View style={styles.payLaterCard} accessibilityLabel="Pay later">
+            <View style={styles.payLaterHeader}>
+              <Icon name="clock" size={20} color={colors.warning} strokeWidth={2} />
+              <Text style={styles.payLaterTitle}>
+                Unpaid order · {formatPeso(amountDue)}
+              </Text>
+            </View>
+            <Text style={styles.payLaterText}>
+              The order goes to the kitchen now and is saved as{" "}
+              <Text style={styles.payLaterStrong}>Unpaid</Text>. Nothing is collected yet.
+            </Text>
+            <Text style={styles.payLaterText}>
+              When the customer pays, open the order from{" "}
+              <Text style={styles.payLaterStrong}>Orders</Text> and tap{" "}
+              <Text style={styles.payLaterStrong}>Collect</Text> to enter the cash received
+              and the change.
+            </Text>
+          </View>
+        )}
+
+        {isAlreadySettled || isPayLater ? null : (
         <>
         <Text style={styles.sectionTitle}>
           {isRefund ? "Refund via" : "Payment method"}
         </Text>
-        {methods.length === 0 ? (
+        {methods.length === 0 && isLoadingMethods ? (
+          <Text style={styles.loadingMethods}>Loading payment methods…</Text>
+        ) : methods.length === 0 && methodsError ? (
+          // A failed read is not "none enabled": offline with no saved copy,
+          // the fix is a connection (pay later still works), not Store Setup.
+          <EmptyState
+            message={
+              isNetworkFailure(methodsError)
+                ? "No internet, and this device has not saved the payment methods yet. Connect once to save them — or take this sale as Pay later."
+                : `Could not load payment methods. ${methodsError}`
+            }
+            actionLabel="Try again"
+            onAction={() => void refetchMethods()}
+          />
+        ) : methods.length === 0 ? (
           <EmptyState message="No payment methods are enabled for this order type. Add one in Store Setup." />
         ) : (
           <View style={styles.methodRow}>
@@ -822,15 +913,7 @@ export default function PosTenderScreen() {
           <LoadingState surface="card" message="Completing sale..." />
         ) : (
           <SwipeToComplete
-            label={
-              isAlreadySettled
-                ? "Swipe to save the changes"
-                : isRefund
-                  ? `Swipe to refund  ${formatPeso(amountDue)}`
-                  : edit
-                    ? `Swipe to save and collect  ${formatPeso(amountDue)}`
-                    : `Swipe to complete  ${formatPeso(amountDue)}`
-            }
+            label={tenderSwipeLabel({ mode: isPayLater ? "later" : "now", edit: editIntent, amountDue })}
             blockedReason={blockedReason}
             disabled={blockedReason !== undefined}
             onComplete={edit ? handleSaveEdit : handleComplete}
@@ -857,7 +940,26 @@ const styles = StyleSheet.create({
   body: { padding: spacing.xl, paddingTop: 60, gap: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
   editMeta: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
+  discounts: { gap: spacing.xs, marginTop: spacing.xs },
+  discountRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
+  discountLabel: { ...typography.caption, color: colors.textSecondary, flexShrink: 1 },
+  discountAmount: { ...typography.caption, color: colors.success, fontWeight: "700" },
   total: { fontSize: 40, fontWeight: "800", color: colors.textPrimary },
+  modeBlock: { marginTop: spacing.md },
+  payLaterCard: {
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  payLaterHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  payLaterTitle: { ...typography.heading, color: colors.textPrimary },
+  payLaterText: { ...typography.body, color: colors.textPrimary },
+  payLaterStrong: { fontWeight: "800" },
+  loadingMethods: { ...typography.body, color: colors.textSecondary, marginTop: spacing.sm },
   sectionTitle: { ...typography.eyebrow, color: colors.textSecondary, marginTop: spacing.lg },
   section: { marginTop: spacing.sm },
   nameInput: {

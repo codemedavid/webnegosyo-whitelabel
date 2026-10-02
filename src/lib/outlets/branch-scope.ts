@@ -50,6 +50,16 @@ function trimmed(value: string | null | undefined): string {
 }
 
 /**
+ * Superadmins and platform staff act for the platform across a whole store,
+ * never inside one branch. Staff management is NOT implied: that stays with
+ * `canManageBranchStaff` / `canManageStaff`, which only a superadmin or owner
+ * passes.
+ */
+function isPlatformAccount(user: BranchScopedUser): boolean {
+  return user.role === 'superadmin' || user.role === 'platform_staff'
+}
+
+/**
  * The branch an account is confined to, if any.
  *
  * Owners and superadmins are never confined: they are the accounts the
@@ -58,7 +68,7 @@ function trimmed(value: string | null | undefined): string {
  * account rather than a restricted one.
  */
 export function resolveBranchScope(user: BranchScopedUser): BranchScope {
-  if (user.role === 'superadmin' || user.is_owner) return { kind: 'all' }
+  if (isPlatformAccount(user) || user.is_owner) return { kind: 'all' }
 
   const outletId = trimmed(user.outlet_id)
   if (outletId === '') return { kind: 'all' }
@@ -173,7 +183,7 @@ export function canManageBranchMenu(user: BranchScopedUser, outletId: string): b
   const target = trimmed(outletId)
   if (target === '') return false
 
-  if (user.role === 'superadmin') return true
+  if (isPlatformAccount(user)) return true
   if (user.role !== 'admin') return false
 
   const scope = resolveBranchScope(user)
@@ -202,7 +212,7 @@ export function canViewBranchDirectory(user: BranchScopedUser): boolean {
  * account must not be store-wide for reads and branch-locked for writes.
  */
 function isStoreWideAccount(user: BranchScopedUser): boolean {
-  if (user.role === 'superadmin' || user.is_owner) return true
+  if (isPlatformAccount(user) || user.is_owner) return true
   if (user.role !== 'admin') return false
 
   return trimmed(user.outlet_id) === ''

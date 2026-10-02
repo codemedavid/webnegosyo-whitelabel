@@ -22,6 +22,7 @@ import {
   type CoachCustomerInput,
   type CoachProductInput,
   type CoachFeatureFlags,
+  type CoachOfferIdeaInput,
 } from "../lib/growth-coach";
 import {
   computeScaleTarget,
@@ -40,6 +41,8 @@ interface GrowthCoachCardProps {
   customers?: CoachCustomerInput;
   products?: CoachProductInput[];
   features?: CoachFeatureFlags;
+  /** The Offer ideas card's drafts, so the plan can point at real, one-tap offers. */
+  offerIdeas?: readonly CoachOfferIdeaInput[];
   /** Prefill from the Scale planner target so the two stay consistent. */
   initialTarget?: number;
 }
@@ -70,6 +73,7 @@ export function GrowthCoachCard({
   customers,
   products,
   features,
+  offerIdeas,
   initialTarget,
 }: GrowthCoachCardProps) {
   const isDemo = useAuthStore((s) => s.isDemo);
@@ -98,6 +102,7 @@ export function GrowthCoachCard({
       customers,
       products,
       features,
+      offerIdeas,
     });
     void ask(facts);
   };

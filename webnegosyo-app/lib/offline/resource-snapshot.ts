@@ -7,20 +7,31 @@
  * so the 10-second focus refetch costs no disk writes while nothing moves),
  * and an unreachable read answers from that copy instead of erroring.
  *
- * The online path is untouched — the server is always asked first, and the
- * snapshot is consulted only after it has failed to answer. A read that has
- * never succeeded on this device still fails, which is right: there is no
- * menu to sell from and the register must say so, not sell nothing at all.
+ * The server is asked first whenever the device may be online, and the
+ * snapshot answers only when it fails — or, when a snapshot exists, when it
+ * has not answered within `SNAPSHOT_DEADLINE_MS` (a shop on Wi-Fi with no
+ * internet behind it, or a token refresh retrying for half a minute, would
+ * otherwise hold the register on a spinner). A late answer is still saved.
+ * While the device is KNOWN to be offline the snapshot answers at once; the
+ * reconnect refresh (`use-offline-pack.ts`) brings the live copy back.
+ *
+ * A read that has never succeeded on this device still goes to the server and
+ * fails, which is right: there is no menu to sell from and the register must
+ * say so, not sell nothing at all. `offline-pack.ts` saves every register read
+ * up front, so that is only true of a device that has never been online.
  *
  * Keyed by the cache key it stands in for, tenant included, so a device that
  * signs into another store never sells the previous store's menu.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { reportOnline, reportOutcome } from "./connectivity";
+import { isOffline, reportOnline, reportOutcome } from "./connectivity";
 import { isNetworkFailure } from "./network-error";
 
 export const RESOURCE_SNAPSHOT_PREFIX = "offline_res_v1:";
+
+/** How long a read may take before a saved copy answers in its place. */
+export const SNAPSHOT_DEADLINE_MS = 6_000;
 
 interface StoredSnapshot<T> {
   savedAt: number;
@@ -34,15 +45,21 @@ export function resourceSnapshotKey(queryKey: readonly unknown[]): string {
   return RESOURCE_SNAPSHOT_PREFIX + queryKey.map((part) => String(part)).join(":");
 }
 
-async function persistSnapshot<T>(storageKey: string, value: T, now: number): Promise<void> {
-  let serialized: string;
-  let fingerprint: string;
+function serialize<T>(value: T, now: number): { fingerprint: string; serialized: string } | null {
   try {
-    fingerprint = JSON.stringify({ value });
-    serialized = JSON.stringify({ savedAt: now, value } satisfies StoredSnapshot<T>);
+    return {
+      fingerprint: JSON.stringify({ value }),
+      serialized: JSON.stringify({ savedAt: now, value } satisfies StoredSnapshot<T>),
+    };
   } catch {
-    return;
+    return null;
   }
+}
+
+async function persistSnapshot<T>(storageKey: string, value: T, now: number): Promise<void> {
+  const encoded = serialize(value, now);
+  if (encoded === null) return;
+  const { fingerprint, serialized } = encoded;
   if (lastWritten.get(storageKey) === fingerprint) return;
   lastWritten.set(storageKey, fingerprint);
   try {
@@ -53,6 +70,20 @@ async function persistSnapshot<T>(storageKey: string, value: T, now: number): Pr
     lastWritten.delete(storageKey);
     console.warn("[offline] Could not save a resource snapshot:", error);
   }
+}
+
+/**
+ * Write a snapshot now and resolve once it is on disk.
+ *
+ * For the offline download (`offline-pack.ts`), which must not claim a copy it
+ * does not have: unlike the read path it rejects on a failed write, and it
+ * always rewrites so the saved time moves forward even when nothing changed.
+ */
+export async function saveResourceSnapshot<T>(storageKey: string, value: T, now: number): Promise<void> {
+  const encoded = serialize(value, now);
+  if (encoded === null) throw new Error("This data cannot be saved on the device.");
+  await AsyncStorage.setItem(storageKey, encoded.serialized);
+  lastWritten.set(storageKey, encoded.fingerprint);
 }
 
 export async function readResourceSnapshot<T>(storageKey: string): Promise<StoredSnapshot<T> | null> {
@@ -71,7 +102,11 @@ export async function readResourceSnapshot<T>(storageKey: string): Promise<Store
 
 export interface SnapshotDeps {
   now?: () => number;
+  /** Override `SNAPSHOT_DEADLINE_MS` (tests). */
+  deadlineMs?: number;
 }
+
+const TIMED_OUT = Symbol("timed-out");
 
 /**
  * Run `fetcher`; on success remember the answer, on network failure answer from the
@@ -84,17 +119,47 @@ export async function withOfflineSnapshot<T>(
   deps: SnapshotDeps = {}
 ): Promise<T> {
   const now = deps.now ?? Date.now;
+  const deadlineMs = deps.deadlineMs ?? SNAPSHOT_DEADLINE_MS;
+
+  // Known offline: do not make the cashier wait out a request that cannot land.
+  if (isOffline()) {
+    const snapshot = await readResourceSnapshot<T>(storageKey);
+    if (snapshot !== null) return snapshot.value;
+  }
+
+  const work = fetcher().then(
+    (value) => {
+      reportOnline(now());
+      void persistSnapshot(storageKey, value, now());
+      return value;
+    },
+    (error: unknown) => {
+      reportOutcome(error, now());
+      throw error;
+    }
+  );
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), deadlineMs);
+  });
+
   try {
-    const value = await fetcher();
-    reportOnline(now());
-    void persistSnapshot(storageKey, value, now());
-    return value;
+    const first = await Promise.race([work, deadline]);
+    if (first !== TIMED_OUT) return first;
+    const snapshot = await readResourceSnapshot<T>(storageKey);
+    if (snapshot === null) return await work;
+    // The abandoned read still saves its answer if it lands; its failure is
+    // already reported and must not surface as an unhandled rejection.
+    work.catch(() => undefined);
+    return snapshot.value;
   } catch (error) {
-    reportOutcome(error, now());
     if (!isNetworkFailure(error)) throw error;
     const snapshot = await readResourceSnapshot<T>(storageKey);
     if (snapshot === null) throw error;
     return snapshot.value;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
