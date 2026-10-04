@@ -20,6 +20,7 @@ import { createLoyaltySmsDeliveryApi, type DeliveryTransportDeps } from "./sms-d
 import { createLoyaltySmsTransport } from "./sms-transport";
 import { createSmsDeliveryJournal } from "./sms-journal";
 import { createLoyaltySmsWorker } from "./sms-worker";
+import { resolveGatewayNative, type SmsGatewayNative } from "./sms-gateway";
 
 type Scope = { tenantId: string; actorId: string };
 
@@ -56,6 +57,7 @@ export function createDeliveryWorker(
   enrollment: DeviceEnrollment,
   canSend: () => boolean,
   onRevoked: () => void,
+  { allowPrompt = true }: { allowPrompt?: boolean } = {},
 ) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional Android module is resolved only when mounting a worker
   const { SmsSenderModule } = require("../../modules/sms-sender") as typeof import("../../modules/sms-sender");
@@ -68,11 +70,19 @@ export function createDeliveryWorker(
     platform: Platform.OS,
     native: SmsSenderModule as SmsNativeClient | null,
     permissions: androidSmsPermissions,
-  });
+  }, { allowPrompt });
   const journal = createSmsDeliveryJournal(AsyncStorage, {
     tenantId: scope.tenantId,
     actorId: scope.actorId,
     deviceId: enrollment.deviceId,
   });
   return createLoyaltySmsWorker({ api, transport, journal, canSend, now: () => Date.now() });
+}
+
+/** The installed binary's SMS gateway service, or null (iOS, or an older APK). */
+export function smsGatewayNative(): SmsGatewayNative | null {
+  if (Platform.OS !== "android") return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional Android module is resolved only when asked for
+  const { SmsSenderModule } = require("../../modules/sms-sender") as typeof import("../../modules/sms-sender");
+  return resolveGatewayNative(SmsSenderModule);
 }

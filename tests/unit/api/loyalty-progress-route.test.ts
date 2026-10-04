@@ -16,12 +16,16 @@ import { POST } from '@/app/api/loyalty/progress/route'
 import { NextRequest } from 'next/server'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getPhoneLoyaltyProgress } from '@/lib/loyalty/progress-lookup'
+import { readWalletOtpRequired } from '@/lib/loyalty/store-settings'
 
 jest.mock('@/lib/loyalty/progress-lookup', () => ({ getPhoneLoyaltyProgress: jest.fn() }))
 jest.mock('@/lib/rate-limit', () => ({
   checkRateLimit: jest.fn(() => ({ allowed: true })),
   getClientIP: jest.fn(() => '10.0.0.1'),
 }))
+jest.mock('server-only', () => ({}))
+jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}) }))
+jest.mock('@/lib/loyalty/store-settings', () => ({ readWalletOtpRequired: jest.fn() }))
 
 const TENANT = '11111111-1111-4111-8111-111111111111'
 const card = { earnedOnOrder: false, programName: 'Coffee Club', earnMode: 'stamp' as const, balance: 5, threshold: 8, rewardsAvailable: 0, rewardLabel: '₱100 off' }
@@ -37,6 +41,7 @@ const request = (body: unknown) =>
 beforeEach(() => {
   jest.clearAllMocks()
   jest.mocked(checkRateLimit).mockReturnValue({ allowed: true } as ReturnType<typeof checkRateLimit>)
+  jest.mocked(readWalletOtpRequired).mockResolvedValue(false)
   jest.mocked(getPhoneLoyaltyProgress).mockResolvedValue({ ok: true, progress: { offer, card } })
 })
 
@@ -81,4 +86,21 @@ it('limits how many numbers one address may ask about', async () => {
 it('reports a failed read instead of an empty card', async () => {
   jest.mocked(getPhoneLoyaltyProgress).mockResolvedValue({ ok: false, error: 'unavailable' })
   expect((await POST(request({ tenantId: TENANT, phone: '09171234567' }))).status).toBe(503)
+})
+
+describe('stores that require a verified number', () => {
+  it('shows no card to a typed number, without reading the balance', async () => {
+    jest.mocked(readWalletOtpRequired).mockResolvedValue(true)
+    const response = await POST(request({ tenantId: TENANT, phone: '09171234567' }))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true, offer: null, card: null })
+    expect(getPhoneLoyaltyProgress).not.toHaveBeenCalled()
+  })
+
+  it('hides the card when the setting cannot be read', async () => {
+    jest.mocked(readWalletOtpRequired).mockRejectedValue(new Error('down'))
+    const response = await POST(request({ tenantId: TENANT, phone: '09171234567' }))
+    expect(await response.json()).toEqual({ success: true, offer: null, card: null })
+    expect(getPhoneLoyaltyProgress).not.toHaveBeenCalled()
+  })
 })

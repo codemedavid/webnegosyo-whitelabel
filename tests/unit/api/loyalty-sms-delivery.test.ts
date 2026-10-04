@@ -144,8 +144,11 @@ describe('authorize', () => {
     mockRpc.mockResolvedValue({ data: grant(), error: null })
     const response = await call('authorize', { ...base, jobId, leaseToken })
     expect(response.status).toBe(200)
+    // The SMS text rides with the grant; with no readable store name it falls
+    // back to the generic wording rather than refusing the send.
     expect(await response.json()).toEqual({ grant: {
       jobId, leaseToken, phone: '+639171234567', code: '012345', expiresAt: '2026-09-09T12:05:00+00:00',
+      message: '012345 is your reward code. It expires in 5 minutes. Never share it with anyone.',
     } })
     expect(mockRpc).toHaveBeenCalledWith('authorize_loyalty_sms_dispatch', { ...identity, p_job_id: jobId, p_lease_token: leaseToken })
   })

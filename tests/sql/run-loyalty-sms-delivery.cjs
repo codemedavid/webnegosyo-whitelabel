@@ -16,6 +16,7 @@ async function main() {
       create function auth.uid() returns uuid language sql as $$ select null::uuid $$;
       create table tenants(id uuid primary key); create table outlets(id uuid primary key);
       create table customers(id uuid primary key);
+      create table tenant_secrets(tenant_id uuid primary key);
       create table app_users(user_id uuid,tenant_id uuid,role text,is_owner boolean,permissions text[],outlet_id uuid);
       create function set_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new; end $$;
       insert into tenants values('${tenant}'); insert into auth.users values('${actor}');
@@ -25,7 +26,7 @@ async function main() {
       '20260906170000_loyalty_pos_settlement.sql','20260907120000_loyalty_quote_immutability.sql',
       '20260908120000_loyalty_verified_claims.sql','20260908130000_loyalty_challenge_issuance.sql',
       '20260909120000_loyalty_sms_delivery.sql','20260909130000_loyalty_sms_device_management.sql',
-      '20260910140000_loyalty_sms_ack_authorization.sql']) {
+      '20260910140000_loyalty_sms_ack_authorization.sql','20261004120000_loyalty_sms_gateway.sql']) {
       const file=path.resolve(__dirname,'../../supabase/migrations',name)
       if(existsSync(file)) await db.exec(readFileSync(file,'utf8'))
     }

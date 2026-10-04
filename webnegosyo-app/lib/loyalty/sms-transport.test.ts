@@ -25,3 +25,18 @@ test("permission prompts happen during preparation, never after a dispatch grant
   await transport.send("+639171234567", "code", () => true);
   expect(native.sendSms).toHaveBeenCalledWith("+639171234567", "code", null);
 });
+
+test("a headless gateway never prompts: no screen can show the dialog", async () => {
+  const permissions = {
+    check: jest.fn().mockResolvedValue(false),
+    request: jest.fn().mockResolvedValue("granted"),
+  };
+  const transport = createLoyaltySmsTransport(
+    { platform: "android", permissions, native: { sendSms: jest.fn() } },
+    { allowPrompt: false },
+  );
+  expect(await transport.prepare()).toBe(false);
+  expect(permissions.request).not.toHaveBeenCalled();
+  permissions.check.mockResolvedValue(true);
+  expect(await transport.prepare()).toBe(true);
+});

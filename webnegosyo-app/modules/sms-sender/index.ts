@@ -10,6 +10,22 @@ export interface SmsSenderNativeModule {
    * @param subscriptionId SIM to send from; null uses the device default.
    */
   sendSms(phoneNumber: string, message: string, subscriptionId: number | null): Promise<void>;
+
+  /*
+   * SMS gateway foreground service (loyalty reward codes). Absent on APKs
+   * built before the gateway shipped — resolve through `resolveGatewayNative`
+   * (lib/loyalty/sms-gateway.ts), never call these directly.
+   */
+  /** Persist the switch and start the service; it survives app close and reboot. */
+  startSmsGateway?(config: { tenantId: string; actorId: string }): Promise<void>;
+  /** Clear the switch and stop the service. Idempotent. */
+  stopSmsGateway?(): Promise<void>;
+  getSmsGatewayState?(): Promise<{ enabled: boolean; running: boolean }>;
+  /** Replace the persistent notification's text. */
+  setSmsGatewayStatus?(text: string): void;
+  isIgnoringBatteryOptimizations?(): Promise<boolean>;
+  /** Opens the system "allow background activity" prompt for this app. */
+  requestIgnoreBatteryOptimizations?(): Promise<void>;
 }
 
 /**

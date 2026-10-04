@@ -14,6 +14,7 @@ export type LoyaltySmsTransport = {
 // authorization: a permission dialog could outlive the OTP or active session.
 export function createLoyaltySmsTransport(
   options: SmsTransportOptions,
+  { allowPrompt = true }: { allowPrompt?: boolean } = {},
 ): LoyaltySmsTransport {
   const { native, permissions, platform, subscriptionId = null } = options;
   const isAvailable = isSmsSupported(platform, native);
@@ -22,10 +23,10 @@ export function createLoyaltySmsTransport(
     async prepare() {
       if (!isAvailable) return false;
       try {
-        return (
-          (await permissions.check()) ||
-          (await permissions.request()) === "granted"
-        );
+        if (await permissions.check()) return true;
+        // The background gateway has no screen for a dialog; the merchant
+        // grants SEND_SMS when switching the gateway on.
+        return allowPrompt && (await permissions.request()) === "granted";
       } catch {
         return false;
       }

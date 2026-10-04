@@ -90,6 +90,24 @@ export function createLoyaltyClaimCrypto(keys: ClaimKeys) {
       if (!timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) return null
       return digest('claim-lookup', [tenant, token])
     },
+    // "I proved this number" for the public rewards page. Its own labels, so a
+    // reward-claim token can never be replayed as a wallet session or back.
+    createWalletSession(tenantId: string): { token: string; tokenHash: string } {
+      const tenant = uuid(tenantId)
+      const reference = randomBytes(32).toString('base64url')
+      const token = `ws1.${reference}.${digest('wallet-session-signature', [tenant, reference])}`
+      return { token, tokenHash: digest('wallet-session-lookup', [tenant, token]) }
+    },
+    // Signature only; the database decides whether the session is live and
+    // belongs to the number being looked up.
+    resolveWalletSession(tenantId: string, token: unknown): string | null {
+      const tenant = uuid(tenantId)
+      if (typeof token !== 'string' || token.length !== 112 || !/^ws1\.[A-Za-z0-9_-]{43}\.[a-f0-9]{64}$/.test(token)) return null
+      const [, reference, signature] = token.split('.')
+      const expected = digest('wallet-session-signature', [tenant, reference])
+      if (!timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) return null
+      return digest('wallet-session-lookup', [tenant, token])
+    },
     encryptSms(context: ChallengeContext, payload: SmsPayload): string {
       validatePhone(payload.phone)
       validateCode(payload.code)

@@ -321,3 +321,29 @@ test("failure to persist a successful send leaves uncertainty, not a repeatable 
   );
   expect(deps.transport.send).toHaveBeenCalledTimes(1);
 });
+
+describe("message text", () => {
+  const branded = "012345 is your Cafe reward code. It expires in 5 minutes. Never share it with anyone.";
+
+  test("sends the server's store-branded text when the grant carries one", async () => {
+    const deps = setup();
+    deps.api.authorize.mockResolvedValue({ ...grant, message: branded });
+    expect(await createLoyaltySmsWorker(deps).runOnce()).toBe("sent");
+    expect(deps.transport.send).toHaveBeenCalledWith(grant.phone, branded, expect.any(Function));
+  });
+
+  test.each([
+    ["a message without this grant's code", "999999 is your reward code."],
+    ["an oversized message", `012345 ${"x".repeat(400)}`],
+    ["a non-string message", 42],
+  ])("falls back to the built-in text for %s", async (_label, message) => {
+    const deps = setup();
+    deps.api.authorize.mockResolvedValue({ ...grant, message });
+    expect(await createLoyaltySmsWorker(deps).runOnce()).toBe("sent");
+    expect(deps.transport.send).toHaveBeenCalledWith(
+      grant.phone,
+      "Your loyalty verification code is 012345. Do not share this code.",
+      expect.any(Function),
+    );
+  });
+});

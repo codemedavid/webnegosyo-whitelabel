@@ -7,11 +7,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { normalizePhoneE164 } from '@/lib/phone'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getLoyaltySmsFallback } from '@/lib/tenant-secrets'
 import { issueLoyaltyChallenge } from './challenge-issuer'
 import { verifyLoyaltyChallenge } from './claim-verifier'
 import { readBody, respond } from './merchant-http'
 import { getLoyaltyTrustedIp } from './public-ingress'
 import { loadLoyaltyClaimCrypto } from './server-keys'
+import { dispatchOtpViaSemaphore, loadOtpRouting, readLoyaltyStoreName } from './otp-delivery'
+import { sendSemaphoreOtp } from './semaphore'
 
 const uuid = z.string().length(36).regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   .transform(value => value.toLowerCase())
@@ -28,11 +31,15 @@ function preparation(request: NextRequest) {
   return trustedIp && crypto ? { trustedIp, crypto } : null
 }
 
+// Tenant-level and safe to say plainly: it reveals nothing about the phone or
+// the reward, only that this store has no way to send a code right now.
+const NO_SENDER = "This store can't send reward codes right now. Please ask the cashier for help."
+
 function unavailable() {
   return respond({ error: 'Loyalty claims are not available yet.' }, 503)
 }
 
-async function jsonBody(request: NextRequest) {
+export async function jsonBody(request: NextRequest) {
   if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     return respond({ error: 'A JSON request is required.' }, 415)
   }
@@ -42,7 +49,7 @@ async function jsonBody(request: NextRequest) {
 // Same floor and independent jitter for every well-formed request outcome.
 // This reduces fast-path timing differences; it is not constant-time under
 // database lock waits or outages. Edge flood controls remain a rollout task.
-async function paced(start: number, body: unknown, status: number) {
+export async function paced(start: number, body: unknown, status: number) {
   const delay = Math.max(0, 350 + randomInt(0, 101) - (performance.now() - start))
   if (delay) await new Promise<void>(resolve => setTimeout(resolve, delay))
   return respond(body, status)
@@ -56,12 +63,30 @@ export async function handlePublicClaimRequest(request: NextRequest): Promise<Ne
   const parsed = issueSchema.safeParse(raw)
   if (!parsed.success) return respond({ error: 'Invalid code request.' }, 400)
   const start = performance.now()
+  const { tenantId } = parsed.data
+  const database = createAdminClient()
+  const routing = await loadOtpRouting(tenantId, {
+    database,
+    readFallback: id => getLoyaltySmsFallback(database, id),
+  })
+  // Paced like every other well-formed outcome, so it is no cheaper to probe.
+  if (routing.sender === 'none') return paced(start, { error: NO_SENDER, reason: 'no_sender' }, 503)
   let challengeId: string = randomUUID()
   try {
     const result = await issueLoyaltyChallenge({ ...parsed.data, trustedIp: prepared.trustedIp }, {
-      crypto: prepared.crypto, database: createAdminClient(),
+      crypto: prepared.crypto, database,
     })
-    if (result.ok) challengeId = result.challengeId
+    if (result.ok) {
+      challengeId = result.challengeId
+      if (routing.sender === 'semaphore' && routing.semaphore) {
+        // Outcome is recorded in SQL; the customer's answer stays the same
+        // either way and a failed send is retried by requesting a new code.
+        await dispatchOtpViaSemaphore(
+          { tenantId, challengeId, storeName: await readLoyaltyStoreName(database, tenantId) },
+          { database, crypto: prepared.crypto, semaphore: routing.semaphore, send: sendSemaphoreOtp },
+        )
+      }
+    }
   } catch {
     // Denials, quotas, missing rewards and storage failures share one response.
     // A decoy reference never creates a challenge, profile, or delivery job.

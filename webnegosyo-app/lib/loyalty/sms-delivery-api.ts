@@ -25,7 +25,8 @@ export type DeliveryTransportDeps = {
 type DeviceIdentity = { tenantId: string; device: { deviceId: string; credential: string } };
 type JobReference = { jobId: string; leaseToken: string };
 type Lease = JobReference & { leaseExpiresAt: string };
-type Grant = JobReference & { phone: string; code: string; expiresAt: string };
+/** `message` is the server's store-branded text; older servers omit it. */
+type Grant = JobReference & { phone: string; code: string; expiresAt: string; message?: string };
 type Outcome = "sent" | "failed";
 type EnrollResult =
   | { ok: true; device: { deviceId: string; credential: string } }
@@ -110,8 +111,10 @@ function parseGrant(value: unknown): Grant {
   ) {
     throw new Error("Malformed grant");
   }
-  const { jobId, leaseToken, phone, code, expiresAt } = value;
-  return { jobId, leaseToken, phone, code, expiresAt };
+  const { jobId, leaseToken, phone, code, expiresAt, message } = value;
+  return typeof message === "string"
+    ? { jobId, leaseToken, phone, code, expiresAt, message }
+    : { jobId, leaseToken, phone, code, expiresAt };
 }
 
 function expectOk(status: number, onRevoked?: () => void): void {
@@ -168,6 +171,14 @@ const ENROLL_MESSAGES = {
   malformed: "The server answered unexpectedly. Try again.",
 } as const;
 
+// Our routes word every refusal for merchants, 5xx included ("Loyalty SMS
+// delivery is not available yet."). Calling that "could not reach the server"
+// sent an owner checking their Wi-Fi for a switch that was simply off. Only a
+// reply with no message of ours (a proxy page, a dropped connection) is an outage.
+function serverMessageOr(message: string | null): string {
+  return message && message.length <= 300 ? message : ENROLL_MESSAGES.outage;
+}
+
 /** Owner action. The credential in the result is shown to this process once. */
 export async function enrollLoyaltySmsDevice(deps: DeliveryTransportDeps, tenantId: string): Promise<EnrollResult> {
   try {
@@ -180,7 +191,7 @@ export async function enrollLoyaltySmsDevice(deps: DeliveryTransportDeps, tenant
       return { ok: false, error: ENROLL_MESSAGES.malformed };
     }
     const message = isRecord(json) && typeof json.error === "string" ? json.error : null;
-    return { ok: false, error: status >= 500 || !message ? ENROLL_MESSAGES.outage : message };
+    return { ok: false, error: serverMessageOr(message) };
   } catch (error) {
     return { ok: false, error: error instanceof Error && error.message !== "timeout" ? error.message : ENROLL_MESSAGES.outage };
   }
@@ -193,10 +204,86 @@ export async function revokeLoyaltySmsDevice(
     const { status, json } = await send(deps, "DELETE", "/api/loyalty/sms-devices", { tenantId, deviceId });
     if (status === 200) return { ok: true };
     const message = isRecord(json) && typeof json.error === "string" ? json.error : null;
-    return { ok: false, error: status >= 500 || !message ? ENROLL_MESSAGES.outage : message };
+    return { ok: false, error: serverMessageOr(message) };
   } catch (error) {
     return { ok: false, error: error instanceof Error && error.message !== "timeout" ? error.message : ENROLL_MESSAGES.outage };
   }
 }
 
 export type LoyaltySmsDeliveryApi = ReturnType<typeof createLoyaltySmsDeliveryApi>;
+
+export type LoyaltySmsSettings = {
+  gatewayOnline: boolean;
+  lastSeenAt: string | null;
+  fallback: { configured: boolean; senderName: string | null };
+  /** Customers verify their number by SMS before the rewards page shows anything. */
+  walletVerification: boolean;
+};
+
+type SettingsResult<T> = ({ ok: true } & T) | { ok: false; error: string };
+
+function parseSettings(json: unknown): LoyaltySmsSettings | null {
+  if (!isRecord(json) || typeof json.gatewayOnline !== "boolean" || !isRecord(json.fallback)) return null;
+  const { configured, senderName } = json.fallback;
+  if (typeof configured !== "boolean" || (senderName !== null && typeof senderName !== "string")) return null;
+  const lastSeenAt = typeof json.lastSeenAt === "string" ? json.lastSeenAt : null;
+  // Absent on a server older than the switch: it cannot be on there.
+  const walletVerification = json.walletVerification === true;
+  return { gatewayOnline: json.gatewayOnline, lastSeenAt, fallback: { configured, senderName }, walletVerification };
+}
+
+async function settingsCall(
+  deps: DeliveryTransportDeps,
+  body: Record<string, unknown>,
+): Promise<{ status: number; json: unknown } | { error: string }> {
+  try {
+    return await send(deps, "POST", "/api/loyalty/sms-settings", body);
+  } catch (error) {
+    return { error: error instanceof Error && error.message !== "timeout" ? error.message : ENROLL_MESSAGES.outage };
+  }
+}
+
+function refusal(_status: number, json: unknown): string {
+  return serverMessageOr(isRecord(json) && typeof json.error === "string" ? json.error : null);
+}
+
+/** Is a gateway phone online, and is a Semaphore fallback on file? */
+export async function readLoyaltySmsSettings(
+  deps: DeliveryTransportDeps, tenantId: string,
+): Promise<SettingsResult<{ settings: LoyaltySmsSettings }>> {
+  const result = await settingsCall(deps, { tenantId, action: "status" });
+  if ("error" in result) return { ok: false, error: result.error };
+  const settings = result.status === 200 ? parseSettings(result.json) : null;
+  if (settings) return { ok: true, settings };
+  return { ok: false, error: result.status === 200 ? ENROLL_MESSAGES.malformed : refusal(result.status, result.json) };
+}
+
+/** Owner action. The server checks the key with Semaphore before storing it. */
+export async function saveLoyaltySmsFallback(
+  deps: DeliveryTransportDeps, tenantId: string, fallback: { apiKey: string; senderName: string | null },
+): Promise<SettingsResult<object>> {
+  const result = await settingsCall(deps, { tenantId, action: "save_fallback", ...fallback });
+  if ("error" in result) return { ok: false, error: result.error };
+  return result.status === 200 ? { ok: true } : { ok: false, error: refusal(result.status, result.json) };
+}
+
+export async function clearLoyaltySmsFallback(
+  deps: DeliveryTransportDeps, tenantId: string,
+): Promise<SettingsResult<object>> {
+  const result = await settingsCall(deps, { tenantId, action: "clear_fallback" });
+  if ("error" in result) return { ok: false, error: result.error };
+  return result.status === 200 ? { ok: true } : { ok: false, error: refusal(result.status, result.json) };
+}
+
+/** Loyalty staff action: text a code before the public rewards page shows anything. */
+export async function setLoyaltyWalletVerification(
+  deps: DeliveryTransportDeps, tenantId: string, enabled: boolean,
+): Promise<SettingsResult<{ walletVerification: boolean }>> {
+  const result = await settingsCall(deps, { tenantId, action: "set_wallet_verification", enabled });
+  if ("error" in result) return { ok: false, error: result.error };
+  if (result.status !== 200) return { ok: false, error: refusal(result.status, result.json) };
+  const saved = isRecord(result.json) && typeof result.json.walletVerification === "boolean"
+    ? result.json.walletVerification
+    : null;
+  return saved === null ? { ok: false, error: ENROLL_MESSAGES.malformed } : { ok: true, walletVerification: saved };
+}

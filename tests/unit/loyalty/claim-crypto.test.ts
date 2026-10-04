@@ -95,3 +95,16 @@ test('IP rate-limit hashes normalize equivalent addresses without storing the ad
     expect(() => crypto.hashIp(ip)).toThrow()
   }
 })
+
+test('wallet sessions are signed per tenant and never interchangeable with reward claims', () => {
+  const crypto = createLoyaltyClaimCrypto(keys)
+  const session = crypto.createWalletSession(tenant)
+  expect(session.token).toMatch(/^ws1\.[A-Za-z0-9_-]{43}\.[a-f0-9]{64}$/)
+  expect(crypto.resolveWalletSession(tenant, session.token)).toBe(session.tokenHash)
+  expect(crypto.resolveWalletSession(challenge, session.token)).toBeNull()
+  expect(crypto.resolveWalletSession(tenant, session.token.slice(0, -1) + (session.token.endsWith('0') ? '1' : '0'))).toBeNull()
+  const claim = crypto.createClaim(tenant)
+  expect(crypto.resolveWalletSession(tenant, claim.token)).toBeNull()
+  expect(crypto.resolveClaim(tenant, session.token)).toBeNull()
+  for (const bad of [null, 42, '', 'ws1.x.y']) expect(crypto.resolveWalletSession(tenant, bad)).toBeNull()
+})

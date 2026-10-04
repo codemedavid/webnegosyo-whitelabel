@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPhoneLoyaltyProgress } from '@/lib/loyalty/progress-lookup'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { readWalletOtpRequired, type StoreSettingsClient } from '@/lib/loyalty/store-settings'
 
 /**
  * POST /api/loyalty/progress
@@ -38,6 +40,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
+  // A store that makes its rewards page text a code first must not show the
+  // same card here to anyone who types a number. Unreadable reads as "on":
+  // hiding the panel never blocks checkout.
+  if (await requiresVerifiedNumber(parsed.data.tenantId)) {
+    return NextResponse.json(
+      { success: true, offer: null, card: null },
+      { headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
+
   const result = await getPhoneLoyaltyProgress({
     tenantId: parsed.data.tenantId,
     phone: parsed.data.phone,
@@ -55,4 +67,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     { error: result.error },
     { status: result.error === 'invalid_phone' ? 400 : 503 },
   )
+}
+
+async function requiresVerifiedNumber(tenantId: string): Promise<boolean> {
+  try {
+    return await readWalletOtpRequired(createAdminClient() as unknown as StoreSettingsClient, tenantId)
+  } catch {
+    return true
+  }
 }

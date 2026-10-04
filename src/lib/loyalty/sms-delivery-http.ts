@@ -11,6 +11,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { canManageStaff, hasPermission } from '@/lib/staff-permissions'
 import { generateDeviceCredential, hashDeviceCredential } from './device-credential'
 import { authenticateMerchant, hasExactKeys, isUuid, readBody, respond, unavailable } from './merchant-http'
+import { buildLoyaltyOtpMessage } from './otp-message'
+import { readLoyaltyStoreName } from './otp-delivery'
 import { loadLoyaltyClaimCrypto } from './server-keys'
 import { authorizeLoyaltySmsDispatch } from './sms-dispatch'
 
@@ -130,13 +132,17 @@ async function claim(identity: DeviceIdentity, actorId: string): Promise<NextRes
 async function authorize(identity: DeviceIdentity, actorId: string, jobId: string, leaseToken: string): Promise<NextResponse> {
   const crypto = loadLoyaltyClaimCrypto()
   if (!crypto) return unavailable('Loyalty SMS delivery is not configured.')
+  const database = createAdminClient()
   const grant = await authorizeLoyaltySmsDispatch(
     { ...identity, actorId, jobId, leaseToken },
-    { crypto, database: createAdminClient(), now: () => Date.now() },
+    { crypto, database, now: () => Date.now() },
   )
   if (!grant.ok) return respond({ grant: null }, 200)
   const { jobId: id, leaseToken: token, phone, code, expiresAt } = grant
-  return respond({ grant: { jobId: id, leaseToken: token, phone, code, expiresAt } }, 200)
+  // Same wording as the Semaphore fallback; built here so the phone never has
+  // to know the store's name and both transports read identically.
+  const message = buildLoyaltyOtpMessage(await readLoyaltyStoreName(database, identity.tenantId), code)
+  return respond({ grant: { jobId: id, leaseToken: token, phone, code, expiresAt, message } }, 200)
 }
 
 async function acknowledge(

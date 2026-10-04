@@ -34,6 +34,7 @@ import { useOutlets } from "../../lib/use-outlets";
 import { listProducts, type Product } from "../../lib/products";
 import { getWebAppUrl } from "../../lib/web-app-url";
 import { LoyaltySmsDeviceCard } from "../../components/LoyaltySmsDeviceCard";
+import { WalletVerificationCard } from "../../components/loyalty/WalletVerificationCard";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { LoyaltyActivityPanel } from "../../components/loyalty/LoyaltyActivityPanel";
 import { LoyaltyMembersPanel } from "../../components/loyalty/LoyaltyMembersPanel";
@@ -287,6 +288,7 @@ export default function LoyaltyScreen() {
           <Text style={styles.createLabel}>＋ Create a reward card</Text>
         </TouchableOpacity>
 
+        <WalletVerificationCard />
         <LoyaltySmsDeviceCard />
         {tenantSlug ? <TouchableOpacity accessibilityRole="link" onPress={() => void Linking.openURL(`${getWebAppUrl()}/${tenantSlug}/loyalty`)}><Text style={styles.link}>See your customers’ rewards page ↗</Text></TouchableOpacity> : null}
         {tenantSlug ? <TouchableOpacity accessibilityRole="link" onPress={() => void Linking.openURL(`${getWebAppUrl()}/${tenantSlug}/admin/loyalty`)}><Text style={styles.link}>Manage reward sale syncing on the web ↗</Text></TouchableOpacity> : null}

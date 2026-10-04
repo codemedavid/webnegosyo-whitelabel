@@ -13,13 +13,15 @@ import { useState } from 'react'
 import { LoyaltyActivityPanel } from './loyalty-activity-panel'
 import { LoyaltyMembersPanel } from './loyalty-members-panel'
 import { LoyaltyProgramsManagement } from './loyalty-programs-management'
+import { LoyaltyWalletVerificationSetting } from './loyalty-wallet-verification-setting'
 
-type Section = 'members' | 'programs' | 'activity'
+type Section = 'members' | 'programs' | 'activity' | 'settings'
 
 const TABS: readonly { label: string; value: Section }[] = [
   { label: 'Members', value: 'members' },
   { label: 'Activity', value: 'activity' },
   { label: 'Programmes', value: 'programs' },
+  { label: 'Settings', value: 'settings' },
 ]
 
 export function LoyaltyWorkspace({
@@ -66,6 +68,7 @@ export function LoyaltyWorkspace({
       <div hidden={section !== 'programs'}>
         <LoyaltyProgramsManagement tenantId={tenantId} tenantSlug={tenantSlug} />
       </div>
+      {section === 'settings' ? <LoyaltyWalletVerificationSetting key={tenantId} tenantId={tenantId} /> : null}
     </div>
   )
 }

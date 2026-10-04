@@ -6,7 +6,15 @@ import { POST as verifyCode } from '@/app/api/loyalty/claims/verify/route'
 import { createLoyaltyClaimCrypto } from '@/lib/loyalty/claim-crypto'
 
 const mockRpc = jest.fn()
-jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ rpc: (...args: unknown[]) => mockRpc(...args) }) }))
+// A gateway phone is online in these tests, so issuance queues for it; sender
+// routing (offline, Semaphore, no sender) is covered in public-claims-routing.
+const ONLINE = { data: { ok: true, gatewayOnline: true, lastSeenAt: null }, error: null }
+jest.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
+    rpc: (name: string, ...args: unknown[]) =>
+      name === 'loyalty_sms_sender_status' ? Promise.resolve(ONLINE) : mockRpc(name, ...args),
+  }),
+}))
 const tenantId = 'ABCDEF11-1111-4111-8111-111111111111'
 const entitlementId = 'ABCDEF22-2222-4222-8222-222222222222'
 const challengeId = 'abcdef33-3333-4333-8333-333333333333'
