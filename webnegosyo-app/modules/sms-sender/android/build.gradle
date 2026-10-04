@@ -16,3 +16,10 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // HeadlessJsTaskService hosts the SMS gateway's JS task. expo-modules-core
+  // keeps react-android as an implementation detail, so declare it here (as
+  // expo-font and expo-updates do).
+  implementation 'com.facebook.react:react-android'
+}

@@ -157,3 +157,54 @@ export function mergeTenantSecrets<T extends object>(
 ): T & TenantSecrets {
   return { ...tenant, ...(secrets ?? EMPTY_TENANT_SECRETS) }
 }
+
+/**
+ * The store's own Semaphore account, used to send loyalty reward codes when
+ * none of its gateway phones is online. Deliberately NOT in
+ * `TENANT_SECRET_KEYS`: those are overlaid onto tenant objects that travel
+ * through many code paths, and this key only ever needs to reach the one
+ * server module that sends a code.
+ */
+export interface LoyaltySmsFallback {
+  apiKey: string
+  senderName: string | null
+}
+
+/** `null` = not configured (no row, or no key). A read error is thrown. */
+export async function getLoyaltySmsFallback(
+  client: TenantSecretsClient,
+  tenantId: string,
+): Promise<LoyaltySmsFallback | null> {
+  const { data, error } = await client
+    .from('tenant_secrets')
+    .select('semaphore_api_key, semaphore_sender_name')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Failed to read the SMS fallback: ${error.message}`)
+  }
+  const row = data as Partial<TenantSecretsRow> | null
+  if (!row?.semaphore_api_key) return null
+  return { apiKey: row.semaphore_api_key, senderName: row.semaphore_sender_name ?? null }
+}
+
+/** Save the fallback, or pass `null` to remove it. Both columns move together. */
+export async function setLoyaltySmsFallback(
+  client: TenantSecretsClient,
+  tenantId: string,
+  value: LoyaltySmsFallback | null,
+): Promise<void> {
+  const { error } = await client.from('tenant_secrets').upsert(
+    {
+      tenant_id: tenantId,
+      semaphore_api_key: value?.apiKey ?? null,
+      semaphore_sender_name: value?.senderName ?? null,
+    },
+    { onConflict: 'tenant_id' },
+  )
+
+  if (error) {
+    throw new Error(`Failed to save the SMS fallback: ${error.message}`)
+  }
+}

@@ -7,7 +7,18 @@ type DispatchGrant = JobReference & {
   phone: string;
   code: string;
   expiresAt: string;
+  /** Store-branded text from the server; used only if it carries this code. */
+  message?: unknown;
 };
+const MAX_MESSAGE_LENGTH = 320;
+
+function messageFor(grant: DispatchGrant): string {
+  const { message, code } = grant;
+  if (typeof message === "string" && message.length <= MAX_MESSAGE_LENGTH && message.includes(code)) {
+    return message;
+  }
+  return `Your loyalty verification code is ${code}. Do not share this code.`;
+}
 type Dependencies = {
   api: {
     claim(): Promise<Lease | null>;
@@ -142,7 +153,7 @@ export function createLoyaltySmsWorker({
         try {
           await transport.send(
             grant.phone,
-            `Your loyalty verification code is ${grant.code}. Do not share this code.`,
+            messageFor(grant),
             () => canSend() && validGrant(grant, job, now()),
           );
         } catch {

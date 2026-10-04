@@ -14,7 +14,6 @@ import { GlobalKitchenAutoPrint } from "../../components/GlobalKitchenAutoPrint"
 import { GlobalReceiptAutoPrint } from "../../components/GlobalReceiptAutoPrint";
 import { PrinterWarmUp } from "../../components/PrinterWarmUp";
 import { OfflineSalesSync } from "../../components/OfflineSalesSync";
-import { GlobalLoyaltySmsDelivery } from "../../components/GlobalLoyaltySmsDelivery";
 import { ImpersonationBanner } from "../../components/ImpersonationBanner";
 import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
@@ -80,8 +79,6 @@ export default function MainLayout() {
       <PrinterWarmUp />
       {/* Watches the connection and replays counter sales taken offline. */}
       <OfflineSalesSync />
-      {/* Delivers loyalty OTPs from an enrolled Android handset; gated, Android-only. */}
-      <GlobalLoyaltySmsDelivery />
       {/* Renders only while a superadmin is viewing another store. */}
       <ImpersonationBanner />
       {/* Renders only when the visible orders are one branch's, not the store's. */}

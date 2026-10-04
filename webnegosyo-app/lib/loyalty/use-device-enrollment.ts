@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { deviceCredentialStore } from "./sms-delivery-runtime";
 import { subscribeDeviceEnrollment, type DeviceEnrollment } from "./device-credential-store";
 
-/** Both the card and foreground worker observe the same durable enrollment. */
+/** The SMS gateway card observes the durable enrollment the background task reads. */
 export function useDeviceEnrollment(tenantId: string | null, actorId: string | null, enabled: boolean, refresh?: string) {
   const [value, setValue] = useState<{ scope: string; enrollment: DeviceEnrollment | null } | null>(null);
   const scope = tenantId && actorId ? `${tenantId}.${actorId}` : null;

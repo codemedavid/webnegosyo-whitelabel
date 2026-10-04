@@ -19,6 +19,9 @@
       "environment": "production",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_LOYALTY_SMS_DELIVERY_ENABLED": "true"
       }
     }
   },

@@ -5511,6 +5511,8 @@ export type Database = {
           lalamove_secret_key: string | null
           loyverse_access_token: string | null
           messenger_page_access_token: string | null
+          semaphore_api_key: string | null
+          semaphore_sender_name: string | null
           tenant_id: string
           updated_at: string
         }
@@ -5520,6 +5522,8 @@ export type Database = {
           lalamove_secret_key?: string | null
           loyverse_access_token?: string | null
           messenger_page_access_token?: string | null
+          semaphore_api_key?: string | null
+          semaphore_sender_name?: string | null
           tenant_id: string
           updated_at?: string
         }
@@ -5529,6 +5533,8 @@ export type Database = {
           lalamove_secret_key?: string | null
           loyverse_access_token?: string | null
           messenger_page_access_token?: string | null
+          semaphore_api_key?: string | null
+          semaphore_sender_name?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -5665,6 +5671,7 @@ export type Database = {
           created_at: string
           customer_hub_enabled: boolean
           delivery_min_fee: number | null
+          free_delivery_min_order: number | null
           delivery_price_per_km: number | null
           delivery_radius_km: number | null
           distance_delivery_enabled: boolean
@@ -5719,6 +5726,7 @@ export type Database = {
           footer_youtube_name: string | null
           footer_youtube_url: string | null
           header_blur: boolean
+          header_cart_style: string
           header_color: string | null
           header_font_color: string | null
           header_height: string
@@ -5944,6 +5952,7 @@ export type Database = {
           created_at?: string
           customer_hub_enabled?: boolean
           delivery_min_fee?: number | null
+          free_delivery_min_order?: number | null
           delivery_price_per_km?: number | null
           delivery_radius_km?: number | null
           distance_delivery_enabled?: boolean
@@ -5998,6 +6007,7 @@ export type Database = {
           footer_youtube_name?: string | null
           footer_youtube_url?: string | null
           header_blur?: boolean
+          header_cart_style?: string
           header_color?: string | null
           header_font_color?: string | null
           header_height?: string
@@ -6223,6 +6233,7 @@ export type Database = {
           created_at?: string
           customer_hub_enabled?: boolean
           delivery_min_fee?: number | null
+          free_delivery_min_order?: number | null
           delivery_price_per_km?: number | null
           delivery_radius_km?: number | null
           distance_delivery_enabled?: boolean
@@ -6277,6 +6288,7 @@ export type Database = {
           footer_youtube_name?: string | null
           footer_youtube_url?: string | null
           header_blur?: boolean
+          header_cart_style?: string
           header_color?: string | null
           header_font_color?: string | null
           header_height?: string
