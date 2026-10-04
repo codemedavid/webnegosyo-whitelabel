@@ -138,6 +138,34 @@ describe('stores that text a code before showing rewards', () => {
   expect(window.sessionStorage.getItem('loyalty-wallet-session:tenant')).toBeNull()
  })
 
+ it('a rate-limited resend says how long to wait and holds the resend button for that long', async () => {
+  const rateLimited = {ok:false,status:429,json:async()=>({error:'Too many codes requested for this number. Please wait 7 minutes and try again.',reason:'rate_limited',retryAfterSeconds:412})}
+  global.fetch = jest.fn()
+   .mockResolvedValueOnce(verifyFirst)
+   .mockResolvedValueOnce({ok:true,json:async()=>({accepted:true,challengeId:'wallet-challenge',expiresInSeconds:300})})
+   .mockResolvedValueOnce(rateLimited)
+  const start = Date.now()
+  const clock = jest.spyOn(Date,'now').mockReturnValue(start)
+  render(<LoyaltyWalletPage tenantId="tenant" tenantSlug="shop" storeName="Coffee shop" />)
+  fireEvent.change(screen.getByLabelText('Mobile number'),{target:{value:'09171234567'}})
+  fireEvent.click(screen.getByRole('button',{name:'Check my rewards'}))
+  await screen.findByLabelText('SMS code')
+  clock.mockReturnValue(start + 61000)
+  fireEvent.click(await screen.findByRole('button',{name:'Resend code'}))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/wait 7 minutes/i)
+  expect(await screen.findByRole('button',{name:/Resend in 4\d\ds/})).toBeDisabled()
+  clock.mockRestore()
+ })
+
+ it('tells the customer only numbers with stamps get a text', async () => {
+  global.fetch = jest.fn().mockResolvedValueOnce(verifyFirst)
+   .mockResolvedValueOnce({ok:true,json:async()=>({accepted:true,challengeId:'wallet-challenge',expiresInSeconds:300})})
+  render(<LoyaltyWalletPage tenantId="tenant" tenantSlug="shop" storeName="Coffee shop" />)
+  fireEvent.change(screen.getByLabelText('Mobile number'),{target:{value:'09171234567'}})
+  fireEvent.click(screen.getByRole('button',{name:'Check my rewards'}))
+  expect(await screen.findByText(/only numbers that have collected stamps/i)).toBeInTheDocument()
+ })
+
  it('says so plainly when the store cannot text a code', async () => {
   global.fetch = jest.fn().mockResolvedValueOnce(verifyFirst)
    .mockResolvedValueOnce({ok:false,status:503,json:async()=>({error:"This store can't text verification codes right now. Please ask the cashier for help.",reason:'no_sender'})})

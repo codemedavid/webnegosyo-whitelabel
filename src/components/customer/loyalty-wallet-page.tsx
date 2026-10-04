@@ -12,9 +12,17 @@ import { cardSteps } from '@/lib/loyalty/card-progress'
 import { forgetWalletSession, readStoredWalletSession, storeWalletSession } from '@/lib/loyalty/wallet-session-storage'
 import { WalletVerifyStep } from '@/components/customer/loyalty-wallet-verify'
 
+type RequestError = Error & { reason?: string; retryAfterSeconds?: number }
+
 /** The server's machine-readable reason (e.g. `verification_required`), if any. */
 function reasonOf(error: unknown): string | undefined {
-  return error instanceof Error ? (error as Error & { reason?: string }).reason : undefined
+  return error instanceof Error ? (error as RequestError).reason : undefined
+}
+
+/** Seconds the server asked us to wait before sending another code, if any. */
+function retryAfterOf(error: unknown): number | undefined {
+  const seconds = error instanceof Error ? (error as RequestError).retryAfterSeconds : undefined
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 ? seconds : undefined
 }
 
 async function post(path: string, body: unknown) {
@@ -32,6 +40,7 @@ async function post(path: string, body: unknown) {
     if (!response.ok)
       throw Object.assign(new Error(data.error || 'Could not complete this request.'), {
         reason: typeof data.reason === 'string' ? data.reason : undefined,
+        retryAfterSeconds: typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : undefined,
       })
     return data
   } finally {
@@ -171,6 +180,12 @@ function WalletSession({
       try {
         await sendWalletCode(current)
       } catch (e) {
+        // Rate limited: keep the code already sent usable, and hold the resend
+        // button for as long as the server will refuse a new one.
+        const retryAfter = reasonOf(e) === 'rate_limited' ? retryAfterOf(e) : undefined
+        if (retryAfter && current === generation.current) {
+          setWalletChallenge(previous => previous && { ...previous, resend: Date.now() + retryAfter * 1000 })
+        }
         // The store switched verification off in the meantime: just show it.
         if (reasonOf(e) !== 'not_required') throw e
         const result = await fetchWallet(null)

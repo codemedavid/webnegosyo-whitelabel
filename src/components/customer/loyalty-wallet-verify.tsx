@@ -45,6 +45,7 @@ export function WalletVerifyStep({
       {challenge ? (
         <p className={muted}>
           If {phone} has rewards here, a 6-digit code is on its way by SMS. Codes expire after five minutes.
+          Only numbers that have collected stamps at this store get a text.
         </p>
       ) : (
         <p className={muted}>
