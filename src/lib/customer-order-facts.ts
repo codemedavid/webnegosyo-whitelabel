@@ -59,7 +59,9 @@ export interface RankedCustomerItem {
   quantity: number
 }
 
-const POS_SETTLED = new Set(['paid', 'verified', 'settled'])
+/** Payment states that mean a counter sale was paid. Exported for the dashboard's one "completed" rule. */
+export const POS_SETTLED_STATUSES: ReadonlySet<string> = new Set(['paid', 'verified', 'settled'])
+const POS_SETTLED = POS_SETTLED_STATUSES
 /**
  * The statuses that mean an online order was handed over. Exported because the
  * loyalty claim window closes on exactly this set — one list, so an order can
