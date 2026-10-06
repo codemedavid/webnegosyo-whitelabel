@@ -332,7 +332,7 @@ export async function recordStockMovementWith(
       ? await readBranchOnHand(supabase, tenantId, validated.inventory_item_id, outletId)
       : item.current_qty
 
-  // Throws on a cross-dimension unit rather than inventing a conversion.
+  // Throws on a unit that cannot convert (pieces against weight or volume).
   const quantityDelta = resolveMovementDelta({
     reason: validated.reason,
     quantity: validated.quantity,

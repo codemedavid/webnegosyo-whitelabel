@@ -100,6 +100,14 @@ describe('estimateRecipeCost', () => {
     expect(cost).toBeCloseTo(10, 5)
   })
 
+  it('costs grams of a syrup stocked in litres at 1 g per ml', () => {
+    // 45 g = 0.045 L × ₱300/L = ₱13.50
+    const LITRE: InventoryUnitRow = { ...KILO, id: 'l', name: 'Litre', abbreviation: 'L', dimension: 'volume' }
+    const SYRUP: InventoryItem = { ...FLOUR, id: 'syrup', name: 'Syrup', stock_unit_id: 'l', unit_cost: 300 }
+    const lines = [line({ inventory_item_id: 'syrup', quantity: '45', unit_id: 'g' })]
+    expect(estimateRecipeCost(lines, [SYRUP], [GRAM, LITRE])).toBeCloseTo(13.5, 5)
+  })
+
   it('ignores lines whose ingredient or unit is unknown', () => {
     const lines = [line({ inventory_item_id: 'ghost', quantity: '5', unit_id: 'g' })]
     expect(estimateRecipeCost(lines, [FLOUR], [GRAM, KILO])).toBe(0)

@@ -275,8 +275,8 @@ async function depleteClaimedOrder(
       continue
     }
 
-    // Cross-dimension units throw; one bad recipe line must not sink the whole
-    // order's depletion, so it is skipped and reported instead.
+    // Pieces against weight/volume throw; one bad recipe line must not sink
+    // the whole order's depletion, so it is skipped and reported instead.
     let quantityDelta: number
     try {
       quantityDelta = resolveMovementDelta({

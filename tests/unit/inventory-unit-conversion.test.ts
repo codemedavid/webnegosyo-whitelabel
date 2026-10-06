@@ -1,4 +1,5 @@
 import {
+  canConvertUnits,
   convertQuantity,
   convertUnitCost,
   toBaseQuantity,
@@ -52,9 +53,23 @@ describe('convertQuantity', () => {
     expect(convertQuantity(0, kilogram, gram)).toBe(0)
   })
 
-  test('throws when converting across dimensions', () => {
-    expect(() => convertQuantity(1, gram, milliliter)).toThrow(/dimension/i)
+  // Restocked in litres, used in grams: a café's syrups and milk are bought by
+  // the litre and measured by the gram. Water density (1 g = 1 ml) bridges them.
+  test('litres to grams bridges weight and volume at 1 g per ml', () => {
+    expect(convertQuantity(2, liter, gram)).toBe(2000)
+  })
+
+  test('grams to litres bridges weight and volume at 1 g per ml', () => {
+    expect(convertQuantity(45, gram, liter)).toBeCloseTo(0.045, 10)
+  })
+
+  test('kilograms to millilitres bridges weight and volume', () => {
+    expect(convertQuantity(1.5, kilogram, milliliter)).toBe(1500)
+  })
+
+  test('throws when converting pieces to or from weight or volume', () => {
     expect(() => convertQuantity(1, piece, gram)).toThrow(/dimension/i)
+    expect(() => convertQuantity(1, milliliter, piece)).toThrow(/dimension/i)
   })
 
   test('throws on non-finite quantity', () => {
@@ -101,9 +116,19 @@ describe('convertUnitCost', () => {
     expect(convertUnitCost(perGram, gram, kilogram)).toBeCloseTo(120, 10)
   })
 
-  test('throws when converting across dimensions', () => {
-    expect(() => convertUnitCost(1, gram, milliliter)).toThrow(/dimension/i)
+  test('a price per litre becomes a price per gram at 1 g per ml', () => {
+    expect(convertUnitCost(300, liter, gram)).toBeCloseTo(0.3, 10)
+  })
+
+  test('throws when converting a price to or from pieces', () => {
     expect(() => convertUnitCost(1, piece, gram)).toThrow(/dimension/i)
+    expect(() => convertUnitCost(1, milliliter, piece)).toThrow(/dimension/i)
+  })
+
+  test('preserves total value across the weight/volume bridge', () => {
+    const quantityInStockUnit = convertQuantity(2, liter, gram)
+    const costInStockUnit = convertUnitCost(150, liter, gram)
+    expect(quantityInStockUnit * costInStockUnit).toBeCloseTo(300, 8)
   })
 
   test('throws on a non-finite price', () => {
@@ -116,5 +141,22 @@ describe('convertUnitCost', () => {
     const quantityInStockUnit = convertQuantity(2, kilogram, gram)
     const costInStockUnit = convertUnitCost(120, kilogram, gram)
     expect(quantityInStockUnit * costInStockUnit).toBeCloseTo(240, 8)
+  })
+})
+
+describe('canConvertUnits', () => {
+  test('same dimension converts', () => {
+    expect(canConvertUnits(kilogram, gram)).toBe(true)
+  })
+
+  test('weight and volume convert both ways', () => {
+    expect(canConvertUnits(gram, liter)).toBe(true)
+    expect(canConvertUnits(milliliter, kilogram)).toBe(true)
+  })
+
+  test('pieces convert only to pieces', () => {
+    expect(canConvertUnits(piece, piece)).toBe(true)
+    expect(canConvertUnits(piece, gram)).toBe(false)
+    expect(canConvertUnits(milliliter, piece)).toBe(false)
   })
 })
