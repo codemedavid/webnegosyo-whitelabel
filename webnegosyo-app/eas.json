@@ -12,7 +12,10 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      }
     },
     "production-apk": {
       "extends": "production",
@@ -21,7 +24,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_LOYALTY_SMS_DELIVERY_ENABLED": "true"
+        "EXPO_PUBLIC_LOYALTY_SMS_DELIVERY_ENABLED": "true",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },

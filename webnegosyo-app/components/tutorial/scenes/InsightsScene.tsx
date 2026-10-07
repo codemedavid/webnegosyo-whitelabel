@@ -130,7 +130,7 @@ function CustomersScene({ phase, tried, onTried }: SceneProps) {
   const [tab, setTab] = useState<"guests" | "campaigns">("guests");
   const [isComposing, setIsComposing] = useState(false);
   return (
-    <SceneFrame activeTab="customer-hub">
+    <SceneFrame activeTab="reports">
       <ScreenHeader title="Customers" subtitle={`${MOCK_GUESTS.length} guests`} actions={<IconButton icon="export" label="Export" onPress={() => {}} />}>
         <SegmentedControl options={[{ label: `Guests ${MOCK_GUESTS.length}`, value: "guests" }, { label: "Campaigns 0", value: "campaigns" }]} value={tab} onChange={setTab} accessibilityPrefix="Show" />
       </ScreenHeader>

@@ -5,11 +5,14 @@
 
 import type { Category, MenuItem } from '@/types/database'
 
-export interface MenuItemGroup {
+/** Grouping reads only the category; a lean list row groups as well as a full dish. */
+export type GroupableMenuItem = Pick<MenuItem, 'category_id'>
+
+export interface MenuItemGroup<T extends GroupableMenuItem = MenuItem> {
   /** The category id, or `OTHER_GROUP_KEY` for dishes whose category is gone. */
   key: string
   name: string
-  items: MenuItem[]
+  items: T[]
 }
 
 export const OTHER_GROUP_KEY = '__other__'
@@ -19,10 +22,10 @@ export const OTHER_GROUP_KEY = '__other__'
  * order within a group. A dish pointing at a missing category is listed under
  * "Other" at the end — never dropped, or the owner could not find it to fix it.
  */
-export function groupMenuItemsByCategory(
-  items: readonly MenuItem[],
+export function groupMenuItemsByCategory<T extends GroupableMenuItem>(
+  items: readonly T[],
   categories: readonly Category[],
-): MenuItemGroup[] {
+): MenuItemGroup<T>[] {
   const sortedCategories = [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
   const knownIds = new Set(sortedCategories.map((c) => c.id))
 

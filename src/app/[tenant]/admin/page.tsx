@@ -1,236 +1,164 @@
 import { Suspense } from 'react'
-import Link from 'next/link'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { UtensilsCrossed, FolderTree, TrendingUp, DollarSign, ShoppingBag, Clock } from 'lucide-react'
-import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
-import { getMenuItemsByTenant } from '@/lib/admin-service'
-import { getOrderStats } from '@/lib/orders-service'
-import { getTenantSupabaseOrderStats } from '@/lib/tenant-order-queue'
-import {
-  resolveOrderBackend,
-  hasTenantSupabaseOrderCredentials,
-} from '@/lib/order-backend'
-import type { OrderStats } from '@/lib/order-stats'
-import { Button } from '@/components/ui/button'
-import { DashboardSkeleton } from '@/components/admin/dashboard-skeleton'
-import { ConvexDashboardStats } from '@/components/admin/convex-dashboard-stats'
+import { getCachedTenantBySlug } from '@/lib/cache'
+import { verifyTenantAdmin } from '@/lib/admin-service'
+import { hasPermission } from '@/lib/staff-permissions'
+import { resolveBranchScope } from '@/lib/outlets/branch-scope'
+import { parseDashboardRange, type DashboardRange } from '@/lib/dashboard/periods'
+import { loadAdminDashboard, type AdminDashboardData } from '@/lib/dashboard/load-admin-dashboard'
+import { readLiveOrderStats } from '@/lib/dashboard/live-orders'
+import { AnalyticsDashboardSkeleton } from '@/components/admin/dashboard/analytics-dashboard-skeleton'
+import { BestSellersCard } from '@/components/admin/dashboard/best-sellers-card'
+import { BusiestHoursCard } from '@/components/admin/dashboard/busiest-hours-card'
+import { buildGrowthActions } from '@/components/admin/dashboard/dashboard-copy'
+import { DashboardHeader } from '@/components/admin/dashboard/dashboard-header'
+import { buildMetricTiles } from '@/components/admin/dashboard/dashboard-metrics'
+import { DashboardNotes } from '@/components/admin/dashboard/dashboard-notes'
+import { DashboardToolbar } from '@/components/admin/dashboard/dashboard-toolbar'
+import { LiveOrdersStrip } from '@/components/admin/dashboard/live-orders-strip'
+import { MetricsPanel } from '@/components/admin/dashboard/metrics-panel'
+import { TodoCard } from '@/components/admin/dashboard/todo-card'
+import { WhoIsBuyingCard } from '@/components/admin/dashboard/who-is-buying-card'
 import type { Tenant } from '@/types/database'
 
-const EMPTY_ORDER_STATS: OrderStats = {
-  todayOrders: 0,
-  todayRevenue: 0,
-  pendingOrders: 0,
-  confirmedOrders: 0,
-  preparingOrders: 0,
-  readyOrders: 0,
+interface AdminDashboardProps {
+  params: Promise<{ tenant: string }>
+  searchParams: Promise<{ range?: string | string[] }>
 }
 
-async function DashboardContent({
-  tenantSlug,
-  tenant,
-}: {
-  tenantSlug: string
-  tenant: Tenant
-}) {
-  const tenantId = tenant.id
-  const backend = resolveOrderBackend(tenant)
-  const convexUrl = backend === 'convex' ? tenant.convex_deployment_url : null
-  const ordersHref = `/${tenantSlug}/admin/orders`
+const UPDATED_AT = new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' })
 
-  // Fetch menu/category data in both paths; only fetch Supabase order stats when Convex is not configured.
-  const [menuItems, categories] = await Promise.all([
-    getMenuItemsByTenant(tenantId),
-    getCachedCategoriesByTenant(tenantId),
-  ])
-
-  const availableItems = menuItems.filter((item) => item.is_available).length
-
-  // If tenant uses Convex, render the live Convex-powered stats client component.
-  if (convexUrl) {
-    return (
-      <ConvexDashboardStats
-        convexUrl={convexUrl}
-        tenantSlug={tenantSlug}
-        menuItemsCount={menuItems.length}
-        availableItemsCount={availableItems}
-        categoriesCount={categories.length}
-      />
-    )
-  }
-
-  // Tenants on their own Supabase project read the same figures from that
-  // project; everyone else reads the shared platform database.
-  const loadOrderStats =
-    backend === 'supabase' && hasTenantSupabaseOrderCredentials(tenant)
-      ? getTenantSupabaseOrderStats(tenant)
-      : getOrderStats(tenantId)
-
-  const orderStats = await loadOrderStats.catch(() => EMPTY_ORDER_STATS)
-
-  const stats = [
-    {
-      title: 'Total Menu Items',
-      value: menuItems.length,
-      description: `${availableItems} available`,
-      icon: UtensilsCrossed,
-      color: 'text-blue-600',
-      href: null as string | null,
-    },
-    {
-      title: 'Categories',
-      value: categories.length,
-      description: 'Active categories',
-      icon: FolderTree,
-      color: 'text-green-600',
-      href: null as string | null,
-    },
-    {
-      title: "Today's Orders",
-      value: orderStats.todayOrders,
-      description: `${orderStats.pendingOrders} pending`,
-      icon: ShoppingBag,
-      color: 'text-purple-600',
-      href: ordersHref,
-    },
-    {
-      title: "Today's Revenue",
-      value: `₱${orderStats.todayRevenue.toFixed(2)}`,
-      description: 'Total sales today',
-      icon: DollarSign,
-      color: 'text-red-600',
-      href: ordersHref,
-    },
-  ]
-
+function ErrorState({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon
-          const card = (
-            <Card className={stat.href ? 'transition-colors hover:bg-muted/40 cursor-pointer' : undefined}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                <Icon className={`h-4 w-4 ${stat.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground">{stat.description}</p>
-              </CardContent>
-            </Card>
-          )
-          return stat.href ? (
-            <Link
-              key={stat.title}
-              href={stat.href}
-              className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
-            >
-              {card}
-            </Link>
-          ) : (
-            <div key={stat.title}>{card}</div>
-          )
-        })}
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Get started with common tasks</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <Link href={`/${tenantSlug}/admin/menu/new`}>
-              <Button variant="outline" className="w-full justify-start">
-                <UtensilsCrossed className="mr-2 h-4 w-4" />
-                Add Menu Item
-              </Button>
-            </Link>
-            <Link href={`/${tenantSlug}/admin/categories`}>
-              <Button variant="outline" className="w-full justify-start">
-                <FolderTree className="mr-2 h-4 w-4" />
-                Manage Categories
-              </Button>
-            </Link>
-            <Link href={ordersHref}>
-              <Button variant="outline" className="w-full justify-start">
-                <ShoppingBag className="mr-2 h-4 w-4" />
-                View Orders
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Link
-          href={ordersHref}
-          className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
-        >
-          <Card className="transition-colors hover:bg-muted/40 cursor-pointer">
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Order status overview</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-yellow-600" />
-                  <span className="text-sm">Pending</span>
-                </div>
-                <span className="font-semibold">{orderStats.pendingOrders}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm">Confirmed</span>
-                </div>
-                <span className="font-semibold">{orderStats.confirmedOrders}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <UtensilsCrossed className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm">Preparing</span>
-                </div>
-                <span className="font-semibold">{orderStats.preparingOrders}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ShoppingBag className="h-4 w-4 text-green-600" />
-                  <span className="text-sm">Ready</span>
-                </div>
-                <span className="font-semibold">{orderStats.readyOrders}</span>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
+    <div className="rounded-2xl border border-destructive/30 bg-white p-6 text-center">
+      <p className="font-bold">{title}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
     </div>
   )
 }
 
-export default async function AdminDashboard({
-  params,
+/** The cards under the key metrics; each appears only when the account may see its data. */
+function DashboardCards({ data, tenantSlug }: { data: AdminDashboardData; tenantSlug: string }) {
+  const { growth, overview } = data
+  const actions = growth
+    ? buildGrowthActions({
+        actions: growth.actions,
+        loyalty: growth.loyalty,
+        capture: growth.capture,
+        hasLoyaltyProgram: growth.hasLoyaltyProgram,
+        isBranchView: growth.isBranchView,
+        hrefs: { customers: `/${tenantSlug}/admin/customers`, loyalty: `/${tenantSlug}/admin/loyalty` },
+      })
+    : []
+
+  return (
+    <>
+      {growth && (
+        <div className="grid gap-5 lg:grid-cols-5">
+          <TodoCard actions={actions} reachable={growth.reachable} className="lg:col-span-3" />
+          <WhoIsBuyingCard current={growth.customers.current} className="lg:col-span-2" />
+        </div>
+      )}
+      {overview && (
+        <div className="grid gap-5 lg:grid-cols-5">
+          <BestSellersCard items={overview.topItems} className="lg:col-span-2" />
+          <BusiestHoursCard hours={overview.hours} busiestHour={overview.busiestHour} className="lg:col-span-3" />
+        </div>
+      )}
+    </>
+  )
+}
+
+async function DashboardContent({
+  tenant,
+  tenantSlug,
+  range,
 }: {
-  params: Promise<{ tenant: string }>
+  tenant: Tenant
+  tenantSlug: string
+  range: DashboardRange
 }) {
-  const { tenant: tenantSlug } = await params
-
-  const tenantData = await getCachedTenantBySlug(tenantSlug)
-
-  if (!tenantData) {
-    return <div>Tenant not found</div>
+  let userRole: Awaited<ReturnType<typeof verifyTenantAdmin>>['userRole']
+  try {
+    ;({ userRole } = await verifyTenantAdmin(tenant.id, 'view'))
+  } catch {
+    return <ErrorState title="You don't have access to this dashboard." detail="Ask the store owner for access." />
   }
 
-  const tenant: Tenant = tenantData
+  const canSeeSales = hasPermission(userRole, 'analytics')
+  const canSeeCustomers = hasPermission(userRole, 'customers')
+  // The strip reads the order queue and links to /orders; without the grant the
+  // read is refused and the link bounces, so the strip is left out entirely
+  // rather than claiming the orders "couldn't be read".
+  const canSeeOrders = hasPermission(userRole, 'orders')
+  const scope = resolveBranchScope(userRole)
+  const basePath = `/${tenantSlug}/admin`
+
+  const [liveStats, data] = await Promise.all([
+    canSeeOrders ? readLiveOrderStats(tenant) : Promise.resolve(null),
+    canSeeSales || canSeeCustomers
+      ? loadAdminDashboard(tenant.id, {
+          range,
+          outletId: scope.kind === 'branch' ? scope.outletId : null,
+          includeOverview: canSeeSales,
+          includeGrowth: canSeeCustomers,
+        })
+      : Promise.resolve(null),
+  ])
+
+  const liveStrip = canSeeOrders ? <LiveOrdersStrip stats={liveStats} ordersHref={`${basePath}/orders`} /> : null
+  if (!data) {
+    return (
+      <div className="space-y-6">
+        {liveStrip}
+        <p className="rounded-2xl border border-dashed border-border bg-white/60 px-5 py-8 text-center text-sm text-muted-foreground">
+          Sales and customer numbers are hidden for your account. Ask the store owner if you need them.
+        </p>
+      </div>
+    )
+  }
+
+  const tiles = buildMetricTiles({ customers: data.growth?.customers ?? null, overview: data.overview })
+  const labels = data.overview?.labels ?? data.growth?.customers.trend.map((row) => row.label) ?? []
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome to {tenant.name} admin panel</p>
-      </div>
+      {liveStrip}
+      <DashboardToolbar basePath={basePath} range={range} />
+      {!data.failed && <DashboardNotes notes={data.notes} />}
+      {data.failed ? (
+        <ErrorState
+          title="We couldn't load your numbers."
+          detail={data.notes[0] ?? 'This is a problem on our side, not missing data. Please refresh.'}
+        />
+      ) : (
+        <>
+          <MetricsPanel tiles={tiles} labels={labels} compareLabel={data.compareLabel} />
+          <DashboardCards data={data} tenantSlug={tenantSlug} />
+          <p className="text-right text-xs font-medium text-muted-foreground">
+            Updated {UPDATED_AT.format(new Date(data.generatedAt))} · refreshes every 2 minutes
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
 
-      <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent tenantSlug={tenantSlug} tenant={tenant} />
+export default async function AdminDashboard({ params, searchParams }: AdminDashboardProps) {
+  const [{ tenant: tenantSlug }, query] = await Promise.all([params, searchParams])
+  const tenant = await getCachedTenantBySlug(tenantSlug)
+
+  if (!tenant) {
+    return <div>Tenant not found</div>
+  }
+
+  const range = parseDashboardRange(query.range)
+
+  return (
+    <div className="space-y-6">
+      <DashboardHeader storeName={tenant.name} storefrontHref={`/${tenantSlug}/menu`} now={new Date()} />
+
+      <Suspense key={range} fallback={<AnalyticsDashboardSkeleton />}>
+        <DashboardContent tenant={tenant} tenantSlug={tenantSlug} range={range} />
       </Suspense>
     </div>
   )

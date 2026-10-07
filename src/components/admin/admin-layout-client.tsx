@@ -5,12 +5,13 @@ import { Sidebar, MobileSidebar, adminSidebarItems, type SidebarEntry } from '@/
 import { createClient } from '@/lib/supabase/client'
 import { signOutThisDevice } from '@/lib/supabase/sign-out'
 import { toast } from 'sonner'
-import type { Tenant } from '@/types/database'
+import type { AdminShellTenant } from '@/lib/admin-shell-tenant'
 import {
   filterSidebarEntriesByPermission,
   type PermissionHolder,
 } from '@/lib/staff-permissions'
-import { canViewBranchDirectory } from '@/lib/outlets/branch-scope'
+import { canViewBranchDirectory, resolveBranchScope } from '@/lib/outlets/branch-scope'
+import { AssistantLauncher } from '@/components/admin/assistant/assistant-launcher'
 import { useMemo } from 'react'
 
 /** The signed-in admin: what they may do, and which branch they run. */
@@ -19,7 +20,8 @@ type AdminCaller = PermissionHolder & { outlet_id?: string | null }
 interface AdminLayoutClientProps {
   children: React.ReactNode
   tenantSlug: string
-  tenant: Tenant
+  /** Projected by `toAdminShellTenant` — never the full row (it is serialized to the browser). */
+  tenant: AdminShellTenant
   caller?: AdminCaller
 }
 
@@ -81,10 +83,12 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
     basePath,
     onLogout: handleLogout,
     tenantName: tenant.name,
+    tenantLogoUrl: tenant.logo_url || null,
+    storefrontHref: `${basePath}/menu`,
     enableOrderManagement: tenant.enable_order_management,
     menuEngineeringEnabled: tenant.menu_engineering_enabled,
     bundlesEnabled: tenant.bundles_enabled,
-    convexConfigured: !!tenant.convex_deployment_url,
+    convexConfigured: tenant.is_convex_configured,
     inventoryEnabled: tenant.inventory_enabled,
     multiBranchEnabled: tenant.multi_branch_enabled,
     // A branch manager runs one branch; the section that lists every branch is
@@ -93,12 +97,16 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
     isBranchScopedAccount: caller ? !canViewBranchDirectory(caller) : false,
   }
 
+  // The owl is for store-wide accounts on stores a superadmin switched it on for;
+  // the API enforces the same rules, this only avoids offering a refusal.
+  const showAssistant = tenant.assistant_enabled && (!caller || resolveBranchScope(caller).kind === 'all')
+
   if (isFullBleedRoute) {
     return <>{children}</>
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="admin-shell flex min-h-screen bg-background">
       {/* Desktop sidebar — hidden on mobile via internal `hidden md:flex` */}
       <Sidebar {...sidebarProps} />
 
@@ -107,9 +115,10 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
         <MobileSidebar {...sidebarProps} />
 
         <main className="flex-1">
-          <div className="container mx-auto p-4 md:p-6">{children}</div>
+          <div className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-8 md:py-8">{children}</div>
         </main>
       </div>
+      {showAssistant ? <AssistantLauncher tenantId={tenant.id} adminBasePath={`${basePath}/admin`} /> : null}
     </div>
   )
 }

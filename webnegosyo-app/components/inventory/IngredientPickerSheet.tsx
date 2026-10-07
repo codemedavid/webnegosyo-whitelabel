@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { Modal } from "../Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, typography, spacing, radius } from "../../theme/colors";
 import {

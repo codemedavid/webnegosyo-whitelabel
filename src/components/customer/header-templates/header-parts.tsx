@@ -6,12 +6,14 @@
  * header template renders identical, bug-free pieces and only differs in layout.
  */
 
-import { Search, ShoppingCart } from 'lucide-react'
+import { useId } from 'react'
+import { Search, ShoppingBag, ShoppingCart } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 import { describeCartCount } from '@/lib/senior-mode'
 import type { BrandingColors } from '@/lib/branding-utils'
-import type { HeaderConfig, HeaderLogoShape, HeaderHeight } from '@/lib/header-templates'
+import { DEFAULT_HEADER_CONFIG } from '@/lib/header-templates'
+import type { HeaderCartStyle, HeaderConfig, HeaderLogoShape, HeaderHeight } from '@/lib/header-templates'
 import type { Tenant } from '@/types/database'
 
 /**
@@ -175,66 +177,186 @@ export function HeaderTitle({
 
 /* ------------------------------- cart ------------------------------------ */
 
-export function HeaderCartButton({
-  itemCount,
-  onClick,
-  branding,
-}: {
+const CART_SCOPE_PROPS = { 'data-branding-scope': 'storefront/header-cart' } as const
+
+interface CartStyleProps {
   itemCount: number
   onClick: () => void
   branding: BrandingColors
+  /** Id of the screen-reader count that describes the button. */
+  countId?: string
+}
+
+/**
+ * The accessible name stays "Open cart"; the count rides along as the
+ * description, because the `aria-label` hides the visible badge from screen readers.
+ */
+function CartCountDescription({ id, itemCount }: { id?: string; itemCount: number }) {
+  if (!id) return null
+  return (
+    <span id={id} className="sr-only">
+      {describeCartCount(itemCount)}
+    </span>
+  )
+}
+
+function formatCartCount(itemCount: number): string {
+  return itemCount > 99 ? '99+' : String(itemCount)
+}
+
+/** Corner badge shared by the emoji and icon styles. */
+function CornerCountBadge({ itemCount, branding, ringColor }: {
+  itemCount: number
+  branding: BrandingColors
+  ringColor?: string
 }) {
-  const isSeniorMode = useSeniorMode()
+  if (itemCount <= 0) return null
+  return (
+    <span
+      className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-bold"
+      style={{
+        backgroundColor: branding.menuCartBadgeBackground,
+        color: branding.menuCartBadgeText,
+        boxShadow: ringColor ? `0 0 0 2px ${ringColor}` : undefined,
+      }}
+    >
+      {formatCartCount(itemCount)}
+    </span>
+  )
+}
 
-  // Senior mode: a filled, labelled "Cart" button — the bare emoji was the
-  // single most-missed control for older customers.
-  if (isSeniorMode) {
-    return (
-      <button
-        type="button"
-        data-branding-scope="storefront/header-cart"
-        onClick={onClick}
-        className="flex min-h-12 flex-shrink-0 items-center gap-2 rounded-full px-4 text-base font-bold shadow-sm transition-transform active:scale-95"
-        style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
-        aria-label={`Open cart, ${describeCartCount(itemCount)}`}
-      >
-        <ShoppingCart className="h-6 w-6" aria-hidden="true" />
-        Cart
-        {itemCount > 0 && (
-          <span
-            className="flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-sm"
-            style={{ backgroundColor: branding.buttonPrimaryText, color: branding.buttonPrimary }}
-          >
-            {itemCount > 99 ? '99+' : itemCount}
-          </span>
-        )}
-      </button>
-    )
-  }
-
+/** The original 🛒 — the default, so existing stores look unchanged. */
+function EmojiCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
   return (
     <button
       type="button"
-      data-branding-scope="storefront/header-cart"
+      {...CART_SCOPE_PROPS}
       onClick={onClick}
       className="relative p-2 transition-colors hover:opacity-80"
       style={{ color: branding.textSecondary }}
       aria-label="Open cart"
+      aria-describedby={countId}
     >
+      <CartCountDescription id={countId} itemCount={itemCount} />
       <span className="text-xl">🛒</span>
+      <CornerCountBadge itemCount={itemCount} branding={branding} />
+    </button>
+  )
+}
+
+/** Bag icon in a soft round chip tinted from the header's own text colour. */
+function IconCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
+  return (
+    <button
+      type="button"
+      {...CART_SCOPE_PROPS}
+      onClick={onClick}
+      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105 active:scale-95"
+      style={{
+        color: branding.menuMainHeaderText,
+        backgroundColor: `color-mix(in srgb, ${branding.menuMainHeaderText} 10%, transparent)`,
+      }}
+      aria-label="Open cart"
+      aria-describedby={countId}
+    >
+      <CartCountDescription id={countId} itemCount={itemCount} />
+      <ShoppingBag className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+      <CornerCountBadge itemCount={itemCount} branding={branding} ringColor={branding.header} />
+    </button>
+  )
+}
+
+/** Filled brand pill that reads "Cart", with the count in an inverted chip. */
+function PillCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
+  return (
+    <button
+      type="button"
+      {...CART_SCOPE_PROPS}
+      onClick={onClick}
+      className="flex h-10 flex-shrink-0 items-center gap-2 rounded-full pl-3.5 pr-2 text-sm font-semibold shadow-sm transition-transform hover:brightness-105 active:scale-95"
+      style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
+      aria-label="Open cart"
+      aria-describedby={countId}
+    >
+      <CartCountDescription id={countId} itemCount={itemCount} />
+      <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden="true" />
+      <span className={itemCount > 0 ? '' : 'pr-1.5'}>Cart</span>
       {itemCount > 0 && (
         <span
-          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold"
-          style={{
-            backgroundColor: branding.menuCartBadgeBackground,
-            color: branding.menuCartBadgeText,
-          }}
+          className="flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold tabular-nums"
+          style={{ backgroundColor: branding.buttonPrimaryText, color: branding.buttonPrimary }}
         >
-          {itemCount > 99 ? '99+' : itemCount}
+          {formatCartCount(itemCount)}
         </span>
       )}
     </button>
   )
+}
+
+/** Hairline pill: bag icon and the running count, always visible. */
+function OutlineCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
+  return (
+    <button
+      type="button"
+      {...CART_SCOPE_PROPS}
+      onClick={onClick}
+      className="flex h-10 flex-shrink-0 items-center gap-1.5 rounded-full border-[1.5px] px-3.5 text-sm font-semibold tabular-nums transition-colors active:scale-95"
+      style={{
+        color: branding.menuMainHeaderText,
+        borderColor: `color-mix(in srgb, ${branding.menuMainHeaderText} 28%, transparent)`,
+      }}
+      aria-label="Open cart"
+      aria-describedby={countId}
+    >
+      <CartCountDescription id={countId} itemCount={itemCount} />
+      <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+      {formatCartCount(itemCount)}
+    </button>
+  )
+}
+
+const CART_STYLE_COMPONENTS: Record<HeaderCartStyle, (props: CartStyleProps) => React.ReactElement> = {
+  emoji: EmojiCart,
+  icon: IconCart,
+  pill: PillCart,
+  outline: OutlineCart,
+}
+
+/** Senior mode: a filled, labelled "Cart" button — the bare emoji was the
+ *  single most-missed control for older customers. Overrides every style. */
+function SeniorCart({ itemCount, onClick, branding }: CartStyleProps) {
+  return (
+    <button
+      type="button"
+      {...CART_SCOPE_PROPS}
+      onClick={onClick}
+      className="flex min-h-12 flex-shrink-0 items-center gap-2 rounded-full px-4 text-base font-bold shadow-sm transition-transform active:scale-95"
+      style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
+      aria-label={`Open cart, ${describeCartCount(itemCount)}`}
+    >
+      <ShoppingCart className="h-6 w-6" aria-hidden="true" />
+      Cart
+      {itemCount > 0 && (
+        <span
+          className="flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-sm"
+          style={{ backgroundColor: branding.buttonPrimaryText, color: branding.buttonPrimary }}
+        >
+          {formatCartCount(itemCount)}
+        </span>
+      )}
+    </button>
+  )
+}
+
+export function HeaderCartButton({
+  cartStyle = DEFAULT_HEADER_CONFIG.cartStyle,
+  ...props
+}: CartStyleProps & { cartStyle?: HeaderCartStyle }) {
+  const isSeniorMode = useSeniorMode()
+  const countId = useId()
+  if (isSeniorMode) return <SeniorCart {...props} />
+  const StyledCart = CART_STYLE_COMPONENTS[cartStyle] ?? EmojiCart
+  return <StyledCart {...props} countId={countId} />
 }
 
 /* ------------------------------ search ----------------------------------- */

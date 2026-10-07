@@ -1,6 +1,7 @@
 import {
   parseReceiptLayout,
   renderReceipt,
+  resolveReceiptLayout,
   type ReceiptLayout,
 } from '@/lib/receipt-layout'
 
@@ -203,5 +204,26 @@ describe('saved layouts', () => {
         blocks: [{ kind: 'deliveryAddress', label: 'x'.repeat(33) }],
       }),
     ).toBeNull()
+  })
+})
+
+describe('the presets', () => {
+  // Every store that never opened Receipt Studio prints a preset, so a block
+  // only in the palette is a block almost nobody prints: the rider got a slip
+  // with no address on it at every store but one.
+  const SAVED: unknown[] = [null, 'modern', 'classic', 'compact', 'detailed']
+
+  it.each(SAVED)('prints the delivery address exactly once (saved: %s)', (saved) => {
+    const receipt = renderReceipt(order, config, resolveReceiptLayout(saved))
+
+    expect(receipt).toContain('Address: 24 Rizal')
+    expect(receipt.split('24 Rizal')).toHaveLength(2)
+  })
+
+  it.each(SAVED)('adds nothing to an order without an address (saved: %s)', (saved) => {
+    const pickup = { ...order, orderType: 'Pickup', customerData: { landmark: 'Blue gate' } }
+    const receipt = renderReceipt(pickup, config, resolveReceiptLayout(saved))
+
+    expect(receipt).not.toContain('Address')
   })
 })

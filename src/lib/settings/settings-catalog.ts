@@ -41,6 +41,7 @@ export type SettingsIconKey =
   | 'credit-card'
   | 'truck'
   | 'receipt'
+  | 'qr-code'
   | 'message'
   | 'key'
   | 'paintbrush'
@@ -159,6 +160,7 @@ const CATALOG: readonly GroupDef[] = [
       tool('payment-methods', 'Payment methods', 'How customers pay, and whether they send proof.', 'credit-card', '/payment-methods'),
       section('delivery', 'Delivery & pickup', 'Distance-based fees, Lalamove riders and scan-to-collect.', 'truck'),
       tool('receipts', 'Receipt Studio', 'Design the printed receipt and its tracking QR.', 'receipt', '/receipt-editor'),
+      tool('qr-codes', 'QR codes', 'Print codes for your store, each branch and every table.', 'qr-code', '/qr-codes'),
     ],
   },
   {

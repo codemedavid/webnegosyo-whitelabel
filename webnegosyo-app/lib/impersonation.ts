@@ -12,6 +12,7 @@
 // the round-trip invariant testable.
 
 import { resolveOrderBackend, type OrderBackend } from "./order-backend";
+import { isCustomerHubOn } from "./customer-hub/availability";
 import type { TenantRow } from "./session-resolve";
 
 /** The slice of auth state impersonation reads and rewrites. */
@@ -50,6 +51,8 @@ export type ImpersonationPatch = {
    */
   customerHubEnabled: boolean;
   loyaltyEnabled: boolean;
+  /** The VIEWED store's Owl switch; cleared on exit. */
+  assistantEnabled: boolean;
 } & Pick<
   ImpersonationState,
   | "userId"
@@ -97,8 +100,9 @@ export function enterTenant(
     orderBackend: resolveOrderBackend(tenant),
     receiptLayout: tenant.receipt_layout ?? null,
     receiptLogoUrl: tenant.logo_url ?? null,
-    customerHubEnabled: tenant.customer_hub_enabled === true,
+    customerHubEnabled: isCustomerHubOn(tenant),
     loyaltyEnabled: tenant.loyalty_enabled === true,
+    assistantEnabled: tenant.assistant_enabled === true,
     impersonatedTenantId: tenant.id,
   };
 }
@@ -124,6 +128,7 @@ export function exitTenant(state: ImpersonationState): ImpersonationPatch {
     receiptLogoUrl: null,
     customerHubEnabled: false,
     loyaltyEnabled: false,
+    assistantEnabled: false,
     impersonatedTenantId: null,
   };
 }

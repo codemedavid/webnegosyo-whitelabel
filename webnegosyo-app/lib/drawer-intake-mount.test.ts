@@ -41,7 +41,8 @@ describe("drawer screen", () => {
   });
 
   it("confirms through the routed mutation rather than a direct backend call", () => {
-    expect(screen).toMatch(/useSafeMutation/);
+    // `useOfflineOrderMutation` wraps `useSafeMutation`; it only adds the queue.
+    expect(screen).toMatch(/useSafeMutation|useOfflineOrderMutation/);
     expect(screen).toMatch(/orders:updateOrderStatus/);
   });
 

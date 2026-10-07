@@ -74,10 +74,22 @@ export async function invalidateCache(pattern: string): Promise<void> {
   }
 
   try {
-    const keys = await redis.keys(pattern)
-    if (keys.length > 0) {
-      await redis.del(...keys)
+    // Most callers already know the exact tenant key. DEL is idempotent;
+    // enumerating the entire shared cache first adds work on every save.
+    if (!/[*?\[\\]/.test(pattern)) {
+      await redis.del(pattern)
+      return
     }
+    // SCAN yields between pages instead of blocking Redis with KEYS as the
+    // shared keyspace grows. COUNT is a hint, so also bound each DEL batch.
+    let cursor = '0'
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, { match: pattern, count: 100 })
+      for (let offset = 0; offset < keys.length; offset += 100) {
+        await redis.del(...keys.slice(offset, offset + 100))
+      }
+      cursor = String(nextCursor)
+    } while (cursor !== '0')
   } catch (error) {
     console.error('Redis cache invalidate error:', error)
   }

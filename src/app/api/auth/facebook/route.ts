@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { canManageFacebook } from '@/lib/facebook/management-access'
 import crypto from 'crypto'
 
 /**
@@ -49,13 +50,13 @@ export async function GET(request: NextRequest) {
   // Check if user is admin of this tenant
   const { data: appUserData } = await supabase
     .from('app_users')
-    .select('role, tenant_id')
+    .select('role, tenant_id, is_owner, permissions')
     .eq('user_id', user.id)
     .maybeSingle()
 
-  type AppUser = { role: string; tenant_id: string | null }
+  type AppUser = { role: string; tenant_id: string | null; is_owner?: boolean; permissions?: string[] | null }
   const appUser = appUserData as AppUser | null
-  if (!appUser || (appUser.role !== 'superadmin' && appUser.tenant_id !== tenantId)) {
+  if (!canManageFacebook(appUser, tenantId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -111,4 +112,3 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.redirect(authUrl)
 }
-

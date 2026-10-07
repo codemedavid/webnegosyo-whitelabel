@@ -15,6 +15,7 @@ import {
   createIngredient,
   updateIngredient,
   deleteIngredient,
+  previewIngredientDelete,
   type IngredientInput,
 } from '@/lib/inventory/ingredients-service'
 import {
@@ -158,11 +159,19 @@ export async function deleteIngredientAction(
   tenantSlug: string,
 ) {
   try {
-    await deleteIngredient(ingredientId, tenantId)
+    const data = await deleteIngredient(ingredientId, tenantId)
     revalidatePath(inventoryPath(tenantSlug))
-    return { success: true as const }
+    return { success: true as const, data }
   } catch (error) {
     return fail(error, 'Failed to delete ingredient')
+  }
+}
+
+export async function previewIngredientDeleteAction(ingredientId: string, tenantId: string) {
+  try {
+    return { success: true as const, data: await previewIngredientDelete(ingredientId, tenantId) }
+  } catch (error) {
+    return fail(error, 'We could not check this ingredient before deleting it')
   }
 }
 

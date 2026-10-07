@@ -29,7 +29,7 @@ const envChecks: EnvCheck[] = [
   { label: 'ImageKit URL Endpoint', envVar: 'NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT', required: true },
   { label: 'ImageKit Public Key', envVar: 'NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY', required: true },
   { label: 'ImageKit Private Key', envVar: 'IMAGEKIT_PRIVATE_KEY', required: true },
-  { label: 'Mapbox Access Token', envVar: 'NEXT_PUBLIC_MAPBOX_TOKEN', required: false },
+  { label: 'Mapbox Access Token', envVar: 'NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN', required: false },
   { label: 'OpenRouter API Key (AI Menu)', envVar: 'OPENROUTER_API_KEY', required: false },
   { label: 'Sentry DSN', envVar: 'NEXT_PUBLIC_SENTRY_DSN', required: false },
 ]

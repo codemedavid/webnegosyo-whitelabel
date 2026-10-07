@@ -500,12 +500,20 @@ async function readAlreadyRecorded(
  * reversal writes to a tenant's ledger, so a check that ran afterwards would
  * already have leaked. The reversal itself is best-effort — a stock write must
  * never make an order un-cancellable.
+ *
+ * The order must already be cancelled, read from its own backend — never taken
+ * on the caller's word. Reversing a LIVE order's stock would hide what left
+ * the shelf and burn the void claim its real cancellation needs later.
  */
 export async function restoreOrderStock(
   tenantId: string,
   orderId: string,
 ): Promise<void> {
   const { user } = await verifyTenantPermission(tenantId, 'orders')
+  const { readStoredOrderLifecycle, isCancelledOrder } = await import('@/lib/order-lifecycle-read')
+  if (!isCancelledOrder(await readStoredOrderLifecycle(tenantId, orderId))) {
+    throw new Error('Stock can only be restored for a cancelled order')
+  }
   const { reverseOrderStockBestEffort } = await import(
     '@/lib/inventory/order-stock-service'
   )

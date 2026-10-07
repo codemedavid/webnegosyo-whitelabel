@@ -204,6 +204,8 @@ export const MODERN_RECEIPT_LAYOUT: ReceiptLayout = {
     { kind: "orderDate" },
     { kind: "orderType" },
     { kind: "customerName" },
+    // Silent on an order without an address, so only delivery slips change.
+    { kind: "deliveryAddress" },
     { kind: "divider", char: "-" },
     { kind: "items" },
     { kind: "totals" },
@@ -215,7 +217,11 @@ export const MODERN_RECEIPT_LAYOUT: ReceiptLayout = {
   ],
 };
 
-/** Byte-for-byte the historic `formatReceipt` output. */
+/**
+ * Byte-for-byte the historic `formatReceipt` output, except that a delivery
+ * order now carries its address under the order details — a rider's slip
+ * without one was the bug, not the history worth keeping.
+ */
 export const CLASSIC_RECEIPT_LAYOUT: ReceiptLayout = {
   version: 1,
   theme: "classic",
@@ -225,6 +231,7 @@ export const CLASSIC_RECEIPT_LAYOUT: ReceiptLayout = {
     { kind: "storeAddress" },
     { kind: "divider", char: "=" },
     { kind: "orderMeta" },
+    { kind: "deliveryAddress" },
     { kind: "items" },
     { kind: "totals" },
     { kind: "divider", char: "=" },
@@ -240,6 +247,7 @@ export const COMPACT_RECEIPT_LAYOUT: ReceiptLayout = {
   blocks: [
     { kind: "businessName" },
     { kind: "orderMeta" },
+    { kind: "deliveryAddress" },
     { kind: "items" },
     { kind: "totals" },
     { kind: "feed" },
@@ -256,6 +264,7 @@ export const DETAILED_RECEIPT_LAYOUT: ReceiptLayout = {
     { kind: "divider", char: "=" },
     { kind: "orderMeta" },
     { kind: "contact" },
+    { kind: "deliveryAddress" },
     { kind: "items" },
     { kind: "totals" },
     { kind: "qr" },

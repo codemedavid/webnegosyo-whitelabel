@@ -146,6 +146,26 @@ describe('useVisibilityPoll', () => {
     expect(first).not.toHaveBeenCalled()
     expect(second).toHaveBeenCalledTimes(1)
   })
+
+  test('does not overlap a pending request when the ready alarm changes polling options', async () => {
+    let finish!: (value: boolean) => void
+    const poll = jest.fn(() => new Promise<boolean>(resolve => { finish = resolve }))
+    const { rerender } = renderHook(
+      ({ isPollingWhileHidden }) => useVisibilityPoll(poll, {
+        baseMs: 1000, isEnabled: true, isPollingWhileHidden,
+      }),
+      { initialProps: { isPollingWhileHidden: false } },
+    )
+
+    await advance(1000)
+    rerender({ isPollingWhileHidden: true })
+    await advance(3000)
+    expect(poll).toHaveBeenCalledTimes(1)
+
+    await act(async () => finish(true))
+    await advance(1000)
+    expect(poll).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('useVisibilityPoll while a ready alarm is armed', () => {

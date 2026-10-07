@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUserPages } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
 import { getTenantUserAccessToken } from '@/lib/facebook/page-tokens'
+import { canManageFacebook } from '@/lib/facebook/management-access'
 import type { Database } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
@@ -39,12 +40,12 @@ export async function GET(request: NextRequest) {
     // Check if user is admin of this tenant
     const { data: appUser } = await supabase
       .from('app_users')
-      .select('role, tenant_id')
+      .select('role, tenant_id, is_owner, permissions')
       .eq('user_id', user.id)
       .maybeSingle()
 
-    const typedAppUser = appUser as Pick<AppUser, 'role' | 'tenant_id'> | null
-    if (!typedAppUser || (typedAppUser.role !== 'superadmin' && typedAppUser.tenant_id !== tenantId)) {
+    const typedAppUser = appUser as Pick<AppUser, 'role' | 'tenant_id' | 'is_owner' | 'permissions'> | null
+    if (!canManageFacebook(typedAppUser, tenantId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -73,4 +74,3 @@ export async function GET(request: NextRequest) {
     )
   }
 }
-

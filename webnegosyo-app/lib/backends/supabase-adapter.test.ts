@@ -37,7 +37,7 @@ interface RecordedCall {
 
 interface TableResponse {
   data: unknown;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
 }
 
 function fakeClient(responses: Record<string, TableResponse[]>) {
@@ -56,6 +56,7 @@ function fakeClient(responses: Record<string, TableResponse[]>) {
     for (const method of [
       "select",
       "eq",
+      "is",
       "neq",
       "in",
       "gte",
@@ -1031,6 +1032,62 @@ describe("branch-scoped reads", () => {
 });
 
 /**
+ * The branch an owner is LOOKING at, sent explicitly by a screen.
+ *
+ * `getOrders` is a most-recent-N page. Read store-wide and narrowed on the
+ * phone, every branch shared the same 50 rows: on a four-branch store the
+ * quietest branch showed two orders. `viewOutletId` moves that narrowing into
+ * the query so each branch gets its own page — layered on top of the account
+ * scope, so it can only ever narrow.
+ */
+describe("viewed-branch narrowing", () => {
+  const VIEWED = "22ea061e-3f3a-4bb4-bb06-a6c077b8612b";
+
+  it("narrows getOrders to the viewed branch", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", { viewOutletId: VIEWED });
+
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", VIEWED]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+
+  it("reads the orders that name no branch for the unassigned view", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {
+      viewOutletId: "__unassigned__",
+    });
+
+    expect(opsOf(calls, "is")).toContainEqual(["outlet_id", null]);
+  });
+
+  it("ignores a viewed branch that is not a branch id", async () => {
+    // Branch ids are uuids; anything else would only ever match nothing.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", { viewOutletId: "north" });
+
+    expect(opsOf(calls, "eq").map(([column]) => column)).not.toContain("outlet_id");
+    expect(opsOf(calls, "is")).toHaveLength(0);
+  });
+
+  it("never widens a branch account past its own branch", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(
+      client,
+      TENANT,
+      "orders:getOrders",
+      { viewOutletId: VIEWED },
+      { kind: "branch", outletId: "outlet-north" }
+    );
+
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
+  });
+});
+
+/**
  * A write is addressed by id, so it never passes through the read filter that
  * now hides other branches. A stale notification, a deep link, or a screen left
  * open across a branch switch could otherwise still mutate an order the account
@@ -1792,5 +1849,59 @@ describe("runPlatformQuery — orders:getOrderPaymentsForOrders refuses a malfor
       await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [] })
     ).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("runPlatformMutation — orders:recordPayment replays", () => {
+  const PAYMENT_ID = "5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11";
+  const args = { orderId: "order-1", kind: "charge", amount: 150, paymentId: PAYMENT_ID };
+
+  it("writes the payment under the id the device minted", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ order_payments: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:recordPayment", args);
+
+    // Assert: the id is what makes a replay land on the same row.
+    expect(opsOf(calls, "insert")[0][0]).toMatchObject({ id: PAYMENT_ID, amount: 150 });
+  });
+
+  it("treats a replay of a payment that already landed as done, not as a second payment", async () => {
+    // Arrange: the first attempt reached the server but its answer was lost.
+    const { client } = fakeClient({
+      order_payments: [
+        { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } },
+        { data: { id: PAYMENT_ID }, error: null },
+      ],
+    });
+
+    // Act + Assert
+    await expect(runPlatformMutation(client, TENANT, "orders:recordPayment", args)).resolves.toBe("order-1");
+  });
+
+  it("still reports a duplicate it cannot match to this payment", async () => {
+    // Arrange: the id clashes but no row of this store and order carries it.
+    const { client } = fakeClient({
+      order_payments: [
+        { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } },
+        { data: null, error: null },
+      ],
+    });
+
+    // Act + Assert
+    await expect(runPlatformMutation(client, TENANT, "orders:recordPayment", args)).rejects.toThrow("duplicate key");
+  });
+
+  it("does not swallow a duplicate for a payment that carried no id", async () => {
+    // Arrange
+    const { client } = fakeClient({
+      order_payments: [{ data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } }],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:recordPayment", { orderId: "order-1", kind: "charge", amount: 150 })
+    ).rejects.toThrow("duplicate key");
   });
 });

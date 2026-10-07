@@ -43,6 +43,22 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* WebNegosyo house palette — the Branding Studio's language (charcoal ink,
+   warm cream canvas, coral accent, amber rail highlight), shared with the
+   merchant app's theme/colors.ts. Constants, not theme-switching tokens. */
+@theme {
+  --color-wn-ink: #1D1815;
+  --color-wn-ink-raised: #2A231E;
+  --color-wn-canvas: #EFECE6;
+  --color-wn-sand: #F7F5F0;
+  --color-wn-line: #E5E0D6;
+  --color-wn-stone: #6B655B;
+  --color-wn-coral: #E4572E;
+  --color-wn-coral-deep: #B23E1B;
+  --color-wn-coral-wash: #FBEAE3;
+  --color-wn-amber: #F59E0B;
+}
+
 :root {
   /* The admin and storefront are light-only surfaces (dark is opt-in per panel
      via the .dark class below). Without this, a dark-mode OS makes the browser
@@ -157,6 +173,61 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(1 0 0 / 30%);
   color-scheme: dark;
+}
+
+/* =========================================================================
+   Tenant admin — the WebNegosyo house style, scoped to `.admin-shell`.
+   `:root:has(.admin-shell)` carries the same tokens to the document root so
+   Radix portals (dialogs, sheets, popovers, toasts) rendered into <body>
+   inherit them too. Full-bleed studios render without the shell and keep
+   their own hard-coded palette.
+   ========================================================================= */
+.admin-shell,
+:root:has(.admin-shell) {
+  --radius: 0.75rem;
+  --background: #EFECE6;
+  --foreground: #1D1815;
+  --card: #FFFFFF;
+  --card-foreground: #1D1815;
+  --popover: #FFFFFF;
+  --popover-foreground: #1D1815;
+  --primary: #1D1815;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F2EFE9;
+  --secondary-foreground: #1D1815;
+  --muted: #F2EFE9;
+  /* #8B857B (the Studio's caption grey) is 3.5:1 on white; this clears 5.6:1. */
+  --muted-foreground: #6B655B;
+  /* Ghost-button / menu hover and the skeleton fill — dark enough to read on
+     the cream canvas as well as on white cards. */
+  --accent: #E8E3D9;
+  --accent-foreground: #1D1815;
+  --destructive: #C0392B;
+  --border: #E5E0D6;
+  --input: #DDD7CB;
+  --ring: #1D1815;
+  --chart-1: #E4572E;
+  --chart-2: #1D1815;
+  --chart-3: #0F8A5F;
+  --chart-4: #F59E0B;
+  --chart-5: #8B857B;
+  --sidebar: #1D1815;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #F59E0B;
+  --sidebar-primary-foreground: #1D1815;
+  --sidebar-accent: #2A231E;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #F59E0B;
+}
+
+.admin-shell :is(h1, h2) {
+  letter-spacing: -0.022em;
+}
+
+.admin-shell ::selection {
+  background: #FBEAE3;
+  color: #1D1815;
 }
 
 /* Chrome/Safari paint autofilled fields with an opaque light background and

@@ -56,7 +56,7 @@ function serialize<T>(value: T, now: number): { fingerprint: string; serialized:
   }
 }
 
-async function persistSnapshot<T>(storageKey: string, value: T, now: number): Promise<void> {
+export async function persistSnapshot<T>(storageKey: string, value: T, now: number): Promise<void> {
   const encoded = serialize(value, now);
   if (encoded === null) return;
   const { fingerprint, serialized } = encoded;

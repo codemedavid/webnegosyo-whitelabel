@@ -5,10 +5,9 @@ import { canViewBranchDirectory } from '@/lib/outlets/branch-scope'
 import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { buildBranchRoster } from '@/lib/outlets/branch-roster'
-import { loadBranchOrders, loadBranchStaff } from '@/lib/outlets/branch-page-data'
+import { loadBranchMenuItems, loadBranchMetrics, loadBranchStaff } from '@/lib/outlets/branch-page-data'
 import { BranchDetail } from '@/components/admin/branch-detail'
 import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
-import { getMenuItemsByTenant } from '@/lib/admin-service'
 
 export default async function AdminBranchPage({
   params,
@@ -35,16 +34,16 @@ export default async function AdminBranchPage({
     notFound()
   }
 
-  const [outlets, staff, orders, menuItems, categories, menuOverrides] = await Promise.all([
+  const [outlets, staff, metricRows, menuItems, categories, menuOverrides] = await Promise.all([
     createSupabaseOutletRepository().listByTenant(tenant.id),
     loadBranchStaff(tenant.id),
-    loadBranchOrders(tenant),
-    getMenuItemsByTenant(tenant.id),
+    loadBranchMetrics(tenant),
+    loadBranchMenuItems(tenant.id),
     getCachedCategoriesByTenant(tenant.id),
     createSupabaseOutletMenuRepository().listByOutlet(tenant.id, outletId),
   ])
 
-  const roster = buildBranchRoster({ outlets, staff, orders })
+  const roster = buildBranchRoster({ outlets, staff, metricRows })
   // Found through the roster rather than by a second query: the branch on
   // screen is then the same object the index counted staff and takings for.
   const entry = roster.branches.find((branch) => branch.outlet.id === outletId)

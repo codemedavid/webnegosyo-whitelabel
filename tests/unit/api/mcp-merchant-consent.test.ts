@@ -178,3 +178,23 @@ it('does not let restricted staff mint full merchant credentials through OAuth',
   expect(response.status).toBe(403)
   expect(mockIssueCode).not.toHaveBeenCalled()
 })
+
+// Client registration is open, so a registered redirect_uri proves nothing
+// about who controls it. Redirecting a visitor there on a malformed request,
+// before anyone has logged in, turned this endpoint into an open redirector
+// (RFC 9700 §4.11.2). Those errors are answered locally instead.
+it.each([
+  ['response_type', 'token'],
+  ['code_challenge', ''],
+  ['code_challenge_method', 'md5'],
+  ['scope', 'everything'],
+])('answers a bad %s locally instead of redirecting an unauthenticated visitor', async (param, value) => {
+  mockUser = null
+  const url = new URL(requestUrl())
+  url.searchParams.set(param, value)
+
+  const response = await GET(new Request(url.toString()))
+
+  expect(response.status).toBe(400)
+  expect(response.headers.get('location')).toBeNull()
+})

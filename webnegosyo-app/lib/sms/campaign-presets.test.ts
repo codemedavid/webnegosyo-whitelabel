@@ -12,7 +12,7 @@
  * one.
  */
 
-import { CAMPAIGN_PRESETS, buildPresetDraft } from "./campaign-presets";
+import { CAMPAIGN_PRESETS, buildPresetDraft, isCampaignPresetId } from "./campaign-presets";
 import { validateCampaignDraft, describeCampaignCost } from "./campaign-form";
 import { validateTemplate } from "./message-template";
 
@@ -111,5 +111,28 @@ describe("buildPresetDraft", () => {
     for (const preset of CAMPAIGN_PRESETS) {
       expect(buildPresetDraft(preset.id, TODAY).name.trim()).not.toBe("");
     }
+  });
+});
+
+describe("presets the Reports dashboard opens", () => {
+  it("texts regulars who have gone quieter than usual", () => {
+    expect(buildPresetDraft("slipping_regulars", TODAY).audience).toEqual({
+      minOrderCount: 2,
+      lastOrderOlderThanDays: 14,
+    });
+  });
+
+  it("invites guests who came once, after they have had a week to come back on their own", () => {
+    expect(buildPresetDraft("second_visit", TODAY).audience).toEqual({
+      maxOrderCount: 1,
+      lastOrderOlderThanDays: 7,
+    });
+  });
+
+  it("recognises only real preset ids from a link", () => {
+    expect(isCampaignPresetId("win_back")).toBe(true);
+    expect(isCampaignPresetId("second_visit")).toBe(true);
+    expect(isCampaignPresetId("drop_tables")).toBe(false);
+    expect(isCampaignPresetId(undefined)).toBe(false);
   });
 });

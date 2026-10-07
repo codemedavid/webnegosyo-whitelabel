@@ -21,9 +21,9 @@ export interface HubSection {
 export const REPORTS_SECTIONS: readonly HubSection[] = [
   // Trends hangs under Analytics (subscreen-links.ts) rather than sitting
   // beside it: it is the same sales, plotted over days.
+  // Customers are not a row here: they ARE the Reports dashboard, and the
+  // guest list and Rewards open from it (REPORTS_DOORS).
   { title: "Sales", tabs: ["analytics", "growth"] },
-  // The guest list and Rewards hang under the overview for the same reason.
-  { title: "Customers", tabs: ["customer-hub"] },
   { title: "Products", tabs: ["product-analytics", "daily-report"] },
   { title: "Branches", tabs: ["branches"] },
 ];

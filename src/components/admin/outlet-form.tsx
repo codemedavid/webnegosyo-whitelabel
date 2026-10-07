@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { MapPin } from 'lucide-react'
-import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
+import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
 import { SimpleImageUpload } from '@/components/shared/simple-image-upload'
 import {
   EMPTY_OUTLET_DRAFT,
@@ -99,11 +100,12 @@ export function OutletForm({ outlet, mapboxEnabled = true, isSaving, onCancel, o
               branch unsaveable with an error naming a constraint. Picking a
               result sets the address and both coordinates together.
             */}
-            <MapboxAddressAutocomplete
+            <AddressAutocomplete
               value={draft.address}
+              coordinates={parseLatLng(draft.latitude, draft.longitude)}
               onChange={handleAddressChange}
               placeholder="Search or pin this branch's location"
-              mapboxEnabled={mapboxEnabled}
+              mapsEnabled={mapboxEnabled}
             />
             {hasPin ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">

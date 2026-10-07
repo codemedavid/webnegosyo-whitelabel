@@ -22,6 +22,8 @@ export interface CampaignPreset {
   title: string;
   /** Who it texts, in a sentence — not what it configures. */
   description: string;
+  /** Two or three words for the goal grid's tile. */
+  tagline: string;
 }
 
 interface PresetDefinition extends CampaignPreset {
@@ -36,10 +38,15 @@ interface PresetDefinition extends CampaignPreset {
 
 /** Two weeks quiet is the point most PH quick-service guests stop being regulars. */
 const LAPSED_DAYS = 21;
+/** A regular quiet this long is drifting, not yet gone. */
+const SLIPPING_DAYS = 14;
+/** Give a first-timer a week to come back on their own before asking. */
+const SECOND_VISIT_WAIT_DAYS = 7;
 
 const DEFINITIONS: readonly PresetDefinition[] = [
   {
     id: "win_back",
+    tagline: "Quiet for 3+ weeks",
     title: "Win back lapsed guests",
     description: `Texts guests who have not ordered in ${LAPSED_DAYS} days, once every two weeks.`,
     name: "Win back lapsed guests",
@@ -52,7 +59,36 @@ const DEFINITIONS: readonly PresetDefinition[] = [
     scheduleWeekdays: [],
   },
   {
+    id: "slipping_regulars",
+    tagline: "Regulars gone quiet",
+    title: "Nudge slipping regulars",
+    description: `Texts guests with two or more orders who have been quiet for ${SLIPPING_DAYS} days.`,
+    name: "Nudge slipping regulars",
+    messageTemplate:
+      "Hi {{firstName}}, it's been a while! Your usual is waiting at {{storeName}}. See you soon?",
+    audience: { minOrderCount: 2, lastOrderOlderThanDays: SLIPPING_DAYS },
+    scheduleKind: "one_off",
+    scheduleTime: "10:00",
+    scheduleIntervalDays: null,
+    scheduleWeekdays: [],
+  },
+  {
+    id: "second_visit",
+    tagline: "Bring back first-timers",
+    title: "Invite first-timers back",
+    description: `Texts guests who have ordered once, ${SECOND_VISIT_WAIT_DAYS} days or more ago.`,
+    name: "Invite first-timers back",
+    messageTemplate:
+      "Hi {{firstName}}, thanks for trying {{storeName}}! Come back this week, we'd love to see you again.",
+    audience: { maxOrderCount: 1, lastOrderOlderThanDays: SECOND_VISIT_WAIT_DAYS },
+    scheduleKind: "one_off",
+    scheduleTime: "10:00",
+    scheduleIntervalDays: null,
+    scheduleWeekdays: [],
+  },
+  {
     id: "weekend_promo",
+    tagline: "Every Friday morning",
     title: "Weekend reminder",
     description: "Texts your regulars every Friday morning, before they make other plans.",
     name: "Weekend reminder",
@@ -66,6 +102,7 @@ const DEFINITIONS: readonly PresetDefinition[] = [
   },
   {
     id: "thank_regulars",
+    tagline: "A thank-you, once",
     title: "Thank your regulars",
     description: "A one-off thank-you to guests who have ordered three times or more.",
     name: "Thank your regulars",
@@ -80,8 +117,13 @@ const DEFINITIONS: readonly PresetDefinition[] = [
 ];
 
 export const CAMPAIGN_PRESETS: readonly CampaignPreset[] = DEFINITIONS.map(
-  ({ id, title, description }) => ({ id, title, description })
+  ({ id, title, description, tagline }) => ({ id, title, description, tagline })
 );
+
+/** True for a real preset id, so a link can never open the editor on an unknown one. */
+export function isCampaignPresetId(value: unknown): value is string {
+  return typeof value === "string" && DEFINITIONS.some((preset) => preset.id === value);
+}
 
 /**
  * Build a fresh, valid draft from a preset.

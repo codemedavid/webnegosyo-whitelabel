@@ -17,6 +17,7 @@ import {
   type PlatformOrderItemFactRow,
 } from '@/lib/customer-order-facts'
 import type { LoyaltyEarningDeps } from './apply'
+import { CONVEX_ORIGIN_KEY, convexOriginOf, type ImportTwin } from '@/lib/customers/imported-order-twins'
 import { parseLoyaltyRules } from './rules'
 import { readLoyaltyTenantFlags, type LoyaltyTenantFlags, type LoyaltyTenantRow } from './tenant-flags'
 import type { LoyaltyProgram } from './types'
@@ -104,8 +105,32 @@ export async function loadActiveLoyaltyPrograms(
   return result
 }
 
+/** The other record of an order a Convex→platform import left in both tables. */
+async function findImportTwin(
+  client: SupabaseClient,
+  tenantId: string,
+  fact: CustomerOrderFact,
+): Promise<ImportTwin | null> {
+  if (fact.backend === 'convex') {
+    const { data, error } = await client.from('orders').select('id')
+      .eq('tenant_id', tenantId).eq(`customer_data->>${CONVEX_ORIGIN_KEY}`, fact.externalOrderId)
+      .limit(1).maybeSingle()
+    if (error) throw new Error(`loyalty import twin could not be read: ${error.message}`)
+    const id = (data as { id?: string } | null)?.id
+    return id ? { ref: { backend: 'platform_supabase', externalOrderId: id }, isPrimary: true } : null
+  }
+  if (fact.backend !== 'platform_supabase') return null
+  const { data, error } = await client.from('orders').select('customer_data')
+    .eq('tenant_id', tenantId).eq('id', fact.externalOrderId).maybeSingle()
+  if (error) throw new Error(`loyalty import origin could not be read: ${error.message}`)
+  const origin = convexOriginOf((data as { customer_data?: unknown } | null)?.customer_data)
+  return origin ? { ref: { backend: 'convex', externalOrderId: origin }, isPrimary: false } : null
+}
+
 export function createSupabaseLoyaltyDeps(client: SupabaseClient): LoyaltyEarningDeps {
   return {
+    findImportTwin: (tenantId, fact) => findImportTwin(client, tenantId, fact),
+
     loadActivePrograms: (tenantId, at) => at ? loadLoyaltyProgramsAt(client, tenantId, at) : loadActiveLoyaltyPrograms(client, tenantId),
 
     async loadOrderEarns(tenantId, orderBackend, externalOrderId) {

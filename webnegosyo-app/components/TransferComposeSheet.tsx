@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
+import { Modal } from "./Modal";
 import {
   ingredientsAvailableAt,
   overDraftedItemIds,

@@ -60,7 +60,7 @@ export const SplitHeader = memo(function SplitHeader({
 
           <div className="ml-auto flex flex-shrink-0 items-center gap-2">
             {config.showCart && (
-              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
+              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} cartStyle={config.cartStyle} />
             )}
           </div>
         </div>

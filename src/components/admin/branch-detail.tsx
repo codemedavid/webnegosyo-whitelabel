@@ -21,7 +21,8 @@ import {
 import type { BranchComparisonRow } from '@/lib/outlets/branch-analytics'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
 import type { StaffOutlet } from '@/components/admin/staff/staff-fields'
-import type { Category, MenuItem, Outlet, OutletMenuOverride } from '@/types/database'
+import type { Category, Outlet, OutletMenuOverride } from '@/types/database'
+import type { BranchMenuItem } from '@/lib/outlets/branch-menu-item'
 
 interface BranchDetailProps {
   tenantId: string
@@ -36,7 +37,7 @@ interface BranchDetailProps {
   /** False when this store's takings cannot be split by branch at all. */
   hasMetrics: boolean
   /** The store-wide menu, which this branch's tab edits its answers to. */
-  menuItems: readonly MenuItem[]
+  menuItems: readonly BranchMenuItem[]
   categories: readonly Category[]
   /** This branch's existing overrides. */
   menuOverrides: readonly OutletMenuOverride[]
@@ -89,7 +90,8 @@ export function BranchDetail({
     }
     setOutlet(result.data)
     toast.success(`${result.data.name} saved`)
-    router.refresh()
+    // No router.refresh(): updateOutletAction revalidates, which already
+    // re-renders this route in the action's response.
   }
 
   const handleCopyLink = async () => {

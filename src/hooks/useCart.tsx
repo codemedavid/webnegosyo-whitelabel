@@ -13,6 +13,7 @@ import {
 } from '@/lib/cart-utils'
 import { calculateSlotBundleSubtotal } from '@/lib/bundle-pricing'
 import { fetchFreshCartItemData } from '@/lib/cart-refresh'
+import { shouldRefreshCartOnPath } from '@/lib/cart-refresh-scope'
 import { readOutletSelection } from '@/lib/outlets/outlet-selection'
 import { findPresellDateConflict, reconcilePresellLines, type PresellCalendar } from '@/lib/presell/availability'
 import { fetchPresellCalendar } from '@/lib/presell/calendar-client'
@@ -340,6 +341,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const currentTenantId = tenantIdRef.current
     const currentItems = itemsRef.current
     if (!currentTenantId || currentItems.length === 0) return
+    // Read at call time, not via usePathname: subscribing would re-render this
+    // app-wide provider (and every cart consumer) on each navigation.
+    if (!shouldRefreshCartOnPath(window.location.pathname)) return
 
     const itemIds = [...new Set(currentItems.map((item) => item.menu_item.id))]
     try {

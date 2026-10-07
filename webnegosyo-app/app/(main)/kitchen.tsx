@@ -12,6 +12,12 @@ import {
 import { FunctionReference } from "convex/server";
 import { useKeepAwakeWhileFocused } from "../../hooks/useKeepAwakeWhileFocused";
 import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
+import {
+  useOfflineOrderItems,
+  useOfflineOrderList,
+  useOfflineOrderMutation,
+} from "../../lib/offline/use-offline-orders";
+import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import {
@@ -83,15 +89,23 @@ export default function KitchenScreen() {
   const { width } = useWindowDimensions();
   const numColumns = width >= THREE_COLUMN_MIN_WIDTH ? 3 : width >= TWO_COLUMN_MIN_WIDTH ? 2 : 1;
 
-  const { data: orders, isLoading, error } = useSafeQuery<KitchenOrder[]>(getOrdersRef, {
+  const ordersResult = useSafeQuery<KitchenOrder[]>(getOrdersRef, {
     limit: ORDERS_FETCH_LIMIT,
   });
-  // Only the orders on the board — never the tenant's whole history.
-  const { data: allItems } = useSafeQuery<KitchenItemLike[]>(
+  // Tickets rung up or bumped while offline stay on the board (lib/offline/).
+  const { data: mergedOrders, isLoading, error, isOffline, savedAt } = useOfflineOrderList(ordersResult, {
+    snapshotName: "kitchen:getOrders",
+  });
+  const orders = mergedOrders as KitchenOrder[] | undefined;
+  // Only the orders on the board — never the tenant's whole history — and
+  // only those the server holds: a device-only id is not one it can look up.
+  const serverOrders = ordersResult.data;
+  const { data: serverItems } = useSafeQuery<KitchenItemLike[]>(
     getAllOrderItemsRef,
-    orders === undefined ? "skip" : { orderIds: orders.map((order) => order._id) },
+    serverOrders === undefined ? "skip" : { orderIds: serverOrders.map((order) => order._id) },
   );
-  const updateStatus = useSafeMutation(updateOrderStatusRef);
+  const allItems = useOfflineOrderItems(serverItems) as KitchenItemLike[] | undefined;
+  const updateStatus = useOfflineOrderMutation(updateOrderStatusRef);
   const setPrepTime = useSafeMutation(setPrepTimeRef);
   // A deployment without the prep-time bundle has no mutation to call, so the
   // chips are hidden rather than offered and left to throw.
@@ -244,6 +258,7 @@ export default function KitchenScreen() {
   return (
     <View style={styles.screen}>
       <Header outletName={outletName} count={tickets.length} />
+      <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
 
       {allDay.length > 0 ? (
         <View style={styles.allDay}>

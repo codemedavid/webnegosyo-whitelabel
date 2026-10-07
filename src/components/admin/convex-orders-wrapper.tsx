@@ -6,8 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ConvexOrdersTab } from "@/components/admin/convex-orders-tab";
 import type { BranchScope } from "@/lib/outlets/branch-scope";
 import { ConvexDashboardTab } from "@/components/admin/convex-dashboard-tab";
-import { ConvexAnalyticsTab } from "@/components/admin/convex-analytics-tab";
-import { ConvexTrendsTab } from "@/components/admin/convex-trends-tab";
+import dynamic from "next/dynamic";
 import { ConvexOrderSheet } from "@/components/admin/convex-order-sheet";
 import {
   ShoppingBag,
@@ -15,6 +14,26 @@ import {
   BarChart3,
   TrendingUp,
 } from "lucide-react";
+
+/**
+ * The Analytics and Trends tabs are the only charts on this screen, and they
+ * bring recharts with them. They are loaded on demand: Radix unmounts an
+ * inactive tab, so a merchant who never opens them never downloads them, and
+ * the Orders tab — the one opened every shift — is not held up by a chart lib.
+ */
+function TabLoading() {
+  return <div className="h-64 animate-pulse rounded-xl bg-muted/40" aria-busy="true" />;
+}
+
+const ConvexAnalyticsTab = dynamic(
+  () => import("@/components/admin/convex-analytics-tab").then((mod) => mod.ConvexAnalyticsTab),
+  { ssr: false, loading: TabLoading }
+);
+
+const ConvexTrendsTab = dynamic(
+  () => import("@/components/admin/convex-trends-tab").then((mod) => mod.ConvexTrendsTab),
+  { ssr: false, loading: TabLoading }
+);
 
 interface ConvexOrdersWrapperProps {
   convexUrl: string;

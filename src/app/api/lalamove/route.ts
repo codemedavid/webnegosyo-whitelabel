@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import {
@@ -22,8 +22,7 @@ import {
 } from '@/lib/lalamove-booking-claim'
 import { LalamoveBookingError } from '@/lib/lalamove-booking-error'
 import type { Database, Tenant } from '@/types/database'
-import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/permissions'
-import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
+import type { PlatformAction } from '@/lib/platform-staff/permissions'
 
 /**
  * POST /api/lalamove
@@ -105,31 +104,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     amount = String(body.amount)
   }
 
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-
-  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, LALAMOVE_OP_VERBS[op as LalamoveOp])
-
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const caller = await requireBearerStoreCaller(request, tenantId, LALAMOVE_OP_VERBS[op as LalamoveOp])
+  if (!caller.ok) return caller.response
 
   const admin = createAdminClient()
 

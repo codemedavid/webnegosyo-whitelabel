@@ -73,6 +73,18 @@ describe('useCheckout — a refused order must not be handed to the merchant', (
     expect(guard).toBeLessThan(open)
   })
 
+  it('leaves for tracking only when the Messenger popup actually opened', () => {
+    // The auto-open runs after the countdown, outside the tap's user gesture,
+    // so browsers may block it. `noopener` makes window.open always return
+    // null, which would hide the block and strand the order message.
+    const open = SOURCE.indexOf('window.open(')
+    const opened = SOURCE.indexOf('setHasOpenedMessenger(true)')
+    const effect = SOURCE.slice(open, opened)
+    expect(effect).toContain('if (!messengerWindow) return')
+    expect(effect).toContain('messengerWindow.opener = null')
+    expect(SOURCE.slice(open, open + 60)).not.toContain('noopener')
+  })
+
   it('carries the reason out of the hook so a design can show it', () => {
     expect(SOURCE).toContain('orderSaveNotice')
   })

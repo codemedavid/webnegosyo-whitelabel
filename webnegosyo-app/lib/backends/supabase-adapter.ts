@@ -33,6 +33,7 @@ import {
 import {
   buildPaymentRow,
   buildRevisionRows,
+  type OrderPaymentRow,
   type RecordPaymentArgs,
   type ReviseOrderArgs,
 } from "./order-revise";
@@ -47,6 +48,7 @@ import {
   unwrap,
   withAbortSignal,
   type PlatformClient,
+  type PlatformQueryBuilder,
 } from "./platform-client";
 import { isUuid, toUuidOrNull } from "../uuid";
 import { PartialOrderWriteError } from "../offline/network-error";
@@ -215,6 +217,27 @@ function orderWindow(args: Record<string, unknown>): { startMs: number; endMs: n
   return { startMs, endMs };
 }
 
+/** `viewOutletId` value asking for the orders that name no branch. */
+const VIEW_UNASSIGNED = "__unassigned__";
+
+/**
+ * Narrow to the branch a screen is LOOKING at (`viewOutletId`), on top of the
+ * account scope — so it can only ever narrow.
+ *
+ * `getOrders` is a most-recent-N page. Narrowed on the phone instead, every
+ * branch shared the same N rows and a quiet branch showed almost nothing.
+ * Anything that is not a branch id is ignored: the screen still filters what
+ * it draws, so ignoring it can only leave the list sparse, never wrong.
+ */
+function scopeToViewedBranch(
+  builder: PlatformQueryBuilder,
+  viewOutletId: unknown
+): PlatformQueryBuilder {
+  if (viewOutletId === VIEW_UNASSIGNED) return builder.is("outlet_id", null);
+  if (isUuid(viewOutletId)) return builder.eq("outlet_id", viewOutletId);
+  return builder;
+}
+
 async function getOrders(
   client: PlatformClient,
   tenantId: string,
@@ -228,9 +251,9 @@ async function getOrders(
   const window = orderWindow(args);
 
   const build = () => {
-    let builder = scopeToBranch(
-      client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
-      scope
+    let builder = scopeToViewedBranch(
+      scopeToBranch(client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId), scope),
+      args.viewOutletId
     );
     if (typeof args.status === "string") {
       builder = builder.eq("status", args.status);
@@ -814,8 +837,33 @@ async function recordPayment(
   args: Record<string, unknown>
 ): Promise<string> {
   const row = buildPaymentRow(tenantId, args as unknown as RecordPaymentArgs);
-  await unwrap(client.from("order_payments").insert(row));
-  return row.order_id;
+  const { error } = (await client.from("order_payments").insert(row)) as unknown as {
+    error: { message: string; code?: string } | null;
+  };
+  if (!error) return row.order_id;
+
+  // A replay of a payment whose first write landed but whose answer was lost:
+  // the device-minted id already exists. Done, as long as that row really is
+  // this store's payment for this order — any other clash is a real error.
+  if (error.code === UNIQUE_VIOLATION && row.id && (await paymentRowExists(client, row))) {
+    return row.order_id;
+  }
+  throw new Error(error.message);
+}
+
+const UNIQUE_VIOLATION = "23505";
+
+async function paymentRowExists(client: PlatformClient, row: OrderPaymentRow): Promise<boolean> {
+  const existing = await unwrap<{ id: string } | null>(
+    client
+      .from("order_payments")
+      .select("id")
+      .eq("id", row.id)
+      .eq("tenant_id", row.tenant_id)
+      .eq("order_id", row.order_id)
+      .maybeSingle()
+  );
+  return existing !== null;
 }
 
 // --- dispatch -------------------------------------------------------------

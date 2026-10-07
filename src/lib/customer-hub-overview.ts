@@ -16,6 +16,7 @@ import {
   type CustomerOverviewWindow,
   type RankedCustomerItem,
 } from '@/lib/customer-order-facts'
+import { buildCustomerDashboard, type CustomerDashboard } from '@/lib/customer-dashboard'
 import type { CustomerFactsCoverage, CustomerFactsResult } from '@/lib/queries/customer-facts'
 
 /** The windows the Hub shows, in the order it shows them. */
@@ -32,11 +33,17 @@ export interface CustomerHubOverview {
    * that is how a merchant comes to trust a number they should not.
    */
   coverage: CustomerFactsCoverage
+  /**
+   * The merchant app's Reports dashboard. Added beside the fields above rather
+   * than replacing them: app builds already in merchants' hands still read
+   * `windows` and `topItems`.
+   */
+  dashboard: CustomerDashboard
 }
 
 export function buildCustomerHubOverview(
   read: CustomerFactsResult,
-  options: { now?: Date } = {},
+  options: { now?: Date; tillComplete?: boolean } = {},
 ): CustomerHubOverview {
   const now = options.now ?? new Date()
   const facts: CustomerOrderFact[] = read.facts
@@ -48,5 +55,6 @@ export function buildCustomerHubOverview(
     // unqualified orders itself, so a cancelled sale cannot become a favourite.
     topItems: rankCustomerItems(facts, TOP_ITEM_LIMIT),
     coverage: read.coverage,
+    dashboard: buildCustomerDashboard(facts, { now, tillComplete: options.tillComplete === true }),
   }
 }

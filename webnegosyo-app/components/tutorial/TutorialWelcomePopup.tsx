@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Easing, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal } from "../Modal";
 import { router } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
 import { useAuthStore } from "../../stores/auth-store";

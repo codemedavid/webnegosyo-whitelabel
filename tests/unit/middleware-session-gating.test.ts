@@ -15,9 +15,12 @@ import { NextRequest } from 'next/server'
 const getUser = jest.fn()
 const createServerClient = jest.fn<Record<string, unknown>, unknown[]>(() => ({
   auth: { getUser },
-  from: () => ({
-    select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
-  }),
+  // `eq` chains: the admin gate reads app_users and the tenant row in parallel,
+  // and the tenant read filters twice (slug + is_active).
+  from: () => {
+    const query = { eq: () => query, maybeSingle: async () => ({ data: null, error: null }) }
+    return { select: () => query }
+  },
 }))
 const resolveTenantSlugFromRequest = jest.fn()
 

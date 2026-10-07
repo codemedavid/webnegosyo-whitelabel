@@ -54,7 +54,12 @@ import { usePosLastSaleStore } from "../../stores/pos-last-sale-store";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Icon } from "../../components/Icon";
 import { effectiveEditCart, newDiscountLines } from "../../lib/pos-edit-mode";
-import { posCustomerFields, attachmentSummary } from "../../lib/customers/pos-attachment";
+import {
+  posCustomerFields,
+  attachmentSummary,
+  offersWalkInPhone,
+  walkInPhoneProblem,
+} from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
 import { posStockRevision } from "../../lib/pos-stock-revision";
 import { freshTenderSession } from "../../lib/pos-tender-session";
@@ -129,6 +134,9 @@ export default function PosTenderScreen() {
   const serviceCharge = usePosCartStore((s) => s.serviceCharge);
   const customerName = usePosCartStore((s) => s.customerName);
   const setCustomerName = usePosCartStore((s) => s.setCustomerName);
+  const customerPhone = usePosCartStore((s) => s.customerPhone);
+  const setCustomerPhone = usePosCartStore((s) => s.setCustomerPhone);
+  const orderTypeKind = usePosCartStore((s) => s.orderTypeKind);
   const attachedCustomer = usePosCartStore((s) => s.attachedCustomer);
   const setAttachedCustomer = usePosCartStore((s) => s.setAttachedCustomer);
   const reset = usePosCartStore((s) => s.reset);
@@ -239,7 +247,17 @@ export default function PosTenderScreen() {
   // Every reason the sale cannot be completed, in the order the cashier hits
   // them. A settled edit needs no payment at all, and a pay-later sale takes
   // none now — see `pos-tender-mode.ts`.
-  const blockedReason = tenderBlockedReason({
+  // Dine-in walk-ins may leave a number so the store can reach them again.
+  // Optional, but a typed number that is not a mobile number holds the sale
+  // rather than being dropped behind the cashier's back.
+  const isPhoneOffered = offersWalkInPhone({
+    orderTypeKind,
+    attached: attachedCustomer,
+    isEditing: editContext !== null,
+  });
+  const phoneProblem = isPhoneOffered ? walkInPhoneProblem(customerPhone) : null;
+
+  const paymentBlockedReason = tenderBlockedReason({
     mode: isPayLater ? "later" : "now",
     isAlreadySettled,
     isRefund,
@@ -251,6 +269,8 @@ export default function PosTenderScreen() {
       method !== null &&
       isProofOutstanding(method, { reference, hasProof: proof !== null }),
   });
+  const blockedReason =
+    paymentBlockedReason ?? (phoneProblem ? "Fix the phone number or clear it" : undefined);
 
   /**
    * Save an edited order and settle the difference.
@@ -308,6 +328,11 @@ export default function PosTenderScreen() {
         ...serviceChargeArg(editContext.serviceCharge),
         reason: editReason.trim() || undefined,
         revisedBy: userId ?? undefined,
+        // The revision row carries its own branch, and a branch manager's RLS
+        // refuses one without it ("violates row-level security policy for
+        // table order_revisions"). The database now stamps it from the order
+        // too (20261006130000); this keeps Convex and the payment row in step.
+        outletId: outletId ?? undefined,
         editedAt: new Date().toISOString(),
         // What the edit settled on, so the order's discount rows and its total
         // stay reconcilable. Omitted entirely when the edit touched no
@@ -463,7 +488,8 @@ export default function PosTenderScreen() {
         // The attached guest's contact is what makes this sale land on their
         // profile — `buildPosOrder` has always accepted `customerContact` and
         // nothing ever passed it, so every counter sale went out anonymous.
-        ...posCustomerFields(attachedCustomer, customerName),
+        // The typed phone only counts while its box is showing (dine-in walk-in).
+        ...posCustomerFields(attachedCustomer, customerName, isPhoneOffered ? customerPhone : ""),
         cashierId: userId ?? undefined,
         // Priced from the cart as it stands at the moment of tender, not from
         // whatever was showing when the code was typed.
@@ -628,6 +654,8 @@ export default function PosTenderScreen() {
     orderTypeId,
     serviceCharge,
     customerName,
+    customerPhone,
+    isPhoneOffered,
     // Without this the callback closes over the attachment as it was when the
     // screen last rendered, so a guest picked and then immediately charged
     // would ring up against whoever was attached before them.
@@ -744,6 +772,26 @@ export default function PosTenderScreen() {
               // this editable would show the cashier a name the sale will not use.
               editable={attachedCustomer === null}
             />
+            {isPhoneOffered && (
+              <>
+                <TextInput
+                  style={[styles.nameInput, phoneProblem !== null && styles.inputInvalid]}
+                  placeholder="Phone number (optional)"
+                  placeholderTextColor={colors.textTertiary}
+                  value={customerPhone}
+                  onChangeText={setCustomerPhone}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  autoComplete="tel"
+                  accessibilityLabel="Customer phone number, optional"
+                />
+                {phoneProblem !== null && (
+                  <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+                    {phoneProblem}
+                  </Text>
+                )}
+              </>
+            )}
             <TouchableOpacity
               style={styles.customerRow}
               onPress={() => setIsPickerOpen(true)}
@@ -973,6 +1021,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: spacing.sm,
   },
+  inputInvalid: { borderColor: colors.danger },
+  fieldError: { ...typography.caption, color: colors.danger, marginTop: spacing.xs },
   customerRow: {
     flexDirection: "row",
     alignItems: "center",

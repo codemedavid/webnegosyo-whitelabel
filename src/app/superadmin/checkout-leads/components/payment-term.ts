@@ -9,6 +9,8 @@ export function getPaymentTermLabel(paymentTerm: PaymentTerm): string {
       return '50% Downpayment'
     case 'full_payment':
       return 'Full Payment'
+    case 'monthly_subscription':
+      return 'Monthly (₱999/buwan)'
     default:
       // The column is nullable. An unknown term is still worth showing raw —
       // a term added by a later migration should not go invisible — but a

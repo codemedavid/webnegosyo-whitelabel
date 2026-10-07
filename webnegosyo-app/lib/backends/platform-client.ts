@@ -21,6 +21,8 @@ export interface PlatformClient {
 export interface PlatformQueryBuilder {
   select(columns?: string): PlatformQueryBuilder;
   eq(column: string, value: unknown): PlatformQueryBuilder;
+  /** `IS NULL` — the only way to match a missing value; `eq(col, null)` never does. */
+  is(column: string, value: null): PlatformQueryBuilder;
   or(filters: string): PlatformQueryBuilder;
   neq(column: string, value: unknown): PlatformQueryBuilder;
   in(column: string, values: readonly unknown[]): PlatformQueryBuilder;

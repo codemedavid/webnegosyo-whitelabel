@@ -17,7 +17,6 @@ import { cn } from '@/lib/utils'
 interface EditorSectionProps {
   /** Anchor for the editor's section navigation. */
   id?: string
-  icon?: LucideIcon
   title: string
   description?: string
   /** Short state beside the title, e.g. "3 sizes". */
@@ -31,32 +30,30 @@ interface EditorSectionProps {
 /** Clears the sticky mobile header + section chips when jumped to. */
 export const SECTION_SCROLL_MARGIN = 'scroll-mt-32 lg:scroll-mt-6'
 
-export function EditorSection({ id, icon: Icon, title, description, meta, action, children, className }: EditorSectionProps) {
+/**
+ * One titled card. Deliberately plain: the heading carries the section, so
+ * there is no icon tile competing with it — five identical icon-heading-text
+ * cards read as a template, not as a dish.
+ */
+export function EditorSection({ id, title, description, meta, action, children, className }: EditorSectionProps) {
   const headingId = useId()
   return (
     <section
       id={id}
       aria-labelledby={headingId}
-      className={cn('rounded-2xl border bg-card p-4 shadow-sm sm:p-6', SECTION_SCROLL_MARGIN, className)}
+      className={cn('rounded-xl border bg-card p-4 sm:p-5', SECTION_SCROLL_MARGIN, className)}
     >
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          {Icon && (
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Icon className="h-[18px] w-[18px]" aria-hidden />
-            </span>
-          )}
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 id={headingId} className="text-base font-semibold leading-tight tracking-tight sm:text-lg">{title}</h2>
-              {meta && (
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{meta}</span>
-              )}
-            </div>
-            {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id={headingId} className="text-[15px] font-semibold leading-tight">{title}</h2>
+            {meta && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{meta}</span>
+            )}
           </div>
+          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         </div>
-        {action && <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{action}</div>}
+        {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
       </div>
       {children}
     </section>
@@ -113,11 +110,9 @@ export function OptionalSection({
         onClick={toggle}
         aria-expanded={isOpen}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none sm:px-6"
+        className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none sm:px-5"
       >
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">{title}</span>
           <span className="block truncate text-xs text-muted-foreground">{hint}</span>
@@ -131,7 +126,7 @@ export function OptionalSection({
         />
       </button>
       {wasOpened && (
-        <div id={panelId} hidden={!isOpen} className="space-y-4 px-4 pb-5 pt-1 sm:px-6">
+        <div id={panelId} hidden={!isOpen} className="space-y-4 px-4 pb-5 pt-1 sm:px-5">
           {children}
         </div>
       )}
@@ -146,9 +141,9 @@ export function OptionalSectionList({ id, title, children }: { id?: string; titl
     <section
       id={id}
       aria-labelledby={headingId}
-      className={cn('overflow-hidden rounded-2xl border bg-card shadow-sm', SECTION_SCROLL_MARGIN)}
+      className={cn('overflow-hidden rounded-xl border bg-card', SECTION_SCROLL_MARGIN)}
     >
-      <h2 id={headingId} className="border-b px-4 py-3.5 text-base font-semibold tracking-tight sm:px-6 sm:text-lg">{title}</h2>
+      <h2 id={headingId} className="border-b px-4 py-3.5 text-[15px] font-semibold sm:px-5">{title}</h2>
       {children}
     </section>
   )

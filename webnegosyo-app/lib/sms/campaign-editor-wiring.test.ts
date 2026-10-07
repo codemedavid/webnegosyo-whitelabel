@@ -19,6 +19,11 @@ function readCode(...segments: string[]): string {
 }
 
 const EDITOR = ["app", "(main)", "campaign", "[campaignId].tsx"];
+const STEPS = ["components", "sms", "campaign"];
+const AUDIENCE_STEP = [...STEPS, "AudienceStep.tsx"];
+const MESSAGE_STEP = [...STEPS, "MessageStep.tsx"];
+const SCHEDULE_STEP = [...STEPS, "ScheduleStep.tsx"];
+const REVIEW_STEP = [...STEPS, "ReviewStep.tsx"];
 
 describe("campaign editor — starting from a preset", () => {
   it("offers the ready-made campaigns instead of an empty form", () => {
@@ -26,6 +31,29 @@ describe("campaign editor — starting from a preset", () => {
 
     expect(source).toMatch(/CAMPAIGN_PRESETS/);
     expect(source).toMatch(/buildPresetDraft/);
+  });
+
+  it("opens a new campaign on the preset a Reports link names, and only a real one", () => {
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/preset\?: string/);
+    expect(source).toMatch(/isNew && isCampaignPresetId\(preset\)/);
+  });
+
+  it("shows every audience filter a preset can set, so none is hidden from the merchant", () => {
+    // The Who step's Fine-tune steppers are where these live now.
+    const source = readCode(...AUDIENCE_STEP);
+
+    expect(source).toMatch(/filter\.lastOrderOlderThanDays/);
+    expect(source).toMatch(/filter\.minOrderCount/);
+    expect(source).toMatch(/filter\.maxOrderCount/);
+  });
+
+  it("opens a new campaign on the goals, and a preset link straight on its message", () => {
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/isCampaignPresetId\(preset\) \? "message" : "goal"/);
+    expect(source).toMatch(/<GoalStep/);
   });
 
   it("takes its presets from the shared module rather than hard-coding copy in the JSX", () => {
@@ -146,13 +174,30 @@ describe("campaign editor — reaching the Send button at all", () => {
     );
   });
 
-  it("puts sending above the schedule, not below every other setting", () => {
+  it("puts Send in the pinned bar of a saved campaign, not at the end of a form", () => {
     // Send used to be the last thing on a long scroll, under status and quiet
-    // hours. The one action the merchant came for should not be the one they
-    // have to hunt for.
+    // hours. A saved campaign now opens on its summary with Send in the bar.
     const source = readCode(...EDITOR);
 
-    expect(source.indexOf("Send now to")).toBeLessThan(source.indexOf("Who gets it"));
+    expect(source).toMatch(/if \(!isNew\) return "review"/);
+    expect(source.indexOf("label={sendLabel}")).toBeGreaterThan(
+      source.indexOf("styles.actionBar")
+    );
+  });
+
+  it("lands a just-created campaign on its summary, saying it was saved", () => {
+    const source = readCode(...EDITOR);
+    const start = source.indexOf("const save");
+    const handler = source.slice(start, source.indexOf("\n  const ", start + 10));
+
+    expect(handler).toMatch(/created=1/);
+    expect(readCode(...REVIEW_STEP)).toMatch(/isJustCreated/);
+  });
+
+  it("walks Android's back button through the steps instead of dropping the draft", () => {
+    const source = readCode(...EDITOR);
+
+    expect(source).toMatch(/hardwareBackPress/);
   });
 });
 
@@ -186,16 +231,23 @@ describe("campaign editor — showing the message before it is sent", () => {
     const source = readCode(...EDITOR);
 
     expect(source).toMatch(/buildMessagePreview/);
-    expect(source).toMatch(/<MessagePreview/);
+    expect(readCode(...MESSAGE_STEP)).toMatch(/<MessagePreview/);
+    expect(readCode(...REVIEW_STEP)).toMatch(/<MessagePreview/);
   });
 
   it("keeps the cost attached to the message rather than in a box of its own", () => {
     // Segments are a property of the exact text above them. Separated, a
     // merchant edits the words and never sees the price double.
-    const source = readCode(...EDITOR);
-    const preview = source.slice(source.indexOf("<MessagePreview"));
+    const step = readCode(...MESSAGE_STEP);
+    const preview = step.slice(step.indexOf("<MessagePreview"));
 
     expect(preview.slice(0, 300)).toMatch(/cost=\{cost\}/);
+    // The summary's preview is handed the same cost through its props.
+    expect(readCode(...EDITOR)).toMatch(/const previewProps = \{[\s\S]{0,120}cost,/);
+  });
+
+  it("inserts a placeholder at the cursor, not glued onto the end", () => {
+    expect(readCode(...MESSAGE_STEP)).toMatch(/insertToken\(/);
   });
 });
 
@@ -211,6 +263,14 @@ describe("campaign editor — picking a date and a time", () => {
     const source = readCode(...EDITOR);
 
     expect(source).toMatch(/mode="time"|mode={"time"}/);
+  });
+
+  it("offers one-tap times and days, and says nothing sends behind the merchant's back", () => {
+    const source = readCode(...SCHEDULE_STEP);
+
+    expect(source).toMatch(/SEND_TIME_PRESETS/);
+    expect(source).toMatch(/switchScheduleKind/);
+    expect(source).toMatch(/you tap Send/);
   });
 
   it("keeps storing the plain strings the schedule already understands", () => {

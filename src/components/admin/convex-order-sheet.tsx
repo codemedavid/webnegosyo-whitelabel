@@ -151,9 +151,9 @@ export function ConvexOrderSheet({
     // already happened and must not be undone by a stock write.
     if (tenantId) {
       await restoreOrderStockAction(tenantId, orderId);
-      // The pre-order dates this order held go back on sale too. The claim
-      // rides in customerData, so no lookup is needed.
-      await releasePresellForCancelledConvexOrderAction(tenantId, order?.customerData);
+      // The pre-order dates this order held go back on sale too. The server
+      // reads the claim from the stored order, never from this browser.
+      await releasePresellForCancelledConvexOrderAction(tenantId, orderId);
     }
   }
 

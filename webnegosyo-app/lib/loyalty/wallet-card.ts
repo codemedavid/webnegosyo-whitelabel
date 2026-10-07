@@ -11,15 +11,19 @@
 import { getWebAppUrl } from "../web-app-url";
 import { getAccessTokenBounded } from "../authorized-post";
 import {
-  createCustomer,
-  listCustomers,
-  type CustomerRecord,
-} from "../customers/repo";
+  createAttachableCustomer,
+  findAttachableByPhone,
+} from "../customers/attach-lookup";
+import { DuplicateCustomerError } from "../customers/repo";
 import type { AttachedCustomer } from "../customers/pos-attachment";
 
 const MEMBER_CODE = /^WNLC1\.[A-Za-z0-9_-]{24}$/;
 const E164 = /^\+[0-9]{8,15}$/;
 const IDENTIFY_TIMEOUT_MS = 10_000;
+/** Postgres insufficient_privilege — the register functions refused this session. */
+const PG_INSUFFICIENT_PRIVILEGE = "42501";
+/** What the register functions raise for a session without `pos` on this store. */
+const NOT_ALLOWED = /not allowed/i;
 
 export type ScanFailure = "not_a_card" | "not_found" | "forbidden" | "signed_out" | "unavailable";
 export type IdentifyResult = { ok: true; phoneE164: string } | { ok: false; reason: ScanFailure };
@@ -96,27 +100,66 @@ export async function identifyWalletCard(
   }
 }
 
+/**
+ * The register's exact lookup + quick-create (lib/customers/attach-lookup.ts),
+ * never the guest list: a cashier scanning a card holds `pos`, not necessarily
+ * the `customers` grant that reading the table requires.
+ */
 interface CustomerRepo {
-  listCustomers: typeof listCustomers;
-  createCustomer: typeof createCustomer;
+  findByPhone: typeof findAttachableByPhone;
+  create: typeof createAttachableCustomer;
 }
 
-function toAttached(record: CustomerRecord): AttachedCustomer {
-  return { id: record.id, name: record.name, phoneE164: record.phoneE164, email: record.email };
-}
+const LIVE_REPO: CustomerRepo = {
+  findByPhone: findAttachableByPhone,
+  create: createAttachableCustomer,
+};
 
 /** The guest with this exact number, saved first if the counter has never met them. */
 export async function resolveScannedCustomer(
   tenantId: string,
   phoneE164: string,
-  repo: CustomerRepo = { listCustomers, createCustomer },
+  repo: CustomerRepo = LIVE_REPO,
 ): Promise<AttachedCustomer> {
-  const matches = await repo.listCustomers(tenantId, { search: phoneE164, limit: 10 });
-  const existing = matches.find((record) => record.phoneE164 === phoneE164);
-  if (existing) return toAttached(existing);
+  const existing = await repo.findByPhone(tenantId, phoneE164);
+  if (existing) return existing;
 
-  const created = await repo.createCustomer(tenantId, { name: null, phoneE164, email: null, notes: null });
-  return toAttached(created);
+  try {
+    return await repo.create(tenantId, { name: null, phoneE164, email: null, notes: null });
+  } catch (error) {
+    // A duplicate means the guest exists — saved by another register between
+    // our lookup and our save. Find them again; fail only if they stay hidden.
+    if (!(error instanceof DuplicateCustomerError)) throw error;
+    const saved = await repo.findByPhone(tenantId, phoneE164);
+    if (saved) return saved;
+    throw error;
+  }
+}
+
+function errorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function isPermissionRefusal(error: unknown): boolean {
+  if (errorCode(error) === PG_INSUFFICIENT_PRIVILEGE) return true;
+  return error instanceof Error && NOT_ALLOWED.test(error.message);
+}
+
+/** The loggable cause of an attach failure — a logged Error alone drops its `code`. */
+export function attachFailureDetail(error: unknown): { code: string | null; message: string } {
+  return {
+    code: errorCode(error),
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+/** What the cashier sees when a recognised card could not be attached to the sale. */
+export function describeAttachFailure(error: unknown): string {
+  return isPermissionRefusal(error)
+    ? "You don't have permission to attach guests at this register."
+    : "Card recognised, but the guest could not be attached. Search their number instead.";
 }
 
 export function describeScanFailure(reason: ScanFailure): string {

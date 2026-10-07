@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { formatDistance } from 'date-fns'
-import { Users, Search, ShoppingBag, ChevronDown, Repeat, Heart, TrendingUp } from 'lucide-react'
+import { Users, Search, ShoppingBag, ChevronDown, TrendingUp } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,9 @@ const SORT_OPTIONS: { value: CustomerSort; label: string }[] = [
   { value: 'top_spend', label: 'Top spenders' },
   { value: 'frequent', label: 'Most frequent' },
 ]
+
+/** Columns in the table — the expanded detail row spans all of them. */
+const COLUMN_COUNT = 8
 
 /** The best human-readable handle for a customer: name, then phone, then email. */
 function displayLabel(customer: Customer): string {
@@ -130,18 +133,52 @@ export function CustomersList({ customers }: CustomersListProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {visibleCustomers.map((customer) => (
-            <CustomerRow
-              key={customer.id}
-              customer={customer}
-              isExpanded={expandedId === customer.id}
-              onToggle={() =>
-                setExpandedId((current) => (current === customer.id ? null : customer.id))
-              }
-            />
-          ))}
-        </div>
+        <Card className="gap-0 overflow-hidden p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    Customer
+                  </th>
+                  <th scope="col" className="hidden px-4 py-3 font-medium sm:table-cell">
+                    Status
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium">
+                    Orders
+                  </th>
+                  <th scope="col" className="hidden px-4 py-3 font-medium md:table-cell">
+                    Last order
+                  </th>
+                  <th scope="col" className="hidden px-4 py-3 font-medium md:table-cell">
+                    Frequency
+                  </th>
+                  <th scope="col" className="hidden px-4 py-3 font-medium lg:table-cell">
+                    Favourite
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium">
+                    Lifetime value
+                  </th>
+                  <th scope="col" className="w-10 px-2 py-3">
+                    <span className="sr-only">Details</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleCustomers.map((customer) => (
+                  <CustomerRow
+                    key={customer.id}
+                    customer={customer}
+                    isExpanded={expandedId === customer.id}
+                    onToggle={() =>
+                      setExpandedId((current) => (current === customer.id ? null : customer.id))
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   )
@@ -163,165 +200,209 @@ const STATUS_CLASS: Record<CustomerStatus, string> = {
 
 function CustomerRow({ customer, isExpanded, onToggle }: CustomerRowProps) {
   const label = displayLabel(customer)
+  // Under a real name, show how to reach them; a nameless row is already labelled by contact.
+  const contact = customer.name ? customer.phone_e164 || customer.email : null
   const lastOrder = customer.last_order_at
     ? formatDistance(new Date(customer.last_order_at), new Date(), { addSuffix: true })
     : null
   const insights = useMemo(() => computeCustomerInsights(customer), [customer])
+  const detailId = `customer-detail-${customer.id}`
 
   return (
-    <Card>
-      <button
-        type="button"
+    <>
+      {/* The whole row toggles. The button is the keyboard/screen-reader affordance;
+          its click bubbles up to this single handler. */}
+      <tr
         onClick={onToggle}
-        aria-expanded={isExpanded}
-        className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50"
+        className={cn(
+          'cursor-pointer border-b transition-colors hover:bg-muted/50',
+          isExpanded && 'bg-muted/30'
+        )}
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Users className="h-5 w-5" />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p data-testid="customer-name" className="truncate font-semibold">
-            {label}
-          </p>
-          <p className="truncate text-sm text-muted-foreground">
-            {customer.order_count} {customer.order_count === 1 ? 'order' : 'orders'}
-            {lastOrder && <> · last {lastOrder}</>}
-          </p>
-
-          {/* The three merchant questions: how often, what, and how much. */}
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <span
-              data-testid={`customer-frequency-${customer.id}`}
-              className="inline-flex items-center gap-1"
-            >
-              <Repeat className="h-3 w-3" /> {insights.frequencyLabel}
+        <td className="max-w-[16rem] px-4 py-3">
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            aria-controls={detailId}
+            className="block w-full min-w-0 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span data-testid="customer-name" className="block truncate font-medium">
+              {label}
             </span>
-
-            {insights.favoriteItem && (
-              <span
-                data-testid={`customer-favorite-${customer.id}`}
-                className="inline-flex min-w-0 items-center gap-1"
-              >
-                <Heart className="h-3 w-3" />
-                <span className="truncate">{insights.favoriteItem.name}</span>
-                <span>×{insights.favoriteItem.quantity}</span>
-              </span>
+            {contact && (
+              <span className="block truncate text-xs text-muted-foreground">{contact}</span>
             )}
+          </button>
+        </td>
 
-            <Badge variant="outline" className={cn('text-[10px]', STATUS_CLASS[insights.status])}>
-              {CUSTOMER_STATUS_LABEL[insights.status]}
-            </Badge>
-          </div>
-        </div>
+        <td className="hidden whitespace-nowrap px-4 py-3 sm:table-cell">
+          <Badge variant="outline" className={cn('text-[10px]', STATUS_CLASS[insights.status])}>
+            {CUSTOMER_STATUS_LABEL[insights.status]}
+          </Badge>
+        </td>
 
-        <div className="shrink-0 text-right">
-          <p data-testid={`customer-ltv-${customer.id}`} className="font-semibold">
-            {formatPrice(insights.lifetimeValue)}
-          </p>
-          <p className="text-xs text-muted-foreground">Lifetime value</p>
-        </div>
+        <td
+          data-testid={`customer-orders-${customer.id}`}
+          className="whitespace-nowrap px-4 py-3 text-right tabular-nums"
+        >
+          {customer.order_count}
+        </td>
 
-        <ChevronDown
-          className={cn(
-            'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
-            isExpanded && 'rotate-180'
+        {/* Relative to "now", which can tick over between the server render and hydration. */}
+        <td
+          className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground md:table-cell"
+          suppressHydrationWarning
+        >
+          {lastOrder ?? '—'}
+        </td>
+
+        <td
+          data-testid={`customer-frequency-${customer.id}`}
+          className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground md:table-cell"
+        >
+          {insights.frequencyLabel}
+        </td>
+
+        <td className="hidden max-w-[14rem] px-4 py-3 text-muted-foreground lg:table-cell">
+          {insights.favoriteItem ? (
+            <span
+              data-testid={`customer-favorite-${customer.id}`}
+              className="flex min-w-0 items-center gap-1"
+            >
+              <span className="truncate">{insights.favoriteItem.name}</span>
+              <span className="shrink-0">×{insights.favoriteItem.quantity}</span>
+            </span>
+          ) : (
+            '—'
           )}
-        />
-      </button>
+        </td>
+
+        <td
+          data-testid={`customer-ltv-${customer.id}`}
+          className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums"
+        >
+          {formatPrice(insights.lifetimeValue)}
+        </td>
+
+        <td className="px-2 py-3">
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              'h-4 w-4 text-muted-foreground transition-transform',
+              isExpanded && 'rotate-180'
+            )}
+          />
+        </td>
+      </tr>
 
       {isExpanded && (
-        <CardContent data-testid={`customer-detail-${customer.id}`} className="border-t pt-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">Contact</h4>
-              <dl className="space-y-1 text-sm">
-                {customer.phone_e164 && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Phone</dt>
-                    <dd className="font-medium">{customer.phone_e164}</dd>
-                  </div>
-                )}
-                {customer.email && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Email</dt>
-                    <dd className="truncate font-medium">{customer.email}</dd>
-                  </div>
-                )}
-                {customer.channels_used.length > 0 && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Channels</dt>
-                    <dd className="flex flex-wrap justify-end gap-1">
-                      {customer.channels_used.map((channel) => (
-                        <Badge key={channel} variant="secondary" className="text-xs">
-                          {channel.replace(/_/g, ' ')}
-                        </Badge>
-                      ))}
-                    </dd>
-                  </div>
-                )}
-                {customer.sms_consent && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">SMS updates</dt>
-                    <dd className="font-medium text-green-700">Opted in</dd>
-                  </div>
-                )}
-              </dl>
-            </div>
-
-            <div>
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">Value & frequency</h4>
-              <dl className="space-y-1 text-sm">
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Lifetime value</dt>
-                  <dd className="font-medium">{formatPrice(insights.lifetimeValue)}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Average order</dt>
-                  <dd className="font-medium">
-                    {formatPrice(Number(customer.average_order_value))}
-                  </dd>
-                </div>
-                {insights.ordersPerMonth > 0 && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Order frequency</dt>
-                    <dd className="font-medium">{insights.ordersPerMonth} / month</dd>
-                  </div>
-                )}
-                {insights.ordersPerMonth > 0 && (
-                  <div
-                    data-testid={`customer-projected-ltv-${customer.id}`}
-                    className="flex justify-between gap-4"
-                  >
-                    <dt className="flex items-center gap-1 text-muted-foreground">
-                      <TrendingUp className="h-3.5 w-3.5" /> Projected 12-mo value
-                    </dt>
-                    <dd className="font-medium">{formatPrice(insights.projectedLtv)}</dd>
-                  </div>
-                )}
-              </dl>
-            </div>
-
-            <div className="sm:col-span-2">
-              <h4 className="mb-2 text-sm font-medium text-muted-foreground">Most ordered</h4>
-              {customer.top_items.length === 0 ? (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <ShoppingBag className="h-4 w-4" /> No items recorded
-                </p>
-              ) : (
-                <ul className="space-y-1 text-sm">
-                  {customer.top_items.map((item) => (
-                    <li key={item.name} className="flex justify-between gap-4">
-                      <span className="truncate">{item.name}</span>
-                      <span className="shrink-0 text-muted-foreground">×{item.quantity}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </CardContent>
+        <tr className="border-b bg-muted/20">
+          <td id={detailId} data-testid={detailId} colSpan={COLUMN_COUNT} className="px-4 py-4">
+            <CustomerDetail customer={customer} lastOrder={lastOrder} />
+          </td>
+        </tr>
       )}
-    </Card>
+    </>
+  )
+}
+
+interface CustomerDetailProps {
+  customer: Customer
+  lastOrder: string | null
+}
+
+function CustomerDetail({ customer, lastOrder }: CustomerDetailProps) {
+  const insights = useMemo(() => computeCustomerInsights(customer), [customer])
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <div>
+        <h4 className="mb-2 text-sm font-medium text-muted-foreground">Contact</h4>
+        <dl className="space-y-1 text-sm">
+          {customer.phone_e164 && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Phone</dt>
+              <dd className="font-medium">{customer.phone_e164}</dd>
+            </div>
+          )}
+          {customer.email && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Email</dt>
+              <dd className="truncate font-medium">{customer.email}</dd>
+            </div>
+          )}
+          {customer.channels_used.length > 0 && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Channels</dt>
+              <dd className="flex flex-wrap justify-end gap-1">
+                {customer.channels_used.map((channel) => (
+                  <Badge key={channel} variant="secondary" className="text-xs">
+                    {channel.replace(/_/g, ' ')}
+                  </Badge>
+                ))}
+              </dd>
+            </div>
+          )}
+          {customer.sms_consent && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">SMS updates</dt>
+              <dd className="font-medium text-green-700">Opted in</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+
+      <div>
+        <h4 className="mb-2 text-sm font-medium text-muted-foreground">Value & frequency</h4>
+        <dl className="space-y-1 text-sm">
+          {/* The Last order column is hidden below md, so the detail carries it there. */}
+          {lastOrder && (
+            <div className="flex justify-between gap-4 md:hidden">
+              <dt className="text-muted-foreground">Last order</dt>
+              <dd className="font-medium">{lastOrder}</dd>
+            </div>
+          )}
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">Average order</dt>
+            <dd className="font-medium">{formatPrice(Number(customer.average_order_value))}</dd>
+          </div>
+          {insights.ordersPerMonth > 0 && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Order frequency</dt>
+              <dd className="font-medium">{insights.ordersPerMonth} / month</dd>
+            </div>
+          )}
+          {insights.ordersPerMonth > 0 && (
+            <div
+              data-testid={`customer-projected-ltv-${customer.id}`}
+              className="flex justify-between gap-4"
+            >
+              <dt className="flex items-center gap-1 text-muted-foreground">
+                <TrendingUp className="h-3.5 w-3.5" /> Projected 12-mo value
+              </dt>
+              <dd className="font-medium">{formatPrice(insights.projectedLtv)}</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+
+      <div>
+        <h4 className="mb-2 text-sm font-medium text-muted-foreground">Most ordered</h4>
+        {customer.top_items.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ShoppingBag className="h-4 w-4" /> No items recorded
+          </p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {customer.top_items.map((item) => (
+              <li key={item.name} className="flex justify-between gap-4">
+                <span className="truncate">{item.name}</span>
+                <span className="shrink-0 text-muted-foreground">×{item.quantity}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   )
 }

@@ -32,6 +32,7 @@ const merchant: SessionAuthPatch = {
   receiptLogoUrl: null,
   customerHubEnabled: false,
   loyaltyEnabled: false,
+  assistantEnabled: false,
   isLoading: false,
   isAuthenticated: true,
   isSuperadmin: false,

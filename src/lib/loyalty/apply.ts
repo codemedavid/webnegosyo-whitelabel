@@ -16,6 +16,7 @@
  */
 
 import type { CustomerOrderFact } from '@/lib/customer-order-facts'
+import type { ImportTwin, OrderSourceRef } from '@/lib/customers/imported-order-twins'
 import { planEarning } from './earn'
 import type { LoyaltyEarnPlan, LoyaltyProgram } from './types'
 
@@ -60,6 +61,13 @@ export interface LoyaltyEarningDeps {
     externalOrderId: string,
   ) => Promise<Array<Pick<LoyaltyLedgerEntryInput, 'programId' | 'versionId' | 'customerKey' | 'delta' | 'isShadow'>>>
   applyLedgerEntry: (entry: LoyaltyLedgerEntryInput) => Promise<LoyaltyApplyResult>
+  /**
+   * The other record of the same real order, when a Convex→platform import
+   * left it in both `orders` and `customer_external_orders`. The earn index is
+   * keyed per (backend, order id), so without this each copy earns its own
+   * stamp for one visit. Optional so fakes without imports need not stub it.
+   */
+  findImportTwin?: (tenantId: string, fact: CustomerOrderFact) => Promise<ImportTwin | null>
 }
 
 export interface LoyaltyEarningContext {
@@ -80,7 +88,7 @@ export interface LoyaltyProgramOutcome {
 
 export interface LoyaltyEarningOutcome {
   action: 'earned' | 'reversed' | 'skipped'
-  reason?: 'anonymous' | 'no_programs' | 'not_qualified' | 'nothing_to_reverse'
+  reason?: 'anonymous' | 'no_programs' | 'not_qualified' | 'nothing_to_reverse' | 'duplicate'
   programs: LoyaltyProgramOutcome[]
 }
 
@@ -105,13 +113,49 @@ function toOutcome(
   }
 }
 
+/**
+ * Whether this order's visit is (or will be) credited on its import twin
+ * instead. The platform copy wins: the ledger copy always stands aside, and
+ * the platform copy stands aside only when the ledger copy earned first.
+ */
+async function isCreditedOnTwin(
+  twin: ImportTwin | null,
+  ctx: LoyaltyEarningContext,
+  deps: LoyaltyEarningDeps,
+): Promise<boolean> {
+  if (!twin) return false
+  if (twin.isPrimary) return true
+  const earns = await deps.loadOrderEarns(ctx.tenantId, twin.ref.backend, twin.ref.externalOrderId)
+  return earns.some((earn) => earn.delta !== 0)
+}
+
+/** The order records whose earns a reversal must undo: itself, plus a losing twin. */
+function reversalRefs(fact: CustomerOrderFact, twin: ImportTwin | null): OrderSourceRef[] {
+  const self = { backend: fact.backend, externalOrderId: fact.externalOrderId }
+  return twin && !twin.isPrimary ? [self, twin.ref] : [self]
+}
+
 async function reverse(
   fact: CustomerOrderFact,
   ctx: LoyaltyEarningContext,
   deps: LoyaltyEarningDeps,
 ): Promise<LoyaltyEarningOutcome> {
+  const twin = (await deps.findImportTwin?.(ctx.tenantId, fact)) ?? null
   const outcomes: LoyaltyProgramOutcome[] = []
-  const earns = await deps.loadOrderEarns(ctx.tenantId, fact.backend, fact.externalOrderId)
+  for (const ref of reversalRefs(fact, twin)) {
+    outcomes.push(...(await reverseRef(ref, ctx, deps)))
+  }
+  if (outcomes.length === 0) return { action: 'skipped', reason: 'nothing_to_reverse', programs: [] }
+  return { action: 'reversed', programs: outcomes }
+}
+
+async function reverseRef(
+  ref: OrderSourceRef,
+  ctx: LoyaltyEarningContext,
+  deps: LoyaltyEarningDeps,
+): Promise<LoyaltyProgramOutcome[]> {
+  const outcomes: LoyaltyProgramOutcome[] = []
+  const earns = await deps.loadOrderEarns(ctx.tenantId, ref.backend, ref.externalOrderId)
   for (const earn of earns) {
     if (earn.delta === 0) continue
 
@@ -123,8 +167,8 @@ async function reverse(
       customerId: null,
       kind: 'reverse',
       delta: -earn.delta,
-      orderBackend: fact.backend,
-      externalOrderId: fact.externalOrderId,
+      orderBackend: ref.backend,
+      externalOrderId: ref.externalOrderId,
       threshold: null,
       rewardTerms: null,
       rewardExpiresAt: null,
@@ -132,8 +176,7 @@ async function reverse(
     })
     outcomes.push(toOutcome({ programId: earn.programId, delta: -earn.delta }, 'reverse', result))
   }
-  if (outcomes.length === 0) return { action: 'skipped', reason: 'nothing_to_reverse', programs: [] }
-  return { action: 'reversed', programs: outcomes }
+  return outcomes
 }
 
 export async function earnLoyaltyForFact(
@@ -152,6 +195,10 @@ export async function earnLoyaltyForFact(
 
   const plans = planEarning(programs, fact)
   if (plans.length === 0) return { action: 'skipped', reason: 'not_qualified', programs: [] }
+
+  // Asked last, so only an order that would really earn pays for the lookup.
+  const twin = (await deps.findImportTwin?.(ctx.tenantId, fact)) ?? null
+  if (await isCreditedOnTwin(twin, ctx, deps)) return { action: 'skipped', reason: 'duplicate', programs: [] }
 
   const outcomes: LoyaltyProgramOutcome[] = []
   for (const plan of plans) {

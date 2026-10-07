@@ -59,7 +59,9 @@ export interface RankedCustomerItem {
   quantity: number
 }
 
-const POS_SETTLED = new Set(['paid', 'verified', 'settled'])
+/** Payment states that mean a counter sale was paid. Exported for the dashboard's one "completed" rule. */
+export const POS_SETTLED_STATUSES: ReadonlySet<string> = new Set(['paid', 'verified', 'settled'])
+const POS_SETTLED = POS_SETTLED_STATUSES
 /**
  * The statuses that mean an online order was handed over. Exported because the
  * loyalty claim window closes on exactly this set — one list, so an order can
@@ -104,12 +106,14 @@ export function isQualifiedOrderFact(fact: CustomerOrderFact): boolean {
     : ONLINE_FULFILLED.has(status(fact.status))
 }
 
-function factTime(fact: CustomerOrderFact): number | null {
+/** When a qualified visit happened: completion when known, else the order time. */
+export function factTime(fact: CustomerOrderFact): number | null {
   const ms = new Date(fact.completedAt ?? fact.orderedAt).getTime()
   return Number.isNaN(ms) ? null : ms
 }
 
-function identifiedKey(fact: CustomerOrderFact): string | null {
+/** One key per identified guest (customer row, else phone); null for an anonymous order. */
+export function identifiedKey(fact: CustomerOrderFact): string | null {
   if (fact.customerId?.trim()) return `customer:${fact.customerId.trim()}`
   if (fact.phoneE164?.trim()) return `phone:${fact.phoneE164.trim()}`
   return null

@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
+import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
 import { updateTenantDeliveryForAdminAction } from '@/actions/tenants'
 
 interface DeliverySettingsInitial {
@@ -17,6 +18,7 @@ interface DeliverySettingsInitial {
   delivery_price_per_km: number | null
   delivery_min_fee: number | null
   delivery_radius_km: number | null
+  free_delivery_min_order: number | null
   restaurant_address: string
   restaurant_latitude: number | null
   restaurant_longitude: number | null
@@ -62,6 +64,7 @@ export function DeliverySettingsForm({
   const [perKm, setPerKm] = useState<string>(numberToInput(initial.delivery_price_per_km))
   const [minFee, setMinFee] = useState<string>(numberToInput(initial.delivery_min_fee))
   const [radiusKm, setRadiusKm] = useState<string>(numberToInput(initial.delivery_radius_km))
+  const [freeDeliveryMin, setFreeDeliveryMin] = useState<string>(numberToInput(initial.free_delivery_min_order))
 
   const handleAddressChange = (nextAddress: string, coordinates?: { lat: number; lng: number }) => {
     setAddress(nextAddress)
@@ -79,6 +82,7 @@ export function DeliverySettingsForm({
           delivery_price_per_km: inputToNumber(perKm),
           delivery_min_fee: inputToNumber(minFee),
           delivery_radius_km: inputToNumber(radiusKm),
+          free_delivery_min_order: inputToNumber(freeDeliveryMin),
           restaurant_address: address,
           restaurant_latitude: latitude,
           restaurant_longitude: longitude,
@@ -145,11 +149,12 @@ export function DeliverySettingsForm({
                   ? 'Set your store address — Lalamove uses this as the pickup point for delivery quotes and bookings.'
                   : 'Set your store address — delivery distance is measured from this point.'}
               </p>
-              <MapboxAddressAutocomplete
+              <AddressAutocomplete
                 value={address}
+                coordinates={parseLatLng(latitude, longitude)}
                 onChange={handleAddressChange}
                 placeholder="Search or pin your store location"
-                mapboxEnabled={mapboxEnabled}
+                mapsEnabled={mapboxEnabled}
               />
               {latitude !== null && longitude !== null && (
                 <p className="text-xs text-muted-foreground">
@@ -234,6 +239,29 @@ export function DeliverySettingsForm({
             </p>
             </>
             )}
+
+            <div className="space-y-2 rounded-lg border p-4">
+              <Label htmlFor="free-delivery-min-order" className="font-medium">
+                Free delivery on orders of at least
+              </Label>
+              <Input
+                id="free-delivery-min-order"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                value={freeDeliveryMin}
+                onChange={(e) => setFreeDeliveryMin(e.target.value)}
+                placeholder="e.g. 500 — leave blank for no free delivery"
+                disabled={isPending}
+                className="sm:max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                When the items in a delivery order add up to this amount (before vouchers), the
+                customer pays no delivery fee. Checkout shows how much more they need to qualify.
+                {lalamoveEnabled && ' With Lalamove, the courier is still booked and you cover its fee.'}
+              </p>
+            </div>
           </div>
         )}
 

@@ -1,6 +1,9 @@
 export const CHECKOUT_BASE_PRICE = 3899
 
-export const CHECKOUT_PAYMENT_TERMS = ['downpayment_50', 'full_payment'] as const
+/** The /funnel plan: billed monthly, first month paid on sign-up, no setup fee. */
+export const MONTHLY_SUBSCRIPTION_PRICE = 999
+
+export const CHECKOUT_PAYMENT_TERMS = ['downpayment_50', 'full_payment', 'monthly_subscription'] as const
 
 export type CheckoutPaymentTerm = (typeof CHECKOUT_PAYMENT_TERMS)[number]
 
@@ -16,6 +19,8 @@ export function getCheckoutPayableAmount(term: CheckoutPaymentTerm): number {
       return Math.round(CHECKOUT_BASE_PRICE / 2)
     case 'full_payment':
       return CHECKOUT_BASE_PRICE
+    case 'monthly_subscription':
+      return MONTHLY_SUBSCRIPTION_PRICE
     default: {
       const unsupportedTerm: never = term
       throw new Error(`Unsupported checkout payment term: ${unsupportedTerm}`)

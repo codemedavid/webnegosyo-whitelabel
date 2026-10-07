@@ -5,6 +5,7 @@
  * counts come from the same predicate the grid uses.
  */
 
+import type { ReactNode } from 'react'
 import { Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CategoryIcon } from '@/components/shared/category-icon'
@@ -17,9 +18,11 @@ interface MenuListToolbarProps {
   counts: Record<MenuStatusFilter, number>
   categories: readonly Category[]
   onChange: (next: MenuListFilters) => void
+  /** Controls beside the status chips (e.g. "Arrange order"). */
+  actions?: ReactNode
 }
 
-export function MenuListToolbar({ filters, counts, categories, onChange }: MenuListToolbarProps) {
+export function MenuListToolbar({ filters, counts, categories, onChange, actions }: MenuListToolbarProps) {
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -64,28 +67,31 @@ export function MenuListToolbar({ filters, counts, categories, onChange }: MenuL
         </div>
       </div>
 
-      <div role="tablist" aria-label="Status" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
-        {MENU_STATUS_FILTERS.map(({ value, label }) => {
-          const isActive = filters.status === value
-          return (
-            <button
-              key={value}
-              role="tab"
-              type="button"
-              aria-selected={isActive}
-              onClick={() => onChange({ ...filters, status: value })}
-              className={cn(
-                'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors',
-                isActive
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground',
-              )}
-            >
-              {label}
-              <span className={cn('tabular-nums', isActive ? 'opacity-70' : 'opacity-60')}>{counts[value]}</span>
-            </button>
-          )
-        })}
+      <div className="flex items-center gap-2">
+        <div role="tablist" aria-label="Status" className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 pb-0.5">
+          {MENU_STATUS_FILTERS.map(({ value, label }) => {
+            const isActive = filters.status === value
+            return (
+              <button
+                key={value}
+                role="tab"
+                type="button"
+                aria-selected={isActive}
+                onClick={() => onChange({ ...filters, status: value })}
+                className={cn(
+                  'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground',
+                )}
+              >
+                {label}
+                <span className={cn('tabular-nums', isActive ? 'opacity-70' : 'opacity-60')}>{counts[value]}</span>
+              </button>
+            )
+          })}
+        </div>
+        {actions}
       </div>
     </div>
   )

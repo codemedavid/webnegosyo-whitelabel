@@ -59,13 +59,11 @@ export const WORKSPACES: readonly Workspace[] = [
     // campaigns launched from it are the acquisition lever the Growth tab
     // spends its time telling the merchant to pull.
     //
-    // Only three of these six reach the tab bar — Analytics, Growth and the
-    // Customers overview. Trends, the guest list and Rewards are sub-screens of
-    // the two they sit under (SUBSCREEN_TABS in lib/tab-visibility.ts, entry
-    // points in lib/subscreen-links.ts). The order below is the order the Menu
-    // hub lists them in, so each sub-screen follows its own parent: Analytics →
-    // Trends, then Growth, then Customers → Guest list → Rewards.
-    tabs: ["analytics", "trends", "growth", "customer-hub", "customers", "loyalty"],
+    // Analytics and Growth are Reports hub rows. Trends hangs under Analytics;
+    // the guest list and Rewards open from the Reports dashboard, which is the
+    // customer overview (SUBSCREEN_TABS in lib/tab-visibility.ts, entry points
+    // in lib/subscreen-links.ts). Each sub-screen follows its own parent.
+    tabs: ["analytics", "trends", "growth", "customers", "loyalty"],
     defaultTab: "analytics",
   },
   {

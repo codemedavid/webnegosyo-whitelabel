@@ -14,6 +14,7 @@ import { isMcpProtocolRoute } from '@/lib/mcp/route-isolation'
 import { rewriteMcpPathWellKnown } from '@/lib/mcp/mcp-path-well-known'
 import { createTimedFetch } from '@/lib/supabase/timed-fetch'
 import { createLogger } from '@/lib/logger'
+import { carrySessionCookies } from '@/lib/middleware/session-cookies'
 import {
   FRAME_PROTECTION_HEADERS,
   hasSupabaseCookie,
@@ -136,6 +137,11 @@ function redirectTo(request: NextRequest, pathname: string, params: Record<strin
 
 type SessionUser = Awaited<ReturnType<typeof getSessionUser>>
 
+/** A guard's redirect wins, but it must still carry the session's cookie writes. */
+function guardedOrSession(guarded: NextResponse | null, session: NextResponse): NextResponse {
+  return guarded ? carrySessionCookies(guarded, session) : session
+}
+
 /** Add anti-clickjacking headers when `servedPathname` is an admin/login page. */
 function withFrameProtection(response: NextResponse, servedPathname: string): NextResponse {
   if (!isFrameProtectedPath(servedPathname)) return response
@@ -181,8 +187,14 @@ async function guardTenantAdmin(
 
   // The resilient read adds the branch column this gate needs and falls back
   // to the pre-branch projection rather than 400ing every admin page if the
-  // migration is not applied yet.
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
+  // migration is not applied yet. The tenant id is read alongside it rather
+  // than after: this gate runs on every admin navigation and prefetch, and the
+  // two reads do not depend on each other (only an `admin` needs the tenant —
+  // the spare read for a superadmin is one indexed row).
+  const [{ appUser }, { data: tenant }] = await Promise.all([
+    fetchAppUserScope(asAppUserQueryClient(supabase), user.id),
+    supabase.from('tenants').select('id').eq('slug', tenantSlug).eq('is_active', true).maybeSingle(),
+  ])
   if (appUser?.role === 'superadmin') return null
 
   const unauthorized = () => redirectTo(request, `/${tenantSlug}/login`, { unauthorized: '1' })
@@ -201,7 +213,6 @@ async function guardTenantAdmin(
 
   if (appUser?.role !== 'admin') return unauthorized()
 
-  const { data: tenant } = await supabase.from('tenants').select('id').eq('slug', tenantSlug).eq('is_active', true).maybeSingle()
   if (!tenant || appUser.tenant_id !== (tenant as { id: string }).id) return unauthorized()
 
   const requiredPermission = permissionForAdminPath(pathname)
@@ -244,8 +255,8 @@ export async function middleware(request: NextRequest) {
   const user = hasSupabaseCookie(request.cookies.getAll()) ? await getSessionUser(session.supabase) : null
 
   if (isSuperAdminRoute) {
-    const response = (await guardSuperadmin(request, session.supabase, user, pathname)) ?? session.response()
-    return withFrameProtection(response, pathname)
+    const guarded = await guardSuperadmin(request, session.supabase, user, pathname)
+    return withFrameProtection(guardedOrSession(guarded, session.response()), pathname)
   }
 
   // Host-based visits arrive as `/admin`, then get rewritten to `/shop/admin`.
@@ -254,9 +265,8 @@ export async function middleware(request: NextRequest) {
   const servedPathname = tenantRewritePath(rewritten.tenantSlug, pathname) ?? pathname
   const tenantSlug = tenantAdminSlugFor(servedPathname)
   if (tenantSlug) {
-    const response =
-      (await guardTenantAdmin(request, session.supabase, user, tenantSlug, servedPathname)) ?? session.response()
-    return withFrameProtection(response, servedPathname)
+    const guarded = await guardTenantAdmin(request, session.supabase, user, tenantSlug, servedPathname)
+    return withFrameProtection(guardedOrSession(guarded, session.response()), servedPathname)
   }
 
   return withFrameProtection(session.response(), servedPathname)

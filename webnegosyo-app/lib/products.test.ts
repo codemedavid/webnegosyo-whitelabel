@@ -36,6 +36,13 @@ jest.mock("./supabase", () => {
   };
 });
 
+// Positioning is product-arrangement's job, tested there. Here it only has to
+// stay out of the insert/update chains these tests mock.
+jest.mock("./product-arrangement", () => ({
+  nextProductOrder: jest.fn(async () => 3),
+  readMovedProductOrder: jest.fn(async () => undefined),
+}));
+
 import { supabase } from "./supabase";
 
 beforeEach(() => {
@@ -251,13 +258,19 @@ describe("listProducts", () => {
     ["select", "eq", "order"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
-    chain.order = jest.fn(() => Promise.resolve(single));
+    chain.order = jest.fn(() => chain);
+    chain.order.mockImplementationOnce(() => chain).mockImplementationOnce(() => Promise.resolve(single));
     (supabase.from as jest.Mock).mockReturnValueOnce(chain);
 
     const result = await listProducts("tenant-1");
 
     expect(supabase.from).toHaveBeenCalledWith("menu_items");
     expect(chain.eq).toHaveBeenCalledWith("tenant_id", "tenant-1");
+    // `id` breaks ties so the register lists dishes in the storefront's order.
+    expect(chain.order.mock.calls).toEqual([
+      ["order", { ascending: true }],
+      ["id", { ascending: true }],
+    ]);
     expect(result).toEqual([{ id: "1" }]);
   });
 
@@ -266,9 +279,10 @@ describe("listProducts", () => {
     ["select", "eq"].forEach((m) => {
       chain[m] = jest.fn(() => chain);
     });
-    chain.order = jest.fn(() =>
-      Promise.resolve({ data: null, error: new Error("db down") })
-    );
+    chain.order = jest
+      .fn()
+      .mockImplementationOnce(() => chain)
+      .mockImplementationOnce(() => Promise.resolve({ data: null, error: new Error("db down") }));
     (supabase.from as jest.Mock).mockReturnValueOnce(chain);
 
     await expect(listProducts("tenant-1")).rejects.toThrow("db down");
@@ -297,7 +311,7 @@ describe("createProduct", () => {
 
     expect(supabase.from).toHaveBeenCalledWith("menu_items");
     expect(chain.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ tenant_id: "tenant-1", name: validInput.name })
+      expect.objectContaining({ tenant_id: "tenant-1", name: validInput.name, order: 3 })
     );
     expect(result.id).toBe("new-1");
   });

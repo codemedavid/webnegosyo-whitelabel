@@ -22,6 +22,7 @@ import { fetchCheckoutLeadDetail, changeCheckoutLeadStatus } from '@/app/actions
 import { CheckoutLeadStatusBadge } from './checkout-lead-status-badge'
 import { usePlatformAccess } from '@/components/superadmin/platform-access-context'
 import { getPaymentTermLabel } from './payment-term'
+import { CheckoutLeadOnboarding } from './checkout-lead-onboarding'
 import type {
   CheckoutLeadStatus,
   CheckoutLeadWithPaymentMethod,
@@ -84,7 +85,7 @@ export function CheckoutLeadDetailPanel({
       if (result.error) {
         toast.error(result.error)
       } else {
-        toast.success(`Status changed to ${newStatus}`)
+        toast.success(result.isPublished ? 'Payment confirmed — the store is now live' : `Status changed to ${newStatus}`)
         await loadDetail()
         onStatusChange()
       }
@@ -133,6 +134,12 @@ export function CheckoutLeadDetailPanel({
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Automated store set-up (₱999 funnel) */}
+            <div className="space-y-3">
+              <SectionLabel>Store set-up</SectionLabel>
+              <CheckoutLeadOnboarding leadId={lead.id} canEdit={canChangeStatus} refreshKey={lead.status} />
             </div>
 
             {/* Contact */}

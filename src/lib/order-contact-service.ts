@@ -2,7 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { verifyTrackingToken } from '@/lib/tracking-token'
-import { decideContactWrite, type ContactSubmission } from '@/lib/order-contact'
+import { decideContactWrite, isRealContact, type ContactSubmission } from '@/lib/order-contact'
+import { capturePlatformOrderBestEffort } from '@/lib/customers-service'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { summarizeContactEarning, type ContactEarningSummary } from '@/lib/loyalty/contact-earning'
 
@@ -117,17 +118,12 @@ async function updateInSupabase(
 ): Promise<ContactUpdateResult> {
   const { data: order } = await supabase
     .from('orders')
-    .select('id, customer_contact, customer_name, status')
+    .select('id, customer_contact, customer_name, status, customer_data')
     .eq('id', submission.orderId)
     .eq('tenant_id', submission.tenantId)
     .maybeSingle()
 
-  const existing = order as {
-    id: string
-    customer_contact?: string | null
-    customer_name?: string | null
-    status?: string | null
-  } | null
+  const existing = order as PlatformContactOrder | null
   if (!existing) return { ok: false, error: 'not_found' }
 
   const decision = decideContactWrite(
@@ -147,12 +143,44 @@ async function updateInSupabase(
 
   if (error) return { ok: false, error: 'unavailable' }
 
+  // Checkout links a profile when the order is created; a counter sale rung up
+  // with no phone had nothing to link then, so this is the first moment the
+  // guest can become a customer. Linking BEFORE earning puts `customer_id` on
+  // the order, so the stamp card the earn opens is tied to the profile too.
+  await linkPlatformCustomer(supabase, submission, existing, decision)
+
   // A counter sale is usually already settled when the customer scans the
   // receipt, so the completion event ran with no phone and earned nothing.
   // This is the first moment the order can earn; the write is idempotent, so
   // an order that already earned costs one query and never a second stamp.
   const loyalty = await runLoyaltyAfterAttach(supabase, submission)
   return { ok: true, loyalty }
+}
+
+interface PlatformContactOrder {
+  id: string
+  customer_contact?: string | null
+  customer_name?: string | null
+  customer_data?: Record<string, unknown> | null
+  status?: string | null
+}
+
+/** Roll the claimed order into the tenant's customer profile. Never throws. */
+async function linkPlatformCustomer(
+  supabase: ReturnType<typeof createAdminClient>,
+  submission: ContactSubmission,
+  order: PlatformContactOrder,
+  decision: { contact: string; name: string | undefined },
+): Promise<void> {
+  // `decision.name` is set only when the order had no real name. Otherwise the
+  // name already on the order wins — but a "Walk-in" placeholder is no name.
+  const existingName = isRealContact(order.customer_name) ? order.customer_name : null
+  await capturePlatformOrderBestEffort(supabase, submission.tenantId, {
+    orderId: submission.orderId,
+    contact: decision.contact,
+    name: decision.name ?? existingName ?? null,
+    customerData: order.customer_data ?? null,
+  })
 }
 
 interface ConvexOrderFacts {

@@ -95,12 +95,13 @@ describe('activating a program switches the store live', () => {
 
   it('is wired into the activation branch of the programs route', () => {
     const source = read('src/app/api/loyalty/programs/route.ts')
-    expect(source).toMatch(/patch\.status === 'active' \? await goLive\(admin, tenantId\)/)
-    expect(source).toMatch(/decideLoyaltyGoLive/)
+    expect(source).toMatch(/patch\.status === 'active' \? await switchLoyaltyLive\(admin, tenantId\)/)
+    expect(read('src/lib/loyalty/go-live-write.ts')).toMatch(/decideLoyaltyGoLive/)
   })
 
   it('never switches a store back off, so replays stay idempotent', () => {
-    const source = read('src/app/api/loyalty/programs/route.ts')
-    expect(source).not.toMatch(/loyalty_enabled: false/)
+    for (const file of ['src/app/api/loyalty/programs/route.ts', 'src/lib/loyalty/go-live-write.ts']) {
+      expect(read(file)).not.toMatch(/loyalty_enabled: false/)
+    }
   })
 })

@@ -3,7 +3,7 @@ import { buildDesignCss } from '@/lib/hero-builder/css'
 import { createBlankDesign } from '@/lib/hero-builder/defaults'
 import { heroDesignV5Schema } from '@/lib/hero-builder/schema'
 import { SECTION_PRESETS } from '@/lib/hero-builder/section-presets'
-import { HERO_TEMPLATES } from '@/lib/hero-builder/templates'
+import { HERO_TEMPLATE_CATEGORIES, HERO_TEMPLATES } from '@/lib/hero-builder/templates'
 import type { HeroDesignV5, Section, Widget } from '@/lib/hero-builder/types'
 
 function designOfPreset(section: Section): HeroDesignV5 {
@@ -56,11 +56,25 @@ const cases: [string, () => HeroDesignV5][] = [
 ]
 
 describe('hero templates and section presets', () => {
-  it('ships 7 templates and 8 presets with unique ids', () => {
-    expect(HERO_TEMPLATES).toHaveLength(7)
+  it('ships 27 templates and 8 presets with unique ids', () => {
+    expect(HERO_TEMPLATES).toHaveLength(27)
     expect(SECTION_PRESETS).toHaveLength(8)
     expect(new Set(HERO_TEMPLATES.map((t) => t.id)).size).toBe(HERO_TEMPLATES.length)
     expect(new Set(SECTION_PRESETS.map((p) => p.id)).size).toBe(SECTION_PRESETS.length)
+  })
+
+  it('files every template under a category the gallery can filter on', () => {
+    for (const template of HERO_TEMPLATES) expect(HERO_TEMPLATE_CATEGORIES).toContain(template.category)
+    for (const category of HERO_TEMPLATE_CATEGORIES) {
+      expect(HERO_TEMPLATES.some((t) => t.category === category)).toBe(true)
+    }
+  })
+
+  it('never hides a column that carries content on phones', () => {
+    for (const template of HERO_TEMPLATES) {
+      const hiddenOnMobile = template.build().sections.flatMap((s) => s.columns.filter((c) => c.mobile?.hidden))
+      expect(hiddenOnMobile.filter((c) => c.widgets.length > 0)).toEqual([])
+    }
   })
 
   it('keeps every template to 1–3 sections', () => {
@@ -100,6 +114,18 @@ describe('hero templates and section presets', () => {
     it('only uses icons the renderer knows', () => {
       const unknown = iconNamesOf(build()).filter((name) => !HERO_ICON_NAMES.includes(name))
       expect(unknown).toEqual([])
+    })
+
+    it('never sets text larger on phones than on desktop', () => {
+      // A widget that sets a desktop size but no phone size inherits the
+      // factory's phone default (16px text / 32px heading) — a 12px caption
+      // would jump to 16px on phones.
+      const grows = widgetsOf(build()).filter((w) => {
+        const desktop = w.style.fontSize
+        const phone = w.tablet?.fontSize ?? w.mobile?.fontSize
+        return desktop !== undefined && phone !== undefined && phone > desktop
+      })
+      expect(grows.map((w) => `${w.kind}: ${w.style.fontSize} → ${w.mobile?.fontSize}`)).toEqual([])
     })
 
     it('stacks every section on mobile', () => {

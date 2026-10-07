@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getOrderStampStatus } from '@/lib/loyalty/order-stamp-service'
 import { fetchOrderTrackingData } from '@/lib/order-tracking-service'
+import { primeTrackingBackendHint } from '@/lib/order-tracking-backend-hint'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { buildTrackingTheme } from '@/components/customer/order-tracking/tracking-theme'
 import { describeLoyaltyOffer, type LoyaltyOffer } from '@/lib/loyalty/offer'
@@ -54,6 +55,12 @@ export default async function OrderTrackingPage({ params, searchParams }: PagePr
   // Resolve tenant server-side
   const tenant = await getCachedTenantBySlug(tenantSlug)
   if (!tenant) notFound()
+
+  // The first tracking paint follows checkout's redirect, often on a runtime
+  // that has never routed this store. The cached row predicts the backend so
+  // the order read can leave with the routing read; the routing read still
+  // decides (see order-tracking-backend-hint.ts).
+  primeTrackingBackendHint(tenant.id, tenant)
 
   // The brand (loyalty offer), the order and the stamp card are independent
   // reads: run them side by side instead of one after another. The stamp read

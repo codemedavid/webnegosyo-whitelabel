@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { InteractionManager, Platform } from "react-native";
+import { Alert, InteractionManager, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 import {
@@ -39,10 +39,38 @@ import {
   saveSessionSnapshot,
 } from "../lib/offline/session-snapshot";
 import { reportOffline, reportOnline } from "../lib/offline/connectivity";
+import {
+  SESSION_LOST_MESSAGE,
+  SESSION_LOST_TITLE,
+  bindSessionLossToAuth,
+} from "../lib/session-loss";
+import { requeueSignedOutRefusals } from "../lib/offline/order-outbox";
+import { requeueSignedOutEditRefusals } from "../lib/offline/order-edits";
 
 // Bound once for the life of the process: a sign-out anywhere drops the
 // offline session snapshot, so the next launch cannot open the old store.
 bindSessionSnapshotToAuth(supabase.auth);
+
+// A session the server revoked (password reset, global sign-out) must put the
+// device back on the sign-in screen — not leave it polling as the anonymous
+// role, where every order read is silently empty. See lib/session-loss.ts.
+bindSessionLossToAuth({
+  onAuthStateChange: (callback) => supabase.auth.onAuthStateChange((event) => callback(event)),
+  isSignedInHere: () => {
+    const { isAuthenticated, isDemo } = useAuthStore.getState();
+    return isAuthenticated && !isDemo;
+  },
+  signOutLocally: () => useAuthStore.getState().clear(),
+  tellStaff: () => Alert.alert(SESSION_LOST_TITLE, SESSION_LOST_MESSAGE),
+  onSignedIn: () => {
+    requeueSignedOutRefusals().catch((error) => {
+      console.warn("[outbox] Could not requeue sales refused while signed out:", error);
+    });
+    requeueSignedOutEditRefusals().catch((error) => {
+      console.warn("[outbox] Could not requeue order changes refused while signed out:", error);
+    });
+  },
+});
 import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
 import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
@@ -57,6 +85,7 @@ import {
   platformPushCleanup,
 } from "../lib/push-registration";
 import { CrashFallback } from "../components/CrashFallback";
+import { reportError, wrapRootComponent } from "../lib/sentry";
 import { warnAboutScreensRuntime } from "../lib/native-runtime-parity";
 import { useOrientationLock } from "../lib/use-orientation-lock";
 
@@ -78,6 +107,12 @@ warnAboutScreensRuntime(
  * process. "Sign Out" clears the (possibly demo) session and returns to login.
  */
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  // React hands render throws to this boundary rather than the global handler,
+  // so this is the only place Sentry can hear about them.
+  useEffect(() => {
+    reportError(error, { boundary: "root" });
+  }, [error]);
+
   const handleSignOut = async () => {
     try {
       await signOutThisDevice(supabase);
@@ -117,8 +152,13 @@ function useGlobalErrorHandler() {
     eu.setGlobalHandler((error, isFatal) => {
       console.error("[GlobalError]", isFatal ? "(fatal)" : "", error);
       // Preserve the dev red-box; in production swallow non-fatal JS errors so a
-      // stray async throw cannot force-close the app.
-      if (__DEV__ && previous) previous(error, isFatal);
+      // stray async throw cannot force-close the app. `previous` is Sentry's own
+      // handler, so a swallowed error has to be reported here instead.
+      if (__DEV__ && previous) {
+        previous(error, isFatal);
+        return;
+      }
+      reportError(error, { handler: "global", fatal: String(Boolean(isFatal)) });
     });
     return () => {
       if (previous) eu.setGlobalHandler?.(previous);
@@ -420,7 +460,7 @@ function useAnnouncementPushRouting() {
   }, []);
 }
 
-export default function RootLayout() {
+function RootLayout() {
   useGlobalErrorHandler();
   // Tablets lie down, handsets stand up — see lib/use-orientation-lock.ts.
   useOrientationLock();
@@ -455,3 +495,6 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+// Sentry's touch breadcrumbs and component context hang off the root.
+export default wrapRootComponent(RootLayout);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { subscribePageToWebhook } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
+import { canManageFacebook } from '@/lib/facebook/management-access'
 
 /**
  * POST /api/auth/facebook/connect
@@ -32,12 +33,12 @@ export async function POST(request: NextRequest) {
     // Check if user is admin of this tenant
     const { data: appUser } = await supabase
       .from('app_users')
-      .select('role, tenant_id')
+      .select('role, tenant_id, is_owner, permissions')
       .eq('user_id', user.id)
       .maybeSingle()
 
-    const userData = appUser as { role: string; tenant_id: string } | null
-    if (!userData || (userData.role !== 'superadmin' && userData.tenant_id !== tenant_id)) {
+    const userData = appUser as { role: string; tenant_id: string | null; is_owner?: boolean; permissions?: string[] | null } | null
+    if (!canManageFacebook(userData, tenant_id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -178,4 +179,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

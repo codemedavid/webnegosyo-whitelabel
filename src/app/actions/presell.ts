@@ -19,6 +19,7 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PresellStock } from '@/types/database'
 import { releasePresellForCancelledConvexOrder } from '@/lib/presell/convex-cancel'
+import { isCancelledOrder, readStoredOrderLifecycle } from '@/lib/order-lifecycle-read'
 import { MAX_RANGE_DAYS } from '@/lib/presell/month-grid'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
@@ -198,16 +199,25 @@ function formatDateList(dates: readonly string[]): string {
  *
  * A Convex tenant's cancel never reaches `updateOrderStatus`, where the claim
  * is released for platform-backed orders — see lib/presell/convex-cancel.
- * Unauthenticated by design, exactly like `restoreOrderStockAction` beside it
- * in the same cancel handler: it can only ever return stock the order itself
- * claimed, and it is driven by the admin sheet that just cancelled it.
+ *
+ * The release runs `apply_presell_order('void')` on the service role, so the
+ * caller must hold the `orders` permission (the order sheet that drives this
+ * is an order-queue screen), and the claim is read from the STORED order on
+ * the server — never from the browser, which could otherwise name any lines
+ * and zero a store's sold count. Only an order that is actually cancelled
+ * gives its dates back.
  */
 export async function releasePresellForCancelledConvexOrderAction(
   tenantId: string,
-  customerData: unknown,
+  orderId: string,
 ) {
   try {
-    await releasePresellForCancelledConvexOrder(tenantId, customerData)
+    await verifyTenantPermission(tenantId, 'orders')
+    const order = await readStoredOrderLifecycle(tenantId, orderId)
+    if (!isCancelledOrder(order)) {
+      return { success: false as const, error: 'Pre-order stock can only be released for a cancelled order' }
+    }
+    await releasePresellForCancelledConvexOrder(tenantId, order.customerData)
     return { success: true as const }
   } catch (error) {
     return fail(error, 'Failed to release the pre-order stock for the cancelled order')

@@ -14,7 +14,9 @@ export interface JumpNavEntry {
 }
 
 export interface SectionNavInput {
+  /** Unfilled required fields in the details card (price is counted separately). */
   missingDetailCount: number
+  isPriceMissing: boolean
   isAvailable: boolean
   /** Stores on the unified editor have one "Sizes & add-ons" section. */
   hasUnifiedOptions: boolean
@@ -29,15 +31,18 @@ export function buildSectionNav(input: SectionNavInput): JumpNavEntry[] {
   const details: JumpNavEntry = input.missingDetailCount > 0
     ? { id: DISH_SECTION_IDS.details, label: 'Details', status: `${input.missingDetailCount} to fill`, isAttention: true }
     : { id: DISH_SECTION_IDS.details, label: 'Details' }
+  const pricing: JumpNavEntry = input.isPriceMissing
+    ? { id: DISH_SECTION_IDS.pricing, label: 'Pricing', status: 'Needs a price', isAttention: true }
+    : { id: DISH_SECTION_IDS.pricing, label: 'Pricing' }
   const availability: JumpNavEntry = input.isAvailable
-    ? { id: DISH_SECTION_IDS.availability, label: 'Availability' }
-    : { id: DISH_SECTION_IDS.availability, label: 'Availability', status: 'Out of stock', isAttention: true }
+    ? { id: DISH_SECTION_IDS.availability, label: 'Status' }
+    : { id: DISH_SECTION_IDS.availability, label: 'Status', status: 'Out of stock', isAttention: true }
   const options: JumpNavEntry[] = input.hasUnifiedOptions
-    ? [{ id: DISH_SECTION_IDS.choices, label: 'Sizes & add-ons', status: countStatus(input.optionGroupCount) }]
+    ? [{ id: DISH_SECTION_IDS.choices, label: 'Options', status: countStatus(input.optionGroupCount) }]
     : [
         { id: DISH_SECTION_IDS.choices, label: 'Sizes & choices', status: input.choiceStatus },
         { id: DISH_SECTION_IDS.addons, label: 'Add-ons', status: countStatus(input.addonCount) },
       ]
 
-  return [details, availability, ...options, { id: DISH_SECTION_IDS.more, label: 'More options' }]
+  return [details, pricing, availability, ...options, { id: DISH_SECTION_IDS.more, label: 'More' }]
 }

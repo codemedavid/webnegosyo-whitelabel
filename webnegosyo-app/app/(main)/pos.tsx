@@ -239,7 +239,7 @@ export default function PosScreen() {
     const startingPricing = usePosCartStore.getState().editContext
       ? null
       : pricingForOrderType(first, priceIndex);
-    setOrderType(first.id, first.name, first.serviceCharge, startingPricing);
+    setOrderType(first.id, first.name, first.serviceCharge, startingPricing, first.type);
   }, [orderTypes, priceIndex, setOrderType]);
 
   // Coming back to the register stands in for the mount it never gets again,

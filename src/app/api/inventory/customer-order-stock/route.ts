@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { readInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { createConvexServerClient } from '@/lib/convex/server'
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // inventory on must never accumulate a ledger they did not ask for.
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('inventory_enabled, convex_deployment_url')
+      .select('inventory_enabled, order_backend, convex_deployment_url')
       .eq('id', tenantId)
       .single()
 
@@ -182,9 +183,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: true, skipped: 'inventory_disabled' })
     }
 
-    // Same discriminator the checkout itself uses: a deployment URL means the
-    // order lives in the tenant's Convex, not the platform table.
-    if (tenant.convex_deployment_url) {
+    // The same resolver checkout writes through. Never route on the URL alone:
+    // a platform-pinned store with a leftover Convex URL keeps its orders on
+    // the platform, and reading Convex for them spent nothing.
+    // The column is typed `string`; `resolveOrderBackend` validates the value itself.
+    const backend = resolveOrderBackend(tenant as OrderBackendTenantFields)
+    if (backend === 'supabase') {
+      // Orders live in the tenant's own Supabase project; checkout already
+      // depletes them in createOrderAction, and the platform table has none.
+      return NextResponse.json({ success: true, skipped: 'unsupported_backend' })
+    }
+    if (backend === 'convex' && tenant.convex_deployment_url) {
       const secrets = await getTenantSecrets(supabase, tenantId)
       return await depleteConvexOrder(
         {

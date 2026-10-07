@@ -90,6 +90,11 @@ jest.mock('@/lib/loyalty/lifecycle', () => ({
   runLoyaltyForOrder: (...args: unknown[]) => runLoyaltyAfterAttach(...args),
 }))
 
+/** Keeps the customer-profile side-effect out of a routing test. */
+jest.mock('@/lib/customers-service', () => ({
+  capturePlatformOrderBestEffort: async () => null,
+}))
+
 const SUBMISSION = {
   orderId: ORDER_ID,
   tenantId: TENANT_ID,

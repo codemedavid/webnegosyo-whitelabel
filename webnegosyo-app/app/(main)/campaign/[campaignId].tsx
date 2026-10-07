@@ -1,20 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Platform,
-  Alert,
+  AccessibilityInfo,
   ActivityIndicator,
+  Alert,
+  Animated,
+  BackHandler,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { useAuthStore } from "../../../stores/auth-store";
+import { CustomersAccessGate } from "../../../components/customers/CustomersAccessGate";
 import { campaignHref } from "../../../lib/navigation";
 import { isSmsCampaignsAvailable } from "../../../lib/sms/availability";
 import {
@@ -38,68 +44,57 @@ import {
   toScheduledCampaign,
   updateCampaign,
 } from "../../../lib/sms/campaigns-repo";
-import {
-  canActivate,
-  statusActionsFor,
-  statusLabel,
-} from "../../../lib/sms/campaign-status";
+import { canActivate, statusActionsFor, statusLabel } from "../../../lib/sms/campaign-status";
 import type { CampaignStatus } from "../../../lib/sms/due-runs";
 import { computeCampaignDueStates } from "../../../lib/sms/due-runs";
+import { describeCampaignTiming } from "../../../lib/sms/campaign-summary";
 import { selectAudience } from "../../../lib/sms/audience";
-import {
-  consumesCampaign,
-  decideSendNow,
-  immediateRunAt,
-} from "../../../lib/sms/send-now";
+import { consumesCampaign, decideSendNow, immediateRunAt } from "../../../lib/sms/send-now";
 import { listCustomers, listSuppressedPhones } from "../../../lib/sms/customers-repo";
 import { toManilaParts } from "../../../lib/sms/schedule";
 import {
   CAMPAIGN_PRESETS,
   buildPresetDraft,
+  isCampaignPresetId,
 } from "../../../lib/sms/campaign-presets";
-import { buildMessagePreview } from "../../../lib/sms/message-preview";
+import {
+  AUDIENCE_SEGMENTS,
+  addOneDay,
+  describeAudience,
+  describeDate,
+  describeSchedule,
+  firstIncompleteStep,
+  formatTime12h,
+  isStepComplete,
+  nextStep,
+  previousStep,
+  STEP_LABELS,
+  type AudienceSegmentId,
+  type WizardStep,
+} from "../../../lib/sms/campaign-wizard";
+import { buildMessagePreview, buildPreviewSegments } from "../../../lib/sms/message-preview";
 import { planTestSend } from "../../../lib/sms/test-send";
 import { createSmsTransport } from "../../../lib/sms/transport";
 import { androidSmsPermissions } from "../../../lib/sms/android-permissions";
 import { SmsSenderModule } from "../../../modules/sms-sender";
 import { useSmsRun } from "../../../hooks/use-sms-run";
-import type { SmsCustomer, SmsNativeClient, ScheduleKind } from "../../../lib/sms/types";
+import type { AudienceFilter, SmsCustomer, SmsNativeClient } from "../../../lib/sms/types";
 import { colors, typography, spacing, radius, shadow } from "../../../theme/colors";
+import { BackHeader } from "../../../components/BackHeader";
+import { Button } from "../../../components/Button";
 import { Icon } from "../../../components/Icon";
 import { LoadingState } from "../../../components/LoadingState";
-import { MessagePreview } from "../../../components/sms/MessagePreview";
+import { WizardProgress } from "../../../components/sms/campaign/WizardProgress";
+import { BLANK_GOAL_ID, GoalStep } from "../../../components/sms/campaign/GoalStep";
+import { MessageStep } from "../../../components/sms/campaign/MessageStep";
+import { AudienceStep } from "../../../components/sms/campaign/AudienceStep";
+import { ScheduleStep, type PickerField } from "../../../components/sms/campaign/ScheduleStep";
+import { ReviewStep } from "../../../components/sms/campaign/ReviewStep";
 
 const NEW_CAMPAIGN_ID = "new";
-
-const SCHEDULE_LABELS: { kind: ScheduleKind; label: string }[] = [
-  { kind: "one_off", label: "Once" },
-  { kind: "every_n_days", label: "Every N days" },
-  { kind: "weekly", label: "Weekly" },
-];
-
-const WEEKDAYS = [
-  { iso: 1, label: "M" },
-  { iso: 2, label: "T" },
-  { iso: 3, label: "W" },
-  { iso: 4, label: "T" },
-  { iso: 5, label: "F" },
-  { iso: 6, label: "S" },
-  { iso: 7, label: "S" },
-];
-
-/**
- * The placeholders, as things to tap rather than syntax to remember.
- *
- * A merchant who mistypes `{{frstName}}` gets that literal string delivered to
- * several hundred people. Offering them as buttons removes the only spelling
- * in this screen that has a bill attached to getting it wrong.
- */
-const TOKENS = [
-  { token: "{{firstName}}", label: "First name" },
-  { token: "{{storeName}}", label: "Store" },
-  { token: "{{orderCount}}", label: "Orders" },
-  { token: "{{lastOrderDate}}", label: "Last order" },
-];
+const STEP_FADE_MS = 200;
+const STEP_SLIDE_PX = 14;
+const STORE_FALLBACK = "our store";
 
 /**
  * Route-level gate.
@@ -114,40 +109,104 @@ export default function CampaignEditorRoute() {
     return <Redirect href="/customers" />;
   }
 
-  return <CampaignEditorScreen />;
+  // A campaign names its recipients: the same grant as the guest list.
+  return (
+    <CustomersAccessGate title="Campaign">
+      <CampaignEditorScreen />
+    </CustomersAccessGate>
+  );
 }
 
+/**
+ * A campaign, as a guided flow.
+ *
+ * New campaigns walk five short steps — goal, message, who, when, review —
+ * instead of one fifteen-field form. A saved campaign opens on its review
+ * summary with Send pinned underneath, and each step is one tap away from it.
+ * Every rule about what may be saved or sent is unchanged; only the order the
+ * merchant meets the questions in is new.
+ */
 function CampaignEditorScreen() {
-  const { campaignId } = useLocalSearchParams<{ campaignId: string }>();
+  const { campaignId, preset, created } = useLocalSearchParams<{
+    campaignId: string;
+    preset?: string;
+    created?: string;
+  }>();
   const tenantId = useAuthStore((s) => s.tenantId);
   const tenantName = useAuthStore((s) => s.tenantName);
+  const storeName = tenantName ?? STORE_FALLBACK;
   const isNew = campaignId === NEW_CAMPAIGN_ID;
+  const insets = useSafeAreaInsets();
 
-  const [draft, setDraft] = useState<CampaignDraft>(EMPTY_CAMPAIGN_DRAFT);
+  const today = toManilaParts(new Date()).date;
+  const tomorrow = addOneDay(today);
+
+  // A new campaign opened from the Reports dashboard arrives with its preset
+  // already chosen, so "Text them" lands on a ready message, not a blank form.
+  const [draft, setDraft] = useState<CampaignDraft>(() =>
+    isNew && isCampaignPresetId(preset)
+      ? buildPresetDraft(preset, toManilaParts(new Date()).date)
+      : EMPTY_CAMPAIGN_DRAFT
+  );
+  const [goalId, setGoalId] = useState<string | null>(() =>
+    isNew && isCampaignPresetId(preset) ? preset : null
+  );
+  const [step, setStep] = useState<WizardStep>(() => {
+    if (!isNew) return "review";
+    return isCampaignPresetId(preset) ? "message" : "goal";
+  });
+  const [savedDraft, setSavedDraft] = useState<CampaignDraft | null>(null);
   const [customers, setCustomers] = useState<SmsCustomer[]>([]);
   const [suppressedPhones, setSuppressedPhones] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dueAt, setDueAt] = useState<Date | null>(null);
+  const [timingLine, setTimingLine] = useState<string | null>(null);
   const [status, setStatus] = useState<CampaignStatus>("draft");
   const [openPicker, setOpenPicker] = useState<PickerField | null>(null);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const [isTesting, setIsTesting] = useState(false);
   const [testOutcome, setTestOutcome] = useState<string | null>(null);
 
   const run = useSmsRun();
+  const scrollRef = useRef<ScrollView>(null);
+  const stepFade = useRef(new Animated.Value(1)).current;
+  const [isReduceMotion, setReduceMotion] = useState(false);
 
-  const today = toManilaParts(new Date()).date;
   const validation = useMemo(() => validateCampaignDraft(draft, today), [draft, today]);
+  const problemStep = firstIncompleteStep(validation);
+  const isDirty =
+    !isNew && savedDraft !== null && JSON.stringify(draft) !== JSON.stringify(savedDraft);
 
-  const audience = useMemo(
+  const reachFor = useCallback(
+    (filter: AudienceFilter) =>
+      selectAudience(customers, filter, { now: new Date(), suppressedPhones }),
+    [customers, suppressedPhones]
+  );
+
+  const audience = useMemo(() => reachFor(draft.audience), [reachFor, draft.audience]);
+
+  // Head-counts for every card the merchant could tap, so each choice shows
+  // its consequence before it is made.
+  const reachBySegment = useMemo(
     () =>
-      selectAudience(customers, draft.audience, {
-        now: new Date(),
-        suppressedPhones,
-      }),
-    [customers, draft.audience, suppressedPhones]
+      Object.fromEntries(
+        AUDIENCE_SEGMENTS.map((segment) => [
+          segment.id,
+          reachFor({ ...segment.filter }).recipients.length,
+        ])
+      ) as Record<AudienceSegmentId, number>,
+    [reachFor]
+  );
+  const reachByPreset = useMemo(
+    () =>
+      Object.fromEntries(
+        CAMPAIGN_PRESETS.map((candidate) => [
+          candidate.id,
+          reachFor(buildPresetDraft(candidate.id, today).audience).recipients.length,
+        ])
+      ),
+    [reachFor, today]
   );
 
   const sendNowDecision = useMemo(
@@ -184,19 +243,20 @@ function CampaignEditorScreen() {
    * recipient's details where there is one. Never throws — see
    * `message-preview.ts`; the merchant is often mid-word.
    */
+  const firstRecipient = audience.recipients[0] ?? null;
   const preview = useMemo(
-    () =>
-      buildMessagePreview(
-        draft.messageTemplate,
-        audience.recipients[0] ?? null,
-        tenantName ?? "our store"
-      ),
-    [draft.messageTemplate, audience.recipients, tenantName]
+    () => buildMessagePreview(draft.messageTemplate, firstRecipient, storeName),
+    [draft.messageTemplate, firstRecipient, storeName]
   );
+  const segments = useMemo(
+    () => buildPreviewSegments(draft.messageTemplate, firstRecipient, storeName),
+    [draft.messageTemplate, firstRecipient, storeName]
+  );
+  const previewTimestamp =
+    draft.scheduleKind === "one_off" && draft.scheduleDate
+      ? `${capitalise(describeDate(draft.scheduleDate, today))} · ${formatTime12h(draft.scheduleTime)}`
+      : formatTime12h(draft.scheduleTime);
 
-  // Named here, beside the other derived values, because the action bar that
-  // carries it is pinned below the scroll view and must be the last thing
-  // painted.
   const sendLabel = `Send now to ${audience.recipients.length} guests`;
 
   const load = useCallback(async () => {
@@ -216,11 +276,11 @@ function CampaignEditorScreen() {
       if (!isNew) {
         const row = rows.find((r) => r.id === campaignId);
         if (row) {
-          setDraft({
+          const loaded: CampaignDraft = {
             name: row.name,
             messageTemplate: row.message_template,
             audience: (row.audience as CampaignDraft["audience"]) ?? {},
-            scheduleKind: row.schedule_kind as ScheduleKind,
+            scheduleKind: row.schedule_kind as CampaignDraft["scheduleKind"],
             scheduleTime: row.schedule_time,
             scheduleDate: row.schedule_date,
             scheduleIntervalDays: row.schedule_interval_days,
@@ -228,7 +288,9 @@ function CampaignEditorScreen() {
             quietHoursStart: row.quiet_hours_start,
             quietHoursEnd: row.quiet_hours_end,
             maxPerRun: row.max_per_run,
-          });
+          };
+          setDraft(loaded);
+          setSavedDraft(loaded);
 
           const scheduled = toScheduledCampaign(row, lastRuns[row.id] ?? null);
           setStatus(scheduled.status);
@@ -236,6 +298,7 @@ function CampaignEditorScreen() {
           // open the screen — reading a campaign should not write one.
           const [state] = computeCampaignDueStates([scheduled], new Date());
           setDueAt(state.isDue ? state.dueAt : null);
+          setTimingLine(describeCampaignTiming(state).line);
         }
       }
     } catch (error) {
@@ -249,8 +312,108 @@ function CampaignEditorScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then(setReduceMotion)
+      .catch(() => setReduceMotion(false));
+  }, []);
+
+  // Each step arrives at the top of the page with a short settle, so moving
+  // on reads as a new question rather than the same form scrolled.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    if (isReduceMotion) return;
+    stepFade.setValue(0);
+    Animated.timing(stepFade, {
+      toValue: 1,
+      duration: STEP_FADE_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [step, stepFade, isReduceMotion]);
+
   const patch = (changes: Partial<CampaignDraft>) =>
     setDraft((current) => ({ ...current, ...changes }));
+
+  /** Where Back goes: the previous question, the summary, or out. */
+  const backTarget = (): WizardStep | null => {
+    if (isNew) return previousStep(step);
+    return step === "review" ? null : "review";
+  };
+
+  const leave = () => {
+    // The send loop lives in this screen's hook: leaving would orphan it with
+    // no Stop button, still texting guests from the SIM.
+    if (run.isRunning) {
+      Alert.alert(
+        "Still sending",
+        "Stay on this screen until the texts finish, or tap Stop first."
+      );
+      return;
+    }
+    if (!isDirty) {
+      router.back();
+      return;
+    }
+    Alert.alert("Leave without saving?", "Your changes to this campaign will be lost.", [
+      { text: "Keep editing", style: "cancel" },
+      { text: "Leave", style: "destructive", onPress: () => router.back() },
+    ]);
+  };
+
+  const goBack = () => {
+    const target = backTarget();
+    if (target) setStep(target);
+    else leave();
+  };
+
+  // Android's back button walks the steps too, instead of throwing away a
+  // half-written campaign.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      const target = backTarget();
+      if (target) {
+        setStep(target);
+        return true;
+      }
+      if (!isDirty && !run.isRunning) return false;
+      leave();
+      return true;
+    });
+    return () => subscription.remove();
+  });
+
+  const draftForGoal = (id: string): CampaignDraft =>
+    id === BLANK_GOAL_ID
+      ? { ...EMPTY_CAMPAIGN_DRAFT, scheduleDate: today }
+      : buildPresetDraft(id, today);
+
+  /**
+   * Choosing a goal fills in the whole campaign and moves on. Choosing a
+   * DIFFERENT goal after editing the words asks first — a tap should never
+   * silently throw away something the merchant typed.
+   */
+  const pickGoal = (id: string) => {
+    if (id === goalId) {
+      setStep("message");
+      return;
+    }
+    const apply = () => {
+      setDraft(draftForGoal(id));
+      setGoalId(id);
+      setStep("message");
+    };
+    const hasEditedWords =
+      goalId !== null && draft.messageTemplate !== draftForGoal(goalId).messageTemplate;
+    if (!hasEditedWords) {
+      apply();
+      return;
+    }
+    Alert.alert("Replace your message?", "Picking a new goal swaps in its own message.", [
+      { text: "Keep mine", style: "cancel" },
+      { text: "Replace", style: "destructive", onPress: apply },
+    ]);
+  };
 
   /**
    * Apply whatever the calendar or clock came back with.
@@ -277,9 +440,8 @@ function CampaignEditorScreen() {
    *
    * Going back to the list after a save is what made "Send now is not
    * available" true: the whole Send action is gated on the campaign having an
-   * id, so a merchant who created a campaign was returned to a list without
-   * ever seeing the button. Replacing the route with the real id puts them on
-   * the saved campaign, with Send right there in the bar.
+   * id. Replacing the route with the real id lands the merchant on the saved
+   * campaign's summary, with Send right there in the bar.
    */
   const save = async () => {
     if (!tenantId || !validation.isValid) return;
@@ -289,14 +451,10 @@ function CampaignEditorScreen() {
         const newId = await createCampaign(tenantId, draft);
         // replace, not push: going back should return to the list, not to an
         // empty create form that would save a second copy.
-        router.replace(campaignHref(newId));
+        router.replace(`${campaignHref(newId)}?created=1`);
         return;
       }
       await updateCampaign(String(campaignId), draft);
-      setSavedAt(new Date().toLocaleTimeString("en-PH", {
-        hour: "numeric",
-        minute: "2-digit",
-      }));
       await load();
     } catch (error) {
       Alert.alert("Could not save", error instanceof Error ? error.message : "Try again.");
@@ -306,6 +464,13 @@ function CampaignEditorScreen() {
   };
 
   const changeStatus = async (next: CampaignStatus) => {
+    // A status change reloads the saved campaign, which would silently throw
+    // away the unsaved edits — and "Activate" would be judged on words that
+    // are not what is stored.
+    if (isDirty) {
+      Alert.alert("Save your changes first", "Save or discard your edits, then change the status.");
+      return;
+    }
     if (next === "active" && !canActivate(status, validation.isValid)) {
       Alert.alert(
         "Fix the campaign first",
@@ -336,7 +501,7 @@ function CampaignEditorScreen() {
     const planned = planTestSend({
       phone: testPhone,
       template: draft.messageTemplate,
-      storeName: tenantName ?? "our store",
+      storeName,
     });
 
     if (!planned.ok) {
@@ -408,7 +573,7 @@ function CampaignEditorScreen() {
                 tenantId,
                 runId,
                 template: draft.messageTemplate,
-                storeName: tenantName ?? "our store",
+                storeName,
                 maxPerRun: draft.maxPerRun,
                 audience: audience.recipients,
               });
@@ -434,414 +599,231 @@ function CampaignEditorScreen() {
 
   if (isLoading) return <LoadingState message="Loading campaign…" />;
 
+  const previewProps = {
+    preview,
+    segments,
+    cost,
+    recipientCount: audience.recipients.length,
+    recipientName: firstRecipient?.name?.trim() ?? null,
+    storeName,
+    timestamp: previewTimestamp,
+  };
+  const canGoOn = isStepComplete(step, validation);
+  const nextLabel = `Next: ${STEP_LABELS[nextStep(step)]}`;
+
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <BackHeader
+        title={isNew ? "New campaign" : "Campaign"}
+        subtitle={isNew ? "Text your guests" : undefined}
+        onBack={goBack}
+      />
+      {isNew && <WizardProgress step={step} />}
+
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>{isNew ? "New campaign" : draft.name || "Campaign"}</Text>
-
-        {/*
-          Status used to be the very last block on the screen, below the save
-          button — and it is the single fact that decides whether a campaign
-          ever fires. It is a line under the title now, with its actions on it.
-        */}
-        {!isNew && (
-          <View style={styles.statusStrip}>
-            <View style={[styles.statusDot, status === "active" && styles.statusDotLive]} />
-            <Text style={styles.statusText}>
-              {statusLabel(status)}
-              {status !== "active" && " — it will not send on its own"}
-            </Text>
-            {statusActionsFor(status).map((action) => (
-              <TouchableOpacity
-                key={action.next}
-                onPress={() => changeStatus(action.next)}
-                accessibilityRole="button"
-              >
-                <Text
-                  style={action.isDestructive ? styles.statusActionQuiet : styles.statusAction}
-                >
-                  {action.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/*
-          A blank draft is not saveable — a one-off with no date fails validation
-          the moment this screen opens. A preset is one tap to a campaign that is
-          already valid, which is the difference between "write six fields" and
-          "check these are right".
-        */}
-        {isNew && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Start from a ready-made campaign</Text>
-            <View style={styles.presetList}>
-              {CAMPAIGN_PRESETS.map((preset, index) => (
-                <TouchableOpacity
-                  key={preset.id}
-                  style={[styles.presetRow, index > 0 && styles.presetRowDivided]}
-                  onPress={() => setDraft(buildPresetDraft(preset.id, today))}
-                  accessibilityRole="button"
-                >
-                  <View style={styles.presetCopy}>
-                    <Text style={styles.presetTitle}>{preset.title}</Text>
-                    <Text style={styles.hint}>{preset.description}</Text>
-                  </View>
-                  <Icon name="chevron" color={colors.textTertiary} size={14} strokeWidth={2} />
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.hint}>Or fill in the fields below yourself.</Text>
-          </View>
-        )}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What it says</Text>
-
-          <Field label="Campaign name" error={validation.errors.name}>
-            <TextInput
-              style={styles.input}
-              value={draft.name}
-              onChangeText={(name) => patch({ name })}
-              placeholder="Win back lapsed guests"
-              placeholderTextColor={colors.textTertiary}
+        <Animated.View
+          style={{
+            opacity: stepFade,
+            transform: [
+              {
+                translateY: stepFade.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [STEP_SLIDE_PX, 0],
+                }),
+              },
+            ],
+          }}
+        >
+          {step === "goal" && (
+            <GoalStep
+              presets={CAMPAIGN_PRESETS}
+              reachById={reachByPreset}
+              selectedId={goalId}
+              onPick={pickGoal}
             />
-          </Field>
-
-          <Field label="Message" error={validation.errors.messageTemplate}>
-            <TextInput
-              style={[styles.input, styles.textarea]}
-              value={draft.messageTemplate}
-              onChangeText={(messageTemplate) => patch({ messageTemplate })}
-              placeholder="Hi {{firstName}}, we miss you at {{storeName}}!"
-              placeholderTextColor={colors.textTertiary}
-              multiline
+          )}
+          {step === "message" && (
+            <MessageStep
+              name={draft.name}
+              messageTemplate={draft.messageTemplate}
+              nameError={validation.errors.name}
+              messageError={validation.errors.messageTemplate}
+              cost={cost}
+              preview={previewProps}
+              onChangeName={(name) => patch({ name })}
+              onChangeMessage={(messageTemplate) => patch({ messageTemplate })}
             />
-            <View style={styles.tokenRow}>
-              {TOKENS.map(({ token, label }) => (
-                <TouchableOpacity
-                  key={token}
-                  style={styles.token}
-                  onPress={() =>
-                    patch({ messageTemplate: `${draft.messageTemplate}${token}` })
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={`Add ${label}`}
-                >
-                  <Text style={styles.tokenText}>+ {label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </Field>
-
-          <MessagePreview
-            preview={preview}
-            cost={cost}
-            recipientCount={audience.recipients.length}
-            recipientName={audience.recipients[0]?.name?.trim() ?? null}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Who gets it</Text>
-          <View style={styles.pairRow}>
-            <View style={styles.pairCell}>
-              <Field label="Not ordered in (days)">
-                <TextInput
-                  style={styles.input}
-                  keyboardType="number-pad"
-                  value={
-                    draft.audience.lastOrderOlderThanDays === undefined
-                      ? ""
-                      : String(draft.audience.lastOrderOlderThanDays)
-                  }
-                  onChangeText={(value) =>
-                    patch({
-                      audience: {
-                        ...draft.audience,
-                        lastOrderOlderThanDays: value === "" ? undefined : Number(value),
-                      },
-                    })
-                  }
-                  placeholder="Any"
-                  placeholderTextColor={colors.textTertiary}
-                />
-              </Field>
-            </View>
-            <View style={styles.pairCell}>
-              <Field label="At least this many orders">
-                <TextInput
-                  style={styles.input}
-                  keyboardType="number-pad"
-                  value={
-                    draft.audience.minOrderCount === undefined
-                      ? ""
-                      : String(draft.audience.minOrderCount)
-                  }
-                  onChangeText={(value) =>
-                    patch({
-                      audience: {
-                        ...draft.audience,
-                        minOrderCount: value === "" ? undefined : Number(value),
-                      },
-                    })
-                  }
-                  placeholder="Any"
-                  placeholderTextColor={colors.textTertiary}
-                />
-              </Field>
-            </View>
-          </View>
-
-          {audience.recipients.length === 0 ? (
-            <View style={styles.notice}>
-              <Text style={styles.noticeText}>
-                Nobody matches yet. {audience.summary.no_consent} guests have not agreed to
-                SMS updates, {audience.summary.no_phone} have no number on file.
-              </Text>
-              <TouchableOpacity
-                onPress={() => router.push("/(main)/customers")}
-                accessibilityRole="button"
-              >
-                <Text style={styles.linkText}>Record who agreed to texts →</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <Text style={styles.matchLine}>
-              {audience.recipients.length}{" "}
-              {audience.recipients.length === 1 ? "guest matches" : "guests match"} and can be
-              texted.
-            </Text>
           )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>When</Text>
-          <View style={styles.chipRow}>
-            {SCHEDULE_LABELS.map(({ kind, label }) => (
-              <Chip
-                key={kind}
-                label={label}
-                isActive={draft.scheduleKind === kind}
-                onPress={() => patch({ scheduleKind: kind })}
-              />
-            ))}
-          </View>
-
-          {draft.scheduleKind === "one_off" && (
-            <Field label="Date" error={validation.errors.scheduleDate}>
-              <PickerRow
-                icon="calendar"
-                value={draft.scheduleDate}
-                placeholder="Pick a date"
-                onPress={() => setOpenPicker("date")}
-              />
-            </Field>
+          {step === "audience" && (
+            <AudienceStep
+              filter={draft.audience}
+              onChange={(filter) => patch({ audience: filter })}
+              reachBySegment={reachBySegment}
+              matchedCount={audience.recipients.length}
+              totalGuests={customers.length}
+              excludedSummary={audience.summary}
+              onRecordConsent={() => router.push("/(main)/customers")}
+            />
           )}
-
-          {draft.scheduleKind === "every_n_days" && (
-            <Field label="Repeat every (days)" error={validation.errors.scheduleIntervalDays}>
-              <TextInput
-                style={styles.input}
-                keyboardType="number-pad"
-                value={
-                  draft.scheduleIntervalDays === null ? "" : String(draft.scheduleIntervalDays)
-                }
-                onChangeText={(value) =>
-                  patch({ scheduleIntervalDays: value === "" ? null : Number(value) })
-                }
-                placeholder="14"
-                placeholderTextColor={colors.textTertiary}
-              />
-            </Field>
+          {step === "schedule" && (
+            <ScheduleStep
+              draft={draft}
+              errors={validation.errors}
+              today={today}
+              tomorrow={tomorrow}
+              onPatch={patch}
+              onOpenPicker={setOpenPicker}
+            />
           )}
-
-          {draft.scheduleKind === "weekly" && (
-            <Field label="Days" error={validation.errors.scheduleWeekdays}>
-              <View style={styles.chipRow}>
-                {WEEKDAYS.map(({ iso, label }) => (
-                  <Chip
-                    key={iso}
-                    label={label}
-                    isActive={draft.scheduleWeekdays.includes(iso)}
-                    onPress={() =>
-                      patch({
-                        scheduleWeekdays: draft.scheduleWeekdays.includes(iso)
-                          ? draft.scheduleWeekdays.filter((d) => d !== iso)
-                          : [...draft.scheduleWeekdays, iso].sort(),
-                      })
+          {step === "review" && (
+            <ReviewStep
+              isNew={isNew}
+              name={draft.name}
+              preview={previewProps}
+              audienceLine={describeAudience(draft.audience)}
+              recipientCount={audience.recipients.length}
+              scheduleLine={describeSchedule(draft, today)}
+              problemStep={problemStep}
+              onEdit={setStep}
+              status={
+                isNew
+                  ? undefined
+                  : {
+                      value: status,
+                      label: statusLabel(status),
+                      nextLine: timingLine,
+                      actions: statusActionsFor(status),
+                      onChange: changeStatus,
                     }
-                  />
-                ))}
-              </View>
-            </Field>
-          )}
-
-          <Field label="Send at" error={validation.errors.scheduleTime}>
-            <PickerRow
-              icon="clock"
-              value={draft.scheduleTime}
-              placeholder="Pick a time"
-              onPress={() => setOpenPicker("time")}
+              }
+              isJustCreated={created === "1" && status === "active" && !run.result}
+              testSend={{
+                isAvailable: Platform.OS === "android",
+                phone: testPhone,
+                onChangePhone: setTestPhone,
+                onSend: sendTest,
+                isSending: isTesting,
+                outcome: testOutcome,
+              }}
+              runResult={run.result}
+              runError={run.error}
             />
-          </Field>
-
-          <View style={styles.pairRow}>
-            <View style={styles.pairCell}>
-              <Field label="Quiet from">
-                <PickerRow
-                  icon="clock"
-                  value={draft.quietHoursStart}
-                  placeholder="21:00"
-                  onPress={() => setOpenPicker("quietStart")}
-                />
-              </Field>
-            </View>
-            <View style={styles.pairCell}>
-              <Field label="Quiet until">
-                <PickerRow
-                  icon="clock"
-                  value={draft.quietHoursEnd}
-                  placeholder="08:00"
-                  onPress={() => setOpenPicker("quietEnd")}
-                />
-              </Field>
-            </View>
-          </View>
-          <Text style={styles.hint}>
-            A scheduled message landing inside these hours waits until morning. Sending by
-            hand is still your call — you will be told, not stopped.
-          </Text>
-        </View>
-
-        {/*
-          Available on a brand-new, unsaved campaign on purpose. Everything on
-          this screen is guesswork until the merchant has seen one of these
-          messages land on a real handset.
-        */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Try it on your own phone</Text>
-          <Text style={styles.hint}>
-            One text to your own number, exactly as a guest receives it. It is not counted
-            against the campaign.
-          </Text>
-          <View style={styles.testRow}>
-            <TextInput
-              style={[styles.input, styles.testInput]}
-              value={testPhone}
-              onChangeText={setTestPhone}
-              keyboardType="phone-pad"
-              placeholder="0917 123 4567"
-              placeholderTextColor={colors.textTertiary}
-            />
-            {Platform.OS === "android" && (
-              <TouchableOpacity
-                style={[styles.secondaryButton, isTesting && styles.disabled]}
-                onPress={sendTest}
-                disabled={isTesting}
-                accessibilityRole="button"
-              >
-                <Text style={styles.secondaryButtonText}>
-                  {isTesting ? "Sending…" : "Send test"}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          {Platform.OS !== "android" && (
-            <Text style={styles.hint}>
-              Test sending needs the Android app — it uses that phone&apos;s SIM.
-            </Text>
           )}
-          {testOutcome && <Text style={styles.hint}>{testOutcome}</Text>}
-        </View>
-
-        {run.result && <RunSummary result={run.result} />}
-        {run.error && <Text style={styles.errorText}>{run.error}</Text>}
+        </Animated.View>
       </ScrollView>
 
       {/*
-        Pinned, not scrolled. Both of the merchant's reported problems — "it
+        Pinned, not scrolled. Both of the merchant's original reports — "it
         does not let me send manually" and "the send now button is not
-        available" — were reachability, not logic: Send sat at the bottom of a
-        very long form, below status and quiet hours. Here it cannot be
-        scrolled away from.
+        available" — were reachability, not logic. The step's one action, and
+        on a saved campaign the Send button, cannot be scrolled away from.
       */}
-      <View style={styles.actionBar}>
-        {run.isRunning && run.progress ? (
-          <View style={styles.progressRow}>
-            <ActivityIndicator color={colors.accent} />
-            <Text style={styles.progressText}>
-              Sending {run.progress.attempted} of {run.progress.total}…
-            </Text>
-            <TouchableOpacity onPress={run.cancel} accessibilityRole="button">
-              <Text style={styles.cancelText}>Stop</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            {!isNew && !sendNowDecision.canSend && (
-              <View style={styles.notice}>
-                <Text style={styles.noticeText}>{sendNowDecision.message}</Text>
-                {sendNowDecision.block === "no_audience" && (
-                  <TouchableOpacity
-                    onPress={() => router.push("/(main)/customers")}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.linkText}>Record who agreed to texts →</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {savedAt && !isSaving && (
-              <Text style={styles.savedText}>Saved at {savedAt}.</Text>
-            )}
-
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[
-                  isNew ? styles.primaryButton : styles.secondaryButton,
-                  styles.grow,
-                  !validation.isValid && styles.disabled,
-                ]}
-                onPress={save}
-                disabled={!validation.isValid || isSaving}
-                accessibilityRole="button"
-              >
-                <Text style={isNew ? styles.primaryButtonText : styles.secondaryButtonText}>
-                  {isSaving ? "Saving…" : isNew ? "Create campaign" : "Save changes"}
-                </Text>
+      {step !== "goal" && (
+        <View style={[styles.actionBar, { paddingBottom: insets.bottom + spacing.md }]}>
+          {run.isRunning && run.progress ? (
+            <View style={styles.progressRow}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.progressText}>
+                Sending {run.progress.attempted} of {run.progress.total}…
+              </Text>
+              <TouchableOpacity onPress={run.cancel} accessibilityRole="button" hitSlop={8}>
+                <Text style={styles.cancelText}>Stop</Text>
               </TouchableOpacity>
-
-              {!isNew && (
-                <TouchableOpacity
-                  style={[
-                    styles.primaryButton,
-                    styles.grow,
-                    !sendNowDecision.canSend && styles.disabled,
-                  ]}
-                  onPress={sendNow}
-                  disabled={!sendNowDecision.canSend}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.primaryButtonText} numberOfLines={1}>
-                    {sendLabel}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
-          </>
-        )}
-      </View>
+          ) : step !== "review" ? (
+            isNew ? (
+              <View style={styles.buttonRow}>
+                <Button label="Back" tone="secondary" size="lg" fullWidth={false} onPress={goBack} />
+                <Button
+                  label={nextLabel}
+                  size="lg"
+                  icon="arrow-right"
+                  disabled={!canGoOn}
+                  onPress={() => setStep(nextStep(step))}
+                  style={styles.grow}
+                />
+              </View>
+            ) : (
+              <Button label="Back to summary" size="lg" onPress={() => setStep("review")} />
+            )
+          ) : isNew ? (
+            <>
+              <Text style={styles.barHint}>
+                {validation.isValid
+                  ? "Saved as active. Nothing is sent until you tap Send."
+                  : "Fix the highlighted step to save this campaign."}
+              </Text>
+              <Button
+                label={isSaving ? "Saving…" : "Create campaign"}
+                size="lg"
+                icon="check"
+                disabled={!validation.isValid}
+                isLoading={isSaving}
+                onPress={save}
+              />
+            </>
+          ) : isDirty ? (
+            <View style={styles.buttonRow}>
+              <Button
+                label="Discard"
+                tone="secondary"
+                size="lg"
+                fullWidth={false}
+                onPress={() => savedDraft && setDraft(savedDraft)}
+              />
+              <Button
+                label={isSaving ? "Saving…" : "Save changes"}
+                size="lg"
+                disabled={!validation.isValid}
+                isLoading={isSaving}
+                onPress={save}
+                style={styles.grow}
+              />
+            </View>
+          ) : (
+            <>
+              {!sendNowDecision.canSend && (
+                <View style={styles.notice}>
+                  <Icon name="info" size={16} color={colors.textPrimary} />
+                  <View style={styles.noticeCopy}>
+                    <Text style={styles.noticeText}>{sendNowDecision.message}</Text>
+                    {sendNowDecision.block === "no_audience" && (
+                      <TouchableOpacity
+                        onPress={() => router.push("/(main)/customers")}
+                        accessibilityRole="button"
+                        style={styles.noticeLink}
+                      >
+                        <Text style={styles.linkText}>Record who agreed to texts</Text>
+                        <Icon name="arrow-right" size={13} color={colors.textPrimary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+              <Button
+                label={sendLabel}
+                size="lg"
+                icon="send"
+                disabled={!sendNowDecision.canSend}
+                onPress={sendNow}
+              />
+            </>
+          )}
+        </View>
+      )}
 
       {openPicker === "date" && (
         <DateTimePicker
           mode="date"
+          minimumDate={dateFieldToDate(today, new Date())}
           value={dateFieldToDate(draft.scheduleDate, new Date())}
           onChange={applyPicked}
         />
@@ -849,7 +831,6 @@ function CampaignEditorScreen() {
       {openPicker !== null && openPicker !== "date" && (
         <DateTimePicker
           mode="time"
-          is24Hour
           value={timeFieldToDate(
             openPicker === "time"
               ? draft.scheduleTime
@@ -860,218 +841,18 @@ function CampaignEditorScreen() {
           onChange={applyPicked}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
-function RunSummary({ result }: { result: ReturnType<typeof useSmsRun>["result"] }) {
-  if (!result) return null;
-
-  const halted: Record<string, string> = {
-    rate_limited:
-      "Android paused outgoing texts. The rest are still waiting — try again in about 30 minutes.",
-    aborted: "You stopped the run. The rest are still waiting.",
-    log_failed:
-      "A send could not be recorded, so the run stopped rather than risk texting someone twice.",
-  };
-
-  return (
-    <View style={styles.notice}>
-      <Text style={styles.noticeText}>
-        Sent {result.sentCount}
-        {result.failedCount > 0 ? `, ${result.failedCount} failed` : ""}
-        {result.remainingCount > 0 ? `, ${result.remainingCount} still waiting` : ""}.
-      </Text>
-      {result.status === "claimed_elsewhere" && (
-        <Text style={styles.noticeText}>
-          Another device is already sending this campaign.
-        </Text>
-      )}
-      {result.haltedReason && (
-        <Text style={styles.noticeText}>{halted[result.haltedReason]}</Text>
-      )}
-    </View>
-  );
-}
-
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      {children}
-      {error && <Text style={styles.errorText}>{error}</Text>}
-    </View>
-  );
-}
-
-/** Which of the four date/time fields the open picker is editing. */
-type PickerField = "date" | "time" | "quietStart" | "quietEnd";
-
-/**
- * A field that opens a picker instead of asking for a typed string.
- *
- * Shaped like the text inputs around it, with an icon as the one signal that
- * it behaves differently — the merchant should not have to learn that some of
- * these fields want typing and others want tapping.
- */
-function PickerRow({
-  icon,
-  value,
-  placeholder,
-  onPress,
-}: {
-  icon: "calendar" | "clock";
-  value: string | null;
-  placeholder: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.input, styles.pickerRow]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={value ?? placeholder}
-    >
-      <Text style={value ? styles.pickerValue : styles.pickerPlaceholder}>
-        {value || placeholder}
-      </Text>
-      <Icon name={icon} color={colors.textSecondary} size={16} />
-    </TouchableOpacity>
-  );
-}
-
-function Chip({
-  label,
-  isActive,
-  onPress,
-}: {
-  label: string;
-  isActive: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.chip, isActive && styles.chipActive]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: isActive }}
-    >
-      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
+function capitalise(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xxl },
-  title: { ...typography.title, color: colors.textPrimary },
-
-  statusStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: -spacing.sm,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.textTertiary,
-  },
-  statusDotLive: { backgroundColor: colors.success },
-  statusText: { ...typography.caption, color: colors.textSecondary, flexShrink: 1 },
-  statusAction: { ...typography.caption, color: colors.primary, fontWeight: "700" },
-  statusActionQuiet: { ...typography.caption, color: colors.danger, fontWeight: "700" },
-
-  // A section is a heading and its fields, separated by space rather than by
-  // being wrapped in yet another bordered box.
-  section: { gap: spacing.md },
-  sectionTitle: { ...typography.heading, color: colors.textPrimary },
-  field: { gap: 5 },
-  label: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
-  input: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  textarea: { minHeight: 96, textAlignVertical: "top" },
-  hint: { ...typography.small, color: colors.textSecondary, lineHeight: 17 },
-  matchLine: { ...typography.caption, color: colors.textPrimary, fontWeight: "600" },
-
-  pickerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  pickerValue: { ...typography.body, color: colors.textPrimary },
-  pickerPlaceholder: { ...typography.body, color: colors.textTertiary },
-  pairRow: { flexDirection: "row", gap: spacing.md },
-  pairCell: { flex: 1 },
-
-  tokenRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: 2 },
-  token: {
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 5,
-    borderRadius: radius.full,
-    backgroundColor: colors.primaryLight,
-  },
-  tokenText: { ...typography.small, color: colors.textPrimary, fontWeight: "600" },
-
-  presetList: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.separator,
-  },
-  presetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  presetRowDivided: { borderTopWidth: 1, borderTopColor: colors.separator },
-  presetCopy: { flex: 1, gap: 2 },
-  presetTitle: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
-
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    borderRadius: radius.full,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    minWidth: 42,
-    alignItems: "center",
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textPrimary },
-  chipTextActive: { color: colors.textOnDark, fontWeight: "700" },
-
-  notice: {
-    backgroundColor: colors.warningLight,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: 4,
-  },
-  noticeText: { ...typography.caption, color: colors.textPrimary, lineHeight: 18 },
-  linkText: { ...typography.caption, color: colors.primary, fontWeight: "700" },
-  savedText: { ...typography.small, color: colors.success, fontWeight: "600" },
-  errorText: { ...typography.small, color: colors.danger },
-
-  testRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  testInput: { flex: 1 },
+  content: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xxl * 2 },
 
   // The bar sits on its own surface with a hairline above it, so it reads as
   // furniture rather than as the next thing in the scroll.
@@ -1079,36 +860,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.separator,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
     gap: spacing.sm,
     ...shadow.md,
   },
   buttonRow: { flexDirection: "row", gap: spacing.sm },
   grow: { flex: 1 },
-  primaryButton: {
-    backgroundColor: colors.primary,
+  barHint: { ...typography.caption, color: colors.textSecondary, textAlign: "center" },
+  notice: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    backgroundColor: colors.warningLight,
     borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
+    padding: spacing.md,
   },
-  primaryButtonText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
-  secondaryButton: {
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  secondaryButtonText: { ...typography.caption, color: colors.primary, fontWeight: "700" },
-  disabled: { opacity: 0.4 },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  progressText: { ...typography.caption, color: colors.textPrimary, flex: 1 },
-  cancelText: { ...typography.caption, color: colors.danger, fontWeight: "700" },
+  noticeCopy: { flex: 1, gap: 4 },
+  noticeText: { ...typography.caption, color: colors.textPrimary, lineHeight: 18 },
+  noticeLink: { flexDirection: "row", alignItems: "center", gap: 4 },
+  linkText: { ...typography.caption, color: colors.textPrimary, fontWeight: "800" },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52 },
+  progressText: { ...typography.body, color: colors.textPrimary, fontWeight: "600", flex: 1 },
+  cancelText: { ...typography.body, color: colors.danger, fontWeight: "800" },
 });

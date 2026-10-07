@@ -1,6 +1,8 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import {
   getComplementaryItems,
   getComplementaryPairsByTenant,
@@ -20,9 +22,12 @@ export async function getComplementaryItemsAction(
   return getComplementaryItems(itemId, categoryId, tenantId)
 }
 
+/** Admin list on the service role: the caller must hold Boost Sales' `analytics`. */
 export async function getComplementaryPairsAction(
   tenantId: string
 ): Promise<ComplementaryPairWithDetails[]> {
+  z.string().uuid().parse(tenantId)
+  await verifyTenantPermission(tenantId, 'analytics', 'view')
   return getComplementaryPairsByTenant(tenantId)
 }
 

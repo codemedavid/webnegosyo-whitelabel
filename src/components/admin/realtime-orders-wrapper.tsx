@@ -12,8 +12,18 @@ import {
   requestNotificationPermission
 } from '@/lib/notification-utils'
 import { formatPrice } from '@/lib/cart-utils'
+import { createCoalescer } from '@/lib/coalesce-calls'
 import { OrdersList } from '@/components/admin/orders-list'
 import type { OrderWithItems } from '@/lib/orders-service'
+
+/**
+ * A new order needs a server refresh (the INSERT payload has no items), but a
+ * refresh is a full server render of layout + page. A rush used to fire one per
+ * order; a burst now settles into one refresh ~1.5s after it goes quiet, and a
+ * never-quiet stream still refreshes at least every 5s. The chime, browser
+ * notification and toast stay immediate and per order.
+ */
+const NEW_ORDER_REFRESH = { waitMs: 1500, maxWaitMs: 5000 } as const
 
 interface RealtimeOrdersWrapperProps {
   initialOrders: OrderWithItems[]
@@ -62,6 +72,12 @@ export function RealtimeOrdersWrapper({
     requestNotificationPermission()
   }, [])
 
+  const refreshCoalescer = useMemo(
+    () => createCoalescer(() => router.refresh(), NEW_ORDER_REFRESH),
+    [router]
+  )
+  useEffect(() => () => refreshCoalescer.cancel(), [refreshCoalescer])
+
   const handleNewOrder = useCallback((newOrder: Record<string, unknown>) => {
     // Play sound and show notification
     playNotificationSound()
@@ -80,9 +96,9 @@ export function RealtimeOrdersWrapper({
       duration: 8000,
     })
 
-    // Refresh the page data to get the full order with items
-    router.refresh()
-  }, [router])
+    // Refresh the page data to get the full order with items — coalesced.
+    refreshCoalescer.schedule()
+  }, [refreshCoalescer])
 
   const handleOrderUpdate = useCallback((updatedOrder: Record<string, unknown>) => {
     setOrders(prev => prev.map(order => {

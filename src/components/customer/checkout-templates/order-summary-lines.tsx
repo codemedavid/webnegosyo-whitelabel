@@ -203,7 +203,7 @@ export function OrderSummaryLines({
   showItems?: boolean
 }) {
   const {
-    items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError,
+    items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, freeDeliveryRemaining,
     customerData, serviceChargeAmount, grandTotal,
     voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode,
   } = checkout
@@ -259,6 +259,8 @@ export function OrderSummaryLines({
             value={
               isFetchingDeliveryFee ? (
                 <span className="animate-pulse" style={{ color: accent }}>Calculating...</span>
+              ) : feeMatches && checkout.isDeliveryFeeWaived ? (
+                <span className="font-semibold" style={{ color: accent }}>Free</span>
               ) : feeMatches ? (
                 formatPrice(deliveryFee!)
               ) : (
@@ -268,6 +270,14 @@ export function OrderSummaryLines({
           />
           {skin.rowTrailingBreak}
         </>
+      )}
+
+      {/* The free-delivery offer, while the cart is still short of it. */}
+      {freeDeliveryRemaining !== null && freeDeliveryRemaining > 0 && (
+        <p className="text-xs" style={{ color: mutedText }}>
+          Add <span className="font-semibold" style={{ color: accent }}>{formatPrice(freeDeliveryRemaining)}</span>
+          {' '}more for free delivery.
+        </p>
       )}
 
       {/* A refused quote has to say why: without this the customer sees a bare

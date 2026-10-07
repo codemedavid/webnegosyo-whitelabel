@@ -8,16 +8,19 @@ import { goTo, type TabAwareRouter } from "../lib/tab-navigation";
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { ListRow } from "./ListRow";
 import { IconButton } from "./IconButton";
+import { Button } from "./Button";
 
 /**
  * The doors to a screen's sub-screens.
  *
  * Seven screens hang under a bar tab instead of taking a slot of their own
  * (lib/subscreen-links.ts). This is what puts the door on the parent, in one
- * of two shapes: `rows` — a grouped card at the foot of a reading screen
- * (Analytics → Trends) — or `actions` — icon buttons in the header of a shift
+ * of three shapes: `rows` — a grouped card at the foot of a reading screen
+ * (Analytics → Trends) — `actions` — icon buttons in the header of a shift
  * screen (Orders → Kitchen, Tables, Schedule), where the merchant needs the door in
- * reach without scrolling. Both read the same list, filtered to what this
+ * reach without scrolling — or `pills`, labelled header buttons for a screen
+ * whose doors are destinations in their own right (Reports → Guest list,
+ * Rewards), where an unlabelled icon would leave the merchant guessing. Both read the same list, filtered to what this
  * account may actually open.
  *
  * Renders nothing when the account may open none of them, so a restricted
@@ -30,7 +33,7 @@ export function SubScreenLinks({
 }: {
   parent: string;
   title?: string;
-  variant?: "rows" | "actions";
+  variant?: "rows" | "actions" | "pills";
 }) {
   const ctx = useTabVisibilityContext();
   const links = subscreensOf(parent, ctx);
@@ -38,6 +41,24 @@ export function SubScreenLinks({
 
   const open = (href: string) =>
     goTo(router as TabAwareRouter<`/(main)/${string}`>, href as `/(main)/${string}`);
+
+  if (variant === "pills") {
+    return (
+      <View style={styles.pills}>
+        {links.map((link) => (
+          <Button
+            key={link.tab}
+            label={link.label}
+            icon={link.icon}
+            tone="secondary"
+            size="sm"
+            fullWidth={false}
+            onPress={() => open(link.href)}
+          />
+        ))}
+      </View>
+    );
+  }
 
   if (variant === "actions") {
     return (
@@ -75,6 +96,7 @@ export function SubScreenLinks({
 
 const styles = StyleSheet.create({
   section: { marginTop: spacing.xl },
+  pills: { flexDirection: "row", gap: spacing.sm },
   heading: {
     ...typography.caption,
     fontWeight: "700",

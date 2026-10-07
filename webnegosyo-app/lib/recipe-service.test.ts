@@ -17,6 +17,7 @@ jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 import {
   addRecipeComponent,
   ensureMenuItemRecipe,
+  loadDishName,
   loadMenuItemRecipe,
   loadIngredientOptions,
   loadUnitOptions,
@@ -369,7 +370,7 @@ describe("addRecipeComponent", () => {
 describe("updateRecipeComponent", () => {
   it("updates quantity and unit scoped to tenant and line", async () => {
     // Arrange
-    const { db, recorded } = makeDb({ recipe_components: { data: null, error: null } });
+    const { db, recorded } = makeDb({ recipe_components: { data: [{ id: "comp-1" }], error: null } });
 
     // Act
     await updateRecipeComponent(TENANT, "comp-1", { quantity: 2, unitId: "unit-g" }, db);
@@ -398,10 +399,30 @@ describe("updateRecipeComponent", () => {
   });
 });
 
+describe("silent refusals", () => {
+  it("reports an update that changed no row (RLS refusal reads as zero rows)", async () => {
+    // Arrange
+    const { db } = makeDb({ recipe_components: { data: [], error: null } });
+
+    // Act + Assert
+    await expect(
+      updateRecipeComponent(TENANT, "comp-1", { quantity: 2, unitId: "unit-g" }, db),
+    ).rejects.toThrow(/could not be updated/);
+  });
+
+  it("reports a delete that removed no row", async () => {
+    // Arrange
+    const { db } = makeDb({ recipe_components: { data: [], error: null } });
+
+    // Act + Assert
+    await expect(removeRecipeComponent(TENANT, "comp-1", db)).rejects.toThrow(/could not be removed/);
+  });
+});
+
 describe("removeRecipeComponent", () => {
   it("deletes the line scoped to tenant and id", async () => {
     // Arrange
-    const { db, recorded } = makeDb({ recipe_components: { data: null, error: null } });
+    const { db, recorded } = makeDb({ recipe_components: { data: [{ id: "comp-1" }], error: null } });
 
     // Act
     await removeRecipeComponent(TENANT, "comp-1", db);
@@ -424,5 +445,44 @@ describe("removeRecipeComponent", () => {
 
     // Act + Assert
     await expect(removeRecipeComponent(TENANT, "comp-1", db)).rejects.toThrow(/denied/);
+  });
+});
+
+describe("loadDishName", () => {
+  it("reads the dish's name scoped to tenant and item", async () => {
+    // Arrange
+    const { db, recorded } = makeDb({ menu_items: { data: { name: "Iced Latte" }, error: null } });
+
+    // Act
+    const name = await loadDishName(TENANT, MENU_ITEM, db);
+
+    // Assert
+    expect(name).toBe("Iced Latte");
+    expect(recorded.filters).toEqual(
+      expect.arrayContaining([
+        { table: "menu_items", column: "tenant_id", value: TENANT },
+        { table: "menu_items", column: "id", value: MENU_ITEM },
+      ]),
+    );
+  });
+
+  it("costs the label, not the screen, when the read fails", async () => {
+    // Arrange
+    const { db } = makeDb({ menu_items: { data: null, error: { message: "timeout" } } });
+
+    // Act + Assert — a header without a name beats an editor that will not open
+    await expect(loadDishName(TENANT, MENU_ITEM, db)).resolves.toBe("");
+  });
+
+  it("returns blank without querying when the tenant is unknown", async () => {
+    // Arrange
+    const { db, recorded } = makeDb({});
+
+    // Act
+    const name = await loadDishName("", MENU_ITEM, db);
+
+    // Assert
+    expect(name).toBe("");
+    expect(recorded.filters).toHaveLength(0);
   });
 });

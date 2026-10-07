@@ -1,5 +1,5 @@
 import type { ModifierGroup } from '@/types/database'
-import { applyChoiceRule, CHOICE_RULES, deriveChoiceRule } from '@/lib/modifier-choice-rule'
+import { applyChoiceRule, CHOICE_KINDS, CHOICE_RULES, deriveChoiceRule, joinChoiceRule, splitChoiceRule } from '@/lib/modifier-choice-rule'
 
 function group(overrides: Partial<ModifierGroup> = {}): ModifierGroup {
   return {
@@ -73,5 +73,31 @@ describe('applyChoiceRule', () => {
   it('does not return the same object it was given', () => {
     const original = group()
     expect(applyChoiceRule(original, 'pick-one-optional')).not.toBe(original)
+  })
+})
+
+describe('splitChoiceRule / joinChoiceRule', () => {
+  it('splits every rule into a kind and a required flag and joins it back', () => {
+    for (const { value } of CHOICE_RULES) {
+      const { kind, isRequired } = splitChoiceRule(value)
+      expect(joinChoiceRule(kind, isRequired)).toBe(value)
+    }
+  })
+
+  it('names the three kinds a merchant chooses between', () => {
+    expect(CHOICE_KINDS.map((k) => k.value)).toEqual(['one', 'several', 'quantity'])
+  })
+
+  it('reads "must pick 1" as one, required', () => {
+    expect(splitChoiceRule('pick-one')).toEqual({ kind: 'one', isRequired: true })
+  })
+
+  it('reads optional extras as quantity, not required', () => {
+    expect(splitChoiceRule('extras-optional')).toEqual({ kind: 'quantity', isRequired: false })
+  })
+
+  it('maps several + required to "must pick at least 1"', () => {
+    expect(joinChoiceRule('several', true)).toBe('pick-some')
+    expect(joinChoiceRule('several', false)).toBe('pick-any')
   })
 })

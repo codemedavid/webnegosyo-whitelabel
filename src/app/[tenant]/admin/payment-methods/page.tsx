@@ -2,6 +2,8 @@ import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
+import { getPaymentMethodsAction } from '@/app/actions/payment-methods'
+import type { OrderType } from '@/types/database'
 import { PaymentMethodsManagement } from './payment-methods-management'
 
 interface PaymentMethodsPageProps {
@@ -20,6 +22,73 @@ async function hasLoyverseToken(tenantId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Every enabled order type, not just the web-facing ones: the merchant links
+ * methods to register-only channels (Grab, Foodpanda) from here too. Same
+ * projection the browser used to read after the page had already loaded.
+ */
+async function readLinkableOrderTypes(tenantId: string): Promise<OrderType[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('order_types')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('is_enabled', true)
+    .order('order_index', { ascending: true })
+
+  if (error) throw error
+  return data as unknown as OrderType[]
+}
+
+/**
+ * Read on the server, in one parallel batch, and handed to the client as props.
+ * The page used to render an empty shell whose effect then fetched the methods
+ * (a server action) and only after that the order types (from the browser) —
+ * two round trips after the page had already loaded, repeated after every edit.
+ * Every write here goes through an action that revalidates this page, so the
+ * fresh read arrives with the action's own response.
+ */
+async function PaymentMethodsContent({
+  tenantId,
+  tenantSlug,
+  isLoyverseEnabled,
+}: {
+  tenantId: string
+  tenantSlug: string
+  isLoyverseEnabled: boolean
+}) {
+  const [methodsResult, orderTypesResult, isLoyverseConnected] = await Promise.all([
+    getPaymentMethodsAction(tenantId),
+    readLinkableOrderTypes(tenantId).then(
+      (orderTypes) => ({ orderTypes, error: null }),
+      (error: unknown) => ({
+        orderTypes: [] as OrderType[],
+        error: error instanceof Error ? error.message : 'Failed to load order types',
+      })
+    ),
+    isLoyverseEnabled ? hasLoyverseToken(tenantId) : Promise.resolve(false),
+  ])
+
+  const loadError = !methodsResult.success
+    ? methodsResult.error ?? 'Failed to load payment methods'
+    : orderTypesResult.error
+
+  if (loadError) {
+    console.error('[payment-methods] load failed:', loadError)
+  }
+
+  return (
+    <PaymentMethodsManagement
+      tenantId={tenantId}
+      tenantSlug={tenantSlug}
+      isLoyverseConnected={isLoyverseConnected}
+      paymentMethods={methodsResult.data ?? []}
+      orderTypes={orderTypesResult.orderTypes}
+      loadError={loadError}
+    />
+  )
+}
+
 export default async function PaymentMethodsPage({ params }: PaymentMethodsPageProps) {
   const { tenant: tenantSlug } = await params
   const tenant = await getCachedTenantBySlug(tenantSlug)
@@ -27,10 +96,6 @@ export default async function PaymentMethodsPage({ params }: PaymentMethodsPageP
   if (!tenant) {
     return <div>Tenant not found</div>
   }
-
-  const isLoyverseConnected = tenant.loyverse_enabled
-    ? await hasLoyverseToken(tenant.id)
-    : false
 
   return (
     <div className="space-y-6">
@@ -48,10 +113,10 @@ export default async function PaymentMethodsPage({ params }: PaymentMethodsPageP
           </div>
         }
       >
-        <PaymentMethodsManagement
+        <PaymentMethodsContent
           tenantId={tenant.id}
           tenantSlug={tenantSlug}
-          isLoyverseConnected={isLoyverseConnected}
+          isLoyverseEnabled={Boolean(tenant.loyverse_enabled)}
         />
       </Suspense>
     </div>

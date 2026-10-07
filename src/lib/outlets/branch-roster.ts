@@ -94,12 +94,28 @@ export interface BranchRoster<O extends RosterOutlet = RosterOutlet> {
   summary: BranchRosterSummary
 }
 
-export interface BuildBranchRosterInput<O extends RosterOutlet = RosterOutlet> {
+interface BuildBranchRosterBase<O extends RosterOutlet> {
   /** In the order the merchant arranged them. */
   outlets: readonly O[]
   staff: readonly RosterStaff[]
-  /** Null when this store's takings cannot be compared by branch. */
-  orders: readonly AnalyticsOrderLike[] | null
+}
+
+/**
+ * Takings arrive either as raw orders or as the comparison already computed
+ * from them (`compareBranches`). The pages compute it on the server and hand
+ * the browser those few rows rather than the order history; both forms produce
+ * the same roster. Null in either means this store's takings cannot be
+ * compared by branch.
+ */
+export type BuildBranchRosterInput<O extends RosterOutlet = RosterOutlet> = BuildBranchRosterBase<O> &
+  (
+    | { orders: readonly AnalyticsOrderLike[] | null }
+    | { metricRows: readonly BranchComparisonRow[] | null }
+  )
+
+function comparisonRowsOf(input: BuildBranchRosterInput<RosterOutlet>): readonly BranchComparisonRow[] | null {
+  if ('metricRows' in input) return input.metricRows
+  return input.orders === null ? null : compareBranches(input.orders)
 }
 
 function branchOf(member: RosterStaff): string | null {
@@ -110,10 +126,11 @@ function branchOf(member: RosterStaff): string | null {
 export function buildBranchRoster<O extends RosterOutlet>(
   input: BuildBranchRosterInput<O>
 ): BranchRoster<O> {
-  const { outlets, staff, orders } = input
-  const hasMetrics = orders !== null
+  const { outlets, staff } = input
+  const comparison = comparisonRowsOf(input)
+  const hasMetrics = comparison !== null
 
-  const rows = hasMetrics ? compareBranches(orders) : []
+  const rows = comparison ?? []
   const rowByOutlet = new Map(rows.filter((row) => row.outletId !== null).map((row) => [row.outletId as string, row]))
   const unassignedMetrics = rows.find((row) => row.outletId === null) ?? null
 

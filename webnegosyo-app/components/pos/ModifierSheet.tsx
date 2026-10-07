@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from "react";
 import {
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { formatPeso } from "../../lib/format";

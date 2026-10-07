@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
+import { signOutThisDevice } from '../lib/sign-out'
 
 interface AuthState {
   isLoading: boolean
@@ -107,7 +108,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       })
     } catch (err) {
-      await supabase.auth.signOut().catch(() => undefined)
+      await signOutThisDevice(supabase).catch(() => undefined)
       set({
         isLoading: false,
         isAuthenticated: false,
@@ -158,7 +159,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await supabase.auth.signOut().catch(() => undefined)
+    await signOutThisDevice(supabase).catch(() => undefined)
     set({
       isLoading: false,
       isAuthenticated: false,

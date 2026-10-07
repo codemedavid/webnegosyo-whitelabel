@@ -74,15 +74,15 @@ describe('per-option cost source control', () => {
   it('converts an existing group into add-ons while retaining IDs and recipes', () => {
     const group = groupWith({ stock_mode: 'recipe', cost_mode: 'composite' })
     const { onChange } = renderEditor(group)
-    fireEvent.change(screen.getByLabelText(/how do customers choose\? \(size\)/i), { target: { value: 'extras-optional' } })
+    fireEvent.click(screen.getByRole('radio', { name: /amounts/i }))
     expect(onChange).toHaveBeenCalledWith([{ ...group, selection_mode: 'quantity' }])
   })
   it('creates variations and quantity add-ons through separate actions', () => {
     const onChange = jest.fn()
     render(<ModifierGroupsEditor groups={[]} onChange={onChange} basePrice={100} />)
-    fireEvent.click(screen.getByRole('button', { name: /add a choice/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add a choice group/i }))
     expect(onChange.mock.calls[0][0][0]).toMatchObject({ selection_mode: 'choice', min_select: 0, max_select: 1 })
-    fireEvent.click(screen.getByRole('button', { name: /add extras/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add an extras group/i }))
     expect(onChange.mock.calls[1][0][0]).toMatchObject({ selection_mode: 'quantity', min_select: 0, max_select: null })
   })
 
@@ -189,12 +189,15 @@ describe('the simplified option row', () => {
     expect(screen.getByText(/selected by default · 7 in stock/i)).toBeInTheDocument()
   })
 
-  it('asks one question for how customers choose', () => {
+  it('asks how many customers pick and whether it is required as two plain controls', () => {
     const group: ModifierGroup = { ...groupWith(), min_select: 1, max_select: 1 }
     const { onChange } = renderEditor(group)
 
-    fireEvent.change(screen.getByLabelText(/how do customers choose\? \(size\)/i), { target: { value: 'pick-any' } })
+    fireEvent.click(screen.getByRole('radio', { name: /several/i }))
+    expect(onChange.mock.calls[0][0][0]).toMatchObject({ max_select: null, selection_mode: 'choice' })
+    expect(onChange.mock.calls[0][0][0].min_select).toBeGreaterThanOrEqual(1)
 
-    expect(onChange.mock.calls[0][0][0]).toMatchObject({ min_select: 0, max_select: null, selection_mode: 'choice' })
+    fireEvent.click(screen.getByRole('switch', { name: /required for size/i }))
+    expect(onChange.mock.calls[1][0][0]).toMatchObject({ min_select: 0, max_select: 1, selection_mode: 'choice' })
   })
 })

@@ -1,5 +1,6 @@
 import { STOREFRONT_PACK_IDS, storefrontPackSettingsSchema } from '@/lib/storefront-packs'
 import { CARD_ADD_BUTTONS, CARD_DENSITIES, CARD_DESCRIPTIONS, CARD_IMAGE_FITS, CARD_IMAGE_RATIOS, CARD_TEXT_ALIGNS } from '@/lib/card-style'
+import { HEADER_CART_STYLES } from '@/lib/header-templates'
 import { z } from 'zod'
 import type { PromotionBanner } from '@/types/database'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -179,6 +180,7 @@ const brandingFieldsSchema = z.object({
     header_shadow: z.boolean().optional(),
     header_logo_shape: z.enum(['circle', 'rounded', 'square']).optional(),
     header_height: z.enum(['compact', 'standard', 'tall']).optional(),
+    header_cart_style: z.enum(HEADER_CART_STYLES).optional(),
     // Announcement banner
     announcement_text: z.string().max(500).optional().or(z.literal('')),
     announcement_bg_color: cssColorString().optional().or(z.literal('')),
@@ -408,6 +410,7 @@ export const ROLLOUT_DEPENDENT_FIELDS = [
     'header_shadow',
     'header_logo_shape',
     'header_height',
+    'header_cart_style',
     'font_pair',
     'card_roundness',
     'brand_color',

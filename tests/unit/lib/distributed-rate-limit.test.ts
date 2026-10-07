@@ -117,6 +117,53 @@ describe('checkRateLimit (distributed)', () => {
     }
   })
 
+  it('degrades to the per-instance limiter on a Redis error when the caller asks to fail closed', async () => {
+    const { getRedisClient, checkRateLimit } = await load()
+    const { client } = fakeRedis(async () => {
+      throw new Error('ECONNRESET')
+    })
+    getRedisClient.mockReturnValue(client as never)
+    const options = { limit: 1, windowSec: 60, onRedisFailure: 'instance' as const }
+
+    const first = await checkRateLimit('closed-error-key', options)
+    const second = await checkRateLimit('closed-error-key', options)
+
+    expect(first.allowed).toBe(true)
+    expect(second.allowed).toBe(false)
+  })
+
+  it('degrades to the per-instance limiter when Redis hangs and the caller asks to fail closed', async () => {
+    jest.useFakeTimers()
+    try {
+      const { getRedisClient, checkRateLimit } = await load()
+      const { client } = fakeRedis(() => new Promise(() => {}))
+      getRedisClient.mockReturnValue(client as never)
+      const options = { limit: 1, windowSec: 60, onRedisFailure: 'instance' as const }
+
+      const first = checkRateLimit('closed-hang-key', options)
+      await jest.advanceTimersByTimeAsync(5_000)
+      const second = checkRateLimit('closed-hang-key', options)
+      await jest.advanceTimersByTimeAsync(5_000)
+
+      await expect(first).resolves.toMatchObject({ allowed: true })
+      await expect(second).resolves.toMatchObject({ allowed: false })
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('degrades to the per-instance limiter on a garbled count when the caller asks to fail closed', async () => {
+    const { getRedisClient, checkRateLimit } = await load()
+    const { client } = fakeRedis(async () => ['not-a-number', 1])
+    getRedisClient.mockReturnValue(client as never)
+    const options = { limit: 1, windowSec: 60, onRedisFailure: 'instance' as const }
+
+    await checkRateLimit('closed-garbled-key', options)
+    const second = await checkRateLimit('closed-garbled-key', options)
+
+    expect(second.allowed).toBe(false)
+  })
+
   it('falls back to the per-instance limiter when Redis is not configured', async () => {
     const { getRedisClient, checkRateLimit } = await load()
     getRedisClient.mockReturnValue(null)

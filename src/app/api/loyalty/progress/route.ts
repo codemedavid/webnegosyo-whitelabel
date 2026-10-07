@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPhoneLoyaltyProgress } from '@/lib/loyalty/progress-lookup'
-import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
+import { toPublicProgressResponse } from '@/lib/loyalty/progress-response'
+import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { readWalletOtpRequired, type StoreSettingsClient } from '@/lib/loyalty/store-settings'
 
@@ -13,9 +15,15 @@ import { readWalletOtpRequired, type StoreSettingsClient } from '@/lib/loyalty/s
  *
  * The number is the only credential there is, so the boundary is drawn tightly
  * instead: POST (a number must not end up in a URL, a log line or a referrer),
- * a reply that carries a balance and a reward label and nothing that names
- * anybody, and a per-IP limit well below the ordinary read allowance because
- * every call asks about an identifier the caller may not own.
+ * a reply that carries only what the stamp panel paints (an allow-listed card:
+ * no name, no id, no number, not even the store-wide offer), and a per-IP limit
+ * well below the ordinary read allowance because every call asks about an
+ * identifier the caller may not own.
+ *
+ * The limit is counted in Redis so it holds across serverless instances (an
+ * in-memory count restarts with every cold lambda). A Redis outage degrades to
+ * the per-instance count — never to no limit — and a refusal only hides the
+ * card; checkout itself never calls this route to place an order.
  */
 
 const bodySchema = z
@@ -26,12 +34,16 @@ const bodySchema = z
   })
   .strict()
 
-const RATE_LIMIT = { maxRequests: 10, windowMs: 60000 }
+const RATE_LIMIT: RateLimitOptions = { limit: 10, windowSec: 60, onRedisFailure: 'instance' }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIP(request) ?? 'unknown'
-  if (!checkRateLimit(`loyalty-progress:${ip}`, RATE_LIMIT).allowed) {
-    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  const rate = await checkRateLimit(`loyalty-progress:${ip}`, RATE_LIMIT)
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
+    )
   }
 
   const raw = await request.json().catch(() => null)
@@ -44,10 +56,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // same card here to anyone who types a number. Unreadable reads as "on":
   // hiding the panel never blocks checkout.
   if (await requiresVerifiedNumber(parsed.data.tenantId)) {
-    return NextResponse.json(
-      { success: true, offer: null, card: null },
-      { headers: { 'Cache-Control': 'no-store' } },
-    )
+    return NextResponse.json(toPublicProgressResponse(null), {
+      headers: { 'Cache-Control': 'no-store' },
+    })
   }
 
   const result = await getPhoneLoyaltyProgress({
@@ -57,10 +68,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   })
 
   if (result.ok) {
-    return NextResponse.json(
-      { success: true, ...result.progress },
-      { headers: { 'Cache-Control': 'no-store' } },
-    )
+    return NextResponse.json(toPublicProgressResponse(result.progress.card), {
+      headers: { 'Cache-Control': 'no-store' },
+    })
   }
 
   return NextResponse.json(

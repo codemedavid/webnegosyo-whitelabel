@@ -1,18 +1,23 @@
 'use client'
 
 /**
- * What sits beside the dish form: a live preview of the dish as a customer
- * will read it, and a list of the form's sections to jump between. On a phone
- * the preview is left out and the sections become a row of chips under the
- * header.
+ * What sits beside the dish form: whether it can be ordered, a live preview of
+ * the dish as a customer will read it, and a list of the form's sections. On a
+ * phone the status card sits in the form itself, the preview opens from a chip
+ * as a sheet, and the sections become a row of chips under the header.
  */
 
-import { UtensilsCrossed } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Eye, UtensilsCrossed } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatPrice } from '@/lib/cart-utils'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import type { OptionSummaryLine } from '@/lib/menu-editor/option-summary'
 import type { JumpNavEntry } from '@/lib/menu-editor/section-nav'
-import type { DishBasics } from '@/components/admin/menu-editor/dish-basics-section'
+import type { DishBasics } from '@/lib/menu-editor/dish-form-schema'
+import { SECTION_SCROLL_MARGIN } from '@/components/admin/menu-editor/editor-section'
 
 const MAX_PREVIEW_VALUES = 6
 
@@ -31,9 +36,9 @@ export function DishPreviewCard({ basics, categoryName, isAvailable, isFeatured,
   const isOnSale = hasPrice && Number.isFinite(salePrice) && salePrice < price
 
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+    <div className="overflow-hidden rounded-xl border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer preview</span>
+        <span className="text-sm font-semibold">Customer preview</span>
         {!isAvailable && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
             Out of stock
@@ -99,7 +104,7 @@ export function DishPreviewCard({ basics, categoryName, isAvailable, isFeatured,
 /** The section list beside the form on a wide screen. */
 export function SectionNavList({ entries }: { entries: readonly JumpNavEntry[] }) {
   return (
-    <nav aria-label="Dish sections" className="rounded-2xl border bg-card p-2 shadow-sm">
+    <nav aria-label="Dish sections" className="rounded-xl border bg-card p-2">
       <ul>
         {entries.map((entry) => (
           <li key={entry.id}>
@@ -118,18 +123,19 @@ export function SectionNavList({ entries }: { entries: readonly JumpNavEntry[] }
 }
 
 /** The same sections as a sticky, scrollable row of chips on a phone or tablet. */
-export function SectionNavChips({ entries }: { entries: readonly JumpNavEntry[] }) {
+export function SectionNavChips({ entries, leading }: { entries: readonly JumpNavEntry[]; leading?: ReactNode }) {
   return (
     <nav
       aria-label="Dish sections"
       className="sticky top-14 z-20 -mx-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:top-0 md:-mx-6 md:px-6 lg:hidden"
     >
       <ul className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {leading && <li className="shrink-0">{leading}</li>}
         {entries.map((entry) => (
           <li key={entry.id} className="shrink-0">
             <a
               href={`#${entry.id}`}
-              className="flex h-8 items-center gap-1.5 rounded-full border bg-card px-3 text-xs font-medium transition-colors hover:bg-muted"
+              className="flex h-9 items-center gap-1.5 rounded-full border bg-card px-3.5 text-xs font-medium transition-colors hover:bg-muted"
             >
               {entry.label}
               {entry.status && <NavStatus entry={entry} />}
@@ -151,5 +157,92 @@ function NavStatus({ entry }: { entry: JumpNavEntry }) {
     >
       {entry.status}
     </span>
+  )
+}
+
+interface DishStatusCardProps {
+  /** Distinguishes the phone and desktop copies of this card, which never show together. */
+  idPrefix: string
+  sectionId?: string
+  isAvailable: boolean
+  isFeatured: boolean
+  onAvailableChange: (next: boolean) => void
+  onFeaturedChange: (next: boolean) => void
+  className?: string
+}
+
+/** Can it be ordered, and is it highlighted — Shopify's "Status" card. */
+export function DishStatusCard({
+  idPrefix,
+  sectionId,
+  isAvailable,
+  isFeatured,
+  onAvailableChange,
+  onFeaturedChange,
+  className,
+}: DishStatusCardProps) {
+  return (
+    <section id={sectionId} aria-labelledby={`${idPrefix}-status`} className={cn('rounded-xl border bg-card', SECTION_SCROLL_MARGIN, className)}>
+      <h2 id={`${idPrefix}-status`} className="px-4 pt-3.5 text-[15px] font-semibold">Status</h2>
+      <div className="divide-y">
+        <StatusSwitch
+          id={`${idPrefix}-available`}
+          label="Available to order"
+          description={isAvailable ? 'Customers can order it.' : 'Shown as out of stock.'}
+          checked={isAvailable}
+          onCheckedChange={onAvailableChange}
+        />
+        <StatusSwitch
+          id={`${idPrefix}-featured`}
+          label="Featured"
+          description="Highlighted on your menu."
+          checked={isFeatured}
+          onCheckedChange={onFeaturedChange}
+        />
+      </div>
+    </section>
+  )
+}
+
+interface StatusSwitchProps {
+  id: string
+  label: string
+  description: string
+  checked: boolean
+  onCheckedChange: (next: boolean) => void
+}
+
+function StatusSwitch({ id, label, description, checked, onCheckedChange }: StatusSwitchProps) {
+  return (
+    <div className="flex min-h-14 items-center justify-between gap-4 px-4 py-3">
+      <div className="min-w-0">
+        <Label htmlFor={id} className="text-sm font-medium">{label}</Label>
+        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  )
+}
+
+/** The customer preview on a phone, where there is no room beside the form. */
+export function DishPreviewSheet(props: DishPreviewCardProps) {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <button
+          type="button"
+          className="flex h-9 items-center gap-1.5 rounded-full bg-foreground px-3.5 text-xs font-semibold text-background"
+        >
+          <Eye className="h-3.5 w-3.5" aria-hidden />
+          Preview
+        </button>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-2xl p-4">
+        <SheetHeader className="p-0 pb-3">
+          <SheetTitle>How customers see it</SheetTitle>
+        </SheetHeader>
+        <DishPreviewCard {...props} />
+      </SheetContent>
+    </Sheet>
   )
 }

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,7 +23,8 @@ interface UnitsTabProps {
 }
 
 export function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProps) {
-  const router = useRouter()
+  // No router.refresh() after a save: the inventory actions revalidate, and a
+  // revalidating Server Action already re-renders this route in its response.
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<UnitDraft>(EMPTY_UNIT_DRAFT)
@@ -70,7 +70,6 @@ export function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProp
       )
       toast.success(editingId ? 'Unit updated' : 'Unit added')
       setIsOpen(false)
-      router.refresh()
     } finally {
       setIsSaving(false)
     }
@@ -90,7 +89,6 @@ export function UnitsTab({ tenantId, tenantSlug, units, onChange }: UnitsTabProp
     }
     onChange(units.filter((u) => u.id !== unit.id))
     toast.success('Unit deleted')
-    router.refresh()
   }
 
   return (

@@ -140,6 +140,8 @@ function validateSchedule(draft: CampaignDraft, today: string): CampaignFieldErr
 
 export interface CampaignCost {
   segmentsPerMessage: number;
+  /** Billable characters in one representative message (placeholders filled in). */
+  characters: number;
   totalSegments: number;
   encoding: SmsEncoding;
   recipientCount: number;
@@ -158,13 +160,14 @@ export function describeCampaignCost(
   recipientCount: number
 ): CampaignCost {
   const sample = template.replace(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g, SAMPLE_VALUE);
-  const { segments, encoding } = countSmsSegments(sample);
+  const { segments, encoding, length } = countSmsSegments(sample);
   // An empty template still costs one segment once anything is typed into it;
   // reporting 0 would read as "free".
   const segmentsPerMessage = Math.max(1, segments);
 
   return {
     segmentsPerMessage,
+    characters: length,
     totalSegments: segmentsPerMessage * Math.max(0, recipientCount),
     encoding,
     recipientCount: Math.max(0, recipientCount),

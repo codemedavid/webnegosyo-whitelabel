@@ -2,12 +2,12 @@ import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { PAYMENT_PROOF_FOLDER, uploadImage } from "../../lib/product-image-upload";

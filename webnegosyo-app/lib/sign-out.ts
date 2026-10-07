@@ -14,7 +14,23 @@ export const SIGN_OUT_SCOPE = "local" as const;
 
 type SignOutCapable = { auth: Pick<SupabaseClient["auth"], "signOut"> };
 
+/**
+ * Sign-outs in progress on this device. GoTrue emits SIGNED_OUT from inside
+ * `signOut()`, before the calling screen clears the store, so
+ * `lib/session-loss.ts` asks this to tell a tap from a revoked session.
+ */
+let deliberateSignOuts = 0;
+
+export function isDeliberateSignOut(): boolean {
+  return deliberateSignOuts > 0;
+}
+
 /** Ends this device's session and nothing else. Use instead of `auth.signOut()`. */
-export function signOutThisDevice(supabase: SignOutCapable) {
-  return supabase.auth.signOut({ scope: SIGN_OUT_SCOPE });
+export async function signOutThisDevice(supabase: SignOutCapable) {
+  deliberateSignOuts += 1;
+  try {
+    return await supabase.auth.signOut({ scope: SIGN_OUT_SCOPE });
+  } finally {
+    deliberateSignOuts -= 1;
+  }
 }

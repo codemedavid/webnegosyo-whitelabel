@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 
 import { describeReward, parseRewardDraft, rewardEmoji, type RewardDraft } from "../../lib/loyalty/programs";
 import { REWARD_EMOJIS } from "../../lib/loyalty/wizard";

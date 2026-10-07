@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { MapPin, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -13,7 +12,7 @@ import { BranchSummaryStrip } from '@/components/admin/branch-summary-strip'
 import { moveOutletOrder } from '@/lib/outlets/outlet-form'
 import { buildOutletDeepLinkPath, buildOutletShareUrl } from '@/lib/outlets/deep-link'
 import { buildBranchRoster, type RosterStaff } from '@/lib/outlets/branch-roster'
-import type { AnalyticsOrderLike } from '@/lib/outlets/branch-analytics'
+import type { BranchComparisonRow } from '@/lib/outlets/branch-analytics'
 import type { Outlet } from '@/types/database'
 
 interface BranchDirectoryProps {
@@ -24,8 +23,12 @@ interface BranchDirectoryProps {
   initialOutlets: Outlet[]
   /** Every admin account on the store, owner included; the roster filters it. */
   staff: readonly RosterStaff[]
-  /** Null when this store's takings cannot be compared by branch. */
-  orders: readonly AnalyticsOrderLike[] | null
+  /**
+   * Takings per branch, computed on the server (`loadBranchMetrics`) — a row per
+   * branch rather than the order history. Null when this store's takings cannot
+   * be compared by branch.
+   */
+  metricRows: readonly BranchComparisonRow[] | null
 }
 
 /**
@@ -43,16 +46,18 @@ export function BranchDirectory({
   mapboxEnabled = false,
   initialOutlets,
   staff,
-  orders,
+  metricRows,
 }: BranchDirectoryProps) {
-  const router = useRouter()
+  // Writes do not call router.refresh(): each outlet action revalidates, and a
+  // revalidating Server Action already re-renders this route in its response —
+  // a refresh on top was a second full server render per click.
   const [outlets, setOutlets] = useState<Outlet[]>(initialOutlets)
   const [isCreating, setIsCreating] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
 
   const roster = useMemo(
-    () => buildBranchRoster({ outlets, staff, orders }),
-    [outlets, staff, orders]
+    () => buildBranchRoster({ outlets, staff, metricRows }),
+    [outlets, staff, metricRows]
   )
 
   const handleCreate = async (input: Parameters<typeof createOutletAction>[2]) => {
@@ -70,7 +75,6 @@ export function BranchDirectory({
     setOutlets([...outlets, result.data])
     setIsCreating(false)
     toast.success(`${result.data.name} added`)
-    router.refresh()
   }
 
   const handleToggleActive = async (outlet: Outlet) => {
@@ -83,7 +87,6 @@ export function BranchDirectory({
     }
     setOutlets(outlets.map((row) => (row.id === outlet.id ? result.data : row)))
     toast.success(nextActive ? `${outlet.name} is open to customers` : `${outlet.name} hidden`)
-    router.refresh()
   }
 
   /**
@@ -131,7 +134,6 @@ export function BranchDirectory({
       toast.error(result.error)
       return
     }
-    router.refresh()
   }
 
   if (isCreating) {

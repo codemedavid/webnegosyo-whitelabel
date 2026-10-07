@@ -16,7 +16,7 @@ import {
 } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
-import { useSafeMutation } from "../../lib/hooks";
+import { useOrderWriteBackend, useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
 import { withOrderOutlet } from "../../lib/order-outlet";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
@@ -189,6 +189,9 @@ export default function ScanScreen() {
   const outletId = useAuthStore((s) => s.outletId);
   const outletName = useAuthStore((s) => s.outletName);
   const createOrder = useSafeMutation(createOrderRef);
+  // Where `createOrder` writes — the capture below must be filed under the
+  // same backend, or a platform store's order lands in the external ledger.
+  const writeBackend = useOrderWriteBackend();
   const updateOrderStatus = useSafeMutation(updateOrderStatusRef);
   const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
 
@@ -408,7 +411,7 @@ export default function ScanScreen() {
       if (tenantId) {
         await notifyPosStockDepletion(tenantId, String(orderId), stockItems, "qr_scan");
         await notifyCustomerCapture(tenantId, {
-          backend: "convex",
+          backend: writeBackend,
           orderId: String(orderId),
           name: payload.customerName,
           contact: payload.customerContact,
@@ -433,7 +436,7 @@ export default function ScanScreen() {
       Alert.alert("Could not accept order", staleBackendMessage(e), [{ text: "OK" }]);
       setIsAccepting(false);
     }
-  }, [state, isAccepting, hasBackend, createOrder, tenantId, outletId, outletName]);
+  }, [state, isAccepting, hasBackend, createOrder, writeBackend, tenantId, outletId, outletName]);
 
   const handleConfirmPickup = useCallback(async () => {
     if (state.mode !== "pickup-confirm" || isAccepting) return;

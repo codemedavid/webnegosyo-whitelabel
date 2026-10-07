@@ -28,21 +28,39 @@ export type RefRoute =
   /** Nothing to query yet (no tenant in scope). */
   | "idle";
 
+/** The session fields that decide where a write lands. */
+export type WriteBackendInput = Pick<RefRouteInput, "orderBackend" | "convexUrl">;
+
+/**
+ * The backend a `useSafeMutation` write for this session lands in.
+ *
+ * Anything that reports a just-written order to the platform (customer capture,
+ * the staff activity line) must name the backend from HERE, never a literal:
+ * the QR scanner hard-coded "convex" and filed every platform store's scanned
+ * order into the external-order ledger. `resolveRefRoute` is built on this, so
+ * the write and the report can never disagree.
+ *
+ * Anything not explicitly moved to the platform (or to its own project) stays
+ * on Convex, which is every tenant that works today. `null` means the session
+ * has not resolved yet; Convex's own hook already skips without a url.
+ */
+export function resolveWriteBackend({ orderBackend }: WriteBackendInput): OrderBackend {
+  if (orderBackend === "platform" || orderBackend === "supabase") return orderBackend;
+  return "convex";
+}
+
 export function resolveRefRoute({
   orderBackend,
+  convexUrl,
   tenantId,
   ref,
 }: RefRouteInput): RefRoute {
-  // Anything not explicitly moved to the platform stays on Convex, which is
-  // every tenant that works today. `null` means the session has not resolved
-  // yet; Convex's own hook already skips when it has no deployment url.
-  if (orderBackend !== "platform" && orderBackend !== "supabase") {
-    return "convex";
-  }
+  const backend = resolveWriteBackend({ orderBackend, convexUrl });
+  if (backend === "convex") return "convex";
 
   // `supabase` is the SEPARATE per-tenant-project track. This adapter targets
   // the shared platform database only and must not read the wrong one.
-  if (orderBackend === "supabase") {
+  if (backend === "supabase") {
     return "unsupported";
   }
 

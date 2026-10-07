@@ -1,27 +1,25 @@
 /**
- * The platform owner's collections screen.
- *
- * Two queries rather than a join: `tenant_subscriptions` has one row per tenant
- * at most, and a tenant with no row yet must still appear in the list — a
- * client who has never been billed is exactly the one worth noticing.
+ * The platform owner's collections screen. The reads live in
+ * `collections-data.ts`, shared with the Collections calendar.
  */
 
+import Link from 'next/link'
+import { CalendarDays } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildSubscriptionRoster, summarizeRoster, type RosterInput } from '@/lib/billing/subscription-roster'
+import { buildSubscriptionRoster, summarizeRoster } from '@/lib/billing/subscription-roster'
 import {
   collectedInMonth,
   recentPayments,
   summarizePaymentsByTenant,
-  type PaymentLedgerRow,
 } from '@/lib/billing/payment-history'
+import { buildCollectionsInsights, summarizeCollections } from '@/lib/billing/collections-insight'
 import {
-  DORMANT_AFTER_DAYS,
-  buildCollectionsInsights,
-  summarizeCollections,
-  type TenantActivitySnapshot,
-} from '@/lib/billing/collections-insight'
-import { resolveActivityWindow } from '@/lib/activity/activity-window'
-import { getTenantActivity } from '@/lib/activity/tenant-activity-server'
+  ROSTER_SUBSCRIPTION_COLUMNS,
+  loadActivitySnapshots,
+  loadPaymentLedger,
+  toRosterInputs,
+  type RosterSubscriptionShape,
+} from '@/lib/billing/collections-data'
 import { RecentPaymentsPanel } from '@/components/superadmin/subscriptions/recent-payments-panel'
 import {
   buildAllowanceRows,
@@ -33,62 +31,7 @@ import { PageHeader } from '@/components/superadmin/ui/primitives'
 
 export const dynamic = 'force-dynamic'
 
-const LEDGER_PAGE = 1000
-const MAX_LEDGER_ROWS = 50000
 const RECENT_PAYMENTS_SHOWN = 10
-
-type AdminClient = ReturnType<typeof createAdminClient>
-
-/**
- * Every payment ever recorded, paged past PostgREST's 1000-row cap — at one
- * row per client per month the ledger outgrows a single page within a year.
- *
- * Null on failure, not an empty list: an unreadable ledger must not render
- * every client as "Never paid".
- */
-async function loadPaymentLedger(admin: AdminClient): Promise<PaymentLedgerRow[] | null> {
-  const rows: PaymentLedgerRow[] = []
-  for (let from = 0; from < MAX_LEDGER_ROWS; from += LEDGER_PAGE) {
-    const { data, error } = await admin
-      .from('subscription_payments')
-      .select('tenant_id, amount_php, period_start, period_end, paid_at, created_at, method, reference')
-      .order('created_at', { ascending: false })
-      .range(from, from + LEDGER_PAGE - 1)
-    if (error) {
-      console.error('[subscriptions] payment ledger read failed:', error.message)
-      return null
-    }
-    const batch = (data ?? []) as unknown as PaymentLedgerRow[]
-    rows.push(...batch)
-    if (batch.length < LEDGER_PAGE) break
-  }
-  return rows
-}
-
-/**
- * Orders per store over the last 30 days. Null on failure: the collections
- * table must still say who owes when the order backends cannot be read.
- */
-async function loadActivitySnapshots(
-  nowIso: string
-): Promise<Map<string, TenantActivitySnapshot> | null> {
-  const window = resolveActivityWindow({ range: `${DORMANT_AFTER_DAYS}d` }, nowIso)
-  try {
-    const report = await getTenantActivity({ startMs: window.startMs, endMs: window.endMs })
-    return new Map(
-      report.rows.map((row) => [
-        row.tenantId,
-        { source: row.source, orders30d: row.orders, lastOrderAt: row.lastOrderAt },
-      ])
-    )
-  } catch (error) {
-    console.error(
-      '[subscriptions] activity read failed:',
-      error instanceof Error ? error.message : error
-    )
-    return null
-  }
-}
 
 interface TenantRowShape {
   id: string
@@ -97,15 +40,6 @@ interface TenantRowShape {
   max_outlets: number | null
   max_staff_per_branch: number | null
   created_at: string | null
-}
-
-interface SubscriptionRowShape {
-  tenant_id: string
-  status: string | null
-  paid_through: string | null
-  grace_days: number | null
-  monthly_price_php: number | null
-  billing_anchor_date: string | null
 }
 
 export default async function SubscriptionsPage() {
@@ -121,11 +55,7 @@ export default async function SubscriptionsPage() {
     activity,
   ] = await Promise.all([
       supabase.from('tenants').select('id, name, slug, max_outlets, max_staff_per_branch, created_at').order('name'),
-      supabase
-        .from('tenant_subscriptions')
-        .select(
-          'tenant_id, status, paid_through, grace_days, monthly_price_php, billing_anchor_date'
-        ),
+      supabase.from('tenant_subscriptions').select(ROSTER_SUBSCRIPTION_COLUMNS),
       // Whole-table reads, counted in JS: PostgREST has no GROUP BY, and both
       // tables are small (single-digit rows per tenant across the platform).
       // Revisit if either grows a zero.
@@ -135,25 +65,9 @@ export default async function SubscriptionsPage() {
       loadActivitySnapshots(nowIso),
     ])
 
-  const byTenant = new Map<string, SubscriptionRowShape>(
-    ((subscriptions ?? []) as SubscriptionRowShape[]).map((row) => [row.tenant_id, row])
-  )
-
-  const inputs: RosterInput[] = ((tenants ?? []) as TenantRowShape[]).map(
-    (tenant) => {
-      const subscription = byTenant.get(tenant.id)
-      return {
-        tenantId: tenant.id,
-        name: tenant.name,
-        slug: tenant.slug,
-        status: subscription?.status ?? null,
-        paidThrough: subscription?.paid_through ?? null,
-        graceDays: subscription?.grace_days ?? null,
-        monthlyPricePhp: subscription?.monthly_price_php ?? null,
-        joinedAt: tenant.created_at,
-        billingAnchorDate: subscription?.billing_anchor_date ?? null,
-      }
-    }
+  const inputs = toRosterInputs(
+    (tenants ?? []) as TenantRowShape[],
+    (subscriptions ?? []) as RosterSubscriptionShape[]
   )
 
   const rows = buildSubscriptionRoster(inputs, nowIso)
@@ -203,6 +117,15 @@ export default async function SubscriptionsPage() {
         eyebrow="Billing"
         title="Subscriptions"
         subtitle="Stores trading without paying first, then overdue. Marking a client paid extends their access immediately."
+        actions={
+          <Link
+            href="/superadmin/subscriptions/calendar"
+            className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
+          >
+            <CalendarDays className="h-4 w-4" />
+            Collections calendar
+          </Link>
+        }
       />
 
       {!ledger && (

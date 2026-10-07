@@ -47,4 +47,11 @@ describe('StoreClosedBanner', () => {
     render(<StoreClosedBanner status={closedStatus()} />)
     expect(screen.getByTestId('store-closed-banner')).toHaveAttribute('role', 'status')
   })
+
+  it('says the store is opening soon instead of closed while in pre-launch', () => {
+    render(<StoreClosedBanner status={closedStatus({ reason: 'prelaunch', nextOpenLabel: null })} />)
+    const banner = screen.getByTestId('store-closed-banner')
+    expect(banner).toHaveTextContent(/opening soon/i)
+    expect(banner).not.toHaveTextContent(/ordering is currently closed/i)
+  })
 })

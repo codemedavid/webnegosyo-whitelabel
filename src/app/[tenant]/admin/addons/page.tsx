@@ -1,6 +1,7 @@
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { getCachedTenantBySlug } from '@/lib/cache'
-import { getMenuItemsByTenant } from '@/lib/admin-service'
+import { createClient } from '@/lib/supabase/server'
+import { listMenuItemPriceRefs, type AdminMenuListClient } from '@/lib/queries/admin-menu-list'
 import { getAddonLibrary } from '@/lib/addon-library-service'
 import { AddonLibraryManager } from '@/components/admin/addon-library-manager'
 import type { Tenant } from '@/types/database'
@@ -18,17 +19,13 @@ export default async function AdminAddonsPage({
   }
   const tenant: Tenant = tenantData
 
-  const [entries, menuItems] = await Promise.all([
+  // Names and prices only: the library offers dishes as price sources, so the
+  // menu's variation/add-on JSON is not read for it.
+  const supabase = await createClient()
+  const [entries, sourceItems] = await Promise.all([
     getAddonLibrary(tenant.id),
-    getMenuItemsByTenant(tenant.id),
+    listMenuItemPriceRefs(supabase as unknown as AdminMenuListClient, tenant.id),
   ])
-
-  const sourceItems = menuItems.map((item) => ({
-    id: item.id,
-    name: item.name,
-    price: item.price,
-    discounted_price: item.discounted_price ?? null,
-  }))
 
   return (
     <div className="space-y-6">

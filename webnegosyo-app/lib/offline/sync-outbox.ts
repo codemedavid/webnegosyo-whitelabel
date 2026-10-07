@@ -37,6 +37,7 @@ import {
   removeQueuedSale,
   type QueuedSale,
 } from "./order-outbox";
+import { rebindOrderEdits } from "./order-edits";
 import { runPosSaleBookkeeping, type PosSaleBookkeepingFacts } from "./pos-sale-bookkeeping";
 
 export { MAX_SYNC_ATTEMPTS } from "./order-outbox";
@@ -54,6 +55,8 @@ export interface SyncOutboxDeps {
   recordFailure?: (localId: string, message: string) => Promise<void>;
   markWritten?: (localId: string, orderId: string) => Promise<void>;
   markBookkeepingDone?: (localId: string) => Promise<void>;
+  /** Point changes made offline to this sale at its server id (Convex mints its own). */
+  rebindEdits?: (localId: string, orderId: string) => Promise<void>;
 }
 
 export interface SyncOutboxResult {
@@ -88,6 +91,7 @@ async function writeOrder(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Pro
   }
 
   await deps.markWritten(sale.localId, orderId);
+  await deps.rebindEdits(sale.localId, orderId);
   return orderId;
 }
 
@@ -170,6 +174,7 @@ function resolveDeps(deps: SyncOutboxDeps): Required<SyncOutboxDeps> {
     recordFailure: recordSyncFailure,
     markWritten: markSaleWritten,
     markBookkeepingDone,
+    rebindEdits: rebindOrderEdits,
     ...deps,
   };
 }

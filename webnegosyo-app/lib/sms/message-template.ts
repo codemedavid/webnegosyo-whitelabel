@@ -16,7 +16,7 @@
 
 import type { SmsCustomer } from "./types";
 
-const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+export const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
 
 /** Used when a customer row carries no usable name; never leave the greeting blank. */
 export const MISSING_NAME_FALLBACK = "there";

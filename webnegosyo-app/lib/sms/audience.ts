@@ -71,6 +71,9 @@ function matchesFilter(customer: SmsCustomer, filter: AudienceFilter, now: numbe
   if (filter.minOrderCount !== undefined && customer.order_count < filter.minOrderCount) {
     return false;
   }
+  if (filter.maxOrderCount !== undefined && customer.order_count > filter.maxOrderCount) {
+    return false;
+  }
   if (filter.minTotalSpent !== undefined && customer.total_spent < filter.minTotalSpent) {
     return false;
   }

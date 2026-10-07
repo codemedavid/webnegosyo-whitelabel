@@ -50,8 +50,32 @@ jest.mock('@/lib/supabase/server', () => ({
 
 type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
 
+/**
+ * The update's filter chain. It records the status compare-and-swap, and when
+ * `statusLost` is set it answers like PostgREST does when another request
+ * already moved the order off the status this one read: zero rows.
+ */
+const casFilters: Array<[string, unknown]> = []
+function updateChain(previousStatus: OrderStatus | null, nextStatus: OrderStatus, statusLost: boolean) {
+  const chain = {
+    eq: (column: string, value: unknown) => {
+      casFilters.push([column, value])
+      return chain
+    },
+    select: () => ({
+      single: () =>
+        Promise.resolve(
+          statusLost && previousStatus
+            ? { data: null, error: { code: 'PGRST116', message: 'no rows' } }
+            : { data: { id: 'o1', status: nextStatus }, error: null },
+        ),
+    }),
+  }
+  return chain
+}
+
 /** The order as it exists before the update, and the row the update returns. */
-function stubOrders(previousStatus: OrderStatus | null, nextStatus: OrderStatus) {
+function stubOrders(previousStatus: OrderStatus | null, nextStatus: OrderStatus, statusLost = false) {
   return (table: string) => {
     if (table === 'orders') {
       return {
@@ -66,16 +90,7 @@ function stubOrders(previousStatus: OrderStatus | null, nextStatus: OrderStatus)
             }),
           }),
         }),
-        update: () => ({
-          eq: () => ({
-            eq: () => ({
-              select: () => ({
-                single: () =>
-                  Promise.resolve({ data: { id: 'o1', status: nextStatus }, error: null }),
-              }),
-            }),
-          }),
-        }),
+        update: () => updateChain(previousStatus, nextStatus, statusLost),
       }
     }
     return {
@@ -88,6 +103,7 @@ function stubOrders(previousStatus: OrderStatus | null, nextStatus: OrderStatus)
 
 beforeEach(() => {
   jest.clearAllMocks()
+  casFilters.length = 0
   verifyTenantPermission.mockResolvedValue({ userRole: null })
   redepleteOrderStockBestEffort.mockResolvedValue(undefined)
   reverseOrderStockBestEffort.mockResolvedValue(undefined)
@@ -171,5 +187,27 @@ describe('updateOrderStatus stock movement on status changes', () => {
     const updated = await updateOrderStatus('o1', 't1', 'confirmed')
 
     expect(updated).toMatchObject({ id: 'o1', status: 'confirmed' })
+  })
+})
+
+describe('updateOrderStatus status compare-and-swap', () => {
+  it('only flips the order if it still has the status this request read', async () => {
+    // Arrange
+    from.mockImplementation(stubOrders('cancelled', 'confirmed'))
+
+    // Act
+    await updateOrderStatus('o1', 't1', 'confirmed')
+
+    // Assert
+    expect(casFilters).toContainEqual(['status', 'cancelled'])
+  })
+
+  it('refuses, and moves no stock, when another request changed the status first', async () => {
+    // Arrange — two un-cancels both read 'cancelled'; the other one won.
+    from.mockImplementation(stubOrders('cancelled', 'confirmed', true))
+
+    // Act + Assert
+    await expect(updateOrderStatus('o1', 't1', 'confirmed')).rejects.toThrow(/just updated by someone else/)
+    expect(redepleteOrderStockBestEffort).not.toHaveBeenCalled()
   })
 })

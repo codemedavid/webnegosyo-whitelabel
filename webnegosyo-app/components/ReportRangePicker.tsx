@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import { Modal } from "./Modal";
 
 import { colors, typography, spacing, radius, shadow } from "../theme/colors";
 import { IconButton } from "./IconButton";

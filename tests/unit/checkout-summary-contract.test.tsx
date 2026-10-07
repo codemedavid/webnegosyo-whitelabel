@@ -148,4 +148,27 @@ describe.each(DESIGNS)('%s checkout order summary', (_name, Design) => {
 
     expect(screen.getByText(DELIVERY_FEE_ERROR)).toBeInTheDocument()
   })
+
+  it('shows a waived delivery fee as Free', () => {
+    renderWithSummary(
+      Design,
+      makeCheckout({
+        deliveryFee: 0,
+        isDeliveryFeeWaived: true,
+        freeDeliveryRemaining: 0,
+        deliveryFeeAddress: 'Home',
+        customerData: { delivery_address: 'Home' },
+        grandTotal: SUBTOTAL,
+      }),
+    )
+
+    expect(summaryRowText('Delivery Fee')).toContain('Free')
+    expect(screen.queryByText(/more for free delivery/i)).not.toBeInTheDocument()
+  })
+
+  it('tells the customer how much more unlocks free delivery', () => {
+    renderWithSummary(Design, makeCheckout({ freeDeliveryRemaining: 150 }))
+
+    expect(screen.getByText(/more for free delivery/i).textContent).toContain('₱150.00')
+  })
 })

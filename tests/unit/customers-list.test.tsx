@@ -47,7 +47,7 @@ describe('CustomersList', () => {
     expect(screen.getByText(/no customers yet/i)).toBeInTheDocument()
   })
 
-  it('renders a row per customer with name, order count and total spent', () => {
+  it('renders a table row per customer with name, order count and total spent', () => {
     const customers = [
       makeCustomer({ id: 'a', name: 'Ana Cruz', order_count: 3, total_spent: 1500 }),
       makeCustomer({ id: 'b', name: 'Ben Reyes', order_count: 7, total_spent: 4200, phone_e164: '+639998887777' }),
@@ -57,9 +57,9 @@ describe('CustomersList', () => {
 
     expect(screen.getByText('Ana Cruz')).toBeInTheDocument()
     expect(screen.getByText('Ben Reyes')).toBeInTheDocument()
-    // Order counts rendered.
-    expect(screen.getByText(/3 orders/i)).toBeInTheDocument()
-    expect(screen.getByText(/7 orders/i)).toBeInTheDocument()
+    // Order counts rendered in the Orders column.
+    expect(screen.getByTestId('customer-orders-a')).toHaveTextContent('3')
+    expect(screen.getByTestId('customer-orders-b')).toHaveTextContent('7')
     // Total spent rendered (peso-formatted by formatPrice).
     expect(screen.getByText(/1,500/)).toBeInTheDocument()
     expect(screen.getByText(/4,200/)).toBeInTheDocument()

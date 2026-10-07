@@ -13,17 +13,18 @@ import dynamic from 'next/dynamic'
 import { ArrowLeft, MessageCircle, UtensilsCrossed, Package, Truck, CreditCard, Check, Zap, CalendarClock, CalendarDays, Clock, Bike, ShoppingBag, Store, type LucideIcon } from 'lucide-react'
 import type { OrderTypeKind } from '@/lib/order-types/order-type-kinds'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { formatPrice } from '@/lib/cart-utils'
 import { formatLeadTime } from '@/lib/advance-order-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
 import { SmsOptInCheckbox, MinimumOrderNotice, OrderSummaryLines, PaymentMethodList } from './checkout-primitives'
 import { CheckoutLoyaltyProgress } from './checkout-loyalty-progress'
-import { VoucherField } from './voucher-field'
-import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
-import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
-import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
-import { isPaymentProofRequired } from '@/lib/payment-proof'
+import { resolvePlaceOrderLabel } from '@/lib/checkout/checkout-cta'
+import {
+  applyDeliveryAddressChange,
+  phPhoneDigitCount,
+  phPhoneDisplayDigits,
+  toPhPhoneValue,
+  PH_PHONE_MAX_DIGITS,
+} from '@/lib/checkout/customer-field-input'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { isDeliveryAddressField } from '@/lib/checkout-field-presets'
 
@@ -36,8 +37,10 @@ const ORDER_TYPE_ICONS: Record<OrderTypeKind, LucideIcon> = {
   other: Store,
 }
 
-const MapboxAddressAutocomplete = dynamic(
-  () => import('@/components/shared/mapbox-address-autocomplete').then(mod => ({ default: mod.MapboxAddressAutocomplete })),
+import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
+
+const AddressAutocomplete = dynamic(
+  () => import('@/components/shared/address-autocomplete').then(mod => ({ default: mod.AddressAutocomplete })),
   {
     loading: () => <input className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Loading address field..." disabled />,
     ssr: false,
@@ -50,23 +53,14 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     advanceConfig, scheduleMode, setScheduleMode, scheduleDate, scheduleTime, setScheduleTime,
     scheduleDates, timeSlots, scheduledForLabel, handleScheduleDateChange, cartPresellDate,
     formFields, customerData, setCustomerData,
-    items, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, serviceChargeAmount, grandTotal,
-    paymentMethods, selectedPaymentMethod,
+    paymentMethods,
     isProcessing, handleProceedToPayment, messengerEnabled, orderMinimum,
-    voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode,
   } = checkout
 
   if (!tenant) return null
 
   const palette = getCheckoutPalette(checkout.tenant, checkout.branding)
-  const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod) ?? null
-  const ctaLabel = resolveCheckoutCtaLabel({
-    hasPaymentMethods: paymentMethods.length > 0,
-    isMessengerEnabled: messengerEnabled,
-    isAfterBillingPayment: isAfterBillingPaymentEnabled(checkout.selectedOrderTypeData),
-    requiresPaymentProof: isPaymentProofRequired(selectedMethod),
-    skipsPaymentDetails: isPaymentDetailsStepSkipped(selectedMethod),
-  })
+  const ctaLabel = resolvePlaceOrderLabel(checkout)
   const accentColor = typeof checkout.tenant?.checkout_accent_color === 'string' && checkout.tenant.checkout_accent_color ? checkout.tenant.checkout_accent_color : undefined
 
   return (
@@ -284,28 +278,17 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                       {field.is_required && <span className="text-red-500 ml-1">*</span>}
                     </label>
 
-                    {/* Special handling for delivery address with Mapbox Autocomplete */}
+                    {/* Special handling for delivery address with map-backed autocomplete */}
                     {isDeliveryAddressField(field) ? (
-                      <MapboxAddressAutocomplete
+                      <AddressAutocomplete
                         value={customerData[field.field_name] || ''}
+                        coordinates={parseLatLng(customerData.delivery_lat, customerData.delivery_lng)}
                         onChange={(address, coordinates) => {
-                          setCustomerData(prev => {
-                            const next = { ...prev, [field.field_name]: address }
-                            if (coordinates) {
-                              next.delivery_lat = String(coordinates.lat)
-                              next.delivery_lng = String(coordinates.lng)
-                            } else {
-                              // Free-text edit without a fresh geocode: drop stale coords so the
-                              // fee path treats this as "no coordinates" and forces re-selection.
-                              delete next.delivery_lat
-                              delete next.delivery_lng
-                            }
-                            return next
-                          })
+                          setCustomerData(prev => applyDeliveryAddressChange(prev, field.field_name, address, coordinates))
                         }}
                         placeholder={field.placeholder || 'Start typing your address...'}
                         required={field.is_required}
-                        mapboxEnabled={tenant?.mapbox_enabled ?? true}
+                        mapsEnabled={tenant?.mapbox_enabled ?? true}
                       />
                     ) : field.field_type === 'textarea' ? (
                       <textarea
@@ -333,51 +316,18 @@ export function ClassicCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                         </div>
                         <input
                           type="tel"
-                          value={(() => {
-                            const value = customerData[field.field_name] || ''
-                            // Remove +63 prefix if present to show only the number part
-                            if (value.startsWith('+63')) {
-                              return value.slice(3).replace(/\D/g, '')
-                            }
-                            // Remove + if present
-                            if (value.startsWith('+')) {
-                              return value.slice(1).replace(/\D/g, '')
-                            }
-                            // Remove leading 0 if present
-                            if (value.startsWith('0')) {
-                              return value.slice(1).replace(/\D/g, '')
-                            }
-                            return value.replace(/\D/g, '')
-                          })()}
+                          value={phPhoneDisplayDigits(customerData[field.field_name] || '')}
                           onChange={(e) => {
-                            let inputValue = e.target.value.replace(/\D/g, '') // Only digits
-
-                            // Prevent 0 as the first digit
-                            if (inputValue.startsWith('0')) {
-                              inputValue = inputValue.slice(1)
-                            }
-
-                            // Limit to 10 digits (standard PH mobile number length)
-                            if (inputValue.length > 10) {
-                              inputValue = inputValue.slice(0, 10)
-                            }
-
-                            // Store with +63 prefix
-                            setCustomerData(prev => ({
-                              ...prev,
-                              [field.field_name]: inputValue ? `+63${inputValue}` : ''
-                            }))
+                            // Digits only, no leading 0, at most 10, stored with +63.
+                            const stored = toPhPhoneValue(e.target.value)
+                            setCustomerData(prev => ({ ...prev, [field.field_name]: stored }))
                           }}
                           placeholder="9XXXXXXXXX"
-                          maxLength={10}
+                          maxLength={PH_PHONE_MAX_DIGITS}
                           className="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">
-                          {(() => {
-                            const value = customerData[field.field_name] || ''
-                            const digits = value.replace(/\D/g, '').replace(/^63/, '').replace(/^0/, '')
-                            return `${digits.length}/10`
-                          })()}
+                          {`${phPhoneDigitCount(customerData[field.field_name] || '')}/${PH_PHONE_MAX_DIGITS}`}
                         </div>
                       </div>
                     ) : (

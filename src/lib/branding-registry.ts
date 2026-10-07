@@ -13,7 +13,7 @@
 // design is selectable in the Studio exactly when it is registered.
 import { CARD_TEMPLATES, CARD_TEMPLATE_IDS, DEFAULT_CARD_TEMPLATE } from '@/lib/card-templates'
 import { PAGE_LAYOUT_IDS, DEFAULT_PAGE_LAYOUT } from '@/lib/page-layouts'
-import { HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE } from '@/lib/header-templates'
+import { HEADER_TEMPLATE_IDS, DEFAULT_HEADER_TEMPLATE, HEADER_CART_STYLES, DEFAULT_HEADER_CONFIG } from '@/lib/header-templates'
 import { CART_TEMPLATE_IDS, DEFAULT_CART_TEMPLATE } from '@/lib/cart-templates'
 import { CHECKOUT_TEMPLATE_IDS, DEFAULT_CHECKOUT_TEMPLATE } from '@/lib/checkout-templates'
 import { CARD_STYLE_FIELDS } from '@/lib/card-style'
@@ -225,6 +225,7 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
           toggle('header_shadow', 'Drop shadow', false),
           select('header_logo_shape', 'Logo shape', ['circle', 'rounded', 'square'], 'circle'),
           select('header_height', 'Height', ['compact', 'standard', 'tall'], 'standard'),
+          select('header_cart_style', 'Cart button', HEADER_CART_STYLES, DEFAULT_HEADER_CONFIG.cartStyle),
           color('header_color', 'Background', '#ffffff'),
           color('header_font_color', 'Title color', '#000000'),
           color('menu_main_header_text_color', 'Header text', null, 'text_primary_color'),

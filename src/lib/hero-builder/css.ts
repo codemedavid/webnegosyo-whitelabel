@@ -221,6 +221,9 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
   // Centred text/buttons/badges: a boxed widget sits in the middle too.
   if (s.textAlign && s.align === undefined && (s.width !== undefined || s.maxWidth !== undefined)) {
     set(rules, '', 'margin-inline', s.textAlign === 'center' ? 'auto' : s.textAlign === 'right' ? 'auto 0' : null)
+    // Auto inline margins shrink a flex item to its content; an empty one
+    // (a divider's <hr>) would vanish, so fill up to the max width instead.
+    if (s.width === undefined && s.textAlign !== 'left' && s.textAlign !== 'justify') set(rules, '', 'width', '100%')
   }
   const justify = own(TEXT_JUSTIFY, s.textAlign) ?? null
   const accent = cssColor(s.accentColor)

@@ -40,6 +40,7 @@ export default async function DeliverySettingsPage({ params }: { params: Promise
           delivery_price_per_km: tenant.delivery_price_per_km ?? null,
           delivery_min_fee: tenant.delivery_min_fee ?? null,
           delivery_radius_km: tenant.delivery_radius_km ?? null,
+          free_delivery_min_order: tenant.free_delivery_min_order ?? null,
           restaurant_address: tenant.restaurant_address ?? '',
           restaurant_latitude: tenant.restaurant_latitude ?? null,
           restaurant_longitude: tenant.restaurant_longitude ?? null,

@@ -207,8 +207,12 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   'order-types': 'store_setup',
   outlets: 'store_setup',
   'payment-methods': 'store_setup',
+  // Launch checklist: what a pre-launch store still needs.
+  launch: 'store_setup',
   branding: 'store_setup',
   'receipt-editor': 'store_setup',
+  // Printed store, branch and table codes.
+  'qr-codes': 'store_setup',
   'hero-designer': 'store_setup',
   // Minting an MCP key grants full merchant authority — owner/store_setup only.
   mcp: 'store_setup',

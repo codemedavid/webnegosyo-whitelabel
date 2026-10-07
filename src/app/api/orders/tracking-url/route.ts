@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { z } from 'zod'
 import { generateShortTrackingToken } from '@/lib/tracking-token'
-import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
-import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
+import { fetchOrderTrackingData } from '@/lib/order-tracking-service'
 
 /**
  * POST /api/orders/tracking-url
@@ -18,6 +17,11 @@ import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app
  * /api/customers/capture-order. Without that check, anyone with a merchant
  * login could mint tracking tokens (which read customer names and totals)
  * for guessed order ids on any store.
+ *
+ * The token is an HMAC of the order id alone, so being a member of `tenantId`
+ * is not enough: the order itself must be found inside that tenant (on the
+ * tenant's own backend) before anything is signed. Otherwise an admin of one
+ * store could mint a working token for another store's order id.
  */
 
 const requestSchema = z.object({
@@ -33,29 +37,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const { orderId, tenantId } = parsed.data
 
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-
-  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, 'view')
-
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const caller = await requireBearerStoreCaller(request, tenantId, 'view')
+  if (!caller.ok) return caller.response
 
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const admin = createAdminClient()
@@ -70,6 +53,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const token = generateShortTrackingToken(orderId)
+  // Same tenant-scoped, backend-aware read the tracking page uses — so a token
+  // is only ever handed out for an order the tracking page would show.
+  const { data: order } = await fetchOrderTrackingData(orderId, token, tenantId)
+  if (!order) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
+
   const url = `${request.nextUrl.origin}/${tenant.slug}/order/${encodeURIComponent(orderId)}?t=${token}`
 
   return NextResponse.json({ url })

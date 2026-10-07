@@ -38,6 +38,12 @@ const HIDDEN_FIELDS = new Set([
   'outlet_id',
   'scheduled_for',
   '_inventory_selections',
+  // The checkout's SMS opt-in tick and its timestamp: audience bookkeeping,
+  // not something the customer wrote for the store to read.
+  'sms_consent',
+  'sms_consent_at',
+  // The source id stamped on orders imported from a Convex deployment.
+  'convex_order_id',
 ]);
 
 /**

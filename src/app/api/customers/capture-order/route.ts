@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { parseCustomerCaptureRequest } from '@/lib/customer-capture-request'
 import { captureAppOrder } from '@/lib/customer-capture-service'
-import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
-import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
+import type { CaptureBackendClient } from '@/lib/customers/capture-backend'
 
 /**
  * POST /api/customers/capture-order
@@ -24,6 +23,11 @@ import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app
  * Authenticated with the caller's own Supabase access token — the same trust
  * level as /api/inventory/order-stock.
  *
+ * Note on the backend: the body's `backend` is never trusted. The tenant's
+ * resolved order backend decides (a platform store's capture is corrected to
+ * `platform`, a foreign-backend mismatch is refused), and a platform order is
+ * linked only when it is this tenant's row.
+ *
  * Note on the tenant check: it is deliberately the *caller's* tenant that
  * decides, never the body's claim alone. `customers` is PII, and the capture
  * runs service-role; a caller able to name any tenant here could seed another
@@ -38,38 +42,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const capture = parsed.value
 
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-
-  const isAuthorized = canAccessStoreAdmin(appUser, capture.tenantId, 'create')
-
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const caller = await requireBearerStoreCaller(request, capture.tenantId, 'create')
+  if (!caller.ok) return caller.response
 
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const { createSupabaseCustomerStore, upsertCustomerFromOrder } = await import(
     '@/lib/customers-service'
   )
   const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+  const { verifyCaptureBackend } = await import('@/lib/customers/capture-backend')
   const admin = createAdminClient()
 
-  const customerId = await captureAppOrder(capture, {
+  // The body's backend is a claim, not a fact: the tenant's resolved backend
+  // decides where the order lives (see lib/customers/capture-backend.ts).
+  // Cast to the structural slice: matching the fully-typed client against it
+  // trips TS2589 (excessively deep instantiation).
+  const verified = await verifyCaptureBackend(admin as unknown as CaptureBackendClient, capture)
+  if (!verified.ok) {
+    return NextResponse.json({ error: verified.error }, { status: verified.status })
+  }
+
+  const customerId = await captureAppOrder(verified.request, {
     capturePlatformOrder: (tenantId, input) =>
       upsertCustomerFromOrder(createSupabaseCustomerStore(admin), tenantId, input),
     captureExternalOrder: (tenantId, order) =>

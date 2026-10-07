@@ -13,7 +13,12 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useAuthStore } from "../../stores/auth-store";
-import { NEW_CAMPAIGN_ID, campaignHref, customerHref } from "../../lib/navigation";
+import {
+  NEW_CAMPAIGN_ID,
+  campaignHref,
+  customerHref,
+  newCampaignFromPresetHref,
+} from "../../lib/navigation";
 import {
   computeCampaignDueStates,
   type CampaignDueState,
@@ -48,6 +53,10 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { CustomersAccessGate } from "../../components/customers/CustomersAccessGate";
+import { Button } from "../../components/Button";
+import { CampaignQuickStart } from "../../components/sms/campaign/CampaignQuickStart";
+import { CAMPAIGN_PRESETS } from "../../lib/sms/campaign-presets";
 import { IconButton } from "../../components/IconButton";
 import { ReachBar } from "../../components/sms/ReachBar";
 import { GuestRow } from "../../components/sms/GuestRow";
@@ -58,12 +67,27 @@ import { runCustomersExport } from "../../lib/export/run-export";
 
 type Section = "guests" | "campaigns";
 
+/** Ideas offered on an empty campaign list — enough to choose, not a catalogue. */
+const QUICK_START_COUNT = 3;
+
 // Module scope, not a hook: the platform cannot change while the app is
 // running, and holding it in state would invite a render where the campaign UI
 // exists for a frame on a device that can never send.
 const canSendSms = isSmsCampaignsAvailable(Platform.OS);
 
-export default function CustomersScreen() {
+/**
+ * The guest list is PII: an account without the `customers` grant gets the
+ * refusal, never the screen (RLS would return nothing to it anyway).
+ */
+export default function CustomersRoute() {
+  return (
+    <CustomersAccessGate title="Customers">
+      <CustomersScreen />
+    </CustomersAccessGate>
+  );
+}
+
+function CustomersScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
 
   const [customers, setCustomers] = useState<SmsCustomer[]>([]);
@@ -382,17 +406,19 @@ function CampaignsSection({
       contentContainerStyle={styles.campaignContent}
       refreshControl={refreshControl}
       ListHeaderComponent={
-        <TouchableOpacity
-          style={styles.newCampaign}
+        <Button
+          label="New campaign"
+          icon="plus"
+          size="lg"
           onPress={() => router.push(campaignHref(NEW_CAMPAIGN_ID))}
-          accessibilityRole="button"
-        >
-          <Icon name="plus" color={colors.textOnDark} size={15} strokeWidth={2.25} />
-          <Text style={styles.newCampaignText}>New campaign</Text>
-        </TouchableOpacity>
+          style={styles.newCampaign}
+        />
       }
       ListEmptyComponent={
-        <EmptyState message="No campaigns yet. A campaign is one message, sent to the guests you choose, on a date you pick." />
+        <CampaignQuickStart
+          presets={CAMPAIGN_PRESETS.slice(0, QUICK_START_COUNT)}
+          onStart={(presetId) => router.push(newCampaignFromPresetHref(presetId))}
+        />
       }
       renderItem={({ item }) => (
         <CampaignCard
@@ -453,15 +479,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   noticeText: { ...typography.caption, color: colors.textPrimary, lineHeight: 18 },
-  newCampaign: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  newCampaignText: { ...typography.body, color: colors.textOnDark, fontWeight: "700" },
+  newCampaign: { marginBottom: spacing.xs },
 });

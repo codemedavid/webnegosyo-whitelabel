@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -54,7 +53,6 @@ export function AddonLibraryManager({
   initialEntries,
   menuItems,
 }: AddonLibraryManagerProps) {
-  const router = useRouter()
   const [entries, setEntries] = useState<AddonLibraryEntry[]>(initialEntries)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -123,7 +121,8 @@ export function AddonLibraryManager({
       )
       toast.success(editingId ? 'Add-on updated' : 'Add-on added to library')
       setIsDialogOpen(false)
-      router.refresh()
+      // No router.refresh(): the action's revalidatePath already re-renders
+      // this route — a refresh on top was a second full server render.
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save add-on')
     } finally {
@@ -142,7 +141,6 @@ export function AddonLibraryManager({
     }
     setEntries((prev) => prev.filter((e) => e.id !== entry.id))
     toast.success('Add-on removed from library')
-    router.refresh()
   }
 
   return (

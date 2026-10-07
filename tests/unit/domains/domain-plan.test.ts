@@ -34,7 +34,7 @@ describe('parseCustomDomainInput', () => {
     expect(parseCustomDomainInput(raw, ROOT).ok).toBe(false)
   })
 
-  it.each([['webnegosyo.com'], ['shop.webnegosyo.com'], ['my-app.vercel.app'], ['shop.webnegosyo.app']])(
+  it.each([['webnegosyo.com'], ['shop.webnegosyo.com'], ['my-app.vercel.app'], ['shop.webnegosyo.app'], ['smartmenu.ph'], ['seacook.smartmenu.ph']])(
     'refuses platform-owned host %s',
     (raw) => {
       const result = parseCustomDomainInput(raw, ROOT)

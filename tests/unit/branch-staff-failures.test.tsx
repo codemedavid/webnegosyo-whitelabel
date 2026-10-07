@@ -170,7 +170,7 @@ describe('when a branch write is refused', () => {
         tenantSlug="demo"
         initialOutlets={[makeOutlet(), BGC]}
         staff={[]}
-        orders={[]}
+        metricRows={[]}
       />
     )
   }

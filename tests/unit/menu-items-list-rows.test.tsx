@@ -65,7 +65,9 @@ describe('the menu list', () => {
     expect(screen.getByRole('switch', { name: /adobo/i })).not.toBeChecked()
     expect(mockToggle).toHaveBeenCalledWith('a', 't1', 'cafe', false)
     await act(async () => resolveToggle({ success: true }))
-    expect(mockRefresh).toHaveBeenCalled()
+    // The action's own revalidatePath already ships this page's fresh render
+    // with its response; a router.refresh() on top rendered the page twice.
+    expect(mockRefresh).not.toHaveBeenCalled()
   })
 
   it('puts the switch back when the save is refused', async () => {

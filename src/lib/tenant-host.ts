@@ -12,13 +12,17 @@ const LOCAL_SUFFIX = '.localhost'
 const VERCEL_SUFFIX = '.vercel.app'
 
 /**
- * This product's production hosts. Edge middleware inlines `process.env` at
- * build time; if `PLATFORM_ROOT_DOMAIN` is missing from that bundle, every
+ * This product's production hosts. Every one serves every store as
+ * `<slug>.<root>` (`seacook.webnegosyo.com` and `seacook.smartmenu.ph` are the
+ * same storefront), while `PLATFORM_ROOT_DOMAIN` stays the one used in links.
+ *
+ * Edge middleware inlines `process.env` at build time; if
+ * `PLATFORM_ROOT_DOMAIN` is missing from that bundle, every
  * `*.webnegosyo.com` request used to be treated as a custom domain and waited
- * on Postgres until Vercel returned 504. These fallbacks keep tenant
+ * on Postgres until Vercel returned 504. Listing the roots here keeps tenant
  * subdomains as pure string parsing even when the env var is absent.
  */
-const WELL_KNOWN_PLATFORM_ROOTS = ['webnegosyo.com', 'webnegosyo.app'] as const
+const WELL_KNOWN_PLATFORM_ROOTS = ['webnegosyo.com', 'webnegosyo.app', 'smartmenu.ph'] as const
 
 function platformRoots(rootDomain: string | null): string[] {
   const configured = rootDomain?.toLowerCase().trim()
@@ -68,8 +72,9 @@ export function getRootDomain(): string | null {
  *
  * `shop.webnegosyo.com` → `shop`; `shop.localhost` → `shop` in development;
  * reserved subdomains and hosts outside the root domain give null. Vercel
- * preview URLs are never a tenant. If the env root is missing, the well-known
- * production hosts (`webnegosyo.com`, `webnegosyo.app`) still parse.
+ * preview URLs are never a tenant. Every well-known production root
+ * (`webnegosyo.com`, `webnegosyo.app`, `smartmenu.ph`) parses, with or
+ * without the env root.
  */
 export function extractSubdomain(host: string, rootDomain: string | null): string | null {
   const hostClean = host.toLowerCase().trim()

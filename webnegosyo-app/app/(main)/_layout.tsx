@@ -19,6 +19,7 @@ import { BranchContextBar } from "../../components/BranchContextBar";
 import { WhatsNewPopup } from "../../components/WhatsNewPopup";
 import { TutorialWelcomePopup } from "../../components/tutorial/TutorialWelcomePopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
+import { OwlLauncher } from "../../components/assistant/OwlLauncher";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -164,7 +165,6 @@ export default function MainLayout() {
         <Tabs.Screen name="analytics" options={{ href: show("analytics"), title: "Analytics" }} />
         <Tabs.Screen name="trends" options={{ href: show("trends"), title: "Trends" }} />
         <Tabs.Screen name="growth" options={{ href: show("growth"), title: "Growth" }} />
-        <Tabs.Screen name="customer-hub" options={{ href: show("customer-hub"), title: "Customers" }} />
         <Tabs.Screen name="customers" options={{ href: show("customers"), title: "Guest list" }} />
         <Tabs.Screen name="loyalty" options={{ href: show("loyalty"), title: "Rewards" }} />
         <Tabs.Screen
@@ -237,6 +237,8 @@ export default function MainLayout() {
           options={{ href: null, title: "Chapter", tabBarStyle: { display: "none" } }}
         />
       </Tabs>
+      {/* The floating Owl assistant — only for stores with it switched on. */}
+      <OwlLauncher bottomOffset={tabBarHeight} />
     </>
   );
 }

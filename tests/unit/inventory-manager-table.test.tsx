@@ -33,12 +33,14 @@ jest.mock('@/components/admin/stock-history-list', () => ({
 }))
 
 const deleteIngredientAction = jest.fn()
+const previewIngredientDeleteAction = jest.fn()
 const createIngredientAction = jest.fn()
 jest.mock('@/app/actions/inventory', () => ({
   getStockMovementsAction: jest.fn().mockResolvedValue({ success: true, data: [] }),
   createIngredientAction: (...a: unknown[]) => createIngredientAction(...a),
   updateIngredientAction: jest.fn(),
   deleteIngredientAction: (...a: unknown[]) => deleteIngredientAction(...a),
+  previewIngredientDeleteAction: (...a: unknown[]) => previewIngredientDeleteAction(...a),
   createInventoryUnitAction: jest.fn(),
   updateInventoryUnitAction: jest.fn(),
   deleteInventoryUnitAction: jest.fn(),
@@ -173,26 +175,75 @@ describe('InventoryManager table', () => {
     expect(screen.getByTestId('recipe-editor')).toHaveTextContent(/pizza dough/i)
   })
 
+  const DELETED = { outcome: 'deleted', recipeCount: 0, recipeLinesRemoved: 0 }
+  const ARCHIVED = { outcome: 'archived', recipeCount: 2, recipeLinesRemoved: 2 }
+
+  const clickDelete = (name: RegExp) => {
+    fireEvent.click(screen.getByRole('button', { name }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }))
+  }
+
   it('deletes the ingredient of the row the menu belongs to', async () => {
-    deleteIngredientAction.mockResolvedValue({ success: true })
+    previewIngredientDeleteAction.mockResolvedValue({ success: true, data: DELETED })
+    deleteIngredientAction.mockResolvedValue({ success: true, data: DELETED })
     jest.spyOn(window, 'confirm').mockReturnValue(true)
     renderManager()
 
-    fireEvent.click(screen.getByRole('button', { name: /more actions for broccoli/i }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }))
+    clickDelete(/more actions for broccoli/i)
 
     await waitFor(() => expect(deleteIngredientAction).toHaveBeenCalledWith('i1', 't1', 'demo'))
   })
 
   it('drops a deleted ingredient out of the table', async () => {
-    deleteIngredientAction.mockResolvedValue({ success: true })
+    previewIngredientDeleteAction.mockResolvedValue({ success: true, data: DELETED })
+    deleteIngredientAction.mockResolvedValue({ success: true, data: DELETED })
     jest.spyOn(window, 'confirm').mockReturnValue(true)
     renderManager()
 
-    fireEvent.click(screen.getByRole('button', { name: /more actions for broccoli/i }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }))
+    clickDelete(/more actions for broccoli/i)
 
     await waitFor(() => expect(screen.queryAllByTestId('inventory-row')).toHaveLength(0))
+  })
+
+  /*
+    The bug: an ingredient used in a recipe could never be deleted, and one
+    with stock history lost that history. The confirm now says what will
+    really happen, read from the database before anything is written.
+  */
+  it('tells the merchant, before confirming, that recipes lose it and its history is kept', async () => {
+    previewIngredientDeleteAction.mockResolvedValue({ success: true, data: { ...ARCHIVED, recipeLinesRemoved: 0 } })
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)
+    renderManager()
+
+    clickDelete(/more actions for broccoli/i)
+
+    await waitFor(() => expect(confirm).toHaveBeenCalled())
+    expect(confirm.mock.calls[0][0]).toMatch(/2 recipes use it/)
+    expect(confirm.mock.calls[0][0]).toMatch(/not in use/i)
+    expect(deleteIngredientAction).not.toHaveBeenCalled()
+  })
+
+  it('keeps an archived ingredient in the table, marked Not in use', async () => {
+    previewIngredientDeleteAction.mockResolvedValue({ success: true, data: ARCHIVED })
+    deleteIngredientAction.mockResolvedValue({ success: true, data: ARCHIVED })
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
+    renderManager()
+
+    clickDelete(/more actions for broccoli/i)
+
+    await waitFor(() => expect(screen.getByTestId('inventory-row')).toHaveTextContent(/not in use/i))
+  })
+
+  it('does not delete blind when the preview fails', async () => {
+    previewIngredientDeleteAction.mockResolvedValue({ success: false, error: 'Failed to check ingredient' })
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+    renderManager()
+
+    clickDelete(/more actions for broccoli/i)
+
+    await waitFor(() => expect(previewIngredientDeleteAction).toHaveBeenCalled())
+    expect(confirm).not.toHaveBeenCalled()
+    expect(deleteIngredientAction).not.toHaveBeenCalled()
   })
 
   /*

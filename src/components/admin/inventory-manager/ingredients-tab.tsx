@@ -14,7 +14,12 @@ import { useIngredientSpreadsheets } from '@/components/admin/inventory-import/u
 import { mergeImportedItems } from '@/lib/inventory/import/merge-items'
 import { StockCountPanel } from '@/components/admin/stock-count-panel'
 import { buildInventoryRows } from '@/lib/inventory/inventory-table'
-import { deleteIngredientAction } from '@/app/actions/inventory'
+import { deleteIngredientAction, previewIngredientDeleteAction } from '@/app/actions/inventory'
+import {
+  applyIngredientDeleteOutcome,
+  describeIngredientDelete,
+  describeIngredientDeleteOutcome,
+} from '@/lib/inventory/ingredient-delete'
 import { MANUAL_MOVEMENT_REASONS, type StockMovementReason } from '@/lib/inventory/stock-ledger'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import type { InventoryHealth } from '@/lib/inventory/inventory-health'
@@ -26,6 +31,7 @@ import type { SelectableBranch } from '@/lib/inventory/stock-outlet'
 import { UnitsTab } from '@/components/admin/inventory-manager/units-tab'
 import { IngredientEditorDialog } from '@/components/admin/inventory-manager/ingredient-editor-dialog'
 import { StockMovementDialog } from '@/components/admin/inventory-manager/stock-movement-dialog'
+import { describeActionError } from '@/components/admin/server-action-safety'
 
 interface IngredientsTabProps {
   tenantId: string
@@ -114,22 +120,37 @@ export function IngredientsTab({
     setIsOpen(true)
   }
 
-  const handleDelete = async (item: InventoryItem) => {
-    // Names the object and the consequence, and says what survives — the
-    // history is what a merchant is most afraid of losing here.
-    const confirmed = confirm(
-      `Delete ${item.name}?\n\nAny recipe using it loses that line, and its cost changes. Past stock movements are kept.`,
-    )
-    if (!confirmed) return
+  /** The ingredient whose delete is being checked or written; a second tap waits. */
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-    const result = await deleteIngredientAction(item.id, tenantId, tenantSlug)
-    if (!result.success) {
-      toast.error(result.error ?? `We could not delete ${item.name}. Try again in a moment.`)
-      return
+  const handleDelete = async (item: InventoryItem) => {
+    if (deletingId) return
+    setDeletingId(item.id)
+    try {
+      // Ask the database what a delete WOULD do before asking the merchant: an
+      // ingredient in recipes loses those lines, and one with stock history is
+      // kept as "Not in use" so the history survives. Never confirm blind.
+      const preview = await previewIngredientDeleteAction(item.id, tenantId)
+      if (!preview.success) {
+        toast.error(preview.error ?? `We could not check ${item.name}. Try again in a moment.`)
+        return
+      }
+      if (!confirm(describeIngredientDelete(item.name, preview.data))) return
+
+      const result = await deleteIngredientAction(item.id, tenantId, tenantSlug)
+      if (!result.success) {
+        toast.error(result.error ?? `We could not delete ${item.name}. Try again in a moment.`)
+        return
+      }
+      onChange(applyIngredientDeleteOutcome(ingredients, item.id, result.data.outcome))
+      toast.success(describeIngredientDeleteOutcome(item.name, result.data))
+    } catch (error) {
+      // A dropped request or an expired session rejects; say so instead of
+      // leaving the tap looking ignored.
+      toast.error(describeActionError(error))
+    } finally {
+      setDeletingId(null)
     }
-    onChange(ingredients.filter((i) => i.id !== item.id))
-    toast.success('Ingredient deleted')
-    router.refresh()
   }
 
   const noUnits = units.length === 0

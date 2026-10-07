@@ -1,3 +1,5 @@
+// Sentry first, so a crash while the router boots is still reported.
+import "./lib/sentry";
 import "expo-router/entry";
 import { AppRegistry } from "react-native";
 import { LOYALTY_SMS_GATEWAY_TASK } from "./lib/loyalty/sms-gateway-task";

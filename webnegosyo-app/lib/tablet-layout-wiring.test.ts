@@ -7,13 +7,23 @@
  * rather than re-deciding by hand. The arithmetic itself lives in
  * `pos-layout.test.ts` and `screen-size.test.ts`.
  */
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 const ROOT = join(__dirname, "..");
 
 function read(...segments: string[]): string {
   return readFileSync(join(ROOT, ...segments), "utf8");
+}
+
+function sourceFiles(dirs: string[]): string[] {
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return walk(full);
+      return /\.tsx?$/.test(entry.name) ? [full] : [];
+    });
+  return dirs.flatMap((dir) => walk(join(ROOT, dir)));
 }
 
 const posScreen = () => read("app", "(main)", "pos.tsx");
@@ -79,6 +89,21 @@ describe("orientation", () => {
 
   it("locks Android at runtime, since its manifest cannot vary by size", () => {
     expect(rootLayout()).toMatch(/useOrientationLock\(\)/);
+  });
+
+  it("never opens a modal that narrows the app's orientation lock", () => {
+    // RN's <Modal> defaults to portrait on iOS; on a landscape-locked iPad
+    // that is a red box in dev and a crash in release. Every modal goes
+    // through components/Modal, which accepts all orientations.
+    const offenders = sourceFiles(["app", "components"])
+      .filter((file) => !file.endsWith(join("components", "Modal.tsx")))
+      .filter((file) =>
+        /import\s*\{[^}]*\bModal\b[^}]*\}\s*from\s*["']react-native["']/.test(
+          readFileSync(file, "utf8"),
+        ),
+      );
+
+    expect(offenders).toEqual([]);
   });
 });
 

@@ -26,7 +26,10 @@ interface Recorded {
  * asked for so the tests can assert the tenant filter is present — a missing
  * `.eq('tenant_id', …)` would read every restaurant's customers.
  */
-function fakeClient(responses: Record<string, { data?: Row[]; error?: { message: string } }>) {
+function fakeClient(
+  responses: Record<string, { data?: Row[]; error?: { message: string } }>,
+  beforeRead?: (record: Recorded) => Promise<void>,
+) {
   const calls: Recorded[] = []
 
   function from(table: string) {
@@ -46,10 +49,15 @@ function fakeClient(responses: Record<string, { data?: Row[]; error?: { message:
       record.filters.push(['eq', column, value])
       return builder
     }
-    builder.then = (resolve: (value: unknown) => unknown) => {
+    builder.then = async (resolve: (value: unknown) => unknown) => {
+      await beforeRead?.(record)
       const response = responses[table] ?? { data: [] }
+      const ids = record.filters.find(([method]) => method === 'in')
+      const data = ids && response.data
+        ? response.data.filter(row => (ids[2] as unknown[]).includes(row[ids[1]]))
+        : response.data
       return Promise.resolve(page && response.data
-        ? { ...response, data: response.data.slice(page[0], page[1] + 1) }
+        ? { ...response, data: data?.slice(page[0], page[1] + 1) }
         : response).then(resolve)
     }
 
@@ -194,5 +202,86 @@ describe('fetchCustomerOrderFacts', () => {
 
     expect(result.facts).toHaveLength(1001)
     expect(result.coverage.complete).toBe(true)
+  })
+
+  it('reads eight item chunks in two bounded waves while preserving every order and item', async () => {
+    jest.useFakeTimers()
+    try {
+      const orders = Array.from({ length: 800 }, (_, index) => ({
+        id: `order-${index}`, customer_id: 'customer-a', status: 'delivered',
+        total: 10, created_at: '2026-09-01T02:00:00.000Z', source: 'web',
+      }))
+      let active = 0
+      let peak = 0
+      const { client, calls } = fakeClient({
+        orders: { data: orders },
+        order_items: { data: orders.map(order => ({
+          order_id: order.id, menu_item_id: order.id, menu_item_name: 'Latte', quantity: 1, price: 10,
+        })) },
+      }, async record => {
+        if (record.table !== 'order_items') return
+        active++
+        peak = Math.max(peak, active)
+        await new Promise(resolve => setTimeout(resolve, 20))
+        active--
+      })
+      let completed = false
+      const pending = fetchCustomerOrderFacts(PLATFORM_TENANT, { days: 30, platformClient: client })
+        .then(result => { completed = true; return result })
+
+      await jest.advanceTimersByTimeAsync(40)
+      expect(completed).toBe(true)
+      const result = await pending
+      expect(peak).toBe(4)
+      expect(calls.filter(call => call.table === 'order_items')).toHaveLength(8)
+      expect(result.coverage.complete).toBe(true)
+      expect(result.facts).toHaveLength(800)
+      result.facts.forEach((fact, index) => {
+        expect(fact.externalOrderId).toBe(orders[index].id)
+        expect(fact.items).toEqual([expect.objectContaining({ menuItemId: orders[index].id })])
+      })
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('keeps order totals and stops further batches when item reads fail', async () => {
+    const orders = Array.from({ length: 800 }, (_, index) => ({
+      id: `order-${index}`, customer_id: 'customer-a', status: 'delivered',
+      total: 10, created_at: '2026-09-01T02:00:00.000Z', source: 'web',
+    }))
+    const { client, calls } = fakeClient({
+      orders: { data: orders },
+      order_items: { error: { message: 'item database unavailable' } },
+    })
+
+    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { days: 30, platformClient: client })
+
+    expect(result.facts).toHaveLength(800)
+    expect(result.facts.every(fact => fact.netTotal === 10 && fact.items.length === 0)).toBe(true)
+    expect(result.coverage).toEqual({
+      complete: false,
+      note: expect.stringContaining('item database unavailable'),
+    })
+    expect(calls.filter(call => call.table === 'order_items')).toHaveLength(4)
+  })
+
+  it('paginates line items within an order chunk', async () => {
+    const { client, calls } = fakeClient({
+      orders: { data: [{
+        id: 'large-order', customer_id: 'customer-a', status: 'delivered',
+        total: 6000, created_at: '2026-09-01T02:00:00.000Z', source: 'web',
+      }] },
+      order_items: { data: Array.from({ length: 600 }, (_, index) => ({
+        order_id: 'large-order', menu_item_id: `menu-${index}`,
+        menu_item_name: `Dish ${index}`, quantity: 1, price: 10,
+      })) },
+    })
+
+    const result = await fetchCustomerOrderFacts(PLATFORM_TENANT, { days: 30, platformClient: client })
+
+    expect(result.facts[0].items).toHaveLength(600)
+    expect(result.coverage.complete).toBe(true)
+    expect(calls.filter(call => call.table === 'order_items')).toHaveLength(2)
   })
 })

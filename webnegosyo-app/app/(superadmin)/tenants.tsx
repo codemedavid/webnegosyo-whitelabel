@@ -31,7 +31,7 @@ import { Pill } from "../../components/superadmin/Pill";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 
 const TENANT_COLUMNS =
-  "id, slug, name, is_active, logo_url, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, customer_hub_enabled, loyalty_enabled, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
+  "id, slug, name, is_active, logo_url, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, customer_hub_enabled, loyalty_enabled, assistant_enabled, menu_engineering_enabled, bundles_enabled, app_enabled, lalamove_enabled";
 
 const STATUS_FILTERS: readonly { key: TenantStatusFilter; label: string }[] = [
   { key: "all", label: "All" },

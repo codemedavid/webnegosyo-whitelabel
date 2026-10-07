@@ -30,6 +30,8 @@ import {
   calculateMargin,
   type Product,
 } from "../../lib/products";
+import { moveId, reorderProducts, STALE_ARRANGEMENT_ERROR } from "../../lib/product-arrangement";
+import type { MoveDirection } from "../../lib/categories";
 import { useCategories, useMenuCatalogCache, useProducts } from "../../lib/query/use-products";
 import { useRefetchOnScreenFocus } from "../../lib/query/use-screen-focus";
 import { PLATFORM_STALE_MS } from "../../lib/query/query-client";
@@ -47,6 +49,21 @@ const LOAD_ERROR = "Could not load products. Pull down to try again.";
 
 const NO_PRODUCTS: Product[] = [];
 const NO_CATEGORIES: Category[] = [];
+const MOVE_CHEVRON_SIZE = 16;
+
+/** A category arrangement the merchant made that the cache has not caught up with. */
+interface PendingArrangement {
+  categoryId: string;
+  ids: string[];
+}
+
+/** `products` in the pending arrangement's order; anything it does not name goes last. */
+function applyArrangement(products: readonly Product[], ids: readonly string[]): Product[] {
+  const rank = new Map(ids.map((id, index) => [id, index]));
+  return [...products].sort(
+    (a, b) => (rank.get(a.id) ?? ids.length) - (rank.get(b.id) ?? ids.length),
+  );
+}
 
 interface ProductCost {
   menuItemId: string;
@@ -74,6 +91,18 @@ export default function ProductManagementScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  /**
+   * The order shown while a move is saving. A move writes several rows; until
+   * they land and the catalog re-reads, the cache still holds the old order,
+   * and the row would snap back under the merchant's thumb.
+   */
+  const [pending, setPending] = useState<PendingArrangement | null>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [productsSeen, setProductsSeen] = useState(products);
+  if (productsSeen !== products) {
+    setProductsSeen(products);
+    if (!isSavingOrder) setPending(null);
+  }
 
   const { data: costs } = useSafeQuery<ProductCost[]>(getAllCostsRef, {});
   const costByItem = new Map((costs ?? []).map((c) => [c.menuItemId, c.costPrice]));
@@ -133,11 +162,49 @@ export default function ProductManagementScreen() {
     router.push(productHref(NEW_PRODUCT_ID));
   };
 
-  const filtered = products.filter((p) => {
+  const matching = products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.trim().toLowerCase());
     const matchesCategory = categoryFilter === "all" || p.category_id === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+
+  // Arranging needs the WHOLE category on screen: an order set over a search
+  // result would move products the merchant cannot see.
+  const canArrange = categoryFilter !== "all" && search.trim() === "";
+  const filtered =
+    canArrange && pending?.categoryId === categoryFilter
+      ? applyArrangement(matching, pending.ids)
+      : matching;
+
+  const handleMove = async (product: Product, direction: MoveDirection) => {
+    if (useAuthStore.getState().isDemo) {
+      Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
+      return;
+    }
+    if (!tenantId || !canArrange || isSavingOrder) return;
+
+    const previous = pending;
+    const ids = moveId(
+      filtered.map((p) => p.id),
+      product.id,
+      direction,
+    );
+    setPending({ categoryId: categoryFilter, ids });
+    setIsSavingOrder(true);
+    try {
+      await reorderProducts(tenantId, categoryFilter, ids);
+      // The register sells from its own cached copy, and the storefront is
+      // ISR-cached: both must hear about the new order.
+      void invalidateCatalog(tenantId);
+      if (tenantSlug) void notifyMenuRevalidate(tenantId, tenantSlug);
+    } catch (error) {
+      setPending(previous);
+      const isStale = error instanceof Error && error.message === STALE_ARRANGEMENT_ERROR;
+      Alert.alert("Error", isStale ? STALE_ARRANGEMENT_ERROR : "Could not rearrange your products.");
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -198,6 +265,12 @@ export default function ProductManagementScreen() {
         ))}
       </ScrollView>
 
+      <Text style={styles.arrangeHint}>
+        {canArrange
+          ? "Use the arrows to set the order on your online menu and POS."
+          : "Pick a category to arrange its order on your online menu and POS."}
+      </Text>
+
       <ScrollView
         style={styles.list}
         contentContainerStyle={styles.content}
@@ -212,63 +285,91 @@ export default function ProductManagementScreen() {
         ) : filtered.length === 0 ? (
           <EmptyState message="No products match your filters." />
         ) : (
-          filtered.map((product) => {
+          filtered.map((product, index) => {
             const costPrice = costByItem.get(product.id) ?? null;
             const margin = calculateMargin(product.price, costPrice);
             return (
-              <TouchableOpacity
-                key={product.id}
-                style={styles.row}
-                activeOpacity={0.7}
-                onPress={() => router.push(productHref(product.id))}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit ${product.name}`}
-              >
-                <View style={styles.rowHeader}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {product.name}
-                  </Text>
-                  <Switch
-                    value={product.is_available}
-                    onValueChange={() => handleToggleAvailability(product)}
-                    trackColor={{ false: colors.separator, true: colors.success }}
-                  />
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.price}>{formatPeso(product.price)}</Text>
-                  {/*
-                    Only when the system pulled the dish, never when the
-                    merchant switched it off — telling those two apart is the
-                    entire reason `auto_disabled_at` exists.
-                  */}
-                  {describeMenuAvailability(product) === 'auto-hidden' ? (
-                    <View style={[styles.marginBadge, { backgroundColor: colors.dangerLight }]}>
-                      <Text style={[styles.marginBadgeText, { color: colors.danger }]}>
-                        {MENU_AVAILABILITY_LABEL['auto-hidden']}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {margin ? (
-                    <View
-                      style={[
-                        styles.marginBadge,
-                        { backgroundColor: margin.marginPercent && margin.marginPercent < 0 ? colors.dangerLight : colors.successLight },
-                      ]}
-                    >
-                      <Text
+              <View key={product.id} style={styles.row}>
+                <TouchableOpacity
+                  style={styles.rowMain}
+                  activeOpacity={0.7}
+                  onPress={() => router.push(productHref(product.id))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${product.name}`}
+                >
+                  <View style={styles.rowHeader}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {product.name}
+                    </Text>
+                    <Switch
+                      value={product.is_available}
+                      onValueChange={() => handleToggleAvailability(product)}
+                      trackColor={{ false: colors.separator, true: colors.success }}
+                    />
+                  </View>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.price}>{formatPeso(product.price)}</Text>
+                    {/*
+                      Only when the system pulled the dish, never when the
+                      merchant switched it off — telling those two apart is the
+                      entire reason `auto_disabled_at` exists.
+                    */}
+                    {describeMenuAvailability(product) === 'auto-hidden' ? (
+                      <View style={[styles.marginBadge, { backgroundColor: colors.dangerLight }]}>
+                        <Text style={[styles.marginBadgeText, { color: colors.danger }]}>
+                          {MENU_AVAILABILITY_LABEL['auto-hidden']}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {margin ? (
+                      <View
                         style={[
-                          styles.marginBadgeText,
-                          { color: margin.marginPercent && margin.marginPercent < 0 ? colors.danger : colors.success },
+                          styles.marginBadge,
+                          { backgroundColor: margin.marginPercent && margin.marginPercent < 0 ? colors.dangerLight : colors.successLight },
                         ]}
                       >
-                        {margin.marginPercent === null ? "—" : `${margin.marginPercent.toFixed(0)}% margin`}
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.setCostHint}>Set cost in Products tab</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
+                        <Text
+                          style={[
+                            styles.marginBadgeText,
+                            { color: margin.marginPercent && margin.marginPercent < 0 ? colors.danger : colors.success },
+                          ]}
+                        >
+                          {margin.marginPercent === null ? "—" : `${margin.marginPercent.toFixed(0)}% margin`}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.setCostHint}>Set cost in Products tab</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+                {canArrange && (
+                  <View style={styles.moveColumn}>
+                    <TouchableOpacity
+                      style={[styles.reorder, (index === 0 || isSavingOrder) && styles.reorderDisabled]}
+                      disabled={index === 0 || isSavingOrder}
+                      onPress={() => handleMove(product, "up")}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Move ${product.name} up`}
+                    >
+                      <View style={styles.flip}>
+                        <Icon name="chevron-down" size={MOVE_CHEVRON_SIZE} color={colors.textPrimary} />
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.reorder,
+                        (index === filtered.length - 1 || isSavingOrder) && styles.reorderDisabled,
+                      ]}
+                      disabled={index === filtered.length - 1 || isSavingOrder}
+                      onPress={() => handleMove(product, "down")}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Move ${product.name} down`}
+                    >
+                      <Icon name="chevron-down" size={MOVE_CHEVRON_SIZE} color={colors.textPrimary} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             );
           })
         )}
@@ -306,7 +407,34 @@ const styles = StyleSheet.create({
   filterPillTextActive: { color: colors.textOnDark },
   list: { flex: 1 },
   content: { padding: spacing.xl, paddingTop: spacing.sm },
-  row: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.sm, ...shadow.sm },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.sm,
+    ...shadow.sm,
+  },
+  rowMain: { flex: 1 },
+  arrangeHint: {
+    ...typography.small,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xs,
+  },
+  moveColumn: { gap: spacing.xs },
+  reorder: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reorderDisabled: { opacity: 0.3 },
+  flip: { transform: [{ rotate: "180deg" }] },
   rowHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
   name: { ...typography.body, color: colors.textPrimary, fontWeight: "600", flex: 1 },
   metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm },

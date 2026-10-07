@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { listManagedCategories, type ManagedCategory } from "./categories";
+import { nextProductOrder, readMovedProductOrder } from "./product-arrangement";
 import {
   buildOutletMenuIndex,
   resolveMenuForOutlet,
@@ -228,7 +229,10 @@ export async function listProducts(
       .from("menu_items")
       .select("*, category:categories(*)")
       .eq("tenant_id", tenantId)
-      .order("order", { ascending: true }),
+      .order("order", { ascending: true })
+      // Ties are common on live stores; `id` breaks them the way the
+      // storefront does, so the register lists dishes in the web's order.
+      .order("id", { ascending: true }),
     outletId
       ? supabase
           .from("outlet_menu_items")
@@ -262,9 +266,13 @@ export async function createProduct(
 ): Promise<Product> {
   assertValid(input);
 
+  // A new product joins the END of its category; the DB default (0) would tie
+  // it with whatever the merchant arranged first.
+  const order = await nextProductOrder(tenantId, input.category_id);
+
   const { data, error } = await supabase
     .from("menu_items")
-    .insert({ tenant_id: tenantId, ...toMenuItemRow(input) })
+    .insert({ tenant_id: tenantId, ...toMenuItemRow(input), order })
     .select()
     .single();
 
@@ -279,9 +287,11 @@ export async function updateProduct(
 ): Promise<Product> {
   assertValid(input);
 
+  const order = await readMovedProductOrder(tenantId, productId, input.category_id);
+
   const { data, error } = await supabase
     .from("menu_items")
-    .update(toMenuItemRow(input))
+    .update(order === undefined ? toMenuItemRow(input) : { ...toMenuItemRow(input), order })
     .eq("id", productId)
     .eq("tenant_id", tenantId)
     .select()

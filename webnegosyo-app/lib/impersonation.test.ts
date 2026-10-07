@@ -26,6 +26,8 @@ const SUPERADMIN_STATE = {
   // superadmin would carry one merchant's pilot access into the next.
   customerHubEnabled: false,
   loyaltyEnabled: false,
+  // The Owl switch is the viewed store's too, cleared on exit.
+  assistantEnabled: false,
   isSuperadmin: true,
   isOwner: false,
   permissions: null,

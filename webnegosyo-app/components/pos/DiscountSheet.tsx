@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { validateManualDiscount, type ManualDiscount } from "../../lib/pos-discount";
@@ -75,6 +77,22 @@ export function DiscountSheet({
   const [manualError, setManualError] = useState<string | null>(null);
 
   const canDiscountManually = hasPermission(user, "vouchers");
+
+  // The manual fields are the LAST thing in the sheet, so they are the ones the
+  // keyboard covers. While one has focus, keep the body scrolled to the end —
+  // including when the keyboard finishes rising and shrinks the scroll area.
+  const scrollRef = useRef<ScrollView>(null);
+  const isManualFocused = useRef(false);
+  const revealManual = () => scrollRef.current?.scrollToEnd({ animated: true });
+  const manualFocusProps = {
+    onFocus: () => {
+      isManualFocused.current = true;
+      revealManual();
+    },
+    onBlur: () => {
+      isManualFocused.current = false;
+    },
+  };
 
   // Fetched when the sheet opens, not once at mount: the owner edits
   // promotions in the web admin while the shop is trading, and a list read at
@@ -189,7 +207,14 @@ export function DiscountSheet({
   const isCentered = useCenteredDialog();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      <View style={[styles.backdrop, isCentered && centeredDialog.backdrop]}>
+      {/* The sheet is docked to the bottom, exactly where the keyboard rises:
+          without this the amount and reason fields sat UNDER the number pad
+          and the cashier typed a discount they could not see. Same pattern as
+          DeliverySheet. */}
+      <KeyboardAvoidingView
+        style={[styles.backdrop, isCentered && centeredDialog.backdrop]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
           <View style={styles.header}>
             <Text style={styles.title}>Add discount</Text>
@@ -198,133 +223,155 @@ export function DiscountSheet({
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.sectionLabel}>Voucher code</Text>
-          <View style={styles.row}>
-            <TextInput
-              style={styles.input}
-              value={code}
-              onChangeText={(next) => {
-                setCode(next);
-                setCodeError(null);
-              }}
-              placeholder="e.g. WELCOME10"
-              placeholderTextColor={colors.textSecondary}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              editable={!isLooking}
-              accessibilityLabel="Voucher code"
-            />
-            <TouchableOpacity
-              style={[styles.apply, (isLooking || code.trim() === "") && styles.applyDisabled]}
-              onPress={applyCode}
-              disabled={isLooking || code.trim() === ""}
-              accessibilityRole="button"
-            >
-              {isLooking ? (
-                <ActivityIndicator color={colors.card} />
-              ) : (
-                <Text style={styles.applyText}>Apply</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-          {codeError && <Text style={styles.error}>{codeError}</Text>}
-
-          {isBrowsing && offers.length === 0 && (
-            <ActivityIndicator style={styles.browsing} color={colors.primary} />
-          )}
-
-          {choices.length > 0 && (
-            <>
-              <Text style={[styles.sectionLabel, styles.offersLabel]}>Available vouchers</Text>
-              {/* Bounded height: a merchant running twenty promotions must not
-                  push the manual-discount section off the bottom of a phone. */}
-              <ScrollView style={styles.offers} contentContainerStyle={styles.offersContent}>
-                {choices.map((choice) => (
-                  <VoucherChoiceRow
-                    key={choice.voucher.id}
-                    choice={choice}
-                    onApply={() => chooseVoucher(choice.voucher)}
-                    onRemove={() => onRemoveVoucher?.(choice.voucher.code)}
-                  />
-                ))}
-              </ScrollView>
-            </>
-          )}
-
-          {hasManualDiscount && onRemoveManual && (
-            // A manual discount has no code to find in the list above, so it
-            // needs its own way back off. Without one the only route was to
-            // clear the whole sale and ring it again.
-            <TouchableOpacity
-              style={styles.removeManual}
-              onPress={onRemoveManual}
-              accessibilityRole="button"
-              accessibilityLabel="Remove manual discount"
-            >
-              <Text style={styles.removeManualText}>Remove manual discount</Text>
-            </TouchableOpacity>
-          )}
-
-          {canDiscountManually && (
-            <>
-              <Text style={[styles.sectionLabel, styles.manualLabel]}>Manual discount</Text>
-
-              <View style={styles.row}>
-                <TouchableOpacity
-                  style={[styles.kindChip, kind === "fixed" && styles.kindChipActive]}
-                  onPress={() => setKind("fixed")}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: kind === "fixed" }}
-                >
-                  <Text style={styles.kindText}>₱</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.kindChip, kind === "percent" && styles.kindChipActive]}
-                  onPress={() => setKind("percent")}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: kind === "percent" }}
-                >
-                  <Text style={styles.kindText}>%</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.input, styles.amountInput]}
-                  value={amount}
-                  onChangeText={(next) => {
-                    setAmount(next);
-                    setManualError(null);
-                  }}
-                  placeholder="0"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="decimal-pad"
-                  accessibilityLabel="Discount amount"
-                />
-              </View>
-
+          {/* Scrolls once the keyboard leaves less room than the sheet needs.
+              `handled` so a tap on Apply lands while the keyboard is up instead
+              of only dismissing it. */}
+          <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            // The decimal pad has no return key on iOS; a drag puts it away.
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={styles.scrollContent}
+            onLayout={() => {
+              if (isManualFocused.current) revealManual();
+            }}
+          >
+            <Text style={styles.sectionLabel}>Voucher code</Text>
+            <View style={styles.row}>
               <TextInput
-                style={[styles.input, styles.reasonInput]}
-                value={reason}
+                style={styles.input}
+                value={code}
                 onChangeText={(next) => {
-                  setReason(next);
-                  setManualError(null);
+                  setCode(next);
+                  setCodeError(null);
                 }}
-                placeholder="Reason (required)"
+                placeholder="e.g. WELCOME10"
                 placeholderTextColor={colors.textSecondary}
-                accessibilityLabel="Reason for discount"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!isLooking}
+                accessibilityLabel="Voucher code"
               />
-
-              {manualError && <Text style={styles.error}>{manualError}</Text>}
-
               <TouchableOpacity
-                style={styles.manualApply}
-                onPress={applyManual}
+                style={[styles.apply, (isLooking || code.trim() === "") && styles.applyDisabled]}
+                onPress={applyCode}
+                disabled={isLooking || code.trim() === ""}
                 accessibilityRole="button"
               >
-                <Text style={styles.applyText}>Apply discount</Text>
+                {isLooking ? (
+                  <ActivityIndicator color={colors.card} />
+                ) : (
+                  <Text style={styles.applyText}>Apply</Text>
+                )}
               </TouchableOpacity>
-            </>
-          )}
+            </View>
+            {codeError && <Text style={styles.error}>{codeError}</Text>}
+
+            {isBrowsing && offers.length === 0 && (
+              <ActivityIndicator style={styles.browsing} color={colors.primary} />
+            )}
+
+            {choices.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, styles.offersLabel]}>Available vouchers</Text>
+                {/* Bounded height: a merchant running twenty promotions must not
+                    push the manual-discount section off the bottom of a phone. */}
+                <ScrollView
+                  style={styles.offers}
+                  contentContainerStyle={styles.offersContent}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {choices.map((choice) => (
+                    <VoucherChoiceRow
+                      key={choice.voucher.id}
+                      choice={choice}
+                      onApply={() => chooseVoucher(choice.voucher)}
+                      onRemove={() => onRemoveVoucher?.(choice.voucher.code)}
+                    />
+                  ))}
+                </ScrollView>
+              </>
+            )}
+
+            {hasManualDiscount && onRemoveManual && (
+              // A manual discount has no code to find in the list above, so it
+              // needs its own way back off. Without one the only route was to
+              // clear the whole sale and ring it again.
+              <TouchableOpacity
+                style={styles.removeManual}
+                onPress={onRemoveManual}
+                accessibilityRole="button"
+                accessibilityLabel="Remove manual discount"
+              >
+                <Text style={styles.removeManualText}>Remove manual discount</Text>
+              </TouchableOpacity>
+            )}
+
+            {canDiscountManually && (
+              <>
+                <Text style={[styles.sectionLabel, styles.manualLabel]}>Manual discount</Text>
+
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={[styles.kindChip, kind === "fixed" && styles.kindChipActive]}
+                    onPress={() => setKind("fixed")}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: kind === "fixed" }}
+                  >
+                    <Text style={styles.kindText}>₱</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.kindChip, kind === "percent" && styles.kindChipActive]}
+                    onPress={() => setKind("percent")}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: kind === "percent" }}
+                  >
+                    <Text style={styles.kindText}>%</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.input, styles.amountInput]}
+                    value={amount}
+                    onChangeText={(next) => {
+                      setAmount(next);
+                      setManualError(null);
+                    }}
+                    placeholder="0"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="decimal-pad"
+                    accessibilityLabel="Discount amount"
+                    {...manualFocusProps}
+                  />
+                </View>
+
+                <TextInput
+                  style={[styles.input, styles.reasonInput]}
+                  value={reason}
+                  onChangeText={(next) => {
+                    setReason(next);
+                    setManualError(null);
+                  }}
+                  placeholder="Reason (required)"
+                  placeholderTextColor={colors.textSecondary}
+                  accessibilityLabel="Reason for discount"
+                  returnKeyType="done"
+                  {...manualFocusProps}
+                />
+
+                {manualError && <Text style={styles.error}>{manualError}</Text>}
+
+                <TouchableOpacity
+                  style={styles.manualApply}
+                  onPress={applyManual}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.applyText}>Apply discount</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -336,8 +383,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     padding: spacing.lg,
-    gap: spacing.sm,
+    maxHeight: "90%",
   },
+  scrollContent: { gap: spacing.sm, paddingBottom: spacing.md },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -15,11 +15,11 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { formatPrice } from '@/lib/cart-utils'
 import { describeMenuAvailability, MENU_AVAILABILITY_LABEL } from '@/lib/inventory/menu-availability'
-import type { MenuItem } from '@/types/database'
+import type { AdminMenuListItem } from '@/lib/queries/admin-menu-list'
 import type { BranchSummaryLabel } from '@/lib/outlets/outlet-menu-overrides'
 
 interface MenuItemRowProps {
-  item: MenuItem
+  item: AdminMenuListItem
   tenantSlug: string
   /** The switch position to show; differs from `item.is_available` while a change is saving. */
   isAvailable: boolean

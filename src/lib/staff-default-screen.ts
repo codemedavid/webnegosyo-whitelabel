@@ -109,15 +109,6 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     permission: 'analytics',
   },
   {
-    tab: 'customer-hub',
-    label: 'Regulars',
-    description: 'Who comes back, and what they keep ordering',
-    workspace: 'insights',
-    // The same records the guest list protects, aggregated. Summarising PII
-    // does not declassify it, so it rides the same key.
-    permission: 'customers',
-  },
-  {
     tab: 'customers',
     label: 'Guest list',
     description: 'The guest list and follow-up campaigns',

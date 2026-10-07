@@ -105,6 +105,13 @@ describe("isTabReachable", () => {
     const analyst = { ...owner, caller: { ...owner.caller, isOwner: false, permissions: ["analytics"] } };
     expect(isTabReachable(REPORTS_TAB, analyst)).toBe(true);
   });
+
+  it("gives Reports to staff who may see customers but no sales report", () => {
+    // The dashboard itself is customer-first, and the guest list and Rewards
+    // open from it, so a customers grant alone is enough for the tab.
+    const host = { ...owner, caller: { ...owner.caller, isOwner: false, permissions: ["customers"] } };
+    expect(isTabReachable(REPORTS_TAB, host)).toBe(true);
+  });
 });
 
 describe("the bar", () => {

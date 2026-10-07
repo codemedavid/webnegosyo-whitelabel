@@ -1,6 +1,10 @@
-import { Clock } from 'lucide-react'
+import { Clock, Sparkles } from 'lucide-react'
 import type { StoreOpenStatus } from '@/lib/store-open-status'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
+
+/** Pre-launch is not "closed": the store is new and opens once it goes live. */
+const PRELAUNCH_TITLE = 'Opening soon'
+const PRELAUNCH_DETAIL = "This store isn't taking orders yet"
 
 /**
  * Storefront "we're closed" notice.
@@ -24,6 +28,7 @@ interface StoreClosedBannerProps {
 
 export function StoreClosedBanner({ status, className = '' }: StoreClosedBannerProps) {
   if (!status.isOrderingBlocked) return null
+  const isPrelaunch = status.reason === 'prelaunch'
 
   return (
     <div
@@ -33,9 +38,19 @@ export function StoreClosedBanner({ status, className = '' }: StoreClosedBannerP
       style={{ backgroundColor: DEFAULT_BG_COLOR, color: DEFAULT_TEXT_COLOR }}
     >
       <div className="flex items-center justify-center gap-2 text-center flex-wrap">
-        <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="font-semibold">{STORE_CLOSED_MESSAGE}</span>
-        {status.nextOpenLabel && (
+        {isPrelaunch ? (
+          <>
+            <Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="font-semibold">{PRELAUNCH_TITLE}</span>
+            <span className="opacity-90">{PRELAUNCH_DETAIL}</span>
+          </>
+        ) : (
+          <>
+            <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="font-semibold">{STORE_CLOSED_MESSAGE}</span>
+          </>
+        )}
+        {!isPrelaunch && status.nextOpenLabel && (
           <span className="opacity-90">Opens {status.nextOpenLabel}</span>
         )}
       </div>

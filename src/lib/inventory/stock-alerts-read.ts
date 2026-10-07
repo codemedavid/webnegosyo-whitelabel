@@ -31,6 +31,43 @@ interface StockAlertRow {
   outlet_id: string | null
 }
 
+type ServerClient = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Names for the branches the alerts are stamped with. Only when something is
+ * actually branch-stamped: a single-shop tenant should not pay for a query
+ * whose every answer would be discarded. A failed read costs the suffix, not
+ * the alerts — it resolves to an empty map.
+ */
+async function readBranchNames(
+  supabase: ServerClient,
+  tenantId: string,
+  alerts: readonly StockAlertRow[],
+): Promise<Map<string, string>> {
+  const branchIds = [...new Set(alerts.map((a) => a.outlet_id).filter(Boolean))] as string[]
+  if (branchIds.length === 0) return new Map()
+
+  // Caught here, not by the caller: this runs concurrently, so a rejection
+  // that landed while the item read was still in flight would go unobserved.
+  try {
+    const { data: outletRows } = await supabase
+      .from('outlets')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .in('id', branchIds)
+
+    return new Map(
+      ((outletRows ?? []) as unknown as Array<{ id: string; name: string }>).map((outlet) => [
+        outlet.id,
+        outlet.name,
+      ]),
+    )
+  } catch (error) {
+    console.error('[inventory] Alert branch names read failed', tenantId, error)
+    return new Map()
+  }
+}
+
 /**
  * Every unresolved alert for one tenant, worst first, resolved to ingredient
  * names and units.
@@ -51,6 +88,11 @@ export async function getOpenStockAlerts(tenantId: string): Promise<StockAlertVi
 
     const alerts = (alertRows ?? []) as unknown as StockAlertRow[]
     if (alerts.length === 0) return []
+
+    // Branch names depend only on the alerts, so they are read alongside the
+    // item→unit chain instead of after it — one round trip off a banner that
+    // sits on the inventory page's critical path.
+    const branchNamesRead = readBranchNames(supabase, tenantId, alerts)
 
     const { data: itemRows } = await supabase
       .from('inventory_items')
@@ -81,21 +123,7 @@ export async function getOpenStockAlerts(tenantId: string): Promise<StockAlertVi
       ]),
     )
 
-    // Only when something is actually branch-stamped: a single-shop tenant
-    // should not pay for a query whose every answer would be discarded.
-    const branchIds = [...new Set(alerts.map((a) => a.outlet_id).filter(Boolean))] as string[]
-    const branchNameById = new Map<string, string>()
-    if (branchIds.length > 0) {
-      const { data: outletRows } = await supabase
-        .from('outlets')
-        .select('id, name')
-        .eq('tenant_id', tenantId)
-        .in('id', branchIds)
-
-      for (const outlet of (outletRows ?? []) as unknown as Array<{ id: string; name: string }>) {
-        branchNameById.set(outlet.id, outlet.name)
-      }
-    }
+    const branchNameById = await branchNamesRead
 
     const views: StockAlertView[] = []
     for (const alert of alerts) {

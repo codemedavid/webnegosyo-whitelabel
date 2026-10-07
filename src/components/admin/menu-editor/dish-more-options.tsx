@@ -77,20 +77,35 @@ export function DishMoreOptions(props: DishMoreOptionsProps) {
   )
 }
 
-function CostRow({ itemId, convexUrl, price, discountedPrice }: DishMoreOptionsProps) {
+function CostRow({ itemId, convexUrl, price, discountedPrice, inventoryEnabled }: DishMoreOptionsProps) {
+  const canSave = Boolean(convexUrl && itemId)
   return (
-    <OptionalSection icon={Wallet} title="Cost & profit" hint="What it costs you to make, and what you keep">
-      {convexUrl && itemId ? (
+    <OptionalSection
+      icon={Wallet}
+      title={canSave ? 'Cost & profit' : 'Profit calculator'}
+      hint={canSave ? 'What it costs you to make, and what you keep' : 'Try a cost to see your margin'}
+      summary={canSave ? undefined : 'Not saved'}
+    >
+      {canSave && convexUrl && itemId ? (
         <SafeConvexProvider url={convexUrl}>
-          {/* Convex-connected: actually persists the cost price so BCG
-              classification can work (the bare field never saved). */}
+          {/* Convex-connected: persists the cost price so BCG classification can work. */}
           <ProductCostFieldConvex menuItemId={itemId} currentPrice={price} discountedPrice={discountedPrice} />
           <ProductMiniPerformance menuItemId={itemId} />
         </SafeConvexProvider>
       ) : (
-        // New (unsaved) item or no Convex: the calculator only. Costs can be
-        // saved once the item has an id and Convex is configured.
-        <ProductCostField menuItemId={itemId} currentPrice={price} discountedPrice={discountedPrice} />
+        <>
+          {/*
+            This store has nowhere to keep a typed cost (it lives in Convex, and
+            the platform menu has no cost column), so say so instead of letting
+            the owner think it was saved. Real cost comes from the recipe.
+          */}
+          <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            {inventoryEnabled
+              ? 'This is a quick calculator and is not saved. For a cost that stays, add the dish’s ingredients — its margin then shows under Pricing.'
+              : 'This is a quick calculator and is not saved.'}
+          </p>
+          <ProductCostField menuItemId={itemId} currentPrice={price} discountedPrice={discountedPrice} />
+        </>
       )}
     </OptionalSection>
   )

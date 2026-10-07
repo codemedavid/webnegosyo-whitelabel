@@ -39,14 +39,21 @@ export async function getInventoryActivity(
   try {
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-      .from('stock_movements')
-      .select(
-        'id, inventory_item_id, reason, quantity_delta, balance_after, order_id, created_at, created_by',
-      )
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
-      .limit(RECENT_MOVEMENT_LIMIT)
+    // The ledger and the roster that names it do not depend on each other, so
+    // they are read together rather than one after the other.
+    const [{ data, error }, { data: staff }] = await Promise.all([
+      supabase
+        .from('stock_movements')
+        .select(
+          'id, inventory_item_id, reason, quantity_delta, balance_after, order_id, created_at, created_by',
+        )
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(RECENT_MOVEMENT_LIMIT),
+      // A roster that cannot be read costs the entries their names, not the
+      // feed. Whoever moved the stock still moved it.
+      supabase.from('app_users').select('user_id, display_name, email').eq('tenant_id', tenantId),
+    ])
 
     // A PostgREST error arrives as `error`, not as a thrown exception, so
     // without this an unreadable ledger would render as a quiet, empty day.
@@ -56,13 +63,6 @@ export async function getInventoryActivity(
     }
 
     const nameById = new Map(ingredients.map((item) => [item.id, item.name]))
-
-    // A roster that cannot be read costs the entries their names, not the
-    // feed. Whoever moved the stock still moved it.
-    const { data: staff } = await supabase
-      .from('app_users')
-      .select('user_id, display_name, email')
-      .eq('tenant_id', tenantId)
 
     const actorById = new Map(
       ((staff ?? []) as unknown as StaffRow[]).map((row) => [

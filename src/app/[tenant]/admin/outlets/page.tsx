@@ -7,7 +7,7 @@ import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-re
 import { BranchDirectory } from '@/components/admin/branch-directory'
 import { StorePeopleCard } from '@/components/admin/store-people-card'
 import { buildBranchRoster } from '@/lib/outlets/branch-roster'
-import { loadBranchOrders, loadBranchStaff } from '@/lib/outlets/branch-page-data'
+import { loadBranchMetrics, loadBranchStaff } from '@/lib/outlets/branch-page-data'
 
 export default async function AdminOutletsPage({
   params,
@@ -37,16 +37,17 @@ export default async function AdminOutletsPage({
     notFound()
   }
 
-  const [outlets, staff, orders] = await Promise.all([
+  const [outlets, staff, metricRows] = await Promise.all([
     createSupabaseOutletRepository().listByTenant(tenant.id),
     loadBranchStaff(tenant.id),
-    loadBranchOrders(tenant),
+    loadBranchMetrics(tenant),
   ])
 
   // Built twice — here for the People card, and again inside the directory,
-  // which owns the outlet list once the merchant starts reordering it. The
-  // computation is a single pass over data already in memory.
-  const roster = buildBranchRoster({ outlets, staff, orders })
+  // which owns the outlet list once the merchant starts reordering it. Both
+  // read the takings as computed rows: the directory is sent one row per
+  // branch, never the order history behind them.
+  const roster = buildBranchRoster({ outlets, staff, metricRows })
 
   return (
     <div className="space-y-6">
@@ -68,7 +69,7 @@ export default async function AdminOutletsPage({
         mapboxEnabled={tenant.mapbox_enabled ?? false}
         initialOutlets={outlets}
         staff={staff}
-        orders={orders}
+        metricRows={metricRows}
       />
 
       <StorePeopleCard

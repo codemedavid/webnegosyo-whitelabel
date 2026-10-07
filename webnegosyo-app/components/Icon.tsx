@@ -44,6 +44,9 @@ export type IconName =
   // In-screen
   | "search"
   | "check"
+  | "gift"
+  | "send"
+  | "message"
   | "plus"
   | "edit"
   | "chevron"
@@ -75,7 +78,10 @@ export type IconName =
   | "align-left"
   | "align-center"
   | "align-right"
-  | "undo";
+  | "undo"
+  // Owl assistant
+  | "photo"
+  | "mic";
 
 interface IconProps {
   name: IconName;
@@ -318,6 +324,27 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
 
   check: <Polyline points="4,12.5 9.5,18 20,6" />,
 
+  // A paper dart leaving to the upper right: the moment a text goes out.
+  send: (
+    <>
+      <Path d="M21 3L3 10.5l7 3 3 7.5z" />
+      <Line x1={21} y1={3} x2={10} y2={13.5} />
+    </>
+  ),
+
+  // A speech balloon with its tail at the lower left: a text that arrived.
+  message: <Path d="M4 4.5h16v11H9.5L5 19.5v-4H4z" />,
+
+  // A wrapped box with a bow: what a reward card pays out.
+  gift: (
+    <>
+      <Rect x={3.5} y={8} width={17} height={4} />
+      <Rect x={5} y={12} width={14} height={8.5} />
+      <Line x1={12} y1={8} x2={12} y2={20.5} />
+      <Path d="M12 8c-1.5-3.2-5.5-3.6-5.5-1.3S10 8 12 8zM12 8c1.5-3.2 5.5-3.6 5.5-1.3S14 8 12 8z" />
+    </>
+  ),
+
   plus: (
     <>
       <Line x1={12} y1={4} x2={12} y2={20} />
@@ -531,6 +558,22 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
     <>
       <Polyline points="8.5,4.5 4,9 8.5,13.5" />
       <Path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H9" />
+    </>
+  ),
+
+  // A framed picture — sun over a hill: a photo to send.
+  photo: (
+    <>
+      <Rect x={3.5} y={4.5} width={17} height={15} />
+      <Circle cx={9} cy={10} r={1.75} />
+      <Polyline points="3.5,17 9.5,12.5 13,15 16,12.5 20.5,16" />
+    </>
+  ),
+  mic: (
+    <>
+      <Rect x={9} y={3} width={6} height={11.5} rx={3} />
+      <Path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
+      <Line x1={12} y1={17.5} x2={12} y2={21} />
     </>
   ),
 };

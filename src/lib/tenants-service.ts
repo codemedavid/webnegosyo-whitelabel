@@ -12,6 +12,7 @@ import {
 import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secrets'
 import { checkLalamoveKey, describeLalamoveEnvironmentMismatch } from '@/lib/lalamove-keys'
 import { detachTenantDomains, type TenantDomainColumns } from '@/lib/domains/detach-tenant-domains'
+import { withNewTenantFeatureDefaults } from '@/lib/new-tenant-feature-defaults'
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -206,7 +207,9 @@ export const tenantSchema = z.object({
   hero_description: z.string().optional().or(z.literal('')).optional(),
   hero_title_color: z.string().optional().or(z.literal('')).optional(),
   hero_description_color: z.string().optional().or(z.literal('')).optional(),
-  messenger_page_id: z.string().min(1),
+  // Optional: an onboarded store connects its Facebook page later, and the
+  // checkout hand-off already resolves a missing page to "no Messenger link".
+  messenger_page_id: z.string().trim().optional(),
   messenger_username: z.string().optional().or(z.literal('')).optional(),
   messenger_redirect_mode: z.enum(['webhook', 'direct']).default('webhook').optional(),
   is_active: z.boolean().default(true),
@@ -224,6 +227,8 @@ export const tenantSchema = z.object({
   // the admin route and sidebar hang off, and auto-86 takes items off a live
   // menu — neither may switch itself on for a tenant that never asked.
   inventory_enabled: z.boolean().default(false),
+  // Owner AI assistant. Default off: rolled out store by store by a superadmin.
+  assistant_enabled: z.boolean().default(false),
   low_stock_alerts_enabled: z.boolean().default(false),
   auto_86_enabled: z.boolean().default(false),
   // Presell per-date stock (migration 20260830120000)
@@ -356,7 +361,7 @@ export async function isDomainTaken(domain: string | null, excludeId?: string, c
 
 export async function createTenantSupabase(input: TenantInput, ctx?: ProvisioningCtx): Promise<TenantRow> {
   const supabase = ctx?.client ?? (await createClient())
-  const parsed = tenantSchema.parse(input)
+  const parsed = tenantSchema.parse(withNewTenantFeatureDefaults(input))
   if (await isSlugTaken(parsed.slug, undefined, ctx)) {
     throw new Error('Slug is already taken')
   }
@@ -402,7 +407,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     hero_description: parsed.hero_description ?? undefined,
     hero_title_color: parsed.hero_title_color ?? undefined,
     hero_description_color: parsed.hero_description_color ?? undefined,
-    messenger_page_id: parsed.messenger_page_id,
+    messenger_page_id: parsed.messenger_page_id ?? '',
     messenger_username: parsed.messenger_username ?? undefined,
     messenger_redirect_mode: parsed.messenger_redirect_mode ?? 'webhook',
     is_active: parsed.is_active,
@@ -416,6 +421,7 @@ export async function createTenantSupabase(input: TenantInput, ctx?: Provisionin
     pairing_rules_enabled: parsed.pairing_rules_enabled,
     modifier_groups_enabled: parsed.modifier_groups_enabled,
     // Inventory
+    assistant_enabled: parsed.assistant_enabled,
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
@@ -555,6 +561,7 @@ export async function updateTenantSupabase(id: string, input: TenantInput, ctx?:
     pairing_rules_enabled: parsed.pairing_rules_enabled,
     modifier_groups_enabled: parsed.modifier_groups_enabled,
     // Inventory
+    assistant_enabled: parsed.assistant_enabled,
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,

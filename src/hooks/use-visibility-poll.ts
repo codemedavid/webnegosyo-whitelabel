@@ -34,6 +34,9 @@ export function useVisibilityPoll(poll: () => Promise<boolean>, options: Visibil
   const { baseMs, isEnabled, isPollingWhileHidden = false } = options
   const pollRef = useRef(poll)
   const jitterSeedRef = useRef(options.jitterSeed ?? Math.random())
+  // An option change replaces the effect, but cannot cancel its pending poll.
+  // Keep the lock across effect lifetimes so the replacement waits for it.
+  const isInFlightRef = useRef(false)
 
   useEffect(() => {
     pollRef.current = poll
@@ -44,7 +47,6 @@ export function useVisibilityPoll(poll: () => Promise<boolean>, options: Visibil
 
     let timer: ReturnType<typeof setTimeout> | null = null
     let consecutiveFailures = 0
-    let isInFlight = false
     let isDisposed = false
 
     const clear = () => {
@@ -61,15 +63,19 @@ export function useVisibilityPoll(poll: () => Promise<boolean>, options: Visibil
 
     const run = async () => {
       timer = null
-      if (isInFlight || isDisposed) return
-      isInFlight = true
+      if (isDisposed) return
+      if (isInFlightRef.current) {
+        schedule()
+        return
+      }
+      isInFlightRef.current = true
       let isSuccess = false
       try {
         isSuccess = await pollRef.current()
       } catch {
         isSuccess = false
       } finally {
-        isInFlight = false
+        isInFlightRef.current = false
       }
       consecutiveFailures = isSuccess ? 0 : consecutiveFailures + 1
       schedule()

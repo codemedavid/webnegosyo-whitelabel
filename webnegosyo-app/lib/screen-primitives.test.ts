@@ -44,7 +44,6 @@ const CAPTION_EYEBROW =
 const NOT_YET_CONVERTED: Readonly<Record<string, readonly string[]>> = {
   glyphs: [
     "branch-menu.tsx",
-    "campaign/[campaignId].tsx",
     "daily-report.tsx",
     "growth.tsx",
     "kitchen.tsx",
@@ -56,11 +55,9 @@ const NOT_YET_CONVERTED: Readonly<Record<string, readonly string[]>> = {
   ],
   buttons: [
     "branch-menu.tsx",
-    "campaign/[campaignId].tsx",
     "order/[orderId].tsx",
     "payment/[methodId].tsx",
     "product/[productId].tsx",
-    "product/recipe/[productId].tsx",
     "scan.tsx",
   ],
   eyebrow: ["analytics.tsx", "daily-report.tsx", "pos-tender.tsx"],

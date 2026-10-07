@@ -12,7 +12,14 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { FunctionReference } from "convex/server";
-import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
+import { useSafeQuery } from "../../lib/hooks";
+import {
+  useOfflineOrderList,
+  useOfflineOrderMutation,
+  useOfflineRealtimeQueue,
+} from "../../lib/offline/use-offline-orders";
+import { isQueuedOrderWrite } from "../../lib/offline/write-order-change";
+import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { useAuthStore } from "../../stores/auth-store";
 import { useRegisterSettingsStore } from "../../stores/register-settings-store";
 import { selectShiftSales, summarizeCounterSales } from "../../lib/pos-sales";
@@ -31,7 +38,7 @@ import {
 import { canConfirmFromDrawer, selectDrawerIncoming } from "../../lib/drawer-intake";
 import { resolveListAdvance } from "../../lib/orders-list-actions";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
-import { type IncomingOrder, type RealtimeQueue } from "../../lib/pos-incoming";
+import { type IncomingOrder } from "../../lib/pos-incoming";
 import { describeIncomingOrder } from "../../lib/pos-incoming";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { filterQueueToScope } from "../../lib/branch-dashboard";
@@ -89,14 +96,20 @@ export default function PosSalesScreen() {
 
   const counting: DrawerCounting = countingFromPolicy(includeOnlineOrders);
 
-  const { data, isLoading, refetch } = useSafeQuery<DrawerSale[]>(getOrdersRef, {
+  const salesResult = useSafeQuery<DrawerSale[]>(getOrdersRef, {
     limit: SHIFT_ORDER_LIMIT,
   });
+  // Sales rung up offline are money in this drawer, synced or not.
+  const { data: mergedSales, isLoading, refetch, isOffline, savedAt } = useOfflineOrderList(salesResult, {
+    snapshotName: "drawer:getOrders",
+  });
+  const data = mergedSales as DrawerSale[] | undefined;
 
   // The same live queue the Register and the ringtone watch, so the backend
   // de-dupes the subscription and the two lists can never disagree.
-  const { data: queue, refetch: refetchQueue } = useSafeQuery<RealtimeQueue>(getRealtimeQueueRef);
-  const updateStatus = useSafeMutation(updateOrderStatusRef);
+  const queueResult = useSafeQuery<Record<string, IncomingOrder[]>>(getRealtimeQueueRef);
+  const { data: queue, refetch: refetchQueue } = useOfflineRealtimeQueue(queueResult, "orders:getRealtimeQueue");
+  const updateStatus = useOfflineOrderMutation(updateOrderStatusRef);
 
   // A branch cashier accepts only their own branch's orders.
   const incoming = useMemo(
@@ -156,7 +169,9 @@ export default function PosSalesScreen() {
 
     setConfirmingId(order._id);
     try {
-      await updateStatus({ orderId: order._id, status: "confirmed" });
+      const written = await updateStatus({ orderId: order._id, status: "confirmed" });
+      // Kept on this device: the replay pushes to Loyverse once it lands.
+      if (isQueuedOrderWrite(written)) return;
 
       // Push the confirmed order into Loyverse. The drawer shows a total and an
       // item count, never the dishes, so only the id travels and the server
@@ -197,6 +212,7 @@ export default function PosSalesScreen() {
           accessibilityPrefix="Count"
         />
       </ScreenHeader>
+      <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
 
       <ScrollView
         style={styles.screen}

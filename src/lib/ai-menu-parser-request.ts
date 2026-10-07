@@ -16,7 +16,7 @@ export const PARSE_MENU_MAX_TOKENS = 8_192
 
 const ALLOWED_IMAGE_DATA_URL_PREFIX = /^data:image\/(?:png|jpe?g|webp);base64,/
 
-function isAllowedImageDataUrl(image: string): boolean {
+export function isAllowedImageDataUrl(image: string): boolean {
     const prefix = ALLOWED_IMAGE_DATA_URL_PREFIX.exec(image)
     if (!prefix) return false
     const payload = image.slice(prefix[0].length)

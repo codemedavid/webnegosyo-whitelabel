@@ -33,3 +33,16 @@ afterEach(async () => {
   // its own to reset.
   if (typeof api.clear === "function") await api.clear();
 });
+
+// expo-audio's native half is absent under Jest as well, and the Owl composer
+// imports it for voice notes (components/assistant/VoiceRecordingBar.tsx).
+// The default denies the mic, so nothing records unless a suite says so;
+// suites that exercise recording mock the module themselves.
+jest.mock("expo-audio", () => ({
+  requestRecordingPermissionsAsync: jest.fn(async () => ({ granted: false })),
+  setAudioModeAsync: jest.fn(async () => {}),
+  useAudioRecorder: jest.fn(() => ({ prepareToRecordAsync: jest.fn(async () => {}), record: jest.fn(), stop: jest.fn(async () => {}), uri: null })),
+  useAudioRecorderState: jest.fn(() => ({ durationMillis: 0, isRecording: false })),
+  createAudioPlayer: jest.fn(() => ({ play: jest.fn(), seekTo: jest.fn(), remove: jest.fn() })),
+  RecordingPresets: { HIGH_QUALITY: {}, LOW_QUALITY: {} },
+}));

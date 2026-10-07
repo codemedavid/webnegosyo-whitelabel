@@ -51,6 +51,8 @@ export interface OrderCardOrder {
   /** Raw customer payload; carries the schedule for web-created Convex orders
    * (`scheduled_for` / `scheduled_for_label`). */
   customerData?: Record<string, unknown> | null;
+  /** Not yet on the server: a sale or change waiting on this device (offline-order-view). */
+  offlineSync?: "queued" | "needs_attention";
   /** Order lines, when the caller loaded them; carries `presellDate` on Convex v25+. */
   items?: readonly { presellDate?: string | null }[] | null;
 }
@@ -182,6 +184,13 @@ export const OrderCard = memo(function OrderCard({
         {isUnpaid ? (
           <View style={styles.unpaidChip}>
             <Text style={styles.unpaidText}>Unpaid</Text>
+          </View>
+        ) : null}
+        {order.offlineSync ? (
+          <View style={order.offlineSync === "needs_attention" ? styles.unpaidChip : styles.offlineChip}>
+            <Text style={order.offlineSync === "needs_attention" ? styles.unpaidText : styles.offlineText}>
+              {order.offlineSync === "needs_attention" ? "Could not sync" : "Not synced"}
+            </Text>
           </View>
         ) : null}
         {order.lalamoveStatus ? (
@@ -320,6 +329,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerLight,
   },
   unpaidText: { ...typography.small, color: colors.danger, fontWeight: "700" },
+  offlineChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.warningLight,
+  },
+  offlineText: { ...typography.small, color: colors.warning, fontWeight: "700" },
   riderChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,

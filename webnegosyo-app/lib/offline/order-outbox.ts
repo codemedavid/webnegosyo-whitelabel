@@ -223,6 +223,37 @@ export function recordSyncFailure(localId: string, message: string): Promise<voi
   return updateSale(localId, (sale) => ({ ...sale, attempts: sale.attempts + 1, lastError: message }));
 }
 
+/**
+ * Refusals that mean "this device was signed out", not "this sale is wrong":
+ * PostgREST answering the anonymous role (RLS, or no usable token).
+ */
+const SIGNED_OUT_REFUSAL_PATTERNS: readonly RegExp[] = [
+  /row-level security policy/i,
+  /JWT expired/i,
+  /No API key found/i,
+  /invalid JWT/i,
+];
+
+export function isSignedOutRefusal(message: string | null): boolean {
+  return message !== null && SIGNED_OUT_REFUSAL_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+/**
+ * Give sales parked by a signed-out device a fresh set of attempts. Called on
+ * each sign-in, so a sale the server really refuses is still bounded to
+ * `MAX_SYNC_ATTEMPTS` per sign-in. Returns how many were requeued.
+ */
+export async function requeueSignedOutRefusals(): Promise<number> {
+  let requeued = 0;
+  await updateSales((sales) => {
+    const parked = sales.filter((sale) => needsAttention(sale) && isSignedOutRefusal(sale.lastError));
+    requeued = parked.length;
+    if (requeued === 0) return sales;
+    return sales.map((sale) => parked.includes(sale) ? { ...sale, attempts: 0, lastError: null } : sale);
+  });
+  return requeued;
+}
+
 /** True while a sale taken offline has not yet been written to the server. */
 export function isSaleQueued(localId: string): boolean {
   return state.sales.some((sale) => sale.localId === localId);

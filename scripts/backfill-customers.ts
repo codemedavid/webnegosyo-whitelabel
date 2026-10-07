@@ -35,6 +35,8 @@ interface RawOrderRow {
   customer_name: string | null
   customer_contact: string | null
   customer_data: Record<string, unknown> | null
+  customer_id: string | null
+  status: string | null
 }
 
 function parseArgs(argv: string[]): { execute: boolean; tenant: string | null } {
@@ -64,15 +66,22 @@ async function fetchTenants(admin: SupabaseClient, onlyTenant: string | null): P
   return (data ?? []) as TenantRow[]
 }
 
-/** Page through a tenant's orders so we never silently cap at 1000 rows. */
+/**
+ * Page through a tenant's UNLINKED orders so we never silently cap at 1000 rows.
+ * Linked orders are already captured; reading them would only cost bandwidth
+ * (`customer_data` carries inventory snapshots), so they are filtered here and
+ * the pure backfill's own guard is the second line of defence.
+ */
 async function fetchOrderRows(admin: SupabaseClient, tenantId: string): Promise<BackfillOrderRow[]> {
   const rows: BackfillOrderRow[] = []
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await admin
       .from('orders')
-      .select('id, customer_name, customer_contact, customer_data')
+      .select('id, customer_name, customer_contact, customer_data, customer_id, status')
       .eq('tenant_id', tenantId)
+      .is('customer_id', null)
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1)
     if (error) throw error
     const page = (data ?? []) as RawOrderRow[]
@@ -82,6 +91,8 @@ async function fetchOrderRows(admin: SupabaseClient, tenantId: string): Promise<
         name: o.customer_name,
         contact: o.customer_contact,
         customerData: o.customer_data,
+        customerId: o.customer_id,
+        status: o.status,
       })
     }
     if (page.length < PAGE_SIZE) break
@@ -92,8 +103,9 @@ async function fetchOrderRows(admin: SupabaseClient, tenantId: string): Promise<
 function printReport(tenant: TenantRow, report: BackfillReport): void {
   const label = tenant.name ? `${tenant.name} (${tenant.id})` : tenant.id
   console.log(
-    `  • ${label}: scanned ${report.scanned}, identifiable ${report.identifiable}, ` +
-      `skipped ${report.skipped}, customers ${report.customersTouched}` +
+    `  • ${label}: unlinked ${report.scanned}, linkable ${report.identifiable}, ` +
+      `cancelled/refunded ${report.reversed}, no contact ${report.skipped}, ` +
+      `customers ${report.customersTouched} (new ${report.newCustomers})` +
       (report.dryRun ? '  [dry-run]' : '  [written]')
   )
 }
@@ -118,21 +130,24 @@ async function main(): Promise<void> {
     return
   }
 
-  const totals = { scanned: 0, identifiable: 0, skipped: 0, customersTouched: 0 }
+  const totals = { scanned: 0, identifiable: 0, reversed: 0, skipped: 0, customersTouched: 0, newCustomers: 0 }
   for (const t of tenants) {
     const orders = await fetchOrderRows(admin, t.id)
     const report = await backfillCustomers(store, t.id, orders, { execute })
     printReport(t, report)
     totals.scanned += report.scanned
     totals.identifiable += report.identifiable
+    totals.reversed += report.reversed
     totals.skipped += report.skipped
     totals.customersTouched += report.customersTouched
+    totals.newCustomers += report.newCustomers
   }
 
   console.log(
-    `\n✅ Done. ${tenants.length} tenant(s): scanned ${totals.scanned}, ` +
-      `identifiable ${totals.identifiable}, skipped ${totals.skipped}, ` +
-      `customers ${totals.customersTouched}.` +
+    `\n✅ Done. ${tenants.length} tenant(s): unlinked ${totals.scanned}, ` +
+      `linkable ${totals.identifiable}, cancelled/refunded ${totals.reversed}, ` +
+      `no contact ${totals.skipped}, customers ${totals.customersTouched} ` +
+      `(new ${totals.newCustomers}).` +
       (execute ? '' : '\n   Re-run with --execute to persist.')
   )
 }

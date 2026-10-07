@@ -11,8 +11,7 @@
  * a misleading zero.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { cache } from 'react'
 import { getMenuItemsByBcgClassification, getUpsellPairsByTenant } from '@/lib/menu-engineering-service'
 import { getBundlesByTenant, type BundleWithSlots } from '@/lib/bundles-service'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
@@ -20,12 +19,9 @@ import { buildBasketStats, type BasketStats } from './basket-stats'
 import { buildBoostIdeas, type BoostIdea } from './ideas'
 import { classifyMenuRole, type MenuRole } from './menu-roles'
 import { groupPairings, type PairingGroup } from './pairing-groups'
-import { readRecentOrderRows } from './order-baskets'
+import { readPlatformOrderHistory } from './order-baskets'
 
-const HISTORY_DAYS = 90
 const PERFORMANCE_DAYS = 30
-/** Enough baskets to see patterns without pulling a large store's whole history. */
-const MAX_HISTORY_ORDERS = 4000
 /** Ideas are computed generously; the client hides dismissed ones and shows a few. */
 const IDEA_POOL_SIZE = 12
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -98,29 +94,15 @@ export interface BoostTenantFields extends OrderBackendTenantFields {
   checkout_upsell_max_items?: number | null
 }
 
-interface HistoryOrderRow {
-  id: string
-  created_at: string
-  order_items: {
-    menu_item_id: string | null
-    is_upsell_item: boolean | null
-    bundle_id: string | null
-    subtotal: number | null
-  }[] | null
-}
-
 interface OrderHistory {
   stats: BasketStats
   performance: BoostPerformance
 }
 
 async function loadOrderHistory(tenantId: string): Promise<OrderHistory | null> {
-  const rows = await readRecentOrderRows<HistoryOrderRow>(
-    createAdminClient() as unknown as SupabaseClient,
-    tenantId,
-    'id, created_at, order_items(menu_item_id, is_upsell_item, bundle_id, subtotal)',
-    { days: HISTORY_DAYS, maxOrders: MAX_HISTORY_ORDERS }
-  )
+  // The same request-cached rows the "Picked together" summary reads on this
+  // page — one 90-day history read per render, not two.
+  const rows = await readPlatformOrderHistory(tenantId)
   if (!rows) return null
   const baskets = rows.map((row) =>
     (row.order_items ?? []).map((line) => line.menu_item_id).filter((id): id is string => !!id)
@@ -161,6 +143,15 @@ function comboItemIds(bundles: readonly BundleWithSlots[]): Set<string> {
 
 type MenuItemRow = Awaited<ReturnType<typeof getMenuItemsByBcgClassification>>[number]
 
+/**
+ * The whole menu (`select *` + category), read once per request: the Boost
+ * Sales page builds its workspace from it while the streamed "Picked together"
+ * section (and Product Analytics) call `getBoostMenu` in the same render.
+ * Write paths call `getBoostMenu` once per request, after nothing else has
+ * read it, so they never see a pre-write copy.
+ */
+const readBoostMenuRows = cache((tenantId: string) => getMenuItemsByBcgClassification(tenantId))
+
 function toBoostItem(item: MenuItemRow): BoostItem {
   return {
     id: item.id,
@@ -186,7 +177,7 @@ function lastCallFromTenant(tenant: BoostTenantFields, menuItems: readonly MenuI
 
 /** The menu and the cart settings alone — what applying one offer needs, without order history. */
 export async function getBoostMenu(tenant: BoostTenantFields): Promise<{ items: BoostItem[]; lastCall: BoostLastCall }> {
-  const menuItems = await getMenuItemsByBcgClassification(tenant.id)
+  const menuItems = await readBoostMenuRows(tenant.id)
   return { items: menuItems.map(toBoostItem), lastCall: lastCallFromTenant(tenant, menuItems) }
 }
 
@@ -194,7 +185,7 @@ export async function getBoostWorkspace(tenant: BoostTenantFields): Promise<Boos
   const hasPlatformHistory = resolveOrderBackend(tenant) === 'platform'
 
   const [menuItems, bundles, pairs, history] = await Promise.all([
-    getMenuItemsByBcgClassification(tenant.id),
+    readBoostMenuRows(tenant.id),
     getBundlesByTenant(tenant.id),
     getUpsellPairsByTenant(tenant.id),
     hasPlatformHistory ? loadOrderHistory(tenant.id) : Promise.resolve(null),

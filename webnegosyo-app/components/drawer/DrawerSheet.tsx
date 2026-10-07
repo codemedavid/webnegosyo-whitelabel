@@ -1,7 +1,6 @@
 import React from "react";
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   View,
   type TextInputProps,
 } from "react-native";
+import { Modal } from "../Modal";
 
 import { centeredDialog, useCenteredDialog } from "../pos/dialog-layout";
 import { colors, radius, spacing, typography } from "../../theme/colors";

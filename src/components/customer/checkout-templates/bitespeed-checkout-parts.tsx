@@ -15,10 +15,7 @@ import Link from 'next/link'
 import { ArrowLeft, ArrowRight, ShoppingBag, UtensilsCrossed, type LucideIcon } from 'lucide-react'
 import { addonLabel } from '@/lib/addon-quantity'
 import { formatPrice } from '@/lib/cart-utils'
-import { resolveCheckoutCtaLabel } from '@/lib/messenger-availability'
-import { isAfterBillingPaymentEnabled } from '@/lib/after-billing-payment'
-import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
-import { isPaymentProofRequired } from '@/lib/payment-proof'
+import { resolvePlaceOrderLabel } from '@/lib/checkout/checkout-cta'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { CartBundleItem, CartItem } from '@/types/database'
 import { MinimumOrderNotice } from './checkout-primitives'
@@ -198,19 +195,6 @@ export function EmptyOrder({ tenantSlug }: { tenantSlug: string }) {
   )
 }
 
-/** The same label the shared CheckoutCTA shows, so every design names the next step alike. */
-function placeOrderLabel(checkout: UseCheckoutReturn): string {
-  const { paymentMethods, selectedPaymentMethod, messengerEnabled, selectedOrderTypeData } = checkout
-  const selectedMethod = paymentMethods.find((m) => m.id === selectedPaymentMethod) ?? null
-  return resolveCheckoutCtaLabel({
-    hasPaymentMethods: paymentMethods.length > 0,
-    isMessengerEnabled: messengerEnabled,
-    isAfterBillingPayment: isAfterBillingPaymentEnabled(selectedOrderTypeData),
-    requiresPaymentProof: isPaymentProofRequired(selectedMethod),
-    skipsPaymentDetails: isPaymentDetailsStepSkipped(selectedMethod),
-  })
-}
-
 function PlaceOrderButton({ checkout }: { checkout: UseCheckoutReturn }) {
   const { isProcessing, handleProceedToPayment, orderMinimum } = checkout
   return (
@@ -228,7 +212,7 @@ function PlaceOrderButton({ checkout }: { checkout: UseCheckoutReturn }) {
         </>
       ) : (
         <>
-          {placeOrderLabel(checkout)}
+          {resolvePlaceOrderLabel(checkout)}
           <ArrowRight className="h-5 w-5" />
         </>
       )}

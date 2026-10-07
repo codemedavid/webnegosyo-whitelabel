@@ -1,5 +1,5 @@
 /**
- * Rewards screen ↔ platform. Surfaces failure like `customer-hub/repo.ts`:
+ * Rewards screen ↔ platform. Surfaces failure like `customer-hub/repo.ts` (the Reports dashboard):
  * this is the screen's whole content, so a swallowed error would draw "no
  * programs" where the truth is "could not reach the platform".
  *

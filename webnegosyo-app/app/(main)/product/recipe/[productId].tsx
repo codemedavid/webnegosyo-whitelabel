@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TextInput,
-  TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../../../../stores/auth-store";
@@ -14,6 +15,7 @@ import { hasPermission } from "../../../../lib/staff-permissions";
 import {
   addRecipeComponent,
   ensureMenuItemRecipe,
+  loadDishName,
   loadIngredientOptions,
   loadMenuItemRecipe,
   loadUnitOptions,
@@ -21,12 +23,18 @@ import {
   updateRecipeComponent,
   type IngredientOption,
   type MenuItemRecipe,
+  type RecipeComponentView,
   type UnitOption,
 } from "../../../../lib/recipe-service";
-import { colors, typography, spacing, radius } from "../../../../theme/colors";
-import { Card } from "../../../../components/Card";
+import { colors, typography, spacing, radius, shadow } from "../../../../theme/colors";
+import { BackHeader } from "../../../../components/BackHeader";
+import { Button } from "../../../../components/Button";
+import { Icon, type IconName } from "../../../../components/Icon";
 import { LoadingState } from "../../../../components/LoadingState";
 import { ErrorState } from "../../../../components/ErrorState";
+import { RecipeLineRow } from "../../../../components/recipe/RecipeLineRow";
+import { AddIngredientSheet } from "../../../../components/recipe/AddIngredientSheet";
+import { UnitPickerSheet } from "../../../../components/recipe/UnitPickerSheet";
 
 /**
  * The recipe (ingredients) editor for one dish.
@@ -53,27 +61,31 @@ export default function RecipeEditorScreen() {
   const isAllowed = hasPermission({ role, isOwner, permissions }, "menu");
 
   const [recipe, setRecipe] = useState<MenuItemRecipe | null>(null);
+  const [dishName, setDishName] = useState("");
   const [ingredients, setIngredients] = useState<IngredientOption[]>([]);
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
+  const [unitTarget, setUnitTarget] = useState<RecipeComponentView | null>(null);
+  // The ingredient just added: its amount box takes focus once it mounts, so
+  // the merchant goes straight from "which" to "how much".
+  const [focusItemId, setFocusItemId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!tenantId || !productId) return;
     try {
-      const [loadedRecipe, options, unitCatalog] = await Promise.all([
+      const [loadedRecipe, options, unitCatalog, name] = await Promise.all([
         loadMenuItemRecipe(tenantId, productId),
         loadIngredientOptions(tenantId),
         loadUnitOptions(tenantId),
+        loadDishName(tenantId, productId),
       ]);
       setRecipe(loadedRecipe);
       setIngredients(options);
       setUnits(unitCatalog);
-      setQuantityDrafts({});
+      setDishName(name);
       setError(null);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : "Could not load the recipe.");
@@ -88,38 +100,53 @@ export default function RecipeEditorScreen() {
 
   const components = useMemo(() => recipe?.components ?? [], [recipe]);
 
-  /** Ingredients not already on the recipe, narrowed by the search box. */
-  const pickable = useMemo(() => {
-    const used = new Set(components.map((line) => line.inventoryItemId));
-    const needle = search.trim().toLowerCase();
-    return ingredients.filter(
-      (option) =>
-        !used.has(option.id) && (needle === "" || option.name.toLowerCase().includes(needle)),
-    );
-  }, [ingredients, components, search]);
+  const stockUnitByItem = useMemo(
+    () => new Map(ingredients.map((option) => [option.id, option.stockUnitId])),
+    [ingredients],
+  );
 
+  // Saves run one after another rather than being dropped while one is in
+  // flight: an amount committed on blur and an "Add" tapped straight after
+  // both have to land, and a dropped one used to vanish without a word.
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaves = useRef(0);
   const runSave = useCallback(
-    async (work: () => Promise<void>) => {
-      if (isSaving) return;
+    (work: () => Promise<void>) => {
+      pendingSaves.current += 1;
       setIsSaving(true);
-      try {
-        await work();
-        await load();
-      } catch (saveError: unknown) {
-        Alert.alert(
-          "Recipe",
-          saveError instanceof Error ? saveError.message : "That did not save. Try again.",
-        );
-      } finally {
-        setIsSaving(false);
-      }
+      const next = saveQueue.current.then(async () => {
+        try {
+          await work();
+        } catch (saveError: unknown) {
+          Alert.alert(
+            "Recipe",
+            saveError instanceof Error ? saveError.message : "That did not save. Try again.",
+          );
+        } finally {
+          pendingSaves.current -= 1;
+          if (pendingSaves.current === 0) {
+            // One re-read after the last queued save shows what was stored.
+            await load();
+            setIsSaving(false);
+          }
+        }
+      });
+      saveQueue.current = next;
+      return next;
     },
-    [isSaving, load],
+    [load],
   );
 
   const handleAdd = (option: IngredientOption) => {
     if (!tenantId || !productId) return;
+    setIsPickerOpen(false);
+    setFocusItemId(option.id);
     void runSave(async () => {
+      const unitId = option.stockUnitId ?? units[0]?.id;
+      if (!unitId) {
+        throw new Error("Set up a unit for this ingredient on the Inventory screen first.");
+      }
+      // `ensure` finds the row a save queued just before this one created.
       const recipeId = recipe?.id ?? (await ensureMenuItemRecipe(tenantId, productId));
       await addRecipeComponent(tenantId, {
         recipeId,
@@ -127,262 +154,283 @@ export default function RecipeEditorScreen() {
         // 1 stock unit is a starting point the merchant is expected to edit,
         // not a guess at the real amount — but unlike zero it deducts.
         quantity: 1,
-        unitId: option.stockUnitId ?? units[0]?.id ?? "",
+        unitId,
         sortOrder: components.length,
       });
     });
-    setIsPickerOpen(false);
-    setSearch("");
   };
 
-  const handleQuantityCommit = (componentId: string, unitId: string) => {
+  const handleQuantityCommit = (line: RecipeComponentView, quantity: number) => {
     if (!tenantId) return;
-    const draft = quantityDrafts[componentId];
-    if (draft === undefined) return;
-    const quantity = Number(draft);
-    void runSave(() => updateRecipeComponent(tenantId, componentId, { quantity, unitId }));
+    void runSave(() => updateRecipeComponent(tenantId, line.id, { quantity, unitId: line.unitId }));
   };
 
-  const handleUnitChange = (componentId: string, quantity: number, unitId: string) => {
-    if (!tenantId) return;
-    void runSave(() => updateRecipeComponent(tenantId, componentId, { quantity, unitId }));
+  const handleUnitPick = (unitId: string) => {
+    const line = unitTarget;
+    setUnitTarget(null);
+    if (!tenantId || !line || unitId === line.unitId) return;
+    void runSave(() =>
+      updateRecipeComponent(tenantId, line.id, { quantity: line.quantity, unitId }),
+    );
   };
 
-  const handleRemove = (componentId: string, name: string) => {
+  const handleRemove = (line: RecipeComponentView) => {
     if (!tenantId) return;
-    Alert.alert("Remove ingredient", `Remove ${name || "this ingredient"} from the recipe?`, [
+    const name = line.ingredientName || "this ingredient";
+    Alert.alert("Remove ingredient", `Remove ${name} from the recipe?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Remove",
         style: "destructive",
-        onPress: () => void runSave(() => removeRecipeComponent(tenantId, componentId)),
+        onPress: () => void runSave(() => removeRecipeComponent(tenantId, line.id)),
       },
     ]);
   };
 
+  const header = (
+    <BackHeader
+      title="Recipe"
+      subtitle={dishName || undefined}
+      actions={
+        isSaving ? (
+          <View style={styles.saving} accessibilityLabel="Saving">
+            <ActivityIndicator size="small" color={colors.textSecondary} />
+            <Text style={styles.savingText}>Saving</Text>
+          </View>
+        ) : undefined
+      }
+    />
+  );
+
   if (!isAllowed) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.blockedText}>
-          {"You don't have access to recipes. Ask the owner for the menu permission."}
-        </Text>
+      <View style={styles.screen}>
+        {header}
+        <View style={styles.centered}>
+          <Text style={styles.blockedText}>
+            {"You don't have access to recipes. Ask the owner for the menu permission."}
+          </Text>
+        </View>
       </View>
     );
   }
 
-  if (!tenantId) return <LoadingState />;
-  if (isLoading) return <LoadingState />;
-  if (error) return <ErrorState message={error} onRetry={() => void load()} />;
+  const body = (() => {
+    if (!tenantId || isLoading) return <LoadingState />;
+    if (error) return <ErrorState message={error} onRetry={() => void load()} />;
+    return null;
+  })();
+
+  if (body) {
+    return (
+      <View style={styles.screen}>
+        {header}
+        {body}
+      </View>
+    );
+  }
+
+  const hasLines = components.length > 0;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Ingredients</Text>
-      <Text style={styles.subtitle}>
-        What one sale of this product takes off the shelf.
-      </Text>
-
-      {components.length === 0 && (
-        <Card style={styles.card}>
-          <Text style={styles.hintTitle}>No recipe yet</Text>
-          <Text style={styles.hintText}>
-            {"Sales of this product won't deduct stock until you add its ingredients here."}
-          </Text>
-        </Card>
-      )}
-
-      {components.length > 0 && (
-        <Card style={styles.card}>
-          {components.map((line) => (
-            <View key={line.id} style={styles.lineRow}>
-              <View style={styles.lineName}>
-                <Text style={styles.lineNameText}>{line.ingredientName || "Ingredient"}</Text>
-                <TouchableOpacity
-                  onPress={() => handleRemove(line.id, line.ingredientName)}
-                  disabled={isSaving}
-                >
-                  <Text style={styles.removeText}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.lineControls}>
-                <TextInput
-                  style={styles.quantityInput}
-                  keyboardType="decimal-pad"
-                  value={quantityDrafts[line.id] ?? String(line.quantity)}
-                  onChangeText={(text) =>
-                    setQuantityDrafts((drafts) => ({ ...drafts, [line.id]: text }))
-                  }
-                  onEndEditing={() => handleQuantityCommit(line.id, line.unitId)}
-                  editable={!isSaving}
-                />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {units.map((unit) => (
-                    <TouchableOpacity
-                      key={unit.id}
-                      style={[styles.unitPill, unit.id === line.unitId && styles.unitPillActive]}
-                      disabled={isSaving || unit.id === line.unitId}
-                      onPress={() => handleUnitChange(line.id, line.quantity, unit.id)}
-                    >
-                      <Text
-                        style={[
-                          styles.unitPillText,
-                          unit.id === line.unitId && styles.unitPillTextActive,
-                        ]}
-                      >
-                        {unit.abbreviation}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </View>
-          ))}
-        </Card>
-      )}
-
-      {isPickerOpen ? (
-        <Card title="Add ingredient" style={styles.card}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search ingredients..."
-            placeholderTextColor={colors.textSecondary}
-            value={search}
-            onChangeText={setSearch}
-            autoFocus
-          />
-          {pickable.length === 0 && (
-            <Text style={styles.hintText}>
-              {ingredients.length === 0
-                ? "No ingredients in inventory yet. Add them on the Inventory tab first."
-                : "Nothing matches. Every matching ingredient is already on the recipe."}
-            </Text>
-          )}
-          {pickable.map((option) => (
-            <TouchableOpacity
-              key={option.id}
-              style={styles.pickRow}
-              disabled={isSaving}
-              onPress={() => handleAdd(option)}
-            >
-              <Text style={styles.pickName}>{option.name}</Text>
-              {option.unitLabel !== "" && (
-                <Text style={styles.pickUnit}>per {option.unitLabel}</Text>
-              )}
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => {
-              setIsPickerOpen(false);
-              setSearch("");
-            }}
-          >
-            <Text style={styles.secondaryButtonText}>Close</Text>
-          </TouchableOpacity>
-        </Card>
-      ) : (
-        <TouchableOpacity
-          style={[styles.addButton, isSaving && styles.disabled]}
-          disabled={isSaving}
-          onPress={() => setIsPickerOpen(true)}
+    <View style={styles.screen}>
+      {header}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
-          <Text style={styles.addButtonText}>+ Add ingredient</Text>
-        </TouchableOpacity>
-      )}
-    </ScrollView>
+          {hasLines ? (
+            <StatusBanner
+              tone="success"
+              icon="check"
+              title="Deducting stock on every sale"
+              message={`Each sale takes ${components.length} ${
+                components.length === 1 ? "ingredient" : "ingredients"
+              } off the shelf.`}
+            />
+          ) : (
+            <StatusBanner
+              tone="warning"
+              icon="warning"
+              title="No recipe yet"
+              message="Sales of this product won't deduct stock until you add its ingredients here."
+            />
+          )}
+
+          {hasLines ? (
+            <>
+              <View style={styles.sectionHead}>
+                <Text style={styles.eyebrow}>Ingredients · {components.length}</Text>
+                <Text style={styles.sectionHint}>Amount per sale</Text>
+              </View>
+              <View style={styles.list}>
+                {components.map((line, index) => (
+                  <View key={`${line.id}:${line.quantity}:${line.unitId}`}>
+                    {index > 0 && <View style={styles.separator} />}
+                    <RecipeLineRow
+                      line={line}
+                      disabled={isSaving}
+                      autoFocus={line.inventoryItemId === focusItemId}
+                      onFocus={() => setFocusItemId(null)}
+                      onCommitQuantity={(quantity) => handleQuantityCommit(line, quantity)}
+                      onOpenUnits={() => setUnitTarget(line)}
+                      onRemove={() => handleRemove(line)}
+                    />
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.footnote}>
+                Tap an amount to change it. New ingredients start at 1 of their stock unit.
+              </Text>
+            </>
+          ) : (
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIcon}>
+                <Icon name="stock" size={22} color={colors.textSecondary} />
+              </View>
+              <Text style={styles.emptyTitle}>What goes into one sale?</Text>
+              <Text style={styles.emptyText}>
+                List each ingredient and how much one order uses — for example 18 g coffee beans
+                and 200 ml milk for a latte.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <Button
+            label={hasLines ? "Add another ingredient" : "Add first ingredient"}
+            icon="plus"
+            size="lg"
+            onPress={() => setIsPickerOpen(true)}
+            disabled={isSaving}
+          />
+        </View>
+      </KeyboardAvoidingView>
+
+      <AddIngredientSheet
+        visible={isPickerOpen}
+        ingredients={ingredients}
+        components={components}
+        onPick={handleAdd}
+        onClose={() => setIsPickerOpen(false)}
+      />
+      <UnitPickerSheet
+        ingredientName={unitTarget ? unitTarget.ingredientName || "this ingredient" : null}
+        units={units}
+        selectedUnitId={unitTarget?.unitId ?? null}
+        stockUnitId={unitTarget ? stockUnitByItem.get(unitTarget.inventoryItemId) ?? null : null}
+        onPick={handleUnitPick}
+        onClose={() => setUnitTarget(null)}
+      />
+    </View>
+  );
+}
+
+const BANNER_TONES = {
+  success: { bg: colors.successLight, fg: colors.success },
+  warning: { bg: colors.warningLight, fg: colors.statusPending.text },
+} as const;
+
+interface StatusBannerProps {
+  tone: keyof typeof BANNER_TONES;
+  icon: IconName;
+  title: string;
+  message: string;
+}
+
+/** Whether this dish moves stock when it sells — the one fact the screen exists for. */
+function StatusBanner({ tone, icon, title, message }: StatusBannerProps) {
+  const palette = BANNER_TONES[tone];
+  return (
+    <View style={[styles.banner, { backgroundColor: palette.bg }]}>
+      <View style={[styles.bannerIcon, { borderColor: palette.fg }]}>
+        <Icon name={icon} size={16} color={palette.fg} strokeWidth={2.25} />
+      </View>
+      <View style={styles.flex}>
+        <Text style={[styles.bannerTitle, { color: palette.fg }]}>{title}</Text>
+        <Text style={styles.bannerText}>{message}</Text>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.background,
+  flex: { flex: 1 },
+  content: { paddingHorizontal: spacing.xl, paddingTop: spacing.xs, paddingBottom: spacing.xxl },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  blockedText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
+  saving: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  savingText: { ...typography.caption, color: colors.textSecondary },
+  banner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+  },
+  bannerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
   },
-  blockedText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
-  title: { ...typography.title, color: colors.textPrimary },
-  subtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-  card: { marginBottom: spacing.lg },
-  hintTitle: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.xs },
-  hintText: { ...typography.body, color: colors.textSecondary },
-  lineRow: {
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  lineName: {
+  bannerTitle: { fontSize: 15, fontWeight: "700" },
+  bannerText: { ...typography.caption, color: colors.textPrimary, marginTop: 2, lineHeight: 18 },
+  sectionHead: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "baseline",
+    marginTop: spacing.xxl,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
+  sectionHint: { ...typography.caption, color: colors.textSecondary },
+  list: { backgroundColor: colors.card, borderRadius: radius.lg, ...shadow.sm },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.lg },
+  footnote: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  emptyCard: {
     alignItems: "center",
+    marginTop: spacing.lg,
+    padding: spacing.xxl,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.separator,
+    gap: spacing.xs,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: spacing.sm,
   },
-  lineNameText: { ...typography.heading, color: colors.textPrimary, flex: 1 },
-  removeText: { ...typography.caption, color: colors.danger },
-  lineControls: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  quantityInput: {
-    ...typography.body,
-    color: colors.textPrimary,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minWidth: 88,
-    backgroundColor: colors.card,
+  emptyTitle: { ...typography.heading, color: colors.textPrimary, textAlign: "center" },
+  emptyText: { ...typography.body, color: colors.textSecondary, textAlign: "center", maxWidth: 300 },
+  footer: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    backgroundColor: colors.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
   },
-  unitPill: {
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginRight: spacing.xs,
-    backgroundColor: colors.card,
-  },
-  unitPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  unitPillText: { ...typography.caption, color: colors.textPrimary },
-  unitPillTextActive: { color: colors.textOnDark },
-  searchInput: {
-    ...typography.body,
-    color: colors.textPrimary,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
-    backgroundColor: colors.card,
-  },
-  pickRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  pickName: { ...typography.body, color: colors.textPrimary, flex: 1 },
-  pickUnit: { ...typography.caption, color: colors.textSecondary },
-  secondaryButton: {
-    marginTop: spacing.md,
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-  },
-  secondaryButtonText: { ...typography.heading, color: colors.textSecondary },
-  addButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    alignItems: "center",
-    paddingVertical: spacing.md,
-  },
-  addButtonText: { ...typography.heading, color: colors.textOnDark },
-  disabled: { opacity: 0.6 },
 });

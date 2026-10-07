@@ -21,6 +21,7 @@ import { computeOrderTotals } from '@/lib/order-totals'
 import { isOrderSaveFailed, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { toast } from 'sonner'
 import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
+import { buildOrderTrackingPath } from '@/lib/checkout/tracking-redirect'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
 
@@ -108,6 +109,18 @@ function OrderSaveFailedNotice({
       <p className="mt-1 text-sm text-amber-800">{recovery}</p>
     </div>
   )
+}
+
+const COPIED_TO_MESSENGER = 'Order message copied! Paste it in Messenger.'
+
+/** Copy the order message, telling the customer whether it worked. */
+async function copyOrderMessage(message: string, successText: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(message)
+    toast.success(successText)
+  } catch {
+    toast.error('Failed to copy message')
+  }
 }
 
 /** Order confirmation / thank-you screen (shared across designs). */
@@ -369,14 +382,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 
                 <button
                   className="w-full text-sm text-green-700 hover:text-green-800 hover:underline py-1"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(completedOrderData.messengerMessage)
-                      toast.success('Order message copied! Paste it in Messenger.')
-                    } catch {
-                      toast.error('Failed to copy message')
-                    }
-                  }}
+                  onClick={() => copyOrderMessage(completedOrderData.messengerMessage, COPIED_TO_MESSENGER)}
                 >
                   <Copy className="inline mr-1.5 h-3.5 w-3.5" />
                   Copy order text and paste it directly on Messenger
@@ -391,14 +397,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                   size="lg"
                   variant="outline"
                   className="w-full h-12 rounded-full border-green-300 text-green-700 hover:bg-green-50"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(completedOrderData.messengerMessage)
-                      toast.success('Order message copied! Paste it in Messenger.')
-                    } catch {
-                      toast.error('Failed to copy message')
-                    }
-                  }}
+                  onClick={() => copyOrderMessage(completedOrderData.messengerMessage, COPIED_TO_MESSENGER)}
                 >
                   <Copy className="mr-2 h-5 w-5" />
                   Copy Order Message
@@ -430,14 +429,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                   size="lg"
                   variant="outline"
                   className="w-full h-12 rounded-full border-green-300 text-green-700 hover:bg-green-50"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(completedOrderData.messengerMessage)
-                      toast.success('Order message copied to clipboard!')
-                    } catch {
-                      toast.error('Failed to copy message')
-                    }
-                  }}
+                  onClick={() => copyOrderMessage(completedOrderData.messengerMessage, 'Order message copied to clipboard!')}
                 >
                   <Copy className="mr-2 h-5 w-5" />
                   Copy Order Message
@@ -456,7 +448,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
               <Button
                 size="lg"
                 className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full"
-                onClick={() => router.push(`/${tenantSlug}/order/${trackingOrderId}?t=${trackingToken}`)}
+                onClick={() => router.push(buildOrderTrackingPath(tenantSlug, trackingOrderId, trackingToken))}
               >
                 <Package className="mr-2 h-5 w-5" />
                 Track Your Order

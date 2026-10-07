@@ -10,20 +10,19 @@ import {
   createOrderConvex,
 } from '@/lib/orders-service'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTenantSecrets } from '@/lib/tenant-secrets'
 import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
 import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backend'
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { findCartPresellDate } from '@/lib/presell/availability'
-import { presellAdvanceConfig, withPresellCustomerData, type PresellClaimRecord } from '@/lib/presell/checkout-schedule'
+import { withPresellCustomerData, type PresellClaimRecord } from '@/lib/presell/checkout-schedule'
 import { resolveDistanceDeliveryConfig } from '@/lib/delivery-fee'
+import { resolveFreeDeliveryThreshold, waiveDeliveryFee } from '@/lib/free-delivery'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import {
   isOrderTypeOrderableOnWeb,
   WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE,
 } from '@/lib/order-types/order-type-availability'
-import { computeOrderTotals } from '@/lib/order-totals'
 import { priceOrderWithVouchers } from '@/lib/vouchers/order-pricing'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
 import { burnRedemptions, loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
@@ -37,14 +36,13 @@ import { sanitizePaymentProof } from '@/lib/checkout/payment-proof-guard'
 import { isValidClientDeliveryFee, resolveOrderDeliveryFee } from '@/lib/checkout/order-delivery-fee'
 import { verifyDeliveryQuote } from '@/lib/checkout/delivery-quote-signature'
 import type { LoyverseTenant } from '@/lib/loyverse/tenant'
-import {
-  CHECKOUT_ORDER_TYPE_SELECT,
-  advanceConfigOf,
-  type CheckoutOrderTypeRow,
-} from '@/lib/checkout/checkout-order-type'
+import type { CheckoutOrderTypeRow } from '@/lib/checkout/checkout-order-type'
+import { loadOrderTenantContext } from '@/lib/checkout/load-order-tenant-context'
+import { resolveOrderSchedule } from '@/lib/checkout/order-schedule'
+import { runOrderFollowUps } from '@/lib/checkout/order-follow-ups'
 import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
 import { computeServiceCharge } from '@/lib/order-service-charge'
-import type { OrderItem } from '@/types/database'
+import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
   'We couldn’t confirm the delivery fee. Please re-enter your delivery address and try again.'
@@ -92,86 +90,12 @@ export async function getOrderStatsAction(tenantId: string) {
   }
 }
 
-/**
- * Spend the order's ingredients. Stock lives in the platform Supabase for every
- * tenant regardless of where their orders live, so all three backends funnel
- * through here rather than reimplementing depletion each.
- *
- * Best-effort by design: the order is already saved when this runs.
- */
-async function depleteStockForOrder(
-  tenantConfig: Record<string, unknown>,
-  tenantId: string,
-  orderId: string,
-  items: Array<{
-    menu_item_id: string
-    quantity: number
-    option_ids?: string[]
-    addon_ids?: string[]
-    addon_quantities?: Record<string, number>
-  }>,
-  /**
-   * Branch that took the order — the already-validated `resolvedOutlet`, never
-   * the id the browser sent. Stock is spent from the shop that served it, and a
-   * client-chosen branch would let a customer deplete someone else's shelf.
-   * Null for a single-location tenant, whose stock is the unbranched pool.
-   */
-  outletId: string | null,
-) {
-  if (tenantConfig.inventory_enabled !== true) return
-  const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await applyOrderStockBestEffort(
-    tenantId,
-    orderId,
-    items.map((item) => ({
-      menuItemId: item.menu_item_id,
-      quantity: item.quantity,
-      // The same id set feeds both buckets: variation options and unified
-      // modifier options both arrive here and ids are unique per option, so
-      // whichever recipe target exists matches and the other finds nothing.
-      optionIds: item.option_ids ?? [],
-      modifierOptionIds: [...new Set([...(item.option_ids ?? []), ...(item.addon_ids ?? [])])],
-      addonIds: item.addon_ids ?? [],
-      ...(item.addon_quantities ? { addonQuantities: item.addon_quantities } : {}),
-    })),
-    'sale',
-    0,
-    outletId,
-    // A diner placing an order online has no merchant account behind it.
-    { context: { source: 'web_checkout' } },
-  )
-}
-
-/**
- * Loyverse twin of depleteStockForOrder: every backend branch funnels through
- * here so an "on order placed" push behaves identically wherever the order
- * row lives. The push service checks the on_create push mode and
- * idempotency; platformOrderId is null for Convex and tenant-Supabase orders,
- * whose receipt outcome has no platform row to land on.
- *
- * `loyverse` is the tenant snapshot checkout already read — null when the
- * tenant does not use Loyverse, which skips the push service (and its
- * tenant/secret re-reads) entirely.
- *
- * Best-effort by design: the order is already saved when this runs.
- */
-async function pushLoyverseOnCreate(
-  loyverse: LoyverseTenant | null,
-  platformOrderId: string | null,
-  items: OrderItem[],
-) {
-  if (!loyverse) return
+/** The customer's tracking token; undefined when API_SECRET is missing. */
+function mintTrackingToken(orderId: string): string | undefined {
   try {
-    const { pushOrderToLoyverseBestEffort } = await import('@/lib/loyverse/push-service')
-    await pushOrderToLoyverseBestEffort({
-      tenantId: loyverse.id,
-      orderId: platformOrderId,
-      items,
-      trigger: 'create',
-      tenant: loyverse,
-    })
-  } catch (error) {
-    console.error('[createOrderAction] Loyverse push failed:', error)
+    return generateTrackingToken(orderId)
+  } catch {
+    return undefined
   }
 }
 
@@ -296,30 +220,17 @@ export async function createOrderAction(
     const safePaymentProof = sanitizePaymentProof(paymentProof)
 
     // Resolve where this tenant's orders live (Convex / their own Supabase /
-    // the shared platform DB) AND that the tenant is active.
-    // Using is_active check prevents order creation for deactivated tenants.
+    // the shared platform DB) AND that the tenant is active — together with
+    // its secrets and the chosen order type, in one parallel batch. Credentials
+    // live in tenant_secrets, never on the anon-readable tenants row: the
+    // Convex deploy key routes the order and the Loyverse token backs the live
+    // stock check below.
     const supabaseAdmin = createAdminClient()
-    const { data: tenantConfigData } = await supabaseAdmin
-      .from('tenants')
-      .select('order_backend, supabase_order_url, supabase_order_anon_key, supabase_order_service_key, inventory_enabled, convex_deployment_url, admin_email, email_notifications_enabled, name, slug, is_active, lalamove_enabled, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, restaurant_latitude, restaurant_longitude, multi_branch_enabled, loyverse_enabled, loyverse_store_id, loyverse_payment_type_id, loyverse_push_mode')
-      .eq('id', tenantId)
-      .eq('is_active', true)
-      .single()
-
-    if (!tenantConfigData) {
+    const tenantContext = await loadOrderTenantContext(supabaseAdmin, tenantId, orderTypeId)
+    if (!tenantContext.ok) {
       return { success: false, refused: true, error: 'Restaurant not found or is currently inactive' }
     }
-
-    // Credentials live in tenant_secrets, never on the anon-readable tenants
-    // row. Read once here: the Convex deploy key routes the order and the
-    // Loyverse token backs the live stock check below.
-    const tenantSecrets = await getTenantSecrets(supabaseAdmin, tenantId)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tenantConfig: Record<string, any> = {
-      ...(tenantConfigData as Record<string, unknown>),
-      convex_deploy_key: tenantSecrets?.convex_deploy_key ?? null,
-    }
+    const { tenantConfig, tenantSecrets } = tenantContext
 
     if (tenantConfig.inventory_enabled === true && items.some((item) => item.option_ids?.length || item.addon_ids?.length)) {
       const { assertSimpleOptionStockAvailable } = await import('@/lib/inventory/simple-option-stock-service')
@@ -335,26 +246,19 @@ export async function createOrderAction(
 
     // ── The order type: ONE tenant-scoped read serves every consumer below ──
     // (web availability, advance schedule, minimum, delivery kind, service
-    // charge, and the names the backends and the merchant email carry).
-    let orderTypeRow: CheckoutOrderTypeRow | null = null
-    if (orderTypeId) {
-      const { data: otRow, error: otError } = await supabaseAdmin
-        .from('order_types')
-        .select(CHECKOUT_ORDER_TYPE_SELECT)
-        .eq('id', orderTypeId)
-        .eq('tenant_id', tenantId)
-        .maybeSingle()
-      if (otError) {
-        return { success: false, error: 'Failed to verify the order type' }
-      }
-      orderTypeRow = (otRow as CheckoutOrderTypeRow | null) ?? null
+    // charge, and the names the backends and the merchant email carry). Read
+    // in the batch above; judged here, where it always was.
+    const orderTypeRead = await tenantContext.orderType
+    if (!orderTypeRead.ok) {
+      return { success: false, error: 'Failed to verify the order type' }
+    }
+    const orderTypeRow: CheckoutOrderTypeRow | null = orderTypeRead.row
 
-      // A type the merchant hid from online ordering (POS-only channels such
-      // as Grab) is refused outright — the storefront never offers it, so
-      // reaching here means a stale tab or a direct call.
-      if (orderTypeRow && !isOrderTypeOrderableOnWeb(orderTypeRow)) {
-        return { success: false, refused: true, error: WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE }
-      }
+    // A type the merchant hid from online ordering (POS-only channels such
+    // as Grab) is refused outright — the storefront never offers it, so
+    // reaching here means a stale tab or a direct call.
+    if (orderTypeRow && !isOrderTypeOrderableOnWeb(orderTypeRow)) {
+      return { success: false, refused: true, error: WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE }
     }
 
     // An unknown/missing type must not turn off the required delivery gate.
@@ -405,55 +309,31 @@ export async function createOrderAction(
       }
     }
 
-    // ── Advance-order schedule validation (authoritative; covers BOTH Supabase + Convex) ──
-    // The client sends scheduledForISO and may also stash scheduled_for/scheduled_for_label in
-    // customerData. Re-validate the requested time against the order type's advance config and
-    // keep customer_data in lockstep with what we actually persist, so DB filtering and every
-    // display agree (no "ASAP column but scheduled label" desync).
-    let validatedScheduledISO: string | undefined = undefined
-    if (scheduledForISO && orderTypeId) {
-      const when = new Date(scheduledForISO)
-      const whenMs = when.getTime()
-      if (!Number.isNaN(whenMs)) {
-        // A presell cart schedules against its allocated date, which may lie
-        // past the order type's horizon (or the type may never schedule at
-        // all). The same stretch the checkout hook applied is applied here.
-        const baseCfg = advanceConfigOf(orderTypeRow)
-        const cartPresellDate = findCartPresellDate(items)
-        const cfg = cartPresellDate ? presellAdvanceConfig(baseCfg, cartPresellDate, new Date()) : baseCfg
-        const nowMs = Date.now()
-        const minMs = nowMs + cfg.leadTimeMinutes * 60_000 - 5 * 60_000 // 5-min submit grace
-        const maxMs = nowMs + (cfg.maxDaysAhead + 1) * 24 * 60 * 60_000 // generous horizon
-        if (cfg.enabled && whenMs >= minMs && whenMs <= maxMs) {
-          validatedScheduledISO = when.toISOString()
-        } else {
-          // Log the parsed/normalized timestamp, never the raw client string.
-          console.warn('[Order] Rejected out-of-policy scheduled_for', { orderTypeId, requestedAt: when.toISOString() })
-        }
-      }
-    }
+    // ── Advance-order schedule validation (authoritative; covers EVERY backend) ──
+    const schedule = resolveOrderSchedule({
+      scheduledForISO,
+      orderTypeId,
+      orderTypeRow,
+      items,
+      customerData: clientCustomerData,
+      now: new Date(),
+    })
+    const validatedScheduledISO = schedule.scheduledISO
+    let effectiveCustomerData = schedule.customerData
 
-    // Reconcile customer_data with the validated schedule.
-    let effectiveCustomerData = clientCustomerData
-    if (clientCustomerData) {
-      const cd = clientCustomerData
-      if (!validatedScheduledISO) {
-        if ('scheduled_for' in cd || 'scheduled_for_label' in cd) {
-          effectiveCustomerData = { ...cd }
-          delete (effectiveCustomerData as Record<string, unknown>).scheduled_for
-          delete (effectiveCustomerData as Record<string, unknown>).scheduled_for_label
-        }
-      } else {
-        const rawLabel = cd.scheduled_for_label
-        const cleanLabel = typeof rawLabel === 'string'
-          ? rawLabel.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 80)
-          : undefined
-        effectiveCustomerData = {
-          ...cd,
-          scheduled_for: validatedScheduledISO,
-          ...(cleanLabel ? { scheduled_for_label: cleanLabel } : {}),
-        }
-      }
+    // ── Operating hours / pre-launch (authoritative; covers EVERY backend) ──
+    // A closed or not-yet-launched store is the store saying no, so it is
+    // answered as a refusal HERE — before the presell claim, so there is
+    // nothing to hand back. The backend writers still carry the same guard,
+    // but they throw, which the catch below reads as a lost order and keeps
+    // the Messenger fallback for an order the store never accepts. The tenant
+    // Supabase writer has no guard at all. Judged on the VALIDATED schedule:
+    // an out-of-policy time is stored as ASAP, so it is judged as ASAP.
+    const closedError = getClosedOrderError(tenantConfig as StoreHoursSource, new Date(), {
+      isScheduled: !!validatedScheduledISO,
+    })
+    if (closedError) {
+      return { success: false, refused: true, error: closedError }
     }
 
     // ── Which branch is fulfilling this order (authoritative) ──
@@ -527,9 +407,11 @@ export async function createOrderAction(
     // Deliberately placed AFTER the branch is resolved: which shelf this is
     // judged against is the branch fulfilling the order, and that is settled
     // above from the tenant's own outlets — never from the customer's payload.
-    // Silent on every failure path (inventory off, failed read, no recipe), so
-    // a tenant without inventory issues exactly the queries they issue today.
-    {
+    // Silent on every failure path (inventory off, failed read, no recipe).
+    // Gated on the flag this action already read: the guard would otherwise
+    // re-read the tenant row just to learn inventory is off — a wasted round
+    // trip on every order from a store without inventory.
+    if (tenantConfig.inventory_enabled === true) {
       const { findCheckoutStockShortfallMessage } = await import(
         '@/lib/inventory/checkout-stock-guard'
       )
@@ -663,57 +545,20 @@ export async function createOrderAction(
     })
     if (deliveryResolution.kind === 'abort') return await abort(deliveryResolution.error)
     if (deliveryResolution.kind === 'refuse') return await refuse(deliveryResolution.error)
-    const effectiveDeliveryFee = deliveryResolution.fee
+    // Free delivery above the store's minimum, judged on the server-priced
+    // item subtotal (see src/lib/free-delivery.ts). Lalamove's signed price was
+    // verified above; waiving it here only changes what the customer pays.
+    const effectiveDeliveryFee = waiveDeliveryFee(
+      deliveryResolution.fee,
+      itemsSubtotal,
+      resolveFreeDeliveryThreshold(tenantConfig.free_delivery_min_order)
+    )
 
     // ── Service charge (authoritative) ──
     // Recomputed from the tenant's own order type against the server-priced
     // subtotal, with the formula the checkout displays. The sent figure is
     // ignored — a negative one used to be stored as a discount.
     const serviceCharge = computeServiceCharge(orderTypeRow, itemsSubtotal)
-
-    // PostHog email notification - awaited to ensure flush completes
-    const firePostHogNotification = async (orderId: string, orderItems: typeof items) => {
-      if (tenantConfig?.email_notifications_enabled && tenantConfig?.admin_email) {
-        try {
-          const { captureOrderCreated } = await import('@/lib/posthog')
-          const orderTypeName = orderTypeRow?.name ?? null
-
-          await captureOrderCreated({
-            tenantId,
-            tenantName: tenantConfig.name ?? '',
-            tenantSlug: tenantConfig.slug ?? '',
-            adminEmail: tenantConfig.admin_email,
-            orderId,
-            items: orderItems.map(i => ({
-              name: i.menu_item_name,
-              quantity: i.quantity,
-              variation: i.variation ?? null,
-              addons: i.addons,
-              subtotal: i.subtotal,
-            })),
-            // The merchant's copy of the total must be the same arithmetic the
-            // customer was shown, or a discount lands on one side only.
-            orderTotal: computeOrderTotals({
-              subtotal: orderItems.reduce((sum, i) => sum + i.subtotal, 0),
-              deliveryFee: effectiveDeliveryFee,
-              serviceCharge,
-            }).grandTotal,
-            deliveryFee: effectiveDeliveryFee ?? 0,
-            orderType: orderTypeName,
-            paymentMethod: paymentMethodName ?? null,
-            // Surface the human "scheduled_for_label" but drop the raw UTC ISO from the email payload.
-            customerData: (() => {
-              if (!effectiveCustomerData || typeof effectiveCustomerData !== 'object') return effectiveCustomerData ?? null
-              const copy = { ...(effectiveCustomerData as Record<string, unknown>) }
-              delete copy.scheduled_for
-              return copy
-            })(),
-          })
-        } catch (err) {
-          console.error('[PostHog] Email notification failed:', err)
-        }
-      }
-    }
 
     // ---- Vouchers -------------------------------------------------------
     // Priced here, after the server has re-priced every line and settled the
@@ -782,6 +627,33 @@ export async function createOrderAction(
       }
     }
 
+    /**
+     * Everything owed once an order row exists: stock is spent on the request;
+     * the merchant email, Loyverse push and (tenant-Supabase) Regulars capture
+     * follow the response. Burning vouchers stays with the caller, inline.
+     */
+    const followUp = (
+      orderId: string,
+      platformOrderId: string | null,
+      captureCustomer?: () => Promise<unknown>,
+    ) => runOrderFollowUps({
+      tenantConfig,
+      tenantId,
+      orderId,
+      platformOrderId,
+      items,
+      outletId: resolvedOutlet?.id ?? null,
+      loyverse: loyverseTenant,
+      notice: {
+        orderTypeName: orderTypeRow?.name ?? null,
+        deliveryFee: effectiveDeliveryFee,
+        serviceCharge,
+        paymentMethodName,
+        customerData: effectiveCustomerData,
+      },
+      captureCustomer,
+    })
+
     // Convex has no payment-proof columns, so proof rides in customerData (same
     // pattern as advance-order schedule) to stay cross-tenant compatible.
     const hasProof = Boolean(safePaymentProof?.url || safePaymentProof?.reference)
@@ -832,29 +704,26 @@ export async function createOrderAction(
 
       // Same reason as the Convex branch: this order lives in the tenant's own
       // project, so nothing else would ever roll it into the platform-side
-      // customers table. Best-effort and non-blocking — the order is saved.
-      const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
-      await captureExternalOrderBestEffort(supabaseAdmin, tenantId, {
-        backend: 'tenant_supabase',
-        externalOrderId: result.order.id,
-        name: customerInfo?.name ?? null,
-        contact: customerInfo?.contact ?? null,
-        customerData: effectiveCustomerData ?? null,
-        total: Number(result.order.total) || 0,
-        createdAt: new Date().toISOString(),
-        channel: orderTypeName,
-        items: items.map((item) => ({
-          name: item.menu_item_name,
-          quantity: item.quantity,
-        })),
+      // customers table. Best-effort and post-response — the order is saved.
+      const capturedAt = new Date().toISOString()
+      await followUp(result.order.id, null, async () => {
+        const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+        await captureExternalOrderBestEffort(supabaseAdmin, tenantId, {
+          backend: 'tenant_supabase',
+          externalOrderId: result.order.id,
+          name: customerInfo?.name ?? null,
+          contact: customerInfo?.contact ?? null,
+          customerData: effectiveCustomerData ?? null,
+          total: Number(result.order.total) || 0,
+          createdAt: capturedAt,
+          channel: orderTypeName,
+          items: items.map((item) => ({
+            name: item.menu_item_name,
+            quantity: item.quantity,
+          })),
+        })
       })
-
-      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
-      await pushLoyverseOnCreate(loyverseTenant, null, items)
-      await firePostHogNotification(result.order.id, items)
-      let trackingToken: string | undefined
-      try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
+      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
     // Route on the same resolver the admin queue reads with, so a write can
@@ -885,12 +754,8 @@ export async function createOrderAction(
       // The order row exists and carries the claim; the stock is spent for real.
       orderPersisted = true
       await burnFor(result.order.id)
-      await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
-      await pushLoyverseOnCreate(loyverseTenant, null, items)
-      await firePostHogNotification(result.order.id, items)
-      let trackingToken: string | undefined
-      try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
+      await followUp(result.order.id, null)
+      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
 
     // Otherwise, continue with existing Supabase flow
@@ -928,20 +793,14 @@ export async function createOrderAction(
       // already exists. Hand that duplicate back or the shelf shrinks on every
       // double tap.
       await releaseClaim()
-      let dedupedTrackingToken: string | undefined
-      try { dedupedTrackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
-      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: dedupedTrackingToken }
+      return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
     }
     // The order row exists and carries the claim; the stock is spent for real.
     orderPersisted = true
     await burnFor(result.order.id)
+    await followUp(result.order.id, result.order.id)
     // Return both order and token for secure public API access
-    await depleteStockForOrder(tenantConfig, tenantId, result.order.id, items, resolvedOutlet?.id ?? null)
-    await pushLoyverseOnCreate(loyverseTenant, result.order.id, items)
-    await firePostHogNotification(result.order.id, items)
-    let trackingToken: string | undefined
-    try { trackingToken = generateTrackingToken(result.order.id) } catch { /* API_SECRET may be missing */ }
-    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken }
+    return { success: true, data: result.order, orderToken: result.orderToken, trackingToken: mintTrackingToken(result.order.id) }
   } catch (error) {
     // Presell stock reserved for an order that never got written is stock that
     // silently evaporates: nobody holds it, and no cancel can ever give it

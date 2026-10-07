@@ -27,9 +27,15 @@ export const OPERATING_HOURS_ENFORCEMENT_COLUMNS = [
   'operating_hours',
   'timezone',
   'enforce_operating_hours',
+  'is_prelaunch',
 ] as const
 
-export type StoreClosedReason = 'closed_day' | 'before_open' | 'after_close'
+/**
+ * `prelaunch`: the store was built by onboarding but the platform has not yet
+ * confirmed its payment (`tenants.is_prelaunch`). Its owner can see and edit
+ * it; customers can browse but cannot order.
+ */
+export type StoreClosedReason = 'closed_day' | 'before_open' | 'after_close' | 'prelaunch'
 
 export interface StoreOpenStatus {
   /** False only when enforcement is on and the store's clock is outside the window. */
@@ -57,7 +63,18 @@ export interface StoreHoursSource {
   operating_hours?: unknown
   timezone?: string | null
   enforce_operating_hours?: boolean | null
+  /** Pre-launch blocks ordering whatever the hours say. Absent = launched. */
+  is_prelaunch?: boolean | null
 }
+
+/** The status of a store that has not launched yet. */
+export const PRELAUNCH_STATUS: StoreOpenStatus = Object.freeze({
+  isOpen: false,
+  isOrderingBlocked: true,
+  reason: 'prelaunch',
+  nextOpenLabel: null,
+  closesAt: null,
+})
 
 /** Weekday (0=Sun..6=Sat) plus minutes from midnight, in a specific timezone. */
 export interface ZonedNow {
@@ -180,13 +197,15 @@ function findNextOpenLabel(hours: Record<string, DayHours>, zoned: ZonedNow): st
 /**
  * Resolve whether the store is currently taking orders.
  *
- * Returns `ALWAYS_OPEN_STATUS` for every tenant that has not opted in or has no
- * usable hours — see the module header for why that direction is deliberate.
+ * A pre-launch store is blocked first, whatever its hours. Otherwise returns
+ * `ALWAYS_OPEN_STATUS` for every tenant that has not opted in or has no usable
+ * hours — see the module header for why that direction is deliberate.
  */
 export function getStoreOpenStatus(
   source: StoreHoursSource | null | undefined,
   now: Date,
 ): StoreOpenStatus {
+  if (source?.is_prelaunch === true) return { ...PRELAUNCH_STATUS }
   if (source?.enforce_operating_hours !== true) return ALWAYS_OPEN_STATUS
 
   const hours = normalizeOperatingHours(source.operating_hours)
@@ -232,6 +251,9 @@ export function getStoreOpenStatus(
 /** Copy shown wherever an order is refused because the shop is shut. */
 export const STORE_CLOSED_MESSAGE = 'Ordering is currently closed'
 
+/** Copy shown wherever an order is refused because the store has not launched. */
+export const STORE_PRELAUNCH_MESSAGE = "This store isn't taking orders yet. It opens soon!"
+
 export interface ClosedOrderOptions {
   /**
    * The order is scheduled for a future time (advance / pre-order). Closing time
@@ -251,6 +273,9 @@ export function getClosedOrderError(
   now: Date = new Date(),
   options: ClosedOrderOptions = {},
 ): string | null {
+  // Before the general exemption: a scheduled order is still an order, and a
+  // store nobody has paid for yet must not accept any.
+  if (source?.is_prelaunch === true) return STORE_PRELAUNCH_MESSAGE
   if (options.isScheduled) return null
 
   const status = getStoreOpenStatus(source, now)

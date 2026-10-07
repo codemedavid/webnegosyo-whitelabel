@@ -52,6 +52,7 @@ function stubTables(options: {
     // off tenant_secrets; the fixture keeps them in one object for the tests.
     const tenant = {
       inventory_enabled: options.inventoryEnabled ?? true,
+      order_backend: null,
       convex_deployment_url: null,
       convex_deploy_key: null,
       ...(options.tenant ?? {}),
@@ -64,6 +65,7 @@ function stubTables(options: {
               Promise.resolve({
                 data: {
                   inventory_enabled: tenant.inventory_enabled,
+                  order_backend: tenant.order_backend,
                   convex_deployment_url: tenant.convex_deployment_url,
                 },
                 error: null,
@@ -375,6 +377,42 @@ describe('customer order stock route — Convex-backend tenants', () => {
     const response = await POST(post({ tenantId: TENANT, orderId: CONVEX_ORDER }))
 
     expect(response.status).toBe(200)
+    expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
+  })
+})
+
+describe('customer order stock route — backend comes from resolveOrderBackend', () => {
+  // A store pinned to the platform database can still carry a Convex URL from
+  // an earlier setup. Its orders live on the platform, so routing on the URL
+  // read a deployment that never saw the order and the sale was never spent.
+  it('spends a platform-pinned order from the platform table despite a stale Convex URL', async () => {
+    stubTables({
+      tenant: {
+        order_backend: 'platform',
+        convex_deployment_url: 'https://stale-otter-1.convex.cloud',
+        convex_deploy_key: 'prod:stale',
+      },
+      lines: [{ menu_item_id: 'dish-1', quantity: 1 }],
+    })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
+
+    expect(response.status).toBe(200)
+    expect(createConvexServerClient).not.toHaveBeenCalled()
+    expect(applyOrderStockBestEffort).toHaveBeenCalledWith(
+      TENANT, ORDER, [{ menuItemId: 'dish-1', quantity: 1 }], 'sale', 0, null,
+      { context: { source: 'customer_app' } },
+    )
+  })
+
+  it('skips a tenant whose orders live in its own Supabase project', async () => {
+    stubTables({ tenant: { order_backend: 'supabase' } })
+
+    const response = await POST(post({ tenantId: TENANT, orderId: ORDER }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true, skipped: 'unsupported_backend' })
+    expect(from).not.toHaveBeenCalledWith('orders')
     expect(applyOrderStockBestEffort).not.toHaveBeenCalled()
   })
 })

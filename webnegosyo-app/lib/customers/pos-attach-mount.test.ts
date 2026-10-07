@@ -23,7 +23,7 @@ describe("the tender screen", () => {
     // `buildPosOrder` has accepted `customerContact` since it was written and
     // nothing ever passed it, so every counter sale went out anonymous. This
     // is the assertion that would have caught that.
-    expect(tender).toMatch(/posCustomerFields\(attachedCustomer, customerName\)/);
+    expect(tender).toMatch(/posCustomerFields\(attachedCustomer, customerName,/);
   });
 
   it("derives the attachment fields from the shared pure rule", () => {

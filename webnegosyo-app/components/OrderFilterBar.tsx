@@ -7,7 +7,8 @@ export type SortOrder = "newest" | "oldest";
 export interface StatusFilterOption {
   key: string;
   label: string;
-  count: number;
+  /** Omitted when the screen cannot know it — no badge is drawn. */
+  count?: number;
 }
 
 interface OrderFilterBarProps {
@@ -121,11 +122,13 @@ export function OrderFilterBar({
                 <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
                   {branch.label}
                 </Text>
-                <View style={[styles.countBadge, isActive && styles.countBadgeActive]}>
-                  <Text style={[styles.countText, isActive && styles.countTextActive]}>
-                    {branch.count}
-                  </Text>
-                </View>
+                {branch.count !== undefined && (
+                  <View style={[styles.countBadge, isActive && styles.countBadgeActive]}>
+                    <Text style={[styles.countText, isActive && styles.countTextActive]}>
+                      {branch.count}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}

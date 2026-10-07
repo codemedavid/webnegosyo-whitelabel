@@ -1,9 +1,9 @@
 /**
  * Loads what server-side line pricing needs and prices the cart.
  *
- * Three tenant-scoped reads, each only when needed: the dishes (with their
- * option JSON), the menu items their linked options point at, and the chosen
- * branch's price overrides. A failed read is an infrastructure failure — the
+ * Tenant-scoped reads, each only when needed: the dishes (with their option
+ * JSON), the menu items their linked options point at, the chosen branch's
+ * price overrides and the combos the cart names. A failed read is an infrastructure failure — the
  * order is not refused, it is reported lost so the checkout keeps its
  * Messenger fallback. A pricing "no" (unknown dish, unavailable, off-branch) is
  * a refusal.
@@ -82,6 +82,40 @@ async function readBranchOverrides(
   return { ok: true, index: buildOutletMenuIndex((data ?? []) as OutletMenuOverrideRow[]) }
 }
 
+type BundleRead =
+  | { ok: true; bundles: Map<string, CheckoutBundle> }
+  | { ok: false; refused: boolean; error: string }
+
+const NO_BUNDLES: BundleRead = { ok: true, bundles: new Map() }
+
+/** The combo switch and the combos the cart names; skipped for a combo-free cart. */
+async function readBundles<T extends PriceableOrderLine>(
+  client: LinePricingClient,
+  tenantId: string,
+  lines: readonly T[]
+): Promise<BundleRead> {
+  if (!lines.some(line => line.isBundleItem)) return NO_BUNDLES
+  const bundleIds = [...new Set(lines.filter(line => line.isBundleItem).map(line => line.bundleId).filter(Boolean))]
+  const [tenant, catalog]: QueryResult[] = await Promise.all([
+    client.from('tenants').select('bundles_enabled').eq('id', tenantId).maybeSingle(),
+    client.from('bundles')
+      .select('id, name, is_active, pricing_type, fixed_price, discount_percent, slots:bundle_slots(id, name, category_id, pick_count, included_item_ids, price_overrides:bundle_slot_price_overrides(menu_item_id, price_override))')
+      .eq('tenant_id', tenantId).in('id', bundleIds),
+  ])
+  if (tenant.error || catalog.error) return { ok: false, refused: false, error: 'Failed to verify combo prices' }
+  if (!(tenant.data as { bundles_enabled?: boolean } | null)?.bundles_enabled) {
+    return { ok: false, refused: true, error: 'Combos are no longer available at this store.' }
+  }
+  return { ok: true, bundles: new Map(((catalog.data ?? []) as CheckoutBundle[]).map(bundle => [bundle.id, bundle])) }
+}
+
+/**
+ * Only the linked add-on dishes depend on another read (their ids live inside
+ * the dish JSON), so the dish read, the branch overrides and the combo catalog
+ * are issued together and the linked read follows the dishes. Failures are
+ * still judged in the original order — dishes, add-ons, branch, combos — so
+ * the checkout hears exactly the message it heard when the reads ran in turn.
+ */
 export async function loadAndPriceOrderLines<T extends PriceableOrderLine>(
   client: LinePricingClient,
   tenantId: string,
@@ -90,6 +124,13 @@ export async function loadAndPriceOrderLines<T extends PriceableOrderLine>(
 ): Promise<LoadAndPriceResult<T>> {
   const ids = [...new Set(lines.map((line) => line.menu_item_id))]
 
+  const overridesRead = readBranchOverrides(client, tenantId, outletId, ids)
+  const bundlesRead = readBundles(client, tenantId, lines)
+  // Settled reads are awaited below in precedence order; until then a
+  // rejection must not surface as unhandled.
+  overridesRead.catch(() => {})
+  bundlesRead.catch(() => {})
+
   const menu = await readMenuItems(client, tenantId, ids)
   if (menu.error) return { ok: false, refused: false, error: 'Failed to verify item prices' }
   const rows = (menu.data ?? []) as StoreMenuItemRow[]
@@ -97,31 +138,18 @@ export async function loadAndPriceOrderLines<T extends PriceableOrderLine>(
   const linked = await readLinkedItems(client, tenantId, rows)
   if (!linked.ok) return { ok: false, refused: false, error: 'Failed to verify add-on prices' }
 
-  const overrides = await readBranchOverrides(client, tenantId, outletId, ids)
+  const overrides = await overridesRead
   if (!overrides.ok) return { ok: false, refused: false, error: 'Failed to verify branch prices' }
 
-  const bundleIds = [...new Set(lines.filter(line => line.isBundleItem).map(line => line.bundleId).filter(Boolean))]
-  let bundles = new Map<string, CheckoutBundle>()
-  if (lines.some(line => line.isBundleItem)) {
-    const [tenant, catalog]: QueryResult[] = await Promise.all([
-      client.from('tenants').select('bundles_enabled').eq('id', tenantId).maybeSingle(),
-      client.from('bundles')
-        .select('id, name, is_active, pricing_type, fixed_price, discount_percent, slots:bundle_slots(id, name, category_id, pick_count, included_item_ids, price_overrides:bundle_slot_price_overrides(menu_item_id, price_override))')
-        .eq('tenant_id', tenantId).in('id', bundleIds),
-    ])
-    if (tenant.error || catalog.error) return { ok: false, refused: false, error: 'Failed to verify combo prices' }
-    if (!(tenant.data as { bundles_enabled?: boolean } | null)?.bundles_enabled) {
-      return { ok: false, refused: true, error: 'Combos are no longer available at this store.' }
-    }
-    bundles = new Map(((catalog.data ?? []) as CheckoutBundle[]).map(bundle => [bundle.id, bundle]))
-  }
+  const bundles = await bundlesRead
+  if (!bundles.ok) return bundles
 
   const priced = priceOrderLines(lines, {
     storeItems: new Map(rows.map((row) => [row.id, row])),
     branchOverrides: overrides.index,
     outletId,
     linkedItems: linked.items,
-    bundles,
+    bundles: bundles.bundles,
   })
   return priced.ok ? priced : { ok: false, refused: true, error: priced.error }
 }

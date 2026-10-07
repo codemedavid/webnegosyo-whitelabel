@@ -705,6 +705,7 @@ export async function getSmartUpgradeSuggestionsRanked(
     .from('menu_items')
     .select('price, discounted_price')
     .eq('id', itemId)
+    .eq('tenant_id', tenantId)
     .single()
 
   const sourcePrice = sourceItem?.discounted_price || sourceItem?.price || 0
@@ -831,6 +832,10 @@ export async function getUpsellCoverageForItem(
   itemId: string,
   tenantId: string
 ): Promise<{ pairCount: number; bundleCount: number; isCheckoutPick: boolean }> {
+  // The item id is spliced into a PostgREST `.or()` string below — a crafted
+  // value could add filters of its own, so it must be a uuid first.
+  z.string().uuid().parse(itemId)
+  z.string().uuid().parse(tenantId)
   const supabase = createAdminClient()
 
   // Count upsell pairs where this item is source or target
@@ -846,6 +851,7 @@ export async function getUpsellCoverageForItem(
     .from('menu_items')
     .select('category_id, show_in_checkout_upsell')
     .eq('id', itemId)
+    .eq('tenant_id', tenantId)
     .single()
 
   let bundleCount = 0

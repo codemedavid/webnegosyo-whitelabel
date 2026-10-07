@@ -17,6 +17,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { verifyTenantPermission } from '@/lib/admin-service'
 import {
   normalizeVoucherCode,
@@ -24,7 +25,8 @@ import {
   type VoucherDraft,
   type VoucherIssue,
 } from '@/lib/vouchers/admin-validation'
-import { mapVoucherRow, type VoucherRow, type VoucherTargetRow } from '@/lib/vouchers/mapper'
+import { mapVoucherListRows, VOUCHER_LIST_SELECT, type VoucherListRow } from '@/lib/vouchers/admin-read'
+import { toCategoryOptions, toProductOptions, type TargetOption } from '@/lib/vouchers/target-picker'
 import type { Voucher } from '@/lib/vouchers/types'
 
 export interface VoucherAdminResult {
@@ -40,7 +42,25 @@ export interface VoucherListResult {
   data?: readonly Voucher[]
 }
 
-/** Every voucher for a tenant, newest first, with targets attached. */
+export interface VoucherTargetOptionsResult {
+  success: boolean
+  error?: string
+  data?: readonly TargetOption[]
+}
+
+/**
+ * `revalidatePath` on the route PATTERN: these actions are handed the tenant id,
+ * not its slug, and `/${tenantId}/admin/vouchers` named a page that does not
+ * exist. The pattern form names the real page for every store.
+ */
+const VOUCHERS_ROUTE = '/[tenant]/admin/vouchers'
+
+/**
+ * Every voucher for a tenant, newest first, with targets attached — one query,
+ * the targets embedded (admin-read.ts). The vouchers page calls this on the
+ * server for its first render; it is still an action for the same permission
+ * check wherever it is called from.
+ */
 export async function listVouchersAction(tenantId: string): Promise<VoucherListResult> {
   try {
     await verifyTenantPermission(tenantId, 'vouchers', 'view')
@@ -48,27 +68,58 @@ export async function listVouchersAction(tenantId: string): Promise<VoucherListR
 
     const { data: rows, error } = await supabase
       .from('vouchers')
-      .select('*')
+      .select(VOUCHER_LIST_SELECT)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
 
     if (error) return { success: false, error: error.message }
 
-    const voucherRows = (rows ?? []) as unknown as VoucherRow[]
-    if (voucherRows.length === 0) return { success: true, data: [] }
-
-    const { data: targetRows } = await supabase
-      .from('voucher_targets')
-      .select('*')
-      .in(
-        'voucher_id',
-        voucherRows.map((r) => r.id)
-      )
-
-    const targets = (targetRows ?? []) as unknown as VoucherTargetRow[]
-    return { success: true, data: voucherRows.map((row) => mapVoucherRow(row, targets)) }
+    return { success: true, data: mapVoucherListRows((rows ?? []) as unknown as VoucherListRow[]) }
   } catch (error) {
     console.error('[listVouchersAction] Failed:', error)
+    return { success: false, error: toMessage(error) }
+  }
+}
+
+/**
+ * What the voucher form's target picker lists: names only, in ONE call.
+ *
+ * The picker used to call two actions (the full menu with every dish's
+ * variation/add-on JSON and an embedded category, then the categories). Next
+ * runs server actions one at a time, so its `Promise.all` never overlapped
+ * them. Here both lean reads run in parallel inside one request.
+ */
+export async function getVoucherTargetOptionsAction(
+  tenantId: string,
+  mode: 'products' | 'categories'
+): Promise<VoucherTargetOptionsResult> {
+  try {
+    await verifyTenantPermission(tenantId, 'vouchers', 'view')
+    const supabase = await createClient()
+
+    const [categories, items] = await Promise.all([
+      supabase.from('categories').select('id, name').eq('tenant_id', tenantId).order('order', { ascending: true }),
+      mode === 'products'
+        ? supabase
+            .from('menu_items')
+            .select('id, name, category_id')
+            .eq('tenant_id', tenantId)
+            .order('order', { ascending: true })
+            .order('id', { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
+    ])
+
+    if (categories.error) return { success: false, error: categories.error.message }
+    if (items.error) return { success: false, error: items.error.message }
+
+    const categoryRows = (categories.data ?? []) as { id: string; name: string }[]
+    const itemRows = (items.data ?? []) as { id: string; name: string; category_id: string | null }[]
+    return {
+      success: true,
+      data: mode === 'products' ? toProductOptions(itemRows, categoryRows) : toCategoryOptions(categoryRows),
+    }
+  } catch (error) {
+    console.error('[getVoucherTargetOptionsAction] Failed:', error)
     return { success: false, error: toMessage(error) }
   }
 }
@@ -128,7 +179,7 @@ export async function saveVoucherAction(
     const targetError = await replaceTargets(supabase, savedId, draft)
     if (targetError) return { success: false, error: targetError }
 
-    revalidatePath(`/${tenantId}/admin/vouchers`)
+    revalidatePath(VOUCHERS_ROUTE, 'page')
     return { success: true, voucherId: savedId }
   } catch (error) {
     console.error('[saveVoucherAction] Failed:', error)
@@ -160,7 +211,7 @@ export async function setVoucherActiveAction(
 
     if (error) return { success: false, error: error.message }
 
-    revalidatePath(`/${tenantId}/admin/vouchers`)
+    revalidatePath(VOUCHERS_ROUTE, 'page')
     return { success: true, voucherId }
   } catch (error) {
     console.error('[setVoucherActiveAction] Failed:', error)

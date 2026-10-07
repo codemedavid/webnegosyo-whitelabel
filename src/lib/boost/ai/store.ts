@@ -173,24 +173,27 @@ export async function failBoostAiGeneration(tenantId: string, generationId: stri
 
 export async function listBoostAiLog(tenantId: string): Promise<BoostAiLog> {
   const client = db()
-  // Counted over the whole table, like the claim RPC: the log below is only the latest rows.
-  const { count, error: countError } = await client
-    .from('boost_ai_generations')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId)
-    .in('status', ['running', 'succeeded'])
-  if (countError) throw new Error(`Could not read the AI generation log: ${countError.message}`)
+  // The allowance count and the latest rows are independent reads: issue both
+  // at once. Counted over the whole table, like the claim RPC — the log below
+  // is only the latest rows.
+  const [counted, listed] = await Promise.all([
+    client
+      .from('boost_ai_generations')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .in('status', ['running', 'succeeded']),
+    client
+      .from('boost_ai_generations')
+      .select(`id, status, model, data_source, orders_analyzed, summary, error, created_at, completed_at, boost_ai_proposals(${PROPOSAL_COLUMNS})`)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(MAX_LOGGED_GENERATIONS),
+  ])
+  if (counted.error) throw new Error(`Could not read the AI generation log: ${counted.error.message}`)
+  if (listed.error) throw new Error(`Could not read the AI generation log: ${listed.error.message}`)
 
-  const { data, error } = await client
-    .from('boost_ai_generations')
-    .select(`id, status, model, data_source, orders_analyzed, summary, error, created_at, completed_at, boost_ai_proposals(${PROPOSAL_COLUMNS})`)
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false })
-    .limit(MAX_LOGGED_GENERATIONS)
-  if (error) throw new Error(`Could not read the AI generation log: ${error.message}`)
-
-  const generations = ((data ?? []) as unknown as GenerationRow[]).map(toGeneration)
-  return { generations, used: count ?? 0, limit: FREE_BOOST_AI_GENERATIONS }
+  const generations = ((listed.data ?? []) as unknown as GenerationRow[]).map(toGeneration)
+  return { generations, used: counted.count ?? 0, limit: FREE_BOOST_AI_GENERATIONS }
 }
 
 export async function getBoostAiProposal(tenantId: string, proposalId: string): Promise<BoostAiProposal | null> {

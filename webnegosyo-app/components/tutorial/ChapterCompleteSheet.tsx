@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal } from "../Modal";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { Icon } from "../Icon";

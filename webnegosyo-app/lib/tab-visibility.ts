@@ -67,11 +67,18 @@ export const SUBSCREEN_TABS: readonly string[] = [
 export const REPORT_TABS: readonly string[] = [
   "analytics",
   "growth",
-  "customer-hub",
   "product-analytics",
   "daily-report",
   "branches",
 ];
+
+/**
+ * The sub-screens the Reports dashboard opens: who the customers are, and the
+ * reward cards that keep them coming. Declared here rather than only in
+ * `subscreen-links.ts` because they also decide whether the tab exists — the
+ * dashboard is customer-first, so a customers grant alone earns it.
+ */
+export const REPORTS_DOORS: readonly string[] = ["customers", "loyalty"];
 
 /** Screens the merchant sets up, listed in the Manage hub. */
 export const SETUP_TABS: readonly string[] = [
@@ -107,8 +114,10 @@ export interface TabVisibilityContext {
 export function isTabReachable(tab: string, ctx: TabVisibilityContext): boolean {
   if (tab === MENU_TAB) return true;
   // A hub with nothing in it is not a screen; the tab exists exactly when at
-  // least one report does.
-  if (tab === REPORTS_TAB) return REPORT_TABS.some((report) => isTabReachable(report, ctx));
+  // least one report, or one of the dashboard's doors, does.
+  if (tab === REPORTS_TAB) {
+    return [...REPORT_TABS, ...REPORTS_DOORS].some((report) => isTabReachable(report, ctx));
+  }
   if (!isTabAllowed(ctx.caller, tab)) return false;
   if (!isBusinessTabVisible(tab, ctx.audience)) return false;
   if (ADVANCE_ORDER_TABS.includes(tab) && !ctx.takesAdvanceOrders) return false;

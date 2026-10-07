@@ -135,6 +135,40 @@ export function resolveVoidClaimRevision(
  * wins). Strictly-below voids do NOT block: they belong to an earlier life of
  * the order that an un-cancel has since re-opened.
  */
+/** A simple-option claim row; its `action` uses 'cancel' as well as 'void' for a reversal. */
+export interface SimpleOptionClaimRow {
+  action: string
+  revision: number
+}
+
+/**
+ * May an un-cancelled order spend its stock again?
+ *
+ * Only when its latest sale was put back. Re-deducting at a fresh revision is
+ * always accepted by the unique index, so the claim cannot be what refuses a
+ * second deduction here: a cancel that never restored (best-effort, timed out,
+ * or made outside updateOrderStatus) or a repeated un-cancel would each spend
+ * the order a second time. Both claim tables count — an order with no recipes
+ * releases its recipe claim, and its simple-option claims are then the only
+ * record of what was sold.
+ *
+ * An order with no sale on record has nothing to double-count, so it stays
+ * allowed (that is the behaviour it had before this guard).
+ */
+export function isLatestSaleReversed(
+  claims: readonly OrderStockClaimRow[],
+  simpleClaims: readonly SimpleOptionClaimRow[] = [],
+): boolean {
+  const moves = [
+    ...claims.map((claim) => ({ isSale: claim.reason === 'sale', revision: claim.revision })),
+    ...simpleClaims.map((claim) => ({ isSale: claim.action === 'sale', revision: Number(claim.revision) })),
+  ]
+  const sales = moves.filter((move) => move.isSale)
+  if (sales.length === 0) return true
+  const latestSale = Math.max(...sales.map((move) => move.revision))
+  return moves.some((move) => !move.isSale && move.revision >= latestSale)
+}
+
 export function hasBlockingVoidClaim(
   claims: readonly OrderStockClaimRow[],
   revision: number,

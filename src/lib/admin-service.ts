@@ -4,22 +4,21 @@
  */
 
 import { cache } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
-import type { Category, MenuItem } from '@/types/database'
+import type { Category, Database, MenuItem } from '@/types/database'
+import { nextItemOrder } from '@/lib/menu-item-arrangement'
+import { DISH_DESCRIPTION_MAX } from '@/lib/menu-editor/dish-limits'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import {
   canManageStaff,
   hasPermission,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
-import {
-  asAppUserQueryClient,
-  fetchAppUserScope,
-} from '@/lib/queries/fetch-app-user-scope'
+import { getRequestCaller, getRequestSubscription } from '@/lib/auth/request-caller'
 import { canManageBranchStaff } from '@/lib/outlets/branch-scope'
 import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/permissions'
 import { assertSubscriptionActive } from '@/lib/billing/subscription-gate'
-import { fetchSubscription } from '@/lib/billing/subscription-repository'
 import { z } from 'zod'
 import { isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-icon-catalog'
 
@@ -120,9 +119,14 @@ export const modifierGroupSchema = z.object({
   options: z.array(modifierOptionSchema).min(1, 'At least one option is required'),
 })
 
+/** Optional: 748 live dishes have none, and "Coke 1.5L" needs none. */
+const menuItemDescriptionSchema = z
+  .string()
+  .max(DISH_DESCRIPTION_MAX, `Keep the description under ${DISH_DESCRIPTION_MAX} characters`)
+
 export const menuItemSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  description: z.string().min(10, 'Description must be at least 10 characters'),
+  description: menuItemDescriptionSchema,
   price: z.number().min(0, 'Price must be 0 or more'),
   discounted_price: z.number().positive().optional().nullable(),
   // Image is optional — a product can be saved without one. Accept a valid
@@ -152,7 +156,10 @@ export const menuItemSchema = z.object({
   show_in_checkout_upsell: z.boolean().default(false),
   // Presell: customers must pick an allocated date (migration 20260830120000)
   presell_enabled: z.boolean().default(false),
-  order: z.number().int().min(0).default(0),
+  // Position within the category (shared by the storefront and the register).
+  // Omitted = a new dish goes to the end of its category; an edit keeps its
+  // place. Arranging is `reorderMenuItems`' job, not the dish form's.
+  order: z.number().int().min(0).optional(),
 })
 
 /**
@@ -164,7 +171,7 @@ export const menuItemSchema = z.object({
  */
 export const menuItemUpdateSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  description: z.string().min(10, 'Description must be at least 10 characters'),
+  description: menuItemDescriptionSchema,
   price: z.number().min(0, 'Price must be 0 or more'),
   discounted_price: z.number().positive().nullable(),
   image_url: z.string().url('Must be a valid URL').or(z.literal('')),
@@ -208,21 +215,15 @@ export type MenuItemUpdateInput = z.input<typeof menuItemUpdateSchema>
  * never slip through a default.
  */
 export async function verifyTenantAdmin(tenantId: string, action: PlatformAction = 'edit') {
-  const supabase = await createClient()
-  
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  
-  if (authError || !user) {
+  // One identity read per request (request-caller.ts): a page that reaches
+  // several services in one render used to re-authenticate in each of them.
+  // The `app_users` read goes through the resilient helper — naming the branch
+  // column before its migration is applied would 400 every admin action.
+  const { user, appUser, roleError } = await getRequestCaller()
+
+  if (!user) {
     throw new Error('Unauthorized: Not authenticated')
   }
-
-  // Check if user is admin of this tenant or superadmin. Read through the
-  // resilient helper: naming the branch column here before its migration is
-  // applied would 400 every admin action, not just the branch feature.
-  const { appUser, error: roleError } = await fetchAppUserScope(
-    asAppUserQueryClient(supabase),
-    user.id
-  )
 
   if (roleError || !appUser) {
     throw new Error('Unauthorized: User role not found')
@@ -256,7 +257,7 @@ export async function verifyTenantAdmin(tenantId: string, action: PlatformAction
   // error and null reads as "not blocked", so a database blip leaves merchants
   // working instead of locking out the whole platform at once.
   assertSubscriptionActive(
-    await fetchSubscription(supabase, tenantId),
+    await getRequestSubscription(tenantId),
     { role: userRole.role }
   )
 
@@ -269,13 +270,11 @@ export async function verifyTenantAdmin(tenantId: string, action: PlatformAction
  * the service-role client is the only client that can reach the rows.
  */
 export async function verifySuperadmin() {
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const { user, appUser } = await getRequestCaller()
+  if (!user) {
     throw new Error('Unauthorized: Not authenticated')
   }
 
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
   if (!appUser || appUser.role !== 'superadmin') {
     throw new Error('Forbidden: Superadmin access required')
   }
@@ -515,6 +514,9 @@ export async function getMenuItemsByTenant(
       `)
       .eq('tenant_id', tenantId)
       .order('order', { ascending: true })
+      // Ties are common on live stores; `id` keeps this list in the same order
+      // the storefront shows (storefront-catalog.ts breaks ties the same way).
+      .order('id', { ascending: true })
 
     if (error) throw error
     return data as unknown as MenuItem[]
@@ -592,17 +594,60 @@ export const getMenuItemById = cache(async (itemId: string, tenantId: string) =>
   return data as unknown as MenuItem
 })
 
+/** The position a dish takes when it joins a category: after everything there. */
+async function readNextItemOrder(
+  supabase: SupabaseClient<Database>,
+  tenantId: string,
+  categoryId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('menu_items')
+    .select('order')
+    .eq('tenant_id', tenantId)
+    .eq('category_id', categoryId)
+    .order('order', { ascending: false })
+    .limit(1)
+
+  if (error) throw error
+  return nextItemOrder(((data ?? []) as { order: number }[]).map((row) => row.order))
+}
+
+/**
+ * An edited dish keeps its position — unless it moved to another category,
+ * where its old number means nothing and it joins the end instead.
+ */
+async function readMovedItemOrder(
+  supabase: SupabaseClient<Database>,
+  itemId: string,
+  tenantId: string,
+  categoryId: string,
+): Promise<number | undefined> {
+  const { data, error } = await supabase
+    .from('menu_items')
+    .select('category_id')
+    .eq('id', itemId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (error) throw error
+  const current = data as { category_id: string | null } | null
+  if (!current || current.category_id === categoryId) return undefined
+  return readNextItemOrder(supabase, tenantId, categoryId)
+}
+
 export async function createMenuItem(tenantId: string, input: MenuItemInput, ctx?: ProvisioningCtx) {
   if (!ctx) await verifyTenantPermission(tenantId, 'menu')
 
   const validated = menuItemSchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
+  const order = validated.order ?? (await readNextItemOrder(supabase, tenantId, validated.category_id))
 
   const { data, error } = await supabase
     .from('menu_items')
     .insert({
       tenant_id: tenantId,
       ...validated,
+      order,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       variations: validated.variations as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -623,11 +668,14 @@ export async function updateMenuItem(itemId: string, tenantId: string, input: Me
   
   const validated = menuItemSchema.parse(input)
   const supabase = await createClient()
+  const order = validated.order ?? (await readMovedItemOrder(supabase, itemId, tenantId, validated.category_id))
 
   const query = supabase
     .from('menu_items')
     .update({
       ...validated,
+      // Undefined is dropped from the payload: the dish keeps its place.
+      order,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       variations: validated.variations as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

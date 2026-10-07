@@ -195,6 +195,31 @@ describe('OPERATING_HOURS_ENFORCEMENT_COLUMNS', () => {
       'operating_hours',
       'timezone',
       'enforce_operating_hours',
+      'is_prelaunch',
     ])
+  })
+})
+
+describe('getStoreOpenStatus — pre-launch', () => {
+  it('blocks ordering for a pre-launch store even without hours enforcement', () => {
+    const status = getStoreOpenStatus({ is_prelaunch: true }, MON_0900)
+    expect(status).toEqual({
+      isOpen: false,
+      isOrderingBlocked: true,
+      reason: 'prelaunch',
+      nextOpenLabel: null,
+      closesAt: null,
+    })
+  })
+
+  it('blocks ordering for a pre-launch store inside its opening window', () => {
+    const status = getStoreOpenStatus(source({ is_prelaunch: true }), MON_0900)
+    expect(status.isOrderingBlocked).toBe(true)
+    expect(status.reason).toBe('prelaunch')
+  })
+
+  it('treats a launched store exactly as before', () => {
+    expect(getStoreOpenStatus(source({ is_prelaunch: false }), MON_0900).isOpen).toBe(true)
+    expect(getStoreOpenStatus({ is_prelaunch: null }, MON_2300)).toBe(ALWAYS_OPEN_STATUS)
   })
 })

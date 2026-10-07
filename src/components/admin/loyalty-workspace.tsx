@@ -32,6 +32,15 @@ export function LoyaltyWorkspace({
   tenantSlug: string
 }) {
   const [section, setSection] = useState<Section>('members')
+  // Programmes mounts on first open, then stays mounted (see below). Mounting
+  // it hidden from the start fetched every programme on each visit, for a tab
+  // most visits never open.
+  const [hasOpenedPrograms, setHasOpenedPrograms] = useState(false)
+
+  const openSection = (next: Section) => {
+    setSection(next)
+    if (next === 'programs') setHasOpenedPrograms(true)
+  }
 
   return (
     <div className="space-y-6">
@@ -48,7 +57,7 @@ export function LoyaltyWorkspace({
               type="button"
               role="tab"
               aria-selected={isActive}
-              onClick={() => setSection(tab.value)}
+              onClick={() => openSection(tab.value)}
               className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
                 isActive ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
               }`}
@@ -65,9 +74,11 @@ export function LoyaltyWorkspace({
         <LoyaltyMembersPanel key={tenantId} tenantId={tenantId} />
       </div>
       {section === 'activity' ? <LoyaltyActivityPanel key={tenantId} tenantId={tenantId} /> : null}
-      <div hidden={section !== 'programs'}>
-        <LoyaltyProgramsManagement tenantId={tenantId} tenantSlug={tenantSlug} />
-      </div>
+      {hasOpenedPrograms ? (
+        <div hidden={section !== 'programs'}>
+          <LoyaltyProgramsManagement tenantId={tenantId} tenantSlug={tenantSlug} />
+        </div>
+      ) : null}
       {section === 'settings' ? <LoyaltyWalletVerificationSetting key={tenantId} tenantId={tenantId} /> : null}
     </div>
   )

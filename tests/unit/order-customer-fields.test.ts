@@ -79,9 +79,22 @@ describe('customer fields shown on an order', () => {
 
   it('renders numbers and booleans, which read fine on one line', () => {
     // Arrange & Assert
-    expect(visibleCustomerFields({ sms_consent: false, table: 4 })).toEqual([
-      { key: 'sms_consent', label: 'sms consent', value: 'false' },
+    expect(visibleCustomerFields({ has_parking: false, table: 4 })).toEqual([
+      { key: 'has_parking', label: 'has parking', value: 'false' },
       { key: 'table', label: 'table', value: '4' },
     ])
+  })
+
+  it('hides the SMS opt-in bookkeeping and the import source id', () => {
+    // Arrange
+    const data = {
+      sms_consent: true,
+      sms_consent_at: '2026-10-03T16:24:27.000Z',
+      convex_order_id: 'k57abc123',
+      landmark: 'Blue gate',
+    }
+
+    // Act & Assert
+    expect(visibleCustomerFields(data).map((f) => f.key)).toEqual(['landmark'])
   })
 })

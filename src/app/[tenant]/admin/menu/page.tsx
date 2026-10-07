@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { FolderOpen, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
-import { getMenuItemsByTenant } from '@/lib/admin-service'
+import { createClient } from '@/lib/supabase/server'
+import { listAdminMenuItems, type AdminMenuListClient } from '@/lib/queries/admin-menu-list'
 import { MenuItemsList } from '@/components/admin/menu-items-list'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
 import { createSupabaseOutletMenuRepository } from '@/lib/outlets/supabase-outlet-menu-repository'
@@ -26,8 +27,13 @@ async function MenuContent({
   // Branch data is only read for a store that has branches; every other store
   // runs exactly the queries it ran before per-branch menus existed. The same
   // rule for recipes: only an inventory tenant pays for the link read.
+  //
+  // The list read is the lean projection (admin-menu-list.ts): the page shows a
+  // photo, a name, a price and badges, so the variation/add-on/modifier JSON of
+  // every dish is not read, let alone serialized to the browser.
+  const supabase = await createClient()
   const [menuItems, categories, outlets, menuOverrides, recipeLinks] = await Promise.all([
-    getMenuItemsByTenant(tenantId),
+    listAdminMenuItems(supabase as unknown as AdminMenuListClient, tenantId),
     getCachedCategoriesByTenant(tenantId),
     isMultiBranch ? createSupabaseOutletRepository().listByTenant(tenantId) : Promise.resolve([]),
     isMultiBranch
@@ -75,10 +81,10 @@ export default async function AdminMenuPage({
           <p className="text-sm text-muted-foreground">Tap a dish to edit it. Use the switch when something runs out.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Link href={`/${tenantSlug}/admin/categories`} className="hidden sm:block">
-            <Button variant="outline" className="h-11">
-              <FolderOpen className="mr-2 h-4 w-4" />
-              Categories
+          <Link href={`/${tenantSlug}/admin/categories`}>
+            <Button variant="outline" className="h-11 max-sm:w-11 max-sm:px-0" aria-label="Categories">
+              <FolderOpen className="h-4 w-4 sm:mr-2" />
+              <span className="max-sm:sr-only">Categories</span>
             </Button>
           </Link>
           <Link href={`/${tenantSlug}/admin/menu/new`}>

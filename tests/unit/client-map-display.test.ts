@@ -1,4 +1,11 @@
-import { formatClientTenure, initialsOf, shortLocality } from '@/lib/superadmin/client-map/display'
+import {
+  appleMapsUrl,
+  externalMapsLink,
+  formatClientTenure,
+  initialsOf,
+  pinSizeForCameraDistance,
+  shortLocality,
+} from '@/lib/superadmin/client-map/display'
 
 describe('shortLocality', () => {
   it('keeps the city and province, dropping country and postal codes', () => {
@@ -38,5 +45,65 @@ describe('formatClientTenure', () => {
 
   it('returns null for an unparseable date', () => {
     expect(formatClientTenure('nope', now)).toBeNull()
+  })
+})
+
+describe('externalMapsLink', () => {
+  const pin = { name: 'Kape & Tayo Café', lat: 13.94, lng: 120.73 }
+
+  it('links to Apple Maps with the encoded store name and its coordinate when the provider is apple', () => {
+    // Act
+    const link = externalMapsLink(pin, 'apple')
+
+    // Assert
+    expect(link).toEqual({
+      href: 'https://maps.apple.com/?q=Kape%20%26%20Tayo%20Caf%C3%A9&ll=13.94,120.73',
+      label: 'Open in Apple Maps',
+    })
+  })
+
+  it('keeps the Google Maps coordinate search when the provider is mapbox', () => {
+    // Act
+    const link = externalMapsLink(pin, 'mapbox')
+
+    // Assert
+    expect(link).toEqual({
+      href: 'https://www.google.com/maps/search/?api=1&query=13.94,120.73',
+      label: 'Open in Google Maps',
+    })
+  })
+})
+
+describe('appleMapsUrl', () => {
+  it('encodes characters that would otherwise break the query string', () => {
+    // Arrange
+    const pin = { name: 'Lomi #1 ?=Batangas', lat: 14, lng: 121 }
+
+    // Act
+    const url = appleMapsUrl(pin)
+
+    // Assert
+    expect(url).toBe('https://maps.apple.com/?q=Lomi%20%231%20%3F%3DBatangas&ll=14,121')
+  })
+})
+
+describe('pinSizeForCameraDistance', () => {
+  it('draws small logos while the whole country is in view', () => {
+    expect(pinSizeForCameraDistance(2_000_000)).toBe(30)
+    expect(pinSizeForCameraDistance(300_000)).toBe(30)
+  })
+
+  it('draws medium logos at city level', () => {
+    expect(pinSizeForCameraDistance(299_999)).toBe(38)
+    expect(pinSizeForCameraDistance(20_000)).toBe(38)
+  })
+
+  it('draws full-size logos at street level', () => {
+    expect(pinSizeForCameraDistance(19_999)).toBe(46)
+    expect(pinSizeForCameraDistance(900)).toBe(46)
+  })
+
+  it('falls back to the small country-view size for an unusable distance', () => {
+    expect(pinSizeForCameraDistance(Number.NaN)).toBe(30)
   })
 })

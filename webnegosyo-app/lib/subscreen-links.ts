@@ -6,7 +6,7 @@
  * door would bury them, so each one names the screen it hangs under, and the
  * parent draws those doors — as header buttons for the shift screens (Orders
  * → Kitchen, Tables, Schedule; POS → Drawer), as rows at its foot for the reading
- * screens (Analytics → Trends; Customers → Guest list, Rewards).
+ * screens (Analytics → Trends; Reports → Guest list, Rewards).
  *
  * Pure data + the shared visibility gate, so the bar's rules and the doors
  * between screens cannot disagree: a merchant who may not see Rewards is not
@@ -15,7 +15,13 @@
  * registry does not own.
  */
 
-import { isTabReachable, SUBSCREEN_TABS, type TabVisibilityContext } from "./tab-visibility";
+import {
+  isTabReachable,
+  REPORTS_DOORS,
+  REPORTS_TAB,
+  SUBSCREEN_TABS,
+  type TabVisibilityContext,
+} from "./tab-visibility";
 import { tabPresentation, type TabPresentation } from "./workspace-presentation";
 
 /**
@@ -32,9 +38,9 @@ export const SUBSCREEN_PARENTS: Readonly<Record<string, readonly string[]>> = {
   pos: ["pos-sales"],
   // The same sales, plotted over days rather than sliced by type.
   analytics: ["trends"],
-  // "Are they coming back?" is the question; who they are, and what keeps them
-  // coming, are the two follow-ups.
-  "customer-hub": ["customers", "loyalty"],
+  // The Reports dashboard asks "are they coming back?"; who they are, and the
+  // reward cards that keep them coming, are its two follow-ups.
+  [REPORTS_TAB]: REPORTS_DOORS,
 };
 
 export interface SubscreenLink extends TabPresentation {

@@ -27,13 +27,33 @@ import { resolveOrderBackend } from "../order-backend";
 import { syncOutbox } from "./sync-outbox";
 import { FRESH_SALE_GRACE_MS, summarizePendingSales } from "./pending-sales";
 import { useConnectivity } from "./use-connectivity";
+import {
+  getOrderEdits,
+  hydrateOrderEdits,
+  isOrderEditStuck,
+  subscribeOrderEdits,
+  type OrderEditRef,
+  type OrderEditsState,
+} from "./order-edits";
+import { syncOrderEdits } from "./sync-order-edits";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updatePaymentStatusRef =
   "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
+const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
+const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
 
 export function useOutbox(): OutboxState {
   return useSyncExternalStore(subscribeOutbox, getOutbox, getOutbox);
+}
+
+/** Order changes made offline, waiting to be written. */
+export function useOrderEdits(): OrderEditsState {
+  return useSyncExternalStore(subscribeOrderEdits, getOrderEdits, getOrderEdits);
+}
+
+function hydrateQueues(): Promise<unknown> {
+  return Promise.all([hydrateOutbox(), hydrateOrderEdits()]);
 }
 
 export interface PendingSaleCounts {
@@ -86,10 +106,24 @@ export function useOutboxSync(): void {
   const backend = resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl });
   const createOrder = useSafeMutation(createOrderRef);
   const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
+  const updateOrderStatus = useSafeMutation(updateOrderStatusRef);
+  const recordPayment = useSafeMutation(recordPaymentRef);
   const mutations = useRef({ createOrder, updatePaymentStatus });
   mutations.current = { createOrder, updatePaymentStatus };
+  // Order changes replay through the very hooks the order screens hold.
+  const editMutations = useRef<Record<OrderEditRef, (args: unknown) => Promise<unknown>>>({
+    "orders:updateOrderStatus": updateOrderStatus,
+    "orders:updatePaymentStatus": updatePaymentStatus,
+    "orders:recordPayment": recordPayment,
+  });
+  editMutations.current = {
+    "orders:updateOrderStatus": updateOrderStatus,
+    "orders:updatePaymentStatus": updatePaymentStatus,
+    "orders:recordPayment": recordPayment,
+  };
   const { status } = useConnectivity();
   const outbox = useOutbox();
+  const orderEdits = useOrderEdits();
 
   // A count, not a boolean: with write-behind every counter sale passes
   // through the outbox, and a second sale queued while the first is still
@@ -97,10 +131,13 @@ export function useOutboxSync(): void {
   const pendingCount = outbox.sales.filter(
     (sale) => sale.tenantId === tenantId && sale.backend === backend && !needsAttention(sale)
   ).length;
+  const pendingEditCount = orderEdits.edits.filter(
+    (edit) => edit.tenantId === tenantId && edit.backend === backend && !isOrderEditStuck(edit)
+  ).length;
 
   useEffect(() => {
     if (!tenantId || isDemo || status !== "online") {
-      void hydrateOutbox().catch((error) => console.warn("[offline] Could not read queued sales:", error));
+      void hydrateQueues().catch((error) => console.warn("[offline] Could not read queued sales:", error));
       return;
     }
     let active = true;
@@ -112,8 +149,18 @@ export function useOutboxSync(): void {
     };
     const sync = () => {
       if (AppState.currentState !== "active" || !isActive()) return;
-      void hydrateOutbox()
+      void hydrateQueues()
         .then(() => syncOutbox({ tenantId, backend, ...mutations.current, isActive }))
+        // Changes after sales: an order rung up and advanced offline must
+        // exist before its "preparing" is sent.
+        .then((sales) => sales.stoppedOffline
+          ? undefined
+          : syncOrderEdits({
+              tenantId,
+              backend,
+              isActive,
+              mutate: (ref, args) => editMutations.current[ref](args),
+            }))
         .catch((error) => console.warn("[offline] Could not sync queued sales:", error));
     };
     sync();
@@ -128,5 +175,5 @@ export function useOutboxSync(): void {
       clearInterval(timer);
       subscription.remove();
     };
-  }, [tenantId, userId, isDemo, orderBackend, convexUrl, backend, status, pendingCount]);
+  }, [tenantId, userId, isDemo, orderBackend, convexUrl, backend, status, pendingCount, pendingEditCount]);
 }

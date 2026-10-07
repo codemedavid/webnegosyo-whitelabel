@@ -11,7 +11,7 @@
  * screen down while the merchant is still mid-word. Everything here is total.
  */
 
-import { buildMessagePreview, SAMPLE_GUEST } from "./message-preview";
+import { buildMessagePreview, buildPreviewSegments, SAMPLE_GUEST } from "./message-preview";
 import type { SmsCustomer } from "./types";
 
 const STORE = "Nanay's Kitchen";
@@ -100,5 +100,33 @@ describe("SAMPLE_GUEST", () => {
 
     expect(preview.body).not.toMatch(/\s\s/);
     expect(preview.body.trim()).not.toBe("");
+  });
+});
+
+describe("buildPreviewSegments", () => {
+  it("marks the words a placeholder filled in, so the merchant sees what changes per guest", () => {
+    const segments = buildPreviewSegments("Hi {{firstName}}, see you at {{storeName}}!", guest(), STORE);
+
+    expect(segments.map((segment) => segment.text).join("")).toBe(
+      buildMessagePreview("Hi {{firstName}}, see you at {{storeName}}!", guest(), STORE).body
+    );
+    expect(segments.filter((segment) => segment.isPersonal).length).toBe(2);
+    expect(segments[0]).toEqual({ text: "Hi ", isPersonal: false });
+  });
+
+  it("falls back to the raw template, unmarked, when a placeholder is unknown", () => {
+    expect(buildPreviewSegments("Hi {{frstName}}", guest(), STORE)).toEqual([
+      { text: "Hi {{frstName}}", isPersonal: false },
+    ]);
+  });
+
+  it("speaks to the sample guest when there is no recipient", () => {
+    const segments = buildPreviewSegments("Hi {{firstName}}", null, STORE);
+
+    expect(segments[1]).toEqual({ text: "Maria", isPersonal: true });
+  });
+
+  it("is empty for a blank template", () => {
+    expect(buildPreviewSegments("   ", null, STORE)).toEqual([]);
   });
 });

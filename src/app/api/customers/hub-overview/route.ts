@@ -20,9 +20,15 @@ import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app
  * this returns customer intelligence, and a caller able to name any tenant here
  * could read another store's retention.
  *
- * Gated on `customer_hub_enabled`. That flag defaults FALSE, so a store whose
+ * Gated by `isCustomerHubOn`: always on for a platform store (its figures come
+ * straight from its own orders), and on `customer_hub_enabled` for a store
+ * whose orders live elsewhere — that flag defaults FALSE, so a store whose
  * ledger coverage has not been checked gets a clean refusal rather than a
  * confident repeat rate computed from a half-filled ledger.
+ *
+ * The response also carries the Reports dashboard (`overview.dashboard`), with
+ * saved names put on the best customers. Names are looked up for those few ids
+ * only, inside this tenant.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
@@ -80,32 +86,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     role: appUser.role,
   })
 
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const { fetchCustomerOrderFacts } = await import('@/lib/queries/customer-facts')
-  const { buildCustomerHubOverview } = await import('@/lib/customer-hub-overview')
-
-  const admin = createAdminClient()
-
-  const { data: tenant } = await admin
-    .from('tenants')
-    .select(
-      'id, customer_hub_enabled, order_backend, convex_deployment_url',
-    )
-    .eq('id', tenantId)
-    .single()
-
-  if (!tenant) {
-    return NextResponse.json({ error: 'Store not found.' }, { status: 404 })
-  }
-  if (tenant.customer_hub_enabled !== true) {
-    return NextResponse.json({ error: 'Customer Hub is not enabled for this store.' }, { status: 403 })
+  const { loadCustomerHubOverview } = await import('@/lib/customers/load-hub-overview')
+  const result = await loadCustomerHubOverview(tenantId, {
+    windowDays,
+    outletId: scope.kind === 'branch' ? scope.outletId : outletId,
+  })
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status })
   }
 
-  const read = await fetchCustomerOrderFacts(
-    { ...(tenant as Record<string, unknown>), id: tenantId } as never,
-    { days: windowDays, includeLifetime: true,
-      outletId: scope.kind === 'branch' ? scope.outletId : outletId, platformClient: admin as never },
-  )
-
-  return NextResponse.json({ success: true, overview: buildCustomerHubOverview(read) })
+  return NextResponse.json({ success: true, overview: result.overview })
 }

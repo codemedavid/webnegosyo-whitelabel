@@ -8,6 +8,7 @@ declare global {
     get: jest.Mock
     set: jest.Mock
     keys: jest.Mock
+    scan: jest.Mock
     del: jest.Mock
   }>
 }
