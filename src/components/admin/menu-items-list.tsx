@@ -105,7 +105,12 @@ export function MenuItemsList({
     [menuOverrides]
   )
   const [filters, setFilters] = useState<MenuListFilters>(EMPTY_MENU_FILTERS)
-  const [togglingId, setTogglingId] = useState<string | null>(null)
+  /**
+   * Every dish whose switch is mid-save. A set, not one id: a second dish
+   * flipped while the first is saving must not re-enable the first's switch
+   * (a tap there would race its own pending write).
+   */
+  const [togglingIds, setTogglingIds] = useState<ReadonlySet<string>>(() => new Set())
   const [isArranging, setIsArranging] = useState(false)
   /**
    * Switch positions the owner set that the server has not echoed back yet.
@@ -145,7 +150,7 @@ export function MenuItemsList({
   // Stable across renders (only setters and stable props inside), so memoised
   // rows keep their props identity.
   const handleToggleAvailability = useCallback(async (item: AdminMenuListItem, next: boolean) => {
-    setTogglingId(item.id)
+    setTogglingIds((prev) => new Set(prev).add(item.id))
     setPendingAvailability((prev) => ({ ...prev, [item.id]: next }))
     const revert = () =>
       setPendingAvailability((prev) => {
@@ -168,7 +173,11 @@ export function MenuItemsList({
       revert()
       toast.error(describeActionError(error))
     } finally {
-      setTogglingId(null)
+      setTogglingIds((prev) => {
+        const rest = new Set(prev)
+        rest.delete(item.id)
+        return rest
+      })
     }
   }, [tenantId, tenantSlug])
   const handleToggle = useCallback<ToggleAvailability>(
@@ -270,7 +279,7 @@ export function MenuItemsList({
                   isAvailable={pendingAvailability[item.id] ?? item.is_available}
                   branchLabel={branchLabels.get(item.id) ?? null}
                   isRecipeMissing={inventoryEnabled && linkedRecipeIds !== null && !linkedRecipeIds.has(item.id)}
-                  isToggling={togglingId === item.id}
+                  isToggling={togglingIds.has(item.id)}
                   onToggle={handleToggle}
                 />
               ))}

@@ -86,11 +86,15 @@ async function DashboardContent({
 
   const canSeeSales = hasPermission(userRole, 'analytics')
   const canSeeCustomers = hasPermission(userRole, 'customers')
+  // The strip reads the order queue and links to /orders; without the grant the
+  // read is refused and the link bounces, so the strip is left out entirely
+  // rather than claiming the orders "couldn't be read".
+  const canSeeOrders = hasPermission(userRole, 'orders')
   const scope = resolveBranchScope(userRole)
   const basePath = `/${tenantSlug}/admin`
 
   const [liveStats, data] = await Promise.all([
-    readLiveOrderStats(tenant),
+    canSeeOrders ? readLiveOrderStats(tenant) : Promise.resolve(null),
     canSeeSales || canSeeCustomers
       ? loadAdminDashboard(tenant.id, {
           range,
@@ -101,7 +105,7 @@ async function DashboardContent({
       : Promise.resolve(null),
   ])
 
-  const liveStrip = <LiveOrdersStrip stats={liveStats} ordersHref={`${basePath}/orders`} />
+  const liveStrip = canSeeOrders ? <LiveOrdersStrip stats={liveStats} ordersHref={`${basePath}/orders`} /> : null
   if (!data) {
     return (
       <div className="space-y-6">

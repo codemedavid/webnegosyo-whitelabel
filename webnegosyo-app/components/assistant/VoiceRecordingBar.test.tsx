@@ -89,3 +89,16 @@ test("unmounting mid-recording stops the recorder", async () => {
 
   expect(recorder.stop).toHaveBeenCalled();
 });
+
+test("Cancel tapped while the recorder is still preparing never starts it", async () => {
+  let ready: () => void = () => {};
+  recorder.prepareToRecordAsync.mockReturnValue(new Promise<void>((resolve) => (ready = resolve)));
+  const onFinish = jest.fn();
+  render(<VoiceRecordingBar onFinish={onFinish} />);
+
+  await act(async () => fireEvent.press(screen.getByLabelText("Cancel recording")));
+  await act(async () => ready());
+
+  expect(recorder.record).not.toHaveBeenCalled();
+  expect(onFinish).toHaveBeenCalledWith(null);
+});

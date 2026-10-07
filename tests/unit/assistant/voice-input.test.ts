@@ -113,6 +113,45 @@ describe('useVoiceInput', () => {
     expect(result.current.error).toMatch(/Allow microphone/)
   })
 
+  test('closing while the browser is still asking for the mic never starts recording', async () => {
+    let grant: (stream: unknown) => void = () => {}
+    getUserMedia.mockReturnValue(new Promise((resolve) => (grant = resolve)))
+    const { result, unmount } = renderHook(() => useVoiceInput({ tenantId: TENANT, onTranscript: jest.fn() }))
+
+    let starting: Promise<void> = Promise.resolve()
+    act(() => {
+      starting = result.current.start()
+    })
+    unmount()
+    await act(async () => {
+      grant({ getTracks: () => [{ stop: stopTrack }] })
+      await starting
+    })
+
+    expect(FakeRecorder.instances).toHaveLength(0)
+    expect(stopTrack).toHaveBeenCalled()
+  })
+
+  test('a recorder the browser refuses releases the mic and explains', async () => {
+    Object.assign(globalThis, {
+      MediaRecorder: class RefusingRecorder {
+        static isTypeSupported(): boolean {
+          return false
+        }
+        constructor() {
+          throw new DOMException('nope', 'NotSupportedError')
+        }
+      },
+    })
+    const { result } = renderHook(() => useVoiceInput({ tenantId: TENANT, onTranscript: jest.fn() }))
+
+    await act(() => result.current.start())
+
+    expect(result.current.state).toBe('idle')
+    expect(result.current.error).toMatch(/type instead/)
+    expect(stopTrack).toHaveBeenCalled()
+  })
+
   test('unmounting mid-recording releases the mic', async () => {
     const { result, unmount } = renderHook(() => useVoiceInput({ tenantId: TENANT, onTranscript: jest.fn() }))
 

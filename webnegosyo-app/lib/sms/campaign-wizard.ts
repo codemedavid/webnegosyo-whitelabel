@@ -122,7 +122,9 @@ export const AUDIENCE_SEGMENTS: readonly AudienceSegment[] = [
     id: "first_timers",
     title: "First-timers",
     description: "Ordered exactly once",
-    filter: { maxOrderCount: 1 },
+    // Both bounds: a guest captured with no order yet (order_count 0) is not
+    // a first-timer, and "at most one" alone would text them too.
+    filter: { minOrderCount: 1, maxOrderCount: 1 },
   },
   {
     id: "recent",
@@ -179,8 +181,13 @@ export function applyAudienceSegment(
 /** The audience as one plain sentence, for the review card. */
 export function describeAudience(filter: AudienceFilter): string {
   const parts: string[] = [];
-  if (filter.minOrderCount !== undefined) parts.push(`${filter.minOrderCount}+ orders`);
-  if (filter.maxOrderCount !== undefined) {
+  const isExactCount =
+    filter.minOrderCount !== undefined && filter.minOrderCount === filter.maxOrderCount;
+  if (isExactCount) {
+    const count = filter.minOrderCount as number;
+    parts.push(`exactly ${count} ${count === 1 ? "order" : "orders"}`);
+  } else if (filter.minOrderCount !== undefined) parts.push(`${filter.minOrderCount}+ orders`);
+  if (filter.maxOrderCount !== undefined && !isExactCount) {
     parts.push(`at most ${filter.maxOrderCount} ${filter.maxOrderCount === 1 ? "order" : "orders"}`);
   }
   if (filter.lastOrderOlderThanDays !== undefined) {
@@ -193,7 +200,7 @@ export function describeAudience(filter: AudienceFilter): string {
 
   if (parts.length === 0) return "Everyone who agreed to texts";
   const [first, ...rest] = parts;
-  const lead = /^\d|^at most/.test(first) ? `Guests with ${first}` : `Guests ${first}`;
+  const lead = /^\d|^at most|^exactly/.test(first) ? `Guests with ${first}` : `Guests ${first}`;
   return [lead, ...rest].join(", ");
 }
 

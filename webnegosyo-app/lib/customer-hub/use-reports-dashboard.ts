@@ -27,10 +27,17 @@ export function useCustomerDashboard(isAllowed: boolean): ResourceResult<HubOver
   const scope = useBranchScope();
   const outletId = scope.kind === "branch" ? scope.outletId : null;
 
-  const fetcher = useCallback(
-    () => fetchHubOverview({ tenantId: tenantId ?? "", outletId }),
-    [tenantId, outletId],
-  );
+  // An unreachable platform THROWS rather than resolving, so a refetch that
+  // fails on a flaky connection keeps the last good dashboard on screen (the
+  // query keeps its data and reports the error) instead of replacing it with
+  // an error card. "disabled"/"forbidden" are answers, not failures.
+  const fetcher = useCallback(async () => {
+    const result = await fetchHubOverview({ tenantId: tenantId ?? "", outletId });
+    if (!result.ok && result.reason === "unavailable") {
+      throw new Error("Customer figures could not be loaded.");
+    }
+    return result;
+  }, [tenantId, outletId]);
   const key = isAllowed && isHubOn && tenantId ? resourceKey("customer-dashboard", tenantId, outletId) : null;
   return useResource(key, fetcher, { staleTime: DASHBOARD_STALE_MS });
 }

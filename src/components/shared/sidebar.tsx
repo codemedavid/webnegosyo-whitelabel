@@ -257,10 +257,10 @@ export function MobileSidebar({ items, onLogout, tenantName, tenantLogoUrl, stor
   const navState = useSidebarNavState(entries)
   const pageTitle = activeEntryLabel(entries, navState.activeHref)
 
-  // A tap on a link navigates; the drawer should not linger over the new page.
-  useEffect(() => {
-    setIsOpen(false)
-  }, [navState.activeHref])
+  // A tap on a link closes the drawer — also when it leads to the page already
+  // lit (e.g. "Orders" from an order's detail page, where the active entry
+  // does not change).
+  const closeDrawer = useCallback(() => setIsOpen(false), [])
 
   return (
     <>
@@ -313,7 +313,7 @@ export function MobileSidebar({ items, onLogout, tenantName, tenantLogoUrl, stor
           <StoreCard tenantName={tenantName} tenantLogoUrl={tenantLogoUrl} storefrontHref={storefrontHref} isCollapsed={false} />
 
           <nav aria-label="Admin" className={cn(NAV_SCROLL, 'mt-3 px-3 pb-3')}>
-            <SidebarNav entries={entries} state={navState} isTouch />
+            <SidebarNav entries={entries} state={navState} isTouch onNavigate={closeDrawer} />
           </nav>
 
           {onLogout && (

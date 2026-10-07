@@ -113,3 +113,36 @@ export function factsForModel(result: ToolResult): Record<string, unknown> {
   if (JSON.stringify(scrubbed).length <= MAX_FACTS_CHARS) return scrubbed
   return { ...(trimLists(scrubbed) as Record<string, unknown>), truncated: true }
 }
+
+interface StoredPartLike {
+  type: string
+  output?: unknown
+  [key: string]: unknown
+}
+
+function isStoredToolPart(part: StoredPartLike): boolean {
+  return part.type.startsWith('tool-') || part.type === 'dynamic-tool'
+}
+
+function toModelSafeOutput(output: unknown): unknown {
+  if (!output || typeof output !== 'object') return output
+  const facts = (output as { facts?: unknown }).facts
+  // Anything that is not a tool result is withheld rather than forwarded raw.
+  if (!facts || typeof facts !== 'object') return { facts: {} }
+  return { facts: factsForModel({ facts: facts as Record<string, unknown> }) }
+}
+
+/**
+ * Stored tool outputs cut down to the facts the model may read, BEFORE the
+ * history is converted for the model. `toModelOutput` only runs for tools in
+ * THIS turn's tool set; a tool the caller has since lost (a revoked
+ * permission, a store feature switched off, a retired tool) would otherwise
+ * hand the model its whole stored output — the card with real names, ids and
+ * amounts. The browser keeps the full parts; only the model's copy is cut.
+ */
+export function withModelSafeToolOutputs<M extends { parts: readonly StoredPartLike[] }>(messages: readonly M[]): M[] {
+  return messages.map((message) => ({
+    ...message,
+    parts: message.parts.map((part) => (isStoredToolPart(part) && 'output' in part ? { ...part, output: toModelSafeOutput(part.output) } : part)),
+  }))
+}

@@ -7,6 +7,8 @@
  * rows, or merchants comparing screens would see two different "today".
  */
 
+import { manilaDayStart } from "@/lib/dashboard/periods";
+
 export interface OrderStatsRow {
   status?: string | null;
   total?: number | string | null;
@@ -48,9 +50,11 @@ export function summarizeOrderStats(
   };
 }
 
-/** Local midnight for the given moment, as the ISO string postgrest expects. */
+/**
+ * Merchant-local (Asia/Manila) midnight for the given moment, as the ISO string
+ * postgrest expects. Not the server's local midnight: Vercel runs in UTC, where
+ * "today" began at 08:00 Manila and dropped every order before then.
+ */
 export function startOfTodayISO(now: Date = new Date()): string {
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
-  return midnight.toISOString();
+  return new Date(manilaDayStart(now.getTime())).toISOString();
 }

@@ -8,7 +8,7 @@ import type { OnboardingView } from '@/lib/onboarding/view'
 import { removeOnboardingPhoto, submitOnboarding, uploadOnboardingPhoto } from './onboarding-api'
 import { Field, INPUT_CLASS, ONBOARDING_COLORS, PrimaryButton } from './onboarding-ui'
 import { HoursStep, MenuStep, OrderingStep, StoreStep } from './wizard-steps'
-import { WIZARD_STEPS, draftToAnswers, emptyDraft, stepBlocker, type WizardDraft, type WizardStep } from './wizard-draft'
+import { WIZARD_STEPS, draftToAnswers, emptyDraft, restoreDraft, stepBlocker, type WizardDraft, type WizardStep } from './wizard-draft'
 
 const STEP_TITLES: Record<WizardStep, { title: string; subtitle: string }> = {
   store: { title: 'Your store', subtitle: 'The name and look your customers will see.' },
@@ -23,9 +23,18 @@ const draftKey = (token: string) => `onboarding-draft:${token.slice(0, 12)}`
 function readSavedDraft(token: string, fallback: WizardDraft): WizardDraft {
   try {
     const raw = window.localStorage.getItem(draftKey(token))
-    return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<WizardDraft>) } : fallback
+    return raw ? restoreDraft(fallback, JSON.parse(raw)) : fallback
   } catch {
     return fallback
+  }
+}
+
+/** The draft holds wallet numbers and names; drop it once the server has the answers. */
+function clearSavedDraft(token: string): void {
+  try {
+    window.localStorage.removeItem(draftKey(token))
+  } catch {
+    // Storage unavailable: nothing was saved either.
   }
 }
 
@@ -111,8 +120,12 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
 
     setIsSubmitting(true)
     const result = await submitOnboarding(token, mapped.answers, password)
-    setIsSubmitting(false)
-    if (!result.ok) return setError(result.error)
+    if (!result.ok) {
+      setIsSubmitting(false)
+      return setError(result.error)
+    }
+    // Stays "Creating your store…" until the parent swaps in the progress view.
+    clearSavedDraft(token)
     onSubmitted()
   }
 

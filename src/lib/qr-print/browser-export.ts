@@ -14,6 +14,8 @@ const LOGO_FETCH_QUALITY = 90
 /** PNGs are exported at twice the artwork's size: ~1600 × 2200 px per card. */
 export const PNG_SCALE = 2
 const PRINT_FRAME_CLEANUP_MS = 60_000
+/** A print sheet that has not loaded by now never will; give the buttons back. */
+export const PRINT_FRAME_LOAD_TIMEOUT_MS = 15_000
 
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -119,12 +121,26 @@ export async function downloadPngZip(entries: ZipEntry[], zipName: string): Prom
 }
 
 /** Print a sheet from a hidden iframe, so only the codes reach the paper. */
-export function printSheet(html: string): Promise<void> {
+export function printSheet(html: string, loadTimeoutMs: number = PRINT_FRAME_LOAD_TIMEOUT_MS): Promise<void> {
   return new Promise((resolve, reject) => {
     const frame = document.createElement('iframe')
     frame.setAttribute('aria-hidden', 'true')
     frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+
+    // The caller disables its export buttons until this settles, so it must
+    // settle even when the frame never loads or errors.
+    const loadTimer = setTimeout(() => {
+      frame.remove()
+      reject(new Error('The print sheet did not load. Please try again.'))
+    }, loadTimeoutMs)
+
+    frame.onerror = () => {
+      clearTimeout(loadTimer)
+      frame.remove()
+      reject(new Error('Could not open the print sheet'))
+    }
     frame.onload = async () => {
+      clearTimeout(loadTimer)
       const win = frame.contentWindow
       if (!win) {
         frame.remove()

@@ -27,8 +27,15 @@ export function OnboardingFlow({ token, initialView }: { token: string; initialV
     return () => clearInterval(timer)
   }, [isBuilding, refresh])
 
+  // The server accepted the request, so the build is queued: show progress at
+  // once and let the poll fill in the steps, even if this first read fails.
+  const markQueued = useCallback(() => {
+    setView((current) => ({ ...current, status: 'queued' }))
+    void refresh()
+  }, [refresh])
+
   if (view.status === 'awaiting_details') {
-    return <OnboardingWizard token={token} view={view} onSubmitted={() => void refresh()} />
+    return <OnboardingWizard token={token} view={view} onSubmitted={markQueued} />
   }
-  return <OnboardingProgress token={token} view={view} onRetried={() => setView({ ...view, status: 'queued' })} />
+  return <OnboardingProgress token={token} view={view} onRetried={markQueued} />
 }

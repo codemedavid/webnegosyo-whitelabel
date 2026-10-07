@@ -150,6 +150,10 @@ export async function readConvexSales(
         byOrder.set(item.orderId, [...(byOrder.get(item.orderId) ?? []), toItem(item)])
       }
       sales = sales.map((sale) => (wanted.has(sale.id) ? { ...sale, items: byOrder.get(sale.id) ?? [] } : sale))
+      // Newest-first and capped: a full page means the window's oldest lines may be missing.
+      if (items.value.length >= CONVEX_ROW_LIMIT) {
+        notes.push('This store has more order lines than one read can hold; top items may undercount older days.')
+      }
     } else {
       notes.push(`Order items could not be read, so top items are unavailable (${messageOf(items.error)}).`)
     }

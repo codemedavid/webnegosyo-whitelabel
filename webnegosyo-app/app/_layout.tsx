@@ -45,6 +45,7 @@ import {
   bindSessionLossToAuth,
 } from "../lib/session-loss";
 import { requeueSignedOutRefusals } from "../lib/offline/order-outbox";
+import { requeueSignedOutEditRefusals } from "../lib/offline/order-edits";
 
 // Bound once for the life of the process: a sign-out anywhere drops the
 // offline session snapshot, so the next launch cannot open the old store.
@@ -64,6 +65,9 @@ bindSessionLossToAuth({
   onSignedIn: () => {
     requeueSignedOutRefusals().catch((error) => {
       console.warn("[outbox] Could not requeue sales refused while signed out:", error);
+    });
+    requeueSignedOutEditRefusals().catch((error) => {
+      console.warn("[outbox] Could not requeue order changes refused while signed out:", error);
     });
   },
 });

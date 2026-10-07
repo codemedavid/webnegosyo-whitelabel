@@ -6,6 +6,7 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import { resolveOrderBackend } from '@/lib/order-backend'
 import { resolveBranchScope } from './branch-scope'
 import { scopeOrdersQuery } from './branch-scope-query'
+import { readPagesConcurrently } from '@/lib/dashboard/paged-read'
 import { compareBranches, type AnalyticsOrderLike, type BranchComparisonRow } from './branch-analytics'
 import type { RosterStaff } from './branch-roster'
 import type { BranchMenuItem } from './branch-menu-item'
@@ -28,13 +29,16 @@ import type { Tenant } from '@/types/database'
  */
 const BRANCH_METRIC_COLUMNS = 'outlet_id, total, status, customer_data'
 
+/** Page size is PostgREST's row cap; the ceiling bounds one shared-DB read. */
+const BRANCH_METRIC_PAGING = { pageSize: 1000, maxRows: 50_000, concurrency: 4 } as const
+
 /**
  * Takings per branch, computed here so the page ships a handful of rows to the
  * browser instead of the store's order history.
  *
- * The figures are unchanged: the same orders as before (newest first, up to the
- * API's row ceiling — the legacy `getOrdersByTenant` read had no window either),
- * the same `compareBranches`. What changed is that the comparison runs on the
+ * The figures cover the store's order history (newest first, paged past the
+ * API's 1000-row cap up to BRANCH_METRIC_PAGING.maxRows), through the same
+ * `compareBranches`. What changed is that the comparison runs on the
  * server over four columns, where it used to run in the browser over full order
  * rows with their line items, serialized into the page.
  *
@@ -53,14 +57,27 @@ export async function loadBranchMetrics(tenant: Tenant): Promise<BranchCompariso
 
   const { userRole } = await verifyTenantPermission(tenant.id, 'orders', 'view')
   const supabase = await createClient()
+  const scope = resolveBranchScope(userRole)
 
-  const { data, error } = await scopeOrdersQuery(
-    supabase.from('orders').select(BRANCH_METRIC_COLUMNS).eq('tenant_id', tenant.id),
-    resolveBranchScope(userRole)
-  ).order('created_at', { ascending: false })
+  // Paged past PostgREST's 1000-row cap: one bare read stopped at the newest
+  // 1000 orders, so a busy store's branch figures silently covered days, not
+  // its history. `id` breaks created_at ties so offset pages never overlap.
+  const { rows, error } = await readPagesConcurrently<AnalyticsOrderLike>(
+    async (from, to) => {
+      const { data, error: pageError } = await scopeOrdersQuery(
+        supabase.from('orders').select(BRANCH_METRIC_COLUMNS).eq('tenant_id', tenant.id),
+        scope
+      )
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)
+      return { data: (data ?? null) as unknown as AnalyticsOrderLike[] | null, error: pageError }
+    },
+    BRANCH_METRIC_PAGING
+  )
 
-  if (error) throw error
-  return compareBranches((data ?? []) as unknown as AnalyticsOrderLike[])
+  if (error) throw new Error(error)
+  return compareBranches(rows)
 }
 
 /**

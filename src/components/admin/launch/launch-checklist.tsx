@@ -56,7 +56,11 @@ export function LaunchChecklist(props: LaunchChecklistProps) {
 
   function launch() {
     startTransition(async () => {
-      const result = await requestStoreLaunchAction(tenantId, tenantSlug)
+      // A dropped connection rejects the action call itself; say so instead of crashing the page.
+      const result = await requestStoreLaunchAction(tenantId, tenantSlug).catch((error: unknown) => {
+        console.error('[launch] request failed', error)
+        return { success: false as const, error: 'Connection problem. Check your internet and try again.' }
+      })
       if (!result.success) return void toast.error(result.error)
       setIsRequested(true)
       if (result.outcome === 'live') {
@@ -74,7 +78,14 @@ export function LaunchChecklist(props: LaunchChecklistProps) {
         <h1 className="text-2xl font-bold tracking-tight">Launch checklist</h1>
         <p className="text-muted-foreground">{statusLine({ isLive, isLaunchRequested: isRequested, isPaymentConfirmed: props.isPaymentConfirmed })}</p>
         <div className="flex items-center gap-3">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+          <div
+            role="progressbar"
+            aria-label="Launch readiness"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={readiness.score}
+            className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
+          >
             <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${readiness.score}%` }} />
           </div>
           <span className="text-sm font-semibold tabular-nums">{readiness.score}%</span>

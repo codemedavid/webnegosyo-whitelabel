@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   hiddenAdminSidebarPaths,
@@ -172,6 +172,8 @@ interface SidebarNavProps {
   /** Taller rows for the touch drawer. */
   isTouch?: boolean
   onExpandRail?: () => void
+  /** A link was followed — the mobile drawer closes on it (even when the URL stays the same). */
+  onNavigate?: () => void
 }
 
 const ROW =
@@ -195,7 +197,7 @@ function ActiveBar() {
   return <span aria-hidden className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-wn-amber" />
 }
 
-export function SidebarNav({ entries, state, isCollapsed = false, isTouch = false, onExpandRail }: SidebarNavProps) {
+export function SidebarNav({ entries, state, isCollapsed = false, isTouch = false, onExpandRail, onNavigate }: SidebarNavProps) {
   const rowHeight = isTouch ? 'h-11 text-[14.5px]' : 'h-9 text-[13.5px]'
 
   return (
@@ -222,9 +224,16 @@ export function SidebarNav({ entries, state, isCollapsed = false, isTouch = fals
                 isTouch={isTouch}
                 rowHeight={rowHeight}
                 onExpandRail={onExpandRail}
+                onNavigate={onNavigate}
               />
             ) : (
-              <NavLink item={entry} isActive={entry.href === state.activeHref} isCollapsed={isCollapsed} rowHeight={rowHeight} />
+              <NavLink
+                item={entry}
+                isActive={entry.href === state.activeHref}
+                isCollapsed={isCollapsed}
+                rowHeight={rowHeight}
+                onNavigate={onNavigate}
+              />
             )}
           </li>
         )
@@ -238,11 +247,13 @@ function NavLink({
   isActive,
   isCollapsed,
   rowHeight,
+  onNavigate,
 }: {
   item: SidebarItem
   isActive: boolean
   isCollapsed: boolean
   rowHeight: string
+  onNavigate?: () => void
 }) {
   const Icon = item.icon
   return (
@@ -250,6 +261,7 @@ function NavLink({
       <Link
         href={item.href}
         prefetch={NAV_PREFETCH}
+        onClick={onNavigate}
         aria-current={isActive ? 'page' : undefined}
         aria-label={isCollapsed ? item.label : undefined}
         className={cn(ROW, rowHeight, isActive ? ROW_ACTIVE : ROW_IDLE, isCollapsed && 'justify-center px-0')}
@@ -276,6 +288,7 @@ function NavGroup({
   isTouch,
   rowHeight,
   onExpandRail,
+  onNavigate,
 }: {
   group: SidebarGroup
   state: SidebarNavState
@@ -283,11 +296,13 @@ function NavGroup({
   isTouch: boolean
   rowHeight: string
   onExpandRail?: () => void
+  onNavigate?: () => void
 }) {
   const Icon = group.icon
   const isOpen = state.expandedGroups.has(group.label)
   const holdsActive = group.children.some((child) => child.href === state.activeHref)
-  const panelId = `nav-group-${group.label.toLowerCase().replace(/\W+/g, '-')}`
+  // Unique per render site: the desktop rail and the mobile drawer can both be mounted.
+  const panelId = useId()
 
   const handleClick = () => {
     if (isCollapsed) {
@@ -342,6 +357,7 @@ function NavGroup({
                 <Link
                   href={child.href}
                   prefetch={NAV_PREFETCH}
+                  onClick={onNavigate}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
                     ROW,

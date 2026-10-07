@@ -9,6 +9,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listVouchersAction } from '@/app/actions/voucher-admin'
+import { readPaged, type PagedRows } from '@/lib/assistant/data/paged'
 import type { Voucher } from '@/lib/vouchers/types'
 
 const REDEMPTION_LIMIT = 5000
@@ -26,24 +27,34 @@ export interface AssistantVouchers {
   isRedemptionCountCapped: boolean
 }
 
+interface RedemptionRow { voucher_id: string; amount_discounted: number | string | null }
+
 async function readRedemptions(tenantId: string, now: number): Promise<{ uses: Map<string, VoucherUse>; isCapped: boolean } | null> {
   const client = createAdminClient() as unknown as SupabaseClient
-  const { data, error } = await client
-    .from('voucher_redemptions')
-    .select('voucher_id, amount_discounted')
-    .eq('tenant_id', tenantId)
-    .gte('created_at', new Date(now - WINDOW_DAYS * DAY_MS).toISOString())
-    .limit(REDEMPTION_LIMIT)
-  if (error) {
-    console.error('[assistant] voucher redemptions unavailable', { tenantId, message: error.message })
+  const since = new Date(now - WINDOW_DAYS * DAY_MS).toISOString()
+  let read: PagedRows<RedemptionRow>
+  try {
+    read = await readPaged<RedemptionRow>(
+      (from, to) =>
+        client
+          .from('voucher_redemptions')
+          .select('voucher_id, amount_discounted')
+          .eq('tenant_id', tenantId)
+          .gte('created_at', since)
+          .order('id')
+          .range(from, to),
+      REDEMPTION_LIMIT,
+    )
+  } catch (error) {
+    console.error('[assistant] voucher redemptions unavailable', { tenantId, message: error instanceof Error ? error.message : String(error) })
     return null
   }
   const uses = new Map<string, VoucherUse>()
-  for (const row of (data ?? []) as Array<{ voucher_id: string; amount_discounted: number | string | null }>) {
+  for (const row of read.rows) {
     const current = uses.get(row.voucher_id) ?? { uses: 0, discounted: 0 }
     uses.set(row.voucher_id, { uses: current.uses + 1, discounted: current.discounted + (Number(row.amount_discounted) || 0) })
   }
-  return { uses, isCapped: (data ?? []).length >= REDEMPTION_LIMIT }
+  return { uses, isCapped: read.isCapped }
 }
 
 /** Throws the list's own error (e.g. no `vouchers` permission) for the tool to report. */

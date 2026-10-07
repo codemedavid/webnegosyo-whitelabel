@@ -64,7 +64,9 @@ function placeMarker(handles: MapHandles, point: LatLng, onDragEnd: (point: LatL
 export function AppleMapCanvas({ pin, initialCenter, onPick, onError, className = DEFAULT_SIZE_CLASS }: AppleMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handlesRef = useRef<MapHandles | null>(null)
-  const initialPinRef = useRef(pin)
+  // The pin as of now: MapKit can finish loading after the pin has moved
+  // (a pick made while the map was still loading), and must open on it.
+  const latestPinRef = useRef(pin)
   const initialCenterRef = useRef(initialCenter)
   const [hasPin, setHasPin] = useState(pin !== null)
   const onPickRef = useRef(onPick)
@@ -84,7 +86,7 @@ export function AppleMapCanvas({ pin, initialCenter, onPick, onError, className 
     loadMapKit()
       .then((mapkit) => {
         if (isCancelled) return
-        const start = initialPinRef.current ?? initialCenterRef.current
+        const start = latestPinRef.current ?? initialCenterRef.current
         const map = new mapkit.Map(container, {
           center: new mapkit.Coordinate(start.lat, start.lng),
           cameraDistance: STREET_CAMERA_DISTANCE_M,
@@ -97,7 +99,10 @@ export function AppleMapCanvas({ pin, initialCenter, onPick, onError, className 
 
         const handles: MapHandles = { mapkit, map, marker: null }
         const onDragEnd = (point: LatLng) => onPickRef.current(point, null)
-        if (initialPinRef.current) placeMarker(handles, initialPinRef.current, onDragEnd)
+        if (latestPinRef.current) {
+          placeMarker(handles, latestPinRef.current, onDragEnd)
+          setHasPin(true)
+        }
 
         const movePin = (point: LatLng, placeName: string | null) => {
           placeMarker(handles, point, onDragEnd)
@@ -117,6 +122,8 @@ export function AppleMapCanvas({ pin, initialCenter, onPick, onError, className 
           const point = toLatLng(map.convertPointOnPageToCoordinate(event.pointOnPage))
           // Let a business `select` from the same tap land first.
           setTimeout(() => {
+            // The map may have been destroyed (dialog closed) in between.
+            if (isCancelled) return
             if (Date.now() - lastFeatureTapAt > FEATURE_TAP_GRACE_MS) movePin(point, null)
           }, 0)
         })
@@ -136,6 +143,7 @@ export function AppleMapCanvas({ pin, initialCenter, onPick, onError, className 
   }, [])
 
   useEffect(() => {
+    latestPinRef.current = pin
     const handles = handlesRef.current
     if (!handles || !pin) return
     // The pin already sits here when the diner put it there; only outside moves recentre.

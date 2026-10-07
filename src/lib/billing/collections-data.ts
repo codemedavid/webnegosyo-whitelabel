@@ -75,6 +75,9 @@ export async function loadPaymentLedger(admin: AdminClient): Promise<PaymentLedg
       .from('subscription_payments')
       .select('tenant_id, amount_php, period_start, period_end, paid_at, created_at, method, reference')
       .order('created_at', { ascending: false })
+      // Tie-break: bulk-recorded payments share a timestamp, and offset pages
+      // over a non-unique order can repeat or skip rows at a page boundary.
+      .order('id', { ascending: true })
       .range(from, from + LEDGER_PAGE - 1)
     if (error) {
       console.error('[subscriptions] payment ledger read failed:', error.message)

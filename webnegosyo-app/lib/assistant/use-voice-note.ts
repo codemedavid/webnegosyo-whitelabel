@@ -24,6 +24,8 @@ export function useVoiceNote(tenantId: string, onTranscript: (text: string) => v
   const [state, setState] = useState<VoiceNoteState>("idle");
   const [error, setError] = useState<string | null>(null);
   const stateRef = useRef<VoiceNoteState>("idle");
+  /** Bumped by cancel: a start still waiting on the permission prompt must not open the recorder after it. */
+  const attemptRef = useRef(0);
   const onTranscriptRef = useRef(onTranscript);
   useEffect(() => {
     stateRef.current = state;
@@ -33,14 +35,22 @@ export function useVoiceNote(tenantId: string, onTranscript: (text: string) => v
   }, [onTranscript]);
 
   const start = useCallback(async () => {
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
     setError(null);
     try {
       const { granted } = await requestRecordingPermissionsAsync();
+      if (attemptRef.current !== attempt) return;
       if (!granted) {
         setError(MIC_DENIED_ERROR);
         return;
       }
       await setAudioModeAsync({ allowsRecording: true });
+      // Closed while the audio mode was switching: give the mode back, record nothing.
+      if (attemptRef.current !== attempt) {
+        releaseRecordingMode();
+        return;
+      }
       setState("recording");
     } catch {
       releaseRecordingMode();
@@ -71,6 +81,7 @@ export function useVoiceNote(tenantId: string, onTranscript: (text: string) => v
 
   /** Closing the panel mid-recording: unmounting the bar stops the recorder. */
   const cancel = useCallback(() => {
+    attemptRef.current += 1;
     if (stateRef.current !== "recording") return;
     releaseRecordingMode();
     setState("idle");

@@ -15,6 +15,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { OrderBackend } from "../order-backend";
+import { isSignedOutRefusal } from "./order-outbox";
 
 export const ORDER_EDITS_STORAGE_KEY = "pos_offline_order_edits_v1";
 
@@ -159,6 +160,23 @@ export function recordOrderEditFailure(editId: string, message: string): Promise
         )
       : edits
   );
+}
+
+/**
+ * Give changes parked by a signed-out device (an expired or missing token,
+ * answered as the anonymous role) a fresh set of attempts — the twin of
+ * `requeueSignedOutRefusals` for sales. Called on each sign-in, so a change
+ * the server really refuses is still bounded per sign-in. Returns the count.
+ */
+export async function requeueSignedOutEditRefusals(): Promise<number> {
+  let requeued = 0;
+  await updateEdits((edits) => {
+    const parked = edits.filter((edit) => isOrderEditStuck(edit) && isSignedOutRefusal(edit.lastError));
+    requeued = parked.length;
+    if (requeued === 0) return edits;
+    return edits.map((edit) => (parked.includes(edit) ? { ...edit, attempts: 0, lastError: null } : edit));
+  });
+  return requeued;
 }
 
 /**

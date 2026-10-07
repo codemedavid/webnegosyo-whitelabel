@@ -136,4 +136,32 @@ describe("syncOrderEdits", () => {
     expect(deps.remove).toHaveBeenCalledWith("e1");
     expect(result.synced).toBe(1);
   });
+
+  it("sends a change queued during a run straight after it, without retrying a refusal", async () => {
+    const edits: QueuedOrderEdit[] = [edit("e1")];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const mutate = jest.fn(async (_ref: string, args: Record<string, unknown>) => {
+      if (args.status === "preparing") {
+        await gate;
+        throw new Error("Not allowed");
+      }
+    });
+    const { deps } = setup([], { mutate, listEdits: () => edits });
+
+    const first = syncOrderEdits(deps);
+    edits.push(edit("e2", { orderId: "order-2", args: { orderId: "order-2", status: "ready" }, createdAt: 2_000 }));
+    const joined = syncOrderEdits(deps);
+    release();
+
+    const result = await first;
+    expect(await joined).toBe(result);
+    // e1 tried once (refused), e2 sent by the follow-up pass.
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(deps.recordFailure).toHaveBeenCalledTimes(1);
+    expect(deps.remove).toHaveBeenCalledWith("e2");
+    expect(result).toMatchObject({ synced: 1, refused: 1 });
+  });
 });

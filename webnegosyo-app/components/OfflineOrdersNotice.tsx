@@ -11,6 +11,7 @@ import { useAuthStore } from "../stores/auth-store";
 import { usePendingSaleCounts, useOrderEdits } from "../lib/offline/use-outbox-sync";
 import { isOrderEditStuck } from "../lib/offline/order-edits";
 import { offlineOrdersNotice, type OfflineOrdersTone } from "../lib/offline/offline-orders-notice";
+import { resolveOrderBackend } from "../lib/order-backend";
 
 interface OfflineOrdersNoticeProps {
   isOffline: boolean;
@@ -20,10 +21,15 @@ interface OfflineOrdersNoticeProps {
 
 export function OfflineOrdersNotice({ isOffline, savedAt }: OfflineOrdersNoticeProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const backend = resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl });
   const sales = usePendingSaleCounts();
   const { edits } = useOrderEdits();
   const mine = edits.filter((edit) => edit.tenantId === tenantId);
-  const stuckEdits = mine.filter(isOrderEditStuck).length;
+  // Like a sale, a change queued under another backend (the store has since
+  // moved) is never replayed here, so it needs a person — not "Syncing…" forever.
+  const stuckEdits = mine.filter((edit) => isOrderEditStuck(edit) || edit.backend !== backend).length;
 
   const notice = offlineOrdersNotice({
     isOffline,

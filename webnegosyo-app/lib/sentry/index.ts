@@ -4,6 +4,8 @@ import * as Updates from "expo-updates";
 import { useAuthStore } from "../../stores/auth-store";
 import {
   isSentryEnabled,
+  scrubBreadcrumb,
+  scrubEvent,
   sentryEnvironment,
   sentryScopeFromAuth,
   type SentryAuthSlice,
@@ -43,6 +45,10 @@ Sentry.init({
   attachScreenshot: false,
   // Errors only for now; performance tracing can be switched on later.
   tracesSampleRate: 0,
+  // Request URLs carry PostgREST filters (a customer's phone number) and
+  // console lines can quote contacts; neither may ride along with an event.
+  beforeBreadcrumb: (breadcrumb) => scrubBreadcrumb(breadcrumb),
+  beforeSend: (event) => scrubEvent(event),
 });
 
 function pickAuth(state: SentryAuthSlice): SentryAuthSlice {

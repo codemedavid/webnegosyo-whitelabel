@@ -88,6 +88,44 @@ describe('FunnelOrderForm', () => {
     )
   })
 
+  it('stays pending after the lead is saved so a second tap cannot file a duplicate', async () => {
+    submitCheckoutForm.mockResolvedValue({
+      data: { reference_number: 'SM-123', amount: 999 },
+      error: null,
+    })
+    await renderForm()
+    await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
+
+    const user = await fillValidForm()
+    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
+    await waitFor(() => expect(push).toHaveBeenCalled())
+
+    const button = screen.getByRole('button') as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    await user.click(button)
+    expect(submitCheckoutForm).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-arms the button when the lead is refused', async () => {
+    submitCheckoutForm.mockResolvedValue({ data: null, error: 'Invalid payment term' })
+    await renderForm()
+    await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
+
+    const user = await fillValidForm()
+    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
+
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: /claim my setup slot/i }) as HTMLButtonElement).disabled).toBe(false)
+    )
+  })
+
+  it('says so when no payment method is available', async () => {
+    fetchActivePlatformPaymentMethods.mockResolvedValue([])
+    await renderForm()
+
+    expect(await screen.findByText(/hindi ma-load ang payment options/i)).toBeTruthy()
+  })
+
   it('does not submit while required fields are missing', async () => {
     await renderForm()
     await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())

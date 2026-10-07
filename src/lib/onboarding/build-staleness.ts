@@ -13,6 +13,13 @@ import type { OnboardingStatus } from './repository'
 /** Longer than the route's 300s maxDuration, so a live build is never taken over. */
 export const STALE_BUILD_MS = 6 * 60 * 1000
 
+/**
+ * Builds the buyer may start from the wizard (first run included). Each one is
+ * a paid vision read of the menu photos; past this, staff retry from the
+ * checkout-leads console, which has no cap.
+ */
+export const MAX_BUYER_BUILD_ATTEMPTS = 5
+
 export interface BuildLiveness {
   status: OnboardingStatus
   tenantId: string | null

@@ -248,7 +248,11 @@ function CustomerRow({ customer, isExpanded, onToggle }: CustomerRowProps) {
           {customer.order_count}
         </td>
 
-        <td className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground md:table-cell">
+        {/* Relative to "now", which can tick over between the server render and hydration. */}
+        <td
+          className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground md:table-cell"
+          suppressHydrationWarning
+        >
           {lastOrder ?? '—'}
         </td>
 

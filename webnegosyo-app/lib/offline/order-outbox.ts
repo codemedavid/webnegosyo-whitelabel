@@ -234,7 +234,7 @@ const SIGNED_OUT_REFUSAL_PATTERNS: readonly RegExp[] = [
   /invalid JWT/i,
 ];
 
-function isSignedOutRefusal(message: string | null): boolean {
+export function isSignedOutRefusal(message: string | null): boolean {
   return message !== null && SIGNED_OUT_REFUSAL_PATTERNS.some((pattern) => pattern.test(message));
 }
 

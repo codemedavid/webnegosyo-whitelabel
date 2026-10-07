@@ -21,9 +21,12 @@ export default async function NewMenuItemPage({
     return <div>Tenant not found</div>
   }
 
+  const isModifierGroupsTenant = tenant.modifier_groups_enabled ?? false
   const [categories, linkableItems] = await Promise.all([
     getCachedCategoriesByTenant(tenant.id),
-    getLinkableMenuItems(tenant.id).catch(() => []),
+    // Only the modifier-groups editor reads these, and the query scans every
+    // dish the tenant has — skipped for every other store, as on the edit page.
+    isModifierGroupsTenant ? getLinkableMenuItems(tenant.id).catch(() => []) : Promise.resolve([]),
   ])
 
   const menuHref = `/${tenantSlug}/admin/menu`
@@ -57,7 +60,7 @@ export default async function NewMenuItemPage({
         tenantId={tenant.id}
         tenantSlug={tenantSlug}
         menuEngineeringEnabled={tenant.menu_engineering_enabled}
-        modifierGroupsEnabled={tenant.modifier_groups_enabled ?? false}
+        modifierGroupsEnabled={isModifierGroupsTenant}
         linkableItems={linkableItems}
         inventoryEnabled={tenant.inventory_enabled ?? false}
         presellEnabled={tenant.presell_enabled ?? false}

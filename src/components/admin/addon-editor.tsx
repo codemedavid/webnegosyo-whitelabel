@@ -1,7 +1,6 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { CirclePlus } from 'lucide-react'
 import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import { AddRowButton, OptionList, OptionRow } from '@/components/admin/menu-editor/option-rows'
 import { DISH_SECTION_IDS } from '@/components/admin/menu-editor/dish-sections'

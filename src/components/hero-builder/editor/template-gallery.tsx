@@ -136,7 +136,9 @@ function ScaledPreview({ design }: { design: HeroDesignV5 }) {
   }, [])
 
   return (
-    <div ref={frameRef} className="pointer-events-none relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-neutral-50" aria-hidden="true">
+    // `inert`: the preview renders the template's real links and buttons, which
+    // must not be tab stops inside the card's own button.
+    <div ref={frameRef} inert className="pointer-events-none relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-neutral-50" aria-hidden="true">
       <div className="absolute left-0 top-0 origin-top-left" style={{ width: PREVIEW_WIDTH, transform: `scale(${scale})` }}>
         <HeroBuilderRenderer design={design} />
       </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useId, useState } from 'react'
 import { LocateFixed, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,12 +12,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import type { LatLng } from '@/lib/maps/apple/mapkit-address'
-import { AddressSuggestionList } from './address-suggestion-list'
+import { AddressSuggestionList, suggestionOptionId, useSuggestionKeyboard } from './address-suggestion-list'
 import { AppleMapCanvas } from './apple-map-canvas'
-import type { AddressSuggestion } from './use-apple-address-search'
-
-const SEARCH_DEBOUNCE_MS = 250
-const MIN_QUERY_LENGTH = 3
+import { useAddressSuggestions, type AddressSuggestion } from './use-apple-address-search'
 
 interface AppleMapPickerDialogProps {
   open: boolean
@@ -46,37 +43,28 @@ export function AppleMapPickerDialog({
   suggest,
 }: AppleMapPickerDialogProps) {
   const [query, setQuery] = useState('')
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([])
+  const { suggestions, search, clear: clearSuggestions } = useAddressSuggestions(suggest)
   const [mapError, setMapError] = useState<string | null>(null)
   const [mapAttempt, setMapAttempt] = useState(0)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-  }, [])
+  const listId = useId()
 
   const handleQueryChange = (next: string) => {
     setQuery(next)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (next.trim().length < MIN_QUERY_LENGTH) {
-      setSuggestions([])
-      return
-    }
-    debounceRef.current = setTimeout(() => {
-      void suggest(next, pin ?? initialCenter).then(setSuggestions)
-    }, SEARCH_DEBOUNCE_MS)
+    search(next, pin ?? initialCenter)
   }
 
   const handleSuggestionPick = (suggestion: AddressSuggestion) => {
     setQuery('')
-    setSuggestions([])
+    clearSuggestions()
     onSuggestionPick(suggestion)
   }
+
+  const { activeIndex, onKeyDown } = useSuggestionKeyboard(suggestions, handleSuggestionPick, clearSuggestions)
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
       setQuery('')
-      setSuggestions([])
+      clearSuggestions()
       setMapError(null)
     }
     onOpenChange(next)
@@ -84,7 +72,15 @@ export function AppleMapPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
+      <DialogContent
+        className="flex max-h-[90vh] flex-col sm:max-w-3xl"
+        // Escape with suggestions showing closes the list, not the whole picker.
+        onEscapeKeyDown={(event) => {
+          if (suggestions.length === 0) return
+          event.preventDefault()
+          clearSuggestions()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Pick your location on the map</DialogTitle>
           <DialogDescription>
@@ -95,15 +91,27 @@ export function AppleMapPickerDialog({
         <div className="mt-2 min-h-0 flex-1 space-y-3 overflow-y-auto">
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
                 type="text"
+                role="combobox"
+                aria-label="Search for an address or place"
+                aria-autocomplete="list"
+                aria-expanded={suggestions.length > 0}
+                aria-controls={listId}
+                aria-activedescendant={activeIndex >= 0 ? suggestionOptionId(listId, activeIndex) : undefined}
                 value={query}
                 onChange={(event) => handleQueryChange(event.target.value)}
+                onKeyDown={onKeyDown}
                 placeholder="Search for an address or place..."
                 className="pl-10"
               />
-              <AddressSuggestionList suggestions={suggestions} onSelect={handleSuggestionPick} />
+              <AddressSuggestionList
+                id={listId}
+                suggestions={suggestions}
+                activeIndex={activeIndex}
+                onSelect={handleSuggestionPick}
+              />
             </div>
             <Button
               type="button"
@@ -140,12 +148,11 @@ export function AppleMapPickerDialog({
           ) : null}
         </div>
 
+        {/* Every pick applies the moment it is made, so there is nothing to
+            cancel: one button closes the picker on the chosen spot. */}
         <div className="mt-4 flex shrink-0 justify-end gap-2 border-t pt-4">
-          <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-            Cancel
-          </Button>
           <Button type="button" onClick={() => handleOpenChange(false)}>
-            Confirm location
+            Done
           </Button>
         </div>
       </DialogContent>

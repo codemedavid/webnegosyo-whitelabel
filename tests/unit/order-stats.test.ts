@@ -71,11 +71,17 @@ describe("summarizeOrderStats", () => {
 });
 
 describe("startOfTodayISO", () => {
-  it("returns midnight of the given day as an ISO timestamp", () => {
-    const iso = startOfTodayISO(new Date(2026, 6, 25, 14, 30, 0));
+  it("returns Manila midnight of the given day as an ISO timestamp", () => {
+    // 14:30 Manila on 25 Jul = 06:30 UTC
+    const iso = startOfTodayISO(new Date("2026-07-25T06:30:00.000Z"));
 
-    expect(new Date(iso).getHours()).toBe(0);
-    expect(new Date(iso).getMinutes()).toBe(0);
-    expect(new Date(iso).getDate()).toBe(25);
+    expect(iso).toBe("2026-07-24T16:00:00.000Z");
+  });
+
+  it("counts an order placed before 08:00 Manila as today, whatever the server clock", () => {
+    // 02:00 Manila on 25 Jul = 18:00 UTC on 24 Jul
+    const iso = startOfTodayISO(new Date("2026-07-24T18:00:00.000Z"));
+
+    expect(iso).toBe("2026-07-24T16:00:00.000Z");
   });
 });

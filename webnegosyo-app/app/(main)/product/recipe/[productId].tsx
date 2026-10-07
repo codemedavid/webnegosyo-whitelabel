@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -105,23 +105,36 @@ export default function RecipeEditorScreen() {
     [ingredients],
   );
 
+  // Saves run one after another rather than being dropped while one is in
+  // flight: an amount committed on blur and an "Add" tapped straight after
+  // both have to land, and a dropped one used to vanish without a word.
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaves = useRef(0);
   const runSave = useCallback(
-    async (work: () => Promise<void>) => {
-      if (isSaving) return;
+    (work: () => Promise<void>) => {
+      pendingSaves.current += 1;
       setIsSaving(true);
-      try {
-        await work();
-        await load();
-      } catch (saveError: unknown) {
-        Alert.alert(
-          "Recipe",
-          saveError instanceof Error ? saveError.message : "That did not save. Try again.",
-        );
-      } finally {
-        setIsSaving(false);
-      }
+      const next = saveQueue.current.then(async () => {
+        try {
+          await work();
+        } catch (saveError: unknown) {
+          Alert.alert(
+            "Recipe",
+            saveError instanceof Error ? saveError.message : "That did not save. Try again.",
+          );
+        } finally {
+          pendingSaves.current -= 1;
+          if (pendingSaves.current === 0) {
+            // One re-read after the last queued save shows what was stored.
+            await load();
+            setIsSaving(false);
+          }
+        }
+      });
+      saveQueue.current = next;
+      return next;
     },
-    [isSaving, load],
+    [load],
   );
 
   const handleAdd = (option: IngredientOption) => {
@@ -129,6 +142,11 @@ export default function RecipeEditorScreen() {
     setIsPickerOpen(false);
     setFocusItemId(option.id);
     void runSave(async () => {
+      const unitId = option.stockUnitId ?? units[0]?.id;
+      if (!unitId) {
+        throw new Error("Set up a unit for this ingredient on the Inventory screen first.");
+      }
+      // `ensure` finds the row a save queued just before this one created.
       const recipeId = recipe?.id ?? (await ensureMenuItemRecipe(tenantId, productId));
       await addRecipeComponent(tenantId, {
         recipeId,
@@ -136,7 +154,7 @@ export default function RecipeEditorScreen() {
         // 1 stock unit is a starting point the merchant is expected to edit,
         // not a guess at the real amount — but unlike zero it deducts.
         quantity: 1,
-        unitId: option.stockUnitId ?? units[0]?.id ?? "",
+        unitId,
         sortOrder: components.length,
       });
     });

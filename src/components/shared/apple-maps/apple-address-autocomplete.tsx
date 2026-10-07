@@ -1,19 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { LocateFixed, Map as MapIcon, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { parseCoordinateFallback, type LatLng } from '@/lib/maps/apple/mapkit-address'
-import { AddressSuggestionList } from './address-suggestion-list'
+import { AddressSuggestionList, suggestionOptionId, useSuggestionKeyboard } from './address-suggestion-list'
 import { AppleMapCanvas } from './apple-map-canvas'
 import { AppleMapPickerDialog } from './apple-map-picker-dialog'
 import { PlainAddressInput } from './plain-address-input'
-import { useAppleAddressSearch, type AddressSuggestion } from './use-apple-address-search'
+import { useAddressSuggestions, useAppleAddressSearch, type AddressSuggestion } from './use-apple-address-search'
 
 /** Metro Manila: where the map opens and search is biased before any pin exists. */
 const DEFAULT_CENTER: LatLng = { lat: 14.5995, lng: 120.9842 }
-const SEARCH_DEBOUNCE_MS = 250
-const MIN_QUERY_LENGTH = 3
+/** A GPS fix that has not arrived by then is reported as a failure, not a spinner forever. */
+const GEOLOCATION_TIMEOUT_MS = 15_000
+/** A fix up to a minute old is still "where I am" for an address. */
+const GEOLOCATION_MAX_AGE_MS = 60_000
 const INLINE_MAP_SIZE_CLASS = 'h-56 sm:h-64'
 
 export interface AppleAddressAutocompleteProps {
@@ -42,6 +44,7 @@ function currentPosition(): Promise<LatLng> {
     navigator.geolocation.getCurrentPosition(
       (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
       reject,
+      { enableHighAccuracy: true, timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: GEOLOCATION_MAX_AGE_MS },
     )
   })
 }
@@ -62,18 +65,18 @@ export function AppleAddressAutocomplete({
   fallback,
 }: AppleAddressAutocompleteProps) {
   const { status, suggest, resolveSuggestion, reverseGeocode } = useAppleAddressSearch()
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([])
-  const [isListOpen, setIsListOpen] = useState(false)
+  const { suggestions, search, clear: clearSuggestions } = useAddressSuggestions(suggest)
+  const [isFocused, setIsFocused] = useState(false)
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inlineMapError, setInlineMapError] = useState<string | null>(null)
   const [pin, setPin] = useState<LatLng | null>(() => coordinates ?? parseCoordinateFallback(value))
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-  }, [])
+  // Bumped by every keystroke: a pick still resolving when the diner types on
+  // must not overwrite what they typed.
+  const editGenerationRef = useRef(0)
+  const listId = useId()
+  const isListOpen = isFocused && suggestions.length > 0
 
   // A location saved or typed elsewhere in the form moves the pin too.
   const savedLat = coordinates?.lat
@@ -92,32 +95,24 @@ export function AppleAddressAutocomplete({
   )
 
   const handleType = (text: string) => {
+    editGenerationRef.current += 1
     onChange(text)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (text.trim().length < MIN_QUERY_LENGTH) {
-      setSuggestions([])
-      setIsListOpen(false)
-      return
-    }
-    debounceRef.current = setTimeout(() => {
-      void suggest(text, pin ?? DEFAULT_CENTER).then((next) => {
-        setSuggestions(next)
-        setIsListOpen(next.length > 0)
-      })
-    }, SEARCH_DEBOUNCE_MS)
+    search(text, pin ?? DEFAULT_CENTER)
   }
 
   const handleSuggestionPick = useCallback(
     async (suggestion: AddressSuggestion) => {
-      setSuggestions([])
-      setIsListOpen(false)
+      clearSuggestions()
       // Show the pick at once; Apple's exact address and coordinates follow.
       onChange(suggestion.label)
+      const generation = editGenerationRef.current
       const selection = await resolveSuggestion(suggestion)
-      if (selection) select(selection.address, selection.coordinates)
+      if (selection && generation === editGenerationRef.current) select(selection.address, selection.coordinates)
     },
-    [onChange, resolveSuggestion, select],
+    [clearSuggestions, onChange, resolveSuggestion, select],
   )
+
+  const { activeIndex, onKeyDown } = useSuggestionKeyboard(suggestions, handleSuggestionPick, clearSuggestions)
 
   const handleMapPick = useCallback(
     async (point: LatLng, placeName: string | null) => {
@@ -162,16 +157,29 @@ export function AppleAddressAutocomplete({
           <input
             name="address"
             type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isListOpen}
+            aria-controls={listId}
+            aria-activedescendant={isListOpen && activeIndex >= 0 ? suggestionOptionId(listId, activeIndex) : undefined}
             value={value}
             onChange={(event) => handleType(event.target.value)}
-            onFocus={() => setIsListOpen(suggestions.length > 0)}
-            onBlur={() => setIsListOpen(false)}
+            onKeyDown={onKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             placeholder={placeholder}
             required={required}
             autoComplete="address-line1"
             className={`pl-10 ${className} w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500`}
           />
-          {isListOpen ? <AddressSuggestionList suggestions={suggestions} onSelect={handleSuggestionPick} /> : null}
+          {isListOpen ? (
+            <AddressSuggestionList
+              id={listId}
+              suggestions={suggestions}
+              activeIndex={activeIndex}
+              onSelect={handleSuggestionPick}
+            />
+          ) : null}
         </div>
 
         <Button

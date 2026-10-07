@@ -197,6 +197,14 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
 }
 
 /**
+ * Drop the tenant's cached category list (read by every admin menu page) so a
+ * category save is visible at once rather than after CACHE_TTL.CATEGORIES.
+ */
+export async function invalidateCategoriesCache(tenantId: string): Promise<void> {
+  await invalidateCache(generateCacheKey('categories', tenantId))
+}
+
+/**
  * Invalidate all cache for a specific tenant
  */
 export async function invalidateTenantCache(

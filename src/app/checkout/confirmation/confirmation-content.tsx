@@ -70,10 +70,14 @@ export function ConfirmationContent({ lead, setupToken = null }: ConfirmationCon
   const paymentMethod = lead.platform_payment_methods
 
   const handleCopyRef = async () => {
-    await navigator.clipboard.writeText(lead.reference_number)
-    setCopied(true)
-    toast.success('Reference number copied!')
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(lead.reference_number)
+      setCopied(true)
+      toast.success('Reference number copied!')
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Could not copy. Please note the reference number down.')
+    }
   }
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,7 +156,9 @@ export function ConfirmationContent({ lead, setupToken = null }: ConfirmationCon
               {lead.reference_number}
             </span>
             <button
+              type="button"
               onClick={handleCopyRef}
+              aria-label="Copy reference number"
               className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
             >
               {copied ? <Check className="h-5 w-5 text-green-500" /> : <Copy className="h-5 w-5" />}

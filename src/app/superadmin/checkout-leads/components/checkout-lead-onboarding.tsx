@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ExternalLink, Link2, Loader2, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchLeadOnboarding, issueLeadSetupLink, retryLeadOnboardingBuild } from '@/app/actions/checkout-leads'
@@ -27,46 +27,81 @@ function launchLine(summary: LeadOnboardingSummary): string {
 export function CheckoutLeadOnboarding({ leadId, canEdit, refreshKey }: { leadId: string; canEdit: boolean; refreshKey: string }) {
   const [summary, setSummary] = useState<LeadOnboardingSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
+  /** Shown when the clipboard refused it: the old link is already dead. */
+  const [uncopiedLink, setUncopiedLink] = useState<string | null>(null)
+  /** Only the latest read may land: switching leads must not show the previous lead's set-up. */
+  const loadSeqRef = useRef(0)
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current
     setIsLoading(true)
     try {
-      setSummary(await fetchLeadOnboarding(leadId))
+      const next = await fetchLeadOnboarding(leadId)
+      if (seq !== loadSeqRef.current) return
+      setSummary(next)
+      setLoadError(null)
+    } catch (error) {
+      if (seq !== loadSeqRef.current) return
+      console.error('[checkout-leads] onboarding read failed', error)
+      setSummary(null)
+      setLoadError('Could not load the store set-up. Close and reopen this lead to try again.')
     } finally {
-      setIsLoading(false)
+      if (seq === loadSeqRef.current) setIsLoading(false)
     }
   }, [leadId])
 
   useEffect(() => {
+    setUncopiedLink(null)
     void load()
   }, [load, refreshKey])
 
   async function copyNewLink() {
     setIsBusy(true)
-    const result = await issueLeadSetupLink(leadId)
-    setIsBusy(false)
-    if (!result.path) return void toast.error(result.error ?? 'Could not create a link')
-    const url = `${window.location.origin}${result.path}`
-    await navigator.clipboard.writeText(url).catch(() => undefined)
-    toast.success('New set-up link copied. The previous link no longer works.')
-    void load()
+    try {
+      const result = await issueLeadSetupLink(leadId)
+      if (!result.path) return void toast.error(result.error ?? 'Could not create a link')
+      const url = `${window.location.origin}${result.path}`
+      try {
+        await navigator.clipboard.writeText(url)
+        setUncopiedLink(null)
+        toast.success('New set-up link copied. The previous link no longer works.')
+      } catch {
+        setUncopiedLink(url)
+        toast.warning('New link created but not copied. Copy it from the panel; the previous link no longer works.')
+      }
+      void load()
+    } catch (error) {
+      console.error('[checkout-leads] set-up link failed', error)
+      toast.error('Could not create a link')
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   async function retry() {
     setIsBusy(true)
-    const result = await retryLeadOnboardingBuild(leadId)
-    setIsBusy(false)
-    if (result.error) return void toast.error(result.error)
-    toast.success('Retrying the build')
-    void load()
+    try {
+      const result = await retryLeadOnboardingBuild(leadId)
+      if (result.error) return void toast.error(result.error)
+      toast.success('Retrying the build')
+      void load()
+    } catch (error) {
+      console.error('[checkout-leads] onboarding retry failed', error)
+      toast.error('Could not retry the build')
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   if (isLoading) return <Loader2 className="h-4 w-4 animate-spin text-white/45" />
 
   return (
     <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/80">
-      {summary ? (
+      {loadError ? (
+        <p role="alert" className="text-red-300">{loadError}</p>
+      ) : summary ? (
         <>
           <p className="font-medium text-white">{STATUS_LABELS[summary.status]}</p>
           {summary.error && <p className="text-xs text-red-300">{summary.error}</p>}
@@ -83,7 +118,17 @@ export function CheckoutLeadOnboarding({ leadId, canEdit, refreshKey }: { leadId
         <p className="text-white/60">No store set-up for this lead yet.</p>
       )}
 
-      {canEdit && (
+      {uncopiedLink && (
+        <input
+          readOnly
+          value={uncopiedLink}
+          aria-label="New set-up link"
+          onFocus={(event) => event.currentTarget.select()}
+          className="w-full rounded-lg border border-white/15 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white"
+        />
+      )}
+
+      {canEdit && !loadError && (
         <div className="flex flex-wrap gap-2">
           {(!summary || summary.status === 'awaiting_details') && (
             <button type="button" onClick={copyNewLink} disabled={isBusy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/5">

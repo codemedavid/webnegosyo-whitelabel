@@ -446,15 +446,20 @@ export async function updateOrderStatus(
 }
 
 export const getOrderStats = cache(async function getOrderStats(tenantId: string) {
-  await verifyTenantPermission(tenantId, 'orders', 'view')
+  const { userRole } = await verifyTenantPermission(tenantId, 'orders', 'view')
 
   const supabase = await createClient()
 
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('status, total, created_at')
-    .eq('tenant_id', tenantId)
-    .gte('created_at', startOfTodayISO())
+  // A branch account sees its own branch's day, like every other order read
+  // here (ACCOUNT scope, never a client-chosen branch).
+  const { data: orders, error } = await scopeOrdersQuery(
+    supabase
+      .from('orders')
+      .select('status, total, created_at')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', startOfTodayISO()),
+    resolveBranchScope(userRole)
+  )
 
   if (error) throw error
 
@@ -721,8 +726,17 @@ export async function createOrder(
         } catch {
           // The order exists either way; the caller tolerates a missing token.
         }
+        // Same as the fresh path below: the token hash and expiry never reach
+        // the customer's browser.
+        const {
+          order_token_hash: _existingHash,
+          order_token_expires_at: _existingExpiry,
+          ...publicExisting
+        } = existing as Record<string, unknown>
+        void _existingHash
+        void _existingExpiry
         return {
-          order: existing as unknown as Order,
+          order: publicExisting as unknown as Order,
           orderToken: dedupedToken,
           deduped: true as const,
         }

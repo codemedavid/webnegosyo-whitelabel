@@ -6,6 +6,7 @@
  * header template renders identical, bug-free pieces and only differs in layout.
  */
 
+import { useId } from 'react'
 import { Search, ShoppingBag, ShoppingCart } from 'lucide-react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
@@ -182,6 +183,21 @@ interface CartStyleProps {
   itemCount: number
   onClick: () => void
   branding: BrandingColors
+  /** Id of the screen-reader count that describes the button. */
+  countId?: string
+}
+
+/**
+ * The accessible name stays "Open cart"; the count rides along as the
+ * description, because the `aria-label` hides the visible badge from screen readers.
+ */
+function CartCountDescription({ id, itemCount }: { id?: string; itemCount: number }) {
+  if (!id) return null
+  return (
+    <span id={id} className="sr-only">
+      {describeCartCount(itemCount)}
+    </span>
+  )
 }
 
 function formatCartCount(itemCount: number): string {
@@ -210,7 +226,7 @@ function CornerCountBadge({ itemCount, branding, ringColor }: {
 }
 
 /** The original 🛒 — the default, so existing stores look unchanged. */
-function EmojiCart({ itemCount, onClick, branding }: CartStyleProps) {
+function EmojiCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
   return (
     <button
       type="button"
@@ -219,7 +235,9 @@ function EmojiCart({ itemCount, onClick, branding }: CartStyleProps) {
       className="relative p-2 transition-colors hover:opacity-80"
       style={{ color: branding.textSecondary }}
       aria-label="Open cart"
+      aria-describedby={countId}
     >
+      <CartCountDescription id={countId} itemCount={itemCount} />
       <span className="text-xl">🛒</span>
       <CornerCountBadge itemCount={itemCount} branding={branding} />
     </button>
@@ -227,7 +245,7 @@ function EmojiCart({ itemCount, onClick, branding }: CartStyleProps) {
 }
 
 /** Bag icon in a soft round chip tinted from the header's own text colour. */
-function IconCart({ itemCount, onClick, branding }: CartStyleProps) {
+function IconCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
   return (
     <button
       type="button"
@@ -239,7 +257,9 @@ function IconCart({ itemCount, onClick, branding }: CartStyleProps) {
         backgroundColor: `color-mix(in srgb, ${branding.menuMainHeaderText} 10%, transparent)`,
       }}
       aria-label="Open cart"
+      aria-describedby={countId}
     >
+      <CartCountDescription id={countId} itemCount={itemCount} />
       <ShoppingBag className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
       <CornerCountBadge itemCount={itemCount} branding={branding} ringColor={branding.header} />
     </button>
@@ -247,7 +267,7 @@ function IconCart({ itemCount, onClick, branding }: CartStyleProps) {
 }
 
 /** Filled brand pill that reads "Cart", with the count in an inverted chip. */
-function PillCart({ itemCount, onClick, branding }: CartStyleProps) {
+function PillCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
   return (
     <button
       type="button"
@@ -256,7 +276,9 @@ function PillCart({ itemCount, onClick, branding }: CartStyleProps) {
       className="flex h-10 flex-shrink-0 items-center gap-2 rounded-full pl-3.5 pr-2 text-sm font-semibold shadow-sm transition-transform hover:brightness-105 active:scale-95"
       style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
       aria-label="Open cart"
+      aria-describedby={countId}
     >
+      <CartCountDescription id={countId} itemCount={itemCount} />
       <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden="true" />
       <span className={itemCount > 0 ? '' : 'pr-1.5'}>Cart</span>
       {itemCount > 0 && (
@@ -272,7 +294,7 @@ function PillCart({ itemCount, onClick, branding }: CartStyleProps) {
 }
 
 /** Hairline pill: bag icon and the running count, always visible. */
-function OutlineCart({ itemCount, onClick, branding }: CartStyleProps) {
+function OutlineCart({ itemCount, onClick, branding, countId }: CartStyleProps) {
   return (
     <button
       type="button"
@@ -284,7 +306,9 @@ function OutlineCart({ itemCount, onClick, branding }: CartStyleProps) {
         borderColor: `color-mix(in srgb, ${branding.menuMainHeaderText} 28%, transparent)`,
       }}
       aria-label="Open cart"
+      aria-describedby={countId}
     >
+      <CartCountDescription id={countId} itemCount={itemCount} />
       <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
       {formatCartCount(itemCount)}
     </button>
@@ -329,9 +353,10 @@ export function HeaderCartButton({
   ...props
 }: CartStyleProps & { cartStyle?: HeaderCartStyle }) {
   const isSeniorMode = useSeniorMode()
+  const countId = useId()
   if (isSeniorMode) return <SeniorCart {...props} />
   const StyledCart = CART_STYLE_COMPONENTS[cartStyle] ?? EmojiCart
-  return <StyledCart {...props} />
+  return <StyledCart {...props} countId={countId} />
 }
 
 /* ------------------------------ search ----------------------------------- */

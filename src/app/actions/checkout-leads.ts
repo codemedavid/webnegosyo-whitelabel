@@ -25,10 +25,24 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { issueOnboardingLink, startStoreOnboarding } from '@/lib/onboarding/start'
 import { applyLeadStatusWithLaunch, readLeadOnboarding } from '@/lib/onboarding/staff'
 import { findOnboardingByLead } from '@/lib/onboarding/repository'
+import { checkActionRateLimit } from '@/lib/action-rate-limit'
+import type { RateLimitOptions } from '@/lib/distributed-rate-limit'
+
+/**
+ * Public funnel submits per client IP. Each monthly lead mints a set-up link
+ * that creates a store, an owner login and an AI menu read, so an unthrottled
+ * form is unbounded tenants and AI spend for a script.
+ */
+const CHECKOUT_FORM_RATE_LIMIT: RateLimitOptions = { limit: 5, windowSec: 3600 }
 
 // ---- Checkout Leads ----
 
 export async function submitCheckoutForm(input: CreateCheckoutLeadInput) {
+  const rate = await checkActionRateLimit('checkout-lead', CHECKOUT_FORM_RATE_LIMIT)
+  if (!rate.allowed) {
+    return { data: null, error: 'Too many orders from this connection. Please try again later.', setupToken: null }
+  }
+
   const result = await createCheckoutLead(input)
 
   // The ₱999/month funnel continues straight into the store set-up wizard.

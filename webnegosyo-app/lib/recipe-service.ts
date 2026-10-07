@@ -90,6 +90,17 @@ function assertUsableQuantity(quantity: number): void {
   }
 }
 
+/**
+ * An UPDATE or DELETE that RLS refuses (or that names a line another phone
+ * already removed) touches zero rows and reports no error. Without this the
+ * screen reloads the old value and the merchant is never told it did not save.
+ */
+function assertRowChanged(data: unknown, fallback: string): void {
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error(`${fallback} Pull down to refresh — it may have changed on another device.`);
+  }
+}
+
 interface ComponentRow {
   id: string;
   inventory_item_id: string;
@@ -329,13 +340,15 @@ export async function updateRecipeComponent(
 ): Promise<void> {
   assertUsableQuantity(changes.quantity);
 
-  const { error } = await db
+  const { data, error } = await db
     .from("recipe_components")
     .update({ quantity: changes.quantity, unit_id: changes.unitId } as never)
     .eq("tenant_id", tenantId)
-    .eq("id", componentId);
+    .eq("id", componentId)
+    .select("id");
 
   if (error) throw asError(error, "The ingredient could not be updated.");
+  assertRowChanged(data, "The ingredient could not be updated.");
 }
 
 /** Remove a line. The recipe row stays; an empty recipe deducts nothing. */
@@ -344,11 +357,13 @@ export async function removeRecipeComponent(
   componentId: string,
   db: Db = supabase,
 ): Promise<void> {
-  const { error } = await db
+  const { data, error } = await db
     .from("recipe_components")
     .delete()
     .eq("tenant_id", tenantId)
-    .eq("id", componentId);
+    .eq("id", componentId)
+    .select("id");
 
   if (error) throw asError(error, "The ingredient could not be removed.");
+  assertRowChanged(data, "The ingredient could not be removed.");
 }

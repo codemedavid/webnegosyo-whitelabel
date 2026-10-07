@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, FileArchive, Printer, X } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -64,6 +64,9 @@ export function QrCodesStudio(props: QrCodesStudioProps) {
   const [caption, setCaption] = useState('')
   const [perPage, setPerPage] = useState<CodesPerPage>(4)
   const [extraTables, setExtraTables] = useState<QrExtraTables[]>([])
+  // Every keystroke in the message re-draws every code (a floor plan can hold
+  // hundreds); deferring it keeps the input responsive while the tiles catch up.
+  const deferredCaption = useDeferredValue(caption)
   const logo = useStoreLogo(props.logoUrl)
   const { busyKey, downloadOne, downloadAll, print } = useQrExport(perPage)
 
@@ -91,14 +94,14 @@ export function QrCodesStudio(props: QrCodesStudioProps) {
           storeName,
           title: item.title,
           subtitle: item.subtitle,
-          caption: caption.trim() || (item.kind === 'table' ? TABLE_CAPTION : MENU_CAPTION),
+          caption: deferredCaption.trim() || (item.kind === 'table' ? TABLE_CAPTION : MENU_CAPTION),
           accentColor: props.accentColor ?? '',
           logoDataUrl: logo.dataUrl,
         })
       )
     }
     return map
-  }, [catalog, design, storeName, caption, props.accentColor, logo.dataUrl])
+  }, [catalog, design, storeName, deferredCaption, props.accentColor, logo.dataUrl])
 
   const entriesFor = useCallback(
     (items: QrItem[]): ExportEntry[] =>

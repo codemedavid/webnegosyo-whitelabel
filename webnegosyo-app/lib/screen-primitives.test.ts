@@ -58,7 +58,6 @@ const NOT_YET_CONVERTED: Readonly<Record<string, readonly string[]>> = {
     "order/[orderId].tsx",
     "payment/[methodId].tsx",
     "product/[productId].tsx",
-    "product/recipe/[productId].tsx",
     "scan.tsx",
   ],
   eyebrow: ["analytics.tsx", "daily-report.tsx", "pos-tender.tsx"],

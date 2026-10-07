@@ -40,15 +40,32 @@ jest.mock('@/lib/supabase/server', () => ({
   }),
 }))
 
+/** When set, the orders INSERT hits the client-order-id unique index (a retried submit). */
+let duplicateOrder: Record<string, unknown> | null = null
+
+function duplicateInsertChain() {
+  const result = {
+    data: null,
+    error: { code: '23505', message: 'duplicate key value violates unique constraint "orders_tenant_client_order_id_uq"' },
+  }
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    single: async () => result,
+  }
+  return chain
+}
+
 jest.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => ({
       insert: (payload: unknown) => {
         adminOps.push({ table, op: 'insert', payload })
+        if (table === 'orders' && duplicateOrder) return duplicateInsertChain()
         return readChain(table === 'orders'
           ? { id: 'order-1', ...(payload as Record<string, unknown>) }
           : null)
       },
+      select: () => readChain(duplicateOrder),
       update: (payload: unknown) => {
         adminOps.push({ table, op: 'update', payload })
         return readChain(null)
@@ -79,6 +96,7 @@ describe('createOrder — platform write round trips', () => {
   beforeEach(() => {
     serverReads.length = 0
     adminOps.length = 0
+    duplicateOrder = null
     upsertCustomerFromOrder.mockClear()
   })
 
@@ -123,5 +141,31 @@ describe('createOrder — platform write round trips', () => {
     expect(upsertCustomerFromOrder).toHaveBeenCalledWith(expect.anything(), 'tenant-1', expect.objectContaining({
       orderId: 'order-1', name: 'Ana', contact: '09171234567',
     }))
+  })
+
+  test('a deduped retry hands back the existing row without its token hash or expiry', async () => {
+    // Arrange
+    duplicateOrder = {
+      id: 'order-0',
+      tenant_id: 'tenant-1',
+      order_token_hash: 'a'.repeat(64),
+      order_token_expires_at: '2026-10-08T00:00:00.000Z',
+    }
+    const { createOrder } = await import('@/lib/orders-service')
+    const create = createOrder as unknown as (...args: unknown[]) => Promise<{ order: Record<string, unknown>; deduped?: boolean }>
+    const noArg = undefined
+
+    // Act
+    const result = await create(
+      'tenant-1', [line], { name: 'Ana', contact: '09171234567' }, 'ot-1',
+      noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg, noArg,
+      { clientOrderId: 'client-1' },
+    )
+
+    // Assert
+    expect(result.deduped).toBe(true)
+    expect(result.order.id).toBe('order-0')
+    expect(result.order).not.toHaveProperty('order_token_hash')
+    expect(result.order).not.toHaveProperty('order_token_expires_at')
   })
 })

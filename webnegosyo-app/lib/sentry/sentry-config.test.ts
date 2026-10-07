@@ -3,6 +3,8 @@ import {
   sentryEnvironment,
   sentryScopeFromAuth,
   NO_VALUE_TAG,
+  scrubBreadcrumb,
+  scrubEvent,
 } from "./sentry-config";
 
 const SIGNED_OUT = {
@@ -92,5 +94,62 @@ describe("sentryScopeFromAuth", () => {
     expect(scope.tags.demo).toBe("true");
     expect(scope.tags.superadmin).toBe("true");
     expect(scope.tags.impersonated_tenant_id).toBe("t-9");
+  });
+});
+
+describe("scrubBreadcrumb", () => {
+  it("drops the query string from request breadcrumbs, where PostgREST filters carry phone numbers", () => {
+    const crumb = scrubBreadcrumb({
+      category: "xhr",
+      data: {
+        url: "https://x.supabase.co/rest/v1/customers?select=id&phone_e164=eq.%2B639171234567",
+        method: "GET",
+        status_code: 200,
+      },
+    });
+
+    expect(crumb.data?.url).toBe("https://x.supabase.co/rest/v1/customers");
+    expect(crumb.data?.method).toBe("GET");
+  });
+
+  it("also cleans fetch breadcrumbs and URL fragments", () => {
+    const crumb = scrubBreadcrumb({ category: "fetch", data: { url: "https://a.b/c#access_token=secret" } });
+
+    expect(crumb.data?.url).toBe("https://a.b/c");
+  });
+
+  it("redacts emails and phone numbers quoted in console breadcrumbs", () => {
+    const crumb = scrubBreadcrumb({
+      category: "console",
+      message: "lookup failed for juan@example.com / +63 917 123 4567 / 09171234567",
+    });
+
+    expect(crumb.message).not.toMatch(/juan@example\.com|917|0917/);
+  });
+
+  it("leaves ids and plain messages alone", () => {
+    const crumb = scrubBreadcrumb({ category: "console", message: "order 3f1c2a9e-0000-4000-8000-000000000001 synced" });
+
+    expect(crumb.message).toBe("order 3f1c2a9e-0000-4000-8000-000000000001 synced");
+  });
+
+  it("does not modify the breadcrumb it was given", () => {
+    const original = { category: "xhr", data: { url: "https://a.b/c?x=1" } };
+
+    scrubBreadcrumb(original);
+
+    expect(original.data.url).toBe("https://a.b/c?x=1");
+  });
+});
+
+describe("scrubEvent", () => {
+  it("masks contacts quoted in exception texts and the message", () => {
+    const event = scrubEvent({
+      message: "failed for ana@example.com",
+      exception: { values: [{ value: 'duplicate key: Key (phone_e164)=(+639171234567) already exists' }] },
+    });
+
+    expect(event.message).toBe("failed for [email]");
+    expect(event.exception?.values?.[0].value).not.toContain("9171234567");
   });
 });

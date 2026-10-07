@@ -23,7 +23,7 @@ import { SYSTEM_PROMPT, buildContextNote } from '@/lib/assistant/prompt'
 import { createRefBook } from '@/lib/assistant/refs'
 import { claimAssistantTurn, loadMessages, openConversation, recordAssistantUsage, saveMessage, saveRefMap } from '@/lib/assistant/store'
 import { ASSISTANT_TOOLS } from '@/lib/assistant/tools'
-import { availableTools, createTurnMemo } from '@/lib/assistant/tools/registry'
+import { availableTools, createTurnMemo, withModelSafeToolOutputs } from '@/lib/assistant/tools/registry'
 import { assistantModel, buildToolSet } from '@/lib/assistant/runtime/ai-sdk'
 import { summarizeTurnUsage } from '@/lib/assistant/usage'
 import { withRequestBearer } from '@/lib/supabase/bearer-session'
@@ -116,7 +116,8 @@ async function handleChat(request: NextRequest): Promise<Response> {
   })
 
   const thread = [...history, userMessage]
-  const modelMessages = await convertToModelMessages(compactHistory(thread, HISTORY_FULL_TURNS) as unknown as UIMessage[], {
+  // The model's copy only: stored cards never reach it, even for a tool this caller has since lost.
+  const modelMessages = await convertToModelMessages(compactHistory(withModelSafeToolOutputs(thread), HISTORY_FULL_TURNS) as unknown as UIMessage[], {
     tools: toolSet,
     ignoreIncompleteToolCalls: true,
   })

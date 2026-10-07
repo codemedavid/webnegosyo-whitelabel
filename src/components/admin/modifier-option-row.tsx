@@ -180,7 +180,7 @@ function OptionSettings({ option, basePrice, recipeContext, recipeCost, linkable
             value={option.menu_item_id ?? 'none'}
             onValueChange={(value) => onReplace({ ...option, menu_item_id: value === 'none' ? null : value })}
           >
-            <SelectTrigger className="h-10 w-full bg-background">
+            <SelectTrigger aria-label="Use another dish as this option" className="h-10 w-full bg-background">
               <SelectValue placeholder="No, type a name and price" />
             </SelectTrigger>
             <SelectContent>
@@ -242,7 +242,7 @@ function OptionSettings({ option, basePrice, recipeContext, recipeCost, linkable
         <div className="space-y-1.5">
           <Label className="text-sm">Stock tracking</Label>
           <Select value={stockMode} onValueChange={(value) => onUpdate('stock_mode', value as ModifierStockMode)}>
-            <SelectTrigger className="h-10 w-full bg-background">
+            <SelectTrigger aria-label="Stock tracking" className="h-10 w-full bg-background">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

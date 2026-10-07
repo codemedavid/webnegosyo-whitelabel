@@ -100,3 +100,22 @@ test("closing the panel mid-recording releases recording mode", async () => {
   expect(result.current.state).toBe("idle");
   expect(mockSetAudioMode).toHaveBeenLastCalledWith({ allowsRecording: false });
 });
+
+test("closing the panel while the mic prompt is up never starts recording", async () => {
+  let grant: (value: { granted: boolean }) => void = () => {};
+  mockPermission.mockReturnValue(new Promise((resolve) => (grant = resolve)));
+  const { result } = renderHook(() => useVoiceNote(TENANT, jest.fn()));
+
+  let starting: Promise<void> = Promise.resolve();
+  act(() => {
+    starting = result.current.start();
+  });
+  act(() => result.current.cancel());
+  await act(async () => {
+    grant({ granted: true });
+    await starting;
+  });
+
+  expect(result.current.state).toBe("idle");
+  expect(mockSetAudioMode).not.toHaveBeenCalledWith({ allowsRecording: true });
+});

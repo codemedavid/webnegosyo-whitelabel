@@ -185,6 +185,37 @@ describe('POST /api/assistant/chat', () => {
     expect(mockStore.recordAssistantUsage).toHaveBeenCalledWith(TENANT, 220, expect.closeTo(0.003, 6))
   })
 
+  test('a stored card from a tool this caller has since lost never reaches the model', async () => {
+    mockStore.loadMessages.mockResolvedValue([
+      { id: 'old-u', role: 'user', parts: [{ type: 'text', text: 'How is my staff doing?' }] },
+      {
+        id: 'old-a',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-get_staff_activity',
+            toolCallId: 'old-t1',
+            state: 'output-available',
+            input: { period: 'week' },
+            output: {
+              facts: { staff: [{ ref: 's1', name: 'Ana', posSales: 3 }] },
+              card: { type: 'ranked', title: 'Staff activity', rows: [{ label: 'STORED-CARD-SECRET ana@shop.ph', value: '₱1' }] },
+            },
+          },
+          { type: 'text', text: 'Ana rang up 3 sales.' },
+        ],
+      },
+    ])
+    const { POST } = await import('@/app/api/assistant/chat/route')
+
+    await drain(await POST(post({ ...validBody, conversationId: CONVERSATION })))
+
+    const firstPrompt = JSON.stringify(prompts[0])
+    expect(firstPrompt).toContain('posSales')
+    expect(firstPrompt).not.toContain('STORED-CARD-SECRET')
+    expect(firstPrompt).not.toContain('ana@shop.ph')
+  })
+
   test('a merchant-app bearer token stays in scope for access checks and for tool calls mid-stream', async () => {
     const { getRequestBearerToken } = await import('@/lib/supabase/bearer-session')
     const seen: Array<string | null> = []

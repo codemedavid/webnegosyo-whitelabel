@@ -370,7 +370,7 @@ describe("addRecipeComponent", () => {
 describe("updateRecipeComponent", () => {
   it("updates quantity and unit scoped to tenant and line", async () => {
     // Arrange
-    const { db, recorded } = makeDb({ recipe_components: { data: null, error: null } });
+    const { db, recorded } = makeDb({ recipe_components: { data: [{ id: "comp-1" }], error: null } });
 
     // Act
     await updateRecipeComponent(TENANT, "comp-1", { quantity: 2, unitId: "unit-g" }, db);
@@ -399,10 +399,30 @@ describe("updateRecipeComponent", () => {
   });
 });
 
+describe("silent refusals", () => {
+  it("reports an update that changed no row (RLS refusal reads as zero rows)", async () => {
+    // Arrange
+    const { db } = makeDb({ recipe_components: { data: [], error: null } });
+
+    // Act + Assert
+    await expect(
+      updateRecipeComponent(TENANT, "comp-1", { quantity: 2, unitId: "unit-g" }, db),
+    ).rejects.toThrow(/could not be updated/);
+  });
+
+  it("reports a delete that removed no row", async () => {
+    // Arrange
+    const { db } = makeDb({ recipe_components: { data: [], error: null } });
+
+    // Act + Assert
+    await expect(removeRecipeComponent(TENANT, "comp-1", db)).rejects.toThrow(/could not be removed/);
+  });
+});
+
 describe("removeRecipeComponent", () => {
   it("deletes the line scoped to tenant and id", async () => {
     // Arrange
-    const { db, recorded } = makeDb({ recipe_components: { data: null, error: null } });
+    const { db, recorded } = makeDb({ recipe_components: { data: [{ id: "comp-1" }], error: null } });
 
     // Act
     await removeRecipeComponent(TENANT, "comp-1", db);

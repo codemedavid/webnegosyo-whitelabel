@@ -116,6 +116,9 @@ export function FunnelOrderForm() {
 
     isSubmittingRef.current = true
     setIsSubmitting(true)
+    // Stays pending once the lead is saved: the button must not re-arm while
+    // the confirmation page loads, or a second tap files a duplicate lead.
+    let isSaved = false
     try {
       const eventId = createMetaEventId('lead')
       const result = await submitCheckoutForm({
@@ -138,14 +141,17 @@ export function FunnelOrderForm() {
         { content_name: OFFER_NAME, currency: 'PHP', value: result.data.amount ?? MONTHLY_SUBSCRIPTION_PRICE },
         eventId
       )
+      isSaved = true
       const setupParam = result.setupToken ? `&setup=${encodeURIComponent(result.setupToken)}` : ''
       router.push(`/checkout/confirmation?confirm=${encodeURIComponent(result.data.reference_number)}${setupParam}`)
     } catch (error) {
       console.error('[funnel] checkout lead failed', error)
       toast.error(ORDER_FORM.connectionFailed)
     } finally {
-      isSubmittingRef.current = false
-      setIsSubmitting(false)
+      if (!isSaved) {
+        isSubmittingRef.current = false
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -214,13 +220,15 @@ function PaymentPicker({
   error?: string
   onSelect: (id: string) => void
 }) {
+  // Loaded, but no active method: the visitor could never pass validation.
+  const isEmpty = !isLoading && !hasError && options.length === 0
   return (
     <fieldset>
       <legend className="mb-1.5 text-[14px] font-bold" style={{ color: SMARTMENU.ink }}>
         {ORDER_FORM.paymentLegend}
       </legend>
       {isLoading && <p className="text-[13px]" style={{ color: SMARTMENU.cocoa }}>{ORDER_FORM.paymentLoading}</p>}
-      {hasError && (
+      {(hasError || isEmpty) && (
         <p className="text-[13px]" style={{ color: SMARTMENU.red }}>
           {ORDER_FORM.paymentLoadError}
         </p>
@@ -248,7 +256,7 @@ function PaymentPicker({
           )
         })}
       </div>
-      {error && <p className="mt-1 text-[13px]" style={{ color: SMARTMENU.red }}>{error}</p>}
+      {error && <p role="alert" className="mt-1 text-[13px]" style={{ color: SMARTMENU.red }}>{error}</p>}
     </fieldset>
   )
 }

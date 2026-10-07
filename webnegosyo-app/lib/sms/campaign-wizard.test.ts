@@ -149,6 +149,19 @@ describe("describeAudience", () => {
   it("says first-timers plainly", () => {
     expect(describeAudience({ maxOrderCount: 1 })).toBe("Guests with at most 1 order");
   });
+
+  it("reads equal bounds as an exact count", () => {
+    expect(describeAudience({ minOrderCount: 1, maxOrderCount: 1 })).toBe(
+      "Guests with exactly 1 order"
+    );
+  });
+});
+
+describe("first-timers segment", () => {
+  it("never includes a guest with no orders yet", () => {
+    const filter = AUDIENCE_SEGMENTS.find((segment) => segment.id === "first_timers")?.filter;
+    expect(filter).toEqual({ minOrderCount: 1, maxOrderCount: 1 });
+  });
 });
 
 describe("formatTime12h", () => {

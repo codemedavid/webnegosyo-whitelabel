@@ -128,7 +128,9 @@ export default async function CollectionsCalendarPage({ searchParams }: Calendar
         </p>
       )}
 
+      {/* Keyed by month: the picked day belongs to the month it was picked in. */}
       <CollectionsCalendarView
+        key={monthKey}
         calendar={calendar}
         monthLabel={monthLabel(monthKey)}
         prevHref={`${CALENDAR_PATH}?month=${shiftMonthKey(monthKey, -1)}`}

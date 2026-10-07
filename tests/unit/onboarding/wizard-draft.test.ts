@@ -1,4 +1,4 @@
-import { draftToAnswers, emptyDraft, stepBlocker, type WizardDraft } from '@/components/onboarding/wizard-draft'
+import { draftToAnswers, emptyDraft, restoreDraft, stepBlocker, type WizardDraft } from '@/components/onboarding/wizard-draft'
 
 const filled = (): WizardDraft => ({
   ...emptyDraft("Juan's Kitchen"),
@@ -47,5 +47,46 @@ describe('stepBlocker', () => {
     expect(stepBlocker('ordering', { ...filled(), acceptsCash: false, gcashNumber: '' }, 0)).toBe('Pick at least one way to pay')
     expect(stepBlocker('ordering', { ...filled(), gcashName: '' }, 0)).toBe('Enter the GCash account name')
     expect(stepBlocker('ordering', { ...filled(), orderTypes: [] }, 0)).toBe('Pick at least one way to order')
+  })
+})
+
+describe('restoreDraft', () => {
+  test('restores a well-formed saved draft over the fallback', () => {
+    // Arrange
+    const saved = { ...filled(), tagline: 'Home-style cooking', closedDays: [0, 6] }
+
+    // Act
+    const restored = restoreDraft(emptyDraft('Store'), JSON.parse(JSON.stringify(saved)))
+
+    // Assert
+    expect(restored).toEqual(saved)
+  })
+
+  test('drops fields whose shape no longer matches instead of crashing the form', () => {
+    // Arrange
+    const fallback = emptyDraft('Store')
+    const saved = {
+      storeName: 42,
+      storeType: 'spaceship',
+      bestSellers: ['only one'],
+      orderTypes: ['pickup', 'teleport'],
+      closedDays: [1, 9],
+      acceptsCash: 'yes',
+      tagline: 'kept',
+      unknownField: true,
+    }
+
+    // Act
+    const restored = restoreDraft(fallback, saved)
+
+    // Assert
+    expect(restored).toEqual({ ...fallback, tagline: 'kept' })
+  })
+
+  test('ignores a saved value that is not an object', () => {
+    const fallback = emptyDraft('Store')
+    expect(restoreDraft(fallback, null)).toBe(fallback)
+    expect(restoreDraft(fallback, 'draft')).toBe(fallback)
+    expect(restoreDraft(fallback, [1, 2])).toBe(fallback)
   })
 })

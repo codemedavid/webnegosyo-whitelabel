@@ -505,7 +505,15 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       // choose; it simply is not sent for them.
       await awaitSaveBeforeRedirect(orderSavePromiseRef.current)
       if (isCancelled || orderRefusedRef.current) return
-      window.open(messengerUrl, '_blank', 'noopener,noreferrer')
+      // Opened without the `noopener` feature so a BLOCKED popup is detectable
+      // (it returns null; with `noopener` the return is always null). This
+      // open runs seconds after the tap, outside the user gesture, so desktop
+      // and in-app browsers often block it. Moving on to tracking then would
+      // strip the thank-you screen — and its manual "Open Messenger" button —
+      // before the merchant ever got the message.
+      const messengerWindow = window.open(messengerUrl, '_blank')
+      if (!messengerWindow) return
+      messengerWindow.opener = null
       setHasOpenedMessenger(true)
     }
     void openMessengerWhenSafe()

@@ -46,6 +46,7 @@ import { createCategoryAction, updateCategoryAction, deleteCategoryAction, reord
 import type { Category, Addon } from '@/types/database'
 import { CategoryIcon } from '@/components/shared/category-icon'
 import { IconPicker } from '@/components/admin/icon-picker'
+import { describeActionError } from '@/components/admin/server-action-safety'
 
 interface CategoryFormData {
   name: string
@@ -144,6 +145,9 @@ function SortableCategoryCard({
 export function CategoriesList({ categories: initialCategories, tenantSlug, tenantId }: CategoriesListProps) {
   const dndId = useId()
   const [categories, setCategories] = useState(initialCategories)
+  // Local state is the list on screen: writes apply their result here. The
+  // page's categories read is Redis-cached, so a server re-render after a
+  // write can still carry the old list and must not replace this one.
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -176,11 +180,18 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
     const reordered = arrayMove(categories, oldIndex, newIndex)
     setCategories(reordered)
 
-    const result = await reorderCategoriesAction(
-      tenantId,
-      tenantSlug,
-      reordered.map((c) => c.id)
-    )
+    let result: Awaited<ReturnType<typeof reorderCategoriesAction>>
+    try {
+      result = await reorderCategoriesAction(
+        tenantId,
+        tenantSlug,
+        reordered.map((c) => c.id)
+      )
+    } catch (error) {
+      setCategories(categories)
+      toast.error(describeActionError(error))
+      return
+    }
 
     if (!result.success) {
       setCategories(categories)
@@ -237,11 +248,29 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
       default_addons: formData.default_addons,
     }
 
-    const result = editingCategory
-      ? await updateCategoryAction(editingCategory.id, tenantId, tenantSlug, input)
-      : await createCategoryAction(tenantId, tenantSlug, input)
+    let result: Awaited<ReturnType<typeof createCategoryAction>>
+    try {
+      result = editingCategory
+        ? await updateCategoryAction(editingCategory.id, tenantId, tenantSlug, input)
+        : await createCategoryAction(tenantId, tenantSlug, input)
+    } catch (error) {
+      // A dropped request or an expired session: never leave the dialog stuck on "Saving...".
+      toast.error(describeActionError(error))
+      setIsSubmitting(false)
+      return
+    }
 
     if (result.success) {
+      // The list is local state; without this a new or renamed category only
+      // appeared after a full reload.
+      const saved = result.data
+      if (saved) {
+        setCategories((prev) =>
+          editingCategory
+            ? prev.map((category) => (category.id === saved.id ? saved : category))
+            : [...prev, saved]
+        )
+      }
       toast.success(editingCategory ? 'Category updated!' : 'Category created!')
       setIsDialogOpen(false)
       setEditingCategory(null)
@@ -258,9 +287,18 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
     if (!categoryToDelete) return
 
     setIsDeleting(true)
-    const result = await deleteCategoryAction(categoryToDelete, tenantId, tenantSlug)
+    let result: Awaited<ReturnType<typeof deleteCategoryAction>>
+    try {
+      result = await deleteCategoryAction(categoryToDelete, tenantId, tenantSlug)
+    } catch (error) {
+      toast.error(describeActionError(error))
+      setIsDeleting(false)
+      return
+    }
 
     if (result.success) {
+      const deletedId = categoryToDelete
+      setCategories((prev) => prev.filter((category) => category.id !== deletedId))
       toast.success('Category deleted successfully')
       setDeleteDialogOpen(false)
       setCategoryToDelete(null)

@@ -49,6 +49,13 @@ import { EMPTY_BUILD_SUMMARY, type LaunchBuildSummary } from './summary'
 type AdminClient = SupabaseClient<Database>
 
 const STORE_TIMEZONE = 'Asia/Manila'
+/**
+ * The menu read must give up before the route's 300s `maxDuration` kills the
+ * function: a killed build leaves its step `running` until the stale window
+ * passes, while a timed-out read is recorded as a failed step the buyer can
+ * retry at once.
+ */
+const MENU_PARSE_DEADLINE_MS = 200_000
 
 interface BuildContext {
   admin: AdminClient
@@ -110,13 +117,41 @@ function bestSellerWarnings(hasFailed: boolean, marked: number, typed: number): 
   return marked < typed ? ['Some best sellers were not found on the menu; mark them as featured.'] : []
 }
 
+/** A fresh store's menu is small; this only bounds the read. */
+const MAX_EXISTING_MENU_ROWS = 1000
+
+async function readExistingMenuItems(build: BuildContext): Promise<Array<{ id: string; name: string }>> {
+  const { data, error } = await build.admin
+    .from('menu_items')
+    .select('id, name')
+    .eq('tenant_id', build.tenantId)
+    .limit(MAX_EXISTING_MENU_ROWS)
+  if (error) throw new Error(`Menu items could not be read: ${error.message}`)
+  return (data ?? []) as Array<{ id: string; name: string }>
+}
+
 async function menuStep(build: BuildContext): Promise<StepOutcome> {
+  // A build killed after the import but before the step was recorded leaves
+  // the step `running`; the takeover would import the whole menu again. The
+  // store was created empty by onboarding, so any dish means it was imported.
+  const existingItems = await readExistingMenuItems(build)
+  if (existingItems.length > 0) {
+    const marked = await markBestSellers(build, existingItems).catch(() => [] as string[])
+    return {
+      status: 'done',
+      detail: `${existingItems.length} items already on your menu`,
+      summary: { bestSellerNames: marked },
+    }
+  }
+
   const sources = await readMenuSources(build)
   if (!sources.text && sources.images.length === 0) {
     return { status: 'skipped', detail: 'No menu was added', summary: { warnings: ['Add your menu items — none were uploaded.'] } }
   }
 
-  const parsed = await parseMenuWithAi(sources)
+  const parsed = await parseMenuWithAi(sources, {
+    fetchImpl: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(MENU_PARSE_DEADLINE_MS) }),
+  })
   if (!parsed.ok) throw new Error(parsed.error)
 
   const imported = await importParsedMenu(build.admin, build.tenantId, parsed.data)

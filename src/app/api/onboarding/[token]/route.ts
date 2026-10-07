@@ -7,7 +7,7 @@ import { describeAnswersError, onboardingSubmitSchema } from '@/lib/onboarding/a
 import { provisionStore } from '@/lib/onboarding/provision'
 import { runOnboardingBuild } from '@/lib/onboarding/build'
 import { isWellFormedOnboardingToken } from '@/lib/onboarding/token'
-import { isBuildRetryable } from '@/lib/onboarding/build-staleness'
+import { isBuildRetryable, MAX_BUYER_BUILD_ATTEMPTS } from '@/lib/onboarding/build-staleness'
 import { isBuyerFacingError } from '@/lib/onboarding/errors'
 
 /**
@@ -87,6 +87,9 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
 
     if ((body as { action?: unknown } | null)?.action === 'retry') {
       if (!isBuildRetryable(onboarding)) return respond({ error: 'Nothing to retry.' }, 409)
+      if (onboarding.attempts >= MAX_BUYER_BUILD_ATTEMPTS) {
+        return respond({ error: 'This set-up needs a hand from our team. Message us and we will finish it for you.' }, 429)
+      }
       scheduleBuild(onboarding.id)
       return respond({ success: true })
     }

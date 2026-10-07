@@ -8,10 +8,13 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { chunk, readPaged } from '@/lib/assistant/data/paged'
 
 const CAMPAIGN_LIMIT = 20
 const RUN_LIMIT = 500
 const SEND_LIMIT = 5000
+/** Run ids per `in.(…)` filter: 500 uuids in one URL would outgrow the gateway's limit. */
+const RUN_IDS_PER_REQUEST = 100
 const WINDOW_DAYS = 30
 const DAY_MS = 86_400_000
 
@@ -53,9 +56,25 @@ async function readSendCounts(client: SupabaseClient, tenantId: string, campaign
   const campaignOfRun = new Map(((runs.data ?? []) as Array<{ id: string; campaign_id: string }>).map((run) => [run.id, run.campaign_id]))
   if (campaignOfRun.size === 0) return { counts, isCapped: false }
 
-  const sends = await client.from('sms_sends').select('run_id, result').eq('tenant_id', tenantId).in('run_id', [...campaignOfRun.keys()]).limit(SEND_LIMIT)
-  if (sends.error) throw new Error(`campaign sends unreadable: ${sends.error.message}`)
-  for (const send of (sends.data ?? []) as Array<{ run_id: string; result: string }>) {
+  const runIds = [...campaignOfRun.keys()]
+  let sends: Array<{ run_id: string; result: string }> = []
+  let isSendCapped = false
+  for (const group of chunk(runIds, RUN_IDS_PER_REQUEST)) {
+    const remaining = SEND_LIMIT - sends.length
+    if (remaining <= 0) {
+      isSendCapped = true
+      break
+    }
+    const read = await readPaged<{ run_id: string; result: string }>(
+      (from, to) => client.from('sms_sends').select('run_id, result').eq('tenant_id', tenantId).in('run_id', group).order('id').range(from, to),
+      remaining,
+    ).catch((error: unknown) => {
+      throw new Error(`campaign sends unreadable: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    sends = [...sends, ...read.rows]
+    isSendCapped = isSendCapped || read.isCapped
+  }
+  for (const send of sends) {
     const campaignId = campaignOfRun.get(send.run_id)
     if (!campaignId) continue
     const current = counts.get(campaignId) ?? { sent: 0, failed: 0 }
@@ -64,7 +83,7 @@ async function readSendCounts(client: SupabaseClient, tenantId: string, campaign
       failed: current.failed + Number(send.result === 'failed'),
     })
   }
-  return { counts, isCapped: (sends.data ?? []).length >= SEND_LIMIT || (runs.data ?? []).length >= RUN_LIMIT }
+  return { counts, isCapped: isSendCapped || (runs.data ?? []).length >= RUN_LIMIT }
 }
 
 async function readReachable(client: SupabaseClient, tenantId: string): Promise<number | null> {

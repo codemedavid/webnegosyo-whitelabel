@@ -11,6 +11,7 @@ import {
   rebindOrderEdits,
   recordOrderEditFailure,
   removeOrderEdit,
+  requeueSignedOutEditRefusals,
   resetOrderEditsForTests,
   subscribeOrderEdits,
   type QueuedOrderEdit,
@@ -134,5 +135,22 @@ describe("order edits queue", () => {
 
     await enqueueOrderEdit(edit("e2"));
     expect(getOrderEdits().edits.map((e) => e.editId)).toEqual(["e2"]);
+  });
+
+  it("gives changes refused while signed out a fresh set of attempts", async () => {
+    storage.getItem.mockResolvedValue(
+      JSON.stringify([
+        edit("signed-out", { attempts: MAX_EDIT_ATTEMPTS, lastError: "JWT expired" }),
+        edit("refused", { attempts: MAX_EDIT_ATTEMPTS, lastError: "Not allowed" }),
+        edit("retrying", { attempts: 1, lastError: "new row violates row-level security policy" }),
+      ])
+    );
+
+    expect(await requeueSignedOutEditRefusals()).toBe(1);
+
+    const byId = Object.fromEntries(getOrderEdits().edits.map((entry) => [entry.editId, entry]));
+    expect(byId["signed-out"]).toMatchObject({ attempts: 0, lastError: null });
+    expect(byId.refused).toMatchObject({ attempts: MAX_EDIT_ATTEMPTS, lastError: "Not allowed" });
+    expect(byId.retrying.attempts).toBe(1);
   });
 });

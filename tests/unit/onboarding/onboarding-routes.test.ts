@@ -55,6 +55,17 @@ describe('POST /api/onboarding/[token] retry', () => {
     expect(after).toHaveBeenCalledTimes(1)
   })
 
+  test('a buyer cannot re-run the paid build past the attempt cap', async () => {
+    const { POST } = await import('@/app/api/onboarding/[token]/route')
+    const { MAX_BUYER_BUILD_ATTEMPTS } = await import('@/lib/onboarding/build-staleness')
+    findOnboardingForToken.mockResolvedValue(onboarding({ status: 'failed', attempts: MAX_BUYER_BUILD_ATTEMPTS }))
+
+    const response = await POST(jsonRequest('POST', { action: 'retry' }), context)
+
+    expect(response.status).toBe(429)
+    expect(after).not.toHaveBeenCalled()
+  })
+
   test('a build still making progress is not retried', async () => {
     const { POST } = await import('@/app/api/onboarding/[token]/route')
     findOnboardingForToken.mockResolvedValue(onboarding({ status: 'running', updatedAt: minutesAgo(1) }))

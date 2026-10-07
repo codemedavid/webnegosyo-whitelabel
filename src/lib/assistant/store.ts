@@ -105,7 +105,9 @@ export async function saveMessage(
             }
           : {}),
       },
-      { onConflict: 'conversation_id,message_id' },
+      // The user message id comes from the client: a repeated id (a retry, or one
+      // aimed at an earlier answer) must never overwrite a stored message.
+      { onConflict: 'conversation_id,message_id', ignoreDuplicates: message.role === 'user' },
     )
   if (error) throw new Error(`Message could not be saved: ${error.message}`)
 }

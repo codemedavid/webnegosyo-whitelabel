@@ -29,8 +29,11 @@ jest.mock('@/lib/onboarding/repository', () => ({
   writeOnboardingSteps: (...a: unknown[]) => writeOnboardingSteps(...a),
 }))
 
-/** menu_items writes fail (the best-seller flag); everything else succeeds. */
-function fakeAdmin() {
+/**
+ * menu_items writes fail (the best-seller flag); everything else succeeds.
+ * The existing-dishes read (`.limit()`) answers `existingMenu`.
+ */
+function fakeAdmin(existingMenu: Array<{ id: string; name: string }> = []) {
   const client = {
     from(table: string) {
       const query: Record<string, unknown> = {}
@@ -38,6 +41,7 @@ function fakeAdmin() {
         ? { data: null, error: { message: 'statement timeout' } }
         : { data: { slug: 'kape' }, error: null }
       for (const method of ['select', 'update', 'eq', 'in']) query[method] = () => query
+      query.limit = () => Promise.resolve({ data: existingMenu, error: null })
       query.single = async () => result
       query.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve)
       return query
@@ -82,5 +86,28 @@ describe('runOnboardingBuild — menu step', () => {
     const outcome = finishOnboardingBuild.mock.calls[0][2] as { status: string; summary: { warnings: string[] } }
     expect(outcome.status).toBe('ready')
     expect(outcome.summary.warnings.some((w) => /best sellers/i.test(w))).toBe(true)
+  })
+
+  test('a build taken over after the menu was imported (step left running) never imports it again', async () => {
+    // Arrange
+    const { runOnboardingBuild } = await import('@/lib/onboarding/build')
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    findOnboardingById.mockResolvedValueOnce({
+      id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status: 'running',
+      answers: { storeName: 'Kape', storeType: 'restaurant', menuText: 'Adobo 180', bestSellers: [] },
+      assets: {}, steps: { branding: DONE, menu: { status: 'running', detail: 'Reading your menu' }, store_setup: DONE, boost: DONE, loyalty: DONE },
+      summary: null, error: null, attempts: 1, launchRequestedAt: null,
+      createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:00Z',
+    })
+
+    // Act
+    await runOnboardingBuild(fakeAdmin([{ id: 'i1', name: 'Adobo' }]) as never, 'onb-1')
+
+    // Assert
+    expect(parseMenuWithAi).not.toHaveBeenCalled()
+    expect(importParsedMenu).not.toHaveBeenCalled()
+    const lastSteps = writeOnboardingSteps.mock.calls.at(-1)?.[2] as Record<string, { status: string }>
+    expect(lastSteps.menu.status).toBe('done')
   })
 })

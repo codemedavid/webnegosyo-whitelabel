@@ -106,8 +106,12 @@ describe('useCheckout — wiring', () => {
     expect(SOURCE).toMatch(/router\.replace\(trackingRedirectPath\)/)
   })
 
-  it('marks Messenger as opened right after the countdown opens it', () => {
-    expect(SOURCE).toMatch(/window\.open\(messengerUrl[^)]*\)\s*\n\s*setHasOpenedMessenger\(true\)/)
+  it('marks Messenger as opened right after the countdown opens it — and only if it did', () => {
+    // A blocked popup returns null; leaving for tracking then would strand the
+    // order message (see messenger-redirect-wiring.test.ts).
+    expect(SOURCE).toMatch(
+      /const messengerWindow = window\.open\(messengerUrl[^)]*\)\s*\n\s*if \(!messengerWindow\) return\s*\n\s*messengerWindow\.opener = null\s*\n\s*setHasOpenedMessenger\(true\)/
+    )
     expect(SOURCE).toContain('hasOpenedMessenger,')
     expect(SOURCE).toContain('isMessengerAutoOpen: messengerRedirectEnabled')
   })

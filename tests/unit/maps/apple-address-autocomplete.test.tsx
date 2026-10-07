@@ -86,7 +86,8 @@ it('resolves an autocomplete pick to Apple\'s exact address and coordinates', as
   await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
 
   // Act
-  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'greenbelt' } })
+  fireEvent.focus(screen.getByRole('combobox'))
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'greenbelt' } })
   const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
   await act(async () => {
     fireEvent.mouseDown(option)
@@ -130,7 +131,8 @@ it('answers what was typed before Apple Maps finished loading', async () => {
   await renderField()
 
   // Act
-  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'greenbelt' } })
+  fireEvent.focus(screen.getByRole('combobox'))
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'greenbelt' } })
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 300))
     finishLoading(fakeMapKit())
@@ -138,6 +140,70 @@ it('answers what was typed before Apple Maps finished loading', async () => {
 
   // Assert
   expect(await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })).toBeInTheDocument()
+})
+
+describe('suggestion list', () => {
+  it('can be driven from the keyboard: arrows highlight, Enter picks', async () => {
+    // Arrange
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(fakeMapKit())
+    const onChange = await renderField()
+    const input = await screen.findByRole('combobox')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'greenbelt' } })
+    const option = await screen.findByRole('option', { name: 'Greenbelt 5, Makati, Metro Manila' })
+    expect(input).toHaveAttribute('aria-expanded', 'true')
+
+    // Act
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    // Assert: highlighted and announced
+    expect(option).toHaveAttribute('aria-selected', 'true')
+    expect(input).toHaveAttribute('aria-activedescendant', option.id)
+
+    // Act
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+
+    // Assert
+    expect(onChange).toHaveBeenLastCalledWith('Greenbelt 5, Legazpi St, Makati, 1223 Metro Manila, Philippines', {
+      lat: 14.5527,
+      lng: 121.0219,
+    })
+    expect(screen.queryByRole('option')).toBeNull()
+  })
+
+  it('drops a late answer to text the diner has since cleared', async () => {
+    // Arrange: Apple answers only when told to.
+    const mapkit = fakeMapKit()
+    let answer: () => void = () => undefined
+    const search = new (mapkit.Search as unknown as new () => { autocomplete: jest.Mock })()
+    search.autocomplete.mockImplementation((_q: string, done: (e: null, d: { results: MapKitAutocompleteResult[] }) => void) => {
+      answer = () => done(null, { results: [greenbelt] })
+      return 7
+    })
+    const { loadMapKit } = await import('@/lib/maps/apple/mapkit-loader')
+    jest.mocked(loadMapKit).mockResolvedValue(mapkit)
+    await renderField()
+    const input = await screen.findByRole('combobox')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pick on the map' })).toBeEnabled())
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'greenbelt' } })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    })
+
+    // Act: the diner clears the field, then the old answer arrives.
+    fireEvent.change(input, { target: { value: 'gr' } })
+    await act(async () => {
+      answer()
+    })
+
+    // Assert
+    expect(screen.queryByRole('option')).toBeNull()
+  })
 })
 
 describe('inline pin map', () => {

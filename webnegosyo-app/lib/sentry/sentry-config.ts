@@ -76,3 +76,69 @@ export function sentryScopeFromAuth(auth: SentryAuthSlice): SentryScope {
     },
   };
 }
+
+/** The parts of a Sentry breadcrumb this module reads and rewrites. */
+export interface BreadcrumbLike {
+  category?: string;
+  message?: string;
+  data?: Record<string, unknown>;
+}
+
+const REQUEST_CATEGORIES: ReadonlySet<string> = new Set(["xhr", "fetch", "http"]);
+
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+/**
+ * Philippine mobile numbers in their usual spellings (+63 917…, 0917…). The
+ * leading group keeps a uuid's last segment (`-000000000001`) from matching.
+ */
+const PHONE_PATTERN = /(^|[^\w-])((?:\+?63|0)[\s-]?9\d{2}[\s-]?\d{3}[\s-]?\d{4})(?![\w-])/g;
+
+function redactContacts(text: string): string {
+  return text.replace(EMAIL_PATTERN, "[email]").replace(PHONE_PATTERN, "$1[phone]");
+}
+
+function withoutQuery(url: string): string {
+  const cut = url.search(/[?#]/);
+  return cut === -1 ? url : url.slice(0, cut);
+}
+
+/**
+ * Strip customer contact details from a breadcrumb before it can ride along
+ * with an event. PostgREST puts filters in the query string — the customer
+ * lookup sends `phone_e164=eq.+63…` — and the SDK records every request URL,
+ * so request breadcrumbs lose their query and fragment; free-text messages
+ * (console lines) have emails and phone numbers masked. Returns a new object.
+ */
+export function scrubBreadcrumb<T extends BreadcrumbLike>(breadcrumb: T): T {
+  const next: T = { ...breadcrumb };
+  if (typeof next.message === "string") next.message = redactContacts(next.message);
+  if (next.data && REQUEST_CATEGORIES.has(next.category ?? "") && typeof next.data.url === "string") {
+    next.data = { ...next.data, url: withoutQuery(next.data.url) };
+  }
+  return next;
+}
+
+/** The parts of a Sentry event whose free text may quote a customer. */
+export interface EventLike {
+  message?: string;
+  exception?: { values?: { value?: string }[] };
+}
+
+/**
+ * Mask emails and phone numbers in an event's message and exception texts.
+ * Database errors quote the offending row (`Key (phone_e164)=(+63…)`), and a
+ * screen's error string can name the customer it failed for. Returns a copy.
+ */
+export function scrubEvent<T extends EventLike>(event: T): T {
+  const next: T = { ...event };
+  if (typeof next.message === "string") next.message = redactContacts(next.message);
+  if (next.exception?.values) {
+    next.exception = {
+      ...next.exception,
+      values: next.exception.values.map((value) =>
+        typeof value.value === "string" ? { ...value, value: redactContacts(value.value) } : value
+      ),
+    };
+  }
+  return next;
+}

@@ -7,7 +7,7 @@
  * (`ChoiceRule`); it is just asked as the two decisions an owner actually makes.
  */
 
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { Library, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -223,50 +223,92 @@ function LimitFields({ rule, group, onUpdateMinSelect, onUpdateMaxSelect }: Limi
 
   const isExtras = isExtrasRule(rule)
   const isRequired = rule === 'pick-some' || rule === 'extras-required'
+  // A "Several" group capped at 1 IS a "One" group, and a cap under the
+  // minimum lowers the minimum. Both are right for a finished number but wrong
+  // for a keystroke on the way to one ("1" before "12"), so such a cap waits
+  // for the owner to leave the field.
+  const lowestLiveMax = Math.max(group.min_select, isExtras ? 1 : 2)
 
   return (
     <div className="flex flex-wrap gap-3">
       {isRequired && (
         <LimitInput
           label={isExtras ? 'Min portions' : 'At least'}
-          min={1}
           placeholder="1"
           value={group.min_select}
-          onChange={(raw) => onUpdateMinSelect(raw === '' ? 0 : Math.max(0, parseInt(raw, 10) || 0))}
+          // An emptied or zero minimum is never stored: it would turn the
+          // group optional and remove this field mid-edit.
+          parse={(raw) => parsePositiveInt(raw) ?? undefined}
+          canApplyWhileTyping={() => true}
+          onCommit={(min) => {
+            if (min !== null) onUpdateMinSelect(min)
+          }}
         />
       )}
       <LimitInput
         label={isExtras ? 'Max portions' : 'At most'}
-        min={1}
         placeholder="No limit"
-        value={group.max_select ?? ''}
-        onChange={(raw) => onUpdateMaxSelect(raw === '' ? null : Math.max(1, parseInt(raw, 10) || 1))}
+        value={group.max_select}
+        parse={(raw) => (raw === '' ? null : parsePositiveInt(raw) ?? undefined)}
+        canApplyWhileTyping={(max) => max === null || max >= lowestLiveMax}
+        onCommit={onUpdateMaxSelect}
       />
     </div>
   )
 }
 
-interface LimitInputProps {
-  label: string
-  min: number
-  placeholder: string
-  value: number | ''
-  onChange: (raw: string) => void
+/** A whole number of at least 1, or null when the text is not one. */
+function parsePositiveInt(raw: string): number | null {
+  const parsed = parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : null
 }
 
-function LimitInput({ label, min, placeholder, value, onChange }: LimitInputProps) {
+interface LimitInputProps {
+  label: string
+  placeholder: string
+  value: number | null
+  /** The stored value for the typed text; `undefined` when it cannot be stored. */
+  parse: (raw: string) => number | null | undefined
+  /** Whether a value may be stored mid-typing, or only once the field is left. */
+  canApplyWhileTyping: (value: number | null) => boolean
+  onCommit: (value: number | null) => void
+}
+
+/**
+ * Backed by the text the owner typed, so a half-typed limit is never forced
+ * into the stored rule. Leaving the field stores what can be stored and shows
+ * the stored value again.
+ */
+function LimitInput({ label, placeholder, value, parse, canApplyWhileTyping, onCommit }: LimitInputProps) {
   const id = useId()
+  const [draft, setDraft] = useState<string | null>(null)
+  const shown = draft ?? (value === null ? '' : String(value))
+
+  const handleChange = (raw: string) => {
+    setDraft(raw)
+    const parsed = parse(raw.trim())
+    if (parsed !== undefined && parsed !== value && canApplyWhileTyping(parsed)) onCommit(parsed)
+  }
+
+  const handleBlur = () => {
+    if (draft === null) return
+    const parsed = parse(draft.trim())
+    setDraft(null)
+    if (parsed !== undefined && parsed !== value) onCommit(parsed)
+  }
+
   return (
     <div className="flex items-center gap-2">
       <label htmlFor={id} className="text-sm text-muted-foreground">{label}</label>
       <Input
         id={id}
         type="number"
-        min={min}
+        min={1}
         inputMode="numeric"
         placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value.trim())}
+        value={shown}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={handleBlur}
         className="h-10 w-24"
       />
     </div>

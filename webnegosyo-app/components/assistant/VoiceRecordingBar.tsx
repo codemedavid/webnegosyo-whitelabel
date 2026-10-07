@@ -60,7 +60,8 @@ export function VoiceRecordingBar({ onFinish }: Props) {
     (async () => {
       try {
         await recorder.prepareToRecordAsync();
-        if (isMounted) recorder.record();
+        // Done / Cancel tapped while the recorder was still preparing: never start it.
+        if (isMounted && !isFinishedRef.current) recorder.record();
       } catch {
         if (!isMounted) return;
         isFinishedRef.current = true;

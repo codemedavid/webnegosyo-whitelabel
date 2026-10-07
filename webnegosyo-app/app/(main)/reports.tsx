@@ -81,7 +81,9 @@ export default function ReportsScreen() {
     canSeeCustomers,
     isHubOnLocally: isHubOn,
     isLoading: dashboardQuery.isLoading,
-    hasError: dashboardQuery.error !== null,
+    // A failed refetch keeps the last good answer; only a read that never
+    // produced one is an error.
+    hasError: dashboardQuery.error !== null && result === undefined,
     result: result && (result.ok ? { ok: true, hasDashboard: dashboard !== null } : result),
   });
 

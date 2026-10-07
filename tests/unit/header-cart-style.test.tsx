@@ -69,3 +69,11 @@ describe('HeaderCartButton styles', () => {
     expect(container.querySelector('[data-branding-scope="storefront/header-cart"]')).not.toBeNull()
   })
 })
+
+describe('HeaderCartButton count for screen readers', () => {
+  it.each(HEADER_CART_STYLES)('the "%s" style describes its count, keeping the name "Open cart"', (style) => {
+    render(<HeaderCartButton itemCount={3} onClick={() => undefined} branding={branding} cartStyle={style} />)
+
+    expect(screen.getByRole('button', { name: 'Open cart' })).toHaveAccessibleDescription('3 items')
+  })
+})

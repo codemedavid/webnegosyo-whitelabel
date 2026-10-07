@@ -5,12 +5,13 @@
  */
 
 import {
+  ONBOARDING_ORDER_TYPES,
   onboardingAnswersSchema,
   describeAnswersError,
   type OnboardingAnswers,
   type OnboardingOrderType,
 } from '@/lib/onboarding/answers'
-import type { StoreType } from '@/lib/onboarding/store-type'
+import { isStoreType, type StoreType } from '@/lib/onboarding/store-type'
 
 export interface WizardDraft {
   storeName: string
@@ -101,4 +102,40 @@ export function stepBlocker(step: WizardStep, draft: WizardDraft, menuPhotoCount
     case 'account':
       return null
   }
+}
+
+function isStringTriple(value: unknown): value is [string, string, string] {
+  return Array.isArray(value) && value.length === 3 && value.every((item) => typeof item === 'string')
+}
+
+function isArrayOf(value: unknown, isItem: (item: unknown) => boolean): boolean {
+  return Array.isArray(value) && value.every(isItem)
+}
+
+/**
+ * Merge a draft saved in the browser over `fallback`, keeping only fields whose
+ * shape still matches. A draft written by an older wizard (or tampered with)
+ * must never crash the form, e.g. `bestSellers` that is not three strings.
+ */
+export function restoreDraft(fallback: WizardDraft, saved: unknown): WizardDraft {
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return fallback
+  const source = saved as Record<string, unknown>
+  const restored: Record<string, unknown> = {}
+  for (const key of Object.keys(fallback) as (keyof WizardDraft)[]) {
+    const value = source[key]
+    const current = fallback[key]
+    if (value === undefined) continue
+    if (key === 'bestSellers') {
+      if (isStringTriple(value)) restored[key] = value
+    } else if (key === 'orderTypes') {
+      if (isArrayOf(value, (item) => (ONBOARDING_ORDER_TYPES as readonly unknown[]).includes(item))) restored[key] = value
+    } else if (key === 'storeType') {
+      if (value === '' || isStoreType(value)) restored[key] = value
+    } else if (key === 'closedDays') {
+      if (isArrayOf(value, (item) => Number.isInteger(item) && (item as number) >= 0 && (item as number) <= 6)) restored[key] = value
+    } else if (typeof value === typeof current) {
+      restored[key] = value
+    }
+  }
+  return { ...fallback, ...(restored as Partial<WizardDraft>) }
 }

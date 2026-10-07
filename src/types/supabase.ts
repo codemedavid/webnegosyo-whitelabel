@@ -6871,7 +6871,6 @@ export type Database = {
           created_at: string
           customer_hub_enabled: boolean
           delivery_min_fee: number | null
-          free_delivery_min_order: number | null
           delivery_price_per_km: number | null
           delivery_radius_km: number | null
           distance_delivery_enabled: boolean
@@ -7159,7 +7158,6 @@ export type Database = {
           created_at?: string
           customer_hub_enabled?: boolean
           delivery_min_fee?: number | null
-          free_delivery_min_order?: number | null
           delivery_price_per_km?: number | null
           delivery_radius_km?: number | null
           distance_delivery_enabled?: boolean
@@ -7447,7 +7445,6 @@ export type Database = {
           created_at?: string
           customer_hub_enabled?: boolean
           delivery_min_fee?: number | null
-          free_delivery_min_order?: number | null
           delivery_price_per_km?: number | null
           delivery_radius_km?: number | null
           distance_delivery_enabled?: boolean

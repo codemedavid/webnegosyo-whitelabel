@@ -31,6 +31,7 @@ import type { SelectableBranch } from '@/lib/inventory/stock-outlet'
 import { UnitsTab } from '@/components/admin/inventory-manager/units-tab'
 import { IngredientEditorDialog } from '@/components/admin/inventory-manager/ingredient-editor-dialog'
 import { StockMovementDialog } from '@/components/admin/inventory-manager/stock-movement-dialog'
+import { describeActionError } from '@/components/admin/server-action-safety'
 
 interface IngredientsTabProps {
   tenantId: string
@@ -119,24 +120,37 @@ export function IngredientsTab({
     setIsOpen(true)
   }
 
-  const handleDelete = async (item: InventoryItem) => {
-    // Ask the database what a delete WOULD do before asking the merchant: an
-    // ingredient in recipes loses those lines, and one with stock history is
-    // kept as "Not in use" so the history survives. Never confirm blind.
-    const preview = await previewIngredientDeleteAction(item.id, tenantId)
-    if (!preview.success) {
-      toast.error(preview.error ?? `We could not check ${item.name}. Try again in a moment.`)
-      return
-    }
-    if (!confirm(describeIngredientDelete(item.name, preview.data))) return
+  /** The ingredient whose delete is being checked or written; a second tap waits. */
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-    const result = await deleteIngredientAction(item.id, tenantId, tenantSlug)
-    if (!result.success) {
-      toast.error(result.error ?? `We could not delete ${item.name}. Try again in a moment.`)
-      return
+  const handleDelete = async (item: InventoryItem) => {
+    if (deletingId) return
+    setDeletingId(item.id)
+    try {
+      // Ask the database what a delete WOULD do before asking the merchant: an
+      // ingredient in recipes loses those lines, and one with stock history is
+      // kept as "Not in use" so the history survives. Never confirm blind.
+      const preview = await previewIngredientDeleteAction(item.id, tenantId)
+      if (!preview.success) {
+        toast.error(preview.error ?? `We could not check ${item.name}. Try again in a moment.`)
+        return
+      }
+      if (!confirm(describeIngredientDelete(item.name, preview.data))) return
+
+      const result = await deleteIngredientAction(item.id, tenantId, tenantSlug)
+      if (!result.success) {
+        toast.error(result.error ?? `We could not delete ${item.name}. Try again in a moment.`)
+        return
+      }
+      onChange(applyIngredientDeleteOutcome(ingredients, item.id, result.data.outcome))
+      toast.success(describeIngredientDeleteOutcome(item.name, result.data))
+    } catch (error) {
+      // A dropped request or an expired session rejects; say so instead of
+      // leaving the tap looking ignored.
+      toast.error(describeActionError(error))
+    } finally {
+      setDeletingId(null)
     }
-    onChange(applyIngredientDeleteOutcome(ingredients, item.id, result.data.outcome))
-    toast.success(describeIngredientDeleteOutcome(item.name, result.data))
   }
 
   const noUnits = units.length === 0

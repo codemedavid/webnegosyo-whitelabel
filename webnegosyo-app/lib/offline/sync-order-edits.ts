@@ -15,7 +15,10 @@
  *   that order's later changes this run so they never land out of order.
  *   After `MAX_EDIT_ATTEMPTS` refusals a change is left for a person.
  *
- * One run at a time per process; an overlapping trigger joins the run.
+ * One run at a time per process; an overlapping trigger joins the run and
+ * asks for a follow-up pass, so a change made (or an order written) while a
+ * run is in flight is sent straight after it rather than on the retry timer.
+ * A follow-up never retries a change this cycle already tried.
  */
 
 import type { OrderBackend } from "../order-backend";
@@ -88,7 +91,10 @@ function resolveDeps(deps: SyncOrderEditsDeps): Required<SyncOrderEditsDeps> {
   };
 }
 
-async function runSync(deps: Required<SyncOrderEditsDeps>): Promise<SyncOrderEditsResult> {
+async function runSync(
+  deps: Required<SyncOrderEditsDeps>,
+  attempted: Set<string>
+): Promise<SyncOrderEditsResult> {
   const mine = deps
     .listEdits()
     .filter((edit) => edit.tenantId === deps.tenantId && edit.backend === deps.backend);
@@ -111,6 +117,13 @@ async function runSync(deps: Required<SyncOrderEditsDeps>): Promise<SyncOrderEdi
       continue;
     }
     if (heldBack.has(edit.orderId)) continue;
+    // Tried earlier this cycle (and refused, or it would be gone): the retry
+    // timer gets the next attempt. Later changes to its order wait behind it.
+    if (attempted.has(edit.editId)) {
+      heldBack.add(edit.orderId);
+      continue;
+    }
+    attempted.add(edit.editId);
 
     const orderId = sale?.syncedOrderId ?? edit.orderId;
     try {
@@ -139,11 +152,37 @@ async function runSync(deps: Required<SyncOrderEditsDeps>): Promise<SyncOrderEdi
 }
 
 let inFlight: Promise<SyncOrderEditsResult> | null = null;
+let rerunDeps: Required<SyncOrderEditsDeps> | null = null;
+
+async function runCycle(deps: Required<SyncOrderEditsDeps>): Promise<SyncOrderEditsResult> {
+  const attempted = new Set<string>();
+  let result = await runSync(deps, attempted);
+  while (rerunDeps && !result.stoppedOffline) {
+    const next = rerunDeps;
+    rerunDeps = null;
+    const followUp = await runSync(next, attempted);
+    result = {
+      synced: result.synced + followUp.synced,
+      refused: result.refused + followUp.refused,
+      stuck: followUp.stuck,
+      waiting: followUp.waiting,
+      stoppedOffline: followUp.stoppedOffline,
+    };
+  }
+  return result;
+}
 
 export function syncOrderEdits(deps: SyncOrderEditsDeps): Promise<SyncOrderEditsResult> {
-  if (inFlight) return inFlight;
-  inFlight = runSync(resolveDeps(deps)).finally(() => {
+  if (inFlight) {
+    // The trigger's own deps: the in-flight run may hold a scope that has
+    // since been retired (its `isActive` now false).
+    rerunDeps = resolveDeps(deps);
+    return inFlight;
+  }
+  rerunDeps = null;
+  inFlight = runCycle(resolveDeps(deps)).finally(() => {
     inFlight = null;
+    rerunDeps = null;
   });
   return inFlight;
 }
@@ -151,4 +190,5 @@ export function syncOrderEdits(deps: SyncOrderEditsDeps): Promise<SyncOrderEdits
 /** Test seam. */
 export function resetOrderEditSyncForTests(): void {
   inFlight = null;
+  rerunDeps = null;
 }

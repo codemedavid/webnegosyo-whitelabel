@@ -342,6 +342,15 @@ function CampaignEditorScreen() {
   };
 
   const leave = () => {
+    // The send loop lives in this screen's hook: leaving would orphan it with
+    // no Stop button, still texting guests from the SIM.
+    if (run.isRunning) {
+      Alert.alert(
+        "Still sending",
+        "Stay on this screen until the texts finish, or tap Stop first."
+      );
+      return;
+    }
     if (!isDirty) {
       router.back();
       return;
@@ -367,7 +376,7 @@ function CampaignEditorScreen() {
         setStep(target);
         return true;
       }
-      if (!isDirty) return false;
+      if (!isDirty && !run.isRunning) return false;
       leave();
       return true;
     });
@@ -455,6 +464,13 @@ function CampaignEditorScreen() {
   };
 
   const changeStatus = async (next: CampaignStatus) => {
+    // A status change reloads the saved campaign, which would silently throw
+    // away the unsaved edits — and "Activate" would be judged on words that
+    // are not what is stored.
+    if (isDirty) {
+      Alert.alert("Save your changes first", "Save or discard your edits, then change the status.");
+      return;
+    }
     if (next === "active" && !canActivate(status, validation.isValid)) {
       Alert.alert(
         "Fix the campaign first",

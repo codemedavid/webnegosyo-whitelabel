@@ -16,6 +16,7 @@ import type { PageLayout } from '@/lib/page-layouts'
 import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
 import { HeroLinkProvider } from '@/components/hero-builder/renderer/link-context'
 import { loadHeroDesign } from '@/lib/hero-builder/load'
+import { MENU_ANCHOR } from '@/lib/hero-builder/link-target'
 import { useBrandingPreviewDraft, useIsMobileViewport, useMobileOverrides } from '@/hooks/use-branding-preview'
 import { resolveMobileGridColumns, resolveStorefrontLayout } from '@/lib/storefront-device-layout'
 import { BackgroundOverlayLayer } from '@/components/customer/background-overlay-layer'
@@ -151,7 +152,7 @@ export function LegacyMenuStorefront() {
       {/* A colored preset band sits flush under the header, so <main> drops its
           top padding. */}
       {/* Hero links to "the menu" land here; the margin keeps it clear of a sticky header. */}
-      <main ref={menuRootRef} style={{ scrollMarginTop: 'var(--menu-header-h, 0px)' }} className={
+      <main id={MENU_ANCHOR} ref={menuRootRef} style={{ scrollMarginTop: 'var(--menu-header-h, 0px)' }} className={
         isFullBleedHeroBand(tenant)
           ? 'container mx-auto px-4 pb-12'
           : 'container mx-auto px-4 py-12'

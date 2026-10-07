@@ -60,6 +60,9 @@ export function useVoiceInput({ tenantId, onTranscript }: VoiceInputOptions) {
   const [isSupported, setIsSupported] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const isCancelledRef = useRef(false)
+  /** Bumped by cancel: a start still waiting on the mic prompt must not begin recording after it. */
+  const attemptRef = useRef(0)
+  const isStartingRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const onTranscriptRef = useRef(onTranscript)
   useEffect(() => {
@@ -81,22 +84,42 @@ export function useVoiceInput({ tenantId, onTranscript }: VoiceInputOptions) {
 
   const cancel = useCallback(() => {
     isCancelledRef.current = true
+    attemptRef.current += 1
     stop()
   }, [stop])
 
   const start = useCallback(async () => {
-    if (recorderRef.current) return
+    if (recorderRef.current || isStartingRef.current) return
+    isStartingRef.current = true
+    const attempt = attemptRef.current + 1
+    attemptRef.current = attempt
     setError(null)
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (micError) {
-      setError(micErrorMessage(micError))
+      isStartingRef.current = false
+      if (attemptRef.current === attempt) setError(micErrorMessage(micError))
+      return
+    }
+    isStartingRef.current = false
+    const releaseMic = () => stream.getTracks().forEach((track) => track.stop())
+    // Cancelled (panel closed, page left) while the browser was asking for the mic.
+    if (attemptRef.current !== attempt) {
+      releaseMic()
       return
     }
 
-    const mimeType = pickRecordingType((type) => MediaRecorder.isTypeSupported(type))
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    let recorder: MediaRecorder
+    let mimeType: string | undefined
+    try {
+      mimeType = pickRecordingType((type) => MediaRecorder.isTypeSupported(type))
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    } catch (recorderError) {
+      releaseMic()
+      setError(micErrorMessage(recorderError))
+      return
+    }
     const chunks: Blob[] = []
     recorderRef.current = recorder
     isCancelledRef.current = false
@@ -105,7 +128,7 @@ export function useVoiceInput({ tenantId, onTranscript }: VoiceInputOptions) {
       if (event.data.size > 0) chunks.push(event.data)
     }
     recorder.onstop = async () => {
-      stream.getTracks().forEach((track) => track.stop())
+      releaseMic()
       recorderRef.current = null
       clearTimer()
       if (isCancelledRef.current || chunks.length === 0) {
@@ -123,7 +146,14 @@ export function useVoiceInput({ tenantId, onTranscript }: VoiceInputOptions) {
       }
     }
 
-    recorder.start()
+    try {
+      recorder.start()
+    } catch (recorderError) {
+      recorderRef.current = null
+      releaseMic()
+      setError(micErrorMessage(recorderError))
+      return
+    }
     setElapsedSec(0)
     setState('recording')
     const startedAt = Date.now()
