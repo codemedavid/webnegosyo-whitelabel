@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -80,7 +79,8 @@ interface StockMovementDialogProps {
 export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, reason,
   units, branches, branchStockByItemId, openCountId, openCountOutletId, onSaved, onClose,
 }: StockMovementDialogProps) {
-  const router = useRouter()
+  // No router.refresh() after a save: the inventory actions revalidate, and a
+  // revalidating Server Action already re-renders this route in its response.
   const unitsById = useMemo(() => new Map(units.map((unit) => [unit.id, unit])), [units])
   const unitLabel = (id: string) => unitsById.get(id)?.abbreviation ?? '—'
   const [stockDraft, setStockDraft] = useState<StockMovementDraft>(() => ({
@@ -128,7 +128,6 @@ export function StockMovementDialog({ tenantId, tenantSlug, item: stockItem, rea
         `${saved.name} — ${formatQuantity(saved.current_qty)} ${unitLabel(saved.stock_unit_id)} on hand`,
       )
       onClose()
-      router.refresh()
     } catch (error) {
       // A timeout or a dropped connection. The dialog stays open with what the
       // merchant typed still in it, so Record is a retry and not a re-entry.

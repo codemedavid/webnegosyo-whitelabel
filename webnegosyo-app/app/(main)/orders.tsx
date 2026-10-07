@@ -2,16 +2,18 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { View, StyleSheet, FlatList, Alert, RefreshControl, type ListRenderItem } from "react-native";
 import { FunctionReference } from "convex/server";
 import { router, useLocalSearchParams } from "expo-router";
-import { useSafeQuery, useSafeMutation } from "../../lib/hooks";
+import { useSafeQuery } from "../../lib/hooks";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import {
   ORDER_BRANCH_FILTER_ALL,
   ORDER_BRANCH_FILTER_UNASSIGNED,
   filterOrdersToBranchFilter,
   hasUnassignedOrders,
-  listOrderBranchOptions,
+  listOrderBranchPills,
+  resolveOrderViewOutlet,
 } from "../../lib/order-branch-filter";
-import { useBranchScope } from "../../lib/use-branch-scope";
+import { useAccountBranchScope, useBranchScope } from "../../lib/use-branch-scope";
+import { useOutlets } from "../../lib/use-outlets";
 import { colors, spacing } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
@@ -19,7 +21,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { OrderListRow, type OrderListRowOrder } from "../../components/OrderListRow";
 import { OrderFilterBar, type SortOrder, type StatusFilterOption } from "../../components/OrderFilterBar";
 import { ReportPeriodBar } from "../../components/ReportPeriodBar";
-import { defaultSelection, selectionToQueryArgs, type ReportSelection } from "../../lib/report-window";
+import { defaultSelection, selectionToQueryArgs, type ReportQueryArgs, type ReportSelection } from "../../lib/report-window";
 
 /**
  * A day's orders are a report, not a queue: the window has to be fetched, and
@@ -56,6 +58,9 @@ import {
 } from "../../lib/orders-list-actions";
 import { useOrderCustomers } from "../../lib/query/use-order-customers";
 import { describeOrderCustomerBadge, type OrderCustomerBadge } from "../../lib/loyalty/order-customers";
+import { useOfflineOrderList, useOfflineOrderMutation } from "../../lib/offline/use-offline-orders";
+import { isQueuedOrderWrite } from "../../lib/offline/write-order-change";
+import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getAllOrderItemsRef = "orders:getAllOrderItems" as unknown as FunctionReference<"query">;
@@ -91,6 +96,15 @@ interface ConvexOrder extends OrderListRowOrder {
   status: OrderStatus;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The window a dated read asked for, so queued sales outside it stay out. */
+function queryWindow(args: ReportQueryArgs, nowMs: number): { startMs: number; endMs: number } {
+  return "daysBack" in args
+    ? { startMs: nowMs - args.daysBack * DAY_MS, endMs: Number.MAX_SAFE_INTEGER }
+    : { startMs: args.startMs, endMs: args.endMs };
+}
+
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -120,16 +134,47 @@ export default function OrdersScreen() {
     }
   }, [params.status]);
 
-  // Fetch the full recent queue once, then filter/search/sort on the client so
-  // every status pill can show a live count without extra round-trips.
-  const { data: orders, isLoading, error, refetch: refetchOrders } =
-    useSafeQuery<ConvexOrder[]>(
-      getOrdersRef,
-      dateSelection
-        ? { ...selectionToQueryArgs(dateSelection, nowMs), limit: DATED_FETCH_LIMIT }
-        : {}
-    );
   const scope = useBranchScope();
+  const accountScope = useAccountBranchScope();
+  const { outlets } = useOutlets();
+
+  // The queue is a most-recent-N page, so the branch being looked at is asked
+  // of the backend rather than cut out of a store-wide page: otherwise every
+  // branch shares the same 50 orders and a quiet one shows two.
+  const viewOutletId = resolveOrderViewOutlet(accountScope, scope, branchFilter);
+
+  // Fetch the recent queue once, then filter/search/sort on the client so
+  // every status pill can show a live count without extra round-trips.
+  const dateArgs = dateSelection ? selectionToQueryArgs(dateSelection, nowMs) : null;
+  const viewArgs = viewOutletId ? { viewOutletId } : {};
+  const ordersResult = useSafeQuery<ConvexOrder[]>(
+    getOrdersRef,
+    dateArgs ? { ...dateArgs, limit: DATED_FETCH_LIMIT, ...viewArgs } : viewArgs
+  );
+  // Sales rung up and changes made while offline are part of the queue too;
+  // the live queue is also kept on the device for a launch with no signal.
+  const offlineWindow = useMemo(
+    () => (dateSelection ? queryWindow(selectionToQueryArgs(dateSelection, nowMs), nowMs) : null),
+    [dateSelection, nowMs],
+  );
+  const {
+    data: mergedOrders,
+    isLoading,
+    error,
+    refetch: refetchOrders,
+    isOffline,
+    savedAt,
+  } = useOfflineOrderList(ordersResult, {
+    // Saved per branch, so a launch with no signal never shows one branch's
+    // queue under "All branches".
+    snapshotName: dateSelection
+      ? null
+      : viewOutletId
+        ? `orders:getOrders@${viewOutletId}`
+        : "orders:getOrders",
+    window: offlineWindow,
+  });
+  const orders = mergedOrders as ConvexOrder[] | undefined;
 
   // Export state. The deeper reads (a 2000-order page plus every line item)
   // are mounted only while the sheet is open, so the queue screen itself
@@ -147,8 +192,8 @@ export default function OrdersScreen() {
       ? { orderIds: exportOrders.map((order) => order._id) }
       : "skip"
   );
-  const updateStatus = useSafeMutation(updateOrderStatusRef);
-  const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
+  const updateStatus = useOfflineOrderMutation(updateOrderStatusRef);
+  const updatePaymentStatus = useOfflineOrderMutation(updatePaymentStatusRef);
   const { patchOrderStatus } = useOptimisticOrderCache();
 
 
@@ -166,34 +211,52 @@ export default function OrdersScreen() {
    * "Unassigned" appears only when such orders exist, so a merchant whose
    * attribution is healthy is not shown an empty question.
    */
+  //
+  // Only the pill being shown carries a count: the list holds that pill's own
+  // page, so any other pill's count would be a share of the wrong page.
   const branchFilters: StatusFilterOption[] = useMemo(() => {
     if (scope.kind !== "all") return [];
-    const options = listOrderBranchOptions(scopedOrders);
+    const options = listOrderBranchPills(outlets, scopedOrders);
     if (options.length === 0) return [];
 
+    const countIfActive = (key: string) =>
+      key === branchFilter ? scopedOrders.length : undefined;
+
     const rows: StatusFilterOption[] = [
-      { key: ORDER_BRANCH_FILTER_ALL, label: "All branches", count: scopedOrders.length },
+      {
+        key: ORDER_BRANCH_FILTER_ALL,
+        label: "All branches",
+        count: countIfActive(ORDER_BRANCH_FILTER_ALL),
+      },
       ...options.map((option) => ({
         key: option.id,
         label: option.name,
-        count: filterOrdersToBranchFilter(option.id, scopedOrders).length,
+        count: countIfActive(option.id),
       })),
     ];
 
-    if (hasUnassignedOrders(scopedOrders)) {
+    if (hasUnassignedOrders(scopedOrders) || branchFilter === ORDER_BRANCH_FILTER_UNASSIGNED) {
       rows.push({
         key: ORDER_BRANCH_FILTER_UNASSIGNED,
         label: "Unassigned",
-        count: filterOrdersToBranchFilter(ORDER_BRANCH_FILTER_UNASSIGNED, scopedOrders).length,
+        count: countIfActive(ORDER_BRANCH_FILTER_UNASSIGNED),
       });
     }
 
     return rows;
-  }, [scope.kind, scopedOrders]);
+  }, [scope.kind, outlets, scopedOrders, branchFilter]);
 
   // A branch pill the merchant can no longer see must not keep hiding orders.
-  const activeBranchFilter =
-    branchFilters.some((row) => row.key === branchFilter) ? branchFilter : ORDER_BRANCH_FILTER_ALL;
+  const isBranchFilterOffered = branchFilters.some((row) => row.key === branchFilter);
+  const activeBranchFilter = isBranchFilterOffered ? branchFilter : ORDER_BRANCH_FILTER_ALL;
+
+  // The pick also decides what is fetched, so a withdrawn pill must be dropped,
+  // not just drawn as "All branches" over that branch's page.
+  useEffect(() => {
+    if (branchFilter !== ORDER_BRANCH_FILTER_ALL && !isBranchFilterOffered) {
+      setBranchFilter(ORDER_BRANCH_FILTER_ALL);
+    }
+  }, [branchFilter, isBranchFilterOffered]);
 
   // Narrowed BEFORE the status counts are computed, so the pill counts always
   // describe the same list the merchant is looking at.
@@ -288,11 +351,14 @@ export default function OrdersScreen() {
       // The row moves at once; a failed write puts it back.
       const rollback = patchOrderStatus(orderId, newStatus);
       try {
-        await updateStatus({ orderId, status: newStatus });
+        const written = await updateStatus({ orderId, status: newStatus });
         // Handing the order over is taking the money for it.
         if (plan.shouldMarkPaid) {
           await markPaidAfterHandover(updatePaymentStatus, orderId);
         }
+        // Kept on the device: the replay restores stock and pushes to
+        // Loyverse once the change reaches the server (sync-order-edits.ts).
+        if (isQueuedOrderWrite(written)) return;
         // Put the ingredients back on a cancel — the same shared side-effect
         // the detail screen runs. Never throws, so a stock write cannot make an
         // order un-cancellable from the queue.
@@ -446,6 +512,8 @@ export default function OrdersScreen() {
         onClear={() => setDateSelection(null)}
         clearLabel="Live queue"
       />
+
+      <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
 
       <OrderFilterBar
         filters={filterOptions}

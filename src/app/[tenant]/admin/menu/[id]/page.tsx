@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { EditorPageHeader } from '@/components/admin/menu-editor/editor-page-header'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
+import { dishCostConvexUrl } from '@/lib/menu-editor/cost-backend'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getMenuItemById, getLinkableMenuItems } from '@/lib/admin-service'
 import { ItemBranchesPanel } from '@/components/admin/item-branches-panel'
@@ -104,7 +105,7 @@ export default async function EditMenuItemPage({
         presellEnabled={isPresellTenant}
         presellAllocations={presellAllocations}
         presellLoadError={presellLoadError}
-        convexUrl={tenant.convex_deployment_url ?? undefined}
+        convexUrl={dishCostConvexUrl(tenant)}
         branchesPanel={
           /*
             A row of "More options" but outside the <form>: a branch override

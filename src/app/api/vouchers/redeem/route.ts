@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redeemVoucher } from '@/lib/vouchers/repository'
 import type { VoucherChannel } from '@/lib/vouchers/types'
-import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
-import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/vouchers/redeem
@@ -102,29 +100,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
   }
 
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-
-  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, 'create')
-
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const caller = await requireBearerStoreCaller(request, tenantId, 'create')
+  if (!caller.ok) return caller.response
+  const { user, appUser } = caller
 
   // Taken from the verified token, never the body. The audit trail is the
   // whole defence against a forced discount at the counter — the register

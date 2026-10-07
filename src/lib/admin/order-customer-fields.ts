@@ -32,6 +32,11 @@ const CARRIER_KEYS: ReadonlySet<string> = new Set([
   'messenger_psid',
   'outlet_id',
   'outlet_name',
+  // SMS opt-in bookkeeping for the audience list; the customer never wrote it.
+  'sms_consent',
+  'sms_consent_at',
+  // The source id stamped on orders imported from a Convex deployment.
+  'convex_order_id',
 ])
 
 export interface CustomerField {

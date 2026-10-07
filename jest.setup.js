@@ -57,6 +57,7 @@ const mockRedis = {
   get: jest.fn(),
   set: jest.fn(),
   keys: jest.fn(),
+  scan: jest.fn(),
   del: jest.fn(),
 }
 

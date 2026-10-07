@@ -56,6 +56,7 @@ function fakeClient(responses: Record<string, TableResponse[]>) {
     for (const method of [
       "select",
       "eq",
+      "is",
       "neq",
       "in",
       "gte",
@@ -1027,6 +1028,62 @@ describe("branch-scoped reads", () => {
 
     // Assert
     expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+});
+
+/**
+ * The branch an owner is LOOKING at, sent explicitly by a screen.
+ *
+ * `getOrders` is a most-recent-N page. Read store-wide and narrowed on the
+ * phone, every branch shared the same 50 rows: on a four-branch store the
+ * quietest branch showed two orders. `viewOutletId` moves that narrowing into
+ * the query so each branch gets its own page — layered on top of the account
+ * scope, so it can only ever narrow.
+ */
+describe("viewed-branch narrowing", () => {
+  const VIEWED = "22ea061e-3f3a-4bb4-bb06-a6c077b8612b";
+
+  it("narrows getOrders to the viewed branch", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", { viewOutletId: VIEWED });
+
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", VIEWED]);
+    expect(opsOf(calls, "eq")).toContainEqual(["tenant_id", TENANT]);
+  });
+
+  it("reads the orders that name no branch for the unassigned view", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", {
+      viewOutletId: "__unassigned__",
+    });
+
+    expect(opsOf(calls, "is")).toContainEqual(["outlet_id", null]);
+  });
+
+  it("ignores a viewed branch that is not a branch id", async () => {
+    // Branch ids are uuids; anything else would only ever match nothing.
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(client, TENANT, "orders:getOrders", { viewOutletId: "north" });
+
+    expect(opsOf(calls, "eq").map(([column]) => column)).not.toContain("outlet_id");
+    expect(opsOf(calls, "is")).toHaveLength(0);
+  });
+
+  it("never widens a branch account past its own branch", async () => {
+    const { client, calls } = fakeClient({ orders: [{ data: [], error: null }] });
+
+    await runPlatformQuery(
+      client,
+      TENANT,
+      "orders:getOrders",
+      { viewOutletId: VIEWED },
+      { kind: "branch", outletId: "outlet-north" }
+    );
+
+    expect(opsOf(calls, "eq")).toContainEqual(["outlet_id", "outlet-north"]);
   });
 });
 

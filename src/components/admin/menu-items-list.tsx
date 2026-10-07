@@ -1,18 +1,20 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { memo, useCallback, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { Plus, SearchX, UtensilsCrossed } from 'lucide-react'
+import { ArrowUpDown, Plus, SearchX, UtensilsCrossed } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { toggleAvailabilityAction } from '@/app/actions/menu-items'
 import { describeActionError } from '@/components/admin/server-action-safety'
-import type { MenuItem, Category, OutletMenuOverride } from '@/types/database'
+import type { Category, OutletMenuOverride } from '@/types/database'
+import type { AdminMenuListItem } from '@/lib/queries/admin-menu-list'
 import {
   buildOutletMenuIndex,
   describeBranchSummary,
   summarizeItemAcrossBranches,
+  type BranchSummaryLabel,
   type OutletMenuOverrideRow,
 } from '@/lib/outlets/outlet-menu-overrides'
 import {
@@ -22,12 +24,47 @@ import {
   hasActiveMenuFilters,
   type MenuListFilters,
 } from '@/lib/menu-list-filters'
-import { groupMenuItemsByCategory } from '@/lib/menu-list-groups'
+import { groupMenuItemsByCategory, OTHER_GROUP_KEY } from '@/lib/menu-list-groups'
 import { MenuListToolbar } from '@/components/admin/menu-list-toolbar'
 import { MenuItemRow } from '@/components/admin/menu-item-row'
 
+// dnd-kit is only needed once the owner taps "Arrange order" — keep it out of
+// the bundle every menu visit downloads.
+const MenuArrangeList = dynamic(
+  () => import('@/components/admin/menu-arrange-list').then((mod) => mod.MenuArrangeList),
+  { loading: () => <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p> }
+)
+
+type ToggleAvailability = (item: AdminMenuListItem, next: boolean) => void
+
+/**
+ * One row, memoised: typing in the search box re-renders the list, and with
+ * stable props (the per-row closure is built here, from a stable handler) the
+ * rows whose dish did not change are skipped instead of re-rendered.
+ */
+const ListedMenuItemRow = memo(function ListedMenuItemRow({
+  item,
+  onToggle,
+  ...rowProps
+}: {
+  item: AdminMenuListItem
+  tenantSlug: string
+  isAvailable: boolean
+  branchLabel: BranchSummaryLabel | null
+  isRecipeMissing: boolean
+  isToggling: boolean
+  onToggle: ToggleAvailability
+}) {
+  const handleToggle = useCallback((next: boolean) => onToggle(item, next), [onToggle, item])
+  return <MenuItemRow item={item} onToggleAvailability={handleToggle} {...rowProps} />
+})
+
+const NO_OUTLETS: readonly { id: string; name: string }[] = []
+const NO_OVERRIDES: readonly OutletMenuOverride[] = []
+
 interface MenuItemsListProps {
-  items: MenuItem[]
+  /** The lean list read (`listAdminMenuItems`) — no variation/add-on JSON. */
+  items: readonly AdminMenuListItem[]
   categories: Category[]
   tenantSlug: string
   tenantId: string
@@ -49,8 +86,8 @@ export function MenuItemsList({
   categories,
   tenantSlug,
   tenantId,
-  outlets = [],
-  menuOverrides = [],
+  outlets = NO_OUTLETS,
+  menuOverrides = NO_OVERRIDES,
   inventoryEnabled = false,
   recipeLinkedItemIds = null,
 }: MenuItemsListProps) {
@@ -67,9 +104,9 @@ export function MenuItemsList({
     () => buildOutletMenuIndex(menuOverrides as unknown as OutletMenuOverrideRow[]),
     [menuOverrides]
   )
-  const router = useRouter()
   const [filters, setFilters] = useState<MenuListFilters>(EMPTY_MENU_FILTERS)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [isArranging, setIsArranging] = useState(false)
   /**
    * Switch positions the owner set that the server has not echoed back yet.
    * The switch flips on tap rather than after the round trip; the entries are
@@ -86,8 +123,28 @@ export function MenuItemsList({
   const filteredItems = useMemo(() => filterMenuItems(items, filters), [items, filters])
   const groups = useMemo(() => groupMenuItemsByCategory(filteredItems, categories), [filteredItems, categories])
   const isFiltered = hasActiveMenuFilters(filters)
+  // Arranging always shows every dish: an order set over a filtered subset
+  // would move dishes the merchant cannot see.
+  const arrangeGroups = useMemo(
+    () => groupMenuItemsByCategory(items, categories).filter((group) => group.key !== OTHER_GROUP_KEY),
+    [items, categories]
+  )
 
-  const handleToggleAvailability = async (item: MenuItem, next: boolean) => {
+  // Branch badges depend on the dishes and the branch data only — computed once
+  // per fresh read, not once per row on every search keystroke.
+  const branchLabels = useMemo(() => {
+    const labels = new Map<string, BranchSummaryLabel>()
+    if (outlets.length === 0) return labels
+    for (const item of items) {
+      const label = describeBranchSummary(summarizeItemAcrossBranches(item, outlets, branchIndex))
+      if (label) labels.set(item.id, label)
+    }
+    return labels
+  }, [items, outlets, branchIndex])
+
+  // Stable across renders (only setters and stable props inside), so memoised
+  // rows keep their props identity.
+  const handleToggleAvailability = useCallback(async (item: AdminMenuListItem, next: boolean) => {
     setTogglingId(item.id)
     setPendingAvailability((prev) => ({ ...prev, [item.id]: next }))
     const revert = () =>
@@ -99,8 +156,10 @@ export function MenuItemsList({
     try {
       const result = await toggleAvailabilityAction(item.id, tenantId, tenantSlug, next)
       if (result.success) {
+        // No router.refresh(): the action's revalidatePath already returns this
+        // page's fresh render with its response (a refresh rendered it twice),
+        // and the new `items` it brings clears the pending switch above.
         toast.success(`${item.name} is now ${next ? 'available' : 'out of stock'}`)
-        router.refresh()
       } else {
         revert()
         toast.error(result.error || 'Could not update the dish. Please try again.')
@@ -111,7 +170,11 @@ export function MenuItemsList({
     } finally {
       setTogglingId(null)
     }
-  }
+  }, [tenantId, tenantSlug])
+  const handleToggle = useCallback<ToggleAvailability>(
+    (item, next) => void handleToggleAvailability(item, next),
+    [handleToggleAvailability]
+  )
 
   if (items.length === 0) {
     return (
@@ -130,9 +193,39 @@ export function MenuItemsList({
     )
   }
 
+  if (isArranging) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-start justify-between gap-3 rounded-xl border bg-muted/40 p-4">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold">Arrange dishes</h2>
+            <p className="text-sm text-muted-foreground">
+              Drag a dish or use the arrows. Your online menu and your POS both follow this order. Changes save as you go.
+            </p>
+          </div>
+          <Button className="h-11 shrink-0 px-5" onClick={() => setIsArranging(false)}>
+            Done
+          </Button>
+        </div>
+        <MenuArrangeList groups={arrangeGroups} tenantId={tenantId} tenantSlug={tenantSlug} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
-      <MenuListToolbar filters={filters} counts={counts} categories={categories} onChange={setFilters} />
+      <MenuListToolbar
+        filters={filters}
+        counts={counts}
+        categories={categories}
+        onChange={setFilters}
+        actions={
+          <Button variant="outline" className="h-9 shrink-0" onClick={() => setIsArranging(true)}>
+            <ArrowUpDown className="mr-1.5 h-4 w-4" />
+            Arrange order
+          </Button>
+        }
+      />
 
       {isFiltered && (
         <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -152,23 +245,33 @@ export function MenuItemsList({
       ) : (
         groups.map((group) => (
           <section key={group.key} aria-label={group.name} className="space-y-2">
-            <h2 className="flex items-baseline gap-2 px-1 text-sm font-semibold">
-              {group.name}
-              <span className="font-normal text-muted-foreground tabular-nums">{group.items.length}</span>
-            </h2>
+            <div className="flex items-center justify-between gap-2 px-1">
+              <h2 className="flex items-baseline gap-2 text-sm font-semibold">
+                {group.name}
+                <span className="font-normal text-muted-foreground tabular-nums">{group.items.length}</span>
+              </h2>
+              {group.key !== OTHER_GROUP_KEY && (
+                <Link
+                  href={`/${tenantSlug}/admin/menu/new?category=${group.key}`}
+                  aria-label={`Add a dish to ${group.name}`}
+                  className="inline-flex h-9 items-center gap-1 rounded-md px-2 text-sm font-medium text-primary hover:bg-muted"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Add
+                </Link>
+              )}
+            </div>
             <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
               {group.items.map((item) => (
-                <MenuItemRow
+                <ListedMenuItemRow
                   key={item.id}
                   item={item}
                   tenantSlug={tenantSlug}
                   isAvailable={pendingAvailability[item.id] ?? item.is_available}
-                  branchLabel={outlets.length > 0
-                    ? describeBranchSummary(summarizeItemAcrossBranches(item, outlets, branchIndex))
-                    : null}
+                  branchLabel={branchLabels.get(item.id) ?? null}
                   isRecipeMissing={inventoryEnabled && linkedRecipeIds !== null && !linkedRecipeIds.has(item.id)}
                   isToggling={togglingId === item.id}
-                  onToggleAvailability={(next) => void handleToggleAvailability(item, next)}
+                  onToggle={handleToggle}
                 />
               ))}
             </ul>

@@ -17,7 +17,8 @@ import {
   resolveItemForOutlet,
   type OutletMenuOverrideRow,
 } from '@/lib/outlets/outlet-menu-overrides'
-import type { Category, MenuItem, OutletMenuOverride } from '@/types/database'
+import type { Category, OutletMenuOverride } from '@/types/database'
+import type { BranchMenuItem } from '@/lib/outlets/branch-menu-item'
 import { formatPrice } from '@/lib/cart-utils'
 
 interface BranchMenuPanelProps {
@@ -25,7 +26,7 @@ interface BranchMenuPanelProps {
   tenantSlug: string
   outletId: string
   outletName: string
-  items: readonly MenuItem[]
+  items: readonly BranchMenuItem[]
   categories: readonly Category[]
   initialOverrides: readonly OutletMenuOverride[]
 }

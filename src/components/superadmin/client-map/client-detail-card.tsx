@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { ArrowUpRight, Crosshair, Globe, MapPin, Navigation, Settings2, Sparkles, Store, X } from 'lucide-react'
 import { isNewClient, type ClientPin, type PinSource } from '@/lib/superadmin/client-map/locate'
-import { formatClientTenure } from '@/lib/superadmin/client-map/display'
+import { externalMapsLink, formatClientTenure } from '@/lib/superadmin/client-map/display'
+import { getMapsProvider } from '@/lib/maps/provider'
 import { ClientLogo } from './client-logo'
 
 const PIN_ACCURACY: Record<PinSource, { label: string; hint: string }> = {
@@ -34,7 +35,7 @@ export function ClientDetailCard({ pin, onClose, onRefocus }: ClientDetailCardPr
   const accuracy = PIN_ACCURACY[pin.source]
   const tenure = formatClientTenure(pin.createdAt, now)
   const joined = Number.isFinite(Date.parse(pin.createdAt)) ? joinedFormatter.format(new Date(pin.createdAt)) : '—'
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${pin.lat},${pin.lng}`
+  const mapsLink = externalMapsLink(pin, getMapsProvider())
 
   return (
     <div
@@ -138,12 +139,12 @@ export function ClientDetailCard({ pin, onClose, onRefocus }: ClientDetailCardPr
             </Link>
           </div>
           <a
-            href={mapsUrl}
+            href={mapsLink.href}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-3 inline-flex items-center gap-1.5 text-xs text-white/45 transition-colors hover:text-white"
           >
-            <Navigation className="h-3 w-3" /> Open in Google Maps
+            <Navigation className="h-3 w-3" /> {mapsLink.label}
           </a>
         </div>
       </div>

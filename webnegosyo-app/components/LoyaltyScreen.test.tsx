@@ -32,6 +32,7 @@ jest.mock("../lib/products", () => ({
 jest.mock("../lib/web-app-url", () => ({
   getWebAppUrl: () => "https://shop.test",
 }));
+jest.mock("../components/loyalty/WalletVerificationCard", () => ({ WalletVerificationCard: () => null }));
 jest.mock("../components/LoyaltySmsDeviceCard", () => ({
   LoyaltySmsDeviceCard: () => null,
 }));

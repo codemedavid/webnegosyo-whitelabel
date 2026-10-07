@@ -28,6 +28,8 @@ export interface AudienceFilter {
   /** Recency: last order within this many days. */
   lastOrderWithinDays?: number;
   minOrderCount?: number;
+  /** Second-visit invites: at most this many orders so far. */
+  maxOrderCount?: number;
   minTotalSpent?: number;
   /** Match if the customer has used ANY of these channels. */
   channels?: string[];

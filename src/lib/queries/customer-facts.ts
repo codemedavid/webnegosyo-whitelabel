@@ -35,6 +35,8 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const PAGE_SIZE = 500
 /** Bound a request's memory; disclose partial history for larger stores. */
 const ROW_LIMIT = 100_000
+const ITEM_ORDER_CHUNK_SIZE = 100
+const ITEM_READ_CONCURRENCY = 4
 
 const ORDERS_SELECT =
   'id, customer_id, customer_contact, status, payment_status, outlet_id, total, created_at, updated_at, source'
@@ -129,16 +131,29 @@ async function fetchPlatformFacts(
   const itemRows: Array<PlatformOrderItemFactRow & { order_id: string }> = []
   let itemsError: { message: string } | null = null
   let itemsTruncated = false
-  // Chunk IDs to stay within URL limits, then paginate the items too.
-  for (let offset = 0; offset < orders.length; offset += 100) {
-    const result = await readPages((from, to) => client
-      .from('order_items')
-      .select(ORDER_ITEMS_SELECT)
-      .in('order_id', orders.slice(offset, offset + 100).map((order) => order.id))
-      .order('id').range(from, to))
-    if (result.error) { itemsError = result.error; break }
-    itemsTruncated ||= result.data.length >= ROW_LIMIT
-    itemRows.push(...result.data as unknown as typeof itemRows)
+  // Keep URLs bounded and paginate each chunk. Independent chunks share four
+  // read lanes so a large history does not pay one round trip per 100 orders
+  // in sequence. Stop starting batches if any item read fails.
+  const batchSize = ITEM_ORDER_CHUNK_SIZE * ITEM_READ_CONCURRENCY
+  for (let offset = 0; offset < orders.length; offset += batchSize) {
+    const chunks = Array.from({
+      length: Math.min(ITEM_READ_CONCURRENCY, Math.ceil((orders.length - offset) / ITEM_ORDER_CHUNK_SIZE)),
+    }, (_, index) => {
+      const start = offset + index * ITEM_ORDER_CHUNK_SIZE
+      const ids = orders.slice(start, start + ITEM_ORDER_CHUNK_SIZE).map(order => order.id)
+      return readPages((from, to) => client
+        .from('order_items')
+        .select(ORDER_ITEMS_SELECT)
+        .in('order_id', ids)
+        .order('id').range(from, to))
+    })
+    const results = await Promise.all(chunks)
+    for (const result of results) {
+      if (result.error) { itemsError = result.error; break }
+      itemsTruncated ||= result.data.length >= ROW_LIMIT
+      itemRows.push(...result.data as unknown as typeof itemRows)
+    }
+    if (itemsError) break
   }
 
   if (itemsError) {

@@ -13,7 +13,7 @@
  * yields none and its screen is untouched.
  */
 
-import { getOrderOutletId } from "./branch-scope";
+import { getOrderOutletId, type BranchScope } from "./branch-scope";
 import { ORDER_OUTLET_NAME_KEY } from "./order-outlet";
 
 /** Every order the account may see. */
@@ -69,6 +69,48 @@ export function listOrderBranchOptions(
   return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+}
+
+/**
+ * The pills to offer: every branch in the store's directory, plus any branch
+ * only the orders know about.
+ *
+ * Deriving pills from the orders alone hid a branch whose orders had not made
+ * the page — exactly the branch a merchant would go looking for. The directory
+ * name wins, being the branch's current one; the orders fill in when the
+ * directory has not loaded (or a branch has since been deactivated).
+ */
+export function listOrderBranchPills(
+  directory: readonly OrderBranchOption[],
+  orders: readonly object[] | null | undefined,
+): OrderBranchOption[] {
+  const byId = new Map<string, string>();
+  for (const option of listOrderBranchOptions(orders)) byId.set(option.id, option.name);
+  for (const outlet of directory) byId.set(outlet.id, outlet.name);
+
+  return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+}
+
+/**
+ * The branch to ask the backend for, or null to read every branch the account
+ * may see.
+ *
+ * The order list is a most-recent-N page, so narrowing it on the phone shares
+ * one page across every branch. This sends the narrowing to the query instead:
+ * the branch an owner drilled into, else the branch pill they picked. A branch
+ * account gets null — the server already confines it to its own branch.
+ */
+export function resolveOrderViewOutlet(
+  accountScope: BranchScope,
+  viewingScope: BranchScope,
+  branchFilterId: string,
+): string | null {
+  if (accountScope.kind === "branch") return null;
+  if (viewingScope.kind === "branch") return viewingScope.outletId;
+  if (branchFilterId !== ORDER_BRANCH_FILTER_ALL) return branchFilterId;
+  return null;
 }
 
 /** Whether this merchant has any order that names no branch. */

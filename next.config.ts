@@ -137,16 +137,22 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      // Static assets - immutable, long cache
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
+      // Static assets - immutable, long cache. Production only: dev chunk
+      // names don't change between edits, so an immutable dev chunk pins the
+      // browser to stale CSS/JS until a hard refresh.
+      ...(process.env.NODE_ENV === 'production'
+        ? [
+            {
+              source: '/_next/static/:path*',
+              headers: [
+                {
+                  key: 'Cache-Control',
+                  value: 'public, max-age=31536000, immutable',
+                },
+              ],
+            },
+          ]
+        : []),
     ];
   },
 };

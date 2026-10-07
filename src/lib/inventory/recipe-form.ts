@@ -9,13 +9,13 @@
  * The estimate treats every ingredient as raw (unit_cost × converted quantity);
  * the authoritative recursive rollup (prep ingredients, yields) happens
  * server-side via `costing.ts`. Lines with an unknown ingredient/unit, or a
- * cross-dimension unit mismatch, are skipped rather than throwing so a
- * half-filled form never breaks the preview.
+ * unit that cannot convert (pieces against weight or volume), are skipped
+ * rather than throwing so a half-filled form never breaks the preview.
  */
 
 import { recipeInputSchema, type RecipeInput } from '@/lib/inventory/schemas'
 import type { RecipeWithComponents } from '@/lib/inventory/recipes-service'
-import { convertQuantity, type InventoryUnit } from '@/lib/inventory/unit-conversion'
+import { canConvertUnits, convertQuantity, type InventoryUnit } from '@/lib/inventory/unit-conversion'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 
 export interface RecipeLineDraft {
@@ -138,8 +138,8 @@ function toInventoryUnit(row: InventoryUnitRow): InventoryUnit {
 
 /**
  * Live raw-ingredient cost estimate for the current lines. Best-effort: a line
- * is skipped when its ingredient/unit is unknown or the units are in different
- * dimensions, so a partially-filled form never throws.
+ * is skipped when its ingredient/unit is unknown or the units cannot convert,
+ * so a partially-filled form never throws.
  */
 export function estimateRecipeCost(
   lines: RecipeLineDraft[],
@@ -154,14 +154,11 @@ export function estimateRecipeCost(
     const lineUnit = unitById.get(line.unit_id)
     const stockUnit = ingredient ? unitById.get(ingredient.stock_unit_id) : undefined
     if (!ingredient || !lineUnit || !stockUnit) return sum
-    if (lineUnit.dimension !== stockUnit.dimension) return sum
+    const from = toInventoryUnit(lineUnit)
+    const to = toInventoryUnit(stockUnit)
+    if (!canConvertUnits(from, to)) return sum
 
-    const quantity = quantityOrZero(line.quantity)
-    const quantityInStockUnit = convertQuantity(
-      quantity,
-      toInventoryUnit(lineUnit),
-      toInventoryUnit(stockUnit),
-    )
+    const quantityInStockUnit = convertQuantity(quantityOrZero(line.quantity), from, to)
     return sum + quantityInStockUnit * (ingredient.unit_cost ?? 0)
   }, 0)
 }

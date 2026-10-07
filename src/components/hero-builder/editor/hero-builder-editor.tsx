@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { publishHeroDesignAction, unpublishHeroDesignAction } from '@/app/actions/hero-builder'
 import { CANVAS_WIDTH, THEME_COLOR_FALLBACK, THEME_COLOR_KEYS } from '@/lib/hero-builder/constants'
 import { createBlankDesign } from '@/lib/hero-builder/defaults'
+import type { LinkCatalog } from '@/lib/hero-builder/link-catalog'
 import { loadHeroDesign } from '@/lib/hero-builder/load'
 import { cssColor } from '@/lib/hero-builder/safe-values'
 import type { Device, HeroDesignV5 } from '@/lib/hero-builder/types'
@@ -22,6 +23,7 @@ import {
 
 import { Canvas } from './canvas'
 import { Inspector } from './inspector/inspector'
+import { LinkCatalogProvider } from './inspector/link-picker'
 import { AddPanel } from './panels/add-panel'
 import { LayersPanel } from './panels/layers-panel'
 import { ThemePanel } from './panels/theme-panel'
@@ -38,6 +40,8 @@ interface HeroBuilderEditorProps {
   initialIsLive: boolean
   /** Store branding CSS variables, so theme colors preview accurately. */
   brandStyle: CSSProperties
+  /** Categories and products buttons can link to. */
+  linkCatalog: LinkCatalog
 }
 
 type LeftTab = 'add' | 'layers' | 'theme'
@@ -61,7 +65,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 }
 
-export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initialIsLive, brandStyle }: HeroBuilderEditorProps) {
+export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initialIsLive, brandStyle, linkCatalog }: HeroBuilderEditorProps) {
   const start = useMemo(() => initialDesign ?? createBlankDesign(), [initialDesign])
   const api = useHeroBuilder(start)
   const [leftTab, setLeftTab] = useState<LeftTab>(initialDesign?.sections.length ? 'layers' : 'add')
@@ -325,7 +329,9 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
             panels.right || api.selectedId ? 'max-lg:translate-x-0' : 'max-lg:translate-x-full',
           )}
         >
-          <Inspector api={api} contentRequest={contentRequest} />
+          <LinkCatalogProvider value={linkCatalog}>
+            <Inspector api={api} contentRequest={contentRequest} />
+          </LinkCatalogProvider>
         </aside>
       </div>
 

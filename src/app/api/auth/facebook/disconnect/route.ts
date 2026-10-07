@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { unsubscribePageFromWebhook } from '@/lib/facebook-api'
 import { createClient } from '@/lib/supabase/server'
 import { getTenantPageByPageId } from '@/lib/facebook/page-tokens'
+import { canManageFacebook } from '@/lib/facebook/management-access'
 import type { Database } from '@/types/database'
 
 type AppUser = Database['public']['Tables']['app_users']['Row']
@@ -36,12 +37,12 @@ export async function POST(request: NextRequest) {
     // Check if user is admin of this tenant
     const { data: appUserData } = await supabase
       .from('app_users')
-      .select('role, tenant_id')
+      .select('role, tenant_id, is_owner, permissions')
       .eq('user_id', user.id)
       .maybeSingle()
 
-    const appUser = appUserData as Pick<AppUser, 'role' | 'tenant_id'> | null
-    if (!appUser || (appUser.role !== 'superadmin' && appUser.tenant_id !== tenant_id)) {
+    const appUser = appUserData as Pick<AppUser, 'role' | 'tenant_id' | 'is_owner' | 'permissions'> | null
+    if (!canManageFacebook(appUser, tenant_id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -126,4 +127,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

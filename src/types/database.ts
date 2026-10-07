@@ -129,6 +129,7 @@ export interface Tenant {
   header_shadow?: boolean; // Apply a drop shadow under the header
   header_logo_shape?: 'circle' | 'rounded' | 'square';
   header_height?: 'compact' | 'standard' | 'tall';
+  header_cart_style?: 'emoji' | 'icon' | 'pill' | 'outline';
   messenger_page_id: string;
   messenger_username?: string;
   messenger_redirect_mode?: 'webhook' | 'direct'; // 'webhook' = m.me with ref+text, 'direct' = messenger.com/t/
@@ -167,6 +168,8 @@ export interface Tenant {
   distance_delivery_enabled?: boolean;
   delivery_price_per_km?: number | null;
   delivery_min_fee?: number | null;
+  /** Delivery fee is waived at/above this pre-discount item subtotal; null = off. */
+  free_delivery_min_order?: number | null;
   delivery_radius_km?: number | null;
   // Banners
   announcement_text?: string;
@@ -211,6 +214,8 @@ export interface Tenant {
   modifier_groups_enabled?: boolean;
   // Inventory & costing (ingredients, units, recipes)
   inventory_enabled?: boolean;
+  // Owner AI assistant (floating admin chat); superadmin-controlled, default off.
+  assistant_enabled?: boolean;
   hide_currency_symbol?: boolean;
   checkout_upsell_enabled?: boolean;
   checkout_upsell_title?: string;
@@ -331,6 +336,9 @@ export interface Tenant {
   // Opt-in: show a closed notice and refuse new orders outside operating_hours.
   // false (default) = hours only constrain advance-order slots. See src/lib/store-open-status.ts.
   enforce_operating_hours?: boolean | null;
+  // Built by onboarding, payment not yet confirmed: owner can edit, customers
+  // cannot order. Privileged (platform-only). See src/lib/store-open-status.ts.
+  is_prelaunch?: boolean | null;
   // Tenant-admin switch for scan-to-collect pickup. Column defaults to true, so
   // undefined/null must read as enabled. See src/lib/pickup-qr-gating.ts.
   pickup_scan_enabled?: boolean | null;

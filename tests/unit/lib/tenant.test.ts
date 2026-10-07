@@ -110,6 +110,14 @@ describe('tenant resolution', () => {
       expect(extractSubdomain('www.webnegosyo.com', null)).toBeNull()
     })
 
+    test('extracts a tenant slug on the smartmenu.ph root while the env root stays webnegosyo.com', () => {
+      expect(extractSubdomain('seacook.smartmenu.ph', 'webnegosyo.com')).toBe('seacook')
+      expect(extractSubdomain('seacook.smartmenu.ph', null)).toBe('seacook')
+      expect(extractSubdomain('seacook.webnegosyo.com', 'webnegosyo.com')).toBe('seacook')
+      expect(extractSubdomain('www.smartmenu.ph', 'webnegosyo.com')).toBeNull()
+      expect(extractSubdomain('smartmenu.ph', 'webnegosyo.com')).toBeNull()
+    })
+
     test('handles port numbers correctly', () => {
       // extractSubdomain does not strip ports — port stripping happens in getHost()
       // When passed raw host with port, the suffix match fails
@@ -127,6 +135,13 @@ describe('tenant resolution', () => {
       expect(isPlatformHost('www.webnegosyo.com', null)).toBe(true)
       expect(isPlatformHost('webnegosyo.com', null)).toBe(true)
       expect(isPlatformHost('ligna.cafe', null)).toBe(false)
+    })
+
+    test('treats smartmenu.ph and its subdomains as platform hosts, never a custom domain', () => {
+      expect(isPlatformHost('smartmenu.ph', 'webnegosyo.com')).toBe(true)
+      expect(isPlatformHost('www.smartmenu.ph', 'webnegosyo.com')).toBe(true)
+      expect(isPlatformHost('seacook.smartmenu.ph', 'webnegosyo.com')).toBe(true)
+      expect(isPlatformHost('notsmartmenu.ph', 'webnegosyo.com')).toBe(false)
     })
   })
 

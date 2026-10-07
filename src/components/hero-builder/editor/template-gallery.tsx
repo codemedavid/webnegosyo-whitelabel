@@ -1,15 +1,21 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
-import { HERO_TEMPLATES } from '@/lib/hero-builder/templates'
+import { HERO_TEMPLATE_CATEGORIES, HERO_TEMPLATES, type HeroTemplate, type HeroTemplateCategory } from '@/lib/hero-builder/templates'
 import type { HeroDesignV5 } from '@/lib/hero-builder/types'
 import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 
+/** Thumbnails render the real design at desktop width, then scale it down to the card. */
 const PREVIEW_WIDTH = 1280
-const PREVIEW_SCALE = 0.25
+const FALLBACK_SCALE = 0.25
+const ALL = 'all'
+
+type CategoryFilter = HeroTemplateCategory | typeof ALL
+
+const FILTERS: readonly CategoryFilter[] = [ALL, ...HERO_TEMPLATE_CATEGORIES]
 
 interface TemplateGalleryProps {
   open: boolean
@@ -21,11 +27,23 @@ interface TemplateGalleryProps {
 export function TemplateGallery({ open, onOpenChange, onPick, hasContent }: TemplateGalleryProps) {
   // One build per template for the thumbnails; picking builds a fresh copy.
   const previews = useMemo(() => (open ? HERO_TEMPLATES.map((t) => ({ template: t, design: t.build() })) : []), [open])
+  const [filter, setFilter] = useState<CategoryFilter>(ALL)
+  const visible = filter === ALL ? previews : previews.filter(({ template }) => template.category === filter)
+
+  const handlePick = (template: HeroTemplate) => {
+    onPick(template.build())
+    onOpenChange(false)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] max-w-5xl overflow-hidden p-0 sm:rounded-2xl [&>button]:hidden">
-        <div className="flex items-start justify-between border-b border-neutral-200 px-6 py-4">
+      {/*
+        A fixed-height flex column: header and filters keep their size and only
+        the card list scrolls. (The old grid shell let the list's max-height
+        squeeze every card row to ~58px, so there was nothing to scroll.)
+      */}
+      <DialogContent className="flex h-[90dvh] w-[calc(100vw-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl sm:rounded-2xl [&>button]:hidden">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4 sm:px-6">
           <div>
             <DialogTitle className="text-lg font-semibold">Start from a template</DialogTitle>
             <DialogDescription className="text-sm text-neutral-500">
@@ -37,33 +55,91 @@ export function TemplateGallery({ open, onOpenChange, onPick, hasContent }: Temp
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="grid max-h-[calc(88vh-80px)] grid-cols-1 gap-5 overflow-y-auto p-6 sm:grid-cols-2 lg:grid-cols-3">
-          {previews.map(({ template, design }) => (
-            <button
-              key={template.id}
-              type="button"
-              onClick={() => {
-                onPick(template.build())
-                onOpenChange(false)
-              }}
-              className="group overflow-hidden rounded-xl border border-neutral-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-            >
-              <div className="pointer-events-none relative h-44 overflow-hidden bg-neutral-50" aria-hidden="true">
-                <div className="absolute left-0 top-0 origin-top-left" style={{ width: PREVIEW_WIDTH, transform: `scale(${PREVIEW_SCALE})` }}>
-                  <HeroBuilderRenderer design={design} />
-                </div>
-              </div>
-              <div className="border-t border-neutral-100 px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-neutral-900">{template.name}</p>
-                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium capitalize text-neutral-600">{template.category}</span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-neutral-500">{template.description}</p>
-              </div>
-            </button>
+        <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-neutral-100 px-5 py-3 sm:px-6" role="group" aria-label="Filter templates">
+          {FILTERS.map((option) => (
+            <FilterChip key={option} option={option} isActive={filter === option} onSelect={setFilter} />
           ))}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="grid auto-rows-max grid-cols-1 gap-5 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
+            {visible.map(({ template, design }) => (
+              <TemplateCard key={template.id} template={template} design={design} onPick={handlePick} />
+            ))}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+interface FilterChipProps {
+  option: CategoryFilter
+  isActive: boolean
+  onSelect: (option: CategoryFilter) => void
+}
+
+function FilterChip({ option, isActive, onSelect }: FilterChipProps) {
+  const label = option === ALL ? `All (${HERO_TEMPLATES.length})` : option
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(option)}
+      aria-pressed={isActive}
+      className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium capitalize transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+        isActive ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
+interface TemplateCardProps {
+  template: HeroTemplate
+  design: HeroDesignV5
+  onPick: (template: HeroTemplate) => void
+}
+
+function TemplateCard({ template, design, onPick }: TemplateCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(template)}
+      className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+    >
+      <ScaledPreview design={design} />
+      <div className="border-t border-neutral-100 px-4 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-neutral-900">{template.name}</p>
+          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium capitalize text-neutral-600">{template.category}</span>
+        </div>
+        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-neutral-500">{template.description}</p>
+      </div>
+    </button>
+  )
+}
+
+/** The design at desktop width, scaled to fill the card's width exactly. */
+function ScaledPreview({ design }: { design: HeroDesignV5 }) {
+  const frameRef = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(FALLBACK_SCALE)
+
+  useEffect(() => {
+    const frame = frameRef.current
+    if (!frame) return
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width ?? 0
+      if (width > 0) setScale(width / PREVIEW_WIDTH)
+    })
+    observer.observe(frame)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div ref={frameRef} className="pointer-events-none relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-neutral-50" aria-hidden="true">
+      <div className="absolute left-0 top-0 origin-top-left" style={{ width: PREVIEW_WIDTH, transform: `scale(${scale})` }}>
+        <HeroBuilderRenderer design={design} />
+      </div>
+    </div>
   )
 }

@@ -154,7 +154,6 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   'pos-sales': 'pos',
   analytics: 'analytics',
   growth: 'analytics',
-  'customer-hub': 'customers',
   customers: 'customers',
   trends: 'analytics',
   'product-analytics': 'analytics',

@@ -276,6 +276,31 @@ export function createSupabaseCustomerStore(admin: AdminClient): CustomerStore {
   }
 }
 
+/**
+ * Best-effort profile capture for an order that already lives in
+ * `public.orders` — the platform twin of `captureExternalOrderBestEffort`.
+ *
+ * Never throws: the order is saved by the time this runs, so a customer
+ * bookkeeping failure must not surface to the guest. Failures are logged with
+ * enough context to replay them (the upsert is idempotent, so replay is safe).
+ */
+export async function capturePlatformOrderBestEffort(
+  admin: AdminClient,
+  tenantId: string,
+  input: UpsertCustomerInput
+): Promise<string | null> {
+  try {
+    return await upsertCustomerFromOrder(createSupabaseCustomerStore(admin), tenantId, input)
+  } catch (error) {
+    console.error(
+      '[capturePlatformOrder] customer capture failed (non-blocking):',
+      error instanceof Error ? error.message : error,
+      { tenantId, orderId: input.orderId }
+    )
+    return null
+  }
+}
+
 // ============================================================================
 // Admin-scoped reads (owner "Regulars" list + detail)
 // ============================================================================

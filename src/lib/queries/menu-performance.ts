@@ -32,14 +32,18 @@ import {
   type MenuPerformance,
   type MenuPerformanceSource,
 } from '@/lib/queries/menu-performance-merge'
+import { readPagesConcurrently } from '@/lib/dashboard/paged-read'
 
 /** Rows are selected through the join because `order_items` has no tenant_id. */
 const ORDER_ITEMS_SELECT = 'menu_item_id, menu_item_name, quantity, subtotal, orders!inner(tenant_id, created_at, status)'
 
 const DEFAULT_WINDOW_DAYS = 30
 const DEFAULT_CONVEX_LIMIT = 500
-/** PostgREST caps a page at 1000; a full page means the tail is missing. */
-const SUPABASE_ROW_LIMIT = 1000
+/** PostgREST caps a page at 1000, so busy windows are read page by page. */
+const SUPABASE_PAGE_SIZE = 1000
+/** Hard ceiling for one read on the shared database; beyond it coverage says so. */
+const SUPABASE_MAX_ROWS = 50_000
+const SUPABASE_PAGE_CONCURRENCY = 4
 const CONVEX_TOP_ITEMS_PATH = 'analytics:getTopItemsInternal'
 
 interface ConvexQueryClient {
@@ -81,24 +85,30 @@ async function fetchFromSupabase(
   windowDays: number,
   dataSource: MenuPerformanceSource,
 ): Promise<MenuPerformance> {
-  const { data, error } = await client
-    .from('order_items')
-    .select(ORDER_ITEMS_SELECT)
-    .eq('orders.tenant_id', tenantId)
-    .gte('orders.created_at', windowStartISO(windowDays))
-    .neq('orders.status', 'cancelled')
-    .limit(SUPABASE_ROW_LIMIT)
+  const since = windowStartISO(windowDays)
+  // Ordered by the row's own key so offset pages never overlap or skip rows.
+  const { rows, error, truncated } = await readPagesConcurrently<unknown>(
+    (from, to) =>
+      client
+        .from('order_items')
+        .select(ORDER_ITEMS_SELECT)
+        .eq('orders.tenant_id', tenantId)
+        .gte('orders.created_at', since)
+        .neq('orders.status', 'cancelled')
+        .order('id', { ascending: true })
+        .range(from, to),
+    { pageSize: SUPABASE_PAGE_SIZE, maxRows: SUPABASE_MAX_ROWS, concurrency: SUPABASE_PAGE_CONCURRENCY },
+  )
 
   if (error) {
-    return unavailable(dataSource, windowDays, `Order database could not be reached: ${error.message}`)
+    return unavailable(dataSource, windowDays, `Order database could not be reached: ${error}`)
   }
 
-  const rows = (data ?? []) as unknown[]
   return buildMenuPerformance({
     dataSource,
     windowDays,
     rows: platformOrderItemsToRows(rows),
-    truncated: rows.length >= SUPABASE_ROW_LIMIT,
+    truncated,
   })
 }
 

@@ -13,6 +13,8 @@ import {
   listTenantSecrets,
   mergeTenantSecrets,
   upsertTenantSecrets,
+  getLoyaltySmsFallback,
+  setLoyaltySmsFallback,
   TENANT_SECRET_KEYS,
 } from '@/lib/tenant-secrets'
 
@@ -202,5 +204,46 @@ describe('mergeTenantSecrets', () => {
     for (const key of TENANT_SECRET_KEYS) {
       expect(merged[key]).toBeNull()
     }
+  })
+})
+
+describe('loyalty SMS fallback (Semaphore)', () => {
+  test('is NOT one of the bulk secret keys, so it never rides onto tenant objects', () => {
+    expect(TENANT_SECRET_KEYS).not.toContain('semaphore_api_key' as never)
+    expect(mergeTenantSecrets({ id: 't' }, null)).not.toHaveProperty('semaphore_api_key')
+  })
+
+  test('reads only its own two columns and maps them', async () => {
+    const { client, calls } = fakeClient({ row: { semaphore_api_key: 'key123', semaphore_sender_name: 'CAFE' } })
+
+    expect(await getLoyaltySmsFallback(client, 'tenant-1')).toEqual({ apiKey: 'key123', senderName: 'CAFE' })
+    expect(calls[0].columns).toBe('semaphore_api_key, semaphore_sender_name')
+    expect(calls[0].filters).toEqual([['tenant_id', 'tenant-1']])
+  })
+
+  test('no row or no key reads as not configured', async () => {
+    expect(await getLoyaltySmsFallback(fakeClient({ row: null }).client, 't')).toBeNull()
+    expect(await getLoyaltySmsFallback(fakeClient({ row: { semaphore_api_key: null, semaphore_sender_name: 'X' } }).client, 't')).toBeNull()
+  })
+
+  test('surfaces a read error', async () => {
+    await expect(getLoyaltySmsFallback(fakeClient({ error: { message: 'boom' } }).client, 't')).rejects.toThrow(/boom/)
+  })
+
+  test('saving writes both columns; clearing nulls both', async () => {
+    const saved = fakeClient()
+    await setLoyaltySmsFallback(saved.client, 'tenant-1', { apiKey: 'key123', senderName: null })
+    expect(saved.calls[0]).toMatchObject({
+      op: 'upsert',
+      payload: { tenant_id: 'tenant-1', semaphore_api_key: 'key123', semaphore_sender_name: null },
+      options: { onConflict: 'tenant_id' },
+    })
+    const cleared = fakeClient()
+    await setLoyaltySmsFallback(cleared.client, 'tenant-1', null)
+    expect(cleared.calls[0].payload).toEqual({ tenant_id: 'tenant-1', semaphore_api_key: null, semaphore_sender_name: null })
+  })
+
+  test('surfaces a write error', async () => {
+    await expect(setLoyaltySmsFallback(fakeClient({ error: { message: 'denied' } }).client, 't', null)).rejects.toThrow(/denied/)
   })
 })

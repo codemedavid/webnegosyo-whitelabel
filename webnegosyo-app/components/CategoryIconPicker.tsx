@@ -12,7 +12,6 @@
  */
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -20,6 +19,7 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from "react-native";
+import { Modal } from "./Modal";
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { CategoryIcon } from "./CategoryIcon";
 import {

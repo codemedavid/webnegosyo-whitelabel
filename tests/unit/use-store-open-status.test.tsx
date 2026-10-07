@@ -97,4 +97,25 @@ describe('useStoreOpenStatus', () => {
     const { result } = renderHook(() => useStoreOpenStatus(null))
     expect(result.current.isOrderingBlocked).toBe(false)
   })
+
+  it('blocks ordering after mount for a pre-launch store that does not enforce hours', () => {
+    jest.setSystemTime(MON_0900)
+    const { result } = renderHook(() =>
+      useStoreOpenStatus({ enforce_operating_hours: false, is_prelaunch: true }),
+    )
+    expect(result.current.isOrderingBlocked).toBe(true)
+    expect(result.current.reason).toBe('prelaunch')
+  })
+
+  it('reports open on the first render for a pre-launch store too (hydration-safe)', () => {
+    jest.setSystemTime(MON_0900)
+    const renders: StoreOpenStatus[] = []
+    renderHook(() => {
+      const status = useStoreOpenStatus({ is_prelaunch: true })
+      renders.push(status)
+      return status
+    })
+    expect(renders[0].isOrderingBlocked).toBe(false)
+    expect(renders[renders.length - 1].isOrderingBlocked).toBe(true)
+  })
 })

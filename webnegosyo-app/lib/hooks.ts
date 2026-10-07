@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/query-core";
 import { useAuthStore } from "../stores/auth-store";
 import { isStaleBundleError } from "./stale-backend";
-import { resolveRefRoute, type RefRoute } from "./backends/route";
+import { resolveRefRoute, resolveWriteBackend, type RefRoute } from "./backends/route";
 import { runPlatformAction, runPlatformMutation } from "./backends/supabase-adapter";
 import { withPlatformTimeout } from "./backends/platform-call";
 import { invalidatePlatformQueries } from "./backends/query-invalidation";
@@ -21,6 +21,10 @@ import { invalidateResource } from "./query/use-resource";
 import { ORDER_CUSTOMERS_RESOURCE } from "./loyalty/order-customers";
 import type { OrderBackend } from "./order-backend";
 import { convexOrderQueryArgs } from "./convex-order-scope";
+
+// Screens and the offline order hooks type their reads with this; the
+// platform query module itself stays private to this file.
+export type { SafeQueryResult };
 
 // A tenant's Convex deployment can lag the app (older bundle). Besides a flat-out
 // missing function, that shows up as validator/argument drift. Treat all of these
@@ -55,6 +59,17 @@ export function useRefRoute(refName: string): RefRoute {
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const tenantId = useScopedTenantId();
   return resolveRefRoute({ orderBackend, convexUrl, tenantId, ref: refName });
+}
+
+/**
+ * The backend this session's `useSafeMutation` writes land in. A screen that
+ * reports a just-written order to the platform (customer capture) names the
+ * backend with this — never a literal — so the report follows the write.
+ */
+export function useOrderWriteBackend(): OrderBackend {
+  const convexUrl = useAuthStore((s) => s.convexUrl);
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  return resolveWriteBackend({ orderBackend, convexUrl });
 }
 
 export function useSafeQuery<T>(

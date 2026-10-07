@@ -2,25 +2,29 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
+import { DuplicateCustomerError } from "../../lib/customers/repo";
 import {
-  listCustomers,
-  createCustomer,
-  DuplicateCustomerError,
-  type CustomerRecord,
-} from "../../lib/customers/repo";
+  createAttachableCustomer,
+  findAttachableCustomers,
+  type AttachableCustomer,
+} from "../../lib/customers/attach-lookup";
+import { hasPermission } from "../../lib/staff-permissions";
+import { useAuthStore } from "../../stores/auth-store";
 import { draftFromSearch, validateCustomerDraft } from "../../lib/customers/validation";
 import type { AttachedCustomer } from "../../lib/customers/pos-attachment";
 import {
+  attachFailureDetail,
+  describeAttachFailure,
   describeScanFailure,
   identifyWalletCard,
   resolveScannedCustomer,
@@ -35,18 +39,15 @@ interface CustomerPickerSheetProps {
   onPick: (customer: AttachedCustomer | null) => void;
 }
 
-function toAttached(record: CustomerRecord): AttachedCustomer {
-  return {
-    id: record.id,
-    name: record.name,
-    phoneE164: record.phoneE164,
-    email: record.email,
-  };
+/** The line under a guest's name: their number, or their email, or nothing. */
+function subtitleFor(record: AttachableCustomer): string {
+  return record.phoneE164 ?? record.email ?? "";
 }
 
-/** The line under a guest's name: their number, or their email, or nothing. */
-function subtitleFor(record: CustomerRecord): string {
-  return record.phoneE164 ?? record.email ?? "";
+/** What an empty result list says — a cashier without the grant cannot browse. */
+function emptyMessage(query: string, canBrowse: boolean): string {
+  if (query.trim() !== "") return "Nobody matches that.";
+  return canBrowse ? "No customers yet." : "Type the guest's full number or email to find them.";
 }
 
 /**
@@ -69,7 +70,7 @@ export function CustomerPickerSheet({
   onPick,
 }: CustomerPickerSheetProps) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<CustomerRecord[]>([]);
+  const [results, setResults] = useState<AttachableCustomer[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +78,14 @@ export function CustomerPickerSheet({
   const [isResolvingCard, setIsResolvingCard] = useState(false);
 
   const debouncedQuery = useDebouncedValue(query);
+
+  // The guest list is PII: only the `customers` grant may browse it. A
+  // register-only cashier finds a guest by their exact number or email (RLS
+  // enforces this; the flag only picks the path that will succeed).
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  const canBrowse = hasPermission({ role, isOwner, permissions }, "customers");
 
   // Reset between openings: the previous sale's search left on screen would
   // invite the cashier to attach the previous customer to this one.
@@ -92,7 +101,7 @@ export function CustomerPickerSheet({
     let cancelled = false;
 
     setIsSearching(true);
-    listCustomers(tenantId, { search: debouncedQuery, limit: 20 })
+    findAttachableCustomers(tenantId, debouncedQuery, canBrowse)
       .then((rows) => {
         if (!cancelled) setResults(rows);
       })
@@ -111,7 +120,7 @@ export function CustomerPickerSheet({
     return () => {
       cancelled = true;
     };
-  }, [visible, tenantId, debouncedQuery]);
+  }, [visible, tenantId, debouncedQuery, canBrowse]);
 
   const handleQuickCreate = useCallback(async () => {
     const draft = draftFromSearch(query);
@@ -132,8 +141,7 @@ export function CustomerPickerSheet({
     setIsSaving(true);
     setError(null);
     try {
-      const created = await createCustomer(tenantId, validated.value);
-      onPick(toAttached(created));
+      onPick(await createAttachableCustomer(tenantId, validated.value));
     } catch (err) {
       // A duplicate is not a failure worth blocking on: the guest exists, so
       // say so and let the search that is already on screen find them.
@@ -160,8 +168,11 @@ export function CustomerPickerSheet({
         return;
       }
       onPick(await resolveScannedCustomer(tenantId, identified.phoneE164));
-    } catch {
-      setError("Card recognised, but the guest could not be attached. Search their number instead.");
+    } catch (err) {
+      // The cause (e.g. a missing register function, a permission refusal)
+      // must reach the logs — the cashier only sees the short version.
+      console.warn("[pos] wallet card attach failed:", attachFailureDetail(err));
+      setError(describeAttachFailure(err));
     } finally {
       setIsResolvingCard(false);
     }
@@ -186,7 +197,7 @@ export function CustomerPickerSheet({
 
           <TextInput
             style={styles.search}
-            placeholder="Search name or number"
+            placeholder={canBrowse ? "Search name or number" : "Guest's number or email"}
             placeholderTextColor={colors.textTertiary}
             value={query}
             onChangeText={setQuery}
@@ -225,7 +236,7 @@ export function CustomerPickerSheet({
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.row}
-                  onPress={() => onPick(toAttached(item))}
+                  onPress={() => onPick(item)}
                   accessibilityRole="button"
                 >
                   <Text style={styles.rowName}>{item.name ?? subtitleFor(item)}</Text>
@@ -237,9 +248,7 @@ export function CustomerPickerSheet({
               ListEmptyComponent={
                 canQuickCreate ? null : (
                   <Text style={styles.empty}>
-                    {query.trim() === ""
-                      ? "No customers yet."
-                      : "Nobody matches that."}
+                    {emptyMessage(query, canBrowse)}
                   </Text>
                 )
               }

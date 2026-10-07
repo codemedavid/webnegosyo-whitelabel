@@ -81,7 +81,7 @@ export function ModifierOptionRow({
   }
 
   return (
-    <div className="rounded-lg border bg-background">
+    <div>
       {/* On a phone the name gets its own line; squeezed beside the price it
           showed three or four letters. */}
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 p-2 max-sm:grid-cols-[minmax(0,1fr)_auto_auto]">
@@ -93,31 +93,22 @@ export function ModifierOptionRow({
           disabled={isLinked}
           className="h-10 min-w-0 max-sm:col-span-3"
         />
-        <div className="relative w-24 shrink-0 max-sm:w-full">
-          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">+₱</span>
-          <Input
-            type="number"
-            step="0.01"
-            inputMode="decimal"
-            aria-label={`Extra charge for ${label}`}
-            placeholder="0"
-            value={isLinked ? (linkedItem?.price ?? option.price_modifier) : option.price_modifier}
-            onChange={(e) => onUpdate('price_modifier', parseFloat(e.target.value) || 0)}
-            disabled={isLinked}
-            className="h-10 pl-8 tabular-nums"
-            title={isLinked ? 'Taken from the linked dish' : undefined}
-          />
-        </div>
+        <SurchargeInput
+          label={label}
+          value={isLinked ? (linkedItem?.price ?? option.price_modifier) : option.price_modifier}
+          isLinked={isLinked}
+          onChange={(value) => onUpdate('price_modifier', value)}
+        />
         <Button
           type="button"
           variant="ghost"
-          size="icon"
           onClick={toggle}
           aria-expanded={isOpen}
           aria-label={`More settings for ${label}`}
-          className={cn('relative h-10 w-10 shrink-0', isOpen && 'bg-muted')}
+          className={cn('relative h-10 shrink-0 gap-1.5 px-2.5 text-muted-foreground sm:px-3', isOpen && 'bg-muted text-foreground')}
         >
           <SlidersHorizontal className="h-4 w-4" />
+          <span className="max-sm:sr-only" aria-hidden>Details</span>
           {notes.length > 0 && !isOpen && (
             <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
           )}
@@ -139,7 +130,7 @@ export function ModifierOptionRow({
       )}
 
       {wasOpened && (
-        <div hidden={!isOpen} className="space-y-4 border-t bg-muted/30 p-3">
+        <div hidden={!isOpen} className="space-y-4 border-t bg-muted/40 p-3 sm:p-4">
           <OptionSettings
             option={option}
             basePrice={basePrice}
@@ -336,6 +327,52 @@ function CostSourceToggle({ mode, onSelect }: CostSourceToggleProps) {
           {o.label}
         </button>
       ))}
+    </div>
+  )
+}
+
+interface SurchargeInputProps {
+  label: string
+  value: number
+  isLinked: boolean
+  onChange: (value: number) => void
+}
+
+/**
+ * The option's extra charge, backed by the text the owner typed. A number-only
+ * input snapped an emptied field straight back to "0" mid-edit, so retyping
+ * "15" over "10" meant fighting the field.
+ */
+function SurchargeInput({ label, value, isLinked, onChange }: SurchargeInputProps) {
+  const [draft, setDraft] = useState(String(value))
+  const [seenValue, setSeenValue] = useState(value)
+  if (seenValue !== value) {
+    setSeenValue(value)
+    const draftValue = draft.trim() === '' ? 0 : parseFloat(draft)
+    if (draftValue !== value) setDraft(String(value))
+  }
+
+  return (
+    <div className="relative w-24 shrink-0 max-sm:w-full">
+      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">+₱</span>
+      <Input
+        type="number"
+        step="0.01"
+        min={0}
+        inputMode="decimal"
+        aria-label={`Extra charge for ${label}`}
+        placeholder="0"
+        value={draft === '0' ? '' : draft}
+        onChange={(e) => {
+          const raw = e.target.value
+          setDraft(raw)
+          const parsed = parseFloat(raw)
+          onChange(Number.isFinite(parsed) ? parsed : 0)
+        }}
+        disabled={isLinked}
+        className="h-10 pl-8 tabular-nums"
+        title={isLinked ? 'Taken from the linked dish' : undefined}
+      />
     </div>
   )
 }

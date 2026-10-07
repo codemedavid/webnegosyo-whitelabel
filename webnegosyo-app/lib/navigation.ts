@@ -81,6 +81,11 @@ export function campaignHref(campaignId: string): `/(main)/campaign/${string}` {
   return `/(main)/campaign/${encodeURIComponent(campaignId)}`;
 }
 
+/** The editor in create mode with a preset already filled in (Reports dashboard moves). */
+export function newCampaignFromPresetHref(presetId: string): `/(main)/campaign/${string}` {
+  return `/(main)/campaign/${NEW_CAMPAIGN_ID}?preset=${encodeURIComponent(presetId)}`;
+}
+
 /** Sentinel categoryId that puts the category editor into create mode. */
 export const NEW_CATEGORY_ID = "new" as const;
 

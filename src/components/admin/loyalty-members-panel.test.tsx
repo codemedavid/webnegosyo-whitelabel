@@ -33,3 +33,16 @@ it('does not restore a closed member when its refresh completes late', async () 
  await act(async () => resolveRefresh({member:{...member,name:'Late detail'}}))
  expect(screen.queryByText('Detail: Late detail')).not.toBeInTheDocument()
 })
+it('skips the member-list re-read on a focus right after a load, but not on online', async () => {
+ // Alt-tabbing between the POS and this screen used to re-read every member's
+ // balances on each switch. Coming back online is a real gap, so it always reads.
+ api.mockImplementation(async () => list)
+ render(<LoyaltyMembersPanel tenantId="store" />)
+ await screen.findByRole('button',{name:/Customer/})
+ const listReads = () => api.mock.calls.filter(([, options]) => !options.query?.customerKey).length
+ const afterLoad = listReads()
+ await act(async () => { window.dispatchEvent(new Event('focus')) })
+ expect(listReads()).toBe(afterLoad)
+ await act(async () => { window.dispatchEvent(new Event('online')) })
+ expect(listReads()).toBe(afterLoad + 1)
+})

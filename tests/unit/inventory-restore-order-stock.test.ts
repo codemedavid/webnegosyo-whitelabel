@@ -12,8 +12,6 @@
  * permission over.
  */
 
-import { restoreOrderStock } from '@/lib/inventory/stock-service'
-
 const verifyTenantPermission = jest.fn()
 jest.mock('@/lib/admin-service', () => ({
   verifyTenantPermission: (...args: unknown[]) => verifyTenantPermission(...args),
@@ -25,10 +23,48 @@ jest.mock('@/lib/inventory/order-stock-service', () => ({
     reverseOrderStockBestEffort(...args),
 }))
 
+// The order's status comes from the server's own read, never from the caller.
+const readStoredOrderLifecycle = jest.fn()
+jest.mock('@/lib/order-lifecycle-read', () => ({
+  readStoredOrderLifecycle: (...args: unknown[]) => readStoredOrderLifecycle(...args),
+  isCancelledOrder: (order: { status?: string } | null) => order?.status === 'cancelled',
+}))
+
+// next/jest leaves static imports ahead of jest.mock — load lazily.
+async function restoreOrderStock(tenantId: string, orderId: string) {
+  const mod = await import('@/lib/inventory/stock-service')
+  return mod.restoreOrderStock(tenantId, orderId)
+}
+
 describe('restoreOrderStock', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     verifyTenantPermission.mockResolvedValue({ user: { id: 'owner-1' }, userRole: null })
+    readStoredOrderLifecycle.mockResolvedValue({ status: 'cancelled', customerData: null })
+  })
+
+  it.each([
+    ['a live order', { status: 'preparing', customerData: null }],
+    ['a delivered order', { status: 'delivered', customerData: null }],
+    ['an order the server cannot find', null],
+  ])('refuses to reverse stock for %s', async (_name, order) => {
+    // Arrange — reversing a live order's stock would hide what left the
+    // shelf and burn the void claim its real cancellation needs later.
+    readStoredOrderLifecycle.mockResolvedValue(order)
+
+    // Act / Assert
+    await expect(restoreOrderStock('t1', 'order-1')).rejects.toThrow(/cancelled/i)
+    expect(readStoredOrderLifecycle).toHaveBeenCalledWith('t1', 'order-1')
+    expect(reverseOrderStockBestEffort).not.toHaveBeenCalled()
+  })
+
+  it('does not read the order before the caller is authorized', async () => {
+    // Arrange
+    verifyTenantPermission.mockRejectedValue(new Error('Forbidden'))
+
+    // Act / Assert
+    await expect(restoreOrderStock('t1', 'order-1')).rejects.toThrow('Forbidden')
+    expect(readStoredOrderLifecycle).not.toHaveBeenCalled()
   })
 
   it('reverses the order-s sale movements for an authorized caller', async () => {
@@ -76,3 +112,6 @@ describe('restoreOrderStock', () => {
     expect(calls).toEqual(['verify', 'reverse'])
   })
 })
+
+// A module, so its top-level mocks do not collide with other test files.
+export {}

@@ -116,9 +116,9 @@ describe('updateMenuItemFields (MCP partial-update path)', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
-  it('still validates provided fields (rejects a too-short description)', async () => {
+  it('still validates provided fields (rejects an over-long description)', async () => {
     const { ctx, update } = makeUpdateStub({ id: ITEM })
-    await expect(updateMenuItemFields(ITEM, TENANT, { description: 'short' }, ctx)).rejects.toThrow()
+    await expect(updateMenuItemFields(ITEM, TENANT, { description: 'x'.repeat(2001) }, ctx)).rejects.toThrow()
     expect(update).not.toHaveBeenCalled()
   })
 

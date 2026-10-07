@@ -42,7 +42,7 @@ export const BannerHeader = memo(function BannerHeader({
       <div className="container relative mx-auto px-4">
         {config.showCart && (
           <div className="absolute right-4 top-4 flex items-center gap-2">
-            <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
+            <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} cartStyle={config.cartStyle} />
           </div>
         )}
 

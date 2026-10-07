@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath, revalidateTag } from 'next/cache'
+import { z } from 'zod'
 import {
   updateBcgClassification,
   bulkUpdateBcgClassification,
@@ -23,9 +24,22 @@ import {
 } from '@/lib/menu-engineering-service'
 import { invalidateComplementaryPairsCache } from '@/lib/complementary-pairs-service'
 import { storefrontTenantIdTag } from '@/lib/storefront/cached-read'
-import { toggleMenuItemAvailability } from '@/lib/admin-service'
+import { toggleMenuItemAvailability, verifyTenantPermission } from '@/lib/admin-service'
 import type { BcgClassification, MenuItem } from '@/types/database'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
+
+const idSchema = z.string().uuid()
+
+/**
+ * Boost Sales reads run on the service role, so this action is the boundary:
+ * the caller must hold `analytics` (the Boost Sales screen's permission), and
+ * every id is a uuid before it can reach a PostgREST filter string.
+ */
+async function authorizeBoostRead(tenantId: string, ...itemIds: string[]): Promise<void> {
+  idSchema.parse(tenantId)
+  for (const itemId of itemIds) idSchema.parse(itemId)
+  await verifyTenantPermission(tenantId, 'analytics', 'view')
+}
 
 // ============================================
 // BCG Classification Actions
@@ -307,6 +321,7 @@ export async function getSmartUpgradeSuggestionsAction(
   tenantId: string
 ) {
   try {
+    await authorizeBoostRead(tenantId, itemId)
     return await getSmartUpgradeSuggestions(itemId, tenantId)
   } catch (error) {
     console.error('Failed to get smart upgrade suggestions:', error)
@@ -367,6 +382,7 @@ export async function bulkAcceptPairSuggestionsAction(
 
 export async function getItemsNotInAnyUpsellAction(tenantId: string) {
   try {
+    await authorizeBoostRead(tenantId)
     const { getItemsNotInAnyUpsell } = await import('@/lib/menu-engineering-service')
     return await getItemsNotInAnyUpsell(tenantId)
   } catch (error) {
@@ -377,6 +393,7 @@ export async function getItemsNotInAnyUpsellAction(tenantId: string) {
 
 export async function getUpsellCoverageForItemAction(itemId: string, tenantId: string) {
   try {
+    await authorizeBoostRead(tenantId, itemId)
     const { getUpsellCoverageForItem } = await import('@/lib/menu-engineering-service')
     return await getUpsellCoverageForItem(itemId, tenantId)
   } catch (error) {
@@ -387,29 +404,11 @@ export async function getUpsellCoverageForItemAction(itemId: string, tenantId: s
 
 export async function getRecommendedPlacementAction(itemId: string, tenantId: string) {
   try {
+    await authorizeBoostRead(tenantId, itemId)
     const { getRecommendedPlacement } = await import('@/lib/menu-engineering-service')
     return await getRecommendedPlacement(itemId, tenantId)
   } catch (error) {
     console.error('Failed to get recommended placement:', error)
     return { placement: 'checkout_pick' as const, reason: 'Unable to analyze — defaulting to checkout pick' }
   }
-}
-
-export async function setBoostPriorityAction(
-  itemId: string,
-  tenantId: string,
-  tenantSlug: string,
-  priority: number
-) {
-  const { createClient } = await import('@/lib/supabase/server')
-  const supabase = await createClient()
-
-  const { error } = await supabase
-    .from('menu_items')
-    .update({ boost_priority: priority })
-    .eq('id', itemId)
-    .eq('tenant_id', tenantId)
-
-  if (error) throw error
-  revalidatePath(`/${tenantSlug}/admin/boost-sales`)
 }

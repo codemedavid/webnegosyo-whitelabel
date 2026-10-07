@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal } from "../Modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EMPTY_REWARD, type ProgramForm } from "../../lib/loyalty/programs";

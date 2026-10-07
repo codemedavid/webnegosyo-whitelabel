@@ -1,12 +1,12 @@
 import React from "react";
 import {
-  Modal,
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import { Modal } from "./Modal";
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { OptionPills } from "./OptionPills";
 import {

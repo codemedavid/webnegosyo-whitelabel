@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft } from 'lucide-react'
+import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft, Sparkles, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
@@ -13,6 +13,38 @@ const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 
 interface ConfirmationContentProps {
   lead: CheckoutLeadWithPaymentMethod
+  /** The store set-up wizard's key, present right after a funnel order. */
+  setupToken?: string | null
+}
+
+/**
+ * The next step after paying: build the store now, while the payment is being
+ * confirmed. The store is ready to review by the time it is confirmed.
+ */
+function SetupStoreCard({ setupToken }: { setupToken: string }) {
+  return (
+    <div className="rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white p-6 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100">
+          <Sparkles className="h-5 w-5 text-orange-600" aria-hidden />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-lg font-bold text-gray-900">Next: build your store (5 minutes)</h3>
+          <p className="mt-1 text-sm text-gray-600">
+            Send your logo and menu photos. We set up your menu, combos, upsells and a loyalty stamp card for you —
+            ready to review while we confirm your payment.
+          </p>
+        </div>
+      </div>
+      <Link
+        href={`/onboarding/${encodeURIComponent(setupToken)}`}
+        className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-orange-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-700"
+      >
+        Build my store <ArrowRight className="h-4 w-4" aria-hidden />
+      </Link>
+      <p className="mt-2 text-center text-xs text-gray-500">Bookmark this link — it is your key to set-up.</p>
+    </div>
+  )
 }
 
 function getPaymentTermLabel(paymentTerm: CheckoutLeadWithPaymentMethod['payment_term']) {
@@ -21,12 +53,14 @@ function getPaymentTermLabel(paymentTerm: CheckoutLeadWithPaymentMethod['payment
       return '50% Downpayment'
     case 'full_payment':
       return 'Full Payment'
+    case 'monthly_subscription':
+      return 'Monthly (₱999/buwan)'
     default:
       return paymentTerm
   }
 }
 
-export function ConfirmationContent({ lead }: ConfirmationContentProps) {
+export function ConfirmationContent({ lead, setupToken = null }: ConfirmationContentProps) {
   const [copied, setCopied] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -131,6 +165,8 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
             Payment term: <span className="font-semibold text-gray-900">{getPaymentTermLabel(lead.payment_term)}</span>
           </p>
         </div>
+
+        {setupToken && <SetupStoreCard setupToken={setupToken} />}
 
         {paymentMethod && (
           <div className="rounded-xl bg-white p-6 shadow-sm">

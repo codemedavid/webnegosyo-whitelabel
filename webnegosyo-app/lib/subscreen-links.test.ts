@@ -68,8 +68,8 @@ describe("subscreensOf", () => {
     expect(subscreensOf("analytics", owner).map((l) => l.tab)).toEqual(["trends"]);
   });
 
-  it("offers the guest list and Rewards under the Customers overview", () => {
-    expect(subscreensOf("customer-hub", owner).map((l) => l.tab)).toEqual([
+  it("offers the guest list and Rewards from the Reports dashboard", () => {
+    expect(subscreensOf("reports", owner).map((l) => l.tab)).toEqual([
       "customers",
       "loyalty",
     ]);
@@ -92,7 +92,7 @@ describe("subscreensOf", () => {
     };
 
     expect(subscreensOf("analytics", analyticsStaff).map((l) => l.tab)).toEqual(["trends"]);
-    expect(subscreensOf("customer-hub", analyticsStaff)).toEqual([]);
+    expect(subscreensOf("reports", analyticsStaff)).toEqual([]);
   });
 
   it("drops the Schedule door from a store that never takes pre-orders", () => {
@@ -133,8 +133,8 @@ describe("parentOf / isSubscreen", () => {
     expect(parentOf("kitchen")).toBe("orders");
     expect(parentOf("pos-sales")).toBe("pos");
     expect(parentOf("trends")).toBe("analytics");
-    expect(parentOf("customers")).toBe("customer-hub");
-    expect(parentOf("loyalty")).toBe("customer-hub");
+    expect(parentOf("customers")).toBe("reports");
+    expect(parentOf("loyalty")).toBe("reports");
   });
 
   it("leaves a bar tab parentless", () => {

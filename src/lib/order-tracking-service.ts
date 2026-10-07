@@ -12,6 +12,7 @@ import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { isRealContact } from '@/lib/order-contact'
 import { resolveCustomerIdentity } from '@/lib/customer-identity'
 import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { recallTrackingBackend, rememberTrackingBackend } from '@/lib/order-tracking-backend-hint'
 import { createTenantOrderRealtimeClient } from '@/lib/supabase/tenant-order-client'
 import { fetchTenantOrderById } from '@/lib/tenant-supabase-orders-read'
 import type { OrderFactsBackend } from '@/lib/customer-order-facts'
@@ -176,18 +177,31 @@ export const fetchOrderTrackingContext = cache(async function fetchOrderTracking
   try {
     const supabaseAdmin = createAdminClient()
 
-    const config = await readTenantRouting(supabaseAdmin, tenantId)
+    // The routing row decides; a remembered backend only lets the likely read
+    // leave alongside it (see order-tracking-backend-hint.ts). A guessed read
+    // the routing row disagrees with is never used.
+    const hint = recallTrackingBackend(tenantId)
+    const routingRead = readTenantRouting(supabaseAdmin, tenantId)
+    const guessedPlatformOrder = hint === 'platform'
+      ? deferRejection(readPlatformOrderRow(supabaseAdmin, orderId, tenantId))
+      : null
+    const guessedSecrets = hint === 'convex'
+      ? deferRejection(getTenantSecrets(supabaseAdmin, tenantId))
+      : null
+
+    const config = await routingRead
 
     if (!config) {
       return { data: null, error: 'Restaurant not found' }
     }
 
     const backend = resolveOrderBackend(config)
+    rememberTrackingBackend(tenantId, backend)
 
     let result: TrackingContextData
 
     if (backend === 'convex') {
-      const deployKey = (await getTenantSecrets(supabaseAdmin, tenantId))?.convex_deploy_key
+      const deployKey = (await (guessedSecrets ?? getTenantSecrets(supabaseAdmin, tenantId)))?.convex_deploy_key
       if (!config.convex_deployment_url || !deployKey) {
         // Checkout refuses to write for this store (`assertOrderBackendReady`
         // throws), so there is no order to find. Reading the platform database
@@ -205,7 +219,7 @@ export const fetchOrderTrackingContext = cache(async function fetchOrderTracking
     } else if (backend === 'supabase') {
       result = await fetchFromTenantSupabase(config, supabaseAdmin, orderId, tenantId)
     } else {
-      result = await fetchFromSupabase(supabaseAdmin, orderId, tenantId)
+      result = await fetchFromSupabase(supabaseAdmin, orderId, tenantId, guessedPlatformOrder)
     }
 
     // Both backends get the same answer because the flag lives on the
@@ -221,6 +235,12 @@ export const fetchOrderTrackingContext = cache(async function fetchOrderTracking
     return { data: null, error: 'Order not found' }
   }
 })
+
+/** Park a rejection until the caller awaits the promise — or never, if unused. */
+function deferRejection<T>(promise: Promise<T>): Promise<T> {
+  promise.catch(() => {})
+  return promise
+}
 
 /**
  * Look up an order type's fixed kind by id.
@@ -411,9 +431,11 @@ async function readPlatformOrderRow(
 async function fetchFromSupabase(
   supabase: ReturnType<typeof createAdminClient>,
   orderId: string,
-  tenantId: string
+  tenantId: string,
+  /** The same read, already started on a backend hint; issued here otherwise. */
+  startedRead: ReturnType<typeof readPlatformOrderRow> | null = null
 ): Promise<TrackingContextData> {
-  const { data: order, error } = await readPlatformOrderRow(supabase, orderId, tenantId)
+  const { data: order, error } = await (startedRead ?? readPlatformOrderRow(supabase, orderId, tenantId))
 
   if (error || !order) throw new Error('Order not found in Supabase')
 

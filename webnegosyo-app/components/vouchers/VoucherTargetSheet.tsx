@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Modal,
   SectionList,
   StyleSheet,
   Text,
@@ -8,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Icon } from "../Icon";

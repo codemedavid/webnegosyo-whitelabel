@@ -54,6 +54,34 @@ export const CONVEX_BRANCH_SCOPED_REFS: ReadonlySet<string> = new Set(
   BRANCH_SCOPED_REF_MIN_VERSION.keys(),
 );
 
+/** The bundle in which `orders:getOrders` learned `outletId`. */
+export const BRANCH_ORDER_READS_SCHEMA_VERSION = 15;
+
+/**
+ * The branch a screen is LOOKING at, as opposed to the one the account is
+ * confined to. Only an owner's order page uses it: read store-wide, the latest
+ * 50 orders were shared out across every branch on the phone, so a quiet
+ * branch showed two. Convex hears it as `outletId`, and only from a bundle that
+ * accepts that argument; anything older keeps the store-wide page.
+ */
+const VIEW_OUTLET_ARG = "viewOutletId";
+const VIEW_OUTLET_REFS: ReadonlySet<string> = new Set(["orders:getOrders"]);
+
+/** Matches `ORDER_BRANCH_FILTER_UNASSIGNED`: Convex cannot filter for "no branch". */
+const VIEW_UNASSIGNED = "__unassigned__";
+
+function viewedOutletId(
+  refName: string,
+  args: Record<string, unknown> | undefined,
+  schemaVersion: number | null | undefined,
+): string | null {
+  if (!VIEW_OUTLET_REFS.has(refName)) return null;
+  if ((schemaVersion ?? 0) < BRANCH_ORDER_READS_SCHEMA_VERSION) return null;
+  const value = args?.[VIEW_OUTLET_ARG];
+  if (typeof value !== "string" || value.trim() === "" || value === VIEW_UNASSIGNED) return null;
+  return value.trim();
+}
+
 /** Convex's sentinel for a query that must not run. */
 type QueryArgs = Record<string, unknown> | "skip" | undefined;
 
@@ -88,11 +116,14 @@ export function convexOrderQueryArgs(
   const platformOnly = PLATFORM_ONLY_ARGS.get(refName);
   const rest = Object.fromEntries(
     Object.entries(args ?? {}).filter(
-      ([key]) => key !== "outletId" && !platformOnly?.has(key),
+      ([key]) => key !== "outletId" && key !== VIEW_OUTLET_ARG && !platformOnly?.has(key),
     ),
   );
 
-  if (scope.kind === "all") return rest;
+  if (scope.kind === "all") {
+    const viewed = viewedOutletId(refName, args, schemaVersion);
+    return viewed ? { ...rest, outletId: viewed } : rest;
+  }
 
   // Aggregates cannot be narrowed after the response. Always send the branch:
   // an older deployment must report a backend update, never store-wide totals

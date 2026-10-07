@@ -11,35 +11,35 @@
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { VoucherForm } from '@/app/[tenant]/admin/vouchers/voucher-form'
-import { saveVoucherAction } from '@/app/actions/voucher-admin'
-import { getMenuItemsAction } from '@/app/actions/menu-items'
-import { getCategoriesAction } from '@/app/actions/categories'
+import { getVoucherTargetOptionsAction, saveVoucherAction } from '@/app/actions/voucher-admin'
+import { toCategoryOptions, toProductOptions } from '@/lib/vouchers/target-picker'
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }))
 
+const ITEMS = [
+  { id: 'item-latte', name: 'Iced Latte', category_id: 'cat-drinks' },
+  { id: 'item-adobo', name: 'Chicken Adobo', category_id: 'cat-food' },
+]
+const CATEGORIES = [
+  { id: 'cat-drinks', name: 'Drinks' },
+  { id: 'cat-food', name: 'Rice Meals' },
+]
+
+// The picker asks one lean action for its options (names only); the fake
+// builds them with the real option helpers the action uses.
 jest.mock('@/app/actions/voucher-admin', () => ({
   saveVoucherAction: jest.fn(async () => ({ success: true })),
+  getVoucherTargetOptionsAction: jest.fn(),
 }))
 
-jest.mock('@/app/actions/menu-items', () => ({
-  getMenuItemsAction: jest.fn(async () => ({
-    success: true,
-    data: [
-      { id: 'item-latte', name: 'Iced Latte', category_id: 'cat-drinks' },
-      { id: 'item-adobo', name: 'Chicken Adobo', category_id: 'cat-food' },
-    ],
-  })),
-}))
-
-jest.mock('@/app/actions/categories', () => ({
-  getCategoriesAction: jest.fn(async () => ({
-    success: true,
-    data: [
-      { id: 'cat-drinks', name: 'Drinks' },
-      { id: 'cat-food', name: 'Rice Meals' },
-    ],
-  })),
-}))
+function answerWithMenu() {
+  ;(getVoucherTargetOptionsAction as jest.Mock).mockImplementation(
+    async (_tenantId: string, mode: 'products' | 'categories') => ({
+      success: true,
+      data: mode === 'products' ? toProductOptions(ITEMS, CATEGORIES) : toCategoryOptions(CATEGORIES),
+    })
+  )
+}
 
 function renderForm() {
   return render(
@@ -61,7 +61,10 @@ async function chooseScope(label: string) {
   fireEvent.click(screen.getByRole('radio', { name: new RegExp(label, 'i') }))
 }
 
-beforeEach(() => jest.clearAllMocks())
+beforeEach(() => {
+  jest.clearAllMocks()
+  answerWithMenu()
+})
 
 describe('scoped vouchers', () => {
   it('offers the tenant products once "Chosen products" is selected', async () => {
@@ -69,7 +72,7 @@ describe('scoped vouchers', () => {
     await chooseScope('Chosen products')
 
     expect(await screen.findByRole('checkbox', { name: /Iced Latte/i })).toBeInTheDocument()
-    expect(getMenuItemsAction).toHaveBeenCalledWith('tenant-1')
+    expect(getVoucherTargetOptionsAction).toHaveBeenCalledWith('tenant-1', 'products')
   })
 
   it('offers the tenant categories once "Chosen categories" is selected', async () => {
@@ -77,7 +80,7 @@ describe('scoped vouchers', () => {
     await chooseScope('Chosen categories')
 
     expect(await screen.findByRole('checkbox', { name: /Rice Meals/i })).toBeInTheDocument()
-    expect(getCategoriesAction).toHaveBeenCalledWith('tenant-1')
+    expect(getVoucherTargetOptionsAction).toHaveBeenCalledWith('tenant-1', 'categories')
   })
 
   it('saves the picked product ids as the voucher targets', async () => {
@@ -135,7 +138,7 @@ describe('scoped vouchers', () => {
   })
 
   it('says so plainly when the products cannot be loaded', async () => {
-    ;(getMenuItemsAction as jest.Mock).mockResolvedValueOnce({
+    ;(getVoucherTargetOptionsAction as jest.Mock).mockResolvedValueOnce({
       success: false,
       error: 'boom',
     })
@@ -146,7 +149,7 @@ describe('scoped vouchers', () => {
   })
 
   it('points a merchant with an empty menu at the real problem', async () => {
-    ;(getCategoriesAction as jest.Mock).mockResolvedValueOnce({ success: true, data: [] })
+    ;(getVoucherTargetOptionsAction as jest.Mock).mockResolvedValueOnce({ success: true, data: [] })
     renderForm()
     await chooseScope('Chosen categories')
 

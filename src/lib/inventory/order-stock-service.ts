@@ -29,6 +29,8 @@ import {
   resolveRedepletionRevision,
   resolveVoidClaimRevision,
   hasBlockingVoidClaim,
+  isLatestSaleReversed,
+  type SimpleOptionClaimRow,
 } from '@/lib/inventory/order-stock-claim'
 import {
   buildDepletionItemsFromOrderRows,
@@ -275,8 +277,8 @@ async function depleteClaimedOrder(
       continue
     }
 
-    // Cross-dimension units throw; one bad recipe line must not sink the whole
-    // order's depletion, so it is skipped and reported instead.
+    // Pieces against weight/volume throw; one bad recipe line must not sink
+    // the whole order's depletion, so it is skipped and reported instead.
     let quantityDelta: number
     try {
       quantityDelta = resolveMovementDelta({
@@ -613,12 +615,19 @@ export async function redepleteOrderStockBestEffort(
     const claims = await listOrderStockClaims(supabase, tenantId, orderId)
     const { data: simpleClaims, error: simpleClaimError } = await supabase
       .from('simple_option_stock_applications')
-      .select('revision')
+      .select('action, revision')
       .eq('tenant_id', tenantId)
       .eq('order_id', orderId)
     if (simpleClaimError) throw simpleClaimError
+    const simpleClaimRows = (simpleClaims ?? []) as SimpleOptionClaimRow[]
+    // Never spend an order twice: un-cancel re-deducts only a sale that was
+    // actually put back (a skipped restore or a repeated un-cancel lands here).
+    if (!isLatestSaleReversed(claims, simpleClaimRows)) {
+      await auditOrderStock(target, { result: unwritten('duplicate') })
+      return
+    }
     const revision = Math.max(resolveRedepletionRevision(claims),
-      ...((simpleClaims ?? []) as Array<{ revision: number }>).map((claim) => Number(claim.revision) + 1))
+      ...simpleClaimRows.map((claim) => Number(claim.revision) + 1))
     const outletId = (orderRow as { outlet_id?: string | null }).outlet_id ?? null
 
     const result = await applyOrderStockMovements(

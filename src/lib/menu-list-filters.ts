@@ -6,6 +6,9 @@
 
 import type { MenuItem } from '@/types/database'
 
+/** The fields the filters read — a lean list row satisfies it as well as a full dish. */
+export type MenuListFilterable = Pick<MenuItem, 'name' | 'description' | 'category_id' | 'is_available' | 'presell_enabled'>
+
 export type MenuStatusFilter = 'all' | 'available' | 'out-of-stock' | 'presell'
 
 export const MENU_STATUS_FILTERS = [
@@ -24,7 +27,7 @@ export interface MenuListFilters {
 
 export const EMPTY_MENU_FILTERS: MenuListFilters = { query: '', categoryId: 'all', status: 'all' }
 
-function matchesStatus(item: MenuItem, status: MenuStatusFilter): boolean {
+function matchesStatus(item: MenuListFilterable, status: MenuStatusFilter): boolean {
   switch (status) {
     case 'available':
       return item.is_available
@@ -37,13 +40,13 @@ function matchesStatus(item: MenuItem, status: MenuStatusFilter): boolean {
   }
 }
 
-function matchesQuery(item: MenuItem, query: string): boolean {
+function matchesQuery(item: MenuListFilterable, query: string): boolean {
   const needle = query.trim().toLowerCase()
   if (!needle) return true
   return item.name.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle)
 }
 
-export function filterMenuItems(items: readonly MenuItem[], filters: MenuListFilters): MenuItem[] {
+export function filterMenuItems<T extends MenuListFilterable>(items: readonly T[], filters: MenuListFilters): T[] {
   return items.filter(
     (item) =>
       matchesQuery(item, filters.query) &&
@@ -52,7 +55,7 @@ export function filterMenuItems(items: readonly MenuItem[], filters: MenuListFil
   )
 }
 
-export function countMenuItemsByStatus(items: readonly MenuItem[]): Record<MenuStatusFilter, number> {
+export function countMenuItemsByStatus(items: readonly MenuListFilterable[]): Record<MenuStatusFilter, number> {
   return {
     all: items.length,
     available: items.filter((i) => matchesStatus(i, 'available')).length,

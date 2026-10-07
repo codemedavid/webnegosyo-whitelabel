@@ -1,5 +1,6 @@
 import React from "react";
-import { ActivityIndicator, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal } from "./Modal";
 import { useAppUpdate } from "../lib/updates/use-app-update";
 import { colors, radius, shadow, spacing, typography } from "../theme/colors";
 import { Button } from "./Button";

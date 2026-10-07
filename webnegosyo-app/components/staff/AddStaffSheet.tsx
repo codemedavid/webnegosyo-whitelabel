@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Modal } from "../Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { impliedPermissions, isTabAllowed } from "../../lib/staff-permissions";

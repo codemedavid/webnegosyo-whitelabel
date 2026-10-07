@@ -2,7 +2,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { BranchDirectory } from '@/components/admin/branch-directory'
 import type { Outlet } from '@/types/database'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
-import type { AnalyticsOrderLike } from '@/lib/outlets/branch-analytics'
+import { compareBranches, type AnalyticsOrderLike } from '@/lib/outlets/branch-analytics'
 
 /**
  * The Branches index the owner lands on.
@@ -66,14 +66,24 @@ function order(outletId: string, total: number): AnalyticsOrderLike {
 
 const BGC = makeOutlet({ id: 'bgc', name: 'BGC', slug: 'bgc', address: '5th Ave', sort_order: 1 })
 
-function renderDirectory(props: Partial<React.ComponentProps<typeof BranchDirectory>> = {}) {
+/**
+ * Cases are written in orders because that is what a merchant sold; the
+ * component is handed the comparison the page computes from them on the server
+ * (`loadBranchMetrics`), never the orders themselves.
+ */
+function renderDirectory({
+  orders = [],
+  ...props
+}: Partial<React.ComponentProps<typeof BranchDirectory>> & {
+  orders?: readonly AnalyticsOrderLike[] | null
+} = {}) {
   return render(
     <BranchDirectory
       tenantId="tenant-1"
       tenantSlug="demo"
       initialOutlets={[makeOutlet(), BGC]}
       staff={[]}
-      orders={[]}
+      metricRows={orders === null ? null : compareBranches(orders)}
       {...props}
     />
   )

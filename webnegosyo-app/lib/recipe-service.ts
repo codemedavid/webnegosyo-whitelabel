@@ -178,6 +178,30 @@ export async function loadMenuItemRecipe(
 }
 
 /**
+ * The dish's name, for the editor's header.
+ *
+ * Blank on any failure: the name is a label, and a header without one is
+ * better than a recipe editor that refuses to open over it.
+ */
+export async function loadDishName(
+  tenantId: string,
+  menuItemId: string,
+  db: Db = supabase,
+): Promise<string> {
+  if (!tenantId || !menuItemId) return "";
+
+  const { data, error } = await db
+    .from("menu_items")
+    .select("name")
+    .eq("tenant_id", tenantId)
+    .eq("id", menuItemId)
+    .maybeSingle();
+
+  if (error || !data) return "";
+  return (data as { name: string | null }).name ?? "";
+}
+
+/**
  * The tenant's active ingredients, each carrying its stock unit as the
  * sensible default for a new line.
  */

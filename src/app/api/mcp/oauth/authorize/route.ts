@@ -96,24 +96,28 @@ async function authorize(req: Request): Promise<Response> {
     return badRequest('invalid_request', 'redirect_uri does not match a registered value')
   }
 
-  // From here, errors are delivered to the (validated) redirect_uri per spec.
+  // Request-shape errors are answered here, not at the redirect_uri. Client
+  // registration is open, so a registered URI is not a trusted one, and
+  // redirecting an unauthenticated visitor to it on a malformed request made
+  // this endpoint an open redirector (RFC 9700 §4.11.2). Errors after login and
+  // consent still go to the validated redirect_uri, per RFC 6749 §4.1.2.1.
   if (responseType !== 'code') {
-    return redirectError(validatedRedirectUri, 'unsupported_response_type', 'Only response_type=code is supported', state)
+    return badRequest('unsupported_response_type', 'Only response_type=code is supported')
   }
   if (!codeChallenge) {
-    return redirectError(validatedRedirectUri, 'invalid_request', 'code_challenge (PKCE) is required', state)
+    return badRequest('invalid_request', 'code_challenge (PKCE) is required')
   }
   if (codeChallengeMethod !== 'S256' && codeChallengeMethod !== 'plain') {
-    return redirectError(validatedRedirectUri, 'invalid_request', 'Unsupported code_challenge_method', state)
+    return badRequest('invalid_request', 'Unsupported code_challenge_method')
   }
   if (!isSupportedMerchantScope(scope)) {
-    return redirectError(validatedRedirectUri, 'invalid_scope', 'Unsupported or missing OAuth scope', state)
+    return badRequest('invalid_scope', 'Unsupported or missing OAuth scope')
   }
 
   const origin = trustedOrigin()
   const expectedResource = `${origin}${MERCHANT_OAUTH_PATHS.mcp}`
   if (resource && resource !== expectedResource) {
-    return redirectError(validatedRedirectUri, 'invalid_target', 'resource does not match the SmartMenu merchant MCP endpoint', state)
+    return badRequest('invalid_target', 'resource does not match the SmartMenu merchant MCP endpoint')
   }
 
   // Human-login gate: require a merchant cookie session.

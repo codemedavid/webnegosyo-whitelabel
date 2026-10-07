@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { parseOrderActivityRequest } from '@/lib/staff-activity/order-activity-request'
-import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
-import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/staff/order-activity
@@ -24,28 +22,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const activity = parsed.value
 
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-
-  const isAuthorized = canAccessStoreAdmin(appUser, activity.tenantId, 'create')
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const caller = await requireBearerStoreCaller(request, activity.tenantId, 'create')
+  if (!caller.ok) return caller.response
+  const { user } = caller
 
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const { createSupabaseOrderEventStore, recordOrderEvent } = await import(

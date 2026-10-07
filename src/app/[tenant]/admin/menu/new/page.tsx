@@ -1,16 +1,20 @@
 import Link from 'next/link'
 import { EditorPageHeader } from '@/components/admin/menu-editor/editor-page-header'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
+import { dishCostConvexUrl } from '@/lib/menu-editor/cost-backend'
 import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
 import { getLinkableMenuItems } from '@/lib/admin-service'
 
 export default async function NewMenuItemPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tenant: string }>
+  searchParams: Promise<{ category?: string | string[] }>
 }) {
   const { tenant: tenantSlug } = await params
-  
+  const { category } = await searchParams
+
   const tenant = await getCachedTenantBySlug(tenantSlug)
 
   if (!tenant) {
@@ -57,7 +61,8 @@ export default async function NewMenuItemPage({
         linkableItems={linkableItems}
         inventoryEnabled={tenant.inventory_enabled ?? false}
         presellEnabled={tenant.presell_enabled ?? false}
-        convexUrl={tenant.convex_deployment_url ?? undefined}
+        convexUrl={dishCostConvexUrl(tenant)}
+        defaultCategoryId={typeof category === 'string' ? category : undefined}
       />
     </div>
   )

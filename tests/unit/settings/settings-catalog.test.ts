@@ -59,6 +59,7 @@ describe('buildSettingsCatalog — what each viewer is offered', () => {
       'payment-methods',
       'delivery',
       'receipts',
+      'qr-codes',
       'messenger',
       'connect-ai',
       'branding',

@@ -82,6 +82,8 @@ interface PosCartState {
   /** Order type chosen for this sale; drives service charge and payment methods. */
   orderTypeId: string | null;
   orderTypeName: string | null;
+  /** The chosen type's machine kind ("dine_in", "pickup"…), when known. */
+  orderTypeKind: string | null;
   serviceCharge: ServiceCharge | undefined;
   /**
    * The chosen order type's markup and exact item prices. Null means store
@@ -91,6 +93,11 @@ interface PosCartState {
   orderTypePricing: OrderTypePricing | null;
   /** Optional name the cashier took for the customer. */
   customerName: string;
+  /**
+   * Optional phone a dine-in walk-in left, as typed. Becomes the order's
+   * contact (normalized) when no guest is attached — see `posCustomerFields`.
+   */
+  customerPhone: string;
   /**
    * A known guest picked from the customer list, or null for a walk-in.
    *
@@ -126,6 +133,7 @@ interface PosCartState {
     orderTypeKind?: string | null,
   ) => void;
   setCustomerName: (name: string) => void;
+  setCustomerPhone: (phone: string) => void;
   /** Attach a guest to this sale, or pass null to make it a walk-in again. */
   setAttachedCustomer: (customer: AttachedCustomer | null) => void;
   /** Merge a partial update into this sale's delivery details. */
@@ -212,6 +220,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   editWarnings: [],
   orderTypeId: null,
   orderTypeName: null,
+  orderTypeKind: null,
   serviceCharge: undefined,
   orderTypePricing: null,
   ...clearedSaleCustomer(),
@@ -319,17 +328,23 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   // cashier working a queue of Grab orders should not re-pick the channel.
   // Lines under edit are left by reference — `repriceLinesForOrderType` skips
   // them anyway (no list price), but the edit must not depend on that.
+  // Leaving dine-in also drops the typed walk-in phone: its box is only shown
+  // on dine-in, and a number the cashier can no longer see must not ride along.
   setOrderType: (orderTypeId, orderTypeName, serviceCharge, pricing = null, orderTypeKind = null) =>
     set((s) => ({
       orderTypeId,
       orderTypeName,
+      orderTypeKind,
       serviceCharge,
       orderTypePricing: pricing,
       lines: s.editContext ? s.lines : repriceLinesForOrderType(s.lines, pricing),
-      ...(isDineInType(orderTypeKind ? { type: orderTypeKind } : null) ? {} : clearedSaleTable()),
+      ...(isDineInType(orderTypeKind ? { type: orderTypeKind } : null)
+        ? {}
+        : { ...clearedSaleTable(), customerPhone: "" }),
     })),
 
   setCustomerName: (customerName) => set({ customerName }),
+  setCustomerPhone: (customerPhone) => set({ customerPhone }),
 
   applyVoucher: (voucher) => set((s) => ({ discount: addSessionVoucher(s.discount, voucher) })),
   removeVoucher: (code) => set((s) => ({ discount: removeSessionVoucher(s.discount, code) })),

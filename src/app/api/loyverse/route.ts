@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
@@ -8,8 +8,6 @@ import { buildLoyverseOrderItemsFromConvexOrder } from '@/lib/loyverse/convex-or
 import { loyversePushBodySchema } from '@/lib/loyverse/push-request'
 import type { OrderItem } from '@/types/database'
 import { isUuid } from '@/lib/uuid'
-import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
-import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /** Nothing was pushed, and that is not an error the merchant can act on. */
 function skipped(reason: string): NextResponse {
@@ -97,28 +95,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const { tenantId, orderId, orderNumber, items, context } = parsed.data
 
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, 'create')
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const caller = await requireBearerStoreCaller(request, tenantId, 'create')
+  if (!caller.ok) return caller.response
 
   let orderItems: OrderItem[] = items ?? []
   let platformOrderId: string | null = null

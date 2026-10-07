@@ -15,6 +15,7 @@ import {
   ShoppingCart,
   KeyRound,
   CreditCard,
+  CalendarDays,
   Megaphone,
   GraduationCap,
   MapPinned,
@@ -64,6 +65,7 @@ const navGroups: SidebarGroup[] = [
       { label: 'Checkout Leads', href: '/superadmin/checkout-leads', icon: ShoppingCart },
       { label: 'MCP Keys', href: '/superadmin/mcp-keys', icon: KeyRound },
       { label: 'Subscriptions', href: '/superadmin/subscriptions', icon: CreditCard },
+      { label: 'Billing Calendar', href: '/superadmin/subscriptions/calendar', icon: CalendarDays },
       { label: "What's New", href: '/superadmin/whats-new', icon: Megaphone },
       { label: 'University', href: '/superadmin/university', icon: GraduationCap },
       { label: 'Team', href: '/superadmin/team', icon: UserCog },
@@ -95,6 +97,15 @@ export function SuperAdminSidebar() {
     .map((group) => ({ ...group, items: group.items.filter((item) => canSeeNavItem(access, item.href)) }))
     .filter((group) => group.items.length > 0)
 
+  // The most specific item wins, so the Billing Calendar does not also light
+  // up Subscriptions, the item whose path it sits under.
+  const activeHref = [...visibleGroups.flatMap((group) => group.items), settingsItem]
+    .map((item) => item.href)
+    .filter((href) =>
+      href === '/superadmin' ? pathname === href : pathname === href || pathname.startsWith(href + '/')
+    )
+    .sort((a, b) => b.length - a.length)[0]
+
   // The login screen lives under this layout — render it full-bleed (no chrome).
   if (pathname === '/superadmin/login') return null
 
@@ -107,10 +118,7 @@ export function SuperAdminSidebar() {
 
   const NavItem = ({ item }: { item: SidebarItem }) => {
     const Icon = item.icon
-    const isActive =
-      item.href === '/superadmin'
-        ? pathname === '/superadmin'
-        : pathname === item.href || pathname.startsWith(item.href + '/')
+    const isActive = item.href === activeHref
 
     const button = (
       <Link

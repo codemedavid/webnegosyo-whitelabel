@@ -57,7 +57,7 @@ export const ClassicHeader = memo(function ClassicHeader({
 
           <div className="flex flex-shrink-0 items-center gap-4">
             {config.showCart && (
-              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
+              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} cartStyle={config.cartStyle} />
             )}
           </div>
         </div>

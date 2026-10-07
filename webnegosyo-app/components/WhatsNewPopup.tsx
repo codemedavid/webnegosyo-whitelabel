@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Image, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal } from "./Modal";
 import { router } from "expo-router";
 import { useAuthStore } from "../stores/auth-store";
 import { listAnnouncements, listReadAnnouncementIds, markAnnouncementRead, type Announcement } from "../lib/announcements/service";

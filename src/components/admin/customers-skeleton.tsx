@@ -1,5 +1,5 @@
 import { Skeleton } from '@/components/ui/skeleton'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 
 export function CustomersSkeleton() {
   return (
@@ -13,20 +13,23 @@ export function CustomersSkeleton() {
         </div>
       </div>
 
-      <div className="space-y-2">
+      <Card className="gap-0 overflow-hidden p-0">
+        <div className="border-b bg-muted/40 px-4 py-3">
+          <Skeleton className="h-3 w-1/3" />
+        </div>
         {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i}>
-            <CardContent className="flex items-center gap-3 p-4">
-              <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-28" />
-              </div>
-              <Skeleton className="h-8 w-20" />
-            </CardContent>
-          </Card>
+          <div key={i} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+            <Skeleton className="hidden h-5 w-16 sm:block" />
+            <Skeleton className="h-4 w-8" />
+            <Skeleton className="hidden h-4 w-24 md:block" />
+            <Skeleton className="h-4 w-20" />
+          </div>
         ))}
-      </div>
+      </Card>
     </div>
   )
 }

@@ -35,3 +35,41 @@ describe('loyalty earn history', () => {
     }
   })
 })
+
+describe('import twin lookup', () => {
+  function database(row: Record<string, unknown> | null) {
+    const filters: Array<[string, unknown]> = []
+    const query = {
+      select: () => query,
+      eq: (key: string, value: unknown) => { filters.push([key, value]); return query },
+      limit: () => query,
+      maybeSingle: async () => ({ data: row, error: null }),
+    }
+    const client = { from: () => query } as unknown as SupabaseClient
+    return { deps: createSupabaseLoyaltyDeps(client), filters }
+  }
+  const base = {
+    customerId: null, phoneE164: '+639171234567', source: 'online' as const, status: 'delivered', paymentStatus: 'paid',
+    branchId: null, netTotal: 100, orderedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:00:00Z', items: [],
+  }
+
+  it('finds the platform copy of a Convex order by the id the import stamped on it', async () => {
+    const { deps, filters } = database({ id: 'platform-1' })
+    const twin = await deps.findImportTwin!('tenant', { ...base, backend: 'convex', externalOrderId: 'cx-1' })
+    expect(twin).toEqual({ ref: { backend: 'platform_supabase', externalOrderId: 'platform-1' }, isPrimary: true })
+    expect(filters).toEqual([['tenant_id', 'tenant'], ['customer_data->>convex_order_id', 'cx-1']])
+  })
+
+  it('names the Convex original of an imported platform order', async () => {
+    const { deps } = database({ customer_data: { convex_order_id: 'cx-1' } })
+    const twin = await deps.findImportTwin!('tenant', { ...base, backend: 'platform_supabase', externalOrderId: 'platform-1' })
+    expect(twin).toEqual({ ref: { backend: 'convex', externalOrderId: 'cx-1' }, isPrimary: false })
+  })
+
+  it('finds no twin for a native order or a tenant-Supabase order', async () => {
+    expect(await database({ customer_data: {} }).deps.findImportTwin!('tenant', { ...base, backend: 'platform_supabase', externalOrderId: 'p' })).toBeNull()
+    expect(await database(null).deps.findImportTwin!('tenant', { ...base, backend: 'convex', externalOrderId: 'cx-9' })).toBeNull()
+    expect(await database({ id: 'x' }).deps.findImportTwin!('tenant', { ...base, backend: 'tenant_supabase', externalOrderId: 't' })).toBeNull()
+  })
+})

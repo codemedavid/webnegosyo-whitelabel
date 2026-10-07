@@ -24,7 +24,7 @@ export const PRODUCT_DETAIL_TENANT_SELECT = `
   bundles_enabled, pairing_rules_enabled, presell_enabled,
   multi_branch_enabled,
   convex_deployment_url, convex_schema_version,
-  operating_hours, timezone, enforce_operating_hours,
+  operating_hours, timezone, enforce_operating_hours, is_prelaunch,
   search_bar_enabled, search_bar_background, search_bar_text, search_bar_placeholder,
   search_bar_icon, search_bar_border, search_bar_focus_ring, search_bar_radius, search_bar_style
 `

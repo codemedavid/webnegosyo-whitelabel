@@ -1,9 +1,28 @@
 import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
+import { listVouchersAction } from '@/app/actions/voucher-admin'
 import { VouchersManagement } from './vouchers-management'
 
 interface VouchersPageProps {
   params: Promise<{ tenant: string }>
+}
+
+/**
+ * The list is read here, on the server, and handed down as props. It used to be
+ * fetched by the client after the page loaded (and this Suspense guarded
+ * nothing, its child being a client component). Saves and retirements are
+ * actions that revalidate this page, so the fresh list rides back on their
+ * response.
+ */
+async function VouchersContent({ tenantId }: { tenantId: string }) {
+  const result = await listVouchersAction(tenantId)
+  return (
+    <VouchersManagement
+      tenantId={tenantId}
+      vouchers={result.data ?? []}
+      loadError={result.success ? null : result.error ?? 'Could not load vouchers'}
+    />
+  )
 }
 
 export default async function VouchersPage({ params }: VouchersPageProps) {
@@ -31,7 +50,7 @@ export default async function VouchersPage({ params }: VouchersPageProps) {
           </div>
         }
       >
-        <VouchersManagement tenantId={tenant.id} />
+        <VouchersContent tenantId={tenant.id} />
       </Suspense>
     </div>
   )

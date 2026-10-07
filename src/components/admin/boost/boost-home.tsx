@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -93,7 +92,6 @@ function countStatus(total: number, live: number): MomentStatus {
 export function BoostHome({
   workspace, tenantId, tenantSlug, theme, cartTheme, initialEditor = null, aiLog, insights,
 }: BoostHomeProps) {
-  const router = useRouter()
   const [editor, setEditor] = useState<EditorTarget | null>(initialEditor)
   /** The approved AI proposal being edited; saving the editor puts it live. */
   const [editingProposalId, setEditingProposalId] = useState<string | null>(null)
@@ -136,7 +134,10 @@ export function BoostHome({
   const suggestionRevenue = performance?.suggestions.revenue ?? 0
   const comboOrderCount = performance ? Object.values(performance.comboOrders).reduce((sum, n) => sum + n, 0) : 0
 
-  const refresh = useCallback(() => router.refresh(), [router])
+  // No router.refresh() after a write: every Boost action ends in
+  // refreshOfferCaches → revalidatePath, and a revalidating Server Action
+  // already returns this page freshly rendered. A refresh on top rendered it a
+  // SECOND time — order history, menu and AI log included — per click.
 
   const handleSaved = useCallback(async (message: string) => {
     setEditor(null)
@@ -146,8 +147,7 @@ export function BoostHome({
       const response = await markBoostAiProposalAppliedAction(tenantId, tenantSlug, editingProposalId)
       if (!response.success) toast.error(response.error)
     }
-    refresh()
-  }, [editingProposalId, refresh, tenantId, tenantSlug])
+  }, [editingProposalId, tenantId, tenantSlug])
 
   const closeEditor = useCallback(() => {
     setEditor(null)
@@ -182,7 +182,6 @@ export function BoostHome({
       return
     }
     toast.success(isLive ? 'Live for customers' : 'Paused — customers no longer see it')
-    refresh()
   }
 
   const handleActivate = async (idea: BoostIdea) => {
@@ -202,11 +201,9 @@ export function BoostHome({
         label: 'Undo',
         onClick: async () => {
           await result.undo()
-          refresh()
         },
       },
     })
-    refresh()
   }
 
   const handleDismiss = (idea: BoostIdea) => {
@@ -238,7 +235,6 @@ export function BoostHome({
       return
     }
     toast.success(enabled ? 'Boost Sales is on' : 'Boost Sales is off — your offers are kept for later')
-    refresh()
   }
 
   const sheet = (

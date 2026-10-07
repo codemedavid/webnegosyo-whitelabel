@@ -8,6 +8,9 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.net.Uri
+import android.provider.Settings
 import android.telephony.SmsManager
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
@@ -46,7 +49,68 @@ class SmsSenderModule : Module() {
     AsyncFunction("sendSms") { phoneNumber: String, message: String, subscriptionId: Int?, promise: Promise ->
       sendSms(phoneNumber, message, subscriptionId, promise)
     }
+
+    // --- Loyalty SMS gateway (see LoyaltySmsGatewayService) -----------------
+
+    AsyncFunction("startSmsGateway") { config: Map<String, String> ->
+      val context = requireContext()
+      val tenantId = config["tenantId"]
+      val actorId = config["actorId"]
+      if (!SmsGatewayPrefs.isValidId(tenantId) || !SmsGatewayPrefs.isValidId(actorId)) {
+        throw SmsSendException("BAD_CONFIG", "The SMS gateway needs a store and an account.")
+      }
+      SmsGatewayPrefs.enable(context, tenantId!!, actorId!!)
+      LoyaltySmsGatewayService.start(context)
+    }
+
+    AsyncFunction("stopSmsGateway") {
+      val context = requireContext()
+      SmsGatewayPrefs.disable(context)
+      LoyaltySmsGatewayService.stop(context)
+    }
+
+    AsyncFunction("getSmsGatewayState") {
+      val context = requireContext()
+      mapOf(
+        "enabled" to (SmsGatewayPrefs.read(context) != null),
+        "running" to LoyaltySmsGatewayService.isRunning,
+      )
+    }
+
+    Function("setSmsGatewayStatus") { text: String ->
+      val context = appContext.reactContext?.applicationContext ?: return@Function
+      SmsGatewayPrefs.setStatusText(context, text)
+      LoyaltySmsGatewayService.updateStatus(context)
+    }
+
+    AsyncFunction("isIgnoringBatteryOptimizations") {
+      val context = requireContext()
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return@AsyncFunction true
+      val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+      power.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    AsyncFunction("requestIgnoreBatteryOptimizations") {
+      val context = requireContext()
+      // Explicit nulls: a bare return is Unit, and the block's type is Any?.
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return@AsyncFunction null
+      val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+      val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+      val activity = appContext.currentActivity
+      for (intent in listOf(direct, fallback)) {
+        val started = runCatching {
+          if (activity != null) activity.startActivity(intent)
+          else context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (started) return@AsyncFunction null
+      }
+      null
+    }
   }
+
+  private fun requireContext(): Context =
+    appContext.reactContext?.applicationContext
+      ?: throw SmsSendException("NO_CONTEXT", "The app context is unavailable.")
 
   private fun sendSms(phoneNumber: String, message: String, subscriptionId: Int?, promise: Promise) {
     val context = appContext.reactContext

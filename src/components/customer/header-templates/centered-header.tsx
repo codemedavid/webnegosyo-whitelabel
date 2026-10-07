@@ -54,7 +54,7 @@ export const CenteredHeader = memo(function CenteredHeader({
 
           {config.showCart && (
             <div className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-2">
-              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
+              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} cartStyle={config.cartStyle} />
             </div>
           )}
         </div>

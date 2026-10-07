@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal } from "./Modal";
 import { colors, radius, spacing, typography } from "../theme/colors";
 import type { DateRangePreset } from "../lib/product-analytics-filters";
 

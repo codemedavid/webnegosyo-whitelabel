@@ -11,6 +11,7 @@ import type { ButtonItem, Section, Widget, WidgetContent } from '@/lib/hero-buil
 
 import { Field, Group, IconPicker, ImageField, Segmented, SelectField, TextArea, TextInput, Toggle } from '../controls'
 import type { HeroBuilderApi } from '../use-hero-builder'
+import { LinkPicker, sectionAnchorsOf } from './link-picker'
 
 function move<T>(items: readonly T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return [...items]
@@ -61,14 +62,6 @@ function ListEditor<T extends { id: string }>({ items, max, addLabel, onChange, 
   )
 }
 
-function LinkField({ value, onChange }: { value: string | undefined; onChange: (v: string) => void }) {
-  return (
-    <Field label="Link" hint="#storefront-menu jumps to your menu. Also: https://, /page, #section, tel:, mailto:">
-      <TextInput value={value ?? ''} placeholder="#storefront-menu" onChange={(e) => onChange(e.target.value)} />
-    </Field>
-  )
-}
-
 function SafetyNote({ children }: { children: ReactNode }) {
   return (
     <div className="flex gap-2 rounded-lg bg-emerald-50 p-2.5 text-[11px] leading-snug text-emerald-900">
@@ -78,11 +71,13 @@ function SafetyNote({ children }: { children: ReactNode }) {
   )
 }
 
-const MARKUP_HINT = 'Formatting: **bold**, *italic*, [link text](https://…). Press Enter for a new line.'
+const MARKUP_HINT =
+  'Formatting: **bold**, *italic*, [link text](https://…) — [link text](#storefront-menu) jumps to your menu. Press Enter for a new line.'
 
 function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilderApi }) {
   const c = widget.content
   const edit = (patch: Partial<WidgetContent>, key?: string) => api.editContent(widget.id, patch, key)
+  const sectionAnchors = sectionAnchorsOf(api.design.sections)
 
   switch (c.kind) {
     case 'heading':
@@ -123,7 +118,13 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
           render={(item, update) => (
             <>
               <TextInput value={item.label} placeholder="Label" maxLength={LIMITS.shortText} onChange={(e) => update({ label: e.target.value })} />
-              <LinkField value={item.href} onChange={(href) => update({ href })} />
+              <LinkPicker
+                value={item.href}
+                onChange={(href) => update({ href })}
+                sectionAnchors={sectionAnchors}
+                newTab={item.newTab}
+                onNewTabChange={(newTab) => update({ newTab })}
+              />
               <Segmented
                 value={item.variant}
                 onChange={(variant) => update({ variant })}
@@ -136,7 +137,6 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
               <Field label="Icon">
                 <IconPicker value={item.icon} onChange={(icon) => update({ icon })} allowNone />
               </Field>
-              <Toggle label="Open in new tab" checked={item.newTab} onChange={(newTab) => update({ newTab })} />
             </>
           )}
         />
@@ -148,7 +148,14 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
           <Field label="Alt text" hint="Describe the photo for screen readers and Google.">
             <TextInput value={c.alt} maxLength={LIMITS.shortText} onChange={(e) => edit({ alt: e.target.value }, 'alt')} />
           </Field>
-          <LinkField value={c.href} onChange={(href) => edit({ href }, 'href')} />
+          <LinkPicker
+            value={c.href}
+            onChange={(href) => edit({ href }, 'href')}
+            sectionAnchors={sectionAnchors}
+            allowNone
+            newTab={c.newTab}
+            onNewTabChange={(newTab) => edit({ newTab })}
+          />
         </>
       )
     case 'video':
@@ -169,7 +176,7 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
           <Field label="Icon">
             <IconPicker value={c.name} onChange={(name) => edit({ name: name ?? 'Star' })} />
           </Field>
-          <LinkField value={c.href} onChange={(href) => edit({ href }, 'href')} />
+          <LinkPicker value={c.href} onChange={(href) => edit({ href }, 'href')} sectionAnchors={sectionAnchors} allowNone />
         </>
       )
     case 'icon-list':
@@ -361,7 +368,7 @@ export function ContentPanel({ api, node, nodeKind }: ContentPanelProps) {
         <Field label="Columns" hint="Removing columns moves their elements into the last one.">
           <ColumnLayoutPicker section={section} api={api} />
         </Field>
-        <Field label="Anchor link" hint={section.anchor ? `Buttons can link here with #${section.anchor}` : 'Give it a name so buttons can scroll here.'}>
+        <Field label="Anchor link" hint={section.anchor ? 'Buttons can link here: Link to → A section of this hero.' : 'Give it a name so buttons can scroll here.'}>
           <TextInput
             value={section.anchor ?? ''}
             placeholder="e.g. promo"

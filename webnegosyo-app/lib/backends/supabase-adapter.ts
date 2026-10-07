@@ -47,6 +47,7 @@ import {
   unwrap,
   withAbortSignal,
   type PlatformClient,
+  type PlatformQueryBuilder,
 } from "./platform-client";
 import { isUuid, toUuidOrNull } from "../uuid";
 import { PartialOrderWriteError } from "../offline/network-error";
@@ -215,6 +216,27 @@ function orderWindow(args: Record<string, unknown>): { startMs: number; endMs: n
   return { startMs, endMs };
 }
 
+/** `viewOutletId` value asking for the orders that name no branch. */
+const VIEW_UNASSIGNED = "__unassigned__";
+
+/**
+ * Narrow to the branch a screen is LOOKING at (`viewOutletId`), on top of the
+ * account scope — so it can only ever narrow.
+ *
+ * `getOrders` is a most-recent-N page. Narrowed on the phone instead, every
+ * branch shared the same N rows and a quiet branch showed almost nothing.
+ * Anything that is not a branch id is ignored: the screen still filters what
+ * it draws, so ignoring it can only leave the list sparse, never wrong.
+ */
+function scopeToViewedBranch(
+  builder: PlatformQueryBuilder,
+  viewOutletId: unknown
+): PlatformQueryBuilder {
+  if (viewOutletId === VIEW_UNASSIGNED) return builder.is("outlet_id", null);
+  if (isUuid(viewOutletId)) return builder.eq("outlet_id", viewOutletId);
+  return builder;
+}
+
 async function getOrders(
   client: PlatformClient,
   tenantId: string,
@@ -228,9 +250,9 @@ async function getOrders(
   const window = orderWindow(args);
 
   const build = () => {
-    let builder = scopeToBranch(
-      client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId),
-      scope
+    let builder = scopeToViewedBranch(
+      scopeToBranch(client.from("orders").select(ORDER_COLUMNS).eq("tenant_id", tenantId), scope),
+      args.viewOutletId
     );
     if (typeof args.status === "string") {
       builder = builder.eq("status", args.status);

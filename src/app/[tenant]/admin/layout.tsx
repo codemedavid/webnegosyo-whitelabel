@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation'
 import { AdminLayoutClient } from '@/components/admin/admin-layout-client'
 import { getCachedTenantBySlug, getCachedCurrentUserRole } from '@/lib/cache'
-import { createClient } from '@/lib/supabase/server'
-import { fetchSubscription } from '@/lib/billing/subscription-repository'
+import { getRequestSubscription } from '@/lib/auth/request-caller'
 import { resolveSubscriptionAccess } from '@/lib/billing/subscription-status'
 import type { Tenant } from '@/types/database'
 import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
+import { toAdminShellTenant } from '@/lib/admin-shell-tenant'
+import { PrelaunchBanner } from '@/components/admin/launch/prelaunch-banner'
 
 // Authenticated, per-request, never pre-rendered at build time (see the
 // superadmin layout for why this is pinned rather than inferred).
@@ -19,19 +20,25 @@ export default async function AdminLayout({
   params: Promise<{ tenant: string }>
 }) {
   const { tenant: tenantSlug } = await params
-  
-  // Check authentication
-  const userRoleData = await getCachedCurrentUserRole()
-  
+
+  // One parallel batch, not a waterfall: this layout sits in front of every
+  // admin page, and it used to read the user, then the tenant, then the
+  // subscription one after another. The subscription read rides on the tenant
+  // read so it overlaps the auth check; it is request-cached, so the
+  // verifyTenantAdmin calls beneath this layout reuse it instead of re-reading.
+  const tenantRead = getCachedTenantBySlug(tenantSlug)
+  const [userRoleData, tenantData, subscription] = await Promise.all([
+    getCachedCurrentUserRole(),
+    tenantRead,
+    tenantRead.then((found) => (found ? getRequestSubscription(found.id) : null)),
+  ])
+
   if (!userRoleData) {
     redirect(`/${tenantSlug}/login?redirect=/${tenantSlug}/admin`)
   }
 
   const userRole = userRoleData
 
-  // Get tenant
-  const tenantData = await getCachedTenantBySlug(tenantSlug)
-  
   if (!tenantData) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -73,9 +80,6 @@ export default async function AdminLayout({
   // the server actions: a redirect here is a rendering decision and does not
   // stop a POST aimed straight at an action.
   if (role.role !== 'superadmin' && role.role !== 'platform_staff') {
-    const supabase = await createClient()
-    const subscription = await fetchSubscription(supabase, tenant.id)
-
     if (resolveSubscriptionAccess(subscription, new Date().toISOString()).isBlocked) {
       // Deliberately OUTSIDE the admin tree. A paused screen rendered under
       // this same layout would be redirected to itself, forever.
@@ -86,7 +90,7 @@ export default async function AdminLayout({
   return (
     <AdminLayoutClient
       tenantSlug={tenantSlug}
-      tenant={tenant}
+      tenant={toAdminShellTenant(tenant)}
       caller={{
         role: role.role,
         is_owner: role.is_owner ?? false,
@@ -97,6 +101,7 @@ export default async function AdminLayout({
         outlet_id: role.outlet_id ?? null,
       }}
     >
+      {tenant.is_prelaunch === true && <PrelaunchBanner tenantSlug={tenantSlug} />}
       {children}
     </AdminLayoutClient>
   )

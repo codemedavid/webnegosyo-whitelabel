@@ -87,6 +87,7 @@ export interface SelectedTenant {
     operating_hours?: unknown
     timezone?: string | null
     enforce_operating_hours?: boolean | null
+    is_prelaunch?: boolean | null
     convex_schema_version?: number
     // Search bar branding fields
     search_bar_enabled?: boolean

@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -106,7 +105,6 @@ export function OrderTypeDetail({
   menuItems = [],
   initialPrices = [],
 }: OrderTypeDetailProps) {
-  const router = useRouter()
   const accent = ORDER_TYPE_ACCENTS[orderType.type]
 
   // ---- Settings form -------------------------------------------------------
@@ -187,14 +185,15 @@ export function OrderTypeDetail({
 
   const handleFieldSaved = (saved?: CustomerFormField) => {
     setFieldDialogOpen(false)
-    // Show the row straight away; the refresh below only confirms it.
+    // Show the row straight away. No router.refresh(): every write on this
+    // screen is a Server Action that calls revalidatePath, which already
+    // re-renders the route — a refresh on top was a second full server render.
     if (saved?.id) {
       setFormFields((prev) => {
         const without = prev.filter((f) => f.id !== saved.id)
         return sortByOrderIndex([...without, saved])
       })
     }
-    router.refresh()
   }
 
   const handleDeleteField = async () => {
@@ -217,7 +216,6 @@ export function OrderTypeDetail({
 
     if (result.success) {
       toast.success(`"${target.field_label}" removed`)
-      router.refresh()
     } else {
       setFormFields(previous)
       toast.error(result.error || 'Failed to delete field')
@@ -250,9 +248,7 @@ export function OrderTypeDetail({
     )
     setIsWritingFields(false)
 
-    if (result.success) {
-      router.refresh()
-    } else {
+    if (!result.success) {
       setFormFields(previous)
       toast.error(result.error || 'Failed to reorder fields')
     }
@@ -288,7 +284,6 @@ export function OrderTypeDetail({
         toast.success('Saved')
         setSavedState(formData)
         appliedSignatureRef.current = orderTypeFormSignature(formData)
-        router.refresh()
       } else {
         toast.error(result.error || 'Failed to update order type')
       }

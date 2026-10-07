@@ -1,13 +1,15 @@
 'use client'
 
-import type { MouseEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 import { resolveVideo } from '@/lib/hero-builder/media'
+import { isInStoreTarget, MENU_ANCHOR, parseLinkTarget } from '@/lib/hero-builder/link-target'
 import { safeHref, safeMediaUrl } from '@/lib/hero-builder/safe-values'
 import { parseMarkup } from '@/lib/hero-builder/text-markup'
 import type { Widget } from '@/lib/hero-builder/types'
 
 import { HeroIcon } from '../icons'
+import { useHeroLinkClick } from './link-context'
 import { CountdownBlock, EmbedBlock, HtmlBlock } from './live-blocks'
 
 interface WidgetViewProps {
@@ -20,27 +22,24 @@ interface WidgetViewProps {
 const text = (value: unknown): string => (typeof value === 'string' ? value : '')
 const list = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 
-/** In-page `#anchor` links scroll smoothly instead of jumping. */
-function onAnchorClick(event: MouseEvent<HTMLAnchorElement>): void {
-  const href = event.currentTarget.getAttribute('href') ?? ''
-  if (!href.startsWith('#') || href.length < 2) return
-  const target = document.getElementById(decodeURIComponent(href.slice(1)))
-  if (!target) return
-  event.preventDefault()
-  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
+type LinkProps = { href: string; target?: string; rel?: string }
 
-function linkProps(href: unknown, newTab: unknown): { href: string; target?: string; rel?: string } | null {
+/** An in-store target (menu, category, product, section) never opens a new tab. */
+function linkProps(href: unknown, newTab: unknown): LinkProps | null {
   const safe = safeHref(href)
   if (!safe) return null
-  return newTab === true ? { href: safe, target: '_blank', rel: 'noopener noreferrer' } : { href: safe }
+  if (newTab !== true || isInStoreTarget(parseLinkTarget(safe))) return { href: safe }
+  return { href: safe, target: '_blank', rel: 'noopener noreferrer' }
 }
+
+const MENU_LINK: LinkProps = { href: `#${MENU_ANCHOR}` }
 
 function Placeholder({ show, label }: { show: boolean; label: string }) {
   return show ? <div className="hb-placeholder">{label}</div> : null
 }
 
 function Markup({ value }: { value: unknown }) {
+  const onLinkClick = useHeroLinkClick()
   return (
     <>
       {parseMarkup(value).map((token, i) => {
@@ -54,7 +53,7 @@ function Markup({ value }: { value: unknown }) {
           case 'link': {
             const external = /^https?:/i.test(token.href)
             return (
-              <a key={i} href={token.href} onClick={onAnchorClick} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+              <a key={i} href={token.href} onClick={onLinkClick} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
                 {token.text}
               </a>
             )
@@ -67,16 +66,18 @@ function Markup({ value }: { value: unknown }) {
   )
 }
 
-function Maybe({ link, children }: { link: ReturnType<typeof linkProps>; children: ReactNode }) {
+function Maybe({ link, children }: { link: LinkProps | null; children: ReactNode }) {
+  const onLinkClick = useHeroLinkClick()
   if (!link) return <>{children}</>
   return (
-    <a {...link} onClick={onAnchorClick}>
+    <a {...link} onClick={onLinkClick}>
       {children}
     </a>
   )
 }
 
 export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): ReactNode {
+  const onLinkClick = useHeroLinkClick()
   const c = widget.content
   switch (c.kind) {
     case 'heading': {
@@ -100,9 +101,9 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
         <div className="hb-btns">
           {items.map((item) => {
             const variant = ['solid', 'outline', 'ghost'].includes(item.variant) ? item.variant : 'solid'
-            const link = linkProps(item.href, item.newTab) ?? { href: '#storefront-menu' }
+            const link = linkProps(item.href, item.newTab) ?? MENU_LINK
             return (
-              <a key={item.id} className={`hb-btn hb-btn--${variant}`} {...link} onClick={onAnchorClick}>
+              <a key={item.id} className={`hb-btn hb-btn--${variant}`} {...link} onClick={onLinkClick}>
                 {item.icon && <HeroIcon name={item.icon} />}
                 <span>{text(item.label) || 'Button'}</span>
               </a>

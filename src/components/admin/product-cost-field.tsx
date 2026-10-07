@@ -52,7 +52,8 @@ export function ProductCostField({
       })
       toast.success('Cost price saved')
     } catch {
-      // Convex function may not be deployed yet — silently skip
+      // Never let a typed cost look saved when it was not.
+      toast.error('Could not save the cost. Please try again.')
     } finally {
       setIsSaving(false)
     }

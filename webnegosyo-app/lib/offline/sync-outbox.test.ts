@@ -35,6 +35,7 @@ function harness(sales: QueuedSale[]) {
   const recordFailure = jest.fn().mockResolvedValue(undefined);
   const markWritten = jest.fn().mockResolvedValue(undefined);
   const markBookkeepingDone = jest.fn().mockResolvedValue(undefined);
+  const rebindEdits = jest.fn().mockResolvedValue(undefined);
   const deps = {
     tenantId: "tenant-1",
     backend: "platform" as const,
@@ -46,6 +47,7 @@ function harness(sales: QueuedSale[]) {
     recordFailure,
     markWritten,
     markBookkeepingDone,
+    rebindEdits,
   };
   return {
     deps,
@@ -56,6 +58,7 @@ function harness(sales: QueuedSale[]) {
     recordFailure,
     markWritten,
     markBookkeepingDone,
+    rebindEdits,
   };
 }
 
@@ -63,6 +66,13 @@ describe("syncOutbox", () => {
   beforeEach(() => {
     resetConnectivityForTests();
     resetSyncForTests();
+  });
+
+  it("points changes made offline at the server id once the sale is written", async () => {
+    const h = harness([sale("a")]);
+    await syncOutbox(h.deps);
+    expect(h.rebindEdits).toHaveBeenCalledWith(sale("a").localId, `server-${sale("a").clientOrderId}`);
+    expect(h.rebindEdits.mock.invocationCallOrder[0]).toBeLessThan(h.remove.mock.invocationCallOrder[0]);
   });
 
   it("replays each sale in order: create, mark paid, bookkeeping, then forget it", async () => {

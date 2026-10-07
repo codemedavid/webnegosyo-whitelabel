@@ -12,11 +12,11 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  Modal,
   TextInput,
   Alert,
   type ListRenderItem,
 } from "react-native";
+import { Modal } from "../../components/Modal";
 import { FunctionReference } from "convex/server";
 import { useSafeQuery, useSafeMutation, useSafeAction } from "../../lib/hooks";
 import { useBranchScope } from "../../lib/use-branch-scope";

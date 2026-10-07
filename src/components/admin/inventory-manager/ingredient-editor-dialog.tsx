@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,7 +22,8 @@ interface IngredientEditorDialogProps {
 
 /** Mounted per edit session, so typing never rerenders the ingredient table. */
 export function IngredientEditorDialog({ tenantId, tenantSlug, item, units, onSaved, onClose }: IngredientEditorDialogProps) {
-  const router = useRouter()
+  // No router.refresh() after a save: the inventory actions revalidate, and a
+  // revalidating Server Action already re-renders this route in its response.
   const editingId = item?.id ?? null
   const [draft, setDraft] = useState<IngredientDraft>(() => item
     ? ingredientToDraft(item)
@@ -54,7 +54,6 @@ export function IngredientEditorDialog({ tenantId, tenantSlug, item, units, onSa
       onSaved(saved)
       toast.success(editingId ? 'Ingredient updated' : 'Ingredient added')
       onClose()
-      router.refresh()
     } finally {
       setIsSaving(false)
     }

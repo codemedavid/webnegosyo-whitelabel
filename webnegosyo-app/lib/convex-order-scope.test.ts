@@ -181,3 +181,47 @@ describe("convexOrderQueryArgs — platform-only arguments", () => {
     });
   });
 });
+
+/**
+ * `viewOutletId` is the branch an owner is LOOKING at. The account scope is
+ * store-wide, so without it the Convex page is the latest 50 orders across
+ * every branch, shared out on the phone. It is translated to the validator's
+ * `outletId` only where a v15+ bundle can accept it, and never reaches Convex
+ * under its own name.
+ */
+describe("convexOrderQueryArgs — viewed branch", () => {
+  const VIEWED = "branch-south";
+
+  it("narrows an owner's getOrders to the viewed branch on a v15+ bundle", () => {
+    expect(
+      convexOrderQueryArgs("orders:getOrders", { limit: 50, viewOutletId: VIEWED }, ALL, 15)
+    ).toEqual({ limit: 50, outletId: VIEWED });
+  });
+
+  it("drops the viewed branch on an older or unknown bundle", () => {
+    expect(
+      convexOrderQueryArgs("orders:getOrders", { limit: 50, viewOutletId: VIEWED }, ALL, 14)
+    ).toEqual({ limit: 50 });
+    expect(
+      convexOrderQueryArgs("orders:getOrders", { limit: 50, viewOutletId: VIEWED }, ALL)
+    ).toEqual({ limit: 50 });
+  });
+
+  it("never sends the unassigned sentinel — Convex cannot filter for no branch", () => {
+    expect(
+      convexOrderQueryArgs("orders:getOrders", { viewOutletId: "__unassigned__" }, ALL, 30)
+    ).toEqual({});
+  });
+
+  it("keeps a branch account on its own branch whatever it asks to view", () => {
+    expect(
+      convexOrderQueryArgs("orders:getOrders", { viewOutletId: VIEWED }, NORTH, 30)
+    ).toEqual({ outletId: "outlet-north" });
+  });
+
+  it("is not forwarded by refs that do not read the order page", () => {
+    expect(
+      convexOrderQueryArgs("orders:getRealtimeQueue", { viewOutletId: VIEWED }, ALL, 30)
+    ).toEqual({});
+  });
+});

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -8,8 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PaymentMethodForm } from '@/components/admin/payment-method-form'
 import { PaymentMethodsList } from '@/components/admin/payment-methods-list'
-import { getPaymentMethodsAction, syncLoyversePaymentMethodsAction } from '@/app/actions/payment-methods'
-import { getLinkableOrderTypesByTenantClient } from '@/lib/order-types-client'
+import { syncLoyversePaymentMethodsAction } from '@/app/actions/payment-methods'
 import type { PaymentMethodWithOrderTypes } from '@/lib/payment-methods-service'
 import type { OrderType } from '@/types/database'
 import { toast } from 'sonner'
@@ -18,55 +18,41 @@ interface PaymentMethodsManagementProps {
   tenantId: string
   tenantSlug: string
   isLoyverseConnected?: boolean
+  /** Read on the server (page.tsx); fresh copies arrive with every write's revalidation. */
+  paymentMethods: PaymentMethodWithOrderTypes[]
+  orderTypes: OrderType[]
+  /** Null when both reads succeeded. */
+  loadError: string | null
 }
 
-export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConnected = false }: PaymentMethodsManagementProps) {
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodWithOrderTypes[]>([])
-  const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [hasError, setHasError] = useState(false)
-  const [errorMessage, setErrorMessage] = useState('')
+/**
+ * Every write on this screen is a server action that revalidates this page, so
+ * its response already carries the fresh list as new props. Refetching on top
+ * (the old `loadData`) cost two more round trips per edit for the same rows.
+ */
+const REFRESHED_BY_REVALIDATION = () => {}
+
+function describeLoadError(error: string): string {
+  return error.includes('relation') || error.includes('does not exist')
+    ? 'Payment methods tables not found. Please apply the database migration first.'
+    : error
+}
+
+export function PaymentMethodsManagement({
+  tenantId,
+  tenantSlug,
+  isLoyverseConnected = false,
+  paymentMethods,
+  orderTypes,
+  loadError,
+}: PaymentMethodsManagementProps) {
+  const router = useRouter()
   const [formDialogOpen, setFormDialogOpen] = useState(false)
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodWithOrderTypes | undefined>()
   const [activeTab, setActiveTab] = useState('all')
   const [isSyncing, setIsSyncing] = useState(false)
-
-  const loadData = async () => {
-    try {
-      setIsLoading(true)
-      setHasError(false)
-      
-      // Load payment methods
-      const methodsResult = await getPaymentMethodsAction(tenantId)
-      if (methodsResult.success && methodsResult.data) {
-        setPaymentMethods(methodsResult.data)
-      } else {
-        // Check if it's a migration error
-        if (methodsResult.error?.includes('relation') || methodsResult.error?.includes('does not exist')) {
-          setHasError(true)
-          setErrorMessage('Payment methods tables not found. Please apply the database migration first.')
-          return
-        }
-        throw new Error(methodsResult.error)
-      }
-
-      // Every enabled order type, not just the web-facing ones: the merchant
-      // links methods to register-only channels (Grab, Foodpanda) from here too.
-      const orderTypesData = await getLinkableOrderTypesByTenantClient(tenantId)
-      setOrderTypes(orderTypesData)
-    } catch (error) {
-      console.error('Error loading payment methods:', error)
-      setHasError(true)
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to load payment methods')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId])
+  const hasError = loadError !== null
+  const errorMessage = loadError ? describeLoadError(loadError) : ''
 
   const handleAddNew = () => {
     if (hasError) {
@@ -101,7 +87,6 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConne
           : `Loyverse sync: ${report.created} added, ${report.renamed} renamed, ${report.reactivated} reactivated, ${report.deactivated} deactivated`
       )
       report.warnings.forEach((warning) => toast.warning(warning))
-      await loadData()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to sync payment methods from Loyverse')
     } finally {
@@ -111,7 +96,6 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConne
 
   const handleFormSuccess = () => {
     setFormDialogOpen(false)
-    loadData()
   }
 
   const filteredMethods = paymentMethods.filter((method) => {
@@ -120,16 +104,6 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConne
     if (activeTab === 'inactive') return !method.is_active
     return true
   })
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-        </CardContent>
-      </Card>
-    )
-  }
 
   if (hasError) {
     return (
@@ -149,7 +123,8 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConne
               <p className="mt-3 text-xs text-gray-600">Or apply it manually in your Supabase SQL Editor</p>
             </div>
           </div>
-          <Button onClick={loadData} variant="outline">
+          {/* No action ran, so nothing revalidated: re-run the server read. */}
+          <Button onClick={() => router.refresh()} variant="outline">
             Try Again
           </Button>
         </CardContent>
@@ -194,7 +169,7 @@ export function PaymentMethodsManagement({ tenantId, tenantSlug, isLoyverseConne
         tenantId={tenantId}
         tenantSlug={tenantSlug}
         onEdit={handleEdit}
-        onRefresh={loadData}
+        onRefresh={REFRESHED_BY_REVALIDATION}
       />
 
       {/* Form Dialog - Only show if no error */}

@@ -12,7 +12,13 @@
  * halfway through typing the word.
  */
 
-import { MISSING_NAME_FALLBACK, renderMessage, validateTemplate } from "./message-template";
+import {
+  MISSING_NAME_FALLBACK,
+  PLACEHOLDER_PATTERN,
+  buildTemplateVariables,
+  renderMessage,
+  validateTemplate,
+} from "./message-template";
 import type { SmsCustomer } from "./types";
 
 /**
@@ -76,6 +82,45 @@ export function buildMessagePreview(
     isSample,
     problem: null,
   };
+}
+
+export interface PreviewSegment {
+  text: string;
+  /** True for words a placeholder filled in — they change from guest to guest. */
+  isPersonal: boolean;
+}
+
+/**
+ * The same sentence as `buildMessagePreview`, cut into runs so the phone
+ * preview can mark the personalised words. Seeing "Maria" lit up is how a
+ * merchant learns that `{{firstName}}` becomes each guest's own name without
+ * being told what a placeholder is.
+ *
+ * Total, like the preview: an unknown placeholder returns the raw template as
+ * one plain run rather than throwing mid-keystroke.
+ */
+export function buildPreviewSegments(
+  template: string,
+  recipient: SmsCustomer | null,
+  storeName: string
+): PreviewSegment[] {
+  if (template.trim() === "") return [];
+  if (!validateTemplate(template).isValid) return [{ text: template, isPersonal: false }];
+
+  const variables = buildTemplateVariables(recipient ?? SAMPLE_GUEST, { storeName });
+  const segments: PreviewSegment[] = [];
+  let cursor = 0;
+
+  for (const match of template.matchAll(PLACEHOLDER_PATTERN)) {
+    const start = match.index ?? 0;
+    if (start > cursor) segments.push({ text: template.slice(cursor, start), isPersonal: false });
+    const value = variables[match[1]] ?? "";
+    if (value !== "") segments.push({ text: value, isPersonal: true });
+    cursor = start + match[0].length;
+  }
+  if (cursor < template.length) segments.push({ text: template.slice(cursor), isPersonal: false });
+
+  return segments;
 }
 
 /** Re-exported so the editor can explain what an unnamed guest will be called. */

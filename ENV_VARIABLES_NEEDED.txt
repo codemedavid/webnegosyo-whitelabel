@@ -20,6 +20,21 @@ NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=whitelabel-uploads
    - Make sure it has "Geocoding API" scope enabled
    - Example: "pk.eyJ1IjoieW91cnVzZXJuYW1lIiwiYSI6ImN..."
 
+1b. APPLE MAPS (MapKit JS + Maps Server API) — replaces Mapbox when switched on:
+   - NEXT_PUBLIC_MAPS_PROVIDER=apple   (anything else / unset = Mapbox; set back to
+     "mapbox" to roll back instantly)
+   - APPLE_MAPKIT_TEAM_ID       Apple Developer → Membership details → Team ID
+   - APPLE_MAPKIT_KEY_ID        Certificates, Identifiers & Profiles → Keys → the key
+                                with "MapKit JS" enabled → Key ID
+   - APPLE_MAPKIT_PRIVATE_KEY   the downloaded AuthKey_<KEYID>.p8 contents (PEM).
+                                One line with literal \n is fine. SERVER ONLY —
+                                never NEXT_PUBLIC_, never committed (*.p8 is gitignored).
+   - The key is configured with a Maps ID (Identifiers → Maps IDs).
+   - Browsers get short-lived tokens bound to their origin from GET /api/maps/token;
+     the key itself never leaves the server. Without the three APPLE_MAPKIT_* values
+     the address field falls back to Mapbox.
+   - Quota (shared, per team, per day): 250k map views + 25k service calls.
+
 2. NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
    - Go to https://cloudinary.com/console
    - Login to your account
@@ -177,3 +192,14 @@ WALLET_PASS_SYNC_SECRET=                             # >= 32 chars; ALSO store i
 # Google (Google Pay & Wallet Console issuer + a service account with Wallet access)
 GOOGLE_WALLET_ISSUER_ID=                             # numeric issuer id
 GOOGLE_WALLET_SERVICE_ACCOUNT_JSON_B64=              # service-account key JSON, base64
+
+# ---- Owner AI assistant ("Owl") ----------------------------------------------
+# Uses OPENROUTER_API_KEY (already required). Per store: tenants.assistant_enabled
+# (superadmin switch). All optional:
+ASSISTANT_ENABLED=true                               # exactly "false" switches the assistant off platform-wide
+ASSISTANT_MODEL=openai/gpt-6-luna                    # OpenRouter model id for the assistant only
+ASSISTANT_DAILY_MESSAGES=60                          # per store per Manila day
+ASSISTANT_DAILY_COST_USD=0.5                         # per store per Manila day (OpenRouter-billed cost)
+# Voice input (mic button in the Owl composer, web + merchant app) — Whisper via
+# OpenRouter /audio/transcriptions, on OPENROUTER_API_KEY (already required). Optional:
+ASSISTANT_TRANSCRIBE_MODEL=openai/whisper-large-v3   # or openai/whisper-large-v3-turbo (cheaper, weaker on Tagalog)

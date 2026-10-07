@@ -1,7 +1,8 @@
 'use client'
 
-import type { ReactNode } from 'react'
-import { Layers, ListChecks, PlusCircle } from 'lucide-react'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { ListChecks, PlusCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import type { ModifierGroup, ModifierOption } from '@/types/database'
 import {
   createModifierGroup,
@@ -63,7 +64,53 @@ export interface LinkableMenuItem {
  * is owned by the parent form; this component is presentational and updates
  * immutably through `onChange`.
  */
+/** How long the Undo stays offered after a group or option is removed. */
+const UNDO_TOAST_MS = 8000
+
+function insertAt<T>(list: readonly T[], index: number, value: T): T[] {
+  const at = Math.min(Math.max(index, 0), list.length)
+  return [...list.slice(0, at), value, ...list.slice(at)]
+}
+
 export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContext, optionRecipeCosts, headerAction, onSaveGroupToLibrary, linkableItems }: ModifierGroupsEditorProps) {
+  // Undo runs later, from a toast: it must restore into the groups as they are
+  // THEN, not as they were when the removal happened, or it would also undo
+  // every edit made in between.
+  const latestGroups = useRef(groups)
+  useEffect(() => {
+    latestGroups.current = groups
+  }, [groups])
+
+  const removeGroup = (groupIndex: number) => {
+    const removed = groups[groupIndex]
+    onChange(groups.filter((_, i) => i !== groupIndex))
+    toast(`Removed ${removed.name ? `“${removed.name}”` : 'the group'}`, {
+      duration: UNDO_TOAST_MS,
+      action: { label: 'Undo', onClick: () => onChange(insertAt(latestGroups.current, groupIndex, removed)) },
+    })
+  }
+
+  const removeOption = (groupIndex: number, optionIndex: number) => {
+    const group = groups[groupIndex]
+    const removed = group.options[optionIndex]
+    onChange(groups.map((g, i) => (i === groupIndex ? { ...g, options: g.options.filter((_, j) => j !== optionIndex) } : g)))
+    toast(`Removed ${removed.name ? `“${removed.name}”` : 'the option'}`, {
+      duration: UNDO_TOAST_MS,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          const current = latestGroups.current
+          if (!current.some((g) => g.id === group.id)) {
+            toast.info(`${group.name || 'That group'} was removed too, so this option can't come back on its own.`)
+            return
+          }
+          onChange(current.map((g) =>
+            g.id === group.id ? { ...g, options: insertAt(g.options, optionIndex, removed) } : g))
+        },
+      },
+    })
+  }
+
   const addGroup = (mode: 'choice' | 'quantity') => {
     onChange([...groups, createModifierGroup(`grp-${Date.now()}`, groups.length, mode)])
   }
@@ -80,12 +127,12 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
   return (
     <EditorSection
       id={DISH_SECTION_IDS.choices}
-      icon={Layers}
-      title="Sizes & add-ons"
-      description="Let customers pick a size or flavor, or add extras. Skip this if the dish has none."
+      title="Options"
+      meta={groups.length > 0 ? `${groups.length} group${groups.length === 1 ? '' : 's'}` : undefined}
+      description={groups.length === 0 ? 'Sizes, flavors, sugar level or extras. Skip this if the dish comes one way.' : undefined}
       action={headerAction}
     >
-      <div className="space-y-4">
+      <div className={groups.length > 0 ? 'divide-y' : undefined}>
         {groups.map((group, groupIndex) => (
           <ModifierGroupCard
             key={group.id}
@@ -97,7 +144,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
             // The promise is deliberately dropped — the handler owns its own
             // failure reporting and is contracted never to reject.
             onSaveToLibrary={onSaveGroupToLibrary ? () => { void onSaveGroupToLibrary(group) } : undefined}
-            onRemoveGroup={() => onChange(groups.filter((_, i) => i !== groupIndex))}
+            onRemoveGroup={() => removeGroup(groupIndex)}
             onReplaceGroup={(next) => replaceGroup(groupIndex, next)}
             onUpdateName={(name) => replaceGroup(groupIndex, { ...group, name })}
             onUpdateMinSelect={(min) => replaceGroup(groupIndex, setGroupMinSelect(group, min))}
@@ -105,9 +152,7 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
             onAddOption={() =>
               withOptions(groupIndex, (options) => [...options, createModifierOption(`opt-${Date.now()}`, options.length)])
             }
-            onRemoveOption={(optionIndex) =>
-              withOptions(groupIndex, (options) => options.filter((_, i) => i !== optionIndex))
-            }
+            onRemoveOption={(optionIndex) => removeOption(groupIndex, optionIndex)}
             onUpdateOption={(optionIndex, field, value) =>
               withOptions(groupIndex, (options) => options.map((o, i) => (i === optionIndex ? { ...o, [field]: value } : o)))
             }
@@ -116,18 +161,19 @@ export function ModifierGroupsEditor({ groups, onChange, basePrice, recipeContex
             }
           />
         ))}
-
+      </div>
+      <div className={groups.length > 0 ? 'mt-4 border-t pt-4' : undefined}>
         <div className="grid gap-2 sm:grid-cols-2">
           <AddGroupButton
             icon={ListChecks}
-            title="Add a choice"
-            example="Size, flavor, spice level"
+            title="Add a choice group"
+            example="Size, temperature, sugar level"
             onClick={() => addGroup('choice')}
           />
           <AddGroupButton
             icon={PlusCircle}
-            title="Add extras"
-            example="Extra rice, egg, sauces"
+            title="Add an extras group"
+            example="Pearls, extra rice, sauces"
             onClick={() => addGroup('quantity')}
           />
         </div>

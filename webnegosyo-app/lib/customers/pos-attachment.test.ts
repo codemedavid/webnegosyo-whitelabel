@@ -17,6 +17,8 @@ import {
   posCustomerFields,
   attachmentSummary,
   clearedSaleCustomer,
+  offersWalkInPhone,
+  walkInPhoneProblem,
   type AttachedCustomer,
 } from "./pos-attachment";
 
@@ -104,14 +106,76 @@ describe("posCustomerFields — no guest attached", () => {
   });
 });
 
+describe("posCustomerFields — a phone typed for a dine-in walk-in", () => {
+  it("writes the typed number as the order's contact, normalized", () => {
+    // The contact is what the capture path resolves against, so it must be
+    // the same E.164 shape a web checkout stores for this guest.
+    const fields = posCustomerFields(null, "Maria", "0917 123 4567");
+
+    expect(fields).toEqual({ customerName: "Maria", customerContact: "+639171234567" });
+  });
+
+  it("writes no contact for a number that cannot be normalized", () => {
+    // A junk contact would manufacture a guest who is reachable by nobody.
+    expect(posCustomerFields(null, "", "12345").customerContact).toBe("");
+  });
+
+  it("lets an attached guest's contact win over a typed number", () => {
+    // Picking the guest is the stronger statement, as with the name.
+    expect(posCustomerFields(MARIA, "", "09181112222").customerContact).toBe(
+      "+639171234567",
+    );
+  });
+});
+
+describe("walkInPhoneProblem — the optional phone box", () => {
+  it("is happy with an empty box, because the number is optional", () => {
+    expect(walkInPhoneProblem("")).toBeNull();
+    expect(walkInPhoneProblem("   ")).toBeNull();
+  });
+
+  it("accepts a PH mobile number in any of the usual shapes", () => {
+    expect(walkInPhoneProblem("09171234567")).toBeNull();
+    expect(walkInPhoneProblem("+63 917 123 4567")).toBeNull();
+  });
+
+  it("names the problem when a typed number is not a mobile number", () => {
+    // Dropping it silently would leave the cashier believing the guest can
+    // be reached again.
+    expect(walkInPhoneProblem("12345")).toMatch(/09XX XXX XXXX/);
+  });
+});
+
+describe("offersWalkInPhone — when the register asks for a number", () => {
+  it("asks on a dine-in sale with nobody attached", () => {
+    expect(offersWalkInPhone({ orderTypeKind: "dine_in", attached: null, isEditing: false })).toBe(true);
+  });
+
+  it("does not ask when a guest is attached — their contact is already known", () => {
+    expect(offersWalkInPhone({ orderTypeKind: "dine_in", attached: MARIA, isEditing: false })).toBe(false);
+  });
+
+  it("does not ask on other order types", () => {
+    expect(offersWalkInPhone({ orderTypeKind: "pickup", attached: null, isEditing: false })).toBe(false);
+    expect(offersWalkInPhone({ orderTypeKind: null, attached: null, isEditing: false })).toBe(false);
+  });
+
+  it("does not ask while editing a placed order", () => {
+    // An edit never rewrites who the order is for.
+    expect(offersWalkInPhone({ orderTypeKind: "dine_in", attached: null, isEditing: true })).toBe(false);
+  });
+});
+
 describe("clearedSaleCustomer — the guest must not outlive the sale", () => {
-  it("clears both the attachment and the typed name", () => {
+  it("clears the attachment, the typed name and the typed phone", () => {
     // The worst bug this feature can have: a guest left attached after the
     // sale ends, quietly crediting the next stranger's order to a regular.
+    // A typed phone left behind is the same bug by another route.
     // The register's own store has no test harness, so the rule lives here
     // and the store spreads it into every path that finishes a sale.
     expect(clearedSaleCustomer()).toEqual({
       customerName: "",
+      customerPhone: "",
       attachedCustomer: null,
     });
   });

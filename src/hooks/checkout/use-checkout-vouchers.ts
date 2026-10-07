@@ -22,11 +22,17 @@ interface UseCheckoutVouchersInput {
   validDeliveryFee: number | null
   serviceChargeAmount: number
   outletId: string | null
+  /**
+   * The order has been placed. Its discounts are frozen on the confirmation
+   * snapshot and clearing the cart is what makes the preview look stale, so
+   * re-pricing then would only spend a server action on an empty cart.
+   */
+  isCheckoutComplete?: boolean
 }
 
 /** Owns voucher preview state and races for every checkout design. */
 export function useCheckoutVouchers({ tenantId, items, bundleItems, validDeliveryFee,
-  serviceChargeAmount, outletId,
+  serviceChargeAmount, outletId, isCheckoutComplete = false,
 }: UseCheckoutVouchersInput) {
   // Vouchers. The preview is a rendering hint only — the server re-prices from
   // the codes at order time — so it is dropped the moment the cart moves under
@@ -135,11 +141,12 @@ export function useCheckoutVouchers({ tenantId, items, bundleItems, validDeliver
   )
 
   // The cart moved under an applied code — re-price rather than show a
-  // discount the server will not honour.
+  // discount the server will not honour. Not once the order is placed: the
+  // cart moved because checkout emptied it.
   useEffect(() => {
-    if (!isPreviewStale(voucherState, voucherFingerprint)) return
+    if (isCheckoutComplete || !isPreviewStale(voucherState, voucherFingerprint)) return
     void refreshVoucherPreview(voucherState.codes, voucherFingerprint)
-  }, [voucherState, voucherFingerprint, refreshVoucherPreview])
+  }, [isCheckoutComplete, voucherState, voucherFingerprint, refreshVoucherPreview])
 
   return {
     voucherCodes: voucherState.codes,

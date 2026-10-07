@@ -9,6 +9,8 @@ import { readBody, respond } from '@/lib/loyalty/merchant-http'
 import { parseLoyaltyRules } from '@/lib/loyalty/rules'
 import { describeLoyaltyReward } from '@/lib/loyalty/offer'
 import { rewardEmoji, rewardSteps } from '@/lib/loyalty/ladder'
+import { readWalletOtpRequired, type StoreSettingsClient } from '@/lib/loyalty/store-settings'
+import { isWalletSessionValid } from '@/lib/loyalty/wallet-verification'
 
 const schema = z
   .object({
@@ -18,8 +20,12 @@ const schema = z
       .min(1)
       .max(64)
       .regex(/^[+0-9 ()-]+$/),
+    // Present once the customer verified their number on a store that asks.
+    sessionToken: z.string().max(128).optional(),
   })
   .strict()
+
+const VERIFY_FIRST = { error: 'Verify your number to see your rewards.', reason: 'verification_required' }
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const crypto = loadLoyaltyClaimCrypto()
   const ip = getLoyaltyTrustedIp(request.headers)
@@ -34,6 +40,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const tenantId = parsed.data.tenantId.toLowerCase()
     const admin: SupabaseClient = createAdminClient()
+    // The store's switch is read here, never trusted from the page. Checked
+    // before the lookup so an unverified caller spends none of its quota.
+    if (await readWalletOtpRequired(admin as unknown as StoreSettingsClient, tenantId)) {
+      const session = await isWalletSessionValid(
+        { tenantId, phone, token: parsed.data.sessionToken },
+        { crypto, database: admin },
+      )
+      if (session === null) throw new Error('Session unreadable')
+      if (!session) return respond(VERIFY_FIRST, 401)
+    }
     const { data, error } = await admin.rpc('lookup_loyalty_wallet', {
       p_tenant_id: tenantId,
       p_customer_key: `phone:${phone}`,

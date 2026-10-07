@@ -13,9 +13,25 @@ import {
 } from '@/lib/tags-service'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 import { requirePlatformPermission } from '@/lib/platform-staff/guard'
+import { verifyTenantPermission } from '@/lib/admin-service'
+import { z } from 'zod'
+
+const idSchema = z.string().uuid()
+
+/**
+ * Tag reads run on the service role, and the tenant id is spliced into a
+ * PostgREST `.or()` filter — so ids are uuids first, and the caller must hold
+ * `menu`, the permission of the menu editor that shows tags.
+ */
+async function authorizeTagRead(tenantId: string, itemId?: string): Promise<void> {
+  idSchema.parse(tenantId)
+  if (itemId !== undefined) idSchema.parse(itemId)
+  await verifyTenantPermission(tenantId, 'menu', 'view')
+}
 
 export async function getTagDefinitionsAction(tenantId: string) {
   try {
+    await authorizeTagRead(tenantId)
     const data = await getTagDefinitions(tenantId)
     return { success: true as const, data }
   } catch (error) {
@@ -37,6 +53,7 @@ export async function getPresetTagsAction() {
 
 export async function getItemTagsAction(itemId: string, tenantId: string) {
   try {
+    await authorizeTagRead(tenantId, itemId)
     const data = await getItemTags(itemId, tenantId)
     return { success: true as const, data }
   } catch (error) {

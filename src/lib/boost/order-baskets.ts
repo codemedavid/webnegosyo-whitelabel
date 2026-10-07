@@ -12,6 +12,7 @@
  * is small, and both the Boost Sales page and the analytics page read it.
  */
 
+import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTenantOrderWriteClient, type TenantOrderCredentials } from '@/lib/supabase/tenant-order-client'
@@ -96,6 +97,31 @@ interface BasketOrderRow {
   order_items: { menu_item_id: string | null }[] | null
 }
 
+/** A platform order with the lines Boost Sales learns from and reports on. */
+export interface PlatformHistoryRow {
+  id: string
+  created_at: string
+  order_items: {
+    menu_item_id: string | null
+    is_upsell_item: boolean | null
+    bundle_id: string | null
+    subtotal: number | null
+  }[] | null
+}
+
+const PLATFORM_HISTORY_SELECT = 'id, created_at, order_items(menu_item_id, is_upsell_item, bundle_id, subtotal)'
+
+/**
+ * The platform store's recent orders, read ONCE per request. Boost Sales used
+ * to read the same 90-day / 4000-order history twice per render — once for
+ * the workspace (ideas + performance) and again, with a narrower projection,
+ * for the "Picked together" summary streamed beside it. Both now share this
+ * read (the projection covers both); outside a render `cache` is a pass-through.
+ */
+export const readPlatformOrderHistory = cache((tenantId: string) =>
+  readRecentOrderRows<PlatformHistoryRow>(createAdminClient() as unknown as SupabaseClient, tenantId, PLATFORM_HISTORY_SELECT)
+)
+
 interface ConvexOrderLine {
   orderId?: unknown
   menuItemId?: unknown
@@ -131,13 +157,16 @@ function unavailable(dataSource: BasketSource, note: string): BasketSummary {
   return { dataSource, isAvailable: false, note, windowLabel: '', orderCount: 0, itemOrders: {}, pairs: [] }
 }
 
-async function readSupabaseSummary(client: SupabaseClient, tenantId: string, dataSource: BasketSource): Promise<BasketSummary> {
-  const rows = await readRecentOrderRows<BasketOrderRow>(client, tenantId, 'id, order_items(menu_item_id)')
+function summarizeOrderRows(rows: readonly BasketOrderRow[] | null, dataSource: BasketSource): BasketSummary {
   if (!rows) return unavailable(dataSource, 'Your order history could not be read right now.')
   const baskets = rows.map((row) =>
     (row.order_items ?? []).map((line) => line.menu_item_id).filter((id): id is string => !!id)
   )
   return summarizeBaskets(baskets, { dataSource, windowLabel: `last ${BASKET_HISTORY_DAYS} days` })
+}
+
+async function readSupabaseSummary(client: SupabaseClient, tenantId: string, dataSource: BasketSource): Promise<BasketSummary> {
+  return summarizeOrderRows(await readRecentOrderRows<BasketOrderRow>(client, tenantId, 'id, order_items(menu_item_id)'), dataSource)
 }
 
 async function readConvexSummary(tenant: BasketTenant & { convex_deploy_key?: string | null }): Promise<BasketSummary> {
@@ -160,10 +189,14 @@ async function readConvexSummary(tenant: BasketTenant & { convex_deploy_key?: st
 /** A fresh, uncached read — for an AI run, which must not act on a stale failure. */
 export async function readBasketSummary(tenantId: string): Promise<BasketSummary> {
   const admin = createAdminClient() as unknown as SupabaseClient
-  const { data, error } = await admin.from('tenants').select(TENANT_ROUTING_SELECT).eq('id', tenantId).single()
+  // Routing row and secrets are independent: read them together.
+  const [{ data, error }, secrets] = await Promise.all([
+    admin.from('tenants').select(TENANT_ROUTING_SELECT).eq('id', tenantId).single(),
+    getTenantSecrets(admin, tenantId),
+  ])
   if (error || !data) throw new Error(`Store ${tenantId} could not be loaded: ${error?.message ?? 'not found'}`)
 
-  const tenant = mergeTenantSecrets(data as unknown as BasketTenant, await getTenantSecrets(admin, tenantId))
+  const tenant = mergeTenantSecrets(data as unknown as BasketTenant, secrets)
   const backend = resolveOrderBackend(tenant)
 
   if (backend === 'convex') return readConvexSummary(tenant)
@@ -175,7 +208,7 @@ export async function readBasketSummary(tenantId: string): Promise<BasketSummary
       return unavailable('tenant_supabase', 'Your order backend is not fully connected, so order history cannot be read.')
     }
   }
-  return readSupabaseSummary(admin, tenantId, 'platform')
+  return summarizeOrderRows(await readPlatformOrderHistory(tenantId), 'platform')
 }
 
 /** What this store's customers order together, from its real order backend. */

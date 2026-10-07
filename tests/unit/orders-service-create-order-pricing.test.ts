@@ -51,7 +51,10 @@ jest.mock('@/lib/supabase/admin', () => ({
 }))
 
 jest.mock('@/lib/admin-service', () => ({ verifyTenantPermission: async () => {} }))
-jest.mock('@/lib/order-token', () => ({ createOrderToken: async () => 'tok' }))
+jest.mock('@/lib/order-token', () => ({
+  createOrderToken: async () => 'tok',
+  generateOrderTokenPair: () => ({ token: 'tok', tokenHash: 'hash', expiresAt: '2026-10-03T00:15:00.000Z' }),
+}))
 jest.mock('@/lib/customers-service', () => ({
   createSupabaseCustomerStore: () => ({}),
   upsertCustomerFromOrder: async () => {},

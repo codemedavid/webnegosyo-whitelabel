@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { keepPreviousData, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { supabase } from "../supabase";
 import { withPlatformDeadline } from "./platform-call";
 import { runPlatformQuery, type PlatformClient } from "./supabase-adapter";
@@ -40,6 +40,7 @@ import {
 import { realtimeHub } from "./realtime-hub-singleton";
 import { bindRealtimeToQueryClient } from "../query/realtime-bridge";
 import { resolveStaleMs, shouldKeepPreviousData } from "../query/query-client";
+import { canKeepPreviousData } from "../query/previous-data-scope";
 import { useIsScreenFocused, useRefetchOnScreenFocus } from "../query/use-screen-focus";
 import type { BranchScope } from "../branch-scope";
 
@@ -166,7 +167,10 @@ export function usePlatformQuery<T>(
     refetchIntervalInBackground: false,
     // Only for refs whose key changes while the screen does not (see
     // `shouldKeepPreviousData`); everything else shows a loading state.
-    placeholderData: shouldKeepPreviousData(refName) ? keepPreviousData : undefined,
+    placeholderData: (previous, previousQuery) =>
+      shouldKeepPreviousData(refName) && canKeepPreviousData(queryKey, previousQuery?.queryKey)
+        ? previous
+        : undefined,
     // Keeps array identity across unchanged polls, so watchers keyed on data
     // identity do not re-run their joins every 15 s.
     structuralSharing: true,

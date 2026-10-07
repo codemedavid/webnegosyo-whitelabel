@@ -27,6 +27,8 @@ import { verifyPricedOrderLines } from '@/lib/order-line-invariants'
 import { convexScheduledForArg } from '@/lib/advance-order-utils'
 import { convexPresellItemFields } from '@/lib/presell/convex-args'
 import { readPresellClaim } from '@/lib/presell/checkout-schedule'
+import { loadOrderWriteChecks } from '@/lib/checkout/order-write-checks'
+import { runAfterResponse } from '@/lib/checkout/after-response'
 import {
   buildOrderParityColumns,
   buildOrderItemParityColumns,
@@ -298,18 +300,27 @@ export async function updateOrderStatus(
     .eq('tenant_id', tenantId)
     .single()
 
-  const query = supabase
+  const readStatus = (existingOrder as unknown as Order | null)?.status ?? null
+  let query = supabase
     .from('orders')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ status } as any)
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
-    .select()
-    .single()
+  // Compare-and-swap on the status this request read. The stock and loyalty
+  // side effects below key off that read, so two requests that both saw
+  // 'cancelled' (double tap, two staff) must not both flip it and both
+  // re-deduct the order's ingredients.
+  if (readStatus) query = query.eq('status', readStatus)
 
-  const { data, error } = await query
+  const { data, error } = await query.select().single()
 
-  if (error) throw error
+  if (error) {
+    if (readStatus && error.code === 'PGRST116') {
+      throw new Error('This order was just updated by someone else. Refresh and try again.')
+    }
+    throw error
+  }
 
   // Leave the mover's name on the order. The permission check above already
   // identified them; until now that identity was verified and then discarded,
@@ -555,17 +566,18 @@ export async function createOrder(
 
   const supabase = await createClient()
 
+  // The guard reads (hours, dishes, order type, payment method) leave in one
+  // parallel batch; their answers are judged below in the original order, so
+  // the refusal a caller hears is unchanged. See order-write-checks.ts.
+  const menuItemIds = [...new Set(boundedItems.map(i => i.menu_item_id))]
+  const checks = await loadOrderWriteChecks(supabase, { tenantId, menuItemIds, orderTypeId, paymentMethodId })
+
   // SERVER-SIDE OPERATING-HOURS VALIDATION: the client already blocks the UI, but
   // that is bypassable. This is the authoritative check. Scheduled (advance) orders
-  // are exempt — pre-ordering while the shop is shut is the point of that feature.
-  const { data: hoursRow } = await supabase
-    .from('tenants')
-    .select('operating_hours, timezone, enforce_operating_hours')
-    .eq('id', tenantId)
-    .maybeSingle()
-
+  // are exempt — pre-ordering while the shop is shut is the point of that feature —
+  // except in pre-launch, which refuses every order (see store-open-status.ts).
   const closedError = getClosedOrderError(
-    hoursRow as StoreHoursSource | null,
+    checks.hoursRow as StoreHoursSource | null,
     new Date(),
     { isScheduled: !!scheduledForISO },
   )
@@ -575,43 +587,25 @@ export async function createOrder(
 
   // Every dish must belong to this tenant. Prices are NOT re-derived here —
   // see the invariant check below.
-  const menuItemIds = [...new Set(boundedItems.map(i => i.menu_item_id))]
-  const { data: dbItems, error: priceCheckError } = await supabase
-    .from('menu_items')
-    .select('id, name')
-    .eq('tenant_id', tenantId)
-    .in('id', menuItemIds)
-
-  if (priceCheckError) {
+  if (checks.menuItems.error) {
     throw new Error('Failed to verify item prices')
   }
 
-  const knownMenuItemIds = new Set(((dbItems || []) as Array<{ id: string }>).map(i => i.id))
+  const knownMenuItemIds = new Set((checks.menuItems.data || []).map(i => i.id))
 
-  // IDOR GUARD: Verify orderTypeId belongs to this tenant before using it
+  // IDOR GUARD: Verify orderTypeId belongs to this tenant before using it. The
+  // same tenant-scoped row carries the name the order stores.
+  let orderTypeName: string | null = null
   if (orderTypeId) {
-    const { data: orderTypeData, error: otError } = await supabase
-      .from('order_types')
-      .select('id')
-      .eq('id', orderTypeId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle()
-
-    if (otError || !orderTypeData) {
+    if (checks.orderType?.error || !checks.orderType?.data) {
       throw new Error('Invalid order type for this restaurant')
     }
+    orderTypeName = checks.orderType.data.name ?? null
   }
 
   // IDOR GUARD: Verify paymentMethodId belongs to this tenant before using it
   if (paymentMethodId) {
-    const { data: pmData, error: pmError } = await supabase
-      .from('payment_methods')
-      .select('id')
-      .eq('id', paymentMethodId)
-      .eq('tenant_id', tenantId)
-      .maybeSingle()
-
-    if (pmError || !pmData) {
+    if (checks.paymentMethod?.error || !checks.paymentMethod?.data) {
       console.warn(`[Order] paymentMethodId ${paymentMethodId} not found for tenant ${tenantId}, clearing`)
       paymentMethodId = undefined
       paymentMethodName = undefined
@@ -668,12 +662,17 @@ export async function createOrder(
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const orderWriter = createAdminClient()
 
+  // The public-endpoint token rides in the INSERT itself (hash + expiry only)
+  // rather than a follow-up UPDATE — one round trip fewer on every order.
+  const { generateOrderTokenPair } = await import('@/lib/order-token')
+  const orderTokenPair = generateOrderTokenPair()
+
   const { data: order, error: orderError } = await orderWriter
     .from('orders')
     .insert({
       tenant_id: tenantId,
       order_type_id: orderTypeId || null,
-      order_type: orderTypeId ? await getOrderTypeName(orderTypeId) : null,
+      order_type: orderTypeName,
       customer_name: customerInfo?.name,
       customer_contact: customerInfo?.contact,
       customer_data: withInventorySelectionSnapshot(customerData, verifiedItems),
@@ -692,6 +691,8 @@ export async function createOrder(
       payment_proof_public_id: paymentProof?.publicId || null,
       payment_proof_reference: (paymentProof?.reference || '').trim().slice(0, MAX_FIELD_LENGTH) || null,
       payment_proof_uploaded_at: (paymentProof?.url || paymentProof?.reference) ? new Date().toISOString() : null,
+      order_token_hash: orderTokenPair.tokenHash,
+      order_token_expires_at: orderTokenPair.expiresAt,
       // Spread rather than `outlet_id: outletId ?? null` so a single-location
       // tenant's INSERT is character-for-character the statement it is today.
       ...(outletId ? { outlet_id: outletId } : {}),
@@ -755,45 +756,42 @@ export async function createOrder(
   if (itemsError) throw itemsError
 
   // Roll this order into the tenant's customer profile (identity + Regulars list).
-  // Best-effort and fully non-blocking: the order is already saved, so a failure
-  // here must never surface to checkout. Runs through the service-role client
-  // because customers is PII (RLS bypass) and this executes in the anon checkout
-  // path. Idempotent by construction (recompute-then-save), so retries are safe.
-  try {
-    const { createSupabaseCustomerStore, upsertCustomerFromOrder } = await import('@/lib/customers-service')
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const store = createSupabaseCustomerStore(createAdminClient())
-    await upsertCustomerFromOrder(store, tenantId, {
-      orderId: orderData.id,
-      name: customerInfo?.name ?? null,
-      contact: customerInfo?.contact ?? null,
-      customerData: customerData ?? null,
-    })
-  } catch (customerError) {
-    console.error(
-      '[createOrder] customer profile upsert failed (non-blocking):',
-      customerError instanceof Error ? customerError.message : customerError,
-      { orderId: orderData.id, tenantId }
-    )
-  }
+  // Best-effort and AFTER the response: the order is already saved, and the
+  // profile recompute is several queries the customer must not wait on. Runs
+  // through the service-role client because customers is PII (RLS bypass) and
+  // this executes in the anon checkout path. Idempotent by construction
+  // (recompute-then-save), so retries are safe.
+  const profileName = customerInfo?.name ?? null
+  const profileContact = customerInfo?.contact ?? null
+  const profileData = customerData ?? null
+  await runAfterResponse('customer profile upsert', async () => {
+    try {
+      const { createSupabaseCustomerStore, upsertCustomerFromOrder } = await import('@/lib/customers-service')
+      const store = createSupabaseCustomerStore(createAdminClient())
+      await upsertCustomerFromOrder(store, tenantId, {
+        orderId: orderData.id,
+        name: profileName,
+        contact: profileContact,
+        customerData: profileData,
+      })
+    } catch (customerError) {
+      console.error(
+        '[createOrder] customer profile upsert failed (non-blocking):',
+        customerError instanceof Error ? customerError.message : customerError,
+        { orderId: orderData.id, tenantId }
+      )
+    }
+  })
 
-  // Generate a short-lived order token for secure public endpoint access
-  // Wrapped in try-catch to prevent token generation failures from affecting the already-saved order
-  let orderToken: string | undefined
-  try {
-    const { createOrderToken } = await import('@/lib/order-token')
-    orderToken = await createOrderToken(orderData.id)
-  } catch (tokenError) {
-    console.error(
-      'Failed to generate order token after order creation:',
-      tokenError instanceof Error ? { message: tokenError.message, stack: tokenError.stack } : tokenError,
-      { orderId: orderData.id, tenantId }
-    )
-    // Order is already saved, so we continue with undefined token
-    // The caller should handle the case where orderToken is undefined
-  }
+  // The returned row is the one the customer's browser receives: the token's
+  // hash and expiry stay server-side, exactly as before the token moved into
+  // the INSERT (the row used to be read back before the token was written).
+  const { order_token_hash: _tokenHash, order_token_expires_at: _tokenExpiry, ...publicOrder } = orderData
+  void _tokenHash
+  void _tokenExpiry
+  const orderToken: string = orderTokenPair.token
 
-  return { order: orderData as unknown as Order, orderToken }
+  return { order: publicOrder as unknown as Order, orderToken }
 }
 
 // Helper function to get order type name
@@ -855,11 +853,15 @@ export async function createOrderConvex(
   // must not be the one storefront where a closed shop still takes ASAP orders.
   // Hours live in Supabase (the tenants table) regardless of the order backend.
   const supabase = await createClient()
-  const { data: hoursRow } = await supabase
-    .from('tenants')
-    .select('operating_hours, timezone, enforce_operating_hours, convex_schema_version')
-    .eq('id', tenantId)
-    .maybeSingle()
+  // The order type's display name is read alongside the hours (independent).
+  const [{ data: hoursRow }, orderTypeName] = await Promise.all([
+    supabase
+      .from('tenants')
+      .select('operating_hours, timezone, enforce_operating_hours, is_prelaunch, convex_schema_version')
+      .eq('id', tenantId)
+      .maybeSingle(),
+    orderTypeId ? getOrderTypeName(orderTypeId) : Promise.resolve(null),
+  ])
 
   const closedError = getClosedOrderError(
     hoursRow as StoreHoursSource | null,
@@ -937,7 +939,6 @@ export async function createOrderConvex(
     mutationArgs.orderTypeId = orderTypeId
     // Send the human-readable name (e.g. "Pickup" / "Delivery") too — the
     // merchant app displays `orderType`, and without it every order shows "N/A".
-    const orderTypeName = await getOrderTypeName(orderTypeId)
     if (orderTypeName) mutationArgs.orderType = orderTypeName
   }
   if (paymentMethodName) mutationArgs.paymentMethod = paymentMethodName
@@ -958,19 +959,22 @@ export async function createOrderConvex(
   // Roll this order into the tenant's customer profile. Convex orders never
   // reach `public.orders`, so without this the merchant's Regulars list would
   // never see them — the phone number would sit in Convex and nowhere else.
-  // Best-effort and non-blocking: the order is already placed.
-  const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  await captureExternalOrderBestEffort(createAdminClient(), tenantId, {
-    backend: 'convex',
-    externalOrderId: orderId,
-    name: customerInfo?.name ?? null,
-    contact: (mutationArgs.customerContact as string) ?? null,
-    customerData: convexCustomerData,
-    total: mutationArgs.total as number,
-    createdAt: new Date().toISOString(),
-    channel: (mutationArgs.orderType as string) ?? null,
-    items: items.map((item) => ({ name: item.menu_item_name, quantity: item.quantity })),
+  // Best-effort and after the response: the order is already placed.
+  const capturedAt = new Date().toISOString()
+  await runAfterResponse('Convex customer capture', async () => {
+    const { captureExternalOrderBestEffort } = await import('@/lib/customer-external-orders')
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    await captureExternalOrderBestEffort(createAdminClient(), tenantId, {
+      backend: 'convex',
+      externalOrderId: orderId,
+      name: customerInfo?.name ?? null,
+      contact: (mutationArgs.customerContact as string) ?? null,
+      customerData: convexCustomerData,
+      total: mutationArgs.total as number,
+      createdAt: capturedAt,
+      channel: (mutationArgs.orderType as string) ?? null,
+      items: items.map((item) => ({ name: item.menu_item_name, quantity: item.quantity })),
+    })
   })
 
   return { order: { id: orderId }, orderToken: undefined }

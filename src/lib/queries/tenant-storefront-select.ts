@@ -43,7 +43,7 @@ export const TENANT_STOREFRONT_SELECT = `
   senior_friendly_mode,
   storefront_pack, storefront_pack_settings,
   header_template, mobile_header_template, header_show_logo, header_show_name, header_show_cart, header_show_search,
-  header_tagline, header_tagline_color, header_sticky, header_blur, header_shadow, header_logo_shape, header_height,
+  header_tagline, header_tagline_color, header_sticky, header_blur, header_shadow, header_logo_shape, header_height, header_cart_style,
   hero_title, hero_description, hero_title_color, hero_description_color, hero_design, hero_section_enabled,
   hero_kicker, hero_cta_primary_label, hero_cta_secondary_label, hero_featured_product_id,
   hero_image_url, hero_link_url,
@@ -53,7 +53,7 @@ export const TENANT_STOREFRONT_SELECT = `
   promotion_image_url,
   facebook_page_id,
   promotion_banners, is_promotion_visible,
-  operating_hours, timezone, enforce_operating_hours,
+  operating_hours, timezone, enforce_operating_hours, is_prelaunch,
   mapbox_enabled, lalamove_enabled, enable_order_management,
   convex_deployment_url, convex_schema_version,
   mobile_grid_columns, mobile_overrides,
@@ -80,5 +80,5 @@ export const TENANT_STOREFRONT_SELECT = `
   checkout_accent_color, checkout_button_color, checkout_button_text_color, checkout_border_color, checkout_summary_background_color,
   messenger_username, messenger_page_id, messenger_redirect_enabled, messenger_redirect_mode,
   qr_handoff_enabled, order_backend, lalamove_market,
-  distance_delivery_enabled, delivery_radius_km, restaurant_latitude, restaurant_longitude
+  distance_delivery_enabled, delivery_radius_km, free_delivery_min_order, restaurant_latitude, restaurant_longitude
 `

@@ -9,6 +9,13 @@ import { StampTrack } from '@/components/customer/order-tracking/stamp-track'
 import { RewardLadder } from '@/components/customer/order-tracking/reward-ladder'
 import { RewardBurst } from '@/components/customer/order-tracking/reward-burst'
 import { cardSteps } from '@/lib/loyalty/card-progress'
+import { forgetWalletSession, readStoredWalletSession, storeWalletSession } from '@/lib/loyalty/wallet-session-storage'
+import { WalletVerifyStep } from '@/components/customer/loyalty-wallet-verify'
+
+/** The server's machine-readable reason (e.g. `verification_required`), if any. */
+function reasonOf(error: unknown): string | undefined {
+  return error instanceof Error ? (error as Error & { reason?: string }).reason : undefined
+}
 
 async function post(path: string, body: unknown) {
   const controller = new AbortController()
@@ -23,7 +30,9 @@ async function post(path: string, body: unknown) {
     })
     const data = await response.json()
     if (!response.ok)
-      throw new Error(data.error || 'Could not complete this request.')
+      throw Object.assign(new Error(data.error || 'Could not complete this request.'), {
+        reason: typeof data.reason === 'string' ? data.reason : undefined,
+      })
     return data
   } finally {
     clearTimeout(timeout)
@@ -66,6 +75,17 @@ function WalletSession({
     expiresAt: string
   } | null>(null)
   const [code, setCode] = useState('')
+  // Verify-first stores: the session a correct SMS code bought, and the
+  // in-progress check before it. Rewards stay hidden until the session exists.
+  const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [walletChallenge, setWalletChallenge] = useState<{
+    id: string
+    expires: number
+    resend: number
+  } | null>(null)
+  const [walletCode, setWalletCode] = useState('')
+  const pendingRestore = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
@@ -99,6 +119,11 @@ function WalletSession({
   const reset = () => {
     generation.current++
     running.current = false
+    forgetWalletSession(tenantId)
+    setSessionToken(null)
+    setIsVerifying(false)
+    setWalletChallenge(null)
+    setWalletCode('')
     setBusy(false)
     setPhone('')
     setWallet(null)
@@ -108,12 +133,80 @@ function WalletSession({
     setCode('')
     setError(null)
   }
-  const lookup = useCallback(() =>
+  const fetchWallet = useCallback(
+    (token: string | null) => post('wallet', { tenantId, phone, ...(token ? { sessionToken: token } : {}) }),
+    [phone, tenantId],
+  )
+  const sendWalletCode = useCallback(async (current: number) => {
+    const data = await post('wallet/code', { tenantId, phone })
+    if (current !== generation.current) return
+    setWalletCode('')
+    setWalletChallenge({ id: data.challengeId, expires: Date.now() + 300000, resend: Date.now() + 60000 })
+  }, [phone, tenantId])
+  // `initiated` = the customer pressed a button. Only then is a code texted
+  // automatically; a background refresh that finds the session gone just
+  // shows the verify step and waits.
+  const lookup = useCallback((initiated = false) =>
     run(async () => {
       const current = generation.current
-      const result = await post('wallet', { tenantId, phone })
-      if (current === generation.current) setWallet(result)
-    }), [phone, tenantId, run])
+      try {
+        const result = await fetchWallet(sessionToken)
+        if (current === generation.current) setWallet(result)
+      } catch (e) {
+        if (reasonOf(e) !== 'verification_required') throw e
+        if (current !== generation.current) return
+        forgetWalletSession(tenantId)
+        setSessionToken(null)
+        setWallet(null)
+        setSelected(null)
+        setChallenge(null)
+        setClaim(null)
+        setIsVerifying(true)
+        if (initiated) await sendWalletCode(current)
+      }
+    }), [fetchWallet, sessionToken, sendWalletCode, tenantId, run])
+  const requestWalletCode = () =>
+    run(async () => {
+      const current = generation.current
+      try {
+        await sendWalletCode(current)
+      } catch (e) {
+        // The store switched verification off in the meantime: just show it.
+        if (reasonOf(e) !== 'not_required') throw e
+        const result = await fetchWallet(null)
+        if (current !== generation.current) return
+        setIsVerifying(false)
+        setWallet(result)
+      }
+    })
+  const verifyWalletCode = () =>
+    run(async () => {
+      if (!walletChallenge) return
+      const current = generation.current
+      const data = await post('wallet/verify', { tenantId, phone, challengeId: walletChallenge.id, code: walletCode })
+      if (current !== generation.current) return
+      storeWalletSession(tenantId, { phone, token: data.sessionToken, expiresAt: data.expiresAt })
+      setSessionToken(data.sessionToken)
+      const result = await fetchWallet(data.sessionToken)
+      if (current !== generation.current) return
+      setIsVerifying(false)
+      setWalletChallenge(null)
+      setWalletCode('')
+      setWallet(result)
+    })
+  // A reload inside the session's 30 minutes goes straight back to the rewards.
+  useEffect(() => {
+    const stored = readStoredWalletSession(tenantId, Date.now())
+    if (!stored) return
+    pendingRestore.current = true
+    setPhone(stored.phone)
+    setSessionToken(stored.token)
+  }, [tenantId])
+  useEffect(() => {
+    if (!pendingRestore.current || !sessionToken || !phone) return
+    pendingRestore.current = false
+    void lookup()
+  }, [sessionToken, phone, lookup])
   useEffect(() => {
     if (!wallet) return
     const refresh = () => { void lookup() }
@@ -206,7 +299,11 @@ function WalletSession({
         </p>
         <h1 className="mt-2 text-3xl font-bold text-[var(--brand-text-primary,var(--foreground))]">Your rewards</h1>
         <p className="mt-3 text-[var(--brand-text-secondary,var(--muted-foreground))]">
-          {wallet ? 'Your next visit brings another reward closer.' : 'Use the mobile number on your orders. No account needed.'}
+          {wallet
+            ? 'Your next visit brings another reward closer.'
+            : isVerifying
+              ? 'We text a code first so only you can see your rewards.'
+              : 'Use the mobile number on your orders. No account needed.'}
         </p>
       </header>
       {error ? (
@@ -217,12 +314,24 @@ function WalletSession({
           {error}
         </p>
       ) : null}
-      {!wallet ? (
+      {!wallet && isVerifying ? (
+        <WalletVerifyStep
+          phone={phone}
+          challenge={walletChallenge}
+          code={walletCode}
+          now={now}
+          busy={busy}
+          onCodeChange={setWalletCode}
+          onSendCode={() => void requestWalletCode()}
+          onVerify={() => void verifyWalletCode()}
+          onChangeNumber={reset}
+        />
+      ) : !wallet ? (
         <form
           className="space-y-3"
           onSubmit={(event) => {
             event.preventDefault()
-            void lookup()
+            void lookup(true)
           }}
         >
           <label htmlFor="loyalty-phone" className="block text-sm font-medium">

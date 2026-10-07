@@ -18,6 +18,8 @@ import {
   ORDER_BRANCH_FILTER_UNASSIGNED,
   filterOrdersToBranchFilter,
   listOrderBranchOptions,
+  listOrderBranchPills,
+  resolveOrderViewOutlet,
 } from "./order-branch-filter";
 
 const branchOrder = (id: string, name: string) => ({
@@ -78,5 +80,47 @@ describe("filterOrdersToBranchFilter", () => {
   it("survives an absent order list", () => {
     // Arrange + Act + Assert
     expect(filterOrdersToBranchFilter(ORDER_BRANCH_FILTER_ALL, undefined)).toEqual([]);
+  });
+});
+
+describe("resolveOrderViewOutlet", () => {
+  const ALL = { kind: "all" } as const;
+  const NORTH = { kind: "branch", outletId: "o-north" } as const;
+
+  it("asks for nothing extra when an owner looks at every branch", () => {
+    expect(resolveOrderViewOutlet(ALL, ALL, ORDER_BRANCH_FILTER_ALL)).toBeNull();
+  });
+
+  it("asks for the branch an owner drilled into", () => {
+    expect(resolveOrderViewOutlet(ALL, NORTH, ORDER_BRANCH_FILTER_ALL)).toBe("o-north");
+  });
+
+  it("asks for the branch pill an owner picked", () => {
+    expect(resolveOrderViewOutlet(ALL, ALL, "o-south")).toBe("o-south");
+    expect(resolveOrderViewOutlet(ALL, ALL, ORDER_BRANCH_FILTER_UNASSIGNED)).toBe(
+      ORDER_BRANCH_FILTER_UNASSIGNED
+    );
+  });
+
+  it("asks for nothing for a branch account — the server already confines it", () => {
+    expect(resolveOrderViewOutlet(NORTH, NORTH, "o-south")).toBeNull();
+  });
+});
+
+describe("listOrderBranchPills", () => {
+  it("offers every branch in the directory, even one with no order on screen", () => {
+    const pills = listOrderBranchPills([{ id: "o-quiet", name: "Quiet" }], [MONCADA]);
+
+    expect(pills.map((pill) => pill.id)).toEqual(["o-moncada", "o-quiet"]);
+  });
+
+  it("prefers the directory's current name over the one stamped on an order", () => {
+    const pills = listOrderBranchPills([{ id: "o-moncada", name: "Moncada Main" }], [MONCADA]);
+
+    expect(pills).toEqual([{ id: "o-moncada", name: "Moncada Main" }]);
+  });
+
+  it("falls back to the orders when the directory is empty", () => {
+    expect(listOrderBranchPills([], [MONCADA])).toEqual([{ id: "o-moncada", name: "Moncada" }]);
   });
 });

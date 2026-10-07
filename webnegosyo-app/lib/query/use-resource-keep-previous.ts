@@ -13,9 +13,10 @@
  */
 
 import { useCallback } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { RESOURCE_KEY_ROOT, type ResourceQueryKey } from "../backends/query-keys";
 import type { ResourceOptions, ResourceResult } from "./use-resource";
+import { canKeepPreviousData } from "./previous-data-scope";
 
 export interface KeepPreviousResult<T> extends ResourceResult<T> {
   /** True while `data` belongs to the previous key. */
@@ -35,7 +36,8 @@ export function useResourceKeepPrevious<T>(
     queryFn: fetcher,
     enabled: isEnabled,
     staleTime: options.staleTime,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) =>
+      canKeepPreviousData(key, previousQuery?.queryKey) ? previous : undefined,
   });
 
   const { refetch: queryRefetch } = query;

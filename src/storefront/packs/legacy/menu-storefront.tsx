@@ -14,6 +14,7 @@ import { MenuHeaderRenderer } from '@/components/customer/header-templates'
 import { getHeaderConfig, type HeaderConfig, type HeaderTemplate } from '@/lib/header-templates'
 import type { PageLayout } from '@/lib/page-layouts'
 import { HeroBuilderRenderer } from '@/components/hero-builder/renderer/hero-builder-renderer'
+import { HeroLinkProvider } from '@/components/hero-builder/renderer/link-context'
 import { loadHeroDesign } from '@/lib/hero-builder/load'
 import { useBrandingPreviewDraft, useIsMobileViewport, useMobileOverrides } from '@/hooks/use-branding-preview'
 import { resolveMobileGridColumns, resolveStorefrontLayout } from '@/lib/storefront-device-layout'
@@ -22,6 +23,7 @@ import { buildBackgroundRootStyle, resolveBackgroundOverlay } from '@/lib/backgr
 import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 
 import { customHeroKind, isFullBleedHeroBand } from '@/lib/hero-mode'
+import { useStoreLinkNavigation } from '../../catalog/use-store-link-navigation'
 import { DeferredMount } from '../../runtime/deferred-mount'
 import { useStorefrontRuntime } from '../../runtime/storefront-runtime'
 
@@ -42,6 +44,8 @@ export function LegacyMenuStorefront() {
   const isMobile = useIsMobileViewport()
   const [currentSlide, setCurrentSlide] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  const menuRootRef = useRef<HTMLElement>(null)
+  const followHeroLink = useStoreLinkNavigation(menu, menuRootRef)
   const router = useRouter()
   const isSeniorMode = useSeniorMode()
   // Senior mode sends every cart button to the cart PAGE, where the step
@@ -138,11 +142,16 @@ export function LegacyMenuStorefront() {
       )}
 
       {/* Hero Builder (v4/v5) — one render, responsive via container queries */}
-      {blockHero && <HeroBuilderRenderer design={blockHero} />}
+      {blockHero && (
+        <HeroLinkProvider value={followHeroLink}>
+          <HeroBuilderRenderer design={blockHero} />
+        </HeroLinkProvider>
+      )}
 
       {/* A colored preset band sits flush under the header, so <main> drops its
           top padding. */}
-      <main className={
+      {/* Hero links to "the menu" land here; the margin keeps it clear of a sticky header. */}
+      <main ref={menuRootRef} style={{ scrollMarginTop: 'var(--menu-header-h, 0px)' }} className={
         isFullBleedHeroBand(tenant)
           ? 'container mx-auto px-4 pb-12'
           : 'container mx-auto px-4 py-12'

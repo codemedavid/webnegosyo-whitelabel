@@ -11,12 +11,12 @@
 import React from "react";
 import {
   Image,
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
 import type { PaymentPromptCopy, PromptOption } from "../../lib/order-payment-prompt";

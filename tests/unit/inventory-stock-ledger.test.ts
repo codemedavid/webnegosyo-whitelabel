@@ -74,14 +74,31 @@ describe('resolveMovementDelta', () => {
     expect(delta('stocktake', 1, 1200, KILO)).toBe(-200)
   })
 
-  it('refuses a unit from another dimension rather than inventing a number', () => {
-    const litre: InventoryUnit = {
-      id: 'l', name: 'Litre', abbreviation: 'L', dimension: 'volume', to_base_factor: 1000,
-    }
+  // Reported by a café: restocked in litres, recipes in grams, and sales never
+  // took anything off the shelf because the conversion was refused and the
+  // depletion line silently skipped. Weight and volume bridge at 1 g = 1 ml.
+  const LITRE: InventoryUnit = {
+    id: 'l', name: 'Litre', abbreviation: 'L', dimension: 'volume', to_base_factor: 1000,
+  }
+  const PIECE: InventoryUnit = {
+    id: 'pc', name: 'Piece', abbreviation: 'pc', dimension: 'count', to_base_factor: 1,
+  }
+
+  it('restocks litres onto a shelf counted in grams', () => {
+    expect(
+      resolveMovementDelta({ reason: 'receive', quantity: 2, unit: LITRE, stockUnit: GRAM, currentQty: 0 }),
+    ).toBe(2000)
+  })
+
+  it('a sale measured in grams depletes a shelf counted in litres', () => {
+    expect(
+      resolveMovementDelta({ reason: 'sale', quantity: 45, unit: GRAM, stockUnit: LITRE, currentQty: 2 }),
+    ).toBeCloseTo(-0.045, 10)
+  })
+
+  it('refuses pieces against weight rather than inventing a number', () => {
     expect(() =>
-      resolveMovementDelta({
-        reason: 'receive', quantity: 1, unit: litre, stockUnit: GRAM, currentQty: 0,
-      }),
+      resolveMovementDelta({ reason: 'sale', quantity: 1, unit: PIECE, stockUnit: GRAM, currentQty: 0 }),
     ).toThrow()
   })
 

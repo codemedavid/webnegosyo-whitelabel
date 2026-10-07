@@ -41,12 +41,7 @@ import { toast } from 'sonner'
 import type { OrderType, CustomerFormField } from '@/types/database'
 import { ORDER_TYPE_KIND_LABELS } from '@/lib/order-types/order-type-kinds'
 import { ORDER_TYPE_ACCENTS } from '@/lib/order-types/order-type-accents'
-import {
-  readClientEnvironment,
-  runServerAction,
-  shouldDeferRefresh,
-  type ServerActionOutcome,
-} from '@/components/admin/server-action-safety'
+import { runServerAction, type ServerActionOutcome } from '@/components/admin/server-action-safety'
 
 type OrderTypeRow = OrderType & { customer_form_fields: CustomerFormField[] }
 
@@ -109,33 +104,12 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
   }, [serverRows])
 
   /*
-   * A `router.refresh()` is an RSC fetch. Started while the tab is hidden — an
-   * iPhone merchant switching apps mid-toggle — iOS kills the request, the
-   * half-decoded flight stream throws above every route error boundary, and the
-   * merchant comes back to a full crash screen for what was only a
-   * backgrounding. Hold the refresh until the tab is visible instead.
+   * No router.refresh() after a write. Every write here is a Server Action that
+   * calls revalidatePath, and that alone ships the re-rendered route back with
+   * the action's result — `serverRows` then resyncs through the effect above. A
+   * refresh on top was a second full server render per toggle (and needed its
+   * own hidden-tab deferral to stay crash-safe on iOS).
    */
-  const isRefreshPendingRef = useRef(false)
-
-  const requestRefresh = useCallback(() => {
-    if (shouldDeferRefresh(readClientEnvironment().visibility)) {
-      isRefreshPendingRef.current = true
-      return
-    }
-    router.refresh()
-  }, [router])
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    const flushPendingRefresh = () => {
-      if (!isRefreshPendingRef.current) return
-      if (shouldDeferRefresh(readClientEnvironment().visibility)) return
-      isRefreshPendingRef.current = false
-      router.refresh()
-    }
-    document.addEventListener('visibilitychange', flushPendingRefresh)
-    return () => document.removeEventListener('visibilitychange', flushPendingRefresh)
-  }, [router])
 
   /**
    * Run one order-type write. Returns the action's own result when it landed,
@@ -176,7 +150,6 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
 
     if (outcome.value.success) {
       toast.success(successMessage)
-      requestRefresh()
     } else {
       apply(!nextValue)
       toast.error(outcome.value.error || errorMessage)
@@ -224,7 +197,6 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
 
     if (outcome.value.success) {
       toast.success('Default order types created')
-      requestRefresh()
     } else {
       toast.error(outcome.value.error || 'Failed to create default order types')
     }
@@ -246,7 +218,6 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
       setRows((prev) => prev.filter((row) => row.id !== target.id))
       toast.success(`"${target.name}" deleted`)
       setOrderTypeToDelete(null)
-      requestRefresh()
     } else {
       toast.error(outcome.value.error || 'Failed to delete order type')
     }
@@ -279,9 +250,7 @@ export function OrderTypesList({ orderTypes, tenantSlug, tenantId }: OrderTypesL
       return
     }
 
-    if (outcome.value.success) {
-      requestRefresh()
-    } else {
+    if (!outcome.value.success) {
       setRows(previous)
       toast.error(outcome.value.error || 'Failed to reorder order types')
     }

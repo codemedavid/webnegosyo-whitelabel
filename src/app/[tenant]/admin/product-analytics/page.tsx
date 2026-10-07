@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
-import { createClient } from '@/lib/supabase/server'
+import { getCachedTenantBySlug } from '@/lib/cache'
+import { getBoostMenu } from '@/lib/boost/workspace'
 import { PickedTogetherSection, PickedTogetherSkeleton } from '@/components/admin/boost/picked-together-section'
 import { ProductAnalyticsWrapper } from '@/components/admin/product-analytics-wrapper'
 
@@ -9,13 +10,8 @@ interface ProductAnalyticsPageProps {
 
 export default async function ProductAnalyticsPage({ params }: ProductAnalyticsPageProps) {
   const { tenant } = await params
-  const supabase = await createClient()
-
-  const { data: tenantData } = await supabase
-    .from('tenants')
-    .select('id, convex_deployment_url, menu_engineering_enabled')
-    .eq('slug', tenant)
-    .single()
+  // The request-cached tenant the admin layout already read: no extra query.
+  const tenantData = await getCachedTenantBySlug(tenant)
 
   // Basic per-product SALES reporting (units, revenue, last order) only needs
   // Convex. The advanced BCG/cost/recommendation layer is gated separately by
@@ -44,20 +40,15 @@ export default async function ProductAnalyticsPage({ params }: ProductAnalyticsP
     )
   }
 
-  // Fetch the full menu so EVERY available product is listed — including items
-  // with zero sales (which never get a Convex productAnalytics row). menu_items.id
-  // (uuid) is the same key as productAnalytics.menuItemId.
-  const { data: menuItemsData } = await supabase
-    .from('menu_items')
-    .select('id, name, is_available')
-    .eq('tenant_id', tenantData.id)
-    .order('name', { ascending: true })
-
-  const menuItems = (menuItemsData ?? []).map((m) => ({
-    id: m.id as string,
-    name: m.name as string,
-    isAvailable: (m.is_available as boolean | null) ?? true,
-  }))
+  // The full menu so EVERY available product is listed — including items with
+  // zero sales (which never get a Convex productAnalytics row). menu_items.id
+  // (uuid) is the same key as productAnalytics.menuItemId. Read through
+  // getBoostMenu: it is request-cached, and "Picked together" above reads the
+  // same menu in this render — one menu query, not two.
+  const menu = await getBoostMenu({ id: tenantData.id })
+  const menuItems = menu.items
+    .map((item) => ({ id: item.id, name: item.name, isAvailable: item.isAvailable }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div className="p-6">

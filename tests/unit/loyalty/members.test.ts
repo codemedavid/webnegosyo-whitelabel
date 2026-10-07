@@ -162,6 +162,61 @@ describe('buildLoyaltyMember', () => {
     expect(member.phone).toBe('+639171234567')
   })
 
+  it('leads with the running card even when an ended one holds unclaimed rewards', () => {
+    // SeaCook 2026-10-04: an ended points test kept 21 never-expiring rewards,
+    // so "claimable first" put the dead card on every order and the live
+    // stamp card the cashier was filling never showed.
+    const member = buildLoyaltyMember(
+      {
+        customerKey: 'phone:+639171234567',
+        customerId: null,
+        name: null,
+        programs: [
+          program({ programId: 'ended', programStatus: 'ended', rewardsAvailable: 21, balance: 19, threshold: 100 }),
+          program({ programId: 'live', programStatus: 'active', balance: 8 }),
+        ],
+      },
+      NOW
+    )
+
+    expect(member.headline?.programId).toBe('live')
+    expect(member.programs.map((p) => p.programId)).toEqual(['live', 'ended'])
+    expect(member.rewardsAvailable).toBe(21)
+  })
+
+  it('lists paused cards after running ones and ended cards last', () => {
+    const member = buildLoyaltyMember(
+      {
+        customerKey: 'phone:+639171234567',
+        customerId: null,
+        name: null,
+        programs: [
+          program({ programId: 'ended', programStatus: 'ended', balance: 9 }),
+          program({ programId: 'paused', programStatus: 'paused', balance: 9 }),
+          program({ programId: 'live', programStatus: 'active', balance: 1 }),
+        ],
+      },
+      NOW
+    )
+
+    expect(member.programs.map((p) => p.programId)).toEqual(['live', 'paused', 'ended'])
+  })
+
+  it('still headlines an ended card when it is the only one the customer has', () => {
+    const member = buildLoyaltyMember(
+      {
+        customerKey: 'phone:+639171234567',
+        customerId: null,
+        name: null,
+        programs: [program({ programId: 'ended', programStatus: 'ended', rewardsAvailable: 1 })],
+      },
+      NOW
+    )
+
+    expect(member.headline?.programId).toBe('ended')
+    expect(member.status).toBe('reward_ready')
+  })
+
   it('sums rewards held across every program', () => {
     const member = buildLoyaltyMember(
       {

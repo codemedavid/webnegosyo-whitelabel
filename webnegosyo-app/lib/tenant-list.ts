@@ -28,6 +28,7 @@ export interface TenantListRow {
   convex_schema_version?: number | null;
   customer_hub_enabled?: boolean | null;
   loyalty_enabled?: boolean | null;
+  assistant_enabled?: boolean | null;
   menu_engineering_enabled: boolean;
   bundles_enabled: boolean;
   app_enabled: boolean;

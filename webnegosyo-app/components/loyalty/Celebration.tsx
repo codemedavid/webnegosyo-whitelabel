@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { Animated, Dimensions, Easing, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Dimensions, Easing, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal } from "../Modal";
 
 import { colors, spacing, typography } from "../../theme/colors";
 

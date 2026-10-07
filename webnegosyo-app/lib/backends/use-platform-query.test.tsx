@@ -200,6 +200,55 @@ describe("usePlatformQuery — loading state", () => {
   });
 });
 
+describe("usePlatformQuery — previous order items", () => {
+  const firstProps: {
+    tenantId: string | null;
+    scope: BranchScope;
+    args: Record<string, unknown> | "skip";
+  } = {
+    tenantId: "tenant-1",
+    scope: ALL,
+    args: { orderIds: ["order-1"] },
+  };
+
+  it.each([
+    ["another tenant", { ...firstProps, tenantId: "tenant-2" }],
+    ["another branch", { ...firstProps, scope: SOUTH }],
+    ["a skipped query", { ...firstProps, args: "skip" as const }],
+    ["sign-out", { ...firstProps, tenantId: null }],
+  ])("clears previous line items on %s", async (_label, nextProps) => {
+    mockRunPlatformQuery.mockResolvedValueOnce(["private-item"]);
+    mockRunPlatformQuery.mockImplementation(() => new Promise(() => {}));
+    const { result, rerender } = renderHook(
+      ({ tenantId, scope, args }: typeof firstProps) =>
+        usePlatformQuery("orders:getAllOrderItems", args, tenantId, scope),
+      { initialProps: firstProps, wrapper: wrapperFor(client) }
+    );
+    await waitFor(() => expect(result.current.data).toEqual(["private-item"]));
+
+    rerender(nextProps);
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(nextProps.tenantId !== null && nextProps.args !== "skip");
+  });
+
+  it("keeps the kitchen's existing lines while new order ids load in the same branch", async () => {
+    mockRunPlatformQuery.mockResolvedValueOnce(["existing-item"]);
+    mockRunPlatformQuery.mockImplementation(() => new Promise(() => {}));
+    const { result, rerender } = renderHook(
+      ({ args }: { args: Record<string, unknown> }) =>
+        usePlatformQuery("orders:getAllOrderItems", args, "tenant-1", SOUTH),
+      { initialProps: { args: { orderIds: ["order-1"] } }, wrapper: wrapperFor(client) }
+    );
+    await waitFor(() => expect(result.current.data).toEqual(["existing-item"]));
+
+    rerender({ args: { orderIds: ["order-1", "order-2"] } });
+
+    expect(result.current.data).toEqual(["existing-item"]);
+    expect(result.current.isLoading).toBe(false);
+  });
+});
+
 describe("usePlatformQuery — one cache entry and one channel per identity", () => {
   it("three identical subscribers share one fetch and one channel", async () => {
     render(<Subscribers count={3} />, { wrapper: wrapperFor(client) });

@@ -7,6 +7,8 @@
  * an unqualified number is never drawn as a confident one.
  */
 
+import type { CustomerDashboard } from "./dashboard";
+
 export interface HubOverviewWindow {
   days: number;
   repeatRate: number;
@@ -32,6 +34,12 @@ export interface HubOverview {
   windows: HubOverviewWindow[];
   topItems: Array<{ key: string; menuItemId: string | null; name: string; quantity: number }>;
   coverage: HubCoverage;
+  /**
+   * The Reports dashboard. Optional because the app can reach merchants before
+   * the platform build that sends it; the screen asks for an update instead of
+   * drawing an empty dashboard.
+   */
+  dashboard?: CustomerDashboard;
 }
 
 /** Below this share of identified orders, the rate is worth qualifying out loud. */

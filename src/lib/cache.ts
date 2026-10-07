@@ -8,10 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL } from '@/lib/redis-cache'
 import { tenantCacheKeys } from '@/lib/tenant-cache-keys'
 import { revalidateStorefront } from '@/lib/storefront/revalidate'
-import {
-  asAppUserQueryClient,
-  fetchAppUserScope,
-} from '@/lib/queries/fetch-app-user-scope'
+import { getRequestCaller } from '@/lib/auth/request-caller'
 import type { Tenant, Category } from '@/types/database'
 
 /**
@@ -121,19 +118,11 @@ export const getCachedCategoriesByTenant = cache(async (tenantId: string): Promi
  * Cache current user role
  */
 export const getCachedCurrentUserRole = cache(async () => {
-  const supabase = await createClient()
-  
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  
-  if (authError || !user) {
-    return null
-  }
-
-  // Read through the resilient helper: this projection sits in front of every
-  // admin page, so naming the branch column before its migration is applied
-  // would blank the whole admin rather than one feature.
-  const { appUser: userRole } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-  return userRole
+  // Shares the request's one identity read with every verifyTenantAdmin the
+  // page reaches (request-caller.ts) — the layout no longer authenticates
+  // separately from the services rendered beneath it.
+  const { user, appUser } = await getRequestCaller()
+  return user ? appUser : null
 })
 
 

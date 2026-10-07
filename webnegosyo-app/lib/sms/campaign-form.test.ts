@@ -148,6 +148,7 @@ describe("describeCampaignCost — what this blast will actually cost", () => {
   it("reports one segment per recipient for a short plain message", () => {
     expect(describeCampaignCost("Hi {{firstName}}!", 40)).toEqual({
       segmentsPerMessage: 1,
+      characters: 9,
       totalSegments: 40,
       encoding: "GSM7",
       recipientCount: 40,
@@ -178,6 +179,7 @@ describe("describeCampaignCost — what this blast will actually cost", () => {
   it("costs nothing when nobody is reachable", () => {
     expect(describeCampaignCost("Hi!", 0)).toEqual({
       segmentsPerMessage: 1,
+      characters: 3,
       totalSegments: 0,
       encoding: "GSM7",
       recipientCount: 0,

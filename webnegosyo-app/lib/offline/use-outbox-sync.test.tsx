@@ -15,6 +15,15 @@ jest.mock("./order-outbox", () => ({
   needsAttention: () => false,
 }));
 jest.mock("./use-connectivity", () => ({ useConnectivity: () => ({ status: "online" }) }));
+const mockSyncEdits = jest.fn().mockResolvedValue({ synced: 0 });
+jest.mock("./sync-order-edits", () => ({ syncOrderEdits: (...args: unknown[]) => mockSyncEdits(...args) }));
+const mockEditsState = { edits: [], isHydrated: true };
+jest.mock("./order-edits", () => ({
+  getOrderEdits: () => mockEditsState,
+  hydrateOrderEdits: () => Promise.resolve(),
+  subscribeOrderEdits: () => () => {},
+  isOrderEditStuck: () => false,
+}));
 import { OUTBOX_RETRY_INTERVAL_MS, useOutboxSync } from "./use-outbox-sync";
 
 beforeEach(() => {
@@ -39,4 +48,22 @@ it("keeps a run active across ordinary rerenders and retries periodically", asyn
   expect(scope.isActive()).toBe(false);
   await act(async () => { jest.advanceTimersByTime(OUTBOX_RETRY_INTERVAL_MS); });
   expect(mockSync).toHaveBeenCalledTimes(2);
+});
+
+it("replays order changes after the sales, through the screens' mutations", async () => {
+  mockSync.mockResolvedValueOnce({ synced: 1, stoppedOffline: false });
+  const { unmount } = renderHook(() => useOutboxSync());
+  await act(async () => {});
+  expect(mockSyncEdits).toHaveBeenCalledTimes(1);
+  expect(mockSync.mock.invocationCallOrder[0]).toBeLessThan(mockSyncEdits.mock.invocationCallOrder[0]);
+  expect(mockSyncEdits.mock.calls[0][0]).toMatchObject({ tenantId: "t1", backend: "platform" });
+  unmount();
+});
+
+it("leaves order changes queued when the sales run lost the connection", async () => {
+  mockSync.mockResolvedValueOnce({ synced: 0, stoppedOffline: true });
+  const { unmount } = renderHook(() => useOutboxSync());
+  await act(async () => {});
+  expect(mockSyncEdits).not.toHaveBeenCalled();
+  unmount();
 });

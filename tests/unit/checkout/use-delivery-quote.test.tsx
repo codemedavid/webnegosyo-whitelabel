@@ -101,3 +101,25 @@ it('ignores a slower quotation for a previous delivery pin', async () => {
   expect(result.current.quotationId).toBe('quote-newer')
   expect(result.current.getDeliveryQuoteError()).toBeNull()
 })
+
+it('does not re-render the checkout for every keystroke of an un-picked address', () => {
+  // Typing an address without picking a suggestion drops the coordinates, so
+  // there is nothing to quote: the fee is idle before and after each keystroke.
+  // Storing that same idle answer again used to cost the whole checkout form an
+  // extra render per keystroke.
+  let renders = 0
+  const typing = { ...input, deliveryLat: undefined, deliveryLng: undefined }
+  const { rerender, result } = renderHook((props: UseDeliveryQuoteInput) => {
+    renders += 1
+    return useDeliveryQuote(props)
+  }, { initialProps: { ...typing, deliveryAddress: 'M' } })
+  const afterMount = renders
+
+  rerender({ ...typing, deliveryAddress: 'Ma' })
+  rerender({ ...typing, deliveryAddress: 'Man' })
+
+  expect(renders - afterMount).toBe(2)
+  expect(result.current.deliveryFee).toBeNull()
+  expect(result.current.isFetchingDeliveryFee).toBe(false)
+  expect(createQuotationAction).not.toHaveBeenCalled()
+})

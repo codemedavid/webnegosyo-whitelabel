@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
+import { Modal } from "./Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   EMPTY_MOVEMENT_DRAFT,

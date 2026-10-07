@@ -90,12 +90,12 @@ export function ConvexDashboardTab({ onOrderClick }: ConvexDashboardTabProps) {
 
   const { start, end } = useMemo(() => computePeriodRange(period), [period]);
 
-  // Both hooks must always be called (React rules of hooks)
+  // Both hooks must always be called (React rules of hooks), but the period
+  // subscription is skipped on "Today" — its result is unused there, and the
+  // old 0–0 placeholder range still scanned the orders table on every change.
+  const isToday = period === "Today";
   const todayStats = useConvexDashboardStats();
-  const periodStats = useConvexDashboardStatsByPeriod(
-    period === "Today" ? 0 : start,
-    period === "Today" ? 0 : end
-  );
+  const periodStats = useConvexDashboardStatsByPeriod(start, end, isToday);
 
   const stats = period === "Today" ? todayStats : periodStats;
 

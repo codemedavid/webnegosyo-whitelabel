@@ -177,3 +177,90 @@ describe('runLoyaltyForOrderWith', () => {
     expect(writes[0].isShadow).toBe(true)
   })
 })
+
+/**
+ * Convex→platform history imports left some orders in BOTH `orders` (platform
+ * row, `customer_data.convex_order_id`) and `customer_external_orders` (the
+ * Convex projection). The earn index is keyed per (backend, order id), so each
+ * copy could earn its own stamp for one visit. The platform row wins.
+ */
+describe('earnLoyaltyForFact with an imported twin', () => {
+  const PLATFORM_ID = '22222222-2222-4222-8222-222222222222'
+
+  function twinDeps(
+    twin: { ref: { backend: CustomerOrderFact['backend']; externalOrderId: string }; isPrimary: boolean } | null,
+    earnsByOrder: Record<string, number> = {},
+  ) {
+    const { deps, writes } = fakeDeps([program('a')])
+    const loadOrderEarns = jest.fn(async (_tenant: string, backend: string, orderId: string) => {
+      const delta = earnsByOrder[`${backend}:${orderId}`]
+      return delta === undefined ? [] : [{ programId: 'a', delta, versionId: 'ver-a', customerKey: 'phone:+639171234567', isShadow: false }]
+    })
+    const findImportTwin = jest.fn(async () => twin)
+    return { deps: { ...deps, loadOrderEarns, findImportTwin }, writes, findImportTwin }
+  }
+
+  it('does not earn on the ledger copy when the platform holds the same order', async () => {
+    const { deps, writes } = twinDeps({ ref: { backend: 'platform_supabase', externalOrderId: PLATFORM_ID }, isPrimary: true })
+
+    const outcome = await earnLoyaltyForFact(fact({ backend: 'convex', externalOrderId: 'cx-1' }), CTX, deps)
+
+    expect(outcome).toEqual({ action: 'skipped', reason: 'duplicate', programs: [] })
+    expect(writes).toHaveLength(0)
+  })
+
+  it('does not earn on the platform row when its Convex copy already earned', async () => {
+    const { deps, writes } = twinDeps(
+      { ref: { backend: 'convex', externalOrderId: 'cx-1' }, isPrimary: false },
+      { 'convex:cx-1': 1 },
+    )
+
+    const outcome = await earnLoyaltyForFact(fact({ backend: 'platform_supabase', externalOrderId: PLATFORM_ID }), CTX, deps)
+
+    expect(outcome).toMatchObject({ action: 'skipped', reason: 'duplicate' })
+    expect(writes).toHaveLength(0)
+  })
+
+  it('earns on the platform row when its Convex copy never earned', async () => {
+    const { deps, writes } = twinDeps({ ref: { backend: 'convex', externalOrderId: 'cx-1' }, isPrimary: false })
+
+    const outcome = await earnLoyaltyForFact(fact({ backend: 'platform_supabase', externalOrderId: PLATFORM_ID }), CTX, deps)
+
+    expect(outcome.action).toBe('earned')
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toMatchObject({ orderBackend: 'platform_supabase', externalOrderId: PLATFORM_ID })
+  })
+
+  it('does not look for a twin when the order would not earn anyway', async () => {
+    const { deps, findImportTwin } = twinDeps(null)
+
+    await earnLoyaltyForFact(fact({ phoneE164: null }), CTX, deps)
+
+    expect(findImportTwin).not.toHaveBeenCalled()
+  })
+
+  it('reverses the stamp the Convex copy earned when the platform row is cancelled', async () => {
+    const { deps, writes } = twinDeps(
+      { ref: { backend: 'convex', externalOrderId: 'cx-1' }, isPrimary: false },
+      { 'convex:cx-1': 1 },
+    )
+
+    const outcome = await earnLoyaltyForFact(
+      fact({ backend: 'platform_supabase', externalOrderId: PLATFORM_ID, status: 'cancelled' }),
+      CTX,
+      deps,
+    )
+
+    expect(outcome.action).toBe('reversed')
+    expect(writes).toEqual([
+      expect.objectContaining({ kind: 'reverse', delta: -1, orderBackend: 'convex', externalOrderId: 'cx-1' }),
+    ])
+  })
+
+  it('earns exactly as before when no import twin exists', async () => {
+    const { deps, writes } = twinDeps(null)
+
+    expect((await earnLoyaltyForFact(fact(), CTX, deps)).action).toBe('earned')
+    expect(writes).toHaveLength(1)
+  })
+})

@@ -1,7 +1,6 @@
 'use client'
 
 import { useId, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Plus, Edit, Trash2, GripVertical, X } from 'lucide-react'
 import {
   DndContext,
@@ -143,7 +142,6 @@ function SortableCategoryCard({
 }
 
 export function CategoriesList({ categories: initialCategories, tenantSlug, tenantId }: CategoriesListProps) {
-  const router = useRouter()
   const dndId = useId()
   const [categories, setCategories] = useState(initialCategories)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -247,7 +245,8 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
       toast.success(editingCategory ? 'Category updated!' : 'Category created!')
       setIsDialogOpen(false)
       setEditingCategory(null)
-      router.refresh()
+      // No router.refresh(): the action's revalidatePath already re-renders
+      // this route — a refresh on top was a second full server render.
     } else {
       toast.error(result.error || 'Failed to save category')
     }
@@ -265,7 +264,6 @@ export function CategoriesList({ categories: initialCategories, tenantSlug, tena
       toast.success('Category deleted successfully')
       setDeleteDialogOpen(false)
       setCategoryToDelete(null)
-      router.refresh()
     } else {
       toast.error(result.error || 'Failed to delete category')
     }

@@ -21,6 +21,8 @@ import { usePrinterStore } from "../../stores/printer-store";
 import { colors, typography, spacing, radius, shadow } from "../../theme/colors";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
+import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
+import { useOfflineRealtimeQueue } from "../../lib/offline/use-offline-orders";
 import { EmptyState } from "../../components/EmptyState";
 import { HeroRevenueCard } from "../../components/HeroRevenueCard";
 import { QuickActions } from "../../components/QuickActions";
@@ -129,8 +131,17 @@ export default function DashboardScreen() {
   // Yesterday is the comparison every takings figure needs to mean anything.
   const { data: yesterdayStats, refetch: refetchYesterday } =
     useSafeQuery<DashboardStats>(getDashboardStatsByPeriodRef, yesterday);
-  const { data: rawQueue, error: queueError, refetch: refetchQueue } =
-    useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+  // The queue keeps working offline: saved orders plus this device's sales
+  // and changes (lib/offline/). Takings stay the server's figure.
+  const queueResult = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+  const {
+    data: mergedQueue,
+    error: queueError,
+    refetch: refetchQueue,
+    isOffline,
+    savedAt,
+  } = useOfflineRealtimeQueue(queueResult, "orders:getRealtimeQueue");
+  const rawQueue = mergedQueue as Record<string, QueueOrder[]> | undefined;
 
   const scope = useBranchScope();
   const isBranchScoped = scope.kind === "branch";
@@ -179,14 +190,18 @@ export default function DashboardScreen() {
 
   const displayStats = branchToday ?? stats;
   const comparison = branchYesterday ?? yesterdayStats;
-  const isStatsLoading = isBranchScoped ? scopedOrdersLoading : isLoading;
+  // Offline, a missing figure stays a placeholder rather than reading ₱0.
+  const isStatsLoading =
+    (isOffline && !displayStats) || (isBranchScoped ? scopedOrdersLoading : isLoading);
   const delta = revenueDelta(displayStats?.totalRevenue, comparison?.totalRevenue);
 
   useEffect(() => {
     void loadSaved();
   }, [loadSaved]);
 
-  const error = statsError || queueError;
+  // Offline the screen still has its queue to show; the notice says why the
+  // takings are missing.
+  const error = isOffline ? null : statsError || queueError;
 
   // Names the branch whose queue this is. A staffer moving between outlets
   // must never mistake one branch's numbers for another's.
@@ -228,6 +243,7 @@ export default function DashboardScreen() {
         subtitle={subtitle}
         actions={<HeaderActions isConnected={isConnected} />}
       />
+      <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
       <ScrollView
         style={styles.screen}
         contentContainerStyle={styles.content}

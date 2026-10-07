@@ -6,12 +6,20 @@ import {
   getTenantUserAccessToken,
   getTenantActivePageById,
 } from '@/lib/facebook/page-tokens'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
 import type { Database } from '@/types/database'
 
 type FacebookPagesRow = Database['public']['Tables']['facebook_pages']['Row']
 type FacebookPagesInsert = Database['public']['Tables']['facebook_pages']['Insert']
 type FacebookPagesUpdate = Database['public']['Tables']['facebook_pages']['Update']
+
+/**
+ * Connecting, disconnecting and resubscribing a page — and reading the owner's
+ * Facebook user token — are Settings work, gated exactly like the Facebook
+ * management API routes. "Any staff of the store" let a POS-only account read
+ * the owner's long-lived user token.
+ */
+const FACEBOOK_MANAGEMENT_PERMISSION = 'settings' as const
 
 /**
  * Get connected Facebook pages for a tenant
@@ -54,7 +62,7 @@ export async function connectFacebookPageAction(
   tempId: string
 ) {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantPermission(tenantId, FACEBOOK_MANAGEMENT_PERMISSION)
 
     const supabase = await createClient()
 
@@ -165,7 +173,7 @@ export async function connectFacebookPageAction(
  */
 export async function disconnectFacebookPageAction(tenantId: string, pageId: string) {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantPermission(tenantId, FACEBOOK_MANAGEMENT_PERMISSION)
 
     const supabase = await createClient()
 
@@ -219,8 +227,10 @@ export async function disconnectFacebookPageAction(tenantId: string, pageId: str
  */
 export async function getTempUserTokenAction(tenantId: string, tempId: string) {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantPermission(tenantId, FACEBOOK_MANAGEMENT_PERMISSION)
 
+    // The read is filtered on tenant_id as well as the row id
+    // (getTenantUserAccessToken), so another store's temp row reads as missing.
     const tempRecordData = { user_access_token: await getTenantUserAccessToken(tenantId, tempId) }
 
     const tempRecord = tempRecordData as { user_access_token: string | null } | null
@@ -245,7 +255,7 @@ export async function subscribePageToWebhookAction(
   pageId: string
 ) {
   try {
-    await verifyTenantAdmin(tenantId)
+    await verifyTenantPermission(tenantId, FACEBOOK_MANAGEMENT_PERMISSION)
 
     const pageData = await getTenantActivePageById(tenantId, pageId)
 

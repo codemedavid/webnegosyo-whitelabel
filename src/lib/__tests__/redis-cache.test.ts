@@ -3,6 +3,7 @@ import { getCachedOrFetch, invalidateCache, generateCacheKey, CACHE_TTL, getRedi
 describe('Redis Cache', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    global.mockRedis.scan.mockReset()
     resetRedisClient()
   })
 
@@ -116,16 +117,75 @@ describe('Redis Cache', () => {
   })
 
   describe('invalidateCache', () => {
+    it('walks wildcard matches across cursor pages, including empty pages', async () => {
+      process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
+      process.env.UPSTASH_REDIS_TOKEN = 'test-token'
+      global.mockRedis.scan
+        .mockResolvedValueOnce(['17', ['cache:test1']])
+        .mockResolvedValueOnce(['23', []])
+        .mockResolvedValueOnce(['0', ['cache:test2']])
+
+      await invalidateCache('cache:test*')
+
+      expect(global.mockRedis.scan).toHaveBeenNthCalledWith(1, '0', { match: 'cache:test*', count: 100 })
+      expect(global.mockRedis.scan).toHaveBeenNthCalledWith(2, '17', { match: 'cache:test*', count: 100 })
+      expect(global.mockRedis.scan).toHaveBeenNthCalledWith(3, '23', { match: 'cache:test*', count: 100 })
+      expect(global.mockRedis.del.mock.calls).toEqual([['cache:test1'], ['cache:test2']])
+      expect(global.mockRedis.keys).not.toHaveBeenCalled()
+    })
+
+    it('deletes an exact tenant key without scanning the shared keyspace', async () => {
+      process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
+      process.env.UPSTASH_REDIS_TOKEN = 'test-token'
+
+      await invalidateCache('tenant:restaurant-a')
+
+      expect(global.mockRedis.del).toHaveBeenCalledWith('tenant:restaurant-a')
+      expect(global.mockRedis.keys).not.toHaveBeenCalled()
+      expect(global.mockRedis.scan).not.toHaveBeenCalled()
+    })
+
+    it('bounds deletion batches even when SCAN returns more than its count hint', async () => {
+      process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
+      process.env.UPSTASH_REDIS_TOKEN = 'test-token'
+      const keys = Array.from({ length: 205 }, (_, index) => `cache:test${index}`)
+      global.mockRedis.scan.mockResolvedValue(['0', keys])
+
+      await invalidateCache('cache:test*')
+
+      expect(global.mockRedis.del.mock.calls.map(call => call.length)).toEqual([100, 100, 5])
+      expect(global.mockRedis.del.mock.calls.flat()).toEqual(keys)
+    })
+
+    it.each(['cache:test?', 'cache:test[12]', 'cache:test\\*'])('preserves Redis pattern semantics for %s', async (pattern) => {
+      process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
+      process.env.UPSTASH_REDIS_TOKEN = 'test-token'
+      global.mockRedis.scan.mockResolvedValue(['0', ['cache:test1']])
+
+      await invalidateCache(pattern)
+
+      expect(global.mockRedis.scan).toHaveBeenCalledWith('0', { match: pattern, count: 100 })
+      expect(global.mockRedis.del).toHaveBeenCalledWith('cache:test1')
+    })
+
+    it('does not fail a save when exact-key deletion fails', async () => {
+      process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
+      process.env.UPSTASH_REDIS_TOKEN = 'test-token'
+      global.mockRedis.del.mockRejectedValueOnce(new Error('Redis unavailable'))
+
+      await expect(invalidateCache('tenant:restaurant-a')).resolves.toBeUndefined()
+    })
+
     it('deletes keys matching pattern', async () => {
       process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
       process.env.UPSTASH_REDIS_TOKEN = 'test-token'
 
-      global.mockRedis.keys.mockResolvedValue(['cache:test1', 'cache:test2'])
+      global.mockRedis.scan.mockResolvedValue(['0', ['cache:test1', 'cache:test2']])
       global.mockRedis.del.mockResolvedValue(2)
 
       await invalidateCache('cache:test*')
 
-      expect(global.mockRedis.keys).toHaveBeenCalledWith('cache:test*')
+      expect(global.mockRedis.scan).toHaveBeenCalledWith('0', { match: 'cache:test*', count: 100 })
       expect(global.mockRedis.del).toHaveBeenCalledWith('cache:test1', 'cache:test2')
     })
 
@@ -133,7 +193,7 @@ describe('Redis Cache', () => {
       process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
       process.env.UPSTASH_REDIS_TOKEN = 'test-token'
 
-      global.mockRedis.keys.mockResolvedValue([])
+      global.mockRedis.scan.mockResolvedValue(['0', []])
 
       await invalidateCache('cache:test*')
 
@@ -148,7 +208,7 @@ describe('Redis Cache', () => {
       process.env.UPSTASH_REDIS_URL = 'https://redis.example.com'
       process.env.UPSTASH_REDIS_TOKEN = 'test-token'
 
-      global.mockRedis.keys.mockRejectedValue(new Error('Redis error'))
+      global.mockRedis.scan.mockRejectedValue(new Error('Redis error'))
 
       await expect(invalidateCache('cache:test*')).resolves.not.toThrow()
     })

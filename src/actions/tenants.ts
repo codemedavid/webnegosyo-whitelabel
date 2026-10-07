@@ -11,9 +11,10 @@ import {
   describeTenantValidationError,
   type TenantInput,
 } from '@/lib/tenants-service'
+import { withNewTenantFeatureDefaults } from '@/lib/new-tenant-feature-defaults'
 import type { Database } from '@/types/database'
 import { z } from 'zod'
-import { verifyTenantAdmin } from '@/lib/admin-service'
+import { verifyTenantPermission } from '@/lib/admin-service'
 import { normalizeMessengerUsername } from '@/lib/messenger-username'
 import { normalizeOperatingHours, type OperatingHours } from '@/lib/operating-hours'
 import { convertToTenant } from '@/lib/leads/leads-service'
@@ -23,6 +24,15 @@ import { upsertTenantSecrets, type TenantSecretsPatch } from '@/lib/tenant-secre
 import { syncTenantConvexConfig, convexConfigSyncWarning } from '@/lib/convex-config-sync'
 import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import type { PlatformPermission } from '@/lib/platform-staff/permissions'
+
+/**
+ * The permission every /admin/settings section write needs — the same key the
+ * settings catalog gates those screens on (src/lib/settings/settings-catalog.ts).
+ * "Any staff of the store" let a POS-only account repoint messenger_username,
+ * delivery fees, hours and the pickup flow. Owners, superadmins and legacy
+ * full-access admins pass `hasPermission` unchanged.
+ */
+const SETTINGS_PERMISSION = 'settings' as const
 
 type TenantsInsert = Database['public']['Tables']['tenants']['Insert']
 type TenantsUpdate = Database['public']['Tables']['tenants']['Update']
@@ -87,7 +97,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
 
     // Validate input. A raw ZodError must never leave a server action: the
     // client gets an uncaught-action crash instead of a field to fix.
-    const validation = tenantSchema.safeParse(input)
+    const validation = tenantSchema.safeParse(withNewTenantFeatureDefaults(input))
     if (!validation.success) {
       return { error: describeTenantValidationError(validation.error) }
     }
@@ -159,6 +169,7 @@ export async function createTenantAction(input: TenantInput, leadId?: string) {
       bundles_enabled: parsed.bundles_enabled,
       pairing_rules_enabled: parsed.pairing_rules_enabled,
     // Inventory
+    assistant_enabled: parsed.assistant_enabled,
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
@@ -360,6 +371,7 @@ export async function updateTenantAction(id: string, input: TenantInput) {
     bundles_enabled: parsed.bundles_enabled,
     pairing_rules_enabled: parsed.pairing_rules_enabled,
     // Inventory
+    assistant_enabled: parsed.assistant_enabled,
     inventory_enabled: parsed.inventory_enabled,
     low_stock_alerts_enabled: parsed.low_stock_alerts_enabled,
     auto_86_enabled: parsed.auto_86_enabled,
@@ -487,8 +499,8 @@ export type BrandingUpdateInput = z.infer<typeof brandingUpdateSchema>
 export async function updateTenantBrandingForAdminAction(tenantId: string, input: BrandingUpdateInput) {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Branding is Store Setup work, gated like saveBrandingAction.
+  await verifyTenantPermission(tenantId, 'store_setup')
 
   const parsed = brandingUpdateSchema.parse(input)
 
@@ -524,6 +536,8 @@ const deliveryUpdateSchema = z.object({
   delivery_price_per_km: z.number().min(0).nullable(),
   delivery_min_fee: z.number().min(0).nullable(),
   delivery_radius_km: z.number().positive().nullable(),
+  // Free delivery at/above this pre-discount item subtotal; null = off.
+  free_delivery_min_order: z.number().positive('Free-delivery minimum must be more than 0').nullable().optional(),
   restaurant_address: z.string().optional().or(z.literal('')),
   restaurant_latitude: z.number().nullable(),
   restaurant_longitude: z.number().nullable(),
@@ -534,8 +548,8 @@ export type DeliveryUpdateInput = z.infer<typeof deliveryUpdateSchema>
 export async function updateTenantDeliveryForAdminAction(tenantId: string, input: DeliveryUpdateInput) {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Settings-section write: needs the `settings` permission, like the screen.
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   const result = deliveryUpdateSchema.safeParse(input)
   if (!result.success) {
@@ -660,8 +674,8 @@ export async function updateTenantFooterForAdminAction(
 ): Promise<{ error?: string; success?: boolean }> {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Settings-section write: needs the `settings` permission, like the screen.
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   const parsed = footerUpdateSchema.parse(input)
 
@@ -717,8 +731,8 @@ export async function updateTenantFlashScreenForAdminAction(
 ) {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Settings-section write: needs the `settings` permission, like the screen.
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   const { data: tenantData, error: tenantError } = await supabase
     .from('tenants')
@@ -780,8 +794,8 @@ export async function updateTenantMessengerUsernameAction(
 ) {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Settings-section write: needs the `settings` permission, like the screen.
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   const normalized = normalizeMessengerUsername(username)
   if (username.trim() !== '' && normalized === '') {
@@ -819,8 +833,8 @@ export async function updateTenantMessengerModeAction(
 ) {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Settings-section write: needs the `settings` permission, like the screen.
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   // Validate mode
   if (mode !== 'webhook' && mode !== 'direct') {
@@ -861,8 +875,8 @@ export async function updateTenantMessengerRedirectEnabledAction(
 ) {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Settings-section write: needs the `settings` permission, like the screen.
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   const { data, error } = await supabase
     .from('tenants')
@@ -900,8 +914,8 @@ export async function updateOperatingHoursAction(
 ) {
   const supabase = await createClient()
 
-  // Verify caller is admin of this tenant (or superadmin)
-  await verifyTenantAdmin(tenantId)
+  // Settings-section write: needs the `settings` permission, like the screen.
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   const normalized = normalizeOperatingHours(operatingHours)
   const tz = (timezone || '').trim() || 'Asia/Manila'
@@ -952,7 +966,7 @@ export async function updatePickupScanAction(
 ): Promise<{ error?: string; success?: boolean; pickup_scan_enabled?: boolean }> {
   const supabase = await createClient()
 
-  await verifyTenantAdmin(tenantId)
+  await verifyTenantPermission(tenantId, SETTINGS_PERMISSION)
 
   const { data, error } = await supabase
     .from('tenants')

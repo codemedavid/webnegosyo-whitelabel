@@ -9,6 +9,7 @@ import { HeroPresetSection } from '@/components/customer/hero-preset'
 import { resolveHeroPreset } from '@/lib/storefront-theme'
 import { customHeroKind } from '@/lib/hero-mode'
 import { parseStoredDesign } from '@/lib/hero-builder/load'
+import { CATEGORY_ANCHOR_PREFIX, MENU_ANCHOR } from '@/lib/hero-builder/link-target'
 import { formatPrice } from '@/lib/cart-utils'
 
 /**
@@ -104,7 +105,11 @@ export function StorefrontHero({
       : null
     const scrollToMenu = () => {
       if (typeof document === 'undefined') return
-      document.getElementById('storefront-menu')?.scrollIntoView({ behavior: 'smooth' })
+      // Only some layouts mark their menu; the scroll-based ones start at the
+      // first category section instead.
+      const menuStart =
+        document.getElementById(MENU_ANCHOR) ?? document.querySelector(`[id^="${CATEGORY_ANCHOR_PREFIX}"]`)
+      menuStart?.scrollIntoView({ behavior: 'smooth' })
     }
     return (
       <div data-branding-scope="storefront/hero">

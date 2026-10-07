@@ -33,16 +33,24 @@ import {
   text,
   widget,
 } from './section-presets'
+import { buildLimitedDrop, buildLocationIndex, buildOrderWays, buildStoriesStack, buildTwoPaths } from './templates-commerce'
+import { buildCardOnPhoto, buildChalkboard, buildFineDining, buildLateNightNeon } from './templates-dark'
+import { buildBakery, buildBigNumbers, buildEditorial, buildFreshHealthy, buildHowItWorks, buildPhotoMosaic } from './templates-light'
+import { buildManifestoDoors, buildMastheadPanorama, buildPressQuote, buildSeasonalZigzag, buildTriptych } from './templates-story'
 import type { HeroDesignV5, NodeStyle, Section, Widget } from './types'
 
 export { SECTION_PRESETS } from './section-presets'
 export type { SectionPreset } from './section-presets'
 
+/** Gallery filter order. */
+export const HERO_TEMPLATE_CATEGORIES = ['restaurant', 'cafe', 'promo', 'minimal'] as const
+export type HeroTemplateCategory = (typeof HERO_TEMPLATE_CATEGORIES)[number]
+
 export interface HeroTemplate {
   id: string
   name: string
   description: string
-  category: 'restaurant' | 'cafe' | 'promo' | 'minimal'
+  category: HeroTemplateCategory
   build: () => HeroDesignV5
 }
 
@@ -343,5 +351,145 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     description: 'Centered headline followed by three icon cards on why customers should order from you.',
     category: 'minimal',
     build: buildFeaturesStrip,
+  },
+  {
+    id: 'editorial',
+    name: 'Editorial',
+    description: 'Magazine-style serif headline, a tall photo with a caption and three big numbers underneath.',
+    category: 'restaurant',
+    build: buildEditorial,
+  },
+  {
+    id: 'card-on-photo',
+    name: 'Card on photo',
+    description: 'Your dining room fills the screen with the pitch on a floating card; phones show the photo above it.',
+    category: 'restaurant',
+    build: buildCardOnPhoto,
+  },
+  {
+    id: 'photo-mosaic',
+    name: 'Photo mosaic',
+    description: 'Four dishes in a tidy photo grid beside the headline — shows off a varied menu at a glance.',
+    category: 'restaurant',
+    build: buildPhotoMosaic,
+  },
+  {
+    id: 'fine-dining',
+    name: 'Fine dining',
+    description: 'Full-screen dining-room photo, elegant serif type and gold details for an upscale feel.',
+    category: 'restaurant',
+    build: buildFineDining,
+  },
+  {
+    id: 'chalkboard',
+    name: 'Chalkboard specials',
+    description: 'Hand-lettered specials board with prices, a framed photo and chalk-yellow buttons.',
+    category: 'restaurant',
+    build: buildChalkboard,
+  },
+  {
+    id: 'bakery',
+    name: 'Bakery',
+    description: 'Warm cream background, script greeting and a round framed photo of fresh bakes.',
+    category: 'cafe',
+    build: buildBakery,
+  },
+  {
+    id: 'fresh-healthy',
+    name: 'Fresh & healthy',
+    description: 'Soft green glow, a big salad photo and quick highlights for bowls, salads and juices.',
+    category: 'cafe',
+    build: buildFreshHealthy,
+  },
+  {
+    id: 'late-night-neon',
+    name: 'Late-night neon',
+    description: 'Dark purple glow, giant condensed type and neon pink and cyan accents for after-hours stores.',
+    category: 'promo',
+    build: buildLateNightNeon,
+  },
+  {
+    id: 'how-it-works',
+    name: 'How it works',
+    description: 'Brand-gradient hero with one order button, then three numbered steps from cart to doorstep.',
+    category: 'promo',
+    build: buildHowItWorks,
+  },
+  {
+    id: 'big-numbers',
+    name: 'Big numbers',
+    description: 'Centered headline followed by four stat tiles — rating, customers, delivery time, years open.',
+    category: 'minimal',
+    build: buildBigNumbers,
+  },
+  {
+    id: 'masthead-panorama',
+    name: 'Masthead + panorama',
+    description: 'Your name set huge in lowercase serif, a wide edge-to-edge photo band, then address and hours.',
+    category: 'restaurant',
+    build: buildMastheadPanorama,
+  },
+  {
+    id: 'manifesto-doors',
+    name: 'Manifesto + three doors',
+    description: 'A long statement headline in warm sepia, then three photo cards leading to dine-in, delivery and groups.',
+    category: 'restaurant',
+    build: buildManifestoDoors,
+  },
+  {
+    id: 'triptych',
+    name: 'Asymmetric triptych',
+    description: 'Copy, one tall photo and two stacked squares in uneven columns — clean and gallery-like.',
+    category: 'restaurant',
+    build: buildTriptych,
+  },
+  {
+    id: 'press-quote',
+    name: 'Press quote',
+    description: 'One glowing review in big italic serif on deep oxblood, with a strip of three photos below.',
+    category: 'restaurant',
+    build: buildPressQuote,
+  },
+  {
+    id: 'location-index',
+    name: 'Location index',
+    description: 'Every branch named up top, then a card per branch with photo, hours and directions.',
+    category: 'restaurant',
+    build: buildLocationIndex,
+  },
+  {
+    id: 'seasonal-zigzag',
+    name: 'Seasonal zig-zag',
+    description: 'Two featured items with photo and copy swapping sides on alternating warm tints.',
+    category: 'cafe',
+    build: buildSeasonalZigzag,
+  },
+  {
+    id: 'stories-stack',
+    name: 'Stories stack',
+    description: 'Three photo panels in a row, each with its own news, tag and button — like a front page.',
+    category: 'promo',
+    build: buildStoriesStack,
+  },
+  {
+    id: 'limited-drop',
+    name: 'Limited-time drop',
+    description: 'Full brand-color launch for one new item, with a promo-code pill and a fine-print strip.',
+    category: 'promo',
+    build: buildLimitedDrop,
+  },
+  {
+    id: 'two-paths',
+    name: 'Two paths',
+    description: 'For groups and catering: two side-by-side offer cards with checklists and their own buttons.',
+    category: 'promo',
+    build: buildTwoPaths,
+  },
+  {
+    id: 'order-ways',
+    name: 'Order-ways hub',
+    description: 'A short photo banner with four cards overlapping its edge: dine in, delivery, pickup, catering.',
+    category: 'minimal',
+    build: buildOrderWays,
   },
 ]

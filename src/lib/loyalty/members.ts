@@ -177,21 +177,36 @@ function rankOf(member: LoyaltyMember): [number, number, number] {
   ]
 }
 
-export function buildLoyaltyMember(input: LoyaltyMemberInput, nowMs: number): LoyaltyMember {
-  const programs = input.programs.map((program) => summarizeProgramProgress(program, nowMs))
+/**
+ * Running cards before paused ones, ended cards last. An ended card can keep
+ * unclaimed rewards forever, and without this tier it out-ranked the card the
+ * customer is actually filling on every surface that shows one card.
+ */
+const PROGRAM_STATUS_RANK: Record<LoyaltyProgramStatus, number> = {
+  active: 0,
+  paused: 1,
+  draft: 2,
+  ended: 3,
+}
 
-  // The headline is whichever card the customer is nearest to claiming, which
-  // is also the one a merchant would mention if they only mentioned one.
-  const headline =
-    programs.length === 0
-      ? null
-      : [...programs].sort((a, b) => {
-          const claimable = Number(b.rewardsAvailable > 0) - Number(a.rewardsAvailable > 0)
-          if (claimable !== 0) return claimable
-          const left = a.remaining ?? Number.MAX_SAFE_INTEGER
-          const right = b.remaining ?? Number.MAX_SAFE_INTEGER
-          return left - right
-        })[0]
+function compareCards(a: LoyaltyMemberProgress, b: LoyaltyMemberProgress): number {
+  const tier = (PROGRAM_STATUS_RANK[a.programStatus] ?? 3) - (PROGRAM_STATUS_RANK[b.programStatus] ?? 3)
+  if (tier !== 0) return tier
+  const claimable = Number(b.rewardsAvailable > 0) - Number(a.rewardsAvailable > 0)
+  if (claimable !== 0) return claimable
+  return (a.remaining ?? Number.MAX_SAFE_INTEGER) - (b.remaining ?? Number.MAX_SAFE_INTEGER)
+}
+
+export function buildLoyaltyMember(input: LoyaltyMemberInput, nowMs: number): LoyaltyMember {
+  // Ordered once here so every surface — the order chip, the member list and
+  // the profile's card list — shows the same card first.
+  const programs = input.programs
+    .map((program) => summarizeProgramProgress(program, nowMs))
+    .sort(compareCards)
+
+  // The headline is the running card the customer is nearest to claiming,
+  // which is also the one a merchant would mention if they only mentioned one.
+  const headline = programs[0] ?? null
 
   const rewardsAvailable = programs.reduce((sum, p) => sum + toFiniteNumber(p.rewardsAvailable), 0)
 

@@ -178,7 +178,7 @@ export function moveOutletOrder(
 // Pinning a branch on the map
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Coordinates as `MapboxAddressAutocomplete` reports them. */
+/** Coordinates as `AddressAutocomplete` reports them. */
 export interface PickedCoordinates {
   lat: number
   lng: number
@@ -200,7 +200,7 @@ function isUsableCoordinate(value: unknown, limit: number): value is number {
 /**
  * Apply an address chosen in the map picker to a branch draft.
  *
- * `MapboxAddressAutocomplete` fires on every keystroke without coordinates and
+ * `AddressAutocomplete` fires on every keystroke without coordinates and
  * only on a picked result with them. So:
  *
  * - picked result → address and both coordinates are replaced together

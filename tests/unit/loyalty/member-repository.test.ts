@@ -281,6 +281,47 @@ describe('readLoyaltyMemberDetail', () => {
     expect(detail?.orders[0].items).toEqual([{ name: 'Calamari', quantity: 1 }])
   })
 
+  it('shows an order imported from Convex once, as its platform row', async () => {
+    // The import copied the order into `orders`; the ledger still holds the
+    // projection written while the store ran on Convex. Same real order.
+    const tables = seed()
+    tables.orders = [
+      {
+        id: 'order-imported',
+        tenant_id: TENANT,
+        customer_id: 'cust-1',
+        total: '719',
+        created_at: '2026-09-20T00:00:00Z',
+        order_type: 'Delivery',
+        status: 'delivered',
+        payment_status: 'paid',
+        customer_data: { convex_order_id: 'jh70mwef055zxzpv' },
+      },
+    ]
+    tables.customer_external_orders = [
+      {
+        id: 'ledger-twin',
+        tenant_id: TENANT,
+        customer_id: 'cust-1',
+        backend: 'convex',
+        external_order_id: 'jh70mwef055zxzpv',
+        total: '719',
+        ordered_at: '2026-09-20T00:00:00Z',
+        channel: 'Delivery',
+        status: 'delivered',
+        payment_status: null,
+        items: [],
+        address: null,
+      },
+    ]
+    const { client } = database(tables)
+
+    const detail = await readLoyaltyMemberDetail(client, TENANT, 'phone:+639171111111', NOW)
+
+    expect(detail?.orders.map((o) => o.orderId)).toEqual(['order-imported'])
+    expect(detail?.orders[0].backend).toBe('platform_supabase')
+  })
+
   it('carries the profile a merchant needs to call the customer', async () => {
     const { client } = database(seed())
 

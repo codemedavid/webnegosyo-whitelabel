@@ -347,3 +347,33 @@ describe('buildDesignCss — classes, theme refs, fonts, scope', () => {
     expect(css).not.toContain(`.${classes.w2}{animation:`)
   })
 })
+
+describe('buildDesignCss — centred boxed widgets', () => {
+  function cssForDivider(style: NodeStyle): { css: string; cls: string } {
+    const divider: Widget = { ...createWidget('divider'), id: 'w-divider', style }
+    const design = designOf([section('s1', [column('c1', [divider])])])
+    const built = buildDesignCss(design, { scope: 'hb-test' })
+    return { css: built.css, cls: built.classes['w-divider'] }
+  }
+
+  it('fills up to its max width so a centred divider never collapses to 0px', () => {
+    // Arrange + Act — auto inline margins shrink a flex item to its content,
+    // and an <hr> has none, so the widget must claim the width explicitly.
+    const { css, cls } = cssForDivider({ maxWidth: 64, textAlign: 'center', size: 1 })
+
+    // Assert
+    const rule = css.match(new RegExp(`\\.hb-test \\.${cls}\\{([^}]*)\\}`))?.[1] ?? ''
+    expect(rule).toContain('margin-inline:auto')
+    expect(rule).toContain('width:100%')
+  })
+
+  it('keeps an explicit percent width over the fill', () => {
+    // Arrange + Act
+    const { css, cls } = cssForDivider({ maxWidth: 64, width: 40, textAlign: 'center' })
+
+    // Assert
+    const rule = css.match(new RegExp(`\\.hb-test \\.${cls}\\{([^}]*)\\}`))?.[1] ?? ''
+    expect(rule).toContain('width:40%')
+    expect(rule).not.toContain('width:100%')
+  })
+})

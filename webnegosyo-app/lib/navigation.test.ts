@@ -1,4 +1,5 @@
 import {
+  newCampaignFromPresetHref,
   productHref,
   productPerformanceHref,
   NEW_PRODUCT_ID,
@@ -74,5 +75,11 @@ describe("ingredient hrefs", () => {
 
   it("encodes characters that would break the path", () => {
     expect(ingredientHref("a/b")).toBe("/(main)/ingredient/a%2Fb");
+  });
+});
+
+describe("newCampaignFromPresetHref", () => {
+  it("opens the campaign editor in create mode with the preset named", () => {
+    expect(newCampaignFromPresetHref("second_visit")).toBe("/(main)/campaign/new?preset=second_visit");
   });
 });

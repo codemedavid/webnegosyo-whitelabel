@@ -59,4 +59,25 @@ describe("useResourceKeepPrevious", () => {
     expect(result.current.isLoading).toBe(false);
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["another tenant", resourceKey("report", "t2", "d2")],
+    ["another resource", resourceKey("inventory", "t1", "d2")],
+    ["a disabled read", null],
+  ])("clears the previous report when switching to %s", async (_label, nextKey) => {
+    const fetcher = jest.fn<Promise<string>, []>().mockResolvedValueOnce("private-report");
+    fetcher.mockImplementation(() => new Promise(() => {}));
+    const { result, rerender } = renderHook(
+      ({ queryKey }: { queryKey: ReturnType<typeof resourceKey> | null }) =>
+        useResourceKeepPrevious(queryKey, fetcher),
+      { wrapper, initialProps: { queryKey: resourceKey("report", "t1", "d1") } }
+    );
+    await waitFor(() => expect(result.current.data).toBe("private-report"));
+
+    rerender({ queryKey: nextKey });
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isPlaceholderData).toBe(false);
+    expect(result.current.isLoading).toBe(nextKey !== null);
+  });
 });

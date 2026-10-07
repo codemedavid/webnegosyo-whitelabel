@@ -90,6 +90,20 @@ export type HeaderLogoShape = 'circle' | 'rounded' | 'square'
 export type HeaderHeight = 'compact' | 'standard' | 'tall'
 
 /**
+ * Look of the header's cart button. `emoji` is the original 🛒 and stays the
+ * default so existing stores are unchanged.
+ *  - icon:    bag icon in a soft round chip, count badge on the corner
+ *  - pill:    filled brand pill reading "Cart" with the count inside
+ *  - outline: bordered pill with a bag icon and the count beside it
+ */
+export const HEADER_CART_STYLES = ['emoji', 'icon', 'pill', 'outline'] as const
+export type HeaderCartStyle = (typeof HEADER_CART_STYLES)[number]
+
+function isHeaderCartStyle(value: unknown): value is HeaderCartStyle {
+  return typeof value === 'string' && (HEADER_CART_STYLES as readonly string[]).includes(value)
+}
+
+/**
  * Resolved, render-ready configuration for the main header.
  * These are the editable "options" surfaced in the branding editor's Header tab.
  */
@@ -106,6 +120,7 @@ export interface HeaderConfig {
   shadow: boolean
   logoShape: HeaderLogoShape
   height: HeaderHeight
+  cartStyle: HeaderCartStyle
 }
 
 export const DEFAULT_HEADER_CONFIG: HeaderConfig = {
@@ -120,6 +135,7 @@ export const DEFAULT_HEADER_CONFIG: HeaderConfig = {
   shadow: false,
   logoShape: 'circle',
   height: 'standard',
+  cartStyle: 'emoji',
 }
 
 /**
@@ -136,6 +152,7 @@ export function getHeaderConfig(tenant: Record<string, unknown> | null): HeaderC
 
   const logoShape = t['header_logo_shape']
   const height = t['header_height']
+  const cartStyle = t['header_cart_style']
 
   return {
     showLogo: bool('header_show_logo', DEFAULT_HEADER_CONFIG.showLogo),
@@ -153,5 +170,6 @@ export function getHeaderConfig(tenant: Record<string, unknown> | null): HeaderC
     height: (height === 'compact' || height === 'standard' || height === 'tall'
       ? height
       : DEFAULT_HEADER_CONFIG.height) as HeaderHeight,
+    cartStyle: isHeaderCartStyle(cartStyle) ? cartStyle : DEFAULT_HEADER_CONFIG.cartStyle,
   }
 }

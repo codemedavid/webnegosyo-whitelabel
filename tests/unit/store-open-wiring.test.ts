@@ -16,6 +16,7 @@ import { PRODUCT_DETAIL_TENANT_SELECT } from '@/lib/queries/product-detail-tenan
 import {
   OPERATING_HOURS_ENFORCEMENT_COLUMNS,
   getClosedOrderError,
+  STORE_PRELAUNCH_MESSAGE,
   type StoreHoursSource,
 } from '@/lib/store-open-status'
 import type { OperatingHours } from '@/lib/operating-hours'
@@ -88,5 +89,15 @@ describe('getClosedOrderError (server-side guard)', () => {
     // Pre-ordering at midnight for tomorrow lunch is the whole point of advance
     // orders — closing time must gate ASAP orders only.
     expect(getClosedOrderError(source(), MON_2300, { isScheduled: true })).toBeNull()
+  })
+
+  it('refuses every order while the store is in pre-launch', () => {
+    expect(getClosedOrderError({ is_prelaunch: true }, MON_0900)).toBe(STORE_PRELAUNCH_MESSAGE)
+  })
+
+  it('refuses even a scheduled order while the store is in pre-launch', () => {
+    // An advance order would be fulfilled after launch, but the store has not
+    // been paid for yet — nothing is accepted until it goes live.
+    expect(getClosedOrderError(source({ is_prelaunch: true }), MON_0900, { isScheduled: true })).toBe(STORE_PRELAUNCH_MESSAGE)
   })
 })

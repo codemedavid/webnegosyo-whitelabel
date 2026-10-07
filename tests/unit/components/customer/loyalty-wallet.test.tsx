@@ -87,3 +87,64 @@ it('does not display a late wallet response after the tenant changes', async () 
  expect(screen.queryByText('Old reward')).not.toBeInTheDocument()
  expect(screen.getByRole('button',{name:'Check my rewards'})).toBeEnabled()
 })
+
+describe('stores that text a code before showing rewards', () => {
+ const wallet = {programs:[{id:'program',name:'Coffee',earnMode:'stamp',balance:3,threshold:10,rewardLabel:'Free coffee',status:'active',branchName:null,minSpend:null}],rewards:[],claimsAvailable:true}
+ const verifyFirst = {ok:false,status:401,json:async()=>({error:'Verify your number to see your rewards.',reason:'verification_required'})}
+ const body = (fetcher: jest.Mock, call: number) => JSON.parse(fetcher.mock.calls[call][1].body)
+ beforeEach(() => window.sessionStorage.clear())
+
+ it('texts a code on the first look, then shows the card only after the code is right', async () => {
+  const fetcher = jest.fn()
+   .mockResolvedValueOnce(verifyFirst)
+   .mockResolvedValueOnce({ok:true,json:async()=>({accepted:true,challengeId:'wallet-challenge',expiresInSeconds:300})})
+   .mockResolvedValueOnce({ok:true,json:async()=>({sessionToken:'ws1.session',expiresAt:new Date(Date.now()+1800000).toISOString()})})
+   .mockResolvedValueOnce({ok:true,json:async()=>wallet})
+  global.fetch = fetcher
+  render(<LoyaltyWalletPage tenantId="tenant" tenantSlug="shop" storeName="Coffee shop" />)
+  fireEvent.change(screen.getByLabelText('Mobile number'),{target:{value:'09171234567'}})
+  fireEvent.click(screen.getByRole('button',{name:'Check my rewards'}))
+  fireEvent.change(await screen.findByLabelText('SMS code'),{target:{value:'654321'}})
+  expect(screen.queryByText(/3 \/ 10 stamps/)).not.toBeInTheDocument()
+  expect(fetcher.mock.calls[1][0]).toBe('/api/loyalty/wallet/code')
+  fireEvent.click(screen.getByRole('button',{name:'Show my rewards'}))
+  expect(await screen.findByText(/3 \/ 10 stamps/)).toBeInTheDocument()
+  expect(fetcher.mock.calls[2][0]).toBe('/api/loyalty/wallet/verify')
+  expect(body(fetcher,2)).toMatchObject({challengeId:'wallet-challenge',code:'654321',phone:'09171234567'})
+  expect(body(fetcher,3)).toMatchObject({sessionToken:'ws1.session'})
+  expect(window.sessionStorage.getItem('loyalty-wallet-session:tenant')).toContain('ws1.session')
+ })
+
+ it('a reload inside the session goes straight back to the rewards, without a new code', async () => {
+  window.sessionStorage.setItem('loyalty-wallet-session:tenant', JSON.stringify({phone:'09171234567',token:'ws1.saved',expiresAt:new Date(Date.now()+600000).toISOString()}))
+  const fetcher = jest.fn().mockResolvedValue({ok:true,json:async()=>wallet})
+  global.fetch = fetcher
+  render(<LoyaltyWalletPage tenantId="tenant" tenantSlug="shop" storeName="Coffee shop" />)
+  expect(await screen.findByText(/3 \/ 10 stamps/)).toBeInTheDocument()
+  expect(fetcher).toHaveBeenCalledTimes(1)
+  expect(body(fetcher,0)).toMatchObject({phone:'09171234567',sessionToken:'ws1.saved'})
+ })
+
+ it('an expired session on a background refresh hides the card and waits for the customer', async () => {
+  window.sessionStorage.setItem('loyalty-wallet-session:tenant', JSON.stringify({phone:'09171234567',token:'ws1.saved',expiresAt:new Date(Date.now()+600000).toISOString()}))
+  const fetcher = jest.fn().mockResolvedValueOnce({ok:true,json:async()=>wallet}).mockResolvedValueOnce(verifyFirst)
+  global.fetch = fetcher
+  render(<LoyaltyWalletPage tenantId="tenant" tenantSlug="shop" storeName="Coffee shop" />)
+  await screen.findByText(/3 \/ 10 stamps/)
+  fireEvent(window,new Event('focus'))
+  expect(await screen.findByRole('button',{name:'Text me a code'})).toBeInTheDocument()
+  expect(screen.queryByText(/3 \/ 10 stamps/)).not.toBeInTheDocument()
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(window.sessionStorage.getItem('loyalty-wallet-session:tenant')).toBeNull()
+ })
+
+ it('says so plainly when the store cannot text a code', async () => {
+  global.fetch = jest.fn().mockResolvedValueOnce(verifyFirst)
+   .mockResolvedValueOnce({ok:false,status:503,json:async()=>({error:"This store can't text verification codes right now. Please ask the cashier for help.",reason:'no_sender'})})
+  render(<LoyaltyWalletPage tenantId="tenant" tenantSlug="shop" storeName="Coffee shop" />)
+  fireEvent.change(screen.getByLabelText('Mobile number'),{target:{value:'09171234567'}})
+  fireEvent.click(screen.getByRole('button',{name:'Check my rewards'}))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/can't text verification codes/i)
+  expect(screen.getByRole('button',{name:'Text me a code'})).toBeEnabled()
+ })
+})

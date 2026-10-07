@@ -9,6 +9,7 @@
 // entirely. Here it resolves to its own session mode instead.
 
 import { resolveOrderBackend, type OrderBackend } from "./order-backend";
+import { isCustomerHubOn } from "./customer-hub/availability";
 
 /** Where each session mode lands after sign-in. */
 export const MERCHANT_LANDING_HREF = "/(main)/dashboard";
@@ -49,7 +50,7 @@ export interface OutletRow {
  * call sites to this constant.
  */
 export const TENANT_SESSION_SELECT =
-  "id, slug, name, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, logo_url, customer_hub_enabled, loyalty_enabled";
+  "id, slug, name, convex_deployment_url, convex_schema_version, order_backend, receipt_layout, logo_url, customer_hub_enabled, loyalty_enabled, assistant_enabled";
 
 /** Shape of the `tenants` row the app selects. */
 export interface TenantRow {
@@ -67,6 +68,8 @@ export interface TenantRow {
   /** Pilot switch for the Customer Hub; absent or null reads as OFF. */
   customer_hub_enabled?: boolean | null;
   loyalty_enabled?: boolean | null;
+  /** The Owl assistant is switched on for this store (superadmin toggle). */
+  assistant_enabled?: boolean | null;
 }
 
 export type SessionMode = "superadmin" | "merchant" | "denied";
@@ -110,6 +113,8 @@ export interface SessionAuthPatch {
   customerHubEnabled: boolean;
   /** Loyalty earning is on for this store. Unknown reads as OFF. */
   loyaltyEnabled: boolean;
+  /** The Owl assistant is on for this store. Unknown reads as OFF. */
+  assistantEnabled: boolean;
   isLoading: false;
   isAuthenticated: true;
   isSuperadmin: boolean;
@@ -208,6 +213,7 @@ export function resolveSession(
         // one fills this in from that tenant's row.
         customerHubEnabled: false,
         loyaltyEnabled: false,
+        assistantEnabled: false,
         isLoading: false,
         isAuthenticated: true,
         isSuperadmin: true,
@@ -246,8 +252,9 @@ export function resolveSession(
       orderBackend: resolveOrderBackend(tenant),
       receiptLayout: tenant.receipt_layout ?? null,
       receiptLogoUrl: tenant.logo_url ?? null,
-      customerHubEnabled: tenant.customer_hub_enabled === true,
+      customerHubEnabled: isCustomerHubOn(tenant),
       loyaltyEnabled: tenant.loyalty_enabled === true,
+      assistantEnabled: tenant.assistant_enabled === true,
       isLoading: false,
       isAuthenticated: true,
       isSuperadmin: false,

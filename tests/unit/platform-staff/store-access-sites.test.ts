@@ -86,13 +86,21 @@ describe('converted store doors use canAccessStoreAdmin', () => {
   it.each(CONVERTED_ROUTES)('%s', (file) => {
     const source = read(file)
     expect(source).not.toMatch(INLINE_STORE_CHECK)
-    expect(source).toMatch(/canAccessStoreAdmin\(/)
+    // Directly, or through the shared Bearer prologue (pinned below).
+    expect(source).toMatch(/canAccessStoreAdmin\(|requireBearerStoreCaller\(/)
   })
 
   it('reads the platform grants through the resilient app_users helper', () => {
     for (const file of CONVERTED_ROUTES.filter((path) => path.startsWith('src/app/api/'))) {
-      expect(read(file)).toContain('fetchAppUserScope(')
+      expect(read(file)).toMatch(/fetchAppUserScope\(|requireBearerStoreCaller\(/)
     }
+  })
+
+  it('the shared Bearer prologue itself checks the store through both helpers', () => {
+    const source = read('src/lib/auth/bearer-caller.ts')
+    expect(source).toMatch(/canAccessStoreAdmin\(/)
+    expect(source).toContain('fetchAppUserScope(')
+    expect(source).not.toMatch(INLINE_STORE_CHECK)
   })
 })
 

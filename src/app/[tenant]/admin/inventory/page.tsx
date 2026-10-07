@@ -5,7 +5,7 @@ import {
   getScopedIngredients,
   getBranchStockSummaries,
 } from '@/lib/inventory/branch-stock-read'
-import { resolveBranchScope } from '@/lib/outlets/branch-scope'
+import { resolveBranchScope, type BranchScope } from '@/lib/outlets/branch-scope'
 import { seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
@@ -32,7 +32,8 @@ import { getTenantSecrets, mergeTenantSecrets } from '@/lib/tenant-secrets'
 import { resolveReportScope } from '@/lib/inventory/report-scope'
 import { resolveReportDay } from '@/lib/inventory/business-day'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
-import type { Tenant } from '@/types/database'
+import type { NamedBranch } from '@/lib/inventory/branch-stock-view'
+import type { Outlet, Tenant } from '@/types/database'
 
 /**
  * The cached tenant row carries no credentials (they live in tenant_secrets),
@@ -46,6 +47,80 @@ async function withOrderCredentials(tenant: Tenant): Promise<Tenant> {
   } catch (error) {
     console.error('[inventory] could not read tenant secrets:', error instanceof Error ? error.message : error)
     return tenant
+  }
+}
+
+/**
+ * Which branches a movement may be aimed at. A failed read degrades to the
+ * single-shelf dialog rather than taking the page down: recording to the store
+ * pool is the behaviour every tenant had until branches existed.
+ */
+function readOutlets(tenantId: string): Promise<Outlet[]> {
+  return createSupabaseOutletRepository()
+    .listByTenant(tenantId)
+    .catch((error) => {
+      console.error('[inventory] outlets read failed', { tenantId, error })
+      return []
+    })
+}
+
+function activeBranchesOf(outlets: readonly Outlet[]): NamedBranch[] {
+  return outlets.filter((outlet) => outlet.is_active).map((o) => ({ id: o.id, name: o.name }))
+}
+
+/**
+ * A failure here must not take the rest of inventory down with it — the tab
+ * simply does not appear, which is honest about having no figures rather than
+ * showing a day that looks empty.
+ */
+async function readDailyReport(
+  tenantId: string,
+  dayKey: string,
+  outletId: string | null,
+): Promise<DailyInventoryReportForDay | undefined> {
+  try {
+    return await getDailyInventoryReport(tenantId, dayKey, outletId)
+  } catch (error) {
+    console.error('[inventory] daily report read failed', { tenantId, dayKey, error })
+    return undefined
+  }
+}
+
+interface OpenCountState {
+  openCountId: string | null
+  openCountOutletId: string | null
+  countProgress: CountSessionProgress | null
+}
+
+const NO_OPEN_COUNT: OpenCountState = { openCountId: null, openCountOutletId: null, countProgress: null }
+
+/**
+ * The count running on this shelf, if one is. A failure here costs the count
+ * panel and nothing else: the merchant can still see their stock, record
+ * deliveries, and read the report. The panel then offers to start a count,
+ * which is the honest fallback — starting a second one joins the first anyway.
+ */
+async function readOpenCount(
+  tenantId: string,
+  scope: BranchScope,
+  outletId: string | null,
+): Promise<OpenCountState> {
+  try {
+    // A branch account still reads its own shelf's count. A store-wide account
+    // reads ANY open count: it can now start one on a branch shelf, and a read
+    // pinned to the store pool would report "no count running" while one is —
+    // and offer to start a second.
+    const openCount =
+      scope.kind === 'all' ? await getAnyOpenCount(tenantId) : await getOpenCount(tenantId, outletId)
+    if (!openCount) return NO_OPEN_COUNT
+    return {
+      openCountId: openCount.id,
+      openCountOutletId: openCount.outletId,
+      countProgress: await getCountProgress(tenantId, openCount.id),
+    }
+  } catch (error) {
+    console.error('[inventory] count session read failed', { tenantId, error })
+    return NO_OPEN_COUNT
   }
 }
 
@@ -74,40 +149,92 @@ export default async function AdminInventoryPage({
     notFound()
   }
 
-  // Seed the default unit catalog on first visit so ingredients always have a
-  // unit to reference. Idempotent — existing units are returned untouched.
-  // Open alerts need no feature-flag check of their own: when a tenant has
-  // low-stock alerts switched off, nothing writes them, so the list is empty
-  // and the banner renders nothing.
-  //
   // Quantities are read as whoever is looking: the owner's roll-up across every
   // branch, or one branch's own shelf. A manager shown the chain total would
   // count their shelf short against it.
   const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
 
-  const [units, ingredients, openAlerts, lastPurchaseByItemId, outlets] = await Promise.all([
+  // The report reconciles one Manila day: what the trade took off the shelf and
+  // what it cost. Scoped to whoever is looking, matching the quantities above
+  // it — a branch admin was previously shown every branch's movements
+  // reconciled into one day and presented as their own.
+  const { dayKey, latestDayKey } = resolveReportDay(day, new Date().toISOString())
+  const reportScope = resolveReportScope({
+    scope,
+    orderBackend: tenant.order_backend ?? null,
+    // The deployment's own bundle decides whether it can narrow the takings.
+    // Sending the branch to an older one is not a degraded read — it is
+    // rejected, and the screen says the store needs a backend update.
+    convexSchemaVersion: tenant.convex_schema_version ?? null,
+  })
+
+  // ONE parallel batch. This page used to make ~16 round trips one after
+  // another; none of these reads depends on another except the two that need
+  // the ingredient list, and those chain off that one read inside the batch
+  // rather than waiting for the whole batch to finish.
+  const ingredientsRead = getScopedIngredients(tenant.id, scope)
+  const outletsRead = readOutlets(tenant.id)
+
+  const [
+    units,
+    ingredients,
+    openAlerts,
+    lastPurchaseByItemId,
+    outlets,
+    reconciliationIssues,
+    { coverageRows, recipeComponents, menuItems, recipes, loadFailed },
+    activity,
+    branchStockByItemId,
+    dailyReport,
+    branchRevenue,
+    openCount,
+  ] = await Promise.all([
+    // Seed the default unit catalog on first visit so ingredients always have
+    // a unit to reference. Idempotent — existing units are returned untouched.
     seedDefaultUnits(tenant.id),
-    getScopedIngredients(tenant.id, scope),
+    ingredientsRead,
+    // Open alerts need no feature-flag check of their own: when a tenant has
+    // low-stock alerts switched off, nothing writes them, so the list is empty
+    // and the banner renders nothing.
     getOpenStockAlerts(tenant.id),
     getCachedLastPurchaseDates(tenant.id),
-    // Which branches a movement may be aimed at. A failed read degrades to the
-    // single-shelf dialog rather than taking the page down: recording to the
-    // store pool is the behaviour every tenant had until branches existed.
-    createSupabaseOutletRepository()
-      .listByTenant(tenant.id)
-      .catch((error) => {
-        console.error('[inventory] outlets read failed', { tenantId: tenant.id, error })
-        return []
-      }),
+    outletsRead,
+    // Ledger self-check: does the store roll-up agree with the branch split the
+    // trigger maintains? Store-wide accounts only — a branch manager's RLS view
+    // of `inventory_stock` is partial, so their sums would cry drift that
+    // isn't. Never throws; null (read failed) and [] (healthy) render nothing.
+    scope.kind === 'all' ? getStockReconciliationIssues(tenant.id) : null,
+    // Recipe coverage answers "which dishes are actually set up?" — the
+    // question that had no surface at all, and the reason a tenant could switch
+    // inventory on and have it quietly do nothing.
+    getRecipeCoverage(tenant.id),
+    // The Overview answers "what is this thing doing, and where can it not?"
+    ingredientsRead.then((items) => getInventoryActivity(tenant.id, items)),
+    // The owner's cross-branch view: which shop holds what, and which has run
+    // out. Empty for a single-shop store, so the panel never appears for the
+    // majority of tenants.
+    Promise.all([ingredientsRead, outletsRead]).then(([items, rows]) =>
+      getBranchStockSummaries(
+        tenant.id,
+        items.map((item) => item.id),
+        activeBranchesOf(rows),
+      ),
+    ),
+    readDailyReport(tenant.id, dayKey, reportScope.outletId),
+    // Read alongside the report rather than after it; only shown when the
+    // report itself was read (below).
+    reportScope.isRevenueBranchScoped
+      ? withOrderCredentials(tenant).then((withKeys) =>
+          getDailyRevenue(withKeys, dayKey, {}, reportScope.outletId),
+        )
+      : undefined,
+    readOpenCount(tenant.id, scope, reportScope.outletId),
   ])
 
   // Only a store-wide account chooses shelves; a branch account's movements are
   // pinned to its own branch server-side, so offering a selector would only
   // promise something `resolveMovementBranch` is going to refuse.
-  const branches =
-    scope.kind === 'all'
-      ? outlets.filter((outlet) => outlet.is_active).map((o) => ({ id: o.id, name: o.name }))
-      : []
+  const branches = scope.kind === 'all' ? activeBranchesOf(outlets) : []
 
   // The banner is scoped to match the quantities under it. `stock_alerts` rows
   // are raised store-wide and carry no branch, so a branch manager was shown
@@ -116,31 +243,6 @@ export default async function AdminInventoryPage({
   // A store-wide account passes its own roll-up in and keeps every alert.
   const alerts = scopeStockAlerts(openAlerts, ingredients)
 
-  // Ledger self-check: does the store roll-up agree with the branch split the
-  // trigger maintains? Store-wide accounts only — a branch manager's RLS view
-  // of `inventory_stock` is partial, so their sums would cry drift that isn't.
-  // Never throws; null (read failed) and [] (healthy) both render nothing.
-  const reconciliationIssues =
-    scope.kind === 'all' ? await getStockReconciliationIssues(tenant.id) : null
-
-  // Recipe coverage answers "which dishes are actually set up?" — the question
-  // that had no surface at all, and the reason a tenant could switch inventory
-  // on and have it quietly do nothing.
-  const { coverageRows, recipeComponents, menuItems, recipes, loadFailed } =
-    await getRecipeCoverage(tenant.id)
-
-  // The Overview answers "what is this thing doing, and where can it not?" —
-  // questions that had no surface at all, and the reason a tenant could switch
-  // inventory on, have it deduct nothing, and see a working system's quiet day.
-  const activity = await getInventoryActivity(tenant.id, ingredients)
-
-  // The owner's cross-branch view: which shop holds what, and which has run out.
-  // Empty for a single-shop store, so the panel never appears for the majority
-  // of tenants.
-  const branchStockByItemId = await getBranchStockSummaries(
-    tenant.id,
-    ingredients.map((item) => item.id),
-  )
   const autoHidden = explainAutoHiddenDishes(menuItems, recipes, recipeComponents, ingredients)
   const healthFlags: InventoryFlags = {
     lowStockAlertsEnabled: Boolean(tenant.low_stock_alerts_enabled),
@@ -153,32 +255,6 @@ export default async function AdminInventoryPage({
     flags: healthFlags,
   })
 
-  // The report reconciles one Manila day: what the trade took off the shelf and
-  // what it cost. A failure here must not take the rest of inventory down with
-  // it — the tab simply does not appear, which is honest about having no
-  // figures rather than showing a day that looks empty.
-  const { dayKey, latestDayKey } = resolveReportDay(day, new Date().toISOString())
-  //
-  // Scoped to whoever is looking, matching the quantities above it. A branch
-  // admin was previously shown every branch's movements reconciled into one
-  // day and presented as their own — the same mismatch the merchant app
-  // guarded against by withholding, except the web showed it.
-  const reportScope = resolveReportScope({
-    scope,
-    orderBackend: tenant.order_backend ?? null,
-    // The deployment's own bundle decides whether it can narrow the takings.
-    // Sending the branch to an older one is not a degraded read — it is
-    // rejected, and the screen says the store needs a backend update.
-    convexSchemaVersion: tenant.convex_schema_version ?? null,
-  })
-
-  let dailyReport: DailyInventoryReportForDay | undefined
-  try {
-    dailyReport = await getDailyInventoryReport(tenant.id, dayKey, reportScope.outletId)
-  } catch (error) {
-    console.error('[inventory] daily report read failed', { tenantId: tenant.id, dayKey, error })
-  }
-
   // The takings come from wherever this tenant's orders live, which is not
   // necessarily this database. `getDailyRevenue` never throws and returns null
   // when it cannot tell — the panel then omits the percentage and says why,
@@ -188,37 +264,7 @@ export default async function AdminInventoryPage({
   // branch being shown: the panel omits the card entirely, which is honest,
   // where null would say "could not be read" and imply the figure would
   // otherwise have been theirs to see. See `resolveReportScope`.
-  const dailyRevenue = !dailyReport
-    ? null
-    : reportScope.isRevenueBranchScoped
-      ? await getDailyRevenue(await withOrderCredentials(tenant), dayKey, {}, reportScope.outletId)
-      : undefined
-
-  // The count running on this shelf, if one is. Wrapped because a failure here
-  // must cost the count panel and nothing else: the merchant can still see
-  // their stock, record deliveries, and read the report. The panel then offers
-  // to start a count, which is the honest fallback — it is what a merchant with
-  // no count running sees, and starting a second one joins the first anyway.
-  let openCountId: string | null = null
-  let openCountOutletId: string | null = null
-  let countProgress: CountSessionProgress | null = null
-  try {
-    // A branch account still reads its own shelf's count. A store-wide account
-    // reads ANY open count: it can now start one on a branch shelf, and a read
-    // pinned to the store pool would report "no count running" while one is —
-    // and offer to start a second.
-    const openCount =
-      scope.kind === 'all'
-        ? await getAnyOpenCount(tenant.id)
-        : await getOpenCount(tenant.id, reportScope.outletId)
-    if (openCount) {
-      openCountId = openCount.id
-      openCountOutletId = openCount.outletId
-      countProgress = await getCountProgress(tenant.id, openCount.id)
-    }
-  } catch (error) {
-    console.error('[inventory] count session read failed', { tenantId: tenant.id, error })
-  }
+  const dailyRevenue = dailyReport ? branchRevenue : null
 
   return (
     <div className="space-y-6">
@@ -258,9 +304,9 @@ export default async function AdminInventoryPage({
         defaultTab={tab}
         stockItemId={stock}
         stockReason={reason}
-        openCountId={openCountId}
-        countProgress={countProgress}
-        openCountOutletId={openCountOutletId}
+        openCountId={openCount.openCountId}
+        countProgress={openCount.countProgress}
+        openCountOutletId={openCount.openCountOutletId}
         branches={branches}
       />
     </div>

@@ -13,6 +13,7 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { InventoryItem } from '@/types/database'
 import { ingredientInputSchema, type IngredientInput } from '@/lib/inventory/schemas'
+import { parseIngredientDeleteImpact, type IngredientDeleteImpact } from '@/lib/inventory/ingredient-delete'
 
 export { ingredientInputSchema, type IngredientInput }
 
@@ -69,15 +70,40 @@ export async function updateIngredient(
   return data as unknown as InventoryItem
 }
 
-export async function deleteIngredient(ingredientId: string, tenantId: string): Promise<void> {
+/**
+ * Never a bare DELETE: `recipe_components` is ON DELETE RESTRICT (every
+ * ingredient in a recipe was refused) and the stock ledger is ON DELETE
+ * CASCADE (every other one lost its history). `delete_inventory_item` removes
+ * the recipe lines and archives instead of deleting when there is history.
+ */
+async function runIngredientDelete(
+  ingredientId: string,
+  tenantId: string,
+  isDryRun: boolean,
+): Promise<IngredientDeleteImpact> {
   await verifyTenantPermission(tenantId, 'menu', 'delete')
   const supabase = await createClient()
 
-  const { error } = await supabase
-    .from('inventory_items')
-    .delete()
-    .eq('id', ingredientId)
-    .eq('tenant_id', tenantId)
+  const { data, error } = await supabase.rpc('delete_inventory_item', {
+    p_tenant_id: tenantId,
+    p_item_id: ingredientId,
+    p_dry_run: isDryRun,
+  })
 
-  if (error) throw error
+  if (error) {
+    if (error.code === 'P0002') {
+      throw new Error('This ingredient no longer exists. Refresh the page to see the current list.')
+    }
+    throw error
+  }
+  return parseIngredientDeleteImpact(data)
+}
+
+/** What a delete WOULD do, without changing anything. */
+export function previewIngredientDelete(ingredientId: string, tenantId: string) {
+  return runIngredientDelete(ingredientId, tenantId, true)
+}
+
+export function deleteIngredient(ingredientId: string, tenantId: string) {
+  return runIngredientDelete(ingredientId, tenantId, false)
 }

@@ -123,6 +123,15 @@ describe("selectAudience — the follow-up filters", () => {
     expect(result.recipients.map((r) => r.id)).toEqual(["regular"]);
   });
 
+  it("keeps only guests with at most the given number of orders, for second-visit invites", () => {
+    const once = customer({ id: "once", order_count: 1 });
+    const regular = customer({ id: "regular", order_count: 4 });
+
+    const result = selectAudience([once, regular], { maxOrderCount: 1 }, { now: NOW });
+
+    expect(result.recipients.map((r) => r.id)).toEqual(["once"]);
+  });
+
   it("matches a customer who used any of the requested channels", () => {
     const delivery = customer({ id: "delivery", channels_used: ["delivery", "pickup"] });
     const dineIn = customer({ id: "dineIn", channels_used: ["dine_in"] });

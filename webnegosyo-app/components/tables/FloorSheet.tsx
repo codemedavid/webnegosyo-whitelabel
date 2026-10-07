@@ -1,7 +1,6 @@
 import React from "react";
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "../Modal";
 
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { IconButton } from "../IconButton";

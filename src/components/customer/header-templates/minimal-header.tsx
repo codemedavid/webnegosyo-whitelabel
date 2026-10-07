@@ -56,7 +56,7 @@ export const MinimalHeader = memo(function MinimalHeader({
               </div>
             )}
             {config.showCart && (
-              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} />
+              <HeaderCartButton itemCount={itemCount} onClick={onCartClick} branding={branding} cartStyle={config.cartStyle} />
             )}
           </div>
         </div>

@@ -136,4 +136,100 @@ describe('backfillCustomers', () => {
     expect(report.customersTouched).toBe(1)
     expect(customers.size).toBe(1)
   })
+
+  /*
+   * The shape that actually went missing in production: orders bulk-imported
+   * from a store's old Convex deployment were inserted straight into `orders`,
+   * so the checkout-time capture never ran. Most were dine-in, with the phone
+   * only under the merchant's own field name and a blank contact column.
+   */
+  it('links an imported dine-in order whose phone sits only under a merchant-named field', async () => {
+    const { store, customers, orders } = makeFakeStore([
+      { id: 'imp1', total: 450, createdAt: '2026-09-10T10:00:00.000Z', channel: 'Dine In' },
+    ])
+    const rows: BackfillOrderRow[] = [
+      {
+        id: 'imp1',
+        name: 'Cara',
+        contact: '',
+        customerData: { 'Phone number': '0917 765 4321', table_number: '7', convex_order_id: 'k1' },
+        customerId: null,
+        status: 'delivered',
+      },
+    ]
+
+    const report = await backfillCustomers(store, 'tenant-1', rows, { execute: true })
+
+    expect(report.identifiable).toBe(1)
+    expect(customers.size).toBe(1)
+    expect([...customers.values()][0].phoneE164).toBe('+639177654321')
+    expect(orders[0].customerId).not.toBeNull()
+  })
+
+  it('never links a cancelled, refunded or voided order — those are not sales', async () => {
+    const { store, customers, orders } = makeFakeStore([
+      { id: 'c1', total: 100, createdAt: '2026-09-01T10:00:00.000Z', channel: 'Dine In' },
+      { id: 'c2', total: 100, createdAt: '2026-09-02T10:00:00.000Z', channel: 'Dine In' },
+      { id: 'c3', total: 100, createdAt: '2026-09-03T10:00:00.000Z', channel: 'Dine In' },
+    ])
+    const rows: BackfillOrderRow[] = ['cancelled', 'Refunded', 'voided'].map((status, i) => ({
+      id: `c${i + 1}`,
+      name: 'Dan',
+      contact: '09171112222',
+      customerData: null,
+      customerId: null,
+      status,
+    }))
+
+    const report = await backfillCustomers(store, 'tenant-1', rows, { execute: true })
+
+    expect(report.reversed).toBe(3)
+    expect(report.identifiable).toBe(0)
+    expect(customers.size).toBe(0)
+    expect(orders.every((o) => o.customerId === null)).toBe(true)
+  })
+
+  it('leaves orders that are already linked alone and reports them', async () => {
+    const { store, customers } = makeFakeStore([
+      { id: 'l1', total: 100, createdAt: '2026-09-01T10:00:00.000Z', channel: 'Pickup' },
+    ])
+    const rows: BackfillOrderRow[] = [
+      {
+        id: 'l1',
+        name: 'Eve',
+        contact: '09173334444',
+        customerData: null,
+        customerId: 'cust_existing',
+        status: 'delivered',
+      },
+    ]
+
+    const report = await backfillCustomers(store, 'tenant-1', rows, { execute: true })
+
+    expect(report.alreadyLinked).toBe(1)
+    expect(report.identifiable).toBe(0)
+    expect(customers.size).toBe(0)
+  })
+
+  it('dry run says how many profiles it would create versus reuse, writing nothing', async () => {
+    const { store, customers, orders } = makeFakeStore([
+      { id: 'n1', total: 100, createdAt: '2026-09-01T10:00:00.000Z', channel: 'Dine In' },
+      { id: 'n2', total: 200, createdAt: '2026-09-02T10:00:00.000Z', channel: 'Dine In' },
+      { id: 'n3', total: 300, createdAt: '2026-09-03T10:00:00.000Z', channel: 'Dine In' },
+    ])
+    await store.createCustomer({ tenantId: 'tenant-1', phoneE164: '+639175556666', email: null, name: 'Fe' })
+    const rows: BackfillOrderRow[] = [
+      { id: 'n1', name: 'Fe', contact: '09175556666', customerData: null, customerId: null, status: 'delivered' },
+      { id: 'n2', name: 'Gil', contact: '09177778888', customerData: null, customerId: null, status: 'pending' },
+      { id: 'n3', name: 'Gil', contact: '+63 917 777 8888', customerData: null, customerId: null, status: 'delivered' },
+    ]
+
+    const report = await backfillCustomers(store, 'tenant-1', rows)
+
+    expect(report.identifiable).toBe(3)
+    expect(report.customersTouched).toBe(2)
+    expect(report.newCustomers).toBe(1)
+    expect(customers.size).toBe(1)
+    expect(orders.every((o) => o.customerId === null)).toBe(true)
+  })
 })

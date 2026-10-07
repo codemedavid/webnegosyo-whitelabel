@@ -61,3 +61,37 @@ export function applyChoiceRule(group: ModifierGroup, rule: ChoiceRule): Modifie
     : setGroupMultiple(asChoice, isMultiple)
   return setGroupRequired(shaped, isRequired)
 }
+
+/**
+ * The editor asks two small questions instead of one six-way select: what kind
+ * of pick (one, several, or amounts with − / +) and whether it is required.
+ * Both halves map one-to-one onto a `ChoiceRule`, so nothing stored changes.
+ */
+export type ChoiceKind = 'one' | 'several' | 'quantity'
+
+export const CHOICE_KINDS = [
+  { value: 'one', label: 'One', example: 'Size, temperature' },
+  { value: 'several', label: 'Several', example: 'Toppings, sides' },
+  { value: 'quantity', label: 'Amounts', example: 'Extra rice ×2' },
+] as const satisfies readonly { value: ChoiceKind; label: string; example: string }[]
+
+const RULE_PARTS: Record<ChoiceRule, { kind: ChoiceKind; isRequired: boolean }> = {
+  'pick-one': { kind: 'one', isRequired: true },
+  'pick-one-optional': { kind: 'one', isRequired: false },
+  'pick-some': { kind: 'several', isRequired: true },
+  'pick-any': { kind: 'several', isRequired: false },
+  'extras-required': { kind: 'quantity', isRequired: true },
+  'extras-optional': { kind: 'quantity', isRequired: false },
+}
+
+export function splitChoiceRule(rule: ChoiceRule): { kind: ChoiceKind; isRequired: boolean } {
+  return RULE_PARTS[rule]
+}
+
+export function joinChoiceRule(kind: ChoiceKind, isRequired: boolean): ChoiceRule {
+  const match = (Object.keys(RULE_PARTS) as ChoiceRule[]).find(
+    (rule) => RULE_PARTS[rule].kind === kind && RULE_PARTS[rule].isRequired === isRequired,
+  )
+  // Every kind × required pair is in the table; the fallback only satisfies the type.
+  return match ?? 'pick-one'
+}

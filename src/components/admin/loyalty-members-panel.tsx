@@ -17,6 +17,16 @@ import { LoyaltyMemberProgress } from './loyalty-member-progress'
 import { LoyaltyMemberDetailCard } from './loyalty-member-detail'
 
 const SEARCH_SETTLE_MS = 350
+/**
+ * Window focus refetches the whole member list (every balance and entitlement,
+ * paged on the server). Alt-tabbing between this and the POS fired that on each
+ * switch; a focus within this long of the last LIST load skips the list. The
+ * open member's detail still reloads on every focus — it is one member, and it
+ * is exactly what a merchant who just stamped at the POS comes back to check.
+ * Coming back online always refetches both: that is a real gap in what this
+ * screen saw.
+ */
+const FOCUS_REFRESH_MIN_GAP_MS = 60_000
 
 type Filter = LoyaltyMemberStatus | 'all'
 
@@ -76,8 +86,11 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
     return () => clearTimeout(timer)
   }, [query])
 
+  const lastLoadAt = useRef(0)
+
   const load = useCallback(async () => {
     const ticket = ++listRequest.current
+    lastLoadAt.current = Date.now()
     setLoading(true)
     try {
       const result = await callLoyaltyApi<{
@@ -153,9 +166,13 @@ export function LoyaltyMembersPanel({ tenantId }: { tenantId: string }) {
 
   useEffect(() => {
     const refresh = () => { void load(); void reloadDetail() }
-    window.addEventListener('focus', refresh)
+    const refreshOnFocus = () => {
+      if (Date.now() - lastLoadAt.current >= FOCUS_REFRESH_MIN_GAP_MS) void load()
+      void reloadDetail()
+    }
+    window.addEventListener('focus', refreshOnFocus)
     window.addEventListener('online', refresh)
-    return () => { window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh) }
+    return () => { window.removeEventListener('focus', refreshOnFocus); window.removeEventListener('online', refresh) }
   }, [load, reloadDetail])
 
   const headline = useMemo(() => {

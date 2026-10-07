@@ -30,6 +30,7 @@ import {
   type LoyaltyMemberTotals,
 } from './members'
 import type { LoyaltyEarnMode, LoyaltyProgramStatus } from './types'
+import { dedupeOrderSources } from '@/lib/customers/imported-order-twins'
 
 /** Rows read per round trip when walking a table. */
 const PAGE = 1000
@@ -447,9 +448,16 @@ async function loadMemberOrders(
 
   const { readOrderAddress } = await import('@/lib/customer-external-orders')
 
+  // An order imported from Convex lives in both tables; show it once, as its
+  // platform row (see imported-order-twins).
+  const sources = dedupeOrderSources(
+    (platform.data ?? []) as Array<Record<string, unknown>>,
+    (external.data ?? []) as Array<Record<string, unknown>>,
+  )
+
   const orders: LoyaltyMemberOrder[] = []
 
-  for (const row of ((platform.data ?? []) as Array<Record<string, unknown>>)) {
+  for (const row of sources.platform) {
     const lines = Array.isArray(row.order_items)
       ? (row.order_items as Array<{ menu_item_name?: unknown; quantity?: unknown }>)
           .filter((item) => typeof item?.menu_item_name === 'string')
@@ -470,7 +478,7 @@ async function loadMemberOrders(
     })
   }
 
-  for (const row of ((external.data ?? []) as Array<Record<string, unknown>>)) {
+  for (const row of sources.ledger) {
     const items = Array.isArray(row.items)
       ? (row.items as Array<{ name?: unknown; quantity?: unknown }>)
           .filter((item) => typeof item?.name === 'string')

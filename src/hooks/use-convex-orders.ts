@@ -43,8 +43,13 @@ export function useUpdateConvexOrderStatus() {
   return useMutation(updateOrderStatusRef);
 }
 
-export function useConvexDashboardStatsByPeriod(startDate: number, endDate: number) {
-  return useQuery(getDashboardStatsByPeriodRef, { startDate, endDate });
+/**
+ * `isSkipped` opts out of the subscription entirely. Hooks must always be
+ * called, but a placeholder range is not free: the server handler scans the
+ * orders table for it and re-runs on every order change.
+ */
+export function useConvexDashboardStatsByPeriod(startDate: number, endDate: number, isSkipped = false) {
+  return useQuery(getDashboardStatsByPeriodRef, isSkipped ? "skip" : { startDate, endDate });
 }
 
 export function useConvexSalesAnalytics(daysBack: number) {

@@ -11,6 +11,7 @@
  * `applyBranchStock` narrows anything.
  */
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getIngredients } from '@/lib/inventory/ingredients-service'
 import { applyBranchStock } from '@/lib/inventory/branch-stock-view'
@@ -35,12 +36,16 @@ const EMPTY_INDEX: BranchStockIndex = new Map()
 /**
  * Every per-branch stock row this tenant has, indexed by item and branch.
  *
+ * Request-cached: a branch account's inventory page needs it twice (its scoped
+ * ingredients and the cross-branch panel), and both used to read the whole
+ * `inventory_stock` table separately.
+ *
  * Returns an empty index rather than throwing: this renders inside the
  * inventory page, and a failed stock read must not take the whole screen down.
  * What an empty index *means* to a caller is decided by `applyBranchStock` —
  * an owner keeps their roll-up, a branch sees zero.
  */
-export async function getBranchStockIndex(tenantId: string): Promise<BranchStockIndex> {
+export const getBranchStockIndex = cache(async (tenantId: string): Promise<BranchStockIndex> => {
   try {
     const supabase = await createClient()
 
@@ -59,7 +64,7 @@ export async function getBranchStockIndex(tenantId: string): Promise<BranchStock
     console.error('[inventory] Branch stock read failed', tenantId, error)
     return EMPTY_INDEX
   }
-}
+})
 
 /**
  * The tenant's ingredients, with quantities as this account should see them.
@@ -87,13 +92,20 @@ export async function getBranchStockIndex(tenantId: string): Promise<BranchStock
 export async function getBranchStockSummaries(
   tenantId: string,
   inventoryItemIds: readonly string[],
+  /**
+   * The tenant's active branches when the caller has already read them — the
+   * inventory page reads outlets for its movement dialog, and reading them
+   * again here was a second sequential round trip for the same rows.
+   */
+  activeBranches?: readonly NamedBranch[],
 ): Promise<Record<string, BranchStockSummary>> {
-  let branches: NamedBranch[]
+  let branches: readonly NamedBranch[]
   try {
-    const outlets = await createSupabaseOutletRepository().listByTenant(tenantId)
-    branches = outlets
-      .filter((outlet) => outlet.is_active)
-      .map((outlet) => ({ id: outlet.id, name: outlet.name }))
+    branches =
+      activeBranches ??
+      (await createSupabaseOutletRepository().listByTenant(tenantId))
+        .filter((outlet) => outlet.is_active)
+        .map((outlet) => ({ id: outlet.id, name: outlet.name }))
   } catch (error) {
     // The panel is an extra on a page that already works. A failed branch read
     // must not take the inventory screen down with it.
@@ -113,9 +125,12 @@ export async function getScopedIngredients(
   tenantId: string,
   scope: BranchScope,
 ): Promise<InventoryItem[]> {
-  const ingredients = await getIngredients(tenantId)
-  if (scope.kind === 'all') return ingredients
+  if (scope.kind === 'all') return getIngredients(tenantId)
 
-  const index = await getBranchStockIndex(tenantId)
+  // Independent reads, taken together rather than one after the other.
+  const [ingredients, index] = await Promise.all([
+    getIngredients(tenantId),
+    getBranchStockIndex(tenantId),
+  ])
   return applyBranchStock(ingredients, index, scope) as InventoryItem[]
 }

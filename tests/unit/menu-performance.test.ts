@@ -28,7 +28,16 @@ function fakeOrderItemsClient(rows: unknown[], calls: Record<string, unknown> = 
     eq: chain('eq'),
     gte: chain('gte'),
     neq: chain('neq'),
+    order: chain('order'),
     limit: chain('limit'),
+    // Each page resolves its own slice: concurrent pages must not share state.
+    range: (from: number, to: number) => {
+      const pages = (calls.ranges as Array<[number, number]> | undefined) ?? []
+      calls.ranges = [...pages, [from, to]]
+      return {
+        then: (resolve: (v: unknown) => unknown) => resolve({ data: rows.slice(from, to + 1), error: null }),
+      }
+    },
     then: (resolve: (v: unknown) => unknown) => resolve({ data: rows, error: null }),
   })
   return { from: (table: string) => { calls.from = table; return builder } }
@@ -50,6 +59,43 @@ const TENANT_SUPABASE_TENANT: MenuPerformanceTenant = {
   supabase_order_anon_key: 'anon',
   supabase_order_service_key: 'service',
 }
+
+describe('fetchMenuPerformance paging past the 1000-row API cap', () => {
+  function itemRows(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      menu_item_id: i % 2 === 0 ? 'a' : 'b',
+      menu_item_name: i % 2 === 0 ? 'Sisig' : 'Adobo',
+      quantity: 1,
+      subtotal: '100.00',
+    }))
+  }
+
+  it('reads every page of a busy store instead of stopping at the first 1000 rows', async () => {
+    // Arrange
+    const calls: Record<string, unknown> = {}
+    const platformClient = fakeOrderItemsClient(itemRows(2500), calls)
+
+    // Act
+    const result = await fetchMenuPerformance(PLATFORM_TENANT, {
+      windowDays: 30,
+      platformClient: platformClient as never,
+    })
+
+    // Assert
+    expect(result.totalUnits).toBe(2500)
+    expect(result.coverage.complete).toBe(true)
+    expect((calls.ranges as unknown[]).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('orders the paged read by a unique key so pages never overlap or skip rows', async () => {
+    const calls: Record<string, unknown> = {}
+    const platformClient = fakeOrderItemsClient(itemRows(10), calls)
+
+    await fetchMenuPerformance(PLATFORM_TENANT, { windowDays: 30, platformClient: platformClient as never })
+
+    expect(calls.order).toEqual(['id', { ascending: true }])
+  })
+})
 
 describe('fetchMenuPerformance backend routing', () => {
   it('reads a Convex tenant from its own deployment, not the platform database', async () => {

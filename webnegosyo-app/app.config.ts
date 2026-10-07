@@ -131,6 +131,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // gated separately. Off unless a build sets it to exactly "true".
     loyaltyPosEnabled: process.env.EXPO_PUBLIC_LOYALTY_POS_SETTLEMENT_ENABLED === "true",
     loyaltySmsDeliveryEnabled: process.env.EXPO_PUBLIC_LOYALTY_SMS_DELIVERY_ENABLED === "true",
+    // Merchant-app Sentry project (lib/sentry). Empty = reporting off; it is
+    // never sent from development builds either way.
+    sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? "",
     consultationUrl:
       process.env.EXPO_PUBLIC_CONSULTATION_MESSENGER_URL ??
       "https://m.me/webnegosyoofficial",
@@ -146,7 +149,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         sounds: ["./assets/ringtone.mp3"],
       },
     ],
-    "expo-audio",
+    [
+      "expo-audio",
+      {
+        // Shown on the iOS mic prompt: App Review rejects a generic purpose string.
+        microphonePermission: "Talk to Owl, your store assistant, instead of typing. Your voice is turned into text for you to check before sending.",
+      },
+    ],
     [
       "expo-camera",
       {
@@ -167,6 +176,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // Calendar and clock pickers for the campaign schedule. A native module, so
     // it only reaches the merchant through a new build — not an OTA update.
     "@react-native-community/datetimepicker",
+    // Uploads source maps and native debug symbols during EAS builds so crash
+    // stack traces are readable. Org, project and token come from the EAS env
+    // (SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN) — the same names the web
+    // app uses. A build without the token fails at the upload step unless
+    // SENTRY_DISABLE_AUTO_UPLOAD=true is set.
+    [
+      "@sentry/react-native/expo",
+      {
+        organization: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        url: "https://sentry.io/",
+      },
+    ],
   ],
   updates: {
     url: "https://u.expo.dev/e4af765d-36fe-4248-990d-e0589d1a6c50",

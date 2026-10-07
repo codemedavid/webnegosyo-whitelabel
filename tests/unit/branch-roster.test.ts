@@ -4,7 +4,7 @@ import {
   type RosterStaff,
 } from '@/lib/outlets/branch-roster'
 import { MAX_STAFF_PER_TENANT } from '@/lib/staff-permissions'
-import type { AnalyticsOrderLike } from '@/lib/outlets/branch-analytics'
+import { compareBranches, type AnalyticsOrderLike } from '@/lib/outlets/branch-analytics'
 
 /**
  * The one view model behind the redesigned Branches area.
@@ -286,5 +286,48 @@ describe('buildBranchRoster', () => {
 
       expect(roster.hasMetrics).toBe(true)
     })
+  })
+})
+
+/**
+ * The Branches pages compute the comparison on the server and send the browser
+ * those few rows, not the store's order history. The roster built from them
+ * must be the roster built from the orders — same takings, same top branch,
+ * same unassigned bucket — or the grid and the card it opens would disagree.
+ */
+describe('buildBranchRoster from precomputed metric rows', () => {
+  const outlets = [outlet({ id: 'makati' }), outlet({ id: 'bgc', name: 'BGC', slug: 'bgc' })]
+  const orders = [
+    order('makati', 400),
+    order('bgc', 100),
+    order(null, 50),
+    order('bgc', 999, 'cancelled'),
+  ]
+
+  it('produces the same roster as the orders it was computed from', () => {
+    // Arrange
+    const team = [staff({ outlet_id: 'bgc' })]
+
+    // Act
+    const fromOrders = buildBranchRoster({ outlets, staff: team, orders })
+    const fromRows = buildBranchRoster({ outlets, staff: team, metricRows: compareBranches(orders) })
+
+    // Assert
+    expect(fromRows).toEqual(fromOrders)
+  })
+
+  it('reads null rows as takings that cannot be compared, like null orders', () => {
+    const roster = buildBranchRoster({ outlets, staff: [], metricRows: null })
+
+    expect(roster.hasMetrics).toBe(false)
+    expect(roster.summary.totalRevenue).toBe(0)
+    expect(roster.branches.every((branch) => branch.metrics === null)).toBe(true)
+  })
+
+  it('reads an empty comparison as a store that has sold nothing yet', () => {
+    const roster = buildBranchRoster({ outlets, staff: [], metricRows: [] })
+
+    expect(roster.hasMetrics).toBe(true)
+    expect(roster.summary.topBranchName).toBeNull()
   })
 })

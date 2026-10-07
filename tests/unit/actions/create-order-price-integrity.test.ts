@@ -360,6 +360,16 @@ describe('createOrderAction — price integrity', () => {
       expect(createOrder).not.toHaveBeenCalled()
     })
 
+    test('waives a signed Lalamove fee once the order reaches the free-delivery minimum', async () => {
+      tableRows.tenants = platformTenant({ lalamove_enabled: true, free_delivery_min_order: 300 })
+
+      const result = await place(orderArgs({ lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: await signedQuote(185),
+        customerData: { delivery_address: 'Home', delivery_lat: 14.7, delivery_lng: 121.1 } }))
+
+      expect(result.success).toBe(true)
+      expect(savedArg(5)).toBe(0)
+    })
+
     test('accepts a genuine signed zero-fee quotation', async () => {
       const result = await place(orderArgs({ lalamoveQuotationId: 'q-1', lalamoveQuoteSignature: await signedQuote(0),
         customerData: { delivery_address: 'Home', delivery_lat: '14.7', delivery_lng: '121.1' } }))
@@ -410,6 +420,51 @@ describe('createOrderAction — price integrity', () => {
     await place(orderArgs({ paymentProof: { url: 'javascript:alert(1)', publicId: null, reference: 'GC1' } }))
 
     expect(savedArg(13)).toMatchObject({ url: null, reference: 'GC1' })
+  })
+
+  describe('free delivery above a minimum order', () => {
+    // Two Tapsilog at ₱160 = ₱320 server-priced; ~0.6 km away → the ₱50 floor.
+    function distanceStore(freeDeliveryMinOrder: number | null) {
+      tableRows = {
+        ...tableRows,
+        tenants: platformTenant({
+          distance_delivery_enabled: true,
+          delivery_price_per_km: 10,
+          delivery_min_fee: 50,
+          delivery_radius_km: 5,
+          restaurant_latitude: 14.5995,
+          restaurant_longitude: 120.9842,
+          free_delivery_min_order: freeDeliveryMinOrder,
+        }),
+        order_types: { ...pickup, name: 'Delivery', type: 'delivery' },
+      }
+    }
+    const nearby = { delivery_lat: 14.6, delivery_lng: 120.99 }
+
+    test('waives the distance fee when the item subtotal meets the minimum', async () => {
+      distanceStore(300)
+      await place(orderArgs({ deliveryFee: 50, customerData: nearby }))
+      expect(savedArg(5)).toBe(0)
+    })
+
+    test('charges the distance fee below the minimum', async () => {
+      distanceStore(500)
+      await place(orderArgs({ deliveryFee: 0, customerData: nearby }))
+      expect(savedArg(5)).toBe(50)
+    })
+
+    test('charges the fee when free delivery is off', async () => {
+      distanceStore(null)
+      await place(orderArgs({ deliveryFee: 0, customerData: nearby }))
+      expect(savedArg(5)).toBe(50)
+    })
+
+    test('judges the minimum on server prices, not the subtotal the browser claimed', async () => {
+      distanceStore(500)
+      // A ₱2,000 subtotal claim on two ₱160 plates: the server charges ₱320.
+      await place(orderArgs({ items: [line({ subtotal: 2000 })], deliveryFee: 0, customerData: nearby }))
+      expect(savedArg(5)).toBe(50)
+    })
   })
 
   test('reads the order type once, even when every consumer needs it', async () => {

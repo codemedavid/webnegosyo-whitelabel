@@ -1,4 +1,4 @@
-import { resolveRefRoute, type RefRouteInput } from "./route";
+import { resolveRefRoute, resolveWriteBackend, type RefRouteInput } from "./route";
 
 /**
  * `lib/hooks.ts` must decide, per function ref, whether to serve it from Convex
@@ -103,5 +103,45 @@ describe("resolveRefRoute", () => {
 
     // Assert
     expect(route).toBe("convex");
+  });
+});
+
+describe("resolveWriteBackend", () => {
+  /**
+   * The backend a `useSafeMutation` write actually lands in. Bookkeeping that
+   * names a backend (customer capture, the staff activity line) must name THIS
+   * one: the QR scanner hard-coded "convex" and filed every platform store's
+   * scanned order into the external-order ledger.
+   */
+  it("names the platform for a platform store", () => {
+    expect(resolveWriteBackend({ orderBackend: "platform", convexUrl: null })).toBe("platform");
+  });
+
+  it("names Convex for a Convex store, and before the session resolves", () => {
+    expect(
+      resolveWriteBackend({ orderBackend: "convex", convexUrl: "https://x.convex.cloud" })
+    ).toBe("convex");
+    expect(resolveWriteBackend({ orderBackend: null, convexUrl: "https://x.convex.cloud" })).toBe(
+      "convex"
+    );
+  });
+
+  it("names the tenant's own project for a supabase store", () => {
+    expect(resolveWriteBackend({ orderBackend: "supabase", convexUrl: null })).toBe("supabase");
+  });
+
+  it("agrees with the mutation router on every session", () => {
+    // One rule, two readers: a drift here would send the order one way and its
+    // capture another.
+    const sessions = [
+      { orderBackend: "platform", convexUrl: null },
+      { orderBackend: "convex", convexUrl: "https://x.convex.cloud" },
+      { orderBackend: null, convexUrl: "https://x.convex.cloud" },
+      { orderBackend: null, convexUrl: null },
+    ] as const;
+    for (const session of sessions) {
+      const route = resolveRefRoute(input({ ...session, ref: "orders:createOrder" }));
+      expect(resolveWriteBackend(session)).toBe(route);
+    }
   });
 });

@@ -52,7 +52,6 @@ export function AddonEditor({
   return (
     <EditorSection
       id={DISH_SECTION_IDS.addons}
-      icon={CirclePlus}
       title="Add-ons"
       meta={addons.length > 0 ? String(addons.length) : undefined}
       description="Extras customers can add on top — they can pick as many as they like. Leave the price empty for a free one."

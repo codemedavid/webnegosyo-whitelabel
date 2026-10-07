@@ -50,11 +50,11 @@ describe("tab bar icons", () => {
   });
 
   it("gives Customers a roster mark rather than a smiley", () => {
-    // Customers is a hub row now, not a bar tab, so its icon is pinned where
-    // the hubs read it from.
+    // The guest list is a door off Reports, not a bar tab, so its icon is
+    // pinned where the doors read it from.
     const presentation = readCode("lib", "workspace-presentation.ts");
 
-    expect(presentation).toMatch(/"customer-hub": \{ label: "Customers", icon: "customers"/);
+    expect(presentation).toMatch(/customers: \{ label: "Guest list", icon: "customers"/);
   });
 
   it("draws every icon on one stroke geometry", () => {

@@ -26,10 +26,17 @@ export function useStoreOpenStatus(source: StoreHoursSource | null | undefined):
   const [status, setStatus] = useState<StoreOpenStatus>(ALWAYS_OPEN_STATUS)
 
   const enforce = source?.enforce_operating_hours === true
+  const isPrelaunch = source?.is_prelaunch === true
   const timezone = source?.timezone ?? null
   const hours = source?.operating_hours ?? null
 
   useEffect(() => {
+    // Pre-launch does not depend on the clock: resolve once after mount (never
+    // on the first render, for the same hydration reason as the hours).
+    if (isPrelaunch) {
+      setStatus(getStoreOpenStatus({ is_prelaunch: true }, new Date()))
+      return
+    }
     if (!enforce) {
       setStatus(ALWAYS_OPEN_STATUS)
       return
@@ -45,7 +52,7 @@ export function useStoreOpenStatus(source: StoreHoursSource | null | undefined):
     evaluate()
     const timer = setInterval(evaluate, REFRESH_INTERVAL_MS)
     return () => clearInterval(timer)
-  }, [enforce, timezone, hours])
+  }, [enforce, isPrelaunch, timezone, hours])
 
   return status
 }

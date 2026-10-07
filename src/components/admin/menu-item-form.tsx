@@ -1,34 +1,27 @@
 'use client'
 
 /**
- * The add / edit dish screen.
+ * The add / edit dish screen, laid out the way Shopify lays out a product:
+ * what defines the dish in the main column (details, pricing, options), its
+ * status, preview and section list in a sidebar. On a phone the sidebar's
+ * status card sits after pricing and the preview opens as a sheet.
  *
- * Laid out the way an owner thinks about a dish: what it is (photo, name,
- * price, category), whether people can order it, and what they can choose.
- * Everything else — cost, recipe, pre-orders, selling tools, branches — sits
- * in a "More options" list of closed rows that each state what they are doing.
- * One Save button, pinned to the bottom of the screen.
+ * One contextual save bar covers everything in the form. It appears when the
+ * owner has changed something, offers Discard, and the editor stays put after
+ * saving an edit. Leaving with unsaved changes asks first.
+ *
+ * `MenuItemForm` is a thin session wrapper: Discard and "Save & add another"
+ * start a fresh editor by remounting it, which resets every piece of state at
+ * once instead of hand-resetting a dozen hooks.
  */
 
-import { useState, type ReactNode } from 'react'
-import { ToggleRight } from 'lucide-react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { z } from 'zod'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import type { MenuItem, Category, BcgClassification, ModifierGroup, PresellStock } from '@/types/database'
 import { AddonLibraryPicker } from '@/components/admin/addon-library-picker'
 import { ModifierGroupsEditor, type LinkableMenuItem } from '@/components/admin/modifier-groups-editor'
 import { ModifierLibraryPicker } from '@/components/admin/modifier-library-picker'
-import { SettingSwitch } from '@/components/admin/menu-item-presell-section'
 import { syncPresellAllocationsAction } from '@/app/actions/presell'
 import { draftFromRows, diffDraft, type DraftAllocation } from '@/lib/presell/allocation-draft'
 import { normalizeModifierGroups } from '@/lib/modifier-groups'
@@ -38,24 +31,34 @@ import { attachEntriesToGroups, buildLibraryDraftFromGroup } from '@/lib/modifie
 import { createModifierGroupLibraryEntryAction } from '@/app/actions/modifier-library'
 import { describeActionError, runServerAction } from '@/components/admin/server-action-safety'
 import { useMenuItemCosts } from '@/hooks/use-menu-item-costs'
-import { RecipeEditor } from '@/components/admin/recipe-editor'
 import { resolvePostSaveStep } from '@/lib/menu-item-save-flow'
-import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import {
-  DishBasicsSection,
-  MIN_DESCRIPTION_LENGTH,
+  describeMissingFields,
+  dishFormSchema,
+  errorsFromIssues,
+  initialCategoryId,
   type DishBasics,
   type DishBasicsErrors,
-} from '@/components/admin/menu-editor/dish-basics-section'
+} from '@/lib/menu-editor/dish-form-schema'
+import { isDraftChanged, serializeDraft } from '@/lib/menu-editor/dish-draft'
+import { DishDetailsSection, DishPricingSection } from '@/components/admin/menu-editor/dish-basics-section'
 import { DishMoreOptions, type DishBoosts } from '@/components/admin/menu-editor/dish-more-options'
 import { LegacyOptionsSections } from '@/components/admin/menu-editor/legacy-options-sections'
 import { useLegacyOptions } from '@/components/admin/menu-editor/use-legacy-options'
-import { SaveBar } from '@/components/admin/menu-editor/save-bar'
-import { DishPreviewCard, SectionNavChips, SectionNavList } from '@/components/admin/menu-editor/dish-editor-rail'
+import { SaveBar, type SaveIntent } from '@/components/admin/menu-editor/save-bar'
+import {
+  DishPreviewCard,
+  DishPreviewSheet,
+  DishStatusCard,
+  SectionNavChips,
+  SectionNavList,
+} from '@/components/admin/menu-editor/dish-editor-rail'
 import { DISH_SECTION_IDS } from '@/components/admin/menu-editor/dish-sections'
 import { describeChoiceCount, summarizeLegacyOptions, summarizeModifierGroups } from '@/lib/menu-editor/option-summary'
 import { buildSectionNav } from '@/lib/menu-editor/section-nav'
 import { DeleteDishSection } from '@/components/admin/menu-editor/delete-dish-section'
+import { RecipeStepDialog } from '@/components/admin/menu-editor/recipe-step-dialog'
+import { useLeaveGuard } from '@/components/admin/menu-editor/use-leave-guard'
 
 interface MenuItemFormProps {
   item?: MenuItem
@@ -75,63 +78,59 @@ interface MenuItemFormProps {
   presellAllocations?: PresellStock[]
   /** Set when the page could not read them; the panel is withheld rather than shown empty. */
   presellLoadError?: string
+  /** Only for stores whose orders live on Convex — where the cost field persists. */
   convexUrl?: string
   /** The per-branch panel, which saves on its own and so lives outside the form. */
   branchesPanel?: ReactNode
+  /** A new dish starts in this category (e.g. "Add" from a category on the menu list). */
+  defaultCategoryId?: string
 }
 
 const FORM_ID = 'menu-item-form'
 
-// Client-side validation (the server applies the same rules).
-const menuItemFormSchema = z.object({
-  name: z.string().trim().min(2, 'Give the dish a name (at least 2 letters).'),
-  description: z.string().min(MIN_DESCRIPTION_LENGTH, `Add a short description (at least ${MIN_DESCRIPTION_LENGTH} characters).`),
-  price: z.string().refine((val) => {
-    const num = parseFloat(val)
-    return Number.isFinite(num) && num >= 0
-  }, 'Enter a price. Use 0 for a free item.'),
-  discounted_price: z.string().optional().refine((val) => {
-    if (!val) return true
-    const num = parseFloat(val)
-    return !isNaN(num) && num >= 0
-  }, 'Sale price must be 0 or more, or left empty.'),
-  // Image is optional — accept a valid URL or an empty string (no image).
-  image_url: z.string().url('That photo link is not valid. Upload it again.').or(z.literal('')),
-  category_id: z.string().uuid('Choose a category.'),
-})
+interface EditorSession {
+  key: number
+  item?: MenuItem
+  /** Pre-order dates as last saved in this session; overrides the page's read. */
+  presellDraft?: DraftAllocation[]
+  defaultCategoryId?: string
+}
 
-/** Which element to focus for each field, so the owner lands on the problem. */
-const FIELD_ELEMENT_ID: Partial<Record<keyof DishBasics, string>> = {
-  name: 'name',
-  description: 'description',
-  price: 'price',
-  discounted_price: 'discounted_price',
-  category_id: 'category',
-  image_url: 'image_url',
+export function MenuItemForm(props: MenuItemFormProps) {
+  const [session, setSession] = useState<EditorSession>(() => ({
+    key: 0,
+    item: props.item,
+    defaultCategoryId: props.defaultCategoryId,
+  }))
+
+  return (
+    <DishEditor
+      key={session.key}
+      {...props}
+      item={session.item}
+      defaultCategoryId={session.defaultCategoryId}
+      presellDraftOverride={session.presellDraft}
+      onCommitted={(item, presellDraft) => setSession((prev) => ({ ...prev, item, presellDraft }))}
+      onRestart={(next) => setSession((prev) => ({ ...prev, ...next, key: prev.key + 1 }))}
+    />
+  )
+}
+
+interface DishEditorProps extends MenuItemFormProps {
+  presellDraftOverride?: DraftAllocation[]
+  /** An edit landed: this is the dish as now saved. */
+  onCommitted: (item: MenuItem, presellDraft: DraftAllocation[]) => void
+  /** Start a fresh editor (Discard, or Save & add another). */
+  onRestart: (next: Partial<Omit<EditorSession, 'key'>>) => void
 }
 
 function focusField(field: keyof DishBasics | undefined) {
   if (!field) return
-  const elementId = FIELD_ELEMENT_ID[field]
-  if (elementId) document.getElementById(elementId)?.focus()
+  const elementId = field === 'category_id' ? 'category' : field
+  document.getElementById(elementId)?.focus()
 }
 
-/** How many of the required fields are still unfilled or invalid. */
-function countMissingDetails(basics: DishBasics): number {
-  const parsed = menuItemFormSchema.safeParse(basics)
-  return parsed.success ? 0 : new Set(parsed.error.issues.map((issue) => issue.path[0])).size
-}
-
-function errorsFromIssues(issues: readonly { path: readonly PropertyKey[]; message: string }[]): DishBasicsErrors {
-  const next: DishBasicsErrors = {}
-  for (const issue of issues) {
-    const field = issue.path[0]
-    if (typeof field === 'string' && !(field in next)) next[field as keyof DishBasics] = issue.message
-  }
-  return next
-}
-
-export function MenuItemForm({
+function DishEditor({
   item,
   categories,
   tenantId,
@@ -146,13 +145,18 @@ export function MenuItemForm({
   presellLoadError,
   convexUrl,
   branchesPanel,
-}: MenuItemFormProps) {
+  defaultCategoryId,
+  presellDraftOverride,
+  onCommitted,
+  onRestart,
+}: DishEditorProps) {
   const router = useRouter()
+  const isNew = !item
   const [persistedItemId, setPersistedItemId] = useState(item?.id)
   const [stockBaseline, setStockBaseline] = useState<ModifierGroup[]>(item?.modifier_groups ?? [])
-  // Recipe-derived costs for the per-option margin display. No-ops when the
-  // tenant has no inventory or the item has not been saved yet.
-  const { optionRecipeCosts, refresh: refreshCosts } = useMenuItemCosts(tenantId, item?.id, inventoryEnabled)
+  // Recipe-derived costs for the margin displays. No-ops when the tenant has
+  // no inventory or the item has not been saved yet.
+  const { optionRecipeCosts, baseRecipeCost, refresh: refreshCosts } = useMenuItemCosts(tenantId, item?.id, inventoryEnabled)
 
   const [basics, setBasics] = useState<DishBasics>({
     name: item?.name || '',
@@ -160,7 +164,7 @@ export function MenuItemForm({
     price: item?.price.toString() || '',
     discounted_price: item?.discounted_price?.toString() || '',
     image_url: item?.image_url || '',
-    category_id: item?.category_id || categories[0]?.id || '',
+    category_id: item?.category_id || initialCategoryId(categories, defaultCategoryId),
   })
   const [isAvailable, setIsAvailable] = useState(item?.is_available ?? true)
   const [isFeatured, setIsFeatured] = useState(item?.is_featured ?? false)
@@ -172,33 +176,46 @@ export function MenuItemForm({
   })
 
   const legacy = useLegacyOptions(item)
-  // Unified editor state. Seeded from the item's existing modifiers (explicit
-  // modifier_groups OR derived from legacy variation_types/variations/addons) so
-  // enabling the flag on a legacy item shows its current options.
+  // Seeded from the item's existing modifiers (explicit modifier_groups OR
+  // derived from legacy variation_types/variations/addons).
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>(() =>
     modifierGroupsEnabled ? normalizeModifierGroups(item ?? {}) : []
   )
   const [errors, setErrors] = useState<DishBasicsErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const saveIntent = useRef<SaveIntent>('default')
   /**
-   * The freshly created item whose recipe step is open. Creating used to end by
-   * silently closing to the menu list — on an inventory tenant that was the
-   * moment the recipe was lost, and a dish with no recipe deducts nothing when
-   * it sells. See `resolvePostSaveStep`.
+   * The freshly created item whose recipe step is open. On an inventory store
+   * a dish with no recipe deducts nothing when it sells, so creating holds the
+   * owner here for it. See `resolvePostSaveStep`.
    */
   const [recipeStepItemId, setRecipeStepItemId] = useState<string | null>(null)
-  const [isRecipeSaving, setIsRecipeSaving] = useState(false)
   /**
-   * Pre-order dates, staged like every other field.
-   *
-   * `savedAllocations` is the baseline the save diffs against; `presellDraft`
-   * is what the merchant has now. Both are seeded once — an initializer does
-   * not re-run — so a server re-render mid-edit cannot discard typing.
+   * Pre-order dates, staged like every other field. `savedAllocations` is the
+   * baseline the save diffs against; `presellDraft` is what the owner has now.
    */
   const [savedAllocations, setSavedAllocations] = useState<DraftAllocation[]>(() =>
-    draftFromRows(presellAllocations ?? []),
+    presellDraftOverride ?? draftFromRows(presellAllocations ?? []),
   )
   const [presellDraft, setPresellDraft] = useState<DraftAllocation[]>(savedAllocations)
+
+  // Everything the save bar covers. Panels that save on their own (branches,
+  // recipes, tags) are deliberately not here.
+  const draft = {
+    basics,
+    isAvailable,
+    isFeatured,
+    isPresellOn,
+    boosts,
+    modifierGroups,
+    presellDraft,
+    legacy: modifierGroupsEnabled
+      ? null
+      : { variations: legacy.variations, variationTypes: legacy.variationTypes, addons: legacy.addons },
+  }
+  const [baseline, setBaseline] = useState(() => serializeDraft(draft))
+  const isDirty = isDraftChanged(baseline, draft)
+  const leaveGuard = useLeaveGuard(isDirty && !isSubmitting)
 
   const updateBasics = <K extends keyof DishBasics>(field: K, value: DishBasics[K]) => {
     setBasics((prev) => ({ ...prev, [field]: value }))
@@ -206,38 +223,24 @@ export function MenuItemForm({
   }
 
   const validateForm = (): boolean => {
-    const parsed = menuItemFormSchema.safeParse(basics)
+    const parsed = dishFormSchema.safeParse(basics)
     if (parsed.success) {
       setErrors({})
       return true
     }
-    const nextErrors = errorsFromIssues(parsed.error.issues)
-    setErrors(nextErrors)
-    const firstField = parsed.error.issues[0]?.path[0] as keyof DishBasics | undefined
+    setErrors(errorsFromIssues(parsed.error.issues))
     toast.error(parsed.error.issues[0]?.message ?? 'Please check the highlighted fields.')
-    focusField(firstField)
+    focusField(parsed.error.issues[0]?.path[0] as keyof DishBasics | undefined)
     return false
   }
 
-  /**
-   * Persist the pre-order dates the merchant staged. Returns a message when
-   * the write was refused — a date that already has orders cannot be dropped
-   * — and undefined when there was nothing to do or it all landed.
-   */
+  /** Persists staged pre-order dates; returns a message when the write was refused. */
   const savePresellDraft = async (menuItemId: string): Promise<string | undefined> => {
     const { upserts, deletes } = diffDraft(savedAllocations, presellDraft)
     if (upserts.length === 0 && deletes.length === 0) return undefined
 
-    const result = await syncPresellAllocationsAction(tenantId, tenantSlug, {
-      menuItemId,
-      upserts,
-      deletes,
-    })
+    const result = await syncPresellAllocationsAction(tenantId, tenantSlug, { menuItemId, upserts, deletes })
     if (!result.success) return result.error || 'Failed to save the pre-order dates'
-
-    // The draft is the baseline now, so the "unsaved dates" warning clears
-    // and a second save does not re-send what already landed. This matters
-    // when the save keeps the merchant here — the recipe step does.
     setSavedAllocations(presellDraft)
     return undefined
   }
@@ -256,7 +259,6 @@ export function MenuItemForm({
       image_url: basics.image_url,
       category_id: basics.category_id,
       modifier_groups: persistedItemId ? omitUnchangedOptionStock(cleanGroups, stockBaseline) : cleanGroups,
-      // Include legacy formats for backward compatibility
       variation_types: legacyColumns
         ? legacyColumns.variation_types
         : legacy.useGroupedVariations ? legacy.variationTypes : [],
@@ -265,7 +267,6 @@ export function MenuItemForm({
       is_available: isAvailable,
       is_featured: isFeatured,
       show_in_checkout_upsell: boosts.show_in_checkout_upsell,
-      order: item?.order || 0,
       ...(menuEngineeringEnabled ? {
         bcg_classification: boosts.bcg_classification,
         badge_text: boosts.badge_text || null,
@@ -283,7 +284,6 @@ export function MenuItemForm({
     try {
       const errorData = JSON.parse(error)
       if (Array.isArray(errorData)) {
-        // Zod validation errors from the server
         setErrors(errorsFromIssues(errorData))
         toast.error('Please fix the highlighted fields.')
         return
@@ -294,10 +294,22 @@ export function MenuItemForm({
     }
   }
 
+  /** Where a new dish goes once it is saved (and its recipe step, if any, is done). */
+  const leaveNewDish = () => {
+    if (saveIntent.current === 'add-another') {
+      toast.success(`${basics.name} added. Next dish:`)
+      onRestart({ item: undefined, presellDraft: [], defaultCategoryId: basics.category_id })
+      return
+    }
+    router.push(`/${tenantSlug}/admin/menu`)
+    router.refresh()
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validateForm()) return
 
+    const savedDraft = serializeDraft(draft)
     setIsSubmitting(true)
     try {
       const { createMenuItemAction, updateMenuItemAction } = await import('@/app/actions/menu-items')
@@ -315,12 +327,8 @@ export function MenuItemForm({
       const savedItemId = (result.data as { id?: string } | undefined)?.id ?? persistedItemId
       setPersistedItemId(savedItemId)
       setStockBaseline(cleanGroups)
-      /*
-       * The dates land here, with the dish, rather than one server action
-       * per click while the merchant is still editing. If they do not land
-       * the merchant is told and kept on the page — navigating away would
-       * discard a draft that only exists in this component's state.
-       */
+      // The dates land with the dish. If they do not, the owner stays here:
+      // navigating away would discard a draft that only exists in this state.
       if (presellEnabled && savedItemId && !presellLoadError) {
         const allocationError = await savePresellDraft(savedItemId)
         if (allocationError) {
@@ -329,31 +337,33 @@ export function MenuItemForm({
         }
       }
 
-      toast.success(item ? 'Changes saved' : `${basics.name} added to your menu`)
-      const step = resolvePostSaveStep({ isNewItem: !item, inventoryEnabled, savedItemId })
-      if (step.kind === 'link-ingredients') {
-        // Hold the merchant here for the recipe instead of closing: until a
-        // dish has one, selling it deducts no stock.
-        setRecipeStepItemId(step.itemId)
-      } else {
-        router.push(`/${tenantSlug}/admin/menu`)
+      // Saved: nothing on screen is unsaved any more, so the bar and the leave
+      // guard stand down — including during a new dish's recipe step.
+      setBaseline(savedDraft)
+
+      if (!isNew && savedItemId) {
+        // An edit stays on the dish: the bar clears and the owner can keep going.
+        onCommitted({ ...item, ...input, modifier_groups: cleanGroups, id: savedItemId } as MenuItem, presellDraft)
+        toast.success('Saved')
         router.refresh()
+        return
       }
+
+      const step = resolvePostSaveStep({ isNewItem: true, inventoryEnabled, savedItemId })
+      if (step.kind === 'link-ingredients') {
+        toast.success(`${basics.name} added to your menu`)
+        setRecipeStepItemId(step.itemId)
+        return
+      }
+      if (saveIntent.current !== 'add-another') toast.success(`${basics.name} added to your menu`)
+      leaveNewDish()
     } catch (error) {
-      // Includes Next's own "unexpected response" rejection, which says nothing
-      // a merchant can act on. `describeActionError` turns it into the real
-      // instruction — reload and sign in again — without hiding other errors.
+      // Includes Next's "unexpected response" rejection; `describeActionError`
+      // turns it into the real instruction (reload and sign in again).
       toast.error(describeActionError(error))
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  /** Leaving the recipe step always lands on the menu list, recipe or not. */
-  const finishRecipeStep = () => {
-    if (isRecipeSaving) return
-    router.push(`/${tenantSlug}/admin/menu`)
-    router.refresh()
   }
 
   const attachAddonsFromLibrary = (entries: Parameters<typeof attachEntriesToAddons>[1]) => {
@@ -377,20 +387,18 @@ export function MenuItemForm({
   }
 
   const saveGroupToLibrary = async (group: ModifierGroup) => {
-    const draft = buildLibraryDraftFromGroup(group)
-    if (!draft.name.trim()) {
+    const libraryDraft = buildLibraryDraftFromGroup(group)
+    if (!libraryDraft.name.trim()) {
       toast.error('Give the group a name before saving it to the library')
       return
     }
-    if (draft.options.length === 0) {
+    if (libraryDraft.options.length === 0) {
       toast.error('Add at least one option before saving to the library')
       return
     }
-    // The editor calls this from an onClick and drops the promise, so a
-    // rejected Server Action here would reach the window's unhandled-rejection
-    // handler instead of the merchant. It must not be able to reject.
+    // Called from an onClick that drops the promise, so it must never reject.
     const outcome = await runServerAction(() =>
-      createModifierGroupLibraryEntryAction(tenantId, tenantSlug, draft)
+      createModifierGroupLibraryEntryAction(tenantId, tenantSlug, libraryDraft)
     )
     if (!outcome.ok) {
       toast.error(outcome.message)
@@ -400,7 +408,7 @@ export function MenuItemForm({
       toast.error(outcome.value.error ?? 'Failed to save group to library')
       return
     }
-    toast.success(`"${draft.name}" saved to your modifier library`)
+    toast.success(`"${libraryDraft.name}" saved to your modifier library`)
   }
 
   const recipeContext = {
@@ -420,8 +428,10 @@ export function MenuItemForm({
         variationTypes: legacy.variationTypes,
         addons: legacy.addons,
       })
+  const missing = describeMissingFields(basics)
   const navEntries = buildSectionNav({
-    missingDetailCount: countMissingDetails(basics),
+    missingDetailCount: missing.detailCount,
+    isPriceMissing: missing.isPriceMissing,
     isAvailable,
     hasUnifiedOptions: Boolean(modifierGroupsEnabled),
     choiceStatus: describeChoiceCount(legacy.useGroupedVariations, choiceCount),
@@ -429,34 +439,29 @@ export function MenuItemForm({
     optionGroupCount: modifierGroups.length,
   })
   const categoryName = categories.find((category) => category.id === basics.category_id)?.name
+  const preview = { basics, categoryName, isAvailable, isFeatured, optionLines }
+  const statusProps = {
+    isAvailable,
+    isFeatured,
+    onAvailableChange: setIsAvailable,
+    onFeaturedChange: setIsFeatured,
+  }
 
   return (
     <div className="mx-auto max-w-6xl">
-      <SectionNavChips entries={navEntries} />
+      <SectionNavChips entries={navEntries} leading={<DishPreviewSheet {...preview} />} />
 
-      <div className="mt-4 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-8">
-        <div className="min-w-0 space-y-5">
-          <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="space-y-5">
-            <DishBasicsSection values={basics} errors={errors} categories={categories} onChange={updateBasics} />
-
-            <EditorSection id={DISH_SECTION_IDS.availability} icon={ToggleRight} title="Availability">
-              <div className="divide-y rounded-xl border">
-                <SettingSwitch
-                  id="is_available"
-                  label="Available to order"
-                  description="Turn off when you run out. It stays on your menu, marked out of stock."
-                  checked={isAvailable}
-                  onCheckedChange={setIsAvailable}
-                />
-                <SettingSwitch
-                  id="is_featured"
-                  label="Featured"
-                  description="Highlight this dish on your menu."
-                  checked={isFeatured}
-                  onCheckedChange={setIsFeatured}
-                />
-              </div>
-            </EditorSection>
+      <div className="mt-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-6">
+        <div className="min-w-0 space-y-4">
+          <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="space-y-4">
+            <DishDetailsSection values={basics} errors={errors} categories={categories} onChange={updateBasics} />
+            <DishPricingSection
+              values={basics}
+              errors={errors}
+              onChange={updateBasics}
+              recipeCost={baseRecipeCost ?? null}
+            />
+            <DishStatusCard idPrefix="dish-m" sectionId={DISH_SECTION_IDS.availability} className="lg:hidden" {...statusProps} />
 
             {modifierGroupsEnabled ? (
               <ModifierGroupsEditor
@@ -507,76 +512,32 @@ export function MenuItemForm({
           )}
         </div>
 
-        {/* Beside the form on a wide screen: the dish as a customer sees it, and where everything is. */}
         <aside className="hidden lg:sticky lg:top-6 lg:block lg:max-h-[calc(100dvh-3rem)] lg:space-y-4 lg:overflow-y-auto">
-          <DishPreviewCard
-            basics={basics}
-            categoryName={categoryName}
-            isAvailable={isAvailable}
-            isFeatured={isFeatured}
-            optionLines={optionLines}
-          />
-          <SectionNavList entries={navEntries} />
+          <DishStatusCard idPrefix="dish-d" {...statusProps} />
+          <DishPreviewCard {...preview} />
+          <SectionNavList entries={navEntries.filter((entry) => entry.id !== DISH_SECTION_IDS.availability)} />
         </aside>
       </div>
 
       <SaveBar
         formId={FORM_ID}
         isSaving={isSubmitting}
-        isNew={!item}
-        onCancel={() => router.push(`/${tenantSlug}/admin/menu`)}
+        isNew={isNew}
+        isDirty={isDirty}
+        onDiscard={() => onRestart({})}
+        onIntent={(intent) => {
+          saveIntent.current = intent
+        }}
       />
 
-      {/*
-        The recipe step for a freshly created dish. Dismissing it in any way —
-        Done, Skip, the close button — lands on the menu list either way; the
-        dialog only decides whether the dish leaves linked to inventory.
-      */}
-      <Dialog
-        open={recipeStepItemId !== null}
-        onOpenChange={(open) => !open && !isRecipeSaving && finishRecipeStep()}
-      >
-        <DialogContent
-          className="max-h-[85dvh] max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-auto"
-          showCloseButton={!isRecipeSaving}
-        >
-          <DialogHeader>
-            <DialogTitle>Link ingredients now?</DialogTitle>
-            <DialogDescription>
-              {basics.name || 'This dish'} is saved. Until it has a recipe, selling it will not
-              deduct any stock from your inventory.
-            </DialogDescription>
-          </DialogHeader>
-          {recipeStepItemId && (
-            <RecipeEditor
-              tenantId={tenantId}
-              tenantSlug={tenantSlug}
-              target={{ type: 'menu_item', menuItemId: recipeStepItemId }}
-              label="Ingredients used per order"
-              onSavingChange={setIsRecipeSaving}
-            />
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="max-sm:h-11"
-              onClick={finishRecipeStep}
-              disabled={isRecipeSaving}
-            >
-              Skip for now
-            </Button>
-            <Button
-              type="button"
-              className="max-sm:h-11"
-              onClick={finishRecipeStep}
-              disabled={isRecipeSaving}
-            >
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RecipeStepDialog
+        tenantId={tenantId}
+        tenantSlug={tenantSlug}
+        itemId={recipeStepItemId}
+        dishName={basics.name}
+        onFinish={leaveNewDish}
+      />
+      {leaveGuard.dialog}
     </div>
   )
 }

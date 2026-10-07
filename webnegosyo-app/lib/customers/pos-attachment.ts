@@ -12,7 +12,14 @@
  * way means one source of truth for identity, so a till cannot link a sale to
  * the wrong regular, and the answer is identical whether the tenant's orders
  * live in Convex or in the platform database.
+ *
+ * A dine-in walk-in can also leave a number without becoming a saved guest:
+ * the register offers an optional phone box, and the typed number becomes the
+ * contact through the same normalizer the web checkout uses.
  */
+
+import { normalizePhoneE164 } from "../phone";
+import { DINE_IN_ORDER_TYPE_KIND } from "../dine-in";
 
 /** A guest the cashier picked, as the customer list holds them. */
 export interface AttachedCustomer {
@@ -41,19 +48,21 @@ function contactFor(attached: AttachedCustomer): string {
 
 /**
  * Resolve the customer fields for a sale, from the attachment and whatever the
- * cashier typed in the name box.
+ * cashier typed in the name and phone boxes.
  *
- * With no attachment this returns exactly what the register did before: the
- * typed name and no contact, which is an honest anonymous walk-in.
+ * With no attachment and no usable phone this is an honest anonymous walk-in:
+ * the typed name and no contact. A number that cannot be normalized is never
+ * written — a junk contact would manufacture a guest nobody can reach.
  */
 export function posCustomerFields(
   attached: AttachedCustomer | null,
   typedName: string,
+  typedPhone = "",
 ): PosCustomerFields {
   const typed = typedName.trim();
 
   if (!attached) {
-    return { customerName: typed, customerContact: "" };
+    return { customerName: typed, customerContact: normalizePhoneE164(typedPhone) ?? "" };
   }
 
   return {
@@ -65,9 +74,41 @@ export function posCustomerFields(
   };
 }
 
+/**
+ * Why the typed walk-in phone cannot be used, or null when it can.
+ *
+ * An empty box is fine — the number is optional. A typed number that does not
+ * normalize is a problem to show, not to drop quietly: the cashier would
+ * otherwise believe the guest can be reached again.
+ */
+export function walkInPhoneProblem(typedPhone: string): string | null {
+  if (typedPhone.trim() === "") return null;
+  if (normalizePhoneE164(typedPhone)) return null;
+  return "Enter a mobile number like 09XX XXX XXXX, or leave it blank.";
+}
+
+/** What decides whether the register offers the optional phone box. */
+export interface WalkInPhoneContext {
+  orderTypeKind: string | null;
+  attached: AttachedCustomer | null;
+  isEditing: boolean;
+}
+
+/**
+ * Should the register ask a walk-in for an optional number?
+ *
+ * Only on dine-in, where nothing else collects one (delivery takes its own
+ * phone), only for a walk-in (an attached guest's contact is already known),
+ * and never while editing a placed order, which does not rewrite its customer.
+ */
+export function offersWalkInPhone({ orderTypeKind, attached, isEditing }: WalkInPhoneContext): boolean {
+  return orderTypeKind === DINE_IN_ORDER_TYPE_KIND && attached === null && !isEditing;
+}
+
 /** The customer half of the register's state, as a finished sale leaves it. */
 export interface ClearedSaleCustomer {
   customerName: string;
+  customerPhone: string;
   attachedCustomer: AttachedCustomer | null;
 }
 
@@ -84,7 +125,7 @@ export interface ClearedSaleCustomer {
  * object.
  */
 export function clearedSaleCustomer(): ClearedSaleCustomer {
-  return { customerName: "", attachedCustomer: null };
+  return { customerName: "", customerPhone: "", attachedCustomer: null };
 }
 
 /** One line naming who the sale is for, for the cashier to confirm at a glance. */

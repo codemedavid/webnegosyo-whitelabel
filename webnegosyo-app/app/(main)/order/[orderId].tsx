@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } fr
 import { openExternalUrl } from "../../../lib/safe-url";
 import { useLocalSearchParams, router } from "expo-router";
 import { FunctionReference } from "convex/server";
-import { useSafeQuery, useSafeMutation } from "../../../lib/hooks";
+import { useSafeQuery } from "../../../lib/hooks";
 import { colors, typography, spacing, radius } from "../../../theme/colors";
 import { Card } from "../../../components/Card";
 import { Badge } from "../../../components/Badge";
@@ -42,6 +42,7 @@ import {
   canEnterEditMode,
   enterAppendMode,
   enterEditMode,
+  type EnterEditGate,
   type OrderEditMode,
 } from "../../../lib/pos-edit-mode";
 import { usePosCartStore } from "../../../stores/pos-cart-store";
@@ -59,6 +60,14 @@ import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
+import { OfflineOrdersNotice } from "../../../components/OfflineOrdersNotice";
+import {
+  recallOrder,
+  useOfflineOrderDetail,
+  useOfflineOrderMutation,
+} from "../../../lib/offline/use-offline-orders";
+import { isQueuedOrderWrite } from "../../../lib/offline/write-order-change";
+import { useConnectivity } from "../../../lib/offline/use-connectivity";
 
 const getOrderByIdRef = "orders:getOrderById" as unknown as FunctionReference<"query">;
 const updateOrderStatusRef = "orders:updateOrderStatus" as unknown as FunctionReference<"mutation">;
@@ -69,6 +78,10 @@ const updatePaymentStatusRef =
 const getOrderRevisionsRef = "orders:getOrderRevisions" as unknown as FunctionReference<"query">;
 
 type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "delivered" | "cancelled";
+
+/** Shown instead of the edit buttons while an order has work on this device. */
+const OFFLINE_EDIT_REASON =
+  "Editing the items needs a connection. You can still move this order along, cancel it or collect payment.";
 
 const STATUS_STEPS: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "delivered"];
 
@@ -390,28 +403,55 @@ const bundleStyles = StyleSheet.create({
 
 export default function OrderDetailScreen() {
   const { orderId, intent } = useLocalSearchParams<{ orderId: string; intent?: OrderIntent }>();
-  const { data: order, isLoading, error } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, orderId ? { orderId } : "skip");
-  const updateStatus = useSafeMutation(updateOrderStatusRef);
+  // A sale rung up offline is not on the server yet: the order comes from
+  // this device, and changes made here wait for it (lib/offline/).
+  const offlineDetail = useOfflineOrderDetail(orderId);
+  const isOffline = useConnectivity().status === "offline";
+  const serverArgs = orderId && !offlineDetail.isDeviceOnly ? { orderId: offlineDetail.serverOrderId } : "skip";
+  const {
+    data: serverOrder,
+    isLoading: isServerLoading,
+    error: serverError,
+  } = useSafeQuery<OrderDetail | null>(getOrderByIdRef, serverArgs);
+  const order: (OrderDetail & { offlineSync?: string }) | null | undefined = serverOrder
+    ? offlineDetail.withEdits(serverOrder)
+    : offlineDetail.localOrder
+      ? (offlineDetail.localOrder as unknown as OrderDetail)
+      : isOffline || serverError
+        ? (() => {
+            const recalled = recallOrder<OrderDetail>(offlineDetail.serverOrderId);
+            return recalled ? offlineDetail.withEdits(recalled) : serverOrder;
+          })()
+        : serverOrder;
+  const isFromDevice = order != null && order !== serverOrder;
+  const isLoading = !isFromDevice && !isOffline && isServerLoading;
+  const error = isFromDevice ? null : isOffline ? null : serverError;
+  const updateStatus = useOfflineOrderMutation(updateOrderStatusRef);
   const { printOrder, printAt, hasPrinter, feedback: printFeedback } = useOrderPrint();
 
   // The settlement ledger. A backend that cannot serve these refs reports an
   // error rather than an empty list — which is the point: an empty ledger and
   // an unavailable one must not look alike, because one of them means "already
   // paid". On error the cards are hidden entirely rather than shown as unpaid.
-  const { data: payments, error: paymentsError } = useSafeQuery<OrderPaymentLike[]>(
+  const { data: serverPayments, error: serverPaymentsError } = useSafeQuery<OrderPaymentLike[]>(
     getOrderPaymentsRef,
-    orderId ? { orderId } : "skip",
+    serverArgs,
   );
+  // Payments collected on this device count as collected. An order only this
+  // device holds has no server ledger at all — only what was taken here.
+  const payments = offlineDetail.isDeviceOnly
+    ? offlineDetail.pendingPayments
+    : serverPayments
+      ? [...serverPayments, ...offlineDetail.pendingPayments]
+      : undefined;
+  const paymentsError = offlineDetail.isDeviceOnly ? null : serverPaymentsError;
   // Most stores run a deployment older than the ledger itself, which answers
   // that query with "no such function". That is an EMPTY ledger, not an unknown
   // one — nothing can have been settled through a backend that cannot record a
   // payment — and conflating the two used to refuse every edit on those stores.
   const ledgerState = resolveLedgerState(paymentsError);
 
-  const { data: revisions } = useSafeQuery<OrderRevisionLike[]>(
-    getOrderRevisionsRef,
-    orderId ? { orderId } : "skip",
-  );
+  const { data: revisions } = useSafeQuery<OrderRevisionLike[]>(getOrderRevisionsRef, serverArgs);
 
   const scope = useBranchScope();
   const { isOwner, permissions, role, orderBackend, isDemo, tenantId } = useAuthStore();
@@ -426,10 +466,10 @@ export default function OrderDetailScreen() {
   // Settling a bill that was rung up earlier. Deliberately NOT routed through
   // an order edit, which was the only path before: re-tendering rewrites a bill
   // nobody disputed just to record money changing hands.
-  const recordPayment = useSafeMutation(recordPaymentRef);
+  const recordPayment = useOfflineOrderMutation(recordPaymentRef);
   // Settling the ledger is only half of it: `payment_status` is what the order
   // list, the web admin and every export read, and nothing was writing it.
-  const updatePaymentStatus = useSafeMutation(updatePaymentStatusRef);
+  const updatePaymentStatus = useOfflineOrderMutation(updatePaymentStatusRef);
   // The same summary the card renders, so the figure the cashier is asked to
   // collect and the figure they were shown as owing cannot disagree.
   const settlement = order ? summarizeSettlement(order.total, payments ?? []) : null;
@@ -490,12 +530,21 @@ export default function OrderDetailScreen() {
       }
     : null;
 
-  const editGate = gateRequest ? canEnterEditMode(gateRequest) : { allowed: false as const };
+  // Loading an order into the register needs the live menu and the server's
+  // copy of the bill; an order with work still on this device has neither.
+  const isEditBlockedOffline = isOffline || isFromDevice || order?.offlineSync !== undefined;
+  const offlineGate: EnterEditGate = { allowed: false, reason: OFFLINE_EDIT_REASON };
+
+  const editGate = isEditBlockedOffline
+    ? offlineGate
+    : gateRequest ? canEnterEditMode(gateRequest) : { allowed: false as const };
 
   // Asked separately, because the two answer differently on purpose: a
   // `preparing` order cannot be edited (the food is on the stove) but CAN be
   // added to, which is the only moment a table ever asks for another round.
-  const appendGate = gateRequest ? canEnterAppendMode(gateRequest) : { allowed: false as const };
+  const appendGate = isEditBlockedOffline
+    ? offlineGate
+    : gateRequest ? canEnterAppendMode(gateRequest) : { allowed: false as const };
 
   /**
    * Discard the open counter sale, then open this order.
@@ -632,12 +681,16 @@ export default function OrderDetailScreen() {
       // Confirmation receipts print from GlobalReceiptAutoPrint, which reacts
       // to the status transition itself — so a confirm from this screen, the
       // list, the Drawer or the web admin all print exactly once.
-      await updateStatus({ orderId: order._id, status: newStatus });
+      const written = await updateStatus({ orderId: order._id, status: newStatus });
 
       // Handing the order over is taking the money for it.
       if (plan.shouldMarkPaid) {
         await markPaidAfterHandover(updatePaymentStatus, order._id);
       }
+
+      // Kept on this device: the replay pushes to Loyverse and restores stock
+      // once the change reaches the server (lib/offline/sync-order-edits.ts).
+      if (isQueuedOrderWrite(written)) return true;
 
       // Push the confirmed order into Loyverse as a sales receipt. Fires once
       // (confirm is a single transition); the server checks the tenant's flag
@@ -723,7 +776,8 @@ export default function OrderDetailScreen() {
     },
     [openCollect, requestStatusChange],
   );
-  const isOrderLoaded = order != null && order._id === orderId;
+  const isOrderLoaded =
+    order != null && (order._id === orderId || order._id === offlineDetail.serverOrderId);
   useEffect(() => {
     if (!intent || !isOrderLoaded) return;
     router.setParams({ intent: undefined });
@@ -745,7 +799,14 @@ export default function OrderDetailScreen() {
   if (order === null || order === undefined) {
     return (
       <View style={styles.screen}>
-        <ErrorState message="Order not found" onRetry={() => router.back()} />
+        <ErrorState
+          message={
+            isOffline
+              ? "This order isn't saved on this device. Open it again once you're back online."
+              : "Order not found"
+          }
+          onRetry={() => router.back()}
+        />
       </View>
     );
   }
@@ -759,6 +820,7 @@ export default function OrderDetailScreen() {
         subtitle={displayCustomerName(order.customerName)}
         actions={<Badge label={order.status} variant={order.status} />}
       />
+      <OfflineOrdersNotice isOffline={isOffline} savedAt={null} />
       <ScrollView contentContainerStyle={styles.content}>
 
       <Card style={styles.section}>

@@ -13,49 +13,53 @@
  * one parallel batch (src/lib/checkout/load-checkout-config.ts); this hook
  * never fetches them. Switching order type is a lookup, not a request.
  *
+ * What the submit paths SEND is built by pure, unit-tested modules under
+ * src/lib/checkout/ (order-items-payload, order-message, messenger-handoff,
+ * completed-order, order-submit-fields, upsell-conversion, qr-handoff-payload);
+ * this hook only sequences them around state, toasts and the network.
+ *
  * Load-bearing invariants preserved from the original monolith — do not change:
  *  - `checkoutCompleteRef.current = true` is set synchronously BEFORE `clearCart()`
  *    so the cart-empty redirect effect can't navigate away mid-confirmation.
  *  - The delivery quote hook invalidates a changed route before effects run
  *    and drops superseded requests. Every submit path checks its validity.
+ *  - The confirmation is optimistic, so every refusal the server could make
+ *    must be preflighted BEFORE it shows; the Messenger redirect waits on the
+ *    save (awaitSaveBeforeRedirect) and never fires for a refused order.
  */
 
-import { addonLabel } from '@/lib/addon-quantity'
-import { withInventorySelectionSnapshot } from '@/lib/inventory-selection-snapshot'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { generateMessengerUrl, generateMessengerMessage, generateMessengerDirectUrl, calculateCartItemUnitPrice, isCheckoutCartEmpty, getEffectiveItemPrice } from '@/lib/cart-utils'
+import { isCheckoutCartEmpty } from '@/lib/cart-utils'
 import { isMessengerEnabledForOrderType, isMessengerRedirectEnabledForOrderType } from '@/lib/messenger-availability'
 import { saveOrderDurably, isOrderSaveRetrySafe } from '@/lib/checkout/durable-order-save'
 import { awaitSaveBeforeRedirect } from '@/lib/checkout/messenger-redirect-gate'
+import { resolveTrackingRedirect } from '@/lib/checkout/tracking-redirect'
 import { classifyOrderSave, type OrderSaveNotice } from '@/lib/checkout/order-save-outcome'
 import { useBrandingPreviewTenant } from '@/hooks/use-branding-preview'
 import { preflightPresellAction } from '@/app/actions/presell-checkout'
 import { preflightCheckoutStockAction } from '@/app/actions/checkout-stock'
-import { computeOrderTotals, type OrderDiscountLine } from '@/lib/order-totals'
+import { computeOrderTotals } from '@/lib/order-totals'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import { useCheckoutVouchers } from '@/hooks/checkout/use-checkout-vouchers'
 import { useStoreOpenStatus } from '@/hooks/use-store-open-status'
-import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
+import { STORE_CLOSED_MESSAGE, STORE_PRELAUNCH_MESSAGE } from '@/lib/store-open-status'
+import { computeServiceCharge } from '@/lib/order-service-charge'
 import { useCart } from '@/hooks/useCart'
 import { useKioskMode } from '@/hooks/use-kiosk-mode'
 import { useKioskReturn } from '@/hooks/use-kiosk-return'
 import { createOrderAction } from '@/app/actions/orders'
 import { useCheckoutOutlet } from '@/hooks/use-checkout-outlet'
 import { shouldAskFulfillmentMethod } from '@/lib/checkout-fulfillment-choice'
-import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
-import { flattenBundleOrderItems } from '@/lib/bundle-order-items'
 import { getPaymentProofError, isPaymentProofRequired } from '@/lib/payment-proof'
 import { isAfterBillingPaymentEnabled, resolvePaymentSubmitPlan } from '@/lib/after-billing-payment'
 import { isPaymentDetailsStepSkipped } from '@/lib/payment-details-step'
 import { resolveActiveOrderType } from '@/lib/checkout-order-type'
 import { clearLinkedTable, preferDineInOrderType, readLinkedTable, seedTableField } from '@/lib/table-qr-param'
-import { extractImageKitFilePath } from '@/lib/imagekit-utils'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { computeChecksum, QR_SIZE_WARN_THRESHOLD } from '@/lib/qr-order-codec'
 import { prepareOrderQr } from '@/lib/qr-order-capacity'
 import { savePendingOrder } from '@/lib/qr-pending-order'
-import { resolveOrderContact } from '@/lib/customer-identity'
 import { normalizeCustomerData } from '@/lib/customer-field-normalization'
 import { validateCheckoutFields } from '@/lib/checkout-field-validation'
 import { withSmsConsent } from '@/lib/sms-consent'
@@ -67,34 +71,32 @@ import {
   reconcilePaymentSelection,
   type CheckoutConfig,
 } from '@/lib/checkout/checkout-config'
-import { buildInventorySelections, buildQrOrderItems } from '@/lib/checkout/qr-order-items'
+import { findSelectedPaymentMethod } from '@/lib/checkout/checkout-cta'
+import { buildCompletedOrderSnapshot, type CompletedOrderData } from '@/lib/checkout/completed-order'
+import { resolveMessengerHandoff, shouldSendOrderProactively, type MessengerHandoff } from '@/lib/checkout/messenger-handoff'
+import { buildOrderItemsPayload, toPresellPreflightLines, toStockPreflightLines } from '@/lib/checkout/order-items-payload'
+import { buildOrderMessage } from '@/lib/checkout/order-message'
+import {
+  buildOrderCustomerInfo,
+  buildPaymentProofPayload,
+  mintClientOrderId,
+  resolveQuoteForOrder,
+  scheduleCustomerFields,
+} from '@/lib/checkout/order-submit-fields'
+import { buildQrOrderPayload } from '@/lib/checkout/qr-handoff-payload'
+import { summarizeUpsellConversions } from '@/lib/checkout/upsell-conversion'
 import { rememberActiveOrder } from '@/lib/checkout/active-orders-storage'
 import { useDeliveryQuote } from '@/hooks/checkout/use-delivery-quote'
 import { useCheckoutSchedule } from '@/hooks/checkout/use-checkout-schedule'
+import { amountToFreeDelivery, resolveFreeDeliveryThreshold, waiveDeliveryFee } from '@/lib/free-delivery'
+import { usePaymentProof } from '@/hooks/checkout/use-payment-proof'
 import { toast } from 'sonner'
 import type { QrOrderPayloadV1 } from '@/types/qr-order'
-import type { Tenant, CartItem } from '@/types/database'
+import type { Tenant } from '@/types/database'
 
-export interface CompletedOrderData {
-  items: CartItem[]
-  total: number
-  deliveryFee: number | null
-  serviceChargeAmount: number
-  /**
-   * What was actually taken off this order. Carried on the snapshot because the
-   * confirmation screen re-derives the grand total from these parts, and a cart
-   * cleared a millisecond later can no longer be asked.
-   */
-  discounts: OrderDiscountLine[]
-  customerData: Record<string, string>
-  orderTypeName: string | null
-  scheduledForLabel: string | null
-  paymentMethodName: string | null
-  paymentMethodDetails: string | null
-  messengerMessage: string
-  messengerUrl: string
-  formFields: { field_name: string; field_label: string }[]
-}
+export type { CompletedOrderData }
+
+type CreateOrderResult = Awaited<ReturnType<typeof createOrderAction>>
 
 /** Seconds the confirmation screen counts down before it opens Messenger. */
 const COUNTDOWN_SECONDS = 3
@@ -184,6 +186,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null)
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null)
   const [trackingToken, setTrackingToken] = useState<string | null>(null)
+  // Set once the countdown has opened Messenger, so this tab can move on to tracking.
+  const [hasOpenedMessenger, setHasOpenedMessenger] = useState(false)
 
   // Payment methods linked to the chosen order type. The selection is derived:
   // a choice the new order type does not offer is dropped (an order must never
@@ -191,13 +195,19 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   const paymentMethods = paymentMethodsForOrderType(config, orderType)
   const [chosenPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null)
   const selectedPaymentMethod = reconcilePaymentSelection(paymentMethods, chosenPaymentMethod)
+  // The chosen method's row, looked up ONCE for every submit path (the old
+  // handlers re-ran this find up to four times per tap).
+  const selectedPaymentMethodData = findSelectedPaymentMethod(paymentMethods, selectedPaymentMethod)
   const [qrDialogOpen, setQrDialogOpen] = useState(false)
   const [selectedQrCode, setSelectedQrCode] = useState<string | null>(null)
   const [showPaymentDetails, setShowPaymentDetails] = useState(false)
   // Payment proof (screenshot upload and/or reference number)
-  const [paymentProofUrl, setPaymentProofUrl] = useState<string>('')
-  const [paymentProofPublicId, setPaymentProofPublicId] = useState<string>('')
-  const [paymentProofReference, setPaymentProofReference] = useState<string>('')
+  const {
+    paymentProof,
+    setPaymentProofReference,
+    handlePaymentProofUploaded,
+    handleRemovePaymentProof,
+  } = usePaymentProof()
   const [copiedText, setCopiedText] = useState<string | null>(null)
   const [messageExpanded, setMessageExpanded] = useState(false)
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
@@ -234,13 +244,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     orderTypeId: orderType,
     initialOutlets: config.outlets,
   })
-  const serviceChargeAmount = (() => {
-    if (!selectedOrderTypeData?.service_charge_enabled || !selectedOrderTypeData.service_charge_value) return 0
-    if (selectedOrderTypeData.service_charge_type === 'percentage') {
-      return Math.round(total * (selectedOrderTypeData.service_charge_value / 100) * 100) / 100
-    }
-    return selectedOrderTypeData.service_charge_value
-  })()
+  // The server's own formula on the server's own base (the pre-discount item
+  // subtotal, no delivery fee — see createOrderAction), so the charge shown is
+  // the charge billed: rounded, never negative, never a string.
+  const serviceChargeAmount = computeServiceCharge(selectedOrderTypeData, total)
 
   // Advance-order scheduling for the selected order type (see useCheckoutSchedule).
   const {
@@ -266,14 +273,14 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     items,
     operatingHours: tenant?.operating_hours,
   })
-  // Operating-hours enforcement. A scheduled (advance) order is always allowed —
-  // pre-ordering while the shop is shut is the point of the feature — so only
-  // ASAP checkouts are gated.
+  // Operating-hours enforcement. A scheduled (advance) order is allowed while
+  // the shop is shut — pre-ordering is the point of the feature — so only ASAP
+  // checkouts are gated by the hours. A pre-launch store refuses both.
   const openStatus = useStoreOpenStatus(tenant)
 
   // Delivery fee for the picked address: Lalamove quote OR distance-based fee.
   const {
-    deliveryFee,
+    deliveryFee: quotedDeliveryFee,
     quotationId,
     quoteSignature,
     isFetchingDeliveryFee,
@@ -290,6 +297,18 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     deliveryLat: customerData.delivery_lat,
     deliveryLng: customerData.delivery_lng,
   })
+
+  // Free delivery above the store's minimum (pre-discount item subtotal). The
+  // waived figure is what every design shows and bills; the server re-applies
+  // the same rule to the fee it recomputes, so this is only the preview.
+  const isDeliveryOrderType = selectedOrderTypeData?.type === 'delivery'
+  const freeDeliveryThreshold = isDeliveryOrderType
+    ? resolveFreeDeliveryThreshold(tenant?.free_delivery_min_order)
+    : null
+  const deliveryFee = waiveDeliveryFee(quotedDeliveryFee, total, freeDeliveryThreshold)
+  const isDeliveryFeeWaived = quotedDeliveryFee !== null && quotedDeliveryFee > 0 && deliveryFee === 0
+  /** ₱ still needed for free delivery; 0 once reached, null when there is no offer. */
+  const freeDeliveryRemaining = amountToFreeDelivery(total, freeDeliveryThreshold)
 
   // All submission paths must agree, including the payment dialog's direct
   // submit and Messenger-only orders that never call createOrderAction.
@@ -308,12 +327,35 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   }
 
   /**
+   * Enforce the chosen method's payment-proof requirement (screenshot OR
+   * reference). After-billing and skip-details methods still honour this: a
+   * proof-required method opens the details step either way, so checkout is
+   * never blocked by a UI that was skipped.
+   */
+  const isPaymentProofMissing = (): boolean => {
+    const proofError = getPaymentProofError(selectedPaymentMethodData, {
+      screenshotUrl: paymentProof.url,
+      reference: paymentProof.reference,
+    })
+    if (!proofError) return false
+    toast.error(proofError)
+    return true
+  }
+
+  /**
    * Refuse an ASAP checkout while the shop is outside its operating hours.
    * Returns true (and surfaces the reason) when the submit must be aborted.
-   * Scheduled orders bypass this — see `openStatus` above.
+   * Scheduled orders bypass the hours — see `openStatus` above — but NOT
+   * pre-launch: the server refuses a pre-launch store's scheduled orders too
+   * (`getClosedOrderError`), and that refusal would land behind "Order Placed!".
    */
   const isOrderingClosed = (): boolean => {
-    if (!openStatus.isOrderingBlocked || isScheduling) return false
+    if (!openStatus.isOrderingBlocked) return false
+    if (openStatus.reason === 'prelaunch') {
+      toast.error(STORE_PRELAUNCH_MESSAGE)
+      return true
+    }
+    if (isScheduling) return false
     toast.error(
       openStatus.nextOpenLabel
         ? `${STORE_CLOSED_MESSAGE}. Opens ${openStatus.nextOpenLabel}.`
@@ -321,6 +363,13 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     )
     return true
   }
+
+  /**
+   * The guards every submit path runs, in order, before it may start. Each one
+   * that trips tells the customer why; short-circuiting keeps it to one toast.
+   */
+  const hasSubmitBlocker = (): boolean =>
+    isOrderingClosed() || isDeliveryBlocked() || isPaymentProofMissing()
 
   // Derived totals shared by every design so they never recompute the fee/total rules.
   // A fee quoted against a DIFFERENT address than the one currently typed is
@@ -339,6 +388,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     validDeliveryFee,
     serviceChargeAmount,
     outletId: outlet.selectedOutletId ?? null,
+    isCheckoutComplete: checkoutComplete,
   })
 
   const { grandTotal } = computeOrderTotals({
@@ -456,6 +506,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       await awaitSaveBeforeRedirect(orderSavePromiseRef.current)
       if (isCancelled || orderRefusedRef.current) return
       window.open(messengerUrl, '_blank', 'noopener,noreferrer')
+      setHasOpenedMessenger(true)
     }
     void openMessengerWhenSafe()
 
@@ -465,75 +516,54 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     }
   }, [checkoutComplete, completedOrderData?.messengerUrl, messengerRedirectEnabled])
 
+  // Once the thank-you screen has nothing left to do — Messenger was opened by
+  // the countdown, or there is no Messenger handoff at all — a saved order goes
+  // to live tracking. Replace, so Back doesn't land on an emptied checkout.
+  const trackingRedirectPath = resolveTrackingRedirect(tenantSlug, {
+    isCheckoutComplete: checkoutComplete,
+    isMessengerEnabled: messengerEnabled,
+    messengerUrl: completedOrderData?.messengerUrl,
+    isMessengerAutoOpen: messengerRedirectEnabled,
+    hasOpenedMessenger,
+    isKiosk,
+    trackingOrderId,
+    trackingToken,
+  })
+  useEffect(() => {
+    if (trackingRedirectPath) router.replace(trackingRedirectPath)
+  }, [trackingRedirectPath, router])
+
   // QR-handoff flow: build a QrOrderPayloadV1 from the cart + form values,
   // persist it locally, and navigate to the QR thank-you page. NOTHING is
   // written to Convex or Supabase here — the vendor scanner is the sole writer.
   const handleQrHandoff = () => {
     if (!tenant || isProcessing || !orderType) return
-    if (isOrderingClosed()) return
-    if (isDeliveryBlocked()) return
-
-    const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
-    const proofError = getPaymentProofError(selectedMethodForProof, {
-      screenshotUrl: paymentProofUrl,
-      reference: paymentProofReference,
-    })
-    if (proofError) {
-      toast.error(proofError)
-      return
-    }
+    if (hasSubmitBlocker()) return
 
     setIsProcessing(true)
 
     try {
-      // Canonicalize every form field (phone → E.164, email lowercased, text
-      // whitespace-collapsed) before it is written into the QR payload so the
-      // vendor scanner persists a clean customer record.
-      const normalizedCustomerData = normalizeCustomerData(customerData, formFields)
-      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
-      const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
-
-      // Cart lines + bundle slots → QR payload lines (same shape as the
-      // Messenger/createOrderAction path below).
-      const qrItems = buildQrOrderItems(items, bundleItems)
-
-      // The same number the summary shows. Built separately it drifted: it
-      // omitted the delivery fee entirely, so a delivery order paid by QR
-      // asked for less than it billed, and it would have missed any discount.
-      const grandTotalForQr = grandTotal
-
-      const inventorySelections = buildInventorySelections(items, bundleItems)
-      const qrCustomerData = withInventorySelectionSnapshot({
-        ...normalizedCustomerData,
-        ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
-        ...((paymentProofUrl || paymentProofReference)
-          ? {
-              payment_proof_url: paymentProofUrl || undefined,
-              payment_proof_public_id: paymentProofPublicId || undefined,
-              payment_proof_reference: paymentProofReference || undefined,
-            }
-          : {}),
-      }, inventorySelections)
-
-      const payload: Omit<QrOrderPayloadV1, 'ck'> = {
-        v: 1,
+      const payload = buildQrOrderPayload({
         cid: crypto.randomUUID(),
-        t: Date.now(),
+        createdAt: Date.now(),
         tenantId: tenant.id,
         tenantSlug,
         orderTypeId: orderType,
-        orderType: selectedOrderType?.type ?? selectedOrderType?.name ?? '',
-        customerName: normalizedCustomerData.customer_name || '',
-        // Resolve from any phone/email field the tenant form uses (not just the
-        // literal customer_phone/customer_email keys) so the stored contact is a
-        // stable per-customer identity for analytics.
-        customerContact: resolveOrderContact({ name: normalizedCustomerData.customer_name, customerData: normalizedCustomerData }),
-        customerData: qrCustomerData,
-        items: qrItems,
-        total: grandTotalForQr,
-        ...(selectedPayment ? { paymentMethodId: selectedPayment.id, paymentMethod: selectedPayment.name } : {}),
-        ...(scheduledForISO ? { scheduledFor: scheduledForISO, ...(scheduledForLabel ? { scheduledForLabel } : {}) } : {}),
-      }
+        orderType: selectedOrderTypeData,
+        // Canonicalize every form field (phone → E.164, email lowercased, text
+        // whitespace-collapsed) so the vendor scanner persists a clean record.
+        customerData: normalizeCustomerData(customerData, formFields),
+        items,
+        bundleItems,
+        // The same number the summary shows. Built separately it drifted: it
+        // omitted the delivery fee entirely, so a delivery order paid by QR
+        // asked for less than it billed, and it would have missed any discount.
+        total: grandTotal,
+        paymentMethod: selectedPaymentMethodData,
+        scheduledForISO,
+        scheduledForLabel,
+        paymentProof,
+      })
 
       const preparedQr = prepareOrderQr(payload)
       if (!preparedQr.ok) {
@@ -626,14 +656,13 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     // One decision: block until a method is chosen, open the payment-details
     // step (including QR-handoff / after-billing / skip-details methods when the
     // method requires a screenshot), or submit directly.
-    const selectedMethodForPlan = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
     const submitPlan = resolvePaymentSubmitPlan({
       hasPaymentMethods: paymentMethods.length > 0,
       hasSelectedPaymentMethod: !!selectedPaymentMethod,
       isAfterBillingPayment: isAfterBillingPaymentEnabled(selectedOrderTypeData),
-      requiresPaymentProof: isPaymentProofRequired(selectedMethodForPlan),
+      requiresPaymentProof: isPaymentProofRequired(selectedPaymentMethodData),
       isQrHandoff: !!tenant?.qr_handoff_enabled,
-      skipsPaymentDetails: isPaymentDetailsStepSkipped(selectedMethodForPlan),
+      skipsPaymentDetails: isPaymentDetailsStepSkipped(selectedPaymentMethodData),
     })
 
     if (submitPlan === 'blocked-no-method') {
@@ -659,35 +688,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       return
     }
 
-    handleCheckout()
-  }
-
-  // Best-effort delete of an ImageKit payment-proof asset (replace/remove cleanup).
-  // The folder-scoped guard runs server-side on the filePath derived from the URL.
-  const deleteProofAsset = (fileId: string, url: string) => {
-    if (!fileId || !url) return
-    const filePath = extractImageKitFilePath(url)
-    if (!filePath) return
-    fetch('/api/payment-proof/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileId, filePath }),
-    }).catch(error => console.warn('[Checkout] Proof cleanup failed:', error))
-  }
-
-  // Upload callback: delete the previously-uploaded screenshot before storing the new one.
-  const handlePaymentProofUploaded = (url: string, fileId: string) => {
-    if (paymentProofPublicId && paymentProofPublicId !== fileId) {
-      deleteProofAsset(paymentProofPublicId, paymentProofUrl)
-    }
-    setPaymentProofUrl(url)
-    setPaymentProofPublicId(fileId)
-  }
-
-  const handleRemovePaymentProof = () => {
-    if (paymentProofPublicId) deleteProofAsset(paymentProofPublicId, paymentProofUrl)
-    setPaymentProofUrl('')
-    setPaymentProofPublicId('')
+    void handleCheckout()
   }
 
   /**
@@ -702,12 +703,12 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     setOrderSaveNotice(notice)
     orderRefusedRef.current = notice.verdict === 'refused'
 
-    // Only worth surfacing the message box when sending it is the recovery.
-    if (notice.isMessengerRecoverable && messengerEnabled) setMessageExpanded(true)
-
     // Only promise Messenger to a tenant that actually has it. Naming a
     // recovery the customer cannot perform is the same defect in a new place.
     const canSendMessenger = notice.isMessengerRecoverable && messengerEnabled
+
+    // Only worth surfacing the message box when sending it is the recovery.
+    if (canSendMessenger) setMessageExpanded(true)
 
     toast.error(
       canSendMessenger
@@ -717,24 +718,182 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     )
   }
 
+  /**
+   * The first preflight refusal's sentence, or null when the store can take the
+   * cart. The confirmation screen is optimistic, so a server refusal after it
+   * would be invisible: a pre-order re-checks its dates, and every cart asks
+   * whether the kitchen can make the number in it. The guards inside
+   * createOrderAction stay authoritative; these only move their sentence
+   * somewhere visible.
+   */
+  const findPreflightRefusal = async (tenantId: string): Promise<string | null> => {
+    const [presellVerdict, stockVerdict] = await Promise.all([
+      cartPresellDate
+        ? preflightPresellAction(tenantId, toPresellPreflightLines(items))
+        : Promise.resolve({ ok: true } as const),
+      preflightCheckoutStockAction(tenantId, toStockPreflightLines(items), outlet.selectedOutletId ?? null),
+    ])
+    const refusal = [presellVerdict, stockVerdict].find(verdict => !verdict.ok)
+    return refusal && !refusal.ok ? refusal.message : null
+  }
+
+  /** A saved order: count upsells, hand it to Messenger, and remember it for tracking. */
+  const handleOrderSaved = (
+    tenantId: string,
+    result: CreateOrderResult,
+    handoff: MessengerHandoff,
+    outletId: string | undefined
+  ) => {
+    const orderId = result.data?.id
+
+    const upsell = summarizeUpsellConversions(items)
+    if (upsell) {
+      trackAnalyticsEventAction(tenantId, 'upsell_converted', {
+        orderId,
+        ...upsell,
+        // Additive metadata only — the event name and every existing key are
+        // untouched, and the key is absent (not null) for the tenants who have
+        // no branches.
+        ...(outletId ? { outletId } : {}),
+      })
+    }
+
+    // Proactive webhook send
+    if (shouldSendOrderProactively({ isMessengerEnabled: messengerEnabled, handoff, orderId, orderToken: result.orderToken })) {
+      fetch('/api/messenger/send-order-public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, tenantId, orderToken: result.orderToken }),
+      }).catch(error => console.warn('[Checkout] Proactive send error:', error))
+    }
+
+    // Save tracking data for order status page
+    if (orderId && result.trackingToken) {
+      setTrackingOrderId(orderId)
+      setTrackingToken(result.trackingToken)
+      rememberActiveOrder(window.localStorage, tenantSlug, {
+        orderId,
+        trackingToken: result.trackingToken,
+        createdAt: new Date().toISOString(),
+      })
+    }
+  }
+
+  /**
+   * PHASE 4: save the order in the background, behind the confirmation screen.
+   *
+   * That screen is already showing, so this save is the only thing standing
+   * between the customer's "Order Placed!" and the merchant hearing about it.
+   * It is retried where retrying is proven safe, and the Messenger redirect
+   * waits on the promise stored below.
+   */
+  const saveOrderInBackground = (
+    tenantId: string,
+    orderTypeId: string,
+    normalizedCustomerData: Record<string, string>,
+    handoff: MessengerHandoff
+  ) => {
+    const orderItems = buildOrderItemsPayload(items, bundleItems)
+    const customerInfo = buildOrderCustomerInfo(normalizedCustomerData)
+
+    // Which branch is taking this order, under either timing: the splash
+    // chooser's stored answer, or the one picked on this very page. Resolved
+    // by useCheckoutOutlet, which returns null for the tenants who never
+    // turned branches on. The server re-validates it regardless.
+    const selectedOutletId = outlet.selectedOutletId ?? undefined
+
+    // Compared against the RAW typed address — see resolveQuoteForOrder.
+    const quote = resolveQuoteForOrder({
+      deliveryFee,
+      quotationId,
+      quoteSignature,
+      quotedAddress: deliveryFeeAddress,
+      currentAddress: customerData.delivery_address,
+    })
+
+    // Stable across retries of this attempt — see clientOrderIdRef.
+    if (!clientOrderIdRef.current) {
+      clientOrderIdRef.current = mintClientOrderId(typeof crypto !== 'undefined' ? crypto : undefined)
+    }
+    const clientOrderId = clientOrderIdRef.current
+
+    setOrderSaveNotice(null)
+    orderRefusedRef.current = false
+
+    // Captured from inside the retry so the success handling below still
+    // sees the server's full reply (order id, tokens) rather than just the
+    // ok/failed verdict the retry helper reports.
+    let saveResult: CreateOrderResult | null = null
+
+    const savePromise = saveOrderDurably(
+      async () => {
+        const attemptResult = await createOrderAction(
+          tenantId, orderItems, customerInfo, orderTypeId,
+          withSmsConsent(
+            {
+              ...normalizedCustomerData,
+              ...(messengerPsid ? { messenger_psid: messengerPsid } : {}),
+              ...scheduleCustomerFields(scheduledForISO, scheduledForLabel),
+            },
+            isSmsOptedIn,
+            new Date().toISOString()
+          ),
+          quote.deliveryFee, quote.quotationId,
+          selectedPaymentMethod || undefined,
+          selectedPaymentMethodData?.name || undefined,
+          selectedPaymentMethodData?.details || undefined,
+          selectedPaymentMethodData?.qr_code_url || undefined,
+          serviceChargeAmount || undefined,
+          scheduledForISO || undefined,
+          buildPaymentProofPayload(paymentProof),
+          selectedOutletId,
+          // Codes, not amounts. The server recomputes the discount from these.
+          [...voucherCodes],
+          clientOrderId,
+          quote.quoteSignature
+        )
+        saveResult = attemptResult
+        return { success: attemptResult.success, error: attemptResult.error }
+      },
+      { attempts: isOrderSaveRetrySafe(tenant) ? undefined : 1 }
+    )
+
+    // What the Messenger redirect waits on. Resolves either way — the
+    // failure is reported through `orderSaveFailed`, not by rejecting.
+    orderSavePromiseRef.current = savePromise
+
+    savePromise.then(save => {
+      const result: CreateOrderResult | null = saveResult
+      if (save.ok && result?.success) {
+        handleOrderSaved(tenantId, result, handoff, selectedOutletId)
+        return
+      }
+      // The customer was told the order was placed and the cart is gone,
+      // so a silent console.warn here is how an order disappears without
+      // anyone noticing. Say it out loud — and say the RIGHT thing: the
+      // store refusing an order and the order going missing need opposite
+      // advice, and both used to collapse into one sentence that told a
+      // refused customer to hand the merchant the order anyway.
+      const notice = classifyOrderSave({
+        success: false,
+        refused: save.refused ?? result?.refused,
+        error: save.error ?? result?.error,
+      })
+      console.error('[Checkout] Order save did not land:', {
+        verdict: notice.verdict,
+        reason: save.error ?? result?.error,
+      })
+      announceOrderSaveNotice(notice)
+    }).catch(error => {
+      // A throw carries no verdict, so it can only be read as a lost order.
+      console.error('[Checkout] Order save error:', error)
+      announceOrderSaveNotice(classifyOrderSave(null))
+    })
+  }
+
   const handleCheckout = async () => {
     if (!tenant || isProcessing || !orderType) return
-    if (isOrderingClosed()) return
-    if (isDeliveryBlocked()) return
-
-    // Enforce per-method payment-proof requirement (screenshot OR reference).
-    // After-billing and skip-details methods still honour this: a proof-required
-    // method opens the details step either way, so checkout is never blocked by
-    // a UI that was skipped.
-    const selectedMethodForProof = paymentMethods.find(pm => pm.id === selectedPaymentMethod) ?? null
-    const proofError = getPaymentProofError(selectedMethodForProof, {
-      screenshotUrl: paymentProofUrl,
-      reference: paymentProofReference,
-    })
-    if (proofError) {
-      toast.error(proofError)
-      return
-    }
+    if (hasSubmitBlocker()) return
 
     setIsProcessing(true)
 
@@ -744,90 +903,35 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       // snapshot, and the persisted order all carry the same clean values.
       const normalizedCustomerData = normalizeCustomerData(customerData, formFields)
 
-      // Get selected payment method details for snapshot
-      const selectedPayment = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
-
       // ── PHASE 1: Generate order message (instant, no DB) ────────────────
-      const selectedOrderType = orderTypes.find(ot => ot.id === orderType)
-      const orderTypeInfo = selectedOrderType ? {
-        name: selectedOrderType.name,
-        type: selectedOrderType.type,
-      } : null
-
-      const selectedPaymentForMessage = paymentMethods.find(pm => pm.id === selectedPaymentMethod)
-      const paymentMethodInfo = selectedPaymentForMessage ? {
-        name: selectedPaymentForMessage.name,
-        details: selectedPaymentForMessage.details || undefined,
-      } : null
-
-      const formFieldsMeta = formFields.map(field => ({
-        field_name: field.field_name,
-        field_label: field.field_label,
-      }))
-
-      const message = generateMessengerMessage(
+      const message = buildOrderMessage({
         items,
-        tenant.name,
-        orderTypeInfo,
-        normalizedCustomerData,
-        paymentMethodInfo,
-        formFieldsMeta,
-        serviceChargeAmount || undefined,
-        scheduledForLabel || undefined,
-        {
-          bundleItems,
-          deliveryFee: validDeliveryFee,
-          discounts: effectiveDiscounts,
-        }
-      )
+        bundleItems,
+        tenantName: tenant.name,
+        orderType: selectedOrderTypeData,
+        customerData: normalizedCustomerData,
+        paymentMethod: selectedPaymentMethodData,
+        formFields,
+        serviceChargeAmount,
+        scheduledForLabel,
+        deliveryFee: validDeliveryFee,
+        discounts: effectiveDiscounts,
+      })
 
       // ── PHASE 2: Resolve Messenger URL (no request — read with the page) ──
       // The connected Facebook page's id was resolved on the server; see
       // CheckoutConfig.facebookPageId for why the browser no longer reads it.
-      const pageId: string | null =
-        config.facebookPageId || tenant.messenger_username || tenant.messenger_page_id || null
+      const handoff = resolveMessengerHandoff({
+        tenant,
+        facebookPageId: config.facebookPageId,
+        isMessengerEnabled: messengerEnabled,
+        message,
+      })
 
-      const isFacebookPageConnected = tenant.facebook_page_id !== null &&
-        tenant.facebook_page_id !== undefined &&
-        pageId !== null &&
-        (pageId !== tenant.messenger_username && pageId !== tenant.messenger_page_id)
-
-      const useDirectMode = tenant.messenger_redirect_mode === 'direct'
-
-      // Build Messenger URL without order ID first (we don't have it yet)
-      let messengerUrl: string | null = null
-      if (messengerEnabled && pageId && pageId.trim() !== '') {
-        if (useDirectMode) {
-          messengerUrl = generateMessengerDirectUrl(pageId)
-        } else {
-          messengerUrl = generateMessengerUrl(pageId, message)
-        }
-      }
-
-      // ── Preflights ──
-      // The confirmation screen below is optimistic, so a server refusal after
-      // it would be invisible. A pre-order re-checks its dates, and every cart
-      // asks whether the kitchen can make the number in it — without that an
-      // uncoverable cart showed "Order Placed!" and wrote nothing. The guards
-      // inside createOrderAction stay authoritative; these only move their
-      // sentence somewhere visible. Independent, so they run side by side
-      // rather than adding two round trips to the tap.
-      const [presellVerdict, stockVerdict] = await Promise.all([
-        cartPresellDate
-          ? preflightPresellAction(
-              tenant.id,
-              items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity, presellDate: item.presell_date })),
-            )
-          : Promise.resolve({ ok: true } as const),
-        preflightCheckoutStockAction(
-          tenant.id,
-          items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity })),
-          outlet.selectedOutletId ?? null,
-        ),
-      ])
-      const refusal = [presellVerdict, stockVerdict].find(verdict => !verdict.ok)
-      if (refusal && !refusal.ok) {
-        toast.error(refusal.message)
+      // ── Preflights ── (see findPreflightRefusal)
+      const refusal = await findPreflightRefusal(tenant.id)
+      if (refusal) {
+        toast.error(refusal)
         setIsProcessing(false)
         return
       }
@@ -839,35 +943,22 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
       }
 
       // ── PHASE 3: Show confirmation screen IMMEDIATELY ─────────────────────
-      const selectedOrderTypeName = orderTypes.find(ot => ot.id === orderType)?.name ?? null
-      const selectedPaymentName = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.name ?? null
-      const selectedPaymentDetails = paymentMethods.find(pm => pm.id === selectedPaymentMethod)?.details ?? null
-      const formFieldsMeta2 = formFields.map(f => ({ field_name: f.field_name, field_label: f.field_label }))
-
-      // Snapshot cart data before clearing
-      const snapshotItems = [...items]
-      const snapshotBundleItems = [...bundleItems]
-      const snapshotTotal = total
-      const snapshotDiscounts = [...effectiveDiscounts]
-      const snapshotCustomerData = { ...normalizedCustomerData }
-
-      setCompletedOrderData({
-        items: snapshotItems,
-        total: snapshotTotal,
+      setCompletedOrderData(buildCompletedOrderSnapshot({
+        items,
+        total,
         // validDeliveryFee, not a truthiness test: free delivery (0) is a fee,
         // and the summary already billed it as one.
         deliveryFee: validDeliveryFee,
         serviceChargeAmount,
-        discounts: snapshotDiscounts,
-        customerData: snapshotCustomerData,
-        orderTypeName: selectedOrderTypeName,
+        discounts: effectiveDiscounts,
+        customerData: normalizedCustomerData,
+        orderTypeName: selectedOrderTypeData?.name ?? null,
         scheduledForLabel,
-        paymentMethodName: selectedPaymentName,
-        paymentMethodDetails: selectedPaymentDetails,
+        paymentMethod: selectedPaymentMethodData,
         messengerMessage: message,
-        messengerUrl: messengerUrl ?? '',
-        formFields: formFieldsMeta2,
-      })
+        messengerUrl: handoff.messengerUrl,
+        formFields,
+      }))
 
       // Set ref synchronously BEFORE clearCart to prevent race with cart-empty useEffect
       checkoutCompleteRef.current = true
@@ -880,216 +971,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
 
       // ── PHASE 4: Save order to DB in background (non-blocking) ───────────
       if (tenant.enable_order_management) {
-        const orderItems: Array<{
-          menu_item_id: string
-          menu_item_name: string
-          variation?: string
-          addons: string[]
-          quantity: number
-          price: number
-          subtotal: number
-          special_instructions?: string
-          option_ids?: string[]
-          addon_ids?: string[]
-          addon_quantities?: Record<string, number>
-          isUpsellItem?: boolean
-          isBundleItem?: boolean
-          bundleId?: string
-          bundleName?: string
-          slotName?: string
-        }> = snapshotItems.map(item => {
-          // Includes add-ons — see the QR path above; the server clamps
-          // subtotal to price × quantity.
-          const itemPrice = calculateCartItemUnitPrice(
-            getEffectiveItemPrice(item.menu_item),
-            item.selected_variations ?? item.selected_variation,
-            item.selected_addons
-          )
-
-          let variationText = ''
-          if (item.selected_variation) {
-            variationText = item.selected_variation.name
-          } else if (item.selected_variations) {
-            variationText = Object.values(item.selected_variations).map(opt => opt.name).join(', ')
-          }
-
-          // The display strings above flatten the selection; these keep the
-          // ids so inventory can spend what an option actually adds. Additive —
-          // nothing that reads the strings is affected.
-          const selection = extractSelectionIds(item)
-
-          return {
-            menu_item_id: item.menu_item.id,
-            menu_item_name: item.menu_item.name,
-            variation: variationText || undefined,
-            addons: item.selected_addons.map(addonLabel),
-            quantity: item.quantity,
-            price: itemPrice,
-            subtotal: item.subtotal,
-            special_instructions: item.special_instructions,
-            option_ids: selection.optionIds,
-            addon_ids: selection.addonIds,
-            ...(selection.addonQuantities ? { addon_quantities: selection.addonQuantities } : {}),
-            ...(item.upsellSource ? { isUpsellItem: true } : {}),
-            ...(item.presell_date ? { presell_date: item.presell_date } : {}),
-          }
-        })
-
-        // Flatten bundle items into order items. Extracted to a pure helper so
-        // the payload — including the option/addon ids inventory depletion
-        // resolves recipes against, which this inline loop used to drop — is
-        // unit-testable. See src/lib/bundle-order-items.ts.
-        orderItems.push(...flattenBundleOrderItems(snapshotBundleItems))
-
-        const customerInfo = {
-          name: snapshotCustomerData.customer_name || undefined,
-          contact: resolveOrderContact({ name: snapshotCustomerData.customer_name, customerData: snapshotCustomerData }) || undefined,
-        }
-
-        // Which branch is taking this order, under either timing: the splash
-        // chooser's stored answer, or the one picked on this very page. Resolved
-        // by useCheckoutOutlet, which returns null for the tenants who never
-        // turned branches on. The server re-validates it regardless.
-        const selectedOutletId = outlet.selectedOutletId ?? undefined
-
-        // Compare against the RAW address the fee was quoted for (deliveryFeeAddress
-        // is captured from the un-normalized customerData.delivery_address), so a
-        // whitespace-only normalization difference never drops a valid fee.
-        const validDeliveryFeeForOrder = (deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address) ? deliveryFee : undefined
-        const validQuotationId = (quotationId && deliveryFeeAddress === customerData.delivery_address) ? quotationId : undefined
-        const validQuoteSignature = (quoteSignature && validQuotationId) ? quoteSignature : undefined
-
-        // Stable across retries of this attempt — see clientOrderIdRef.
-        if (!clientOrderIdRef.current) {
-          clientOrderIdRef.current =
-            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-              ? crypto.randomUUID()
-              : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-        }
-        const clientOrderId = clientOrderIdRef.current
-
-        // The confirmation screen is already on screen, so this save is the
-        // only thing standing between the customer's "Order Placed!" and the
-        // merchant hearing about it. It is retried where retrying is proven
-        // safe, and the Messenger redirect waits on the promise below.
-        setOrderSaveNotice(null)
-        orderRefusedRef.current = false
-
-        // Captured from inside the retry so the success handling below still
-        // sees the server's full reply (order id, tokens) rather than just the
-        // ok/failed verdict the retry helper reports.
-        let saveResult: Awaited<ReturnType<typeof createOrderAction>> | null = null
-
-        const savePromise = saveOrderDurably(
-          async () => {
-            const attemptResult = await createOrderAction(
-              tenant.id, orderItems, customerInfo, orderType,
-              withSmsConsent(
-                {
-                  ...snapshotCustomerData,
-                  ...(messengerPsid ? { messenger_psid: messengerPsid } : {}),
-                  ...(scheduledForISO ? { scheduled_for: scheduledForISO, scheduled_for_label: scheduledForLabel ?? '' } : {}),
-                },
-                isSmsOptedIn,
-                new Date().toISOString()
-              ),
-              validDeliveryFeeForOrder, validQuotationId,
-              selectedPaymentMethod || undefined,
-              selectedPayment?.name || undefined,
-              selectedPayment?.details || undefined,
-              selectedPayment?.qr_code_url || undefined,
-              serviceChargeAmount || undefined,
-              scheduledForISO || undefined,
-              (paymentProofUrl || paymentProofReference)
-                ? {
-                    url: paymentProofUrl || null,
-                    publicId: paymentProofPublicId || null,
-                    reference: paymentProofReference || null,
-                  }
-                : undefined,
-              selectedOutletId,
-              // Codes, not amounts. The server recomputes the discount from these.
-              [...voucherCodes],
-              clientOrderId,
-              validQuoteSignature
-            )
-            saveResult = attemptResult
-            return { success: attemptResult.success, error: attemptResult.error }
-          },
-          { attempts: isOrderSaveRetrySafe(tenant) ? undefined : 1 }
-        )
-
-        // What the Messenger redirect waits on. Resolves either way — the
-        // failure is reported through `orderSaveFailed`, not by rejecting.
-        orderSavePromiseRef.current = savePromise
-
-        savePromise.then(save => {
-          const result = saveResult
-          if (save.ok && result?.success) {
-            // Track upsell conversions
-            const upsellItems = snapshotItems.filter(i => i.upsellSource)
-            if (upsellItems.length > 0) {
-              const sourceBreakdown: Record<string, number> = {}
-              let upsellRevenue = 0
-              for (const ui of upsellItems) {
-                const src = ui.upsellSource!
-                sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1
-                upsellRevenue += ui.subtotal
-              }
-              trackAnalyticsEventAction(tenant.id, 'upsell_converted', {
-                orderId: result.data?.id, upsellItemCount: upsellItems.length,
-                upsellRevenue, sources: sourceBreakdown,
-                // Additive metadata only — the event name and every existing
-                // key are untouched, and the key is absent (not null) for the
-                // tenants who have no branches.
-                ...(selectedOutletId ? { outletId: selectedOutletId } : {}),
-              })
-            }
-
-            // Proactive webhook send
-            if (messengerEnabled && !useDirectMode && isFacebookPageConnected && result.data?.id && result.orderToken) {
-              fetch('/api/messenger/send-order-public', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  orderId: result.data.id, tenantId: tenant.id, orderToken: result.orderToken,
-                }),
-              }).catch(error => console.warn('[Checkout] Proactive send error:', error))
-            }
-
-            // Save tracking data for order status page
-            if (result.data?.id && result.trackingToken) {
-              setTrackingOrderId(result.data.id)
-              setTrackingToken(result.trackingToken)
-              rememberActiveOrder(window.localStorage, tenantSlug, {
-                orderId: result.data.id,
-                trackingToken: result.trackingToken,
-                createdAt: new Date().toISOString(),
-              })
-            }
-          } else {
-            // The customer was told the order was placed and the cart is gone,
-            // so a silent console.warn here is how an order disappears without
-            // anyone noticing. Say it out loud — and say the RIGHT thing: the
-            // store refusing an order and the order going missing need opposite
-            // advice, and both used to collapse into one sentence that told a
-            // refused customer to hand the merchant the order anyway.
-            const notice = classifyOrderSave({
-              success: false,
-              refused: save.refused ?? result?.refused,
-              error: save.error ?? result?.error,
-            })
-            console.error('[Checkout] Order save did not land:', {
-              verdict: notice.verdict,
-              reason: save.error ?? result?.error,
-            })
-            announceOrderSaveNotice(notice)
-          }
-        }).catch(error => {
-          // A throw carries no verdict, so it can only be read as a lost order.
-          console.error('[Checkout] Order save error:', error)
-          announceOrderSaveNotice(classifyOrderSave(null))
-        })
+        saveOrderInBackground(tenant.id, orderType, normalizedCustomerData, handoff)
       }
     } catch (error) {
       console.error('Checkout error:', error)
@@ -1142,6 +1024,9 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     total,
     serviceChargeAmount,
     deliveryFee,
+    isDeliveryFeeWaived,
+    freeDeliveryThreshold,
+    freeDeliveryRemaining,
     isFetchingDeliveryFee,
     deliveryFeeAddress,
     deliveryOutOfRange,
@@ -1183,8 +1068,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     copiedText,
     handleCopyText,
     // payment proof
-    paymentProofUrl,
-    paymentProofReference,
+    paymentProofUrl: paymentProof.url,
+    paymentProofReference: paymentProof.reference,
     setPaymentProofReference,
     handlePaymentProofUploaded,
     handleRemovePaymentProof,

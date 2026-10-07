@@ -11,6 +11,7 @@ import {
   toggleMenuItemAvailability,
   type MenuItemInput,
 } from '@/lib/admin-service'
+import { reorderMenuItems } from '@/lib/menu-item-arrangement-service'
 import { revalidateStorefrontMenu } from '@/lib/storefront/revalidate'
 
 export async function getMenuItemsAction(tenantId: string) {
@@ -96,3 +97,35 @@ export async function toggleAvailabilityAction(itemId: string, tenantId: string,
   }
 }
 
+
+/** The most dishes one category arrangement may name — well past any real menu. */
+const MAX_ARRANGED_ITEMS = 1000
+
+const reorderMenuItemsInput = z.object({
+  tenantId: z.string().uuid(),
+  categoryId: z.string().uuid(),
+  itemIds: z.array(z.string().uuid()).max(MAX_ARRANGED_ITEMS),
+})
+
+/**
+ * Arrange one category's dishes. The order is shared: the storefront and the
+ * register both sort by it.
+ */
+export async function reorderMenuItemsAction(
+  tenantId: string,
+  tenantSlug: string,
+  categoryId: string,
+  itemIds: string[],
+) {
+  const parsed = reorderMenuItemsInput.safeParse({ tenantId, categoryId, itemIds })
+  if (!parsed.success) return { success: false, error: 'That arrangement could not be read. Refresh and try again.' }
+
+  try {
+    await reorderMenuItems(parsed.data.tenantId, parsed.data.categoryId, parsed.data.itemIds)
+    revalidatePath(`/${tenantSlug}/admin/menu`)
+    revalidateStorefrontMenu(tenantSlug)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to reorder dishes' }
+  }
+}

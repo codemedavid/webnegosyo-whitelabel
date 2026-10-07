@@ -87,7 +87,7 @@ const createTenantEnvelope = z
         slug: z.string().min(2).describe('URL slug: lowercase letters, numbers and dashes only'),
         primary_color: z.string().min(1).describe('Primary brand color, hex (e.g. #1a1a1a)'),
         secondary_color: z.string().min(1).describe('Secondary brand color, hex'),
-        messenger_page_id: z.string().min(1).describe('Facebook Messenger page id that receives orders'),
+        messenger_page_id: z.string().optional().describe('Optional Facebook Messenger page id that receives orders; connect later if unknown'),
         domain: z.string().optional().describe('Optional custom domain (e.g. shop.example.com)'),
         logo_url: z.string().optional().describe('Optional logo image URL'),
         accent_color: z.string().optional().describe('Optional accent color, hex'),
@@ -134,7 +134,7 @@ function op<I>(o: ProvisioningOp<I>): ProvisioningOp<unknown> {
 const ops: ProvisioningOp<unknown>[] = [
     op({
         name: 'create_tenant',
-        description: 'Create a new white-labeled tenant (restaurant). Requires name, slug, primary/secondary colors and a Messenger page id.',
+        description: 'Create a new white-labeled tenant (restaurant). Requires name, slug and primary/secondary colors; a Messenger page id is optional.',
         input: createTenantEnvelope,
         execute: (ctx, input) => createTenantSupabase(input as never, ctx),
     }),
@@ -180,7 +180,7 @@ const ops: ProvisioningOp<unknown>[] = [
                 tenantId: UUID,
                 itemId: UUID.describe('Id of the existing menu item to update (resolve via list_menu_items)'),
                 name: z.string().optional().describe('New display name (min 2 chars)'),
-                description: z.string().optional().describe('New description (min 10 chars)'),
+                description: z.string().optional().describe('New description (optional; empty clears it, max 2000 chars)'),
                 price: z.number().optional().describe('New base price'),
                 discounted_price: z.number().nullable().optional().describe('Sale price, or null to clear'),
                 category_id: UUID.optional().describe('Move the item to a different category'),

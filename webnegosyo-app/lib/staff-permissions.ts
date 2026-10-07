@@ -132,11 +132,6 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // can text all of them. An unmapped tab defaults to ALLOWED, which would
   // hand the store's contact database to whoever can ring up a sale.
   customers: "customers",
-  // The Customer Hub is the same rows as the guest list, aggregated — repeat
-  // rate, spend and favourites are derived from exactly the customer records
-  // the `customers` key protects. Summarising PII does not declassify it, and
-  // an unmapped tab defaults to ALLOWED.
-  "customer-hub": "customers",
   "product-management": "menu",
   // Renaming, hiding or rearranging a section rewrites the public menu's
   // shape. An unmapped tab defaults to ALLOWED, which would let a cashier

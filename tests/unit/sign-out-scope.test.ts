@@ -9,8 +9,14 @@ import { SIGN_OUT_SCOPE, signOutThisDevice } from '@/lib/supabase/sign-out'
  * the narrower scope in, and stop a bare `auth.signOut()` from creeping back.
  */
 
-const SRC_ROOT = join(__dirname, '..', '..', 'src')
+const REPO_ROOT = join(__dirname, '..', '..')
+const SRC_ROOT = join(REPO_ROOT, 'src')
 const HELPER_PATH = join(SRC_ROOT, 'lib', 'supabase', 'sign-out.ts')
+
+// The desktop POS shares the same Supabase project and accounts, so a global
+// sign-out there (including the one on a failed login) kills web + MCP too.
+const DESKTOP_SRC_ROOT = join(REPO_ROOT, 'webnegosyo-desktop', 'src')
+const DESKTOP_HELPER_PATH = join(DESKTOP_SRC_ROOT, 'renderer', 'src', 'lib', 'sign-out.ts')
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true, recursive: true })
@@ -37,5 +43,20 @@ describe('signOutThisDevice', () => {
       .filter((file) => /\.auth\.signOut\(/.test(readFileSync(file, 'utf8')))
 
     expect(offenders).toEqual([])
+  })
+
+  test('no desktop POS source file calls auth.signOut directly outside its helper', () => {
+    const offenders = sourceFiles(DESKTOP_SRC_ROOT)
+      .filter((file) => file !== DESKTOP_HELPER_PATH)
+      .filter((file) => /\.auth\.signOut\(/.test(readFileSync(file, 'utf8')))
+
+    expect(offenders).toEqual([])
+  })
+
+  test('the desktop POS helper signs out with the local scope', () => {
+    const helper = readFileSync(DESKTOP_HELPER_PATH, 'utf8')
+
+    expect(helper).toMatch(/signOut\(\{ scope: SIGN_OUT_SCOPE \}\)/)
+    expect(helper).toMatch(/SIGN_OUT_SCOPE = 'local'/)
   })
 })

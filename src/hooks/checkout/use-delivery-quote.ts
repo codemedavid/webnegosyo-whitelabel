@@ -165,7 +165,14 @@ export function useDeliveryQuote({
 
   useEffect(() => {
     let isCancelled = false
-    const setQuote = (value: DeliveryQuoteState) => setSnapshot({ requestKey, value })
+    // An idle snapshot reads as idle under ANY request key (a key mismatch
+    // already renders IDLE), so replacing idle with idle changes nothing on
+    // screen — but a fresh object would re-render the whole checkout form, once
+    // per keystroke while an address is typed without picking a suggestion.
+    const setQuote = (value: DeliveryQuoteState) =>
+      setSnapshot(previous =>
+        previous.value === IDLE_DELIVERY_QUOTE && value === IDLE_DELIVERY_QUOTE ? previous : { requestKey, value }
+      )
 
     const plan = resolveDeliveryQuotePlan({
       isDeliveryOrder,

@@ -18,6 +18,8 @@ interface AuthState {
   customerHubEnabled: boolean;
   /** Loyalty earning is on for this store. Unknown reads as OFF. */
   loyaltyEnabled: boolean;
+  /** The Owl assistant is on for this store. Unknown reads as OFF. */
+  assistantEnabled: boolean;
   /**
    * The tenant's saved receipt layout (preset name or custom block stack),
    * passed through unvalidated; `lib/receipt-print.ts` shape-checks at print.
@@ -81,6 +83,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   orderBackend: null,
   customerHubEnabled: false,
   loyaltyEnabled: false,
+  assistantEnabled: false,
   receiptLayout: null,
   receiptLogoUrl: null,
   isLoading: true,
@@ -108,6 +111,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       orderBackend: null,
       customerHubEnabled: false,
       loyaltyEnabled: false,
+      assistantEnabled: false,
       receiptLayout: null,
       receiptLogoUrl: null,
       isLoading: false,

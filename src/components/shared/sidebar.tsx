@@ -1,632 +1,331 @@
 'use client'
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import Image from 'next/image'
 import {
   LayoutDashboard,
   UtensilsCrossed,
-  FolderTree,
   Settings,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
   Store,
   ShoppingBag,
-  CreditCard,
-  TrendingUp,
-  Paintbrush,
-  ReceiptText,
   BarChart3,
-  Cog,
-  Box,
   Users,
   Ticket,
+  Gift,
   Menu,
-  MapPin,
-  KeyRound,
+  X,
+  ArrowUpRight,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
+import type { AdminSidebarFlags } from '@/lib/admin-sidebar-visibility'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
+import { SmartMenuMark, SmartMenuWordmark } from '@/components/shared/smartmenu-mark'
 import {
-  hiddenAdminSidebarPaths,
-  isHiddenAdminHref,
-  type AdminSidebarFlags,
-} from '@/lib/admin-sidebar-visibility'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+  SidebarNav,
+  activeEntryLabel,
+  useFilteredItems,
+  useSidebarNavState,
+  type SidebarEntry,
+  type SidebarGroup,
+  type SidebarItem,
+} from '@/components/shared/sidebar-nav'
 
-interface SidebarItem {
-  label: string
-  href: string
-  icon: React.ComponentType<{ className?: string }>
-}
-
-interface SidebarGroup {
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  children: SidebarItem[]
-}
-
-type SidebarEntry = SidebarItem | SidebarGroup
-
-function isGroup(entry: SidebarEntry): entry is SidebarGroup {
-  return 'children' in entry
-}
-
-// ─── Shared filtering logic ───────────────────────────────────────────────────
-
-function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags) {
-  const {
-    enableOrderManagement,
-    menuEngineeringEnabled,
-    bundlesEnabled,
-    convexConfigured,
-    inventoryEnabled,
-    multiBranchEnabled,
-    isBranchScopedAccount,
-  } = flags
-
-  const hiddenPaths = useMemo(
-    () =>
-      hiddenAdminSidebarPaths({
-        enableOrderManagement,
-        menuEngineeringEnabled,
-        bundlesEnabled,
-        convexConfigured,
-        inventoryEnabled,
-        multiBranchEnabled,
-        isBranchScopedAccount,
-      }),
-    [
-      enableOrderManagement,
-      menuEngineeringEnabled,
-      bundlesEnabled,
-      convexConfigured,
-      inventoryEnabled,
-      multiBranchEnabled,
-      isBranchScopedAccount,
-    ]
-  )
-
-  const shouldHide = useCallback(
-    (href: string) => isHiddenAdminHref(href, hiddenPaths),
-    [hiddenPaths]
-  )
-
-  return useMemo(
-    () =>
-      items
-        .map((entry) => {
-          if (isGroup(entry)) {
-            const children = entry.children.filter((child) => !shouldHide(child.href))
-            if (children.length === 0) return null
-            return { ...entry, children }
-          }
-          return shouldHide(entry.href) ? null : entry
-        })
-        .filter(Boolean) as SidebarEntry[],
-    [items, shouldHide]
-  )
-}
-
-// ─── Section builder ──────────────────────────────────────────────────────────
-
-function buildSections(filteredItems: SidebarEntry[]) {
-  const sections: { type: 'item' | 'group'; entries: SidebarEntry[] }[] = []
-  let currentBatch: SidebarEntry[] = []
-  let currentType: 'item' | 'group' | null = null
-
-  for (const entry of filteredItems) {
-    const type = isGroup(entry) ? 'group' : 'item'
-    if (currentType !== null && currentType !== type) {
-      sections.push({ type: currentType, entries: currentBatch })
-      currentBatch = []
-    }
-    currentType = type
-    currentBatch.push(entry)
-  }
-  if (currentBatch.length > 0 && currentType !== null) {
-    sections.push({ type: currentType, entries: currentBatch })
-  }
-  return sections
-}
-
-// ─── Active page title ────────────────────────────────────────────────────────
-
-function useActivePageTitle(filteredItems: SidebarEntry[]) {
-  const pathname = usePathname()
-  for (const entry of filteredItems) {
-    if (isGroup(entry)) {
-      for (const child of entry.children) {
-        if (pathname === child.href || pathname.startsWith(child.href + '/')) {
-          return child.label
-        }
-      }
-    } else if (pathname === entry.href || pathname.startsWith(entry.href + '/')) {
-      return entry.label
-    }
-  }
-  return 'Dashboard'
-}
-
-// ─── Props ────────────────────────────────────────────────────────────────────
+const COLLAPSED_STORAGE_KEY = 'wn-admin-sidebar-collapsed'
 
 interface SidebarProps extends AdminSidebarFlags {
   items: SidebarEntry[]
   basePath: string
   onLogout?: () => void
   tenantName?: string
+  tenantLogoUrl?: string | null
+  /** The diner-facing menu, opened in a new tab. */
+  storefrontHref?: string
 }
 
-// ─── Desktop Sidebar ──────────────────────────────────────────────────────────
+// ─── Shared pieces ────────────────────────────────────────────────────────────
 
-export function Sidebar({ items, onLogout, tenantName, ...flags }: SidebarProps) {
-  const pathname = usePathname()
-  const [collapsed, setCollapsed] = useState(false)
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-
-  const filteredItems = useFilteredItems(items, flags)
-
-  // Auto-expand group containing active route
-  useEffect(() => {
-    for (const entry of filteredItems) {
-      if (isGroup(entry)) {
-        const hasActive = entry.children.some(
-          (child) => pathname === child.href || pathname.startsWith(child.href + '/')
-        )
-        if (hasActive) {
-          setExpandedGroups((prev) => {
-            if (prev.has(entry.label)) return prev
-            return new Set(prev).add(entry.label)
-          })
-        }
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname])
-
-  const toggleGroup = useCallback((label: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(label)) next.delete(label)
-      else next.add(label)
-      return next
-    })
-  }, [])
-
-  const isActive = useCallback(
-    (href: string) => pathname === href || pathname.startsWith(href + '/'),
-    [pathname]
+function StoreAvatar({ name, logoUrl, size }: { name?: string; logoUrl?: string | null; size: number }) {
+  const initial = name?.trim().charAt(0).toUpperCase() || 'S'
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-wn-coral text-[15px] font-black text-white ring-1 ring-white/10"
+      style={{ width: size, height: size }}
+    >
+      {logoUrl ? (
+        <Image src={logoUrl} alt="" width={size} height={size} unoptimized className="h-full w-full bg-white object-cover" />
+      ) : (
+        initial
+      )}
+    </span>
   )
+}
 
-  const renderItem = (item: SidebarItem, indented = false) => {
-    const Icon = item.icon
-    const active = isActive(item.href)
-
-    const button = (
-      <Link key={item.href} href={item.href} prefetch={true}>
-        <Button
-          variant="ghost"
-          className={cn(
-            'w-full justify-start gap-3 font-medium transition-colors',
-            collapsed && 'justify-center gap-0 px-2',
-            indented && !collapsed && 'pl-10 gap-2.5',
-            active && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
-            !active && 'text-muted-foreground hover:text-foreground hover:bg-muted',
-          )}
-          size={indented ? 'sm' : 'default'}
-        >
-          <Icon
-            className={cn(
-              'shrink-0 transition-colors',
-              indented ? 'h-4 w-4' : 'h-[18px] w-[18px]',
-              active && 'text-primary',
-            )}
-          />
-          {!collapsed && <span className="truncate">{item.label}</span>}
-          {active && !collapsed && (
-            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-          )}
-        </Button>
-      </Link>
-    )
-
-    if (collapsed) {
-      return (
-        <Tooltip key={item.href} delayDuration={0}>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent side="right" sideOffset={12}>
-            {item.label}
-          </TooltipContent>
-        </Tooltip>
-      )
-    }
-
-    return button
-  }
-
-  const renderGroup = (group: SidebarGroup) => {
-    const Icon = group.icon
-    const isExpanded = expandedGroups.has(group.label)
-    const hasActive = group.children.some((child) => isActive(child.href))
-
-    const groupButton = (
-      <Button
-        variant="ghost"
-        className={cn(
-          'w-full justify-start gap-3 font-medium transition-colors',
-          collapsed && 'justify-center gap-0 px-2',
-          hasActive && !isExpanded && 'text-primary',
-          !hasActive && 'text-muted-foreground hover:text-foreground',
-        )}
-        onClick={() => {
-          if (collapsed) {
-            setCollapsed(false)
-            setExpandedGroups((prev) => new Set(prev).add(group.label))
-          } else {
-            toggleGroup(group.label)
-          }
-        }}
-      >
-        <Icon
-          className={cn(
-            'h-[18px] w-[18px] shrink-0 transition-colors',
-            hasActive && 'text-primary',
-          )}
-        />
-        {!collapsed && (
-          <>
-            <span className="flex-1 text-left truncate">{group.label}</span>
-            <ChevronDown
-              className={cn(
-                'h-3.5 w-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200',
-                isExpanded && 'rotate-180'
-              )}
-            />
-          </>
-        )}
-      </Button>
-    )
-
+/** The store this admin runs: who you are working for, and a door to its storefront. */
+function StoreCard({
+  tenantName,
+  tenantLogoUrl,
+  storefrontHref,
+  isCollapsed,
+}: Pick<SidebarProps, 'tenantName' | 'tenantLogoUrl' | 'storefrontHref'> & { isCollapsed: boolean }) {
+  if (isCollapsed) {
+    const avatar = <StoreAvatar name={tenantName} logoUrl={tenantLogoUrl} size={36} />
     return (
-      <div key={group.label}>
-        {collapsed ? (
+      <div className="flex justify-center px-3">
+        {storefrontHref ? (
           <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>{groupButton}</TooltipTrigger>
-            <TooltipContent side="right" sideOffset={12}>
-              {group.label}
+            <TooltipTrigger asChild>
+              <a
+                href={storefrontHref}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${tenantName ?? 'your'} storefront in a new tab`}
+                className="rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-wn-amber/70"
+              >
+                {avatar}
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={14}>
+              {tenantName} · View storefront
             </TooltipContent>
           </Tooltip>
         ) : (
-          groupButton
-        )}
-        {!collapsed && isExpanded && (
-          <div className="mt-0.5 ml-[13px] border-l border-border/60 space-y-0.5 py-0.5">
-            {group.children.map((child) => renderItem(child, true))}
-          </div>
+          avatar
         )}
       </div>
     )
   }
 
-  const sections = buildSections(filteredItems)
+  return (
+    <div className="mx-3 flex items-center gap-3 rounded-xl bg-white/[0.05] p-2.5 ring-1 ring-white/[0.07]">
+      <StoreAvatar name={tenantName} logoUrl={tenantLogoUrl} size={36} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13.5px] font-bold leading-tight text-white">{tenantName ?? 'Your store'}</p>
+        {storefrontHref && (
+          <a
+            href={storefrontHref}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-0.5 inline-flex items-center gap-0.5 rounded text-[11.5px] font-semibold text-white/50 outline-none transition-colors hover:text-wn-amber focus-visible:text-wn-amber"
+          >
+            View storefront
+            <ArrowUpRight className="h-3 w-3" aria-hidden />
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LogoutButton({ onLogout, isCollapsed, isTouch }: { onLogout: () => void; isCollapsed: boolean; isTouch?: boolean }) {
+  const button = (
+    <button
+      type="button"
+      onClick={onLogout}
+      aria-label={isCollapsed ? 'Log out' : undefined}
+      className={cn(
+        'flex w-full items-center gap-3 rounded-lg px-3 font-semibold text-white/55 outline-none transition-colors hover:bg-white/[0.06] hover:text-[#FF9B7A] focus-visible:ring-2 focus-visible:ring-wn-amber/70',
+        isTouch ? 'h-11 text-[14.5px]' : 'h-9 text-[13.5px]',
+        isCollapsed && 'justify-center px-0',
+      )}
+    >
+      <LogOut className="h-[18px] w-[18px] shrink-0" aria-hidden />
+      {!isCollapsed && <span>Log out</span>}
+    </button>
+  )
+  if (!isCollapsed) return button
+  return (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="right" sideOffset={14}>
+        Log out
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+const NAV_SCROLL = 'min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-color:rgb(255_255_255/0.14)_transparent] [scrollbar-width:thin]'
+
+// ─── Desktop Sidebar ──────────────────────────────────────────────────────────
+
+function useStoredCollapse(): [boolean, (next: boolean) => void] {
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  useEffect(() => {
+    try {
+      setIsCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === '1')
+    } catch {
+      // Storage blocked (private mode, embedded webview): stay expanded.
+    }
+  }, [])
+
+  const update = useCallback((next: boolean) => {
+    setIsCollapsed(next)
+    try {
+      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, next ? '1' : '0')
+    } catch {
+      // Remembering the rail is a convenience; the toggle still works.
+    }
+  }, [])
+
+  return [isCollapsed, update]
+}
+
+export function Sidebar({ items, onLogout, tenantName, tenantLogoUrl, storefrontHref, ...flags }: SidebarProps) {
+  const [isCollapsed, setIsCollapsed] = useStoredCollapse()
+  const entries = useFilteredItems(items, flags)
+  const navState = useSidebarNavState(entries)
+  const ToggleIcon = isCollapsed ? PanelLeftOpen : PanelLeftClose
 
   return (
     <TooltipProvider>
       <aside
         className={cn(
-          'hidden md:flex sticky top-0 h-screen flex-col border-r bg-muted/30 transition-all duration-300',
-          collapsed ? 'w-[68px]' : 'w-64'
+          'sticky top-0 hidden h-screen shrink-0 flex-col bg-wn-ink text-white transition-[width] duration-200 ease-out md:flex',
+          isCollapsed ? 'w-[76px]' : 'w-[264px]',
         )}
       >
-        {/* Header */}
-        <div className="flex h-14 items-center border-b px-3">
-          {!collapsed && (
-            <div className="flex flex-col min-w-0 flex-1">
-              <span className="text-sm font-semibold truncate">Dashboard</span>
-              {tenantName && (
-                <span className="text-[11px] text-muted-foreground truncate leading-tight">
-                  {tenantName}
-                </span>
-              )}
-            </div>
-          )}
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setCollapsed(!collapsed)}
-                className={cn(
-                  'h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground',
-                  collapsed && 'mx-auto'
-                )}
+        <div className={cn('flex h-16 shrink-0 items-center gap-2.5 px-5', isCollapsed && 'justify-center px-0')}>
+          <SmartMenuMark title={isCollapsed ? 'SmartMenu' : undefined} />
+          {!isCollapsed && (
+            <>
+              <span className="flex-1 text-[15px] font-extrabold tracking-[-0.01em]">
+                <SmartMenuWordmark />
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(true)}
+                aria-label="Collapse sidebar"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-white/45 outline-none transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-wn-amber/70"
               >
-                {collapsed ? (
-                  <ChevronRight className="h-4 w-4" />
-                ) : (
-                  <ChevronLeft className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={12}>
-              {collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            </TooltipContent>
-          </Tooltip>
+                <ToggleIcon className="h-[18px] w-[18px]" />
+              </button>
+            </>
+          )}
         </div>
 
-        {/* Navigation */}
-        <ScrollArea className="flex-1">
-          <nav className="p-2 space-y-1">
-            {sections.map((section, sIdx) => (
-              <div key={sIdx}>
-                {sIdx > 0 && (
-                  <div className="my-2 mx-2">
-                    <div className="h-px bg-border/60" />
-                  </div>
-                )}
-                {section.type === 'group' && !collapsed && (
-                  <div className="px-3 pt-2 pb-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-                      Manage
-                    </span>
-                  </div>
-                )}
-                <div className="space-y-0.5">
-                  {section.entries.map((entry) =>
-                    isGroup(entry) ? renderGroup(entry) : renderItem(entry)
-                  )}
-                </div>
-              </div>
-            ))}
-          </nav>
-        </ScrollArea>
+        <StoreCard
+          tenantName={tenantName}
+          tenantLogoUrl={tenantLogoUrl}
+          storefrontHref={storefrontHref}
+          isCollapsed={isCollapsed}
+        />
 
-        {/* Logout */}
-        {onLogout && (
-          <div className="border-t p-2">
-            {collapsed ? (
-              <Tooltip delayDuration={0}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-center px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={onLogout}
-                  >
-                    <LogOut className="h-[18px] w-[18px]" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={12}>
-                  Logout
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={onLogout}
-              >
-                <LogOut className="h-[18px] w-[18px]" />
-                <span>Logout</span>
-              </Button>
-            )}
-          </div>
-        )}
+        <nav aria-label="Admin" className={cn(NAV_SCROLL, 'mt-3 px-3 pb-3')}>
+          <SidebarNav
+            entries={entries}
+            state={navState}
+            isCollapsed={isCollapsed}
+            onExpandRail={() => setIsCollapsed(false)}
+          />
+        </nav>
+
+        <div className="shrink-0 space-y-0.5 border-t border-white/[0.08] p-3">
+          {isCollapsed && (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setIsCollapsed(false)}
+                  aria-label="Expand sidebar"
+                  className="flex h-9 w-full items-center justify-center rounded-lg text-white/55 outline-none transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:ring-2 focus-visible:ring-wn-amber/70"
+                >
+                  <ToggleIcon className="h-[18px] w-[18px]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={14}>
+                Expand sidebar
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {onLogout && <LogoutButton onLogout={onLogout} isCollapsed={isCollapsed} />}
+        </div>
       </aside>
     </TooltipProvider>
   )
 }
 
-// ─── Mobile Header + Sheet ────────────────────────────────────────────────────
+// ─── Mobile Header + Drawer ───────────────────────────────────────────────────
 
-export function MobileSidebar({ items, onLogout, tenantName, ...flags }: SidebarProps) {
-  const pathname = usePathname()
-  const [open, setOpen] = useState(false)
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+export function MobileSidebar({ items, onLogout, tenantName, tenantLogoUrl, storefrontHref, ...flags }: SidebarProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const entries = useFilteredItems(items, flags)
+  const navState = useSidebarNavState(entries)
+  const pageTitle = activeEntryLabel(entries, navState.activeHref)
 
-  const filteredItems = useFilteredItems(items, flags)
-  const pageTitle = useActivePageTitle(filteredItems)
-
-  // Auto-expand active group on open
+  // A tap on a link navigates; the drawer should not linger over the new page.
   useEffect(() => {
-    if (!open) return
-    for (const entry of filteredItems) {
-      if (isGroup(entry)) {
-        const hasActive = entry.children.some(
-          (child) => pathname === child.href || pathname.startsWith(child.href + '/')
-        )
-        if (hasActive) {
-          setExpandedGroups((prev) => {
-            if (prev.has(entry.label)) return prev
-            return new Set(prev).add(entry.label)
-          })
-        }
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, pathname])
-
-  // Close sheet on navigation
-  useEffect(() => {
-    setOpen(false)
-  }, [pathname])
-
-  const toggleGroup = useCallback((label: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(label)) next.delete(label)
-      else next.add(label)
-      return next
-    })
-  }, [])
-
-  const isActive = useCallback(
-    (href: string) => pathname === href || pathname.startsWith(href + '/'),
-    [pathname]
-  )
-
-  const renderMobileItem = (item: SidebarItem, indented = false) => {
-    const Icon = item.icon
-    const active = isActive(item.href)
-
-    return (
-      <Link key={item.href} href={item.href} prefetch={true}>
-        <Button
-          variant="ghost"
-          className={cn(
-            'w-full justify-start gap-3 font-medium transition-colors h-11',
-            indented && 'pl-10 gap-2.5',
-            active && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary',
-            !active && 'text-muted-foreground hover:text-foreground hover:bg-muted',
-          )}
-          size={indented ? 'sm' : 'default'}
-        >
-          <Icon
-            className={cn(
-              'shrink-0',
-              indented ? 'h-4 w-4' : 'h-[18px] w-[18px]',
-              active && 'text-primary',
-            )}
-          />
-          <span className="truncate">{item.label}</span>
-          {active && (
-            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-          )}
-        </Button>
-      </Link>
-    )
-  }
-
-  const renderMobileGroup = (group: SidebarGroup) => {
-    const Icon = group.icon
-    const isExpanded = expandedGroups.has(group.label)
-    const hasActive = group.children.some((child) => isActive(child.href))
-
-    return (
-      <div key={group.label}>
-        <Button
-          variant="ghost"
-          className={cn(
-            'w-full justify-start gap-3 font-medium transition-colors h-11',
-            hasActive && !isExpanded && 'text-primary',
-            !hasActive && 'text-muted-foreground hover:text-foreground',
-          )}
-          onClick={() => toggleGroup(group.label)}
-        >
-          <Icon
-            className={cn(
-              'h-[18px] w-[18px] shrink-0 transition-colors',
-              hasActive && 'text-primary',
-            )}
-          />
-          <span className="flex-1 text-left truncate">{group.label}</span>
-          <ChevronDown
-            className={cn(
-              'h-3.5 w-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200',
-              isExpanded && 'rotate-180'
-            )}
-          />
-        </Button>
-        {isExpanded && (
-          <div className="mt-0.5 ml-[13px] border-l border-border/60 space-y-0.5 py-0.5">
-            {group.children.map((child) => renderMobileItem(child, true))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const sections = buildSections(filteredItems)
+    setIsOpen(false)
+  }, [navState.activeHref])
 
   return (
     <>
-      {/* Fixed mobile top bar */}
-      <header className="sticky top-0 z-40 flex md:hidden h-14 items-center gap-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 shrink-0"
-          onClick={() => setOpen(true)}
+      <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-wn-line bg-wn-canvas/90 px-3 backdrop-blur-md supports-[backdrop-filter]:bg-wn-canvas/75 md:hidden">
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
           aria-label="Open navigation menu"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-wn-ink outline-none transition-colors hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-wn-ink/40"
         >
           <Menu className="h-5 w-5" />
-        </Button>
-        <div className="flex flex-col min-w-0 flex-1">
-          <span className="text-sm font-semibold truncate">{pageTitle}</span>
-          {tenantName && (
-            <span className="text-[11px] text-muted-foreground truncate leading-tight">
-              {tenantName}
-            </span>
-          )}
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-extrabold leading-tight tracking-[-0.01em] text-wn-ink">{pageTitle}</p>
+          {tenantName && <p className="truncate text-[11.5px] font-medium leading-tight text-wn-stone">{tenantName}</p>}
         </div>
+        {storefrontHref && (
+          <a
+            href={storefrontHref}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View storefront (opens in a new tab)"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-wn-ink outline-none transition-colors hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-wn-ink/40"
+          >
+            <ArrowUpRight className="h-5 w-5" />
+          </a>
+        )}
       </header>
 
-      {/* Sheet drawer */}
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="left" className="w-72 p-0">
-          <SheetHeader className="border-b px-4 py-3">
-            <SheetTitle className="text-sm">
-              <span className="block">Dashboard</span>
-              {tenantName && (
-                <span className="block text-[11px] font-normal text-muted-foreground truncate leading-tight mt-0.5">
-                  {tenantName}
-                </span>
-              )}
+      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+        <SheetContent
+          side="left"
+          hideCloseButton
+          className="w-[300px] max-w-[86vw] gap-0 border-none bg-wn-ink p-0 text-white sm:max-w-[300px]"
+        >
+          <div className="flex h-16 shrink-0 items-center gap-2.5 pl-5 pr-3">
+            <SmartMenuMark />
+            <SheetTitle className="flex-1 text-[15px] font-extrabold tracking-[-0.01em] text-white">
+              <SmartMenuWordmark />
             </SheetTitle>
-          </SheetHeader>
+            <SheetDescription className="sr-only">Admin navigation for {tenantName ?? 'your store'}</SheetDescription>
+            <SheetClose
+              aria-label="Close navigation menu"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-white/60 outline-none transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-wn-amber/70"
+            >
+              <X className="h-5 w-5" />
+            </SheetClose>
+          </div>
 
-          <ScrollArea className="flex-1 h-[calc(100vh-8rem)]">
-            <nav className="p-2 space-y-1">
-              {sections.map((section, sIdx) => (
-                <div key={sIdx}>
-                  {sIdx > 0 && (
-                    <div className="my-2 mx-2">
-                      <div className="h-px bg-border/60" />
-                    </div>
-                  )}
-                  {section.type === 'group' && (
-                    <div className="px-3 pt-2 pb-1">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-                        Manage
-                      </span>
-                    </div>
-                  )}
-                  <div className="space-y-0.5">
-                    {section.entries.map((entry) =>
-                      isGroup(entry) ? renderMobileGroup(entry) : renderMobileItem(entry)
-                    )}
-                  </div>
-                </div>
-              ))}
-            </nav>
-          </ScrollArea>
+          <StoreCard tenantName={tenantName} tenantLogoUrl={tenantLogoUrl} storefrontHref={storefrontHref} isCollapsed={false} />
+
+          <nav aria-label="Admin" className={cn(NAV_SCROLL, 'mt-3 px-3 pb-3')}>
+            <SidebarNav entries={entries} state={navState} isTouch />
+          </nav>
 
           {onLogout && (
-            <div className="absolute bottom-0 left-0 right-0 border-t bg-background p-2">
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10 h-11"
-                onClick={() => {
-                  setOpen(false)
+            <div className="shrink-0 border-t border-white/[0.08] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <LogoutButton
+                isTouch
+                isCollapsed={false}
+                onLogout={() => {
+                  setIsOpen(false)
                   onLogout()
                 }}
-              >
-                <LogOut className="h-[18px] w-[18px]" />
-                <span>Logout</span>
-              </Button>
+              />
             </div>
           )}
         </SheetContent>
@@ -635,91 +334,58 @@ export function MobileSidebar({ items, onLogout, tenantName, ...flags }: Sidebar
   )
 }
 
-// ─── Predefined sidebar configurations ────────────────────────────────────────
+// ─── Predefined sidebar configuration ─────────────────────────────────────────
+// Ordered by how often a merchant reaches for it: run the day, grow the
+// business, then set the store up. `section` opens a labelled block.
 
 export const adminSidebarItems: SidebarEntry[] = [
-  {
-    label: 'Dashboard',
-    href: '/admin',
-    icon: LayoutDashboard,
-  },
+  { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { label: 'Orders', href: '/admin/orders', icon: ShoppingBag },
   {
     label: 'Menu',
     icon: UtensilsCrossed,
     children: [
-      { label: 'Menu Management', href: '/admin/menu', icon: UtensilsCrossed },
-      { label: 'Categories', href: '/admin/categories', icon: FolderTree },
-      { label: 'Add-ons', href: '/admin/addons', icon: Box },
-      { label: 'Inventory', href: '/admin/inventory', icon: Box },
-      { label: 'Transfers', href: '/admin/inventory/transfers', icon: Box },
-      { label: 'Stock Log', href: '/admin/inventory/log', icon: Box },
-      { label: 'Boost Sales', href: '/admin/boost-sales', icon: TrendingUp },
+      { label: 'Menu Management', href: '/admin/menu' },
+      { label: 'Categories', href: '/admin/categories' },
+      { label: 'Add-ons', href: '/admin/addons' },
+      { label: 'Inventory', href: '/admin/inventory' },
+      { label: 'Transfers', href: '/admin/inventory/transfers' },
+      { label: 'Stock Log', href: '/admin/inventory/log' },
+      { label: 'Boost Sales', href: '/admin/boost-sales' },
     ],
   },
+  { label: 'Customers', href: '/admin/customers', icon: Users, section: 'Grow' },
+  { label: 'Loyalty', href: '/admin/loyalty', icon: Gift, section: 'Grow' },
+  { label: 'Vouchers', href: '/admin/vouchers', icon: Ticket, section: 'Grow' },
   {
     label: 'Analytics',
     icon: BarChart3,
-    children: [
-      { label: 'Product Analytics', href: '/admin/product-analytics', icon: BarChart3 },
-    ],
+    section: 'Grow',
+    children: [{ label: 'Product Analytics', href: '/admin/product-analytics' }],
   },
   {
     label: 'Store Setup',
-    icon: Cog,
+    icon: Store,
+    section: 'Store',
     children: [
-      { label: 'Order Types', href: '/admin/order-types', icon: Store },
-      { label: 'Branches', href: '/admin/outlets', icon: MapPin },
-      { label: 'Staff', href: '/admin/staff', icon: Users },
-      { label: 'Payment Methods', href: '/admin/payment-methods', icon: CreditCard },
-      { label: 'Branding Studio', href: '/admin/branding', icon: Paintbrush },
-      { label: 'Receipt Studio', href: '/admin/receipt-editor', icon: ReceiptText },
-      { label: 'Hero Builder', href: '/admin/hero-designer', icon: Paintbrush },
-      { label: 'Connect AI', href: '/admin/mcp', icon: KeyRound },
+      { label: 'Order Types', href: '/admin/order-types' },
+      { label: 'Branches', href: '/admin/outlets' },
+      { label: 'Staff', href: '/admin/staff' },
+      { label: 'Payment Methods', href: '/admin/payment-methods' },
+      { label: 'Branding Studio', href: '/admin/branding' },
+      { label: 'Receipt Studio', href: '/admin/receipt-editor' },
+      { label: 'QR Codes', href: '/admin/qr-codes' },
+      { label: 'Hero Builder', href: '/admin/hero-designer' },
+      { label: 'Connect AI', href: '/admin/mcp' },
     ],
   },
-  {
-    label: 'Orders',
-    href: '/admin/orders',
-    icon: ShoppingBag,
-  },
-  {
-    label: 'Vouchers',
-    href: '/admin/vouchers',
-    icon: Ticket,
-  },
-  {
-    label: 'Loyalty',
-    href: '/admin/loyalty',
-    icon: Ticket,
-  },
-  {
-    label: 'Customers',
-    href: '/admin/customers',
-    icon: Users,
-  },
-  {
-    label: 'Settings',
-    href: '/admin/settings',
-    icon: Settings,
-  },
+  { label: 'Settings', href: '/admin/settings', icon: Settings, section: 'Store' },
 ]
 
 export const superAdminSidebarItems: SidebarEntry[] = [
-  {
-    label: 'Dashboard',
-    href: '/superadmin',
-    icon: LayoutDashboard,
-  },
-  {
-    label: 'Tenants',
-    href: '/superadmin/tenants',
-    icon: Store,
-  },
-  {
-    label: 'Settings',
-    href: '/superadmin/settings',
-    icon: Settings,
-  },
+  { label: 'Dashboard', href: '/superadmin', icon: LayoutDashboard },
+  { label: 'Tenants', href: '/superadmin/tenants', icon: Store },
+  { label: 'Settings', href: '/superadmin/settings', icon: Settings },
 ]
 
 // Re-export types for consumers

@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { AdminLayoutClient } from '@/components/admin/admin-layout-client'
-import type { Tenant } from '@/types/database'
+import type { AdminShellTenant } from '@/lib/admin-shell-tenant'
 
 const mockUsePathname = jest.fn<string, []>()
 
@@ -23,7 +23,7 @@ jest.mock('@/components/shared/sidebar', () => ({
   adminSidebarItems: [],
 }))
 
-const tenant = { id: 't1', name: 'SeaCook' } as unknown as Tenant
+const tenant = { name: 'SeaCook' } as unknown as AdminShellTenant
 
 function renderLayout() {
   return render(

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { isUuid } from '@/lib/uuid'
 import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import { parseStockAuditSource, type StockAuditContext } from '@/lib/inventory/stock-audit'
-import { createClient } from '@supabase/supabase-js'
-import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
-import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
 
 /**
  * POST /api/inventory/order-stock
@@ -115,29 +113,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'items must be an array' }, { status: 400 })
   }
 
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: authHeader } } },
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { appUser } = await fetchAppUserScope(asAppUserQueryClient(supabase), user.id)
-
-  const isAuthorized = canAccessStoreAdmin(appUser, tenantId, 'edit')
-
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const caller = await requireBearerStoreCaller(request, tenantId, 'edit')
+  if (!caller.ok) return caller.response
+  const { supabase, user, appUser } = caller
 
   // Same gate `createOrderAction` applies: a tenant who has not turned
   // inventory on must never accumulate a ledger they did not ask for.

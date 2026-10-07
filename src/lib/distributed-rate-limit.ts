@@ -9,8 +9,12 @@ import { checkRateLimit as checkInstanceRateLimit } from '@/lib/rate-limit'
  * This limiter counts in Redis: one INCR per request against a key scoped to
  * the current window, with an EXPIRE so the key disappears with its window.
  *
- * FAILS OPEN. Every limit here guards a revenue path (checkout, delivery
- * quotes, payment proofs), so a Redis error or a slow Redis ALLOWS the request.
+ * FAILS OPEN by default. Most limits here guard a revenue path (checkout,
+ * delivery quotes, payment proofs), so a Redis error or a slow Redis ALLOWS the
+ * request. A limit that guards DISCLOSURE instead (a lookup keyed on someone
+ * else's identifier) passes `onRedisFailure: 'instance'`, so an outage degrades
+ * to the per-instance limiter rather than to no limit at all.
+ *
  * When Redis is not configured at all (local dev, a preview without the
  * Upstash vars) it degrades to the per-instance limiter — the protection the
  * app had before this module existed, never less.
@@ -21,7 +25,14 @@ export interface RateLimitOptions {
   limit: number
   /** Window length in seconds. */
   windowSec: number
+  /**
+   * What a Redis error, timeout or garbled reply does. `'open'` (default)
+   * allows the request; `'instance'` counts it in the per-instance limiter.
+   */
+  onRedisFailure?: RedisFailureMode
 }
+
+export type RedisFailureMode = 'open' | 'instance'
 
 export interface DistributedRateLimitResult {
   allowed: boolean
@@ -40,7 +51,21 @@ function secondsLeftInWindow(nowMs: number, windowSec: number): number {
   return Math.max(1, Math.ceil((windowMs - (nowMs % windowMs)) / 1000))
 }
 
-function failOpen(options: RateLimitOptions, nowMs: number): DistributedRateLimitResult {
+function checkInstance(key: string, options: RateLimitOptions, nowMs: number): DistributedRateLimitResult {
+  const local = checkInstanceRateLimit(key, {
+    maxRequests: options.limit,
+    windowMs: options.windowSec * 1000,
+  })
+  return {
+    allowed: local.allowed,
+    remaining: local.remaining,
+    retryAfterSec: Math.max(1, Math.ceil((local.resetTime - nowMs) / 1000)),
+  }
+}
+
+/** The answer when Redis could not give one, per the caller's failure mode. */
+function onRedisFailure(key: string, options: RateLimitOptions, nowMs: number): DistributedRateLimitResult {
+  if (options.onRedisFailure === 'instance') return checkInstance(key, options, nowMs)
   return {
     allowed: true,
     remaining: options.limit,
@@ -68,17 +93,7 @@ export async function checkRateLimit(
   const retryAfterSec = secondsLeftInWindow(nowMs, options.windowSec)
 
   const redis = getRedisClient()
-  if (!redis) {
-    const local = checkInstanceRateLimit(key, {
-      maxRequests: options.limit,
-      windowMs: options.windowSec * 1000,
-    })
-    return {
-      allowed: local.allowed,
-      remaining: local.remaining,
-      retryAfterSec: Math.max(1, Math.ceil((local.resetTime - nowMs) / 1000)),
-    }
-  }
+  if (!redis) return checkInstance(key, options, nowMs)
 
   const windowIndex = Math.floor(nowMs / (options.windowSec * 1000))
   const redisKey = `${KEY_PREFIX}:${key}:${windowIndex}`
@@ -89,7 +104,7 @@ export async function checkRateLimit(
       REDIS_DEADLINE_MS,
     )
     const used = Number(count)
-    if (!Number.isFinite(used)) return failOpen(options, nowMs)
+    if (!Number.isFinite(used)) return onRedisFailure(key, options, nowMs)
 
     return {
       allowed: used <= options.limit,
@@ -97,10 +112,11 @@ export async function checkRateLimit(
       retryAfterSec,
     }
   } catch (error) {
-    console.error('[rate-limit] Redis unavailable; allowing request', {
+    const fallback = options.onRedisFailure === 'instance' ? 'per-instance limit' : 'allowing request'
+    console.error(`[rate-limit] Redis unavailable; ${fallback}`, {
       key,
       error: error instanceof Error ? error.message : String(error),
     })
-    return failOpen(options, nowMs)
+    return onRedisFailure(key, options, nowMs)
   }
 }

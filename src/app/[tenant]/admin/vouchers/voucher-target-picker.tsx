@@ -3,13 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-import { getMenuItemsAction } from '@/app/actions/menu-items'
-import { getCategoriesAction } from '@/app/actions/categories'
+import { getVoucherTargetOptionsAction } from '@/app/actions/voucher-admin'
 import {
   filterTargetOptions,
   summarizeTargetSelection,
-  toCategoryOptions,
-  toProductOptions,
   toggleTargetId,
   type TargetOption,
 } from '@/lib/vouchers/target-picker'
@@ -42,14 +39,12 @@ export function VoucherTargetPicker({
       setIsLoading(true)
       setLoadError(null)
 
-      const [itemsResult, categoriesResult] =
-        mode === 'products'
-          ? await Promise.all([getMenuItemsAction(tenantId), getCategoriesAction(tenantId)])
-          : [null, await getCategoriesAction(tenantId)]
+      // One lean call (names only) instead of the full menu plus categories.
+      const result = await getVoucherTargetOptionsAction(tenantId, mode)
 
       if (!isCurrent) return
 
-      if (!categoriesResult?.success || (mode === 'products' && !itemsResult?.success)) {
+      if (!result.success) {
         setLoadError(
           mode === 'products'
             ? 'Could not load your products. Try again in a moment.'
@@ -60,12 +55,7 @@ export function VoucherTargetPicker({
         return
       }
 
-      const categories = categoriesResult.data ?? []
-      setOptions(
-        mode === 'products'
-          ? toProductOptions(itemsResult?.data ?? [], categories)
-          : toCategoryOptions(categories)
-      )
+      setOptions(result.data ?? [])
       setIsLoading(false)
     }
 

@@ -10,7 +10,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { Layers, ListChecks, Ruler } from 'lucide-react'
+import { ListChecks, Ruler } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import { AddRowButton, OptionList, OptionRow, StarterTile } from '@/components/admin/menu-editor/option-rows'
@@ -34,7 +34,6 @@ export function LegacyOptionsSections({ options, addonLibraryPicker, recipeConte
     <>
       <EditorSection
         id={DISH_SECTION_IDS.choices}
-        icon={Layers}
         title="Sizes & choices"
         meta={describeChoiceCount(isGrouped, count)}
         description="Customers pick one option from each list. Skip this if the dish comes one way."

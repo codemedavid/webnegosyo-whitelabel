@@ -17,6 +17,7 @@ jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 import {
   addRecipeComponent,
   ensureMenuItemRecipe,
+  loadDishName,
   loadMenuItemRecipe,
   loadIngredientOptions,
   loadUnitOptions,
@@ -424,5 +425,44 @@ describe("removeRecipeComponent", () => {
 
     // Act + Assert
     await expect(removeRecipeComponent(TENANT, "comp-1", db)).rejects.toThrow(/denied/);
+  });
+});
+
+describe("loadDishName", () => {
+  it("reads the dish's name scoped to tenant and item", async () => {
+    // Arrange
+    const { db, recorded } = makeDb({ menu_items: { data: { name: "Iced Latte" }, error: null } });
+
+    // Act
+    const name = await loadDishName(TENANT, MENU_ITEM, db);
+
+    // Assert
+    expect(name).toBe("Iced Latte");
+    expect(recorded.filters).toEqual(
+      expect.arrayContaining([
+        { table: "menu_items", column: "tenant_id", value: TENANT },
+        { table: "menu_items", column: "id", value: MENU_ITEM },
+      ]),
+    );
+  });
+
+  it("costs the label, not the screen, when the read fails", async () => {
+    // Arrange
+    const { db } = makeDb({ menu_items: { data: null, error: { message: "timeout" } } });
+
+    // Act + Assert — a header without a name beats an editor that will not open
+    await expect(loadDishName(TENANT, MENU_ITEM, db)).resolves.toBe("");
+  });
+
+  it("returns blank without querying when the tenant is unknown", async () => {
+    // Arrange
+    const { db, recorded } = makeDb({});
+
+    // Act
+    const name = await loadDishName("", MENU_ITEM, db);
+
+    // Assert
+    expect(name).toBe("");
+    expect(recorded.filters).toHaveLength(0);
   });
 });

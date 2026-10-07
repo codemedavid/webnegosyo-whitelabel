@@ -12,6 +12,7 @@ import {
   parseStoredOutbox,
   recordSyncFailure,
   removeQueuedSale,
+  requeueSignedOutRefusals,
   resetOutboxForTests,
   subscribeOutbox,
   type QueuedSale,
@@ -184,5 +185,61 @@ describe("order outbox", () => {
     expect(isSaleQueued("a")).toBe(false);
     await enqueueSale(sale("b"));
     expect(getOutbox().sales.map((entry) => entry.localId)).toEqual(["b"]);
+  });
+
+  describe("requeueSignedOutRefusals", () => {
+    // Gungjeon Central, 2026-10-04: the register kept selling after its session
+    // was revoked. Each replay went out as the anonymous role and came back as
+    // an RLS refusal, which the outbox counted against the SALE — five of
+    // those and a paid sale was parked for good, for a reason that said
+    // nothing about the sale itself.
+    const SIGNED_OUT_REFUSAL = 'new row violates row-level security policy for table "orders"';
+
+    async function park(localId: string, message: string) {
+      await enqueueSale(sale(localId));
+      for (let i = 0; i < MAX_SYNC_ATTEMPTS; i += 1) await recordSyncFailure(localId, message);
+    }
+
+    it("gives a sale parked by a signed-out device a fresh set of attempts", async () => {
+      await park("a", SIGNED_OUT_REFUSAL);
+      expect(needsAttention(getOutbox().sales[0])).toBe(true);
+
+      const requeued = await requeueSignedOutRefusals();
+
+      expect(requeued).toBe(1);
+      expect(getOutbox().sales[0]).toMatchObject({ localId: "a", attempts: 0, lastError: null });
+      expect(needsAttention(getOutbox().sales[0])).toBe(false);
+    });
+
+    it("recognises an expired or missing token the same way", async () => {
+      await park("a", "JWT expired");
+      await park("b", "No API key found in request");
+
+      expect(await requeueSignedOutRefusals()).toBe(2);
+    });
+
+    it("leaves a sale the server refused on its merits parked for a person", async () => {
+      await park("a", 'insert or update on table "order_items" violates foreign key constraint');
+
+      expect(await requeueSignedOutRefusals()).toBe(0);
+      expect(needsAttention(getOutbox().sales[0])).toBe(true);
+    });
+
+    it("does not touch a sale still being retried", async () => {
+      await enqueueSale(sale("a"));
+      await recordSyncFailure("a", SIGNED_OUT_REFUSAL);
+
+      expect(await requeueSignedOutRefusals()).toBe(0);
+      expect(getOutbox().sales[0].attempts).toBe(1);
+    });
+
+    it("returns new objects instead of editing the stored ones", async () => {
+      await park("a", SIGNED_OUT_REFUSAL);
+      const before = getOutbox().sales[0];
+
+      await requeueSignedOutRefusals();
+
+      expect(before.attempts).toBe(MAX_SYNC_ATTEMPTS);
+    });
   });
 });

@@ -20,7 +20,8 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ImageUpload } from '@/components/shared/image-upload'
-import { MapboxAddressAutocomplete } from '@/components/shared/mapbox-address-autocomplete'
+import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
+import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
 import { StatusBadge } from '@/components/superadmin/ui/primitives'
 import { TenantMonogram } from '@/components/superadmin/tenant-visuals'
 import { TenantBrandPreview } from '@/components/superadmin/tenant-brand-preview'
@@ -38,6 +39,7 @@ import { orderBackendPreferenceOf, type SelectableOrderBackend } from '@/lib/ord
 import { OrderBackendPicker } from '@/components/superadmin/order-backend-picker'
 import { toast } from 'sonner'
 import { NO_AUTOFILL_INPUT_PROPS } from '@/lib/no-autofill-input'
+import { NEW_TENANT_FEATURE_DEFAULTS } from '@/lib/new-tenant-feature-defaults'
 
 interface PrefillData {
   leadId: string
@@ -117,6 +119,8 @@ interface TenantFormData {
   // Bundles
   bundles_enabled: boolean
   inventory_enabled: boolean
+  // Owner AI assistant
+  assistant_enabled: boolean
   // Multi-branch
   multi_branch_enabled: boolean
   // When the branch is asked for: before the menu (splash) or at checkout.
@@ -169,7 +173,7 @@ type SetFormData = Dispatch<SetStateAction<TenantFormData>>
 /**
  * Merge an address-field change into the form state.
  *
- * `MapboxAddressAutocomplete` fires `onChange` on EVERY keystroke and supplies
+ * `AddressAutocomplete` fires `onChange` on EVERY keystroke and supplies
  * coordinates only when a suggestion is picked or a pin is dropped. Overwriting
  * the coordinates unconditionally therefore erased the store location of a
  * tenant that already had one as soon as anyone touched the address box, and
@@ -571,13 +575,12 @@ function MessengerSection({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="messenger_page_id">Facebook Page ID *</Label>
+          <Label htmlFor="messenger_page_id">Facebook Page ID (optional)</Label>
           <Input
             id="messenger_page_id"
             value={formData.messenger_page_id}
             onChange={(e) => setFormData({ ...formData, messenger_page_id: e.target.value })}
             placeholder="123456789"
-            required
             disabled={isPending}
           />
         </div>
@@ -849,6 +852,46 @@ function FlashScreenFeatureSection({
             </p>
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// Owner AI Assistant Toggle Section
+function AssistantFeatureSection({
+  formData,
+  setFormData,
+  isPending,
+}: {
+  formData: TenantFormData
+  setFormData: React.Dispatch<React.SetStateAction<TenantFormData>>
+  isPending: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI Assistant</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          The floating owl chat in the tenant admin: answers questions about sales, menu, customers,
+          staff and inventory, and drafts changes the owner confirms with one tap
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="assistant_enabled">Enable AI Assistant</Label>
+            <p className="text-sm text-muted-foreground">
+              Uses the platform&apos;s AI budget, capped per store per day. Staff only see what their
+              permissions allow.
+            </p>
+          </div>
+          <Switch
+            id="assistant_enabled"
+            checked={formData.assistant_enabled}
+            onCheckedChange={(checked) => setFormData({ ...formData, assistant_enabled: checked })}
+            disabled={isPending}
+          />
+        </div>
       </CardContent>
     </Card>
   )
@@ -1226,14 +1269,15 @@ function RestaurantAddressSection({
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="restaurant_address">Address *</Label>
-          <MapboxAddressAutocomplete
+          <AddressAutocomplete
             value={formData.restaurant_address}
+            coordinates={parseLatLng(formData.restaurant_latitude, formData.restaurant_longitude)}
             onChange={(address, coordinates) => {
               setFormData((current) => applyStoreLocationChange(current, address, coordinates))
             }}
             placeholder="Enter restaurant address"
             required
-            mapboxEnabled={true}
+            mapsEnabled
           />
         </div>
 
@@ -1975,6 +2019,13 @@ export function TenantFormWrapper({
   // Saving an existing tenant is tenants.edit; creating one is tenants.create.
   const canSave = usePlatformAccess().can(tenant ? 'tenants.edit' : 'tenants.create')
 
+  // A new store starts from the new-store defaults; an existing store shows
+  // exactly what is stored (a missing value reads as `existingFallback`).
+  const featureFlag = (
+    key: keyof typeof NEW_TENANT_FEATURE_DEFAULTS,
+    existingFallback = false,
+  ): boolean => (tenant ? (tenant[key] ?? existingFallback) : NEW_TENANT_FEATURE_DEFAULTS[key])
+
   const [formData, setFormData] = useState<TenantFormData>({
     name: tenant?.name || prefill?.name || '',
     slug: tenant?.slug || '',
@@ -2006,30 +2057,31 @@ export function TenantFormWrapper({
     messenger_username: tenant?.messenger_username || '',
     messenger_redirect_mode: tenant?.messenger_redirect_mode || 'webhook',
     is_active: tenant?.is_active ?? true,
-    mapbox_enabled: tenant?.mapbox_enabled ?? true,
-    enable_order_management: tenant?.enable_order_management ?? true,
+    mapbox_enabled: featureFlag('mapbox_enabled', true),
+    enable_order_management: featureFlag('enable_order_management', true),
     // Menu engineering
-    menu_engineering_enabled: tenant?.menu_engineering_enabled ?? false,
-    checkout_upsell_enabled: tenant?.checkout_upsell_enabled ?? false,
+    menu_engineering_enabled: featureFlag('menu_engineering_enabled'),
+    checkout_upsell_enabled: featureFlag('checkout_upsell_enabled'),
     hide_currency_symbol: tenant?.hide_currency_symbol ?? false,
     // Flash screen
-    flash_screen_feature_enabled: tenant?.flash_screen_feature_enabled ?? false,
+    flash_screen_feature_enabled: featureFlag('flash_screen_feature_enabled'),
     // Bundles
-    bundles_enabled: tenant?.bundles_enabled ?? false,
-    modifier_groups_enabled: tenant?.modifier_groups_enabled ?? false,
+    bundles_enabled: featureFlag('bundles_enabled'),
+    modifier_groups_enabled: featureFlag('modifier_groups_enabled'),
     // Inventory
-    inventory_enabled: tenant?.inventory_enabled ?? false,
+    inventory_enabled: featureFlag('inventory_enabled'),
+    assistant_enabled: featureFlag('assistant_enabled'),
     // Multi-branch — missing/null on every existing row reads as off.
-    multi_branch_enabled: tenant?.multi_branch_enabled ?? false,
+    multi_branch_enabled: featureFlag('multi_branch_enabled'),
     // Missing/null/unknown reads as 'before' — the behaviour that shipped first.
     outlet_selection_timing: tenant?.outlet_selection_timing === 'after' ? 'after' : 'before',
-    low_stock_alerts_enabled: tenant?.low_stock_alerts_enabled ?? false,
-    auto_86_enabled: tenant?.auto_86_enabled ?? false,
-    presell_enabled: tenant?.presell_enabled ?? false,
+    low_stock_alerts_enabled: featureFlag('low_stock_alerts_enabled'),
+    auto_86_enabled: featureFlag('auto_86_enabled'),
+    presell_enabled: featureFlag('presell_enabled'),
     // Pairing rules
-    pairing_rules_enabled: tenant?.pairing_rules_enabled ?? false,
+    pairing_rules_enabled: featureFlag('pairing_rules_enabled'),
     // QR-handoff ordering
-    qr_handoff_enabled: tenant?.qr_handoff_enabled ?? false,
+    qr_handoff_enabled: featureFlag('qr_handoff_enabled'),
     // Restaurant address
     restaurant_address: tenant?.restaurant_address || '',
     restaurant_latitude: tenant?.restaurant_latitude?.toString() || '',
@@ -2065,7 +2117,7 @@ export function TenantFormWrapper({
     order_backend: orderBackendPreferenceOf(tenant ?? {}),
     // Email notifications
     admin_email: tenant?.admin_email || prefill?.email || '',
-    email_notifications_enabled: tenant?.email_notifications_enabled ?? false,
+    email_notifications_enabled: featureFlag('email_notifications_enabled'),
   })
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -2117,6 +2169,7 @@ export function TenantFormWrapper({
       modifier_groups_enabled: formData.modifier_groups_enabled,
       // Inventory
       inventory_enabled: formData.inventory_enabled,
+      assistant_enabled: formData.assistant_enabled,
       multi_branch_enabled: formData.multi_branch_enabled,
       outlet_selection_timing: formData.outlet_selection_timing,
       low_stock_alerts_enabled: formData.low_stock_alerts_enabled,
@@ -2326,6 +2379,11 @@ export function TenantFormWrapper({
             isPending={isPending}
           />
           <InventoryFeatureSection
+            formData={formData}
+            setFormData={setFormData}
+            isPending={isPending}
+          />
+          <AssistantFeatureSection
             formData={formData}
             setFormData={setFormData}
             isPending={isPending}
