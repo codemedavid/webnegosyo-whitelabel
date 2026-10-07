@@ -340,9 +340,16 @@ export interface RecordPaymentArgs {
   recordedBy?: string;
   outletId?: string;
   note?: string;
+  /**
+   * Minted on the device (platform stores only) so a replayed write lands on
+   * the same row: the primary key refuses the second insert instead of the
+   * ledger recording the money twice.
+   */
+  paymentId?: string;
 }
 
 export interface OrderPaymentRow {
+  id?: string;
   tenant_id: string;
   order_id: string;
   kind: "charge" | "refund";
@@ -365,6 +372,8 @@ export interface OrderPaymentRow {
  * twice. The database enforces `amount > 0` too — this check exists to fail
  * with a message a cashier can act on rather than a constraint violation.
  */
+const PAYMENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function buildPaymentRow(
   tenantId: string,
   args: RecordPaymentArgs,
@@ -373,9 +382,14 @@ export function buildPaymentRow(
     throw new Error("A payment amount must be a positive number.");
   }
 
+  if (args.paymentId !== undefined && !PAYMENT_ID_PATTERN.test(args.paymentId)) {
+    throw new Error("A payment id must be a UUID.");
+  }
+
   const reference = args.reference?.trim();
 
   return {
+    ...(args.paymentId ? { id: args.paymentId } : {}),
     tenant_id: tenantId,
     order_id: args.orderId,
     kind: args.kind,

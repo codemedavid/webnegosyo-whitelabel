@@ -618,3 +618,28 @@ describe("menu_item_id — the nullable uuid column", () => {
     expect(revision.items_after[0].menuItemId).toBe("js71q9w4ja9g3ryvap69b9xxms8e3fzs");
   });
 });
+
+describe("buildPaymentRow — device-minted payment id", () => {
+  it("keeps a well-formed payment id as the row id", () => {
+    const row = buildPaymentRow(TENANT, {
+      orderId: ORDER,
+      kind: "charge",
+      amount: 50,
+      paymentId: "5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11",
+    });
+
+    expect(row.id).toBe("5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11");
+  });
+
+  it("leaves the id to the database when none was minted", () => {
+    const row = buildPaymentRow(TENANT, { orderId: ORDER, kind: "charge", amount: 50 });
+
+    expect(row).not.toHaveProperty("id");
+  });
+
+  it("refuses a malformed payment id rather than sending it", () => {
+    expect(() =>
+      buildPaymentRow(TENANT, { orderId: ORDER, kind: "charge", amount: 50, paymentId: "not-a-uuid" })
+    ).toThrow("payment id");
+  });
+});

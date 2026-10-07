@@ -33,6 +33,7 @@ import {
 import {
   buildPaymentRow,
   buildRevisionRows,
+  type OrderPaymentRow,
   type RecordPaymentArgs,
   type ReviseOrderArgs,
 } from "./order-revise";
@@ -836,8 +837,33 @@ async function recordPayment(
   args: Record<string, unknown>
 ): Promise<string> {
   const row = buildPaymentRow(tenantId, args as unknown as RecordPaymentArgs);
-  await unwrap(client.from("order_payments").insert(row));
-  return row.order_id;
+  const { error } = (await client.from("order_payments").insert(row)) as unknown as {
+    error: { message: string; code?: string } | null;
+  };
+  if (!error) return row.order_id;
+
+  // A replay of a payment whose first write landed but whose answer was lost:
+  // the device-minted id already exists. Done, as long as that row really is
+  // this store's payment for this order — any other clash is a real error.
+  if (error.code === UNIQUE_VIOLATION && row.id && (await paymentRowExists(client, row))) {
+    return row.order_id;
+  }
+  throw new Error(error.message);
+}
+
+const UNIQUE_VIOLATION = "23505";
+
+async function paymentRowExists(client: PlatformClient, row: OrderPaymentRow): Promise<boolean> {
+  const existing = await unwrap<{ id: string } | null>(
+    client
+      .from("order_payments")
+      .select("id")
+      .eq("id", row.id)
+      .eq("tenant_id", row.tenant_id)
+      .eq("order_id", row.order_id)
+      .maybeSingle()
+  );
+  return existing !== null;
 }
 
 // --- dispatch -------------------------------------------------------------

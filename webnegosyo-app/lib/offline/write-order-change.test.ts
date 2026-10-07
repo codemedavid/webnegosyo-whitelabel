@@ -111,6 +111,57 @@ describe("writeOrderChange", () => {
     expect(live).not.toHaveBeenCalled();
   });
 
+  it("gives a platform payment one id that the live write and any replay share", async () => {
+    const { input, live, enqueue } = setup({
+      ref: "orders:recordPayment",
+      args: { orderId: "order-1", kind: "charge", amount: 100 },
+      newPaymentId: () => "5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11",
+    });
+
+    await writeOrderChange(input);
+
+    expect(live).toHaveBeenCalledWith(expect.objectContaining({ paymentId: "5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11" }));
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("queues a platform payment with its id so the replay cannot record it twice", async () => {
+    const { input, enqueue } = setup({
+      ref: "orders:recordPayment",
+      args: { orderId: "order-1", kind: "charge", amount: 100 },
+      isOffline: () => true,
+      newPaymentId: () => "5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11",
+    });
+
+    await writeOrderChange(input);
+
+    expect(enqueue.mock.calls[0][0].args).toMatchObject({ paymentId: "5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11" });
+  });
+
+  it("keeps a payment id the caller already minted", async () => {
+    const { input, live } = setup({
+      ref: "orders:recordPayment",
+      args: { orderId: "order-1", kind: "charge", amount: 100, paymentId: "kept-id" },
+      newPaymentId: () => "fresh-id",
+    });
+
+    await writeOrderChange(input);
+
+    expect(live).toHaveBeenCalledWith(expect.objectContaining({ paymentId: "kept-id" }));
+  });
+
+  it("sends a Convex payment unchanged — its validator refuses unknown fields", async () => {
+    const { input, live } = setup({
+      ref: "orders:recordPayment",
+      backend: "convex",
+      args: { orderId: "order-1", kind: "charge", amount: 100 },
+      newPaymentId: () => "fresh-id",
+    });
+
+    await writeOrderChange(input);
+
+    expect(live).toHaveBeenCalledWith({ orderId: "order-1", kind: "charge", amount: 100 });
+  });
+
   it("refuses a change with no order id", async () => {
     const { input } = setup({ args: { status: "ready" } });
     await expect(writeOrderChange(input)).rejects.toThrow(/order/i);

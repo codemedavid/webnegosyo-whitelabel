@@ -61,7 +61,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // Re-verified against /v1/apps/6761642956/appStoreVersions on 2026-10-01
   // before bumping. Hence 1.0.11 — pay-later and write-behind counter sales,
   // the offline register download and the Wallet loyalty card scan.
-  version: "1.0.11",
+  version: "1.0.12",
   // "default" hands the decision to the OS, which is the only way one binary
   // can hold a phone upright and lay a tablet down. Nothing is actually left
   // free by this: iPhones are pinned portrait and iPads landscape by the

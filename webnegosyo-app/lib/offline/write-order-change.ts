@@ -55,6 +55,20 @@ export interface WriteOrderChangeInput {
   timeoutMs?: number;
   now?: () => number;
   newEditId?: () => string;
+  newPaymentId?: () => string;
+}
+
+/**
+ * A platform payment carries an id minted here, ONCE, so the live write and
+ * every replay of the queued copy insert the same row — the primary key turns
+ * a replay of money that already landed into a no-op (`recordPayment` in the
+ * platform adapter). Convex validators refuse unknown fields, and the
+ * per-tenant Supabase track has no replay path, so only platform gets one.
+ */
+function withPaymentId(input: WriteOrderChangeInput): Record<string, unknown> {
+  if (input.ref !== "orders:recordPayment" || input.backend !== "platform") return input.args;
+  if (typeof input.args.paymentId === "string" && input.args.paymentId) return input.args;
+  return { ...input.args, paymentId: (input.newPaymentId ?? newLocalOrderId)() };
 }
 
 export async function writeOrderChange(input: WriteOrderChangeInput): Promise<unknown> {
@@ -63,6 +77,7 @@ export async function writeOrderChange(input: WriteOrderChangeInput): Promise<un
     throw new Error("This change does not name an order.");
   }
 
+  const args = withPaymentId(input);
   const isOffline = input.isOffline ?? connectivityIsOffline;
   const enqueue = input.enqueue ?? enqueueOrderEdit;
   const queue = async (): Promise<QueuedOrderWrite> => {
@@ -72,7 +87,7 @@ export async function writeOrderChange(input: WriteOrderChangeInput): Promise<un
       backend: input.backend,
       orderId,
       ref: input.ref,
-      args: input.args,
+      args,
       createdAt: (input.now ?? Date.now)(),
       attempts: 0,
       lastError: null,
@@ -85,7 +100,7 @@ export async function writeOrderChange(input: WriteOrderChangeInput): Promise<un
   }
 
   try {
-    const result = await withDeadline(input.live(input.args), input.timeoutMs ?? ORDER_CHANGE_TIMEOUT_MS);
+    const result = await withDeadline(input.live(args), input.timeoutMs ?? ORDER_CHANGE_TIMEOUT_MS);
     reportOnline();
     return result;
   } catch (error) {

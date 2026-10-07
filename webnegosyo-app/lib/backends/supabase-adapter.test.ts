@@ -37,7 +37,7 @@ interface RecordedCall {
 
 interface TableResponse {
   data: unknown;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
 }
 
 function fakeClient(responses: Record<string, TableResponse[]>) {
@@ -1849,5 +1849,59 @@ describe("runPlatformQuery — orders:getOrderPaymentsForOrders refuses a malfor
       await runPlatformQuery(client, TENANT, "orders:getOrderPaymentsForOrders", { orderIds: [] })
     ).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("runPlatformMutation — orders:recordPayment replays", () => {
+  const PAYMENT_ID = "5b0c7a52-4c1e-4b8e-9a43-0f6d2d1c9e11";
+  const args = { orderId: "order-1", kind: "charge", amount: 150, paymentId: PAYMENT_ID };
+
+  it("writes the payment under the id the device minted", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ order_payments: [{ data: null, error: null }] });
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:recordPayment", args);
+
+    // Assert: the id is what makes a replay land on the same row.
+    expect(opsOf(calls, "insert")[0][0]).toMatchObject({ id: PAYMENT_ID, amount: 150 });
+  });
+
+  it("treats a replay of a payment that already landed as done, not as a second payment", async () => {
+    // Arrange: the first attempt reached the server but its answer was lost.
+    const { client } = fakeClient({
+      order_payments: [
+        { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } },
+        { data: { id: PAYMENT_ID }, error: null },
+      ],
+    });
+
+    // Act + Assert
+    await expect(runPlatformMutation(client, TENANT, "orders:recordPayment", args)).resolves.toBe("order-1");
+  });
+
+  it("still reports a duplicate it cannot match to this payment", async () => {
+    // Arrange: the id clashes but no row of this store and order carries it.
+    const { client } = fakeClient({
+      order_payments: [
+        { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } },
+        { data: null, error: null },
+      ],
+    });
+
+    // Act + Assert
+    await expect(runPlatformMutation(client, TENANT, "orders:recordPayment", args)).rejects.toThrow("duplicate key");
+  });
+
+  it("does not swallow a duplicate for a payment that carried no id", async () => {
+    // Arrange
+    const { client } = fakeClient({
+      order_payments: [{ data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } }],
+    });
+
+    // Act + Assert
+    await expect(
+      runPlatformMutation(client, TENANT, "orders:recordPayment", { orderId: "order-1", kind: "charge", amount: 150 })
+    ).rejects.toThrow("duplicate key");
   });
 });
