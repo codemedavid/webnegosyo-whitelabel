@@ -6,7 +6,6 @@
  */
 
 import type { CSSProperties } from 'react'
-import { SMARTMENU } from '@/components/landing/landing-theme'
 import { buildLaunchBranding, STORE_TYPES, type StoreType } from '@/lib/onboarding/store-type'
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
@@ -68,8 +67,10 @@ export function readableInk(background: string): string {
 
 /** CSS variables the wizard's controls read (`var(--ob-accent)` …). */
 export function accentStyle(brand: string | null, storeType: StoreType | ''): CSSProperties {
+  // Before the owner has a brand the set-up wears plain ink: the only color
+  // on these pages is the one they give it.
   if (!brand) {
-    return { '--ob-accent': SMARTMENU.red, '--ob-accent-ink': '#FFF7EE', '--ob-accent-soft': '#FFF1EE' } as CSSProperties
+    return { '--ob-accent': '#17130F', '--ob-accent-ink': '#FFFFFF', '--ob-accent-soft': '#F6F4F1' } as CSSProperties
   }
   const palette = storePalette(brand, storeType, '')
   return {

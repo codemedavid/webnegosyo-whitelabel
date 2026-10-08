@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { ShoppingBag, Star } from 'lucide-react'
 import type { OnboardingOrderType } from '@/lib/onboarding/answers'
 import { STORE_TYPES, type StoreType } from '@/lib/onboarding/store-type'
@@ -35,10 +36,10 @@ export function PhoneFrame({ children, label }: { children: React.ReactNode; lab
   return (
     <figure
       aria-label={label}
-      className="relative mx-auto aspect-[9/19] w-full max-w-[300px] rounded-[2.6rem] bg-[#16110e] p-[10px] shadow-[0_40px_80px_-30px_rgba(28,22,19,0.55),0_0_0_1px_rgba(255,255,255,0.06)_inset]"
+      className="relative mx-auto aspect-[9/19.2] w-full max-w-[300px] rounded-[2.75rem] bg-[#1B1918] p-[9px] shadow-[0_50px_100px_-40px_rgba(23,19,15,0.45),0_24px_48px_-24px_rgba(23,19,15,0.35),inset_0_0_0_1.5px_rgba(255,255,255,0.09)]"
     >
-      <div className="absolute left-1/2 top-[18px] z-10 h-[22px] w-[90px] -translate-x-1/2 rounded-full bg-[#16110e]" aria-hidden />
-      <div className="relative h-full w-full overflow-hidden rounded-[2rem] bg-white">{children}</div>
+      <div className="absolute left-1/2 top-[19px] z-10 h-[24px] w-[84px] -translate-x-1/2 rounded-full bg-black" aria-hidden />
+      <div className="relative h-full w-full overflow-hidden rounded-[2.2rem] bg-white">{children}</div>
     </figure>
   )
 }
@@ -116,7 +117,7 @@ export function StorePreviewPhone({ storeName, tagline, storeType, brand, logoUr
         </div>
 
         <div className="m-3 flex-1 overflow-hidden rounded-2xl p-3.5" style={{ backgroundColor: palette.surface, border: `1px solid ${palette.border}` }}>
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: palette.textMuted }}>Menu</p>
+          <p className="mb-3 text-[13px] font-bold" style={{ color: palette.text }}>Menu</p>
           <MenuRows rows={rows} palette={palette} />
         </div>
 
@@ -132,13 +133,32 @@ export function StorePreviewPhone({ storeName, tagline, storeType, brand, logoUr
 
 /**
  * The real storefront inside the phone, once the store exists. `version`
- * re-mounts the frame so each finished build step shows up; the store is in
- * pre-launch, so the preview can never place an order.
+ * re-mounts the frame so each finished build step shows up; until the page has
+ * loaded, a quiet skeleton holds the screen instead of a blank white phone.
  */
 export function LiveStoreFrame({ path, title, version = 0 }: { path: string; title: string; version?: number }) {
+  const [loadedVersion, setLoadedVersion] = useState<number | null>(null)
+  const isLoaded = loadedVersion === version
   return (
     <PhoneFrame label={title}>
-      <iframe key={version} src={path} title={title} className="h-full w-full border-0" loading="lazy" />
+      <iframe key={version} src={path} title={title} onLoad={() => setLoadedVersion(version)}
+        className={`h-full w-full border-0 transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`} loading="lazy" />
+      {!isLoaded && <PhoneSkeleton />}
     </PhoneFrame>
+  )
+}
+
+/** Placeholder screen: a hero block and menu rows, gently pulsing. */
+export function PhoneSkeleton() {
+  return (
+    <div className="absolute inset-0 flex flex-col gap-3 bg-white p-4 pt-14" aria-hidden>
+      <div className="h-28 animate-pulse rounded-2xl bg-[#F6F4F1] motion-reduce:animate-none" />
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <span className="h-3 animate-pulse rounded-full bg-[#F6F4F1] motion-reduce:animate-none" style={{ width: `${62 - index * 6}%` }} />
+          <span className="ml-auto h-3 w-10 animate-pulse rounded-full bg-[#F6F4F1] motion-reduce:animate-none" />
+        </div>
+      ))}
+    </div>
   )
 }

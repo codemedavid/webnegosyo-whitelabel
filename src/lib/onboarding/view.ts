@@ -12,6 +12,7 @@ import { displayedBuildStatus } from './build-staleness'
 import { isPaidLeadStatus } from './lead-status'
 import type { FirstWeekPlan } from './first-week'
 import type { LaunchReadiness } from './readiness'
+import { getStoreOpenStatus, type StoreHoursSource } from '@/lib/store-open-status'
 
 export interface OnboardingStepView {
   id: OnboardingBuildStepId
@@ -30,6 +31,8 @@ export interface OnboardingStoreView {
   /** The owner's dashboard; the wizard signs them in, so this opens straight in. */
   dashboardPath: string
   isLive: boolean
+  /** Live but outside its hours: when orders open next ("tomorrow at 9:00 AM"). */
+  opensLabel: string | null
 }
 
 /** Whether "Go live" may be pressed, and what still blocks it. */
@@ -60,8 +63,19 @@ export interface OnboardingView {
 export interface OnboardingViewSources {
   onboarding: StoreOnboarding
   lead: { business_name: string; email: string; status: string; name?: string | null }
-  tenant: { name: string; slug: string; is_prelaunch: boolean } | null
+  tenant: ({ name: string; slug: string; is_prelaunch: boolean } & StoreHoursSource) | null
   readiness?: LaunchReadiness | null
+}
+
+/**
+ * When a live store is outside its hours, when it next takes orders: the set-up
+ * page says "orders open at 9:00 AM" instead of leaving the owner to wonder why
+ * their brand-new store reads "closed". Null while open or still in pre-launch.
+ */
+function opensLabel(tenant: { is_prelaunch: boolean } & StoreHoursSource, nowMs: number): string | null {
+  if (tenant.is_prelaunch) return null
+  const status = getStoreOpenStatus(tenant, new Date(nowMs))
+  return status.isOrderingBlocked ? status.nextOpenLabel : null
 }
 
 export function buildOnboardingView({ onboarding, lead, tenant, readiness = null }: OnboardingViewSources, nowMs: number = Date.now()): OnboardingView {
@@ -94,6 +108,7 @@ export function buildOnboardingView({ onboarding, lead, tenant, readiness = null
           previewPath: `/${tenant.slug}/menu`,
           dashboardPath: `/${tenant.slug}/admin`,
           isLive: !tenant.is_prelaunch,
+          opensLabel: opensLabel(tenant, nowMs),
         }
       : null,
     isLaunchRequested: !!onboarding.launchRequestedAt,

@@ -22,7 +22,7 @@ export async function loadOnboardingView(admin: AdminClient, onboarding: StoreOn
   const [leadResult, tenantResult] = await Promise.all([
     admin.from('checkout_leads').select('business_name, email, status, name').eq('id', onboarding.checkoutLeadId).single(),
     onboarding.tenantId
-      ? admin.from('tenants').select('id, name, slug, is_prelaunch, logo_url, messenger_page_id, messenger_username, facebook_page_id, operating_hours, loyalty_enabled, loyalty_shadow').eq('id', onboarding.tenantId).maybeSingle()
+      ? admin.from('tenants').select('id, name, slug, is_prelaunch, logo_url, messenger_page_id, messenger_username, facebook_page_id, operating_hours, enforce_operating_hours, timezone, loyalty_enabled, loyalty_shadow').eq('id', onboarding.tenantId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ])
   if (leadResult.error || !leadResult.data) throw new Error('The order for this set-up could not be read.')

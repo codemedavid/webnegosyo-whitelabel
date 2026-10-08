@@ -4,7 +4,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { findOnboardingForToken, loadOnboardingView } from '@/lib/onboarding/access'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow'
-import { SMARTMENU } from '@/components/landing/landing-theme'
 import { landingFontClass } from '@/components/landing/landing-fonts'
 
 export const dynamic = 'force-dynamic'
@@ -17,12 +16,18 @@ export const metadata: Metadata = {
 }
 
 const HELP_URL = 'https://m.me/WebNegosyoOfficial'
+const INK = '#17130F'
+const MUTED = '#5C544D'
 
 function Notice({ title, body }: { title: string; body: string }) {
   return (
-    <div className="mx-auto max-w-md rounded-3xl bg-white p-8 text-center shadow-sm">
-      <h1 className="text-xl font-extrabold" style={{ color: SMARTMENU.ink }}>{title}</h1>
-      <p className="mt-2 text-sm" style={{ color: SMARTMENU.cocoa }}>{body}</p>
+    <div className="mx-auto max-w-md px-5 py-24 text-center">
+      <h1 className="text-balance text-2xl font-extrabold tracking-[-0.02em]" style={{ color: INK }}>{title}</h1>
+      <p className="mt-3 text-base leading-relaxed" style={{ color: MUTED }}>{body}</p>
+      <a href={HELP_URL} target="_blank" rel="noopener noreferrer"
+        className="mt-8 inline-flex min-h-12 items-center rounded-xl px-6 text-[15px] font-semibold text-white" style={{ backgroundColor: INK }}>
+        Message us on Facebook
+      </a>
     </div>
   )
 }
@@ -31,7 +36,7 @@ function InvalidLink() {
   return (
     <Notice
       title="This set-up link is not valid"
-      body="It may have been replaced by a newer link. Message us on Facebook and we will send you a fresh one."
+      body="It may have been replaced by a newer link. Message us and we will send you a fresh one."
     />
   )
 }
@@ -40,7 +45,7 @@ function Unavailable() {
   return (
     <Notice
       title="We could not open your set-up just now"
-      body="Your link is fine. Please refresh this page in a minute — nothing you entered is lost."
+      body="Your link is fine. Refresh this page in a minute. Nothing you entered is lost."
     />
   )
 }
@@ -65,32 +70,25 @@ export default async function OnboardingPage({ params }: { params: Promise<{ tok
   const state = await loadPageState(token)
 
   return (
-    <main
-      className={`${landingFontClass} min-h-screen px-4 pb-16 pt-5 sm:px-6`}
-      style={{ backgroundColor: SMARTMENU.cream, fontFamily: 'var(--font-landing-text), system-ui, sans-serif' }}
-    >
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex items-center justify-between sm:mb-12">
-          <div className="flex items-center gap-2.5">
-            <Image src="/smartmenu-mark.png" alt="" width={36} height={36} className="h-9 w-9 rounded-xl" />
-            <span className="text-base font-extrabold tracking-tight" style={{ color: SMARTMENU.ink, fontFamily: 'var(--font-landing-display), system-ui' }}>
-              SmartMenu
-            </span>
-          </div>
-          <a
-            href={HELP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-bold transition hover:bg-black/[0.03]"
-            style={{ color: SMARTMENU.ink }}
-          >
-            Need help? Message us
-          </a>
-        </header>
-        {state.kind === 'ready' && <OnboardingFlow token={token} initialView={state.view} />}
-        {state.kind === 'invalid' && <InvalidLink />}
-        {state.kind === 'unavailable' && <Unavailable />}
-      </div>
+    <main className={`${landingFontClass} min-h-dvh bg-white antialiased`} style={{ fontFamily: 'var(--font-landing-text), system-ui, sans-serif', color: INK }}>
+      <header className="flex h-16 items-center justify-between px-5 sm:px-8">
+        <span className="flex items-center gap-2">
+          <Image src="/smartmenu-mark.png" alt="" width={32} height={32} className="h-8 w-8 rounded-lg" />
+          <span className="text-[17px] font-bold tracking-tight" style={{ fontFamily: 'var(--font-landing-display), system-ui' }}>SmartMenu</span>
+        </span>
+        <a
+          href={HELP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[#F6F4F1]"
+          style={{ borderColor: '#E9E5E0' }}
+        >
+          Questions?
+        </a>
+      </header>
+      {state.kind === 'ready' && <OnboardingFlow token={token} initialView={state.view} />}
+      {state.kind === 'invalid' && <InvalidLink />}
+      {state.kind === 'unavailable' && <Unavailable />}
     </main>
   )
 }

@@ -1,60 +1,154 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { Camera, Loader2, X } from 'lucide-react'
-import { SMARTMENU } from '@/components/landing/landing-theme'
-import { shrinkPhoto } from './shrink-photo'
-
-/**
- * Building blocks of the set-up pages. Controls read the merchant's brand
- * through `--ob-accent` / `--ob-accent-ink` / `--ob-accent-soft` (see
- * `onboarding-theme.ts`), so the whole wizard re-colors the moment a logo or
- * color is picked.
+/*
+ * DIRECTION — merchant set-up (/onboarding/[token])
+ * THESIS: a quiet white studio whose only color is the one the owner gives it.
+ *   The setup starts in ink and takes on their brand the moment they pick it;
+ *   the phone showing their store is the hero. Refuses the cream-card wall.
+ * OWN-WORLD: white ground, warm ink (#17130F), one hairline gray, Figtree only
+ *   (the Baloo wordmark stays in the header), 12px radii, 1px → 2px selection
+ *   borders, lucide icons at 1.75 stroke. Accent = --ob-accent (ink until a brand).
+ * STORY: one question per screen → watch the store being built → it opens →
+ *   a short setup guide for the first week.
+ * FIRST VIEWPORT: question column left, brand-tinted panel with the phone right;
+ *   on phones the question fills the screen and a fixed bar carries Back / Next.
+ * FORM: canon (user-pinned): Airbnb host flow, Shopify setup guide, Stripe restraint.
  */
 
-export const ONBOARDING_COLORS = SMARTMENU
+import { useRef, useState } from 'react'
+import { Camera, Check, Loader2, X } from 'lucide-react'
+import { shrinkPhoto } from './shrink-photo'
 
-export const ACCENT = 'var(--ob-accent, #D7261D)'
-export const ACCENT_INK = 'var(--ob-accent-ink, #FFF7EE)'
-export const ACCENT_SOFT = 'var(--ob-accent-soft, #FFF1EE)'
+/** The set-up pages' neutrals. Color comes only from the merchant's accent. */
+export const OB = {
+  ink: '#17130F',
+  /** Secondary text: 7.4:1 on white. */
+  muted: '#5C544D',
+  /** Placeholder / tertiary text: 4.7:1 on white. */
+  faint: '#776F68',
+  line: '#E9E5E0',
+  lineStrong: '#D3CCC4',
+  wash: '#F6F4F1',
+  canvas: '#FFFFFF',
+} as const
 
-export const DISPLAY_FONT = 'var(--font-landing-display), system-ui, sans-serif'
-export const SERIF_FONT = 'var(--font-landing-serif), Georgia, serif'
+export const ACCENT = 'var(--ob-accent, #17130F)'
+export const ACCENT_INK = 'var(--ob-accent-ink, #FFFFFF)'
+export const ACCENT_SOFT = 'var(--ob-accent-soft, #F6F4F1)'
+
+export const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ob-accent,#17130F)] focus-visible:ring-offset-2'
+
+export function StepHeading({ title, lede, as: Tag = 'h1' }: { title: React.ReactNode; lede?: React.ReactNode; as?: 'h1' | 'h2' }) {
+  return (
+    <div>
+      <Tag tabIndex={-1} className="text-balance text-[1.75rem] font-extrabold leading-[1.12] tracking-[-0.025em] sm:text-[2.25rem]" style={{ color: OB.ink }}>
+        {title}
+      </Tag>
+      {lede && <p className="mt-2 max-w-[34rem] text-pretty text-base leading-relaxed" style={{ color: OB.muted }}>{lede}</p>}
+    </div>
+  )
+}
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold" style={{ color: SMARTMENU.ink }}>{label}</span>
-      {hint && <span className="mt-0.5 block text-xs leading-relaxed" style={{ color: SMARTMENU.cocoa }}>{hint}</span>}
-      <span className="mt-2 block">{children}</span>
+      <span className="text-[15px] font-semibold" style={{ color: OB.ink }}>{label}</span>
+      {hint && <span className="mt-0.5 block text-[13px] leading-relaxed" style={{ color: OB.muted }}>{hint}</span>}
+      <span className="mt-2.5 block">{children}</span>
     </label>
   )
 }
 
+/** 16px text: anything smaller makes iOS zoom the page on focus. */
 export const INPUT_CLASS =
-  'w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-[15px] text-[#1C1613] shadow-[0_1px_0_rgba(0,0,0,0.03)] outline-none transition placeholder:text-black/35 focus:border-[var(--ob-accent)] focus:ring-4 focus:ring-[color-mix(in_srgb,var(--ob-accent)_18%,transparent)]'
+  'w-full rounded-xl border border-[#D3CCC4] bg-white px-4 py-3.5 text-base text-[#17130F] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-[#776F68] hover:border-[#A9A098] focus:border-[var(--ob-accent,#17130F)] focus:shadow-[0_0_0_1px_var(--ob-accent,#17130F)]'
 
-export function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm font-semibold" style={{ color: SMARTMENU.ink }}>{children}</p>
+export function GroupLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <div>
+      <p className="text-[15px] font-semibold" style={{ color: OB.ink }}>{children}</p>
+      {hint && <p className="mt-0.5 text-[13px] leading-relaxed" style={{ color: OB.muted }}>{hint}</p>}
+    </div>
+  )
 }
 
-interface ChoiceChipProps {
+interface OptionProps {
   isSelected: boolean
   onClick: () => void
-  children: React.ReactNode
+  title: string
+  description?: string
+  icon?: React.ReactNode
+  /** Checkbox semantics (many may be on) instead of a single choice. */
+  isMulti?: boolean
 }
 
-export function ChoiceChip({ isSelected, onClick, children }: ChoiceChipProps) {
+function selectionStyle(isSelected: boolean): React.CSSProperties {
+  return {
+    borderColor: isSelected ? ACCENT : OB.lineStrong,
+    boxShadow: isSelected ? `0 0 0 1px ${ACCENT}` : 'none',
+    backgroundColor: isSelected ? ACCENT_SOFT : OB.canvas,
+  }
+}
+
+/** Airbnb-style tile: icon over a title, the border thickens when chosen. */
+export function OptionTile({ isSelected, onClick, title, description, icon, isMulti = false }: OptionProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      role={isMulti ? 'checkbox' : 'radio'}
+      aria-checked={isSelected}
+      className={`flex h-full min-h-[7.25rem] flex-col items-start justify-between gap-4 rounded-xl border p-4 text-left transition-[border-color,box-shadow,background-color,transform] duration-150 hover:border-[#17130F] active:scale-[0.98] ${FOCUS_RING}`}
+      style={selectionStyle(isSelected)}
+    >
+      <span style={{ color: isSelected ? ACCENT : OB.ink }} aria-hidden>{icon}</span>
+      <span>
+        <span className="block text-[15px] font-semibold" style={{ color: OB.ink }}>{title}</span>
+        {description && <span className="mt-0.5 block text-[13px] leading-snug" style={{ color: OB.muted }}>{description}</span>}
+      </span>
+    </button>
+  )
+}
+
+/** A full-width choice with a check on the right. */
+export function OptionRow({ isSelected, onClick, title, description, icon, isMulti = false }: OptionProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      role={isMulti ? 'checkbox' : 'radio'}
+      aria-checked={isSelected}
+      className={`flex w-full items-center gap-4 rounded-xl border px-4 py-3.5 text-left transition-[border-color,box-shadow,background-color] duration-150 hover:border-[#17130F] ${FOCUS_RING}`}
+      style={selectionStyle(isSelected)}
+    >
+      {icon && <span className="shrink-0" style={{ color: OB.ink }} aria-hidden>{icon}</span>}
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold" style={{ color: OB.ink }}>{title}</span>
+        {description && <span className="mt-0.5 block text-[13px] leading-snug" style={{ color: OB.muted }}>{description}</span>}
+      </span>
+      <span
+        className={`flex h-6 w-6 shrink-0 items-center justify-center border-[1.5px] transition-colors ${isMulti ? 'rounded-md' : 'rounded-full'}`}
+        style={{ borderColor: isSelected ? ACCENT : OB.lineStrong, backgroundColor: isSelected ? ACCENT : 'transparent' }}
+        aria-hidden
+      >
+        {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} style={{ color: ACCENT_INK }} />}
+      </span>
+    </button>
+  )
+}
+
+/** Small round-cornered chip for quick picks (hours presets, closed days). */
+export function Chip({ isSelected, onClick, children }: { isSelected: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={isSelected}
-      className="flex min-h-12 items-center gap-2 rounded-2xl border-2 px-4 py-2.5 text-left text-sm font-semibold transition active:scale-[0.98]"
+      className={`min-h-10 rounded-full border px-4 text-sm font-medium transition-[border-color,background-color,color] duration-150 hover:border-[#17130F] ${FOCUS_RING}`}
       style={{
-        borderColor: isSelected ? ACCENT : 'rgba(0,0,0,0.08)',
-        backgroundColor: isSelected ? ACCENT_SOFT : '#FFFFFF',
-        color: SMARTMENU.ink,
+        borderColor: isSelected ? ACCENT : OB.lineStrong,
+        backgroundColor: isSelected ? ACCENT : OB.canvas,
+        color: isSelected ? ACCENT_INK : OB.ink,
       }}
     >
       {children}
@@ -62,28 +156,20 @@ export function ChoiceChip({ isSelected, onClick, children }: ChoiceChipProps) {
   )
 }
 
-interface ChoiceTileProps extends ChoiceChipProps {
-  title: string
-  description?: string
-  icon: React.ReactNode
-}
-
-/** A larger choice with an icon and one line of explanation. */
-export function ChoiceTile({ isSelected, onClick, title, description, icon }: Omit<ChoiceTileProps, 'children'>) {
+export function Switch({ isOn, label, onChange }: { isOn: boolean; label: string; onChange: (next: boolean) => void }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      aria-pressed={isSelected}
-      className="relative flex h-full flex-col items-start gap-2 rounded-3xl border-2 bg-white p-4 text-left transition active:scale-[0.98]"
-      style={{ borderColor: isSelected ? ACCENT : 'rgba(0,0,0,0.07)', backgroundColor: isSelected ? ACCENT_SOFT : '#FFFFFF' }}
+      role="switch"
+      aria-checked={isOn}
+      aria-label={label}
+      onClick={() => onChange(!isOn)}
+      className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${FOCUS_RING}`}
+      style={{ backgroundColor: isOn ? ACCENT : OB.lineStrong }}
     >
-      <span className="text-2xl leading-none" aria-hidden>{icon}</span>
-      <span className="text-[15px] font-bold" style={{ color: SMARTMENU.ink }}>{title}</span>
-      {description && <span className="text-xs leading-relaxed" style={{ color: SMARTMENU.cocoa }}>{description}</span>}
       <span
-        className="absolute right-3 top-3 h-5 w-5 rounded-full border-2 transition"
-        style={{ borderColor: isSelected ? ACCENT : 'rgba(0,0,0,0.15)', backgroundColor: isSelected ? ACCENT : 'transparent', boxShadow: isSelected ? 'inset 0 0 0 3px #fff' : 'none' }}
+        className="absolute top-0.5 h-6 w-6 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.25)] transition-[left] duration-200 ease-out"
+        style={{ left: isOn ? 22 : 2 }}
         aria-hidden
       />
     </button>
@@ -97,12 +183,12 @@ interface PhotoSlotProps {
   onUpload: (file: File) => Promise<string | null>
   onRemove: () => Promise<string | null>
   isContain?: boolean
-  /** Taller slot used for the logo. */
-  isLarge?: boolean
+  aspect?: 'square' | 'wide'
+  hint?: string
 }
 
 /** One tappable photo box: empty → pick a photo; filled → preview + remove. */
-export function PhotoSlot({ label, imageUrl, onUpload, onRemove, isContain = false, isLarge = false }: PhotoSlotProps) {
+export function PhotoSlot({ label, imageUrl, onUpload, onRemove, isContain = false, aspect = 'square', hint }: PhotoSlotProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -123,21 +209,21 @@ export function PhotoSlot({ label, imageUrl, onUpload, onRemove, isContain = fal
   return (
     <div>
       <div
-        className={`relative flex w-full items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed transition ${isLarge ? 'aspect-[4/3]' : 'aspect-square'}`}
-        style={{ borderColor: imageUrl ? 'transparent' : 'rgba(0,0,0,0.14)', backgroundColor: imageUrl ? '#FFFFFF' : SMARTMENU.creamDeep }}
+        className={`relative flex w-full items-center justify-center overflow-hidden rounded-xl border transition-colors ${aspect === 'wide' ? 'aspect-[16/10]' : 'aspect-square'} ${imageUrl ? '' : 'border-dashed hover:border-[#17130F]'}`}
+        style={{ borderColor: imageUrl ? OB.line : OB.lineStrong, backgroundColor: imageUrl ? OB.canvas : OB.wash }}
       >
         {imageUrl ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt={label} className={`h-full w-full ${isContain ? 'object-contain p-4' : 'object-cover'}`} />
+            <img src={imageUrl} alt={label} className={`h-full w-full ${isContain ? 'object-contain p-5' : 'object-cover'}`} />
             <button
               type="button"
               onClick={() => run(onRemove)}
               disabled={isBusy}
               aria-label={`Remove ${label}`}
-              className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition hover:bg-black/75"
+              className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#17130F] shadow-[0_2px_8px_rgba(0,0,0,0.18)] transition hover:scale-105 ${FOCUS_RING}`}
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden />
             </button>
           </>
         ) : (
@@ -145,23 +231,21 @@ export function PhotoSlot({ label, imageUrl, onUpload, onRemove, isContain = fal
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={isBusy}
-            className="flex h-full w-full flex-col items-center justify-center gap-2 px-2 text-center text-xs font-semibold transition hover:bg-black/[0.02]"
-            style={{ color: SMARTMENU.cocoa }}
+            className={`flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center ${FOCUS_RING}`}
           >
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm">
-              <Camera className="h-5 w-5" style={{ color: ACCENT }} aria-hidden />
-            </span>
-            {label}
+            <Camera className="h-6 w-6" strokeWidth={1.75} style={{ color: OB.ink }} aria-hidden />
+            <span className="text-sm font-semibold" style={{ color: OB.ink }}>{label}</span>
+            {hint && <span className="text-xs" style={{ color: OB.muted }}>{hint}</span>}
           </button>
         )}
         {isBusy && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/75 backdrop-blur-sm">
-            <Loader2 className="h-6 w-6 animate-spin" style={{ color: ACCENT }} aria-label="Uploading" />
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-[2px]">
+            <Loader2 className="h-6 w-6 animate-spin" style={{ color: OB.ink }} aria-label="Uploading" />
           </div>
         )}
       </div>
       <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleFile} />
-      {error && <p className="mt-1.5 text-xs font-medium text-red-700">{error}</p>}
+      {error && <p role="alert" className="mt-1.5 text-[13px] font-medium text-red-700">{error}</p>}
     </div>
   )
 }
@@ -171,53 +255,74 @@ interface ButtonProps {
   onClick?: () => void
   isDisabled?: boolean
   type?: 'button' | 'submit'
+  isFull?: boolean
 }
 
-const PRIMARY_CLASS =
-  'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full px-6 py-3 text-[15px] font-bold transition hover:brightness-110 active:scale-[0.99] disabled:opacity-60'
-const PRIMARY_STYLE = {
-  backgroundColor: ACCENT,
-  color: ACCENT_INK,
-  boxShadow: '0 16px 32px -16px color-mix(in srgb, var(--ob-accent, #D7261D) 70%, transparent)',
-}
+const BUTTON_BASE = `inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-[15px] font-semibold transition-[filter,transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`
+const PRIMARY_STYLE = { backgroundColor: ACCENT, color: ACCENT_INK }
 
-export function PrimaryButton({ children, onClick, isDisabled = false, type = 'button' }: ButtonProps) {
+export function PrimaryButton({ children, onClick, isDisabled = false, type = 'button', isFull = false }: ButtonProps) {
   return (
-    <button type={type} onClick={onClick} disabled={isDisabled} className={PRIMARY_CLASS} style={PRIMARY_STYLE}>
+    <button type={type} onClick={onClick} disabled={isDisabled} className={`${BUTTON_BASE} hover:brightness-110 ${isFull ? 'w-full' : ''}`} style={PRIMARY_STYLE}>
       {children}
     </button>
   )
 }
 
-export function PrimaryLink({ href, children, isExternal = false }: { href: string; children: React.ReactNode; isExternal?: boolean }) {
+export function SecondaryButton({ children, onClick, isDisabled = false, isFull = false }: ButtonProps) {
   return (
-    <a href={href} className={PRIMARY_CLASS} style={PRIMARY_STYLE} {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+    <button type="button" onClick={onClick} disabled={isDisabled}
+      className={`${BUTTON_BASE} border bg-white hover:bg-[#F6F4F1] ${isFull ? 'w-full' : ''}`}
+      style={{ borderColor: OB.lineStrong, color: OB.ink }}>
+      {children}
+    </button>
+  )
+}
+
+interface LinkButtonProps {
+  href: string
+  children: React.ReactNode
+  isExternal?: boolean
+  isFull?: boolean
+}
+
+function externalProps(isExternal: boolean) {
+  return isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {}
+}
+
+export function PrimaryLink({ href, children, isExternal = false, isFull = false }: LinkButtonProps) {
+  return (
+    <a href={href} className={`${BUTTON_BASE} hover:brightness-110 ${isFull ? 'w-full' : ''}`} style={PRIMARY_STYLE} {...externalProps(isExternal)}>
       {children}
     </a>
   )
 }
 
-export function SecondaryLink({ href, children, isExternal = false }: { href: string; children: React.ReactNode; isExternal?: boolean }) {
+export function SecondaryLink({ href, children, isExternal = false, isFull = false }: LinkButtonProps) {
   return (
-    <a
-      href={href}
-      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-5 text-sm font-bold transition hover:bg-black/[0.02]"
-      style={{ color: SMARTMENU.ink }}
-      {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-    >
+    <a href={href} className={`${BUTTON_BASE} border bg-white hover:bg-[#F6F4F1] ${isFull ? 'w-full' : ''}`}
+      style={{ borderColor: OB.lineStrong, color: OB.ink }} {...externalProps(isExternal)}>
       {children}
     </a>
   )
 }
 
-export function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-3xl border border-black/[0.06] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${className}`}>{children}</div>
+/** Airbnb's underlined text action (Back, Skip). */
+export function TextButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`min-h-12 rounded-lg px-2 text-[15px] font-semibold underline decoration-1 underline-offset-4 transition-colors hover:bg-[#F6F4F1] ${FOCUS_RING}`}
+      style={{ color: OB.ink }}>
+      {children}
+    </button>
+  )
 }
 
-export function Eyebrow({ children }: { children: React.ReactNode }) {
+export function ErrorNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: ACCENT }}>
+    <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
       {children}
     </p>
   )
 }
+

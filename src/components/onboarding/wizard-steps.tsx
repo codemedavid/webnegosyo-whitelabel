@@ -1,10 +1,12 @@
 'use client'
 
-import { BookOpen, CheckCircle2, Clock, Gift, ImageIcon, Palette, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { Check, ChevronDown, Coffee, CupSoda, Croissant, ShieldCheck, Store, UtensilsCrossed } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { STORE_TYPES, type StoreType } from '@/lib/onboarding/store-type'
 import { MAX_MENU_PHOTOS } from '@/lib/onboarding/answers'
 import type { OnboardingAssets } from '@/lib/onboarding/repository'
-import { ACCENT, ACCENT_SOFT, ChoiceTile, DISPLAY_FONT, Field, INPUT_CLASS, ONBOARDING_COLORS, PhotoSlot, SectionLabel } from './onboarding-ui'
+import { ACCENT, Field, FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, PhotoSlot, StepHeading } from './onboarding-ui'
 import { ColorPicker } from './color-picker'
 import type { WizardDraft } from './wizard-draft'
 
@@ -19,6 +21,14 @@ export interface PhotoProps {
   removePhoto: (kind: 'logo' | 'menu', index?: number) => Promise<string | null>
 }
 
+const STORE_TYPE_ICONS: Record<StoreType, LucideIcon> = {
+  restaurant: UtensilsCrossed,
+  cafe: Coffee,
+  milk_tea: CupSoda,
+  bakery: Croissant,
+  other: Store,
+}
+
 const STORE_TYPE_HINTS: Record<StoreType, string> = {
   restaurant: 'Rice meals, ulam, grill',
   cafe: 'Coffee, pastries, brunch',
@@ -27,80 +37,84 @@ const STORE_TYPE_HINTS: Record<StoreType, string> = {
   other: 'Anything else you sell',
 }
 
-const BUILD_PROMISES = [
-  { icon: Palette, title: 'Your design', body: 'Colors from your logo, applied to every page.' },
-  { icon: BookOpen, title: 'Your menu, typed for you', body: 'Snap your menu — we turn it into an online menu.' },
-  { icon: Gift, title: 'Your growth kit', body: 'Combos, upsells and a loyalty stamp card, ready on day one.' },
+const WELCOME_STEPS = [
+  { title: 'Tell us about your store', body: 'Its name, what you sell, your logo and color.' },
+  { title: 'Snap your menu', body: 'One photo is enough. We type every dish and price.' },
+  { title: 'Open for orders', body: 'Your store goes live with combos, upsells and a stamp card already on.' },
 ] as const
 
-const BRING_LIST = ['Your logo (optional)', 'A clear photo of your menu', 'Your GCash or Maya number']
-
 export function WelcomeStep({ firstName, businessName, isPaid }: { firstName: string; businessName: string; isPaid: boolean }) {
+  const greeting = firstName ? `Mabuhay, ${firstName}.` : 'Mabuhay.'
   return (
-    <div className="space-y-7">
+    <div>
       {isPaid && (
-        <p className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 ring-1 ring-emerald-200">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Payment confirmed — salamat!
+        <p className="mb-6 inline-flex items-center gap-2 text-sm font-medium" style={{ color: OB.muted }}>
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600" aria-hidden>
+            <Check className="h-3 w-3 text-white" strokeWidth={3} />
+          </span>
+          Payment received. Salamat!
         </p>
       )}
-      <div>
-        <h1 className="text-[2.1rem] font-extrabold leading-[1.05] tracking-tight sm:text-5xl" style={{ color: ONBOARDING_COLORS.ink, fontFamily: DISPLAY_FONT }}>
-          {firstName ? `Mabuhay, ${firstName}!` : 'Mabuhay!'}<br />
-          <span style={{ color: ACCENT }}>Let&apos;s build {businessName || 'your store'}.</span>
-        </h1>
-        <p className="mt-3 max-w-md text-[15px] leading-relaxed" style={{ color: ONBOARDING_COLORS.cocoa }}>
-          Answer a few questions and we do the rest. Your store will be ready to go live in minutes.
-        </p>
-      </div>
+      <h1 tabIndex={-1} className="text-balance text-[2.5rem] font-extrabold leading-[1.04] tracking-[-0.035em] sm:text-[3.5rem]" style={{ color: OB.ink }}>
+        {greeting}
+        <br />
+        Let&apos;s open {businessName || 'your store'}.
+      </h1>
+      <p className="mt-4 max-w-[30rem] text-[17px] leading-relaxed" style={{ color: OB.muted }}>
+        Answer a few questions and we build the rest. About five minutes.
+      </p>
 
-      <ul className="grid gap-3 sm:grid-cols-3">
-        {BUILD_PROMISES.map(({ icon: Icon, title, body }) => (
-          <li key={title} className="rounded-3xl bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: ACCENT_SOFT }}>
-              <Icon className="h-5 w-5" style={{ color: ACCENT }} aria-hidden />
+      <ol className="mt-10 border-t" style={{ borderColor: OB.line }}>
+        {WELCOME_STEPS.map(({ title, body }, index) => (
+          <li key={title} className="flex gap-5 border-b py-5" style={{ borderColor: OB.line }}>
+            <span className="w-6 shrink-0 text-[22px] font-bold leading-7 tabular-nums" style={{ color: OB.ink }}>{index + 1}</span>
+            <span>
+              <span className="block text-[17px] font-semibold leading-7" style={{ color: OB.ink }}>{title}</span>
+              <span className="mt-0.5 block text-[15px] leading-relaxed" style={{ color: OB.muted }}>{body}</span>
             </span>
-            <p className="mt-3 text-sm font-bold" style={{ color: ONBOARDING_COLORS.ink }}>{title}</p>
-            <p className="mt-1 text-xs leading-relaxed" style={{ color: ONBOARDING_COLORS.cocoa }}>{body}</p>
           </li>
         ))}
-      </ul>
-
-      <div className="rounded-3xl border border-dashed border-black/15 p-4">
-        <p className="flex items-center gap-2 text-sm font-bold" style={{ color: ONBOARDING_COLORS.ink }}>
-          <Clock className="h-4 w-4" aria-hidden /> About 5 minutes. Have these ready:
-        </p>
-        <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-3" style={{ color: ONBOARDING_COLORS.cocoa }}>
-          {BRING_LIST.map((item) => <li key={item}>• {item}</li>)}
-        </ul>
-      </div>
+      </ol>
+      <p className="mt-5 text-sm" style={{ color: OB.muted }}>
+        Have ready: a photo of your menu and your GCash or Maya number.
+      </p>
     </div>
   )
 }
 
 export function StoreStep({ draft, update }: StepProps) {
   return (
-    <div className="space-y-6">
-      <Field label="Store name" hint="Exactly how customers know you.">
-        <input className={INPUT_CLASS} value={draft.storeName} maxLength={60} autoComplete="organization" onChange={(e) => update({ storeName: e.target.value })} />
-      </Field>
-      <div>
-        <SectionLabel>What do you sell?</SectionLabel>
-        <p className="mt-0.5 text-xs" style={{ color: ONBOARDING_COLORS.cocoa }}>We pick a design that suits it — you can change everything later.</p>
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {(Object.keys(STORE_TYPES) as StoreType[]).map((type) => (
-            <ChoiceTile
-              key={type}
-              icon={STORE_TYPES[type].emoji}
-              title={STORE_TYPES[type].label}
-              description={STORE_TYPE_HINTS[type]}
-              isSelected={draft.storeType === type}
-              onClick={() => update({ storeType: type })}
-            />
-          ))}
+    <div className="space-y-9">
+      <StepHeading title="What's your store called?" lede="Exactly the name your customers know you by." />
+      <input
+        className={`${INPUT_CLASS} !py-4 text-lg font-semibold`}
+        value={draft.storeName}
+        maxLength={60}
+        autoComplete="organization"
+        aria-label="Store name"
+        placeholder="e.g. Kusina ni Aling Nena"
+        onChange={(event) => update({ storeName: event.target.value })}
+      />
+      <div className="space-y-3">
+        <GroupLabel hint="It sets your starting design. You can change everything later.">What do you sell?</GroupLabel>
+        <div role="radiogroup" aria-label="What do you sell?" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {(Object.keys(STORE_TYPES) as StoreType[]).map((type) => {
+            const Icon = STORE_TYPE_ICONS[type]
+            return (
+              <OptionTile
+                key={type}
+                icon={<Icon className="h-7 w-7" strokeWidth={1.5} />}
+                title={STORE_TYPES[type].label}
+                description={STORE_TYPE_HINTS[type]}
+                isSelected={draft.storeType === type}
+                onClick={() => update({ storeType: type })}
+              />
+            )
+          })}
         </div>
       </div>
-      <Field label="Tagline (optional)" hint="One line under your name, e.g. “Home-style Kapampangan cooking”.">
-        <input className={INPUT_CLASS} value={draft.tagline} maxLength={120} onChange={(e) => update({ tagline: e.target.value })} />
+      <Field label="Tagline" hint="Optional. One line under your name, like “Home-style Kapampangan cooking”.">
+        <input className={INPUT_CLASS} value={draft.tagline} maxLength={120} onChange={(event) => update({ tagline: event.target.value })} />
       </Field>
     </div>
   )
@@ -113,10 +127,12 @@ interface BrandStepProps extends StepProps, PhotoProps {
 
 export function BrandStep({ update, assets, uploadPhoto, removePhoto, brand, typeColor }: BrandStepProps) {
   return (
-    <div className="space-y-7">
-      <div className="grid grid-cols-[8.5rem_1fr] items-start gap-4 sm:grid-cols-[11rem_1fr]">
+    <div className="space-y-9">
+      <StepHeading title="Make it look like you" lede="Your logo and color go on every page of your store. Watch the phone change." />
+      <div className="grid grid-cols-[9rem_minmax(0,1fr)] items-center gap-5 sm:grid-cols-[11rem_minmax(0,1fr)]">
         <PhotoSlot
-          label="Upload your logo"
+          label="Add logo"
+          hint="PNG or JPG"
           imageUrl={assets.logoUrl}
           isContain
           onUpload={async (file) => {
@@ -127,77 +143,103 @@ export function BrandStep({ update, assets, uploadPhoto, removePhoto, brand, typ
           }}
           onRemove={() => removePhoto('logo')}
         />
-        <div className="space-y-2 pt-1 text-sm leading-relaxed" style={{ color: ONBOARDING_COLORS.cocoa }}>
-          <p className="flex items-center gap-2 font-bold" style={{ color: ONBOARDING_COLORS.ink }}>
-            <ImageIcon className="h-4 w-4 shrink-0" aria-hidden /> A PNG with a clear background works best
+        <div className="space-y-1.5">
+          <p className="text-[15px] font-semibold" style={{ color: OB.ink }}>
+            {assets.logoUrl ? 'We read your color from it' : 'Your logo'}
           </p>
-          <p className="text-xs sm:text-sm">We read your brand color straight from it and paint your whole store with it — watch the preview.</p>
-          <p className="text-xs">No logo yet? Skip it. We use your initials and you can add one anytime.</p>
+          <p className="text-[13px] leading-relaxed" style={{ color: OB.muted }}>
+            {assets.logoUrl
+              ? 'Pick a different one below if it is not quite right.'
+              : 'A logo on a plain background works best. No logo yet? Skip it. We use your initials.'}
+          </p>
         </div>
       </div>
-
-      <div>
-        <SectionLabel>Your brand color</SectionLabel>
-        <p className="mb-3 mt-0.5 text-xs" style={{ color: ONBOARDING_COLORS.cocoa }}>Buttons, prices and headers use it. Tap to try one on.</p>
+      <div className="space-y-4">
+        <GroupLabel hint="Buttons, prices and headers use it.">Brand color</GroupLabel>
         <ColorPicker value={brand} logoColor={assets.logoColor} typeColor={typeColor} onChange={(color) => update({ brandColor: color })} />
       </div>
     </div>
   )
 }
 
+const RANK_PLACEHOLDERS = ['e.g. Chicken Inasal', 'e.g. Sisig', 'e.g. Halo-halo'] as const
+
 export function MenuStep({ draft, update, assets, uploadPhoto, removePhoto }: StepProps & PhotoProps) {
+  const [isTyping, setIsTyping] = useState(draft.menuText.trim().length > 0)
   const slots = Array.from({ length: MAX_MENU_PHOTOS }, (_, index) => assets.menuImageUrls[index] ?? null)
   const firstEmpty = slots.findIndex((url) => url === null)
+
   return (
-    <div className="space-y-7">
-      <div>
-        <SectionLabel>Photos of your menu</SectionLabel>
-        <p className="mt-0.5 text-xs" style={{ color: ONBOARDING_COLORS.cocoa }}>
-          Up to {MAX_MENU_PHOTOS}. Flat, bright, every price readable — our AI types every dish and price for you.
-        </p>
-        <div className="mt-3 grid grid-cols-3 gap-2.5">
-          {slots.map((url, index) =>
-            url || index === firstEmpty ? (
-              <PhotoSlot
-                key={url ?? `empty-${index}`}
-                label={index === 0 ? 'Add menu photo' : 'Add another'}
-                imageUrl={url}
-                onUpload={(file) => uploadPhoto('menu', file)}
-                onRemove={() => removePhoto('menu', index)}
-              />
-            ) : (
-              <div key={`placeholder-${index}`} className="aspect-square rounded-3xl" style={{ backgroundColor: ONBOARDING_COLORS.creamDeep, opacity: 0.5 }} />
-            ),
-          )}
-        </div>
+    <div className="space-y-9">
+      <StepHeading title="Show us your menu" lede="Snap your menu board or a printed menu. We type every dish and price for you." />
+
+      <div className="grid grid-cols-3 gap-3">
+        {slots.map((url, index) =>
+          url || index === firstEmpty ? (
+            <PhotoSlot
+              key={url ?? `empty-${index}`}
+              label={index === 0 ? 'Add photo' : 'Add page'}
+              imageUrl={url}
+              onUpload={(file) => uploadPhoto('menu', file)}
+              onRemove={() => removePhoto('menu', index)}
+            />
+          ) : (
+            <div key={`placeholder-${index}`} className="aspect-square rounded-xl border border-dashed" style={{ borderColor: OB.line }} aria-hidden />
+          ),
+        )}
       </div>
-      <Field label="…or type it (optional)" hint="One dish per line with its price, e.g. “Chicken Adobo – 150”. It shows up in the preview as you type.">
-        <textarea className={`${INPUT_CLASS} min-h-32 leading-relaxed`} value={draft.menuText} onChange={(e) => update({ menuText: e.target.value })} />
-      </Field>
-      <Field label="Your 3 best sellers" hint="We feature them, build combos around them, and make one your loyalty reward.">
-        <div className="space-y-2">
-          {draft.bestSellers.map((name, index) => (
-            <div key={index} className="relative">
-              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base" aria-hidden>{['🥇', '🥈', '🥉'][index]}</span>
-              <input
-                className={`${INPUT_CLASS} pl-11`}
-                value={name}
-                maxLength={80}
-                aria-label={`Best seller ${index + 1}`}
-                placeholder={['e.g. Chicken Inasal', 'e.g. Sisig', 'e.g. Halo-halo'][index]}
-                onChange={(e) => {
-                  const next = [...draft.bestSellers] as WizardDraft['bestSellers']
-                  next[index] = e.target.value
-                  update({ bestSellers: next })
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      </Field>
-      <p className="flex items-start gap-2 text-xs" style={{ color: ONBOARDING_COLORS.cocoa }}>
-        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-        You review every name and price before your store goes live.
+
+      <div className="rounded-xl border" style={{ borderColor: OB.line }}>
+        <button
+          type="button"
+          onClick={() => setIsTyping(!isTyping)}
+          aria-expanded={isTyping}
+          className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-xl px-4 text-left text-[15px] font-semibold ${FOCUS_RING}`}
+          style={{ color: OB.ink }}
+        >
+          No photo? Type your menu instead
+          <ChevronDown className={`h-5 w-5 shrink-0 transition-transform duration-200 ${isTyping ? 'rotate-180' : ''}`} aria-hidden />
+        </button>
+        {isTyping && (
+          <div className="px-4 pb-4">
+            <textarea
+              className={`${INPUT_CLASS} min-h-36 leading-relaxed`}
+              value={draft.menuText}
+              aria-label="Your menu, one dish per line"
+              placeholder={'Chicken Adobo – 150\nPork Sinigang – 180'}
+              onChange={(event) => update({ menuText: event.target.value })}
+            />
+            <p className="mt-2 text-[13px]" style={{ color: OB.muted }}>One dish per line with its price. It appears in the preview as you type.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <GroupLabel hint="We feature them, build combos around them, and make one your loyalty reward.">Your three best sellers</GroupLabel>
+        {draft.bestSellers.map((name, index) => (
+          <div key={index} className="relative">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-bold tabular-nums" style={{ color: ACCENT }} aria-hidden>
+              {index + 1}
+            </span>
+            <input
+              className={`${INPUT_CLASS} pl-10`}
+              value={name}
+              maxLength={80}
+              aria-label={`Best seller ${index + 1}`}
+              placeholder={RANK_PLACEHOLDERS[index]}
+              onChange={(event) => {
+                const next = [...draft.bestSellers] as WizardDraft['bestSellers']
+                next[index] = event.target.value
+                update({ bestSellers: next })
+              }}
+            />
+          </div>
+        ))}
+      </div>
+
+      <p className="flex items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: OB.muted }}>
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden />
+        You can fix any name or price from your dashboard afterwards.
       </p>
     </div>
   )

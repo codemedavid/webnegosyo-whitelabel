@@ -5,7 +5,8 @@
  * (aria-hidden), and switched off for people who ask for reduced motion.
  */
 
-const COLORS = ['var(--ob-accent, #D7261D)', '#F5A623', '#1F9D55', '#2a6fdb', '#b83280']
+/** The owner's brand leads; ink and a warm gold keep it from reading as a toy. */
+const COLORS = ['var(--ob-accent, #17130F)', 'var(--ob-accent, #17130F)', '#17130F', '#E8B23A', '#D3CCC4']
 const PIECE_COUNT = 28
 
 const PIECES = Array.from({ length: PIECE_COUNT }, (_, index) => ({

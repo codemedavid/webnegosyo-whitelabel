@@ -9,14 +9,33 @@ import { OnboardingReveal } from './onboarding-reveal'
 import { accentStyle } from './onboarding-theme'
 
 const POLL_INTERVAL_MS = 2500
+/** How long to wait for the store to open after the build reports done (~20s). */
+const MAX_OPENING_POLLS = 8
 
 /**
- * Wizard → live build → reveal. Polls only while something is being built.
- * After the wizard, the pages wear the brand color the build applied.
+ * True while a finished build is still opening the store: the build marks
+ * itself done a moment before it flips the store live, so the page keeps
+ * watching instead of showing "almost open" to an owner who is seconds away.
+ */
+export function isStoreOpening(view: OnboardingView): boolean {
+  return view.status === 'ready'
+    && !!view.store
+    && !view.store.isLive
+    && view.isPaymentConfirmed
+    && view.launch?.canLaunch === true
+}
+
+/**
+ * Wizard → live build → reveal. Polls only while something is being built or
+ * the store is opening. After the wizard, the pages wear the brand color the
+ * build applied.
  */
 export function OnboardingFlow({ token, initialView }: { token: string; initialView: OnboardingView }) {
   const [view, setView] = useState(initialView)
+  const [openingPolls, setOpeningPolls] = useState(0)
   const isBuilding = view.status === 'queued' || view.status === 'running'
+  const isOpening = isStoreOpening(view) && openingPolls < MAX_OPENING_POLLS
+  const isPolling = isBuilding || isOpening
 
   const refresh = useCallback(async () => {
     const result = await fetchOnboardingView(token)
@@ -24,14 +43,18 @@ export function OnboardingFlow({ token, initialView }: { token: string; initialV
   }, [token])
 
   useEffect(() => {
-    if (!isBuilding) return
-    const timer = setInterval(() => void refresh(), POLL_INTERVAL_MS)
+    if (!isPolling) return
+    const timer = setInterval(() => {
+      if (!isBuilding) setOpeningPolls((count) => count + 1)
+      void refresh()
+    }, POLL_INTERVAL_MS)
     return () => clearInterval(timer)
-  }, [isBuilding, refresh])
+  }, [isPolling, isBuilding, refresh])
 
   // The server accepted the request, so the build is queued: show progress at
   // once and let the poll fill in the steps, even if this first read fails.
   const markQueued = useCallback(() => {
+    setOpeningPolls(0)
     setView((current) => ({ ...current, status: 'queued' }))
     void refresh()
   }, [refresh])
@@ -41,10 +64,11 @@ export function OnboardingFlow({ token, initialView }: { token: string; initialV
   }
 
   const brand = view.summary?.brandColor ?? view.assets.logoColor ?? null
+  const showBuilding = isBuilding || isOpening || !view.store
   return (
     <div style={accentStyle(brand, '')}>
-      {isBuilding || !view.store
-        ? <OnboardingBuilding view={view} />
+      {showBuilding
+        ? <OnboardingBuilding view={view} isOpening={isOpening} />
         : <OnboardingReveal token={token} view={view} onRefresh={markQueuedOrRefresh(view, markQueued, refresh)} />}
     </div>
   )

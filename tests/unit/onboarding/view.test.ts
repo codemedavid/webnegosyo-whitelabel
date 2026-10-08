@@ -1,4 +1,5 @@
 import { buildOnboardingView } from '@/lib/onboarding/view'
+import { buildOperatingHours } from '@/lib/onboarding/plan'
 import type { StoreOnboarding } from '@/lib/onboarding/repository'
 
 const ONBOARDING: StoreOnboarding = {
@@ -46,6 +47,7 @@ describe('buildOnboardingView', () => {
       previewPath: '/juans-kitchen/menu',
       dashboardPath: '/juans-kitchen/admin',
       isLive: false,
+      opensLabel: null,
     })
   })
 
@@ -119,5 +121,39 @@ describe('buildOnboardingView — colors and go-live', () => {
 
     // Assert
     expect(view.store?.dashboardPath).toBe('/k/admin')
+  })
+})
+
+describe('buildOnboardingView — open for orders right now?', () => {
+  const HOURS_9_TO_9 = {
+    enforce_operating_hours: true,
+    timezone: 'Asia/Manila',
+    operating_hours: buildOperatingHours({ open: '09:00', close: '21:00', closedDays: [], stopOrdersWhenClosed: true }),
+  }
+  const LIVE = { name: 'Kape ni Juan', slug: 'kape-ni-juan', is_prelaunch: false, ...HOURS_9_TO_9 }
+
+  test('a live store outside its hours says when orders open, so the owner is not told "closed" without a reason', () => {
+    // Arrange: 22:30 in Manila
+    const lateEvening = Date.parse('2026-10-08T14:30:00Z')
+
+    // Act
+    const view = buildOnboardingView({ onboarding: ONBOARDING, lead: LEAD, tenant: LIVE }, lateEvening)
+
+    // Assert
+    expect(view.store?.opensLabel).toMatch(/9:00 AM/)
+  })
+
+  test('a live store inside its hours has no opening label', () => {
+    // Arrange: 11:00 in Manila
+    const lateMorning = Date.parse('2026-10-08T03:00:00Z')
+
+    // Act + Assert
+    expect(buildOnboardingView({ onboarding: ONBOARDING, lead: LEAD, tenant: LIVE }, lateMorning).store?.opensLabel).toBeNull()
+  })
+
+  test('a store still in pre-launch has no opening label (it is not open at all yet)', () => {
+    const lateEvening = Date.parse('2026-10-08T14:30:00Z')
+    const view = buildOnboardingView({ onboarding: ONBOARDING, lead: LEAD, tenant: { ...LIVE, is_prelaunch: true } }, lateEvening)
+    expect(view.store?.opensLabel).toBeNull()
   })
 })
