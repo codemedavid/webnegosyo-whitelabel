@@ -3,7 +3,8 @@
 import { memo } from 'react'
 import type { CardStyle } from '@/lib/card-style'
 import {
-  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, optionHint, tint, useFlexCard,
+  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, InlineCardLabels, Price, SoldOutVeil,
+  hasDishPhoto, optionHint, tint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
 
@@ -20,7 +21,8 @@ const ATELIER_DEFAULTS: CardStyle = {
  * Atelier — the boutique card (Aesop, Glossier, specialty grocers).
  * The dish floats on a soft brand-tinted panel like a packshot; below, a
  * hairline, the name and price on one line, a short note, and a quiet
- * outlined "Add". Restraint is the design: no shadows, no chrome.
+ * outlined "Add". Restraint is the design: no shadows, no chrome. A dish
+ * without a photo sets the same text on the soft panel the packshot sat on.
  */
 export const AtelierCard = memo(function AtelierCard({
   item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority,
@@ -31,38 +33,54 @@ export const AtelierCard = memo(function AtelierCard({
   const density = DENSITY_CLASS[style.density]
   const hint = optionHint(item)
   const isOutlined = style.addButton === 'pill'
+  const hasPhoto = hasDishPhoto(item)
+  const panel = tint(branding.primary, 7, branding.cards)
 
   return (
     <article
       onClick={selectOnCardClick(item, onSelect)}
-      className="group @container relative flex flex-col">
-      <div className="relative">
-        <CardMedia
-          item={item}
-          branding={branding}
-          style={style}
-          priority={priority}
-          panel={tint(branding.primary, 7, branding.cards)}
-          className="rounded-[var(--brand-radius,6px)]"
-          imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.05] group-hover:-translate-y-1"
-        >
-          {!isOrderable && <SoldOutVeil />}
-        </CardMedia>
-        <CardBadges
-          item={item}
-          menuEngineeringEnabled={menuEngineeringEnabled}
-          discountPercent={discountPercent}
-          background={branding.cards}
-          color={branding.cardTitle}
-          saleBackground={branding.error}
-          className="left-2.5 top-2.5"
-        />
-      </div>
+      className={`group @container relative flex flex-col ${hasPhoto ? '' : `h-full rounded-[var(--brand-radius,6px)] ${density.pad}`}`}
+      style={hasPhoto ? undefined : { backgroundColor: panel }}
+    >
+      {hasPhoto && (
+        <div className="relative">
+          <CardMedia
+            item={item}
+            branding={branding}
+            style={style}
+            priority={priority}
+            panel={panel}
+            className="rounded-[var(--brand-radius,6px)]"
+            imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.05] group-hover:-translate-y-1"
+          >
+            {!isOrderable && <SoldOutVeil />}
+          </CardMedia>
+          <CardBadges
+            item={item}
+            menuEngineeringEnabled={menuEngineeringEnabled}
+            discountPercent={discountPercent}
+            background={branding.cards}
+            color={branding.cardTitle}
+            saleBackground={branding.error}
+            className="left-2.5 top-2.5"
+          />
+        </div>
+      )}
 
       <div
-        className={`mt-3 flex flex-1 flex-col border-t pt-3 ${density.gap} ${isCentered ? 'items-center text-center' : 'items-stretch text-left'}`}
-        style={{ borderColor: branding.cardsBorder }}
+        className={`flex flex-1 flex-col ${hasPhoto ? 'mt-3 border-t pt-3' : ''} ${density.gap} ${isCentered ? 'items-center text-center' : 'items-stretch text-left'}`}
+        style={hasPhoto ? { borderColor: branding.cardsBorder } : undefined}
       >
+        {!hasPhoto && (
+          <InlineCardLabels
+            item={item}
+            branding={branding}
+            isOrderable={isOrderable}
+            menuEngineeringEnabled={menuEngineeringEnabled}
+            discountPercent={discountPercent}
+            className={isCentered ? 'justify-center' : ''}
+          />
+        )}
         <div className={`flex gap-3 ${isCentered ? 'flex-col items-center gap-1' : 'items-baseline justify-between'}`}>
           <CardTitleButton
             item={item}

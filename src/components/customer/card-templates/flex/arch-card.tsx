@@ -3,7 +3,8 @@
 import { memo } from 'react'
 import type { CardStyle } from '@/lib/card-style'
 import {
-  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, tint, useFlexCard,
+  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, InlineCardLabels, Price, SoldOutVeil,
+  hasDishPhoto, tint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
 
@@ -20,7 +21,8 @@ const ARCH_DEFAULTS: CardStyle = {
  * Arch — the specialty-café card (Sweetgreen, Blue Bottle, bakeries).
  * The photo is framed in an arch, like a shop window, on a softly tinted
  * field. Type is centered and airy; the add button is a calm pill under the
- * price. The arch lifts a little on hover.
+ * price. The arch lifts a little on hover. A dish without a photo keeps the
+ * tinted field and the airy centered type, its labels set above the name.
  */
 export const ArchCard = memo(function ArchCard({
   item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority,
@@ -29,6 +31,7 @@ export const ArchCard = memo(function ArchCard({
     useFlexCard(item, branding, ARCH_DEFAULTS)
   const isCentered = style.textAlign === 'center'
   const density = DENSITY_CLASS[style.density]
+  const hasPhoto = hasDishPhoto(item)
 
   return (
     <article
@@ -36,30 +39,42 @@ export const ArchCard = memo(function ArchCard({
       className={`group @container relative flex h-full flex-col rounded-[var(--brand-radius,24px)] ${density.pad}`}
       style={{ backgroundColor: tint(branding.primary, 6, branding.cards) }}
     >
-      <div className="relative transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-1">
-        <CardMedia
-          item={item}
-          branding={branding}
-          style={style}
-          priority={priority}
-          panel={tint(branding.primary, 12, branding.cards)}
-          className="rounded-t-[999px] rounded-b-[calc(var(--brand-radius,24px)*0.6)]"
-          imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
-        >
-          {!isOrderable && <SoldOutVeil />}
-        </CardMedia>
-        <CardBadges
-          item={item}
-          menuEngineeringEnabled={menuEngineeringEnabled}
-          discountPercent={discountPercent}
-          background={branding.cards}
-          color={branding.cardTitle}
-          saleBackground={branding.error}
-          className="inset-x-0 bottom-2.5 justify-center"
-        />
-      </div>
+      {hasPhoto && (
+        <div className="relative transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-1">
+          <CardMedia
+            item={item}
+            branding={branding}
+            style={style}
+            priority={priority}
+            panel={tint(branding.primary, 12, branding.cards)}
+            className="rounded-t-[999px] rounded-b-[calc(var(--brand-radius,24px)*0.6)]"
+            imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]"
+          >
+            {!isOrderable && <SoldOutVeil />}
+          </CardMedia>
+          <CardBadges
+            item={item}
+            menuEngineeringEnabled={menuEngineeringEnabled}
+            discountPercent={discountPercent}
+            background={branding.cards}
+            color={branding.cardTitle}
+            saleBackground={branding.error}
+            className="inset-x-0 bottom-2.5 justify-center"
+          />
+        </div>
+      )}
 
-      <div className={`flex flex-1 flex-col pt-3 @xs:pt-4 ${density.gap} ${isCentered ? 'items-center text-center' : 'items-start text-left'}`}>
+      <div className={`flex flex-1 flex-col ${hasPhoto ? 'pt-3 @xs:pt-4' : ''} ${density.gap} ${isCentered ? 'items-center text-center' : 'items-start text-left'}`}>
+        {!hasPhoto && (
+          <InlineCardLabels
+            item={item}
+            branding={branding}
+            isOrderable={isOrderable}
+            menuEngineeringEnabled={menuEngineeringEnabled}
+            discountPercent={discountPercent}
+            className={isCentered ? 'justify-center' : ''}
+          />
+        )}
         <CardTitleButton
           item={item}
           onSelect={onSelect}

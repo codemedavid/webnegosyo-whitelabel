@@ -5,6 +5,8 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { hasDishPhoto } from '@/lib/dish-photo'
+import { TextCardTags } from './text-card-tags'
 
 interface ElegantCardProps {
   item: MenuItem
@@ -18,15 +20,17 @@ interface ElegantCardProps {
 
 /**
  * Elegant Card Template
- * Sophisticated design with soft shadows and refined spacing
+ * Sophisticated design with soft shadows and refined spacing. A dish without
+ * a photo keeps the card's air: a short brand rule, the name, then price and add.
  */
 export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: ElegantCardProps) {
-  const hasDiscount = item.discounted_price && item.discounted_price < item.price
+  const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
+  const hasPhoto = hasDishPhoto(item)
 
   return (
     <div
-      className="group relative overflow-hidden rounded-[20px] transition-all cursor-pointer"
+      className={`group relative overflow-hidden rounded-[20px] transition-all cursor-pointer ${hasPhoto ? '' : 'flex h-full flex-col'}`}
       style={{
         backgroundColor: branding.cards,
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)',
@@ -42,8 +46,8 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
       onClick={() => onSelect(item)}
     >
       {/* Image Container */}
-      <div className="relative aspect-[16/10] overflow-hidden bg-muted">
-        {(item.image_url || branding.logoUrl) && (
+      {hasPhoto && (
+        <div className="relative aspect-[16/10] overflow-hidden bg-muted">
           <OptimizedImage
             src={item.image_url}
             fallbackSrc={branding.logoUrl}
@@ -54,79 +58,93 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
             loading={priority ? 'eager' : 'lazy'}
             fetchPriority={priority ? 'high' : undefined}
           />
-        )}
 
-        {/* Subtle vignette */}
-        <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/10" />
+          {/* Subtle vignette */}
+          <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/10" />
 
-        {/* Custom Badge */}
-        {menuEngineeringEnabled && item.badge_text && (
-          <div className="absolute left-2 top-2 md:left-4 md:top-4 z-10">
-            <div
-              className="px-2 py-1 md:px-3 md:py-1.5 rounded-full text-[10px] md:text-xs font-semibold backdrop-blur-xl"
-              style={{
-                backgroundColor: branding.primary,
-                color: branding.buttonPrimaryText || '#ffffff',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
-              }}
-            >
-              {item.badge_text}
+          {/* Custom Badge */}
+          {menuEngineeringEnabled && item.badge_text && (
+            <div className="absolute left-2 top-2 md:left-4 md:top-4 z-10">
+              <div
+                className="px-2 py-1 md:px-3 md:py-1.5 rounded-full text-[10px] md:text-xs font-semibold backdrop-blur-xl"
+                style={{
+                  backgroundColor: branding.primary,
+                  color: branding.buttonPrimaryText || '#ffffff',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
+              >
+                {item.badge_text}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Badges - Elegant styling */}
-        {item.is_featured && !item.badge_text && (
-          <div className="absolute left-2 top-2 md:left-4 md:top-4">
-            <div
-              className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                color: branding.primary,
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
-              }}
-            >
-              ⭐ Featured
+          {/* Badges - Elegant styling */}
+          {item.is_featured && !item.badge_text && (
+            <div className="absolute left-2 top-2 md:left-4 md:top-4">
+              <div
+                className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                  color: branding.primary,
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
+              >
+                ⭐ Featured
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {hasDiscount && (
-          <div className="absolute right-2 top-2 md:right-4 md:top-4">
-            <div
-              className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
-              style={{
-                backgroundColor: branding.error,
-                color: '#ffffff',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
-              }}
-            >
-              SALE
+          {hasDiscount && (
+            <div className="absolute right-2 top-2 md:right-4 md:top-4">
+              <div
+                className="px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-xl"
+                style={{
+                  backgroundColor: branding.error,
+                  color: '#ffffff',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
+                }}
+              >
+                SALE
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {!isOrderable && (
-          <div className="absolute inset-0 flex items-center justify-center backdrop-blur-md bg-white/30">
-            <div
-              className="rounded-2xl px-4 py-2 text-sm font-semibold"
-              style={{
-                backgroundColor: branding.cards,
-                color: branding.textPrimary,
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)'
-              }}
-            >
-              Unavailable
+          {!isOrderable && (
+            <div className="absolute inset-0 flex items-center justify-center backdrop-blur-md bg-white/30">
+              <div
+                className="rounded-2xl px-4 py-2 text-sm font-semibold"
+                style={{
+                  backgroundColor: branding.cards,
+                  color: branding.textPrimary,
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)'
+                }}
+              >
+                Unavailable
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Content - Premium spacing */}
-      <div className="p-3 space-y-1.5 md:p-5 md:space-y-3">
+      <div className={`p-3 space-y-1.5 md:p-5 md:space-y-3 ${hasPhoto ? '' : 'flex flex-1 flex-col'}`}>
+        {!hasPhoto && (
+          <TextCardTags
+            item={item}
+            branding={branding}
+            isOrderable={isOrderable}
+            hasDiscount={hasDiscount}
+            menuEngineeringEnabled={menuEngineeringEnabled}
+            soldOutLabel="Unavailable"
+            tagClassName="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+          />
+        )}
         <div>
+          {!hasPhoto && (
+            <div aria-hidden className="mb-2 h-0.5 w-8 rounded-full" style={{ backgroundColor: branding.primary }} />
+          )}
           <h3
-            className="text-sm md:text-lg font-semibold line-clamp-1 mb-1"
+            className={`text-sm md:text-lg font-semibold mb-1 ${hasPhoto ? 'line-clamp-1' : 'line-clamp-2 leading-snug'}`}
             data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
           >
             {item.name}
@@ -152,7 +170,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
         </div>
 
         {/* Price and CTA row */}
-        <div className="flex items-center justify-between">
+        <div className={`flex items-center justify-between ${hasPhoto ? '' : 'mt-auto'}`}>
           <div className="flex items-baseline gap-2">
             {hasDiscount && (
               <span
@@ -183,6 +201,7 @@ export const ElegantCard = memo(function ElegantCard({ item, onSelect, branding,
               onSelect(item)
             }}
             disabled={!isOrderable}
+            aria-label={`Add ${item.name}`}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'scale(1.1)'
               e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.25)'

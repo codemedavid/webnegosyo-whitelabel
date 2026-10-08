@@ -5,6 +5,8 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { hasDishPhoto } from '@/lib/dish-photo'
+import { TextCardTags } from './text-card-tags'
 
 interface NeonCardProps {
     item: MenuItem
@@ -18,15 +20,26 @@ interface NeonCardProps {
 
 /**
  * Neon Card Template
- * Dark card with neon glow borders using the primary color, vibrant accents
+ * Dark card with neon glow borders using the primary color, vibrant accents.
+ * A dish without a photo keeps the glowing rule, now along the card's top edge.
  */
 export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: NeonCardProps) {
-    const hasDiscount = item.discounted_price && item.discounted_price < item.price
+    const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
+    const hasPhoto = hasDishPhoto(item)
+    const neonLine = (
+        <div
+            className={`${hasPhoto ? 'absolute bottom-0' : 'absolute top-0'} left-0 right-0 h-[2px]`}
+            style={{
+                background: `linear-gradient(90deg, transparent, ${branding.primary}, transparent)`,
+                boxShadow: `0 0 10px ${branding.primary}, 0 0 20px ${branding.primary}66`,
+            }}
+        />
+    )
 
     return (
         <div
-            className="group relative overflow-hidden rounded-xl cursor-pointer transition-all duration-300"
+            className={`group relative overflow-hidden rounded-xl cursor-pointer transition-all duration-300 ${hasPhoto ? '' : 'flex h-full flex-col'}`}
             style={{
                 backgroundColor: '#0a0a0a',
                 borderWidth: '1px',
@@ -47,8 +60,8 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrd
             onClick={() => onSelect(item)}
         >
             {/* Image Container */}
-            <div className="relative aspect-[4/3] overflow-hidden">
-                {(item.image_url || branding.logoUrl) && (
+            {hasPhoto ? (
+                <div className="relative aspect-[4/3] overflow-hidden">
                     <OptimizedImage
                         src={item.image_url}
                         fallbackSrc={branding.logoUrl}
@@ -57,87 +70,100 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrd
                         className="object-cover transition-transform duration-500 group-hover:scale-110 brightness-90"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
                         loading={priority ? 'eager' : 'lazy'}
-            fetchPriority={priority ? 'high' : undefined}
+                        fetchPriority={priority ? 'high' : undefined}
                     />
-                )}
 
-                {/* Dark vignette */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+                    {/* Dark vignette */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
 
-                {/* Neon line at bottom of image */}
-                <div
-                    className="absolute bottom-0 left-0 right-0 h-[2px]"
-                    style={{
-                        background: `linear-gradient(90deg, transparent, ${branding.primary}, transparent)`,
-                        boxShadow: `0 0 10px ${branding.primary}, 0 0 20px ${branding.primary}66`,
-                    }}
-                />
+                    {/* Neon line at bottom of image */}
+                    {neonLine}
 
-                {/* Badges — neon style */}
-                {menuEngineeringEnabled && item.badge_text && (
-                    <div className="absolute left-2 top-2 md:left-3 md:top-3 z-10">
-                        <span
-                            className="rounded-sm px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-                            style={{
-                                backgroundColor: `${branding.primary}dd`,
-                                color: branding.buttonPrimaryText || '#ffffff',
-                                boxShadow: `0 0 12px ${branding.primary}88`,
-                            }}
-                        >
-                            {item.badge_text}
-                        </span>
-                    </div>
-                )}
+                    {/* Badges — neon style */}
+                    {menuEngineeringEnabled && item.badge_text && (
+                        <div className="absolute left-2 top-2 md:left-3 md:top-3 z-10">
+                            <span
+                                className="rounded-sm px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+                                style={{
+                                    backgroundColor: `${branding.primary}dd`,
+                                    color: branding.buttonPrimaryText || '#ffffff',
+                                    boxShadow: `0 0 12px ${branding.primary}88`,
+                                }}
+                            >
+                                {item.badge_text}
+                            </span>
+                        </div>
+                    )}
 
-                {item.is_featured && !item.badge_text && (
-                    <div className="absolute left-2 top-2 md:left-3 md:top-3">
-                        <span
-                            className="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
-                            style={{
-                                backgroundColor: 'rgba(255, 200, 0, 0.9)',
-                                color: '#000000',
-                                boxShadow: '0 0 12px rgba(255, 200, 0, 0.5)',
-                            }}
-                        >
-                            ★ Featured
-                        </span>
-                    </div>
-                )}
+                    {item.is_featured && !item.badge_text && (
+                        <div className="absolute left-2 top-2 md:left-3 md:top-3">
+                            <span
+                                className="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                                style={{
+                                    backgroundColor: 'rgba(255, 200, 0, 0.9)',
+                                    color: '#000000',
+                                    boxShadow: '0 0 12px rgba(255, 200, 0, 0.5)',
+                                }}
+                            >
+                                ★ Featured
+                            </span>
+                        </div>
+                    )}
 
-                {hasDiscount && (
-                    <div className="absolute right-2 top-2 md:right-3 md:top-3">
-                        <span
-                            className="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
-                            style={{
-                                backgroundColor: `${branding.error}e6`,
-                                color: '#ffffff',
-                                boxShadow: `0 0 12px ${branding.error}80`,
-                            }}
-                        >
-                            SALE
-                        </span>
-                    </div>
-                )}
+                    {hasDiscount && (
+                        <div className="absolute right-2 top-2 md:right-3 md:top-3">
+                            <span
+                                className="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                                style={{
+                                    backgroundColor: `${branding.error}e6`,
+                                    color: '#ffffff',
+                                    boxShadow: `0 0 12px ${branding.error}80`,
+                                }}
+                            >
+                                SALE
+                            </span>
+                        </div>
+                    )}
 
-                {!isOrderable && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-                        <span
-                            className="text-sm font-bold uppercase tracking-wider"
-                            style={{
-                                color: branding.primary,
-                                textShadow: `0 0 10px ${branding.primary}`,
-                            }}
-                        >
-                            Unavailable
-                        </span>
-                    </div>
-                )}
-            </div>
+                    {!isOrderable && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                            <span
+                                className="text-sm font-bold uppercase tracking-wider"
+                                style={{
+                                    color: branding.primary,
+                                    textShadow: `0 0 10px ${branding.primary}`,
+                                }}
+                            >
+                                Unavailable
+                            </span>
+                        </div>
+                    )}
+                </div>
+            ) : neonLine}
 
             {/* Content — dark theme */}
-            <div className="p-2.5 space-y-1 md:p-4 md:space-y-2">
+            <div className={`p-2.5 space-y-1 md:p-4 md:space-y-2 ${hasPhoto ? '' : 'flex flex-1 flex-col pt-3.5 md:pt-5'}`}>
+                {!hasPhoto && (
+                    <TextCardTags
+                        item={item}
+                        branding={branding}
+                        isOrderable={isOrderable}
+                        hasDiscount={hasDiscount}
+                        menuEngineeringEnabled={menuEngineeringEnabled}
+                        soldOutLabel="Unavailable"
+                        tagClassName="rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                        soldOutStyle={{
+                            backgroundColor: 'transparent',
+                            color: branding.primary,
+                            boxShadow: `inset 0 0 0 1px ${branding.primary}88`,
+                            textShadow: `0 0 10px ${branding.primary}`,
+                        }}
+                        badgeStyle={{ backgroundColor: `${branding.primary}dd`, boxShadow: `0 0 12px ${branding.primary}88` }}
+                        saleStyle={{ backgroundColor: `${branding.error}e6`, boxShadow: `0 0 12px ${branding.error}80` }}
+                    />
+                )}
                 <h3
-                    className="text-sm md:text-base font-bold line-clamp-1"
+                    className={`text-sm md:text-base font-bold ${hasPhoto ? 'line-clamp-1' : 'line-clamp-2 leading-snug'}`}
                     style={{ color: '#f0f0f0' }}
                 >
                     {item.name}
@@ -149,7 +175,7 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrd
                     </p>
                 )}
 
-                <div className="flex items-center justify-between pt-1">
+                <div className={`flex items-center justify-between pt-1 ${hasPhoto ? '' : 'mt-auto'}`}>
                     <div className="flex items-baseline gap-2">
                         {hasDiscount && (
                             <span className="text-xs line-through" style={{ color: 'rgba(255,255,255,0.35)' }}>
@@ -191,6 +217,7 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrd
                             onSelect(item)
                         }}
                         disabled={!isOrderable}
+                        aria-label={`Add ${item.name}`}
                     >
                         <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

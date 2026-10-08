@@ -5,6 +5,8 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { hasDishPhoto } from '@/lib/dish-photo'
+import { TextCardTags } from './text-card-tags'
 
 interface BrutalistCardProps {
     item: MenuItem
@@ -18,15 +20,18 @@ interface BrutalistCardProps {
 
 /**
  * Brutalist Card Template
- * Raw, industrial design with thick borders, stark contrast, and geometric shapes
+ * Raw, industrial design with thick borders, stark contrast, and geometric shapes.
+ * A dish without a photo is the slab of type alone, its labels stamped above the name.
  */
 export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: BrutalistCardProps) {
-    const hasDiscount = item.discounted_price && item.discounted_price < item.price
+    const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
+    const hasPhoto = hasDishPhoto(item)
+    const ink = branding.cardTitle || '#000000'
 
     return (
         <div
-            className="group relative overflow-hidden cursor-pointer transition-all duration-150"
+            className={`group relative overflow-hidden cursor-pointer transition-all duration-150 ${hasPhoto ? '' : 'flex h-full flex-col'}`}
             style={{
                 backgroundColor: branding.cards,
                 border: `3px solid ${branding.cardTitle || '#000000'}`,
@@ -42,8 +47,8 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
             onClick={() => onSelect(item)}
         >
             {/* Image Container */}
-            <div className="relative aspect-[3/2] overflow-hidden bg-muted">
-                {(item.image_url || branding.logoUrl) && (
+            {hasPhoto && (
+                <div className="relative aspect-[3/2] overflow-hidden bg-muted">
                     <OptimizedImage
                         src={item.image_url}
                         fallbackSrc={branding.logoUrl}
@@ -52,63 +57,75 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                         className="object-cover transition-transform duration-200 group-hover:scale-105"
                         sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
                         loading={priority ? 'eager' : 'lazy'}
-            fetchPriority={priority ? 'high' : undefined}
+                        fetchPriority={priority ? 'high' : undefined}
                     />
-                )}
 
-                {/* Badges — raw style */}
-                {menuEngineeringEnabled && item.badge_text && (
-                    <div className="absolute left-0 top-0 z-10">
-                        <span
-                            className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
-                            style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
-                        >
-                            {item.badge_text}
-                        </span>
-                    </div>
-                )}
+                    {/* Badges — raw style */}
+                    {menuEngineeringEnabled && item.badge_text && (
+                        <div className="absolute left-0 top-0 z-10">
+                            <span
+                                className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
+                                style={{ backgroundColor: branding.primary, color: branding.buttonPrimaryText || '#ffffff' }}
+                            >
+                                {item.badge_text}
+                            </span>
+                        </div>
+                    )}
 
-                {item.is_featured && !item.badge_text && (
-                    <div className="absolute left-0 top-0">
-                        <span
-                            className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
-                            style={{ backgroundColor: branding.warning, color: '#000000' }}
-                        >
-                            ★ FEATURED
-                        </span>
-                    </div>
-                )}
+                    {item.is_featured && !item.badge_text && (
+                        <div className="absolute left-0 top-0">
+                            <span
+                                className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
+                                style={{ backgroundColor: branding.warning, color: '#000000' }}
+                            >
+                                ★ FEATURED
+                            </span>
+                        </div>
+                    )}
 
-                {hasDiscount && (
-                    <div className="absolute right-0 top-0">
-                        <span
-                            className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
-                            style={{ backgroundColor: branding.error, color: '#ffffff' }}
-                        >
-                            SALE
-                        </span>
-                    </div>
-                )}
+                    {hasDiscount && (
+                        <div className="absolute right-0 top-0">
+                            <span
+                                className="inline-block px-2 py-0.5 text-[10px] md:px-3 md:py-1 md:text-xs font-black uppercase tracking-widest"
+                                style={{ backgroundColor: branding.error, color: '#ffffff' }}
+                            >
+                                SALE
+                            </span>
+                        </div>
+                    )}
 
-                {!isOrderable && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-                        <span
-                            className="px-6 py-2 text-sm font-black uppercase tracking-widest"
-                            style={{ backgroundColor: branding.cards, color: branding.textPrimary, border: `2px solid ${branding.textPrimary}` }}
-                        >
-                            SOLD OUT
-                        </span>
-                    </div>
-                )}
-            </div>
+                    {!isOrderable && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                            <span
+                                className="px-6 py-2 text-sm font-black uppercase tracking-widest"
+                                style={{ backgroundColor: branding.cards, color: branding.textPrimary, border: `2px solid ${branding.textPrimary}` }}
+                            >
+                                SOLD OUT
+                            </span>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Content — raw and direct */}
             <div
-                className="p-2.5 space-y-1 md:p-4 md:space-y-2"
-                style={{ borderTop: `3px solid ${branding.cardTitle || '#000000'}` }}
+                className={`p-2.5 space-y-1 md:p-4 md:space-y-2 ${hasPhoto ? '' : 'flex flex-1 flex-col'}`}
+                style={hasPhoto ? { borderTop: `3px solid ${ink}` } : undefined}
             >
+                {!hasPhoto && (
+                    <TextCardTags
+                        item={item}
+                        branding={branding}
+                        isOrderable={isOrderable}
+                        hasDiscount={hasDiscount}
+                        menuEngineeringEnabled={menuEngineeringEnabled}
+                        soldOutLabel="SOLD OUT"
+                        tagClassName="px-2 py-0.5 text-[10px] font-black uppercase tracking-widest"
+                        soldOutStyle={{ backgroundColor: ink, color: branding.cards }}
+                    />
+                )}
                 <h3
-                    className="text-sm md:text-lg font-black uppercase tracking-tight line-clamp-1"
+                    className={`text-sm md:text-lg font-black uppercase tracking-tight ${hasPhoto ? 'line-clamp-1' : 'line-clamp-2 leading-tight'}`}
                     data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
                 >
                     {item.name}
@@ -123,7 +140,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                     </p>
                 )}
 
-                <div className="flex items-end justify-between pt-1">
+                <div className={`flex items-end justify-between pt-1 ${hasPhoto ? '' : 'mt-auto'}`}>
                     <div>
                         {hasDiscount && (
                             <span className="block text-xs line-through" style={{ color: branding.textMuted }}>
@@ -150,6 +167,7 @@ export const BrutalistCard = memo(function BrutalistCard({ item, onSelect, brand
                             onSelect(item)
                         }}
                         disabled={!isOrderable}
+                        aria-label={`Add ${item.name}`}
                     >
                         <span className="text-base md:text-xl font-black">+</span>
                     </button>

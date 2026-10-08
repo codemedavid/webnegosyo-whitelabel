@@ -5,6 +5,9 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { tint } from '@/lib/card-color'
+import { hasDishPhoto } from '@/lib/dish-photo'
+import { TextCardTags } from './text-card-tags'
 
 interface MagazineCardProps {
     item: MenuItem
@@ -18,11 +21,95 @@ interface MagazineCardProps {
 
 /**
  * Magazine Card Template
- * Editorial-style with full-bleed image and text overlay, like a food magazine spread
+ * Editorial-style with full-bleed image and text overlay, like a food magazine spread.
+ * A dish without a photo sets the same editorial text on a brand-tinted panel.
  */
 export const MagazineCard = memo(function MagazineCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: MagazineCardProps) {
-    const hasDiscount = item.discounted_price && item.discounted_price < item.price
+    const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
+    const hasPhoto = hasDishPhoto(item)
+
+    const addButton = (
+        <button
+            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
+            style={{
+                backgroundColor: branding.buttonPrimary,
+                color: branding.buttonPrimaryText,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => {
+                e.stopPropagation()
+                onSelect(item)
+            }}
+            disabled={!isOrderable}
+            aria-label={`Add ${item.name}`}
+        >
+            <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+        </button>
+    )
+
+    if (!hasPhoto) {
+        return (
+            <div
+                className="group relative flex h-full cursor-pointer flex-col gap-1.5 overflow-hidden rounded-xl p-3 transition-all duration-300 hover:shadow-2xl md:gap-2.5 md:p-5"
+                style={{ backgroundColor: tint(branding.primary, 12, branding.cards) }}
+                onClick={() => onSelect(item)}
+            >
+                <TextCardTags
+                    item={item}
+                    branding={branding}
+                    isOrderable={isOrderable}
+                    hasDiscount={hasDiscount}
+                    menuEngineeringEnabled={menuEngineeringEnabled}
+                    soldOutLabel="Unavailable"
+                    tagClassName="rounded-sm px-2 py-1 text-[10px] font-semibold uppercase tracking-wider"
+                />
+                {item.variations.length > 0 && (
+                    <span
+                        className="text-[10px] font-semibold uppercase tracking-[0.2em]"
+                        style={{ color: branding.textMuted }}
+                    >
+                        {item.variations.length} sizes available
+                    </span>
+                )}
+                <h3
+                    className="text-base md:text-xl font-bold line-clamp-2 leading-tight"
+                    data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
+                >
+                    {item.name}
+                </h3>
+                {item.description && (
+                    <p
+                        className="text-xs md:text-sm line-clamp-2 leading-relaxed"
+                        data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
+                    >
+                        {item.description}
+                    </p>
+                )}
+                <div
+                    className="mt-auto flex items-center justify-between gap-2 border-t pt-2 md:pt-3"
+                    style={{ borderColor: tint(branding.primary, 25, branding.cards) }}
+                >
+                    <div className="flex items-baseline gap-2">
+                        {hasDiscount && (
+                            <span className="text-sm line-through" style={{ color: branding.textMuted }}>
+                                {formatPrice(item.price, { hideCurrencySymbol })}
+                            </span>
+                        )}
+                        <span
+                            className="text-base md:text-2xl font-bold"
+                            data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
+                        >
+                            {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
+                        </span>
+                    </div>
+                    {addButton}
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div
@@ -32,18 +119,16 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
         >
             {/* Full-bleed image */}
             <div className="relative aspect-[3/4] overflow-hidden bg-muted">
-                {(item.image_url || branding.logoUrl) && (
-                    <OptimizedImage
-                        src={item.image_url}
-                        fallbackSrc={branding.logoUrl}
-                        alt={item.name}
-                        fill
-                        className="object-cover transition-transform duration-700 group-hover:scale-110"
-                        sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                        loading={priority ? 'eager' : 'lazy'}
-                        fetchPriority={priority ? 'high' : undefined}
-                    />
-                )}
+                <OptimizedImage
+                    src={item.image_url}
+                    fallbackSrc={branding.logoUrl}
+                    alt={item.name}
+                    fill
+                    className="object-cover transition-transform duration-700 group-hover:scale-110"
+                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                    loading={priority ? 'eager' : 'lazy'}
+                    fetchPriority={priority ? 'high' : undefined}
+                />
 
                 {/* Editorial gradient overlay — bottom heavy */}
                 <div
@@ -125,23 +210,7 @@ export const MagazineCard = memo(function MagazineCard({ item, onSelect, brandin
                             </span>
                         </div>
 
-                        <button
-                            className="flex h-8 w-8 md:h-11 md:w-11 items-center justify-center rounded-full transition-all duration-200 hover:scale-110"
-                            style={{
-                                backgroundColor: branding.buttonPrimary,
-                                color: branding.buttonPrimaryText,
-                                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-                            }}
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                onSelect(item)
-                            }}
-                            disabled={!isOrderable}
-                        >
-                            <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                            </svg>
-                        </button>
+                        {addButton}
                     </div>
                 </div>
             </div>

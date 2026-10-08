@@ -10,6 +10,8 @@
  *
  *  - price, compare-at and "from" logic
  *  - sold-out state (orderability is decided once, upstream, and passed in)
+ *  - the photo rule: a dish without its own photo has no media frame at all
+ *    (`CardMedia` renders nothing); its labels move inline (`InlineCardLabels`)
  *  - the tappable-card pattern: the dish name is a real <button> stretched over
  *    the card, so the add button beside it is never a button inside a button
  *  - container-query sizing: cards size to their column, not the viewport, so
@@ -25,8 +27,9 @@ import type { BrandingColors } from '@/lib/branding-utils'
 import { resolveCardStyle, type CardStyle } from '@/lib/card-style'
 import type { MenuItem } from '@/types/database'
 import { readableOn, tint } from '@/lib/card-color'
+import { dishBadgeLabel, hasDishPhoto } from '@/lib/dish-photo'
 
-export { readableOn, tint }
+export { readableOn, tint, hasDishPhoto }
 
 export interface FlexCardProps {
   item: MenuItem
@@ -70,7 +73,7 @@ interface CardMediaProps {
   branding: BrandingColors
   style: CardStyle
   priority?: boolean
-  /** Panel color behind a contained dish (or behind a missing photo). */
+  /** Panel color behind a contained dish. */
   panel?: string
   className?: string
   imageClassName?: string
@@ -80,14 +83,16 @@ interface CardMediaProps {
 
 /**
  * The dish photo in the chosen shape. `contain` floats the dish on the panel
- * color with breathing room (packshot style); `cover` fills the frame. With no
- * photo and no logo, the dish's initial stands in, set large on the panel.
+ * color with breathing room (packshot style); `cover` fills the frame. A dish
+ * without its own photo gets no frame at all (never the store logo, never a
+ * placeholder): templates render a text card and check `hasDishPhoto` to
+ * re-home whatever they overlay on the photo.
  */
 export function CardMedia({
   item, branding, style, priority, panel, className = '', imageClassName = '', mediaStyle, children,
 }: CardMediaProps) {
+  if (!hasDishPhoto(item)) return null
   const isContained = style.imageFit === 'contain'
-  const hasImage = Boolean(item.image_url || branding.logoUrl)
   const panelColor = panel ?? tint(branding.primary, 8, branding.cards)
 
   return (
@@ -95,26 +100,16 @@ export function CardMedia({
       className={`relative overflow-hidden ${RATIO_CLASS[style.imageRatio]} ${className}`}
       style={{ backgroundColor: panelColor, ...mediaStyle }}
     >
-      {hasImage ? (
-        <OptimizedImage
-          src={item.image_url}
-          fallbackSrc={branding.logoUrl}
-          alt={item.name}
-          fill
-          className={`${isContained ? 'object-contain p-[9%] drop-shadow-[0_14px_18px_rgba(0,0,0,0.18)]' : 'object-cover'} ${imageClassName}`}
-          sizes={CARD_IMAGE_SIZES}
-          loading={priority ? 'eager' : 'lazy'}
-          fetchPriority={priority ? 'high' : undefined}
-        />
-      ) : (
-        <div
-          aria-hidden
-          className="absolute inset-0 flex items-center justify-center text-5xl font-black uppercase opacity-25"
-          style={{ color: branding.primary }}
-        >
-          {item.name.trim().charAt(0)}
-        </div>
-      )}
+      <OptimizedImage
+        src={item.image_url}
+        fallbackSrc={branding.logoUrl}
+        alt={item.name}
+        fill
+        className={`${isContained ? 'object-contain p-[9%] drop-shadow-[0_14px_18px_rgba(0,0,0,0.18)]' : 'object-cover'} ${imageClassName}`}
+        sizes={CARD_IMAGE_SIZES}
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : undefined}
+      />
       {children}
     </div>
   )
@@ -275,23 +270,80 @@ interface CardBadgeProps {
 export function CardBadges({
   item, menuEngineeringEnabled, discountPercent, background, color, saleBackground, className = '',
 }: CardBadgeProps) {
-  const label = menuEngineeringEnabled && item.badge_text ? item.badge_text : item.is_featured ? 'Featured' : null
+  const label = dishBadgeLabel(item, menuEngineeringEnabled)
   if (!label && discountPercent <= 0) return null
   return (
     <div className={`pointer-events-none absolute z-[3] flex flex-wrap gap-1 ${className}`}>
+      {label && <span className={LABEL_CLASS} style={{ backgroundColor: background, color }}>{label}</span>}
+      {discountPercent > 0 && <SaleLabel discountPercent={discountPercent} background={saleBackground} />}
+    </div>
+  )
+}
+
+const LABEL_CLASS = 'rounded-full px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.08em]'
+
+function SaleLabel({ discountPercent, background }: { discountPercent: number; background: string }) {
+  return (
+    <span
+      className="rounded-full px-2 py-[3px] text-[10px] font-bold tabular-nums"
+      style={{ backgroundColor: background, color: readableOn(background) }}
+    >
+      −{discountPercent}%
+    </span>
+  )
+}
+
+/** Sold-out as an inline label, for a text card that has no photo to veil. */
+export function SoldOutTag({ label = 'Sold out', background, color }: { label?: string; background: string; color: string }) {
+  return (
+    <span className={LABEL_CLASS} style={{ backgroundColor: background, color }}>
+      {label}
+    </span>
+  )
+}
+
+interface InlineCardLabelsProps {
+  item: MenuItem
+  branding: BrandingColors
+  isOrderable: boolean
+  menuEngineeringEnabled?: boolean
+  discountPercent: number
+  soldOutLabel?: string
+  /** Defaults suit a card on `branding.cards`; tinted tiles pass their own ink. */
+  badgeBackground?: string
+  badgeColor?: string
+  soldOutBackground?: string
+  soldOutColor?: string
+  className?: string
+}
+
+/**
+ * A text card's labels, in the flow above the name: what a photo card shows
+ * as the sold-out veil and the corner badges. Nothing renders when there is
+ * nothing to say.
+ */
+export function InlineCardLabels({
+  item, branding, isOrderable, menuEngineeringEnabled, discountPercent, soldOutLabel = 'Sold out',
+  badgeBackground, badgeColor, soldOutBackground, soldOutColor, className = '',
+}: InlineCardLabelsProps) {
+  const label = dishBadgeLabel(item, menuEngineeringEnabled)
+  if (isOrderable && !label && discountPercent <= 0) return null
+  const badgeFill = badgeBackground ?? branding.primary
+  return (
+    <div className={`flex flex-wrap items-center gap-1 ${className}`}>
+      {!isOrderable && (
+        <SoldOutTag
+          label={soldOutLabel}
+          background={soldOutBackground ?? branding.cardTitle}
+          color={soldOutColor ?? branding.cards}
+        />
+      )}
       {label && (
-        <span className="rounded-full px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.08em]" style={{ backgroundColor: background, color }}>
+        <span className={LABEL_CLASS} style={{ backgroundColor: badgeFill, color: badgeColor ?? readableOn(badgeFill) }}>
           {label}
         </span>
       )}
-      {discountPercent > 0 && (
-        <span
-          className="rounded-full px-2 py-[3px] text-[10px] font-bold tabular-nums"
-          style={{ backgroundColor: saleBackground, color: readableOn(saleBackground) }}
-        >
-          −{discountPercent}%
-        </span>
-      )}
+      {discountPercent > 0 && <SaleLabel discountPercent={discountPercent} background={branding.error} />}
     </div>
   )
 }
