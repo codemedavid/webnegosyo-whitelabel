@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Apple, ArrowUpRight, Check, ChevronDown, PlayCircle, Smartphone } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown, PlayCircle } from 'lucide-react'
 import type { AppDownloadLink, FirstWeekPlan as FirstWeekPlanData, FirstWeekStep, FirstWeekStepId } from '@/lib/onboarding/first-week'
 
 /**
@@ -52,14 +52,31 @@ function useTicks(storeSlug: string) {
   return { ticked, toggle }
 }
 
+/** The Apple mark, for the App Store badge (lucide's apple is the fruit). */
+function AppleMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="currentColor" aria-hidden>
+      <path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.24 2.73 2.2 1.1-.04 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.41 1.2-2.47-.03-.01-2.3-.88-2.32-3.5zM14.2 6.13c.6-.74 1.01-1.75.9-2.77-.87.04-1.94.59-2.56 1.32-.56.64-1.05 1.68-.92 2.67.97.08 1.97-.49 2.58-1.22z" />
+    </svg>
+  )
+}
+
+/** The Android robot head, for the direct-download badge. */
+function AndroidMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0" fill="currentColor" aria-hidden>
+      <path d="M17.6 9.48l1.84-3.18a.38.38 0 0 0-.66-.38l-1.86 3.22A11.4 11.4 0 0 0 12 8.13c-1.77 0-3.43.38-4.92 1.01L5.22 5.92a.38.38 0 0 0-.66.38L6.4 9.48C3.3 11.17 1.18 14.3.9 18h22.2c-.28-3.7-2.4-6.83-5.5-8.52zM7 15.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" />
+    </svg>
+  )
+}
+
 /** Store-badge-shaped download buttons: the shape owners already trust. */
 function StoreBadge({ download }: { download: AppDownloadLink }) {
   const isIos = download.platform === 'ios'
-  const Icon = isIos ? Apple : Smartphone
   return (
     <a href={download.href} target="_blank" rel="noopener noreferrer"
       className={`inline-flex h-14 min-w-[10.5rem] items-center gap-3 rounded-xl bg-[#111] px-4 text-white transition-colors hover:bg-black ${FOCUS_RING}`}>
-      <Icon className="h-6 w-6 shrink-0" strokeWidth={isIos ? 1.75 : 1.5} aria-hidden />
+      {isIos ? <AppleMark /> : <AndroidMark />}
       <span className="text-left leading-tight">
         <span className="block text-[11px] opacity-80">{isIos ? 'Download on the' : 'Download for'}</span>
         <span className="block text-[17px] font-semibold tracking-[-0.01em]">{isIos ? 'App Store' : 'Android'}</span>

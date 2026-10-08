@@ -15,6 +15,8 @@ const ORDER_TYPES: Record<OnboardingOrderType, { icon: LucideIcon; title: string
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+/** Day indices (0 = Sunday) in the order a Philippine week is read. */
+const WEEK_FROM_MONDAY = [1, 2, 3, 4, 5, 6, 0] as const
 
 const HOUR_PRESETS: ReadonlyArray<{ label: string; open: string; close: string; closedDays: number[] }> = [
   { label: '9am – 9pm daily', open: '09:00', close: '21:00', closedDays: [] },
@@ -79,10 +81,14 @@ function WalletRow({ wallet, draft, update }: StepProps & { wallet: WalletKey })
       isOn={isOpen}
       onChange={setOpen}
     >
-      <input className={INPUT_CLASS} inputMode="tel" autoComplete="tel" aria-label={`${config.name} number`} placeholder="0917 123 4567" value={number}
-        onChange={(event) => update({ [config.number]: event.target.value } as Partial<WizardDraft>)} />
-      <input className={INPUT_CLASS} aria-label={`${config.name} account name`} placeholder="Account name" value={accountName}
-        onChange={(event) => update({ [config.accountName]: event.target.value } as Partial<WizardDraft>)} />
+      <Field label={`${config.name} number`}>
+        <input className={INPUT_CLASS} inputMode="tel" autoComplete="tel" placeholder="0917 123 4567" value={number}
+          onChange={(event) => update({ [config.number]: event.target.value } as Partial<WizardDraft>)} />
+      </Field>
+      <Field label="Name on the account">
+        <input className={INPUT_CLASS} placeholder="As it shows in the app" value={accountName}
+          onChange={(event) => update({ [config.accountName]: event.target.value } as Partial<WizardDraft>)} />
+      </Field>
     </PaymentRow>
   )
 }
@@ -91,11 +97,11 @@ export function OrderingStep({ draft, update }: StepProps) {
   return (
     <div className="space-y-9">
       <StepHeading title="How do customers order?" lede="Pick every way you serve. You can turn any of them off later." />
-      <div role="group" aria-label="How customers get their order" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div role="group" aria-label="How customers get their order" className="grid grid-cols-2 gap-3 sm:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         {(Object.keys(ORDER_TYPES) as OnboardingOrderType[]).map((type) => {
           const { icon: Icon, title, description } = ORDER_TYPES[type]
           return (
-            <OptionTile key={type} isMulti icon={<Icon className="h-7 w-7" strokeWidth={1.5} />} title={title} description={description}
+            <OptionTile key={type} isMulti icon={<Icon className="h-7 w-7" strokeWidth={1.75} />} title={title} description={description}
               isSelected={draft.orderTypes.includes(type)} onClick={() => update({ orderTypes: toggle(draft.orderTypes, type) })} />
           )
         })}
@@ -116,33 +122,12 @@ export function OrderingStep({ draft, update }: StepProps) {
   )
 }
 
-function formatTime(value: string): string {
-  const [hours, minutes] = value.split(':').map(Number)
-  if (!Number.isFinite(hours)) return value
-  const suffix = hours < 12 ? 'am' : 'pm'
-  const hour12 = hours % 12 === 0 ? 12 : hours % 12
-  return minutes ? `${hour12}:${String(minutes).padStart(2, '0')}${suffix}` : `${hour12}${suffix}`
-}
-
-function openDaysLabel(draft: WizardDraft): string {
-  const openDays = DAY_LABELS.filter((_, day) => !draft.closedDays.includes(day))
-  if (openDays.length === 7) return 'Every day'
-  if (openDays.length === 0) return 'No days'
-  return openDays.join(', ')
-}
-
 export function HoursStep({ draft, update }: StepProps) {
   const isPreset = (preset: (typeof HOUR_PRESETS)[number]) =>
     preset.open === draft.open && preset.close === draft.close && preset.closedDays.join() === [...draft.closedDays].sort().join()
   return (
     <div className="space-y-9">
       <StepHeading title="When are you open?" lede="Customers see your hours, and orders can pause while you're closed." />
-
-      <p className="text-[22px] font-bold leading-snug tracking-[-0.015em]" aria-live="polite" style={{ color: OB.ink }}>
-        {openDaysLabel(draft)}
-        <span style={{ color: OB.muted }}> · </span>
-        {formatTime(draft.open)} – {formatTime(draft.close)}
-      </p>
 
       <div className="flex flex-wrap gap-2">
         {HOUR_PRESETS.map((preset) => (
@@ -164,16 +149,16 @@ export function HoursStep({ draft, update }: StepProps) {
       <div className="space-y-3">
         <GroupLabel hint="Tap the days you're closed.">Days off</GroupLabel>
         <div className="flex flex-wrap gap-2">
-          {DAY_LABELS.map((label, day) => (
-            <Chip key={label} isSelected={draft.closedDays.includes(day)} onClick={() => update({ closedDays: toggle(draft.closedDays, day) })}>
-              {label}
+          {WEEK_FROM_MONDAY.map((day) => (
+            <Chip key={day} isSelected={draft.closedDays.includes(day)} onClick={() => update({ closedDays: toggle(draft.closedDays, day) })}>
+              {DAY_LABELS[day]}
             </Chip>
           ))}
         </div>
       </div>
 
       <div className="flex items-center gap-4 rounded-xl border px-4 py-3.5" style={{ borderColor: OB.lineStrong }}>
-        <PauseCircle className="h-6 w-6 shrink-0" strokeWidth={1.5} style={{ color: OB.ink }} aria-hidden />
+        <PauseCircle className="h-6 w-6 shrink-0" strokeWidth={1.75} style={{ color: OB.ink }} aria-hidden />
         <span className="min-w-0 flex-1">
           <span className="block text-[15px] font-semibold" style={{ color: OB.ink }}>Pause orders while closed</span>
           <span className="block text-[13px]" style={{ color: OB.muted }}>Customers can still browse your menu.</span>

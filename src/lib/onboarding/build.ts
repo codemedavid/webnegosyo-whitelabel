@@ -90,15 +90,17 @@ async function brandingStep(build: BuildContext): Promise<StepOutcome> {
     // Imported menus carry no dish photos yet, so the design starts text-first.
     hasItemPhotos: false,
     tagline: build.answers.tagline || null,
+    look: build.answers.look ?? null,
   })
   const result = await saveBrandingWithClient(build.admin, build.tenantId, patch)
   if (!result.success) throw new Error(result.error ?? 'Branding could not be saved')
 
   return {
     status: 'done',
+    // Owners see this line: plain words, never a hex code.
     detail: build.answers.brandColor
-      ? `Your colors applied (${brandColor})`
-      : brandColor ? `Colors taken from your logo (${brandColor})` : 'Colors chosen for your store type',
+      ? 'Your color is on every page'
+      : brandColor ? 'Colors taken from your logo' : 'Colors chosen for your store type',
     summary: { brandColor },
   }
 }

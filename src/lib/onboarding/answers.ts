@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod'
-import { STORE_TYPES, type StoreType } from './store-type'
+import { STORE_LOOKS, STORE_TYPES, type StoreLook, type StoreType } from './store-type'
 
 export const ONBOARDING_ORDER_TYPES = ['dine_in', 'pickup', 'delivery'] as const
 export type OnboardingOrderType = (typeof ONBOARDING_ORDER_TYPES)[number]
@@ -49,6 +49,8 @@ export const onboardingAnswersSchema = z
       .transform((value) => value.toLowerCase())
       .nullable()
       .optional(),
+    /** The look picked in the wizard; absent = the store type's own. */
+    look: z.enum(Object.keys(STORE_LOOKS) as [StoreLook, ...StoreLook[]]).optional(),
     menuText: z.string().trim().max(MAX_ONBOARDING_MENU_TEXT).optional().or(z.literal('')),
     bestSellers: z.array(z.string().trim().min(1).max(80)).max(MAX_BEST_SELLERS).default([]),
     orderTypes: z.array(z.enum(ONBOARDING_ORDER_TYPES)).min(1, 'Pick at least one way to order'),

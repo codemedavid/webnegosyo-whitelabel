@@ -59,10 +59,18 @@ function luminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-/** White or near-black, whichever contrasts more with `background`. */
+const MIN_TEXT_CONTRAST = 4.5
+
+/**
+ * Text on `background`: white whenever it is readable (it matches the white
+ * labels the build puts on brand-colored buttons), else whichever ink
+ * contrasts more.
+ */
 export function readableInk(background: string): string {
   const l = luminance(background)
-  return (1.05 / (l + 0.05)) >= ((l + 0.05) / 0.05) ? '#FFFFFF' : '#111111'
+  const onWhite = 1.05 / (l + 0.05)
+  if (onWhite >= MIN_TEXT_CONTRAST) return '#FFFFFF'
+  return onWhite >= ((l + 0.05) / 0.05) ? '#FFFFFF' : '#111111'
 }
 
 /** CSS variables the wizard's controls read (`var(--ob-accent)` …). */
@@ -80,8 +88,16 @@ export function accentStyle(brand: string | null, storeType: StoreType | ''): CS
   } as CSSProperties
 }
 
-/** Hand-picked brand colors that all pass the build's contrast rules. */
+/** Hand-picked brand colors that all pass the build's contrast rules, with the names owners see. */
 export const SUGGESTED_COLORS = [
-  '#c0392b', '#d35400', '#b7791f', '#2f855a', '#0f766e',
-  '#2a6fdb', '#4c51bf', '#7c4dbd', '#b83280', '#7b4a2d',
+  { hex: '#c0392b', name: 'Tomato' },
+  { hex: '#d35400', name: 'Pumpkin' },
+  { hex: '#b7791f', name: 'Mustard' },
+  { hex: '#2f855a', name: 'Leaf' },
+  { hex: '#0f766e', name: 'Teal' },
+  { hex: '#2a6fdb', name: 'Ocean' },
+  { hex: '#4c51bf', name: 'Indigo' },
+  { hex: '#7c4dbd', name: 'Ube' },
+  { hex: '#b83280', name: 'Berry' },
+  { hex: '#7b4a2d', name: 'Cocoa' },
 ] as const

@@ -125,3 +125,14 @@ describe('hours that cross midnight', () => {
     expect(stepBlocker('brand', filled(), 0)).toBeNull()
   })
 })
+
+describe('draftToAnswers — look', () => {
+  test('a picked look travels to the answers; no pick leaves it to the store type', async () => {
+    const { draftToAnswers, emptyDraft } = await import('@/components/onboarding/wizard-draft')
+    const base = { ...emptyDraft('Kape'), storeType: 'cafe' as const, menuText: 'Latte 150', acceptsCash: true }
+    const picked = draftToAnswers({ ...base, look: 'tiles' })
+    const unpicked = draftToAnswers({ ...base, look: '' })
+    expect(picked.ok && picked.answers.look).toBe('tiles')
+    expect(unpicked.ok && unpicked.answers.look).toBeUndefined()
+  })
+})

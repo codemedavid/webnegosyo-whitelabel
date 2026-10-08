@@ -5,7 +5,7 @@ import { ArrowUpRight, Check, Minus, X } from 'lucide-react'
 import type { OnboardingBuildStepId, StepStatus } from '@/lib/onboarding/plan'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB } from './onboarding-ui'
-import { LiveStoreFrame, PhoneFrame, PhoneSkeleton } from './store-preview-phone'
+import { LiveStoreFrame, PhoneFrame, PhoneSkeleton, StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
 
 /**
  * The wait while the store is built: one plain status line that keeps moving,
@@ -90,7 +90,7 @@ function WaitingPhone() {
   )
 }
 
-export function OnboardingBuilding({ view, isOpening = false }: { view: OnboardingView; isOpening?: boolean }) {
+export function OnboardingBuilding({ view, isOpening = false, preview = null }: { view: OnboardingView; isOpening?: boolean; preview?: StorePreviewProps | null }) {
   const settled = view.steps.filter((step) => step.status === 'done' || step.status === 'skipped').length
   const running = view.steps.find((step) => step.status === 'running')
   const line = useRotatingLine(isOpening ? OPENING_LINES : running ? RUNNING_LINES[running.id] : STARTING_LINES)
@@ -136,7 +136,7 @@ export function OnboardingBuilding({ view, isOpening = false }: { view: Onboardi
           <div className="w-full max-w-[290px]">
             {view.store && isBrandingDone
               ? <LiveStoreFrame path={view.store.previewPath} title={`${storeName} storefront`} version={settled} />
-              : <WaitingPhone />}
+              : preview ? <StorePreviewPhone {...preview} /> : <WaitingPhone />}
           </div>
         </div>
       </aside>

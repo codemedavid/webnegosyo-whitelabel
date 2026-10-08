@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { STORE_TYPES, isStoreType, buildLaunchBranding, type StoreType } from '@/lib/onboarding/store-type'
+import { STORE_LOOKS, STORE_TYPES, isStoreLook, isStoreType, buildLaunchBranding, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
 import { brandingPatchSchema } from '@/lib/branding-service'
 import { assertKnownDesignIds } from '@/lib/mcp/design-catalog'
 import { CARD_TEMPLATE_IDS } from '@/lib/card-templates'
@@ -59,11 +59,30 @@ describe('buildLaunchBranding', () => {
     expect(patch.hero_preset).not.toBe('custom')
   })
 
-  it('uses the text-first menuboard card when no item has a photo', () => {
+  it('without dish photos, each store type starts on its own look (card, layout and hero)', () => {
     for (const storeType of TYPES) {
+      const look = STORE_LOOKS[STORE_TYPES[storeType].look]
       const patch = buildLaunchBranding({ storeType, storeName: 'X', brandColor: null, hasItemPhotos: false })
-      expect(patch.card_template).toBe('menuboard')
+      expect(patch).toMatchObject({ card_template: look.card, page_layout: look.layout, hero_preset: look.hero })
     }
+  })
+
+  it('the look the owner picked in the wizard wins over the store type default', () => {
+    const patch = buildLaunchBranding({ storeType: 'restaurant', storeName: 'X', brandColor: null, hasItemPhotos: false, look: 'tiles' })
+    expect(patch).toMatchObject({ card_template: STORE_LOOKS.tiles.card, page_layout: STORE_LOOKS.tiles.layout, hero_preset: STORE_LOOKS.tiles.hero })
+  })
+
+  it.each(Object.keys(STORE_LOOKS) as StoreLook[])('look %s is photo-free: no hero that draws a picture panel, known design ids', (id) => {
+    const look = STORE_LOOKS[id]
+    expect(['split', 'collage', 'centered', 'custom']).not.toContain(look.hero)
+    expect(CARD_TEMPLATE_IDS).toContain(look.card)
+    expect(PAGE_LAYOUT_IDS).toContain(look.layout)
+  })
+
+  it('offers at least three looks so the wizard has a real choice', () => {
+    expect(Object.keys(STORE_LOOKS).length).toBeGreaterThanOrEqual(3)
+    expect(isStoreLook('board')).toBe(true)
+    expect(isStoreLook('constructor')).toBe(false)
   })
 
   it('uses a photo-forward card when items have photos', () => {

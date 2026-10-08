@@ -138,7 +138,7 @@ export function pickLaunchBrandColor(picked: string | null | undefined, logoColo
 }
 
 export const ONBOARDING_BUILD_STEPS = [
-  { id: 'branding', label: 'Designing your store from your logo' },
+  { id: 'branding', label: 'Designing your store' },
   { id: 'menu', label: 'Reading your menu' },
   { id: 'store_setup', label: 'Setting up payments, hours and order types' },
   { id: 'boost', label: 'Creating combos and upsells' },

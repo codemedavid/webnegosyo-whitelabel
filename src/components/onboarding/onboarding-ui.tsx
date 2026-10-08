@@ -98,7 +98,7 @@ export function OptionTile({ isSelected, onClick, title, description, icon, isMu
       onClick={onClick}
       role={isMulti ? 'checkbox' : 'radio'}
       aria-checked={isSelected}
-      className={`flex h-full min-h-[7.25rem] flex-col items-start justify-between gap-4 rounded-xl border p-4 text-left transition-[border-color,box-shadow,background-color,transform] duration-150 hover:border-[#17130F] active:scale-[0.98] ${FOCUS_RING}`}
+      className={`flex h-full min-h-[7.25rem] flex-col items-start justify-start gap-3 rounded-xl border p-4 text-left transition-[border-color,box-shadow,background-color,transform] duration-150 hover:border-[#17130F] active:scale-[0.98] ${FOCUS_RING}`}
       style={selectionStyle(isSelected)}
     >
       <span style={{ color: isSelected ? ACCENT : OB.ink }} aria-hidden>{icon}</span>
@@ -144,7 +144,7 @@ export function Chip({ isSelected, onClick, children }: { isSelected: boolean; o
       type="button"
       onClick={onClick}
       aria-pressed={isSelected}
-      className={`min-h-10 rounded-full border px-4 text-sm font-medium transition-[border-color,background-color,color] duration-150 hover:border-[#17130F] ${FOCUS_RING}`}
+      className={`min-h-11 rounded-full border px-4 text-sm font-medium transition-[border-color,background-color,color] duration-150 hover:border-[#17130F] ${FOCUS_RING}`}
       style={{
         borderColor: isSelected ? ACCENT : OB.lineStrong,
         backgroundColor: isSelected ? ACCENT : OB.canvas,

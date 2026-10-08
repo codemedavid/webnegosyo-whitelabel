@@ -11,7 +11,7 @@ import {
   type OnboardingAnswers,
   type OnboardingOrderType,
 } from '@/lib/onboarding/answers'
-import { isStoreType, type StoreType } from '@/lib/onboarding/store-type'
+import { isStoreLook, isStoreType, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
 
 export interface WizardDraft {
   storeName: string
@@ -19,6 +19,8 @@ export interface WizardDraft {
   tagline: string
   /** '' = use the color read from the logo. */
   brandColor: string
+  /** '' = the store type's own look. */
+  look: StoreLook | ''
   menuText: string
   bestSellers: [string, string, string]
   orderTypes: OnboardingOrderType[]
@@ -39,6 +41,7 @@ export function emptyDraft(businessName: string): WizardDraft {
     storeType: '',
     tagline: '',
     brandColor: '',
+    look: '',
     menuText: '',
     bestSellers: ['', '', ''],
     orderTypes: ['pickup', 'delivery'],
@@ -64,6 +67,7 @@ export function draftToAnswers(draft: WizardDraft): { ok: true; answers: Onboard
     storeType: draft.storeType,
     tagline: draft.tagline,
     brandColor: draft.brandColor || null,
+    look: draft.look || undefined,
     menuText: draft.menuText,
     bestSellers: draft.bestSellers.map((name) => name.trim()).filter(Boolean),
     orderTypes: draft.orderTypes,
@@ -140,6 +144,8 @@ export function restoreDraft(fallback: WizardDraft, saved: unknown): WizardDraft
       if (isArrayOf(value, (item) => (ONBOARDING_ORDER_TYPES as readonly unknown[]).includes(item))) restored[key] = value
     } else if (key === 'storeType') {
       if (value === '' || isStoreType(value)) restored[key] = value
+    } else if (key === 'look') {
+      if (value === '' || isStoreLook(value)) restored[key] = value
     } else if (key === 'brandColor') {
       if (value === '' || (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value))) restored[key] = value
     } else if (key === 'closedDays') {

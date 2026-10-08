@@ -10,7 +10,7 @@ import type { OnboardingView } from '@/lib/onboarding/view'
 import { removeOnboardingPhoto, signInNewOwner, submitOnboarding, uploadOnboardingPhoto } from './onboarding-api'
 import { ACCENT, ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, PrimaryButton, TextButton } from './onboarding-ui'
 import { accentStyle, resolveBrandColor } from './onboarding-theme'
-import { StorePreviewPhone } from './store-preview-phone'
+import { StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
 import { previewMenuRows } from './preview-menu'
 import { BrandStep, MenuStep, StoreStep, WelcomeStep } from './wizard-steps'
 import { AccountStep, HoursStep, OrderingStep } from './wizard-steps-setup'
@@ -110,7 +110,8 @@ function MobilePreviewSheet({ isOpen, onClose, children }: { isOpen: boolean; on
 interface OnboardingWizardProps {
   token: string
   view: OnboardingView
-  onSubmitted: () => void
+  /** Hands over the preview the owner built, so the build screen keeps showing it. */
+  onSubmitted: (preview: StorePreviewProps) => void
 }
 
 export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardProps) {
@@ -132,7 +133,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const isWelcome = step === 'welcome'
   const isLastStep = stepIndex === WIZARD_STEPS.length - 1
   const brand = resolveBrandColor(draft.brandColor, assets.logoColor, draft.storeType)
-  const typeColor = draft.storeType ? STORE_TYPES[draft.storeType].defaultColor : null
+  const look = draft.look || (draft.storeType ? STORE_TYPES[draft.storeType].look : 'board')
 
   function update(patch: Partial<WizardDraft>) {
     setDraft((current) => {
@@ -176,7 +177,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
     clearSavedDraft(token)
     // The login exists now: sign in, so the dashboard opens without a password prompt.
     await signInNewOwner(view.ownerEmail, password)
-    onSubmitted()
+    onSubmitted(previewProps)
   }
 
   function goTo(nextIndex: number) {
@@ -204,17 +205,16 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
     if (stepIndex > 0) headingRef.current?.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true })
   }, [stepIndex])
 
-  const preview = (
-    <StorePreviewPhone
-      storeName={draft.storeName}
-      tagline={draft.tagline}
-      storeType={draft.storeType}
-      brand={brand ?? OB.ink}
-      logoUrl={assets.logoUrl}
-      rows={previewMenuRows(draft.menuText, draft.bestSellers)}
-      orderTypes={draft.orderTypes}
-    />
-  )
+  const previewProps: StorePreviewProps = {
+    storeName: draft.storeName,
+    tagline: draft.tagline,
+    storeType: draft.storeType,
+    brand: brand ?? OB.ink,
+    logoUrl: assets.logoUrl,
+    rows: previewMenuRows(draft.menuText, draft.bestSellers),
+    look,
+  }
+  const preview = <StorePreviewPhone {...previewProps} />
   const stepProps = { draft, update }
   const photoProps = { assets, uploadPhoto, removePhoto }
   const continueLabel = isWelcome ? 'Get started' : isLastStep ? (isSubmitting ? 'Building…' : 'Build my store') : 'Next'
@@ -236,7 +236,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
             >
               {step === 'welcome' && <WelcomeStep firstName={view.ownerFirstName} businessName={view.businessName} isPaid={view.isPaymentConfirmed} />}
               {step === 'store' && <StoreStep {...stepProps} />}
-              {step === 'brand' && <BrandStep {...stepProps} {...photoProps} brand={brand ?? OB.ink} typeColor={typeColor} />}
+              {step === 'brand' && <BrandStep {...stepProps} {...photoProps} brand={brand ?? OB.ink} />}
               {step === 'menu' && <MenuStep {...stepProps} {...photoProps} />}
               {step === 'ordering' && <OrderingStep {...stepProps} />}
               {step === 'hours' && <HoursStep {...stepProps} />}
@@ -264,7 +264,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
         {!isWelcome && <ProgressBar step={step} />}
         <div className="mx-auto flex h-[4.75rem] items-center gap-3 px-5 sm:px-8">
           {stepIndex > 0 ? <TextButton onClick={() => goTo(stepIndex - 1)}>Back</TextButton> : <span />}
-          <div className="ml-auto flex items-center gap-2">
+          <div className={`ml-auto flex items-center gap-2 ${isWelcome ? 'w-full sm:w-auto [&>button]:w-full sm:[&>button]:w-auto' : ''}`}>
             {!isWelcome && (
               <button type="button" onClick={() => setIsPreviewOpen(true)}
                 className={`inline-flex min-h-12 items-center gap-2 rounded-xl border px-4 text-[15px] font-semibold lg:hidden ${FOCUS_RING}`}

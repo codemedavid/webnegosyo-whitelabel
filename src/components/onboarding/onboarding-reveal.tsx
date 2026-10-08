@@ -6,7 +6,7 @@ import { ArrowUpRight, Check, Copy, Download, Loader2, QrCode, RotateCw, Share2 
 import type { BoostIdeaKind } from '@/lib/boost/ideas'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { launchOnboardingStore, retryOnboarding } from './onboarding-api'
-import { ACCENT, ACCENT_SOFT, FOCUS_RING, OB, PrimaryButton, PrimaryLink, SecondaryButton, SecondaryLink, StepHeading } from './onboarding-ui'
+import { ACCENT_SOFT, FOCUS_RING, OB, PrimaryButton, PrimaryLink, SecondaryButton, SecondaryLink, StepHeading } from './onboarding-ui'
 import { LiveStoreFrame } from './store-preview-phone'
 import { FirstWeekPlan } from './first-week-plan'
 import { Celebration } from './celebration'
@@ -68,8 +68,8 @@ function ShareLink({ storeUrl, storeName }: { storeUrl: string; storeName: strin
       <div className="flex items-center gap-2 rounded-xl border p-1.5 pl-4" style={{ borderColor: OB.lineStrong }}>
         <span className="min-w-0 flex-1 truncate text-[15px] font-semibold" style={{ color: OB.ink }}>{displayUrl}</span>
         <button type="button" onClick={copy}
-          className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold transition-colors ${FOCUS_RING}`}
-          style={{ backgroundColor: ACCENT, color: 'var(--ob-accent-ink, #fff)' }}>
+          className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold transition-colors hover:bg-[#ECE7E1] ${FOCUS_RING}`}
+          style={{ backgroundColor: OB.wash, color: OB.ink }}>
           {isCopied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
           <span aria-live="polite">{isCopied ? 'Copied' : 'Copy'}</span>
         </button>
@@ -88,7 +88,7 @@ function ShareLink({ storeUrl, storeName }: { storeUrl: string; storeName: strin
             <p className="text-[15px] font-semibold" style={{ color: OB.ink }}>Put it on your counter</p>
             <p className="mt-0.5 text-[13px] leading-relaxed" style={{ color: OB.muted }}>Customers scan it to order. Print it on a table tent or your packaging.</p>
             <button type="button" onClick={downloadQr}
-              className={`mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-lg text-sm font-semibold underline decoration-1 underline-offset-4 ${FOCUS_RING}`}
+              className={`mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg text-sm font-semibold underline decoration-1 underline-offset-4 ${FOCUS_RING}`}
               style={{ color: OB.ink }}>
               <Download className="h-4 w-4" aria-hidden /> Download PNG
             </button>
@@ -133,7 +133,7 @@ function OpenStorePanel({ token, view, onLaunched }: OpenStoreProps) {
             <li key={blocker} className="flex items-center gap-3 px-4 py-3.5" style={{ borderColor: OB.line }}>
               <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
               <span className="min-w-0 flex-1 text-[15px] font-semibold" style={{ color: OB.ink }}>{blocker}</span>
-              <a href={dashboardPath} className="text-sm font-semibold underline decoration-1 underline-offset-4" style={{ color: OB.ink }}>Fix</a>
+              <a href={dashboardPath} className={`-my-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold underline decoration-1 underline-offset-4 ${FOCUS_RING}`} style={{ color: OB.ink }}>Fix</a>
             </li>
           ))}
         </ul>
@@ -166,7 +166,7 @@ function RetryFailedSteps({ token, view, onRetried }: { token: string; view: Onb
       <p className="text-[15px] font-semibold text-amber-950">A few things did not finish</p>
       <ul className="mt-1 space-y-0.5 text-sm text-amber-950">{failed.map((step) => <li key={step.id}>{step.detail ?? step.label}</li>)}</ul>
       <button type="button" onClick={retry} disabled={isRetrying}
-        className={`mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg bg-amber-950 px-4 text-sm font-semibold text-white disabled:opacity-60 ${FOCUS_RING}`}>
+        className={`mt-3 inline-flex min-h-11 items-center gap-2 rounded-lg bg-amber-950 px-4 text-sm font-semibold text-white disabled:opacity-60 ${FOCUS_RING}`}>
         {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RotateCw className="h-4 w-4" aria-hidden />} Try again
       </button>
       {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
@@ -212,7 +212,7 @@ function BuiltLedger({ view }: { view: OnboardingView }) {
           <div key={row.label} className="flex items-baseline gap-4 border-b py-3.5" style={{ borderColor: OB.line }}>
             <dt className="w-24 shrink-0 text-[13px] font-medium" style={{ color: OB.muted }}>{row.label}</dt>
             <dd className="min-w-0 flex-1 text-[15px] leading-snug" style={{ color: OB.ink }}>{row.value}</dd>
-            <a href={row.href} className="shrink-0 text-[13px] font-semibold underline decoration-1 underline-offset-4" style={{ color: OB.ink }}>Edit</a>
+            <a href={row.href} className={`-my-2 -mr-2 inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 text-[13px] font-semibold underline decoration-1 underline-offset-4 ${FOCUS_RING}`} style={{ color: OB.ink }}>Edit</a>
           </div>
         ))}
       </dl>
@@ -264,6 +264,10 @@ export function OnboardingReveal({ token, view, onRefresh }: OnboardingRevealPro
             title={isLive ? `${store.name} is open.` : `${store.name} is almost open.`}
             lede={revealLede(isLive, store.opensLabel)}
           />
+
+          <div className="mx-auto w-full max-w-[230px] lg:hidden">
+            <LiveStoreFrame path={store.previewPath} title={`${store.name} storefront`} version={isLive ? 1 : 0} />
+          </div>
 
           <RetryFailedSteps token={token} view={view} onRetried={onRefresh} />
 

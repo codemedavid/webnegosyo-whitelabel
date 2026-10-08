@@ -15,6 +15,7 @@ import { generatePaletteFromColor } from '@/lib/branding-registry'
 import type { BrandingPatchInput } from '@/lib/branding-service'
 import type { CardTemplate } from '@/lib/card-templates'
 import type { PageLayout } from '@/lib/page-layouts'
+import type { HeroPreset } from '@/lib/storefront-theme'
 
 type FontPair = 'theme' | 'elegant serif' | 'bold display' | 'modern sans' | 'warm editorial'
 
@@ -31,15 +32,47 @@ export interface StoreTypeDefinition {
   /** Hero subtitle when the merchant gave no tagline. */
   heroLine: string
   fontPair: FontPair
+  /** Starting look while the menu has no dish photos. */
+  look: StoreLook
   /** Design when the menu has item photos. */
   photo: DesignPick
 }
 
 /**
- * A menu without photos gets the café menu-board row (dotted leaders to the
- * price): photo templates would render a wall of empty image boxes.
+ * Looks for a menu without dish photos (every onboarded menu starts that way).
+ * Each pairs a card, a page layout and a TEXT hero: a hero that draws a
+ * picture panel shows a giant initial when there is no photo. The owner picks
+ * one in the wizard; otherwise the store type's own look applies. Chosen by
+ * rendering every candidate on real photo-less stores (2026-10-08).
  */
-const TEXT_ONLY_DESIGN: DesignPick = { card: 'menuboard', layout: 'default' }
+export const STORE_LOOKS = {
+  board: {
+    label: 'Menu board',
+    description: 'Like a printed menu: dish, dotted line, price.',
+    card: 'menuboard', layout: 'default', hero: 'editorial',
+  },
+  chapters: {
+    label: 'Chapters',
+    description: 'Each category opens on a page in your color.',
+    card: 'menuboard', layout: 'lookbook', hero: 'editorial',
+  },
+  tiles: {
+    label: 'Quick order',
+    description: 'Big category tiles up top, made for fast picks.',
+    card: 'atelier', layout: 'kiosk', hero: 'banner',
+  },
+  cards: {
+    label: 'Cards',
+    description: 'Every dish on its own card.',
+    card: 'elegant', layout: 'default', hero: 'minimal',
+  },
+} as const satisfies Record<string, { label: string; description: string; card: CardTemplate; layout: PageLayout; hero: HeroPreset }>
+
+export type StoreLook = keyof typeof STORE_LOOKS
+
+export function isStoreLook(value: unknown): value is StoreLook {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(STORE_LOOKS, value)
+}
 
 export const STORE_TYPES = {
   restaurant: {
@@ -48,6 +81,7 @@ export const STORE_TYPES = {
     defaultColor: '#c0392b',
     heroLine: 'Freshly cooked, made to order',
     fontPair: 'modern sans',
+    look: 'board',
     photo: { card: 'bistro', layout: 'default' },
   },
   cafe: {
@@ -56,6 +90,7 @@ export const STORE_TYPES = {
     defaultColor: '#7b4a2d',
     heroLine: 'Freshly brewed, made to order',
     fontPair: 'elegant serif',
+    look: 'chapters',
     photo: { card: 'arch', layout: 'rails' },
   },
   milk_tea: {
@@ -64,6 +99,7 @@ export const STORE_TYPES = {
     defaultColor: '#7c4dbd',
     heroLine: 'Shaken fresh, just the way you like it',
     fontPair: 'bold display',
+    look: 'tiles',
     photo: { card: 'showcase', layout: 'rails' },
   },
   bakery: {
@@ -72,6 +108,7 @@ export const STORE_TYPES = {
     defaultColor: '#a4643c',
     heroLine: 'Baked fresh every day',
     fontPair: 'warm editorial',
+    look: 'cards',
     photo: { card: 'atelier', layout: 'default' },
   },
   other: {
@@ -80,6 +117,7 @@ export const STORE_TYPES = {
     defaultColor: '#2a6fdb',
     heroLine: 'Order online in a few taps',
     fontPair: 'theme',
+    look: 'board',
     photo: { card: 'showcase', layout: 'default' },
   },
 } as const satisfies Record<string, StoreTypeDefinition>
@@ -97,6 +135,8 @@ export interface LaunchBrandingInput {
   brandColor: string | null
   hasItemPhotos: boolean
   tagline?: string | null
+  /** The owner's pick in the wizard; absent = the store type's look. */
+  look?: StoreLook | null
 }
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
@@ -169,7 +209,8 @@ export function buildLaunchBranding(input: LaunchBrandingInput): BrandingPatchIn
   const type = STORE_TYPES[input.storeType]
   const brand = resolveBrandColor(input.storeType, input.brandColor)
   const palette = generatePaletteFromColor(brand)
-  const design = input.hasItemPhotos ? type.photo : TEXT_ONLY_DESIGN
+  const look = STORE_LOOKS[input.look && isStoreLook(input.look) ? input.look : type.look]
+  const design = input.hasItemPhotos ? { ...type.photo, hero: 'theme' as const } : look
   const button = readableButton(brand)
   // A pale brand color vanishes as price text on a white card.
   const priceColor = contrastRatio(brand, CARD_BACKGROUND) >= MIN_PRICE_CONTRAST ? brand : palette.primary_color
@@ -189,7 +230,7 @@ export function buildLaunchBranding(input: LaunchBrandingInput): BrandingPatchIn
     card_template: design.card,
     page_layout: design.layout,
     font_pair: type.fontPair,
-    hero_preset: 'theme',
+    hero_preset: design.hero,
     hero_title: input.storeName.trim().slice(0, MAX_HERO_TITLE),
     hero_description: (tagline || type.heroLine).slice(0, MAX_HERO_DESCRIPTION),
   }
