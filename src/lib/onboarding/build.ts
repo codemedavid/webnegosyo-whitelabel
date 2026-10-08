@@ -24,6 +24,7 @@ import { extractBrandColorFromImage } from './logo-color'
 import { buildLaunchBranding } from './store-type'
 import { applyLaunchBoost } from './boost-autopilot'
 import { launchStarterLoyalty } from './launch-loyalty'
+import { launchFromSetupLink } from './buyer-launch'
 import type { OnboardingAnswers } from './answers'
 import {
   ONBOARDING_BUILD_STEPS,
@@ -327,6 +328,25 @@ async function refreshStoreCaches(admin: AdminClient, tenantId: string): Promise
 }
 
 /**
+ * The set-up link goes out only after payment, so a finished build opens the
+ * store by itself: the owner should land on a store that takes orders, not an
+ * "Opening soon" banner. It goes through the SAME rules as the buyer's Go live
+ * (paid lead, nothing blocking a checkout: menu, a way to pay, an order type),
+ * read from the FINISHED row. A refusal leaves the store closed and the reveal
+ * shows what to fix; it never fails the build.
+ */
+async function openStoreWhenReady(admin: AdminClient, onboardingId: string): Promise<void> {
+  try {
+    const finished = await findOnboardingById(admin, onboardingId)
+    if (!finished) return
+    const result = await launchFromSetupLink(admin, finished)
+    if (!result.ok) console.warn('[onboarding] store left closed after build', { onboardingId, reason: result.error })
+  } catch (error) {
+    console.error('[onboarding] auto go-live failed', { onboardingId, message: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+/**
  * Build (or finish building) one store. Safe to call twice: the second call
  * loses the claim and returns. Never throws for a step — failures are recorded
  * on the row for the progress screen and the retry button.
@@ -358,5 +378,6 @@ export async function runOnboardingBuild(admin: AdminClient, onboardingId: strin
     await finishOnboardingBuild(admin, onboarding.id, { status: 'failed', error: 'The build stopped unexpectedly. Press retry.', summary: onboarding.summary ?? EMPTY_BUILD_SUMMARY })
       .catch(() => undefined)
   }
+  await openStoreWhenReady(admin, onboarding.id)
   await refreshStoreCaches(admin, onboarding.tenantId)
 }
