@@ -5,34 +5,45 @@ import { ExternalLink, Link2, Loader2, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchLeadOnboarding, issueLeadSetupLink, retryLeadOnboardingBuild } from '@/app/actions/checkout-leads'
 import type { LeadOnboardingSummary } from '@/lib/onboarding/staff'
+import { canSendSetupLink } from '@/lib/onboarding/invite'
+import { SetupInviteShare, type SetupInviteContact } from './setup-invite-share'
 
 const STATUS_LABELS: Record<LeadOnboardingSummary['status'], string> = {
-  awaiting_details: 'Waiting for the buyer to fill in the wizard',
+  awaiting_details: 'Link sent — waiting for the buyer to fill in the set-up',
   queued: 'Queued to build',
   running: 'Building now',
-  ready: 'Built — waiting for launch',
+  ready: 'Built — waiting for the owner to go live',
   failed: 'Build stopped — retry',
 }
 
 function launchLine(summary: LeadOnboardingSummary): string {
   if (summary.store?.isLive) return 'Store is LIVE.'
   if (summary.isLaunchRequested) return 'Owner pressed Launch — mark the lead "Paid" to open the store.'
-  return 'Owner has not pressed Launch yet. Marking "Paid" records the payment; the store opens when they launch.'
+  return 'The owner opens it with "Go live" at the end of their set-up.'
+}
+
+interface CheckoutLeadOnboardingProps {
+  leadId: string
+  leadStatus: string
+  contact: SetupInviteContact
+  canEdit: boolean
 }
 
 /**
- * The lead's automated store set-up: progress, the store it built, and the
- * two staff levers — a fresh set-up link and a retry of a failed build.
+ * The lead's automated store set-up: the set-up link (only once the payment
+ * is confirmed), build progress, the store it built, and a retry for a
+ * failed build.
  */
-export function CheckoutLeadOnboarding({ leadId, canEdit, refreshKey }: { leadId: string; canEdit: boolean; refreshKey: string }) {
+export function CheckoutLeadOnboarding({ leadId, leadStatus, contact, canEdit }: CheckoutLeadOnboardingProps) {
   const [summary, setSummary] = useState<LeadOnboardingSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
-  /** Shown when the clipboard refused it: the old link is already dead. */
-  const [uncopiedLink, setUncopiedLink] = useState<string | null>(null)
+  /** The link just issued — shown once, since only its hash is stored. */
+  const [issuedUrl, setIssuedUrl] = useState<string | null>(null)
   /** Only the latest read may land: switching leads must not show the previous lead's set-up. */
   const loadSeqRef = useRef(0)
+  const isPaid = canSendSetupLink(leadStatus)
 
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current
@@ -53,24 +64,16 @@ export function CheckoutLeadOnboarding({ leadId, canEdit, refreshKey }: { leadId
   }, [leadId])
 
   useEffect(() => {
-    setUncopiedLink(null)
+    setIssuedUrl(null)
     void load()
-  }, [load, refreshKey])
+  }, [load, leadStatus])
 
-  async function copyNewLink() {
+  async function sendLink() {
     setIsBusy(true)
     try {
       const result = await issueLeadSetupLink(leadId)
       if (!result.path) return void toast.error(result.error ?? 'Could not create a link')
-      const url = `${window.location.origin}${result.path}`
-      try {
-        await navigator.clipboard.writeText(url)
-        setUncopiedLink(null)
-        toast.success('New set-up link copied. The previous link no longer works.')
-      } catch {
-        setUncopiedLink(url)
-        toast.warning('New link created but not copied. Copy it from the panel; the previous link no longer works.')
-      }
+      setIssuedUrl(`${window.location.origin}${result.path}`)
       void load()
     } catch (error) {
       console.error('[checkout-leads] set-up link failed', error)
@@ -95,7 +98,9 @@ export function CheckoutLeadOnboarding({ leadId, canEdit, refreshKey }: { leadId
     }
   }
 
-  if (isLoading) return <Loader2 className="h-4 w-4 animate-spin text-white/45" />
+  if (isLoading && !summary) return <Loader2 className="h-4 w-4 animate-spin text-white/45" />
+
+  const canSendLink = canEdit && isPaid && !loadError && (!summary || summary.status === 'awaiting_details')
 
   return (
     <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/80">
@@ -115,24 +120,19 @@ export function CheckoutLeadOnboarding({ leadId, canEdit, refreshKey }: { leadId
           )}
         </>
       ) : (
-        <p className="text-white/60">No store set-up for this lead yet.</p>
+        <p className="text-white/60">
+          {isPaid ? 'Paid — send the set-up link so they can build their store.' : 'The set-up link unlocks once this lead is marked Paid.'}
+        </p>
       )}
 
-      {uncopiedLink && (
-        <input
-          readOnly
-          value={uncopiedLink}
-          aria-label="New set-up link"
-          onFocus={(event) => event.currentTarget.select()}
-          className="w-full rounded-lg border border-white/15 bg-black/30 px-2.5 py-1.5 font-mono text-xs text-white"
-        />
-      )}
+      {issuedUrl && <SetupInviteShare url={issuedUrl} contact={contact} />}
 
       {canEdit && !loadError && (
         <div className="flex flex-wrap gap-2">
-          {(!summary || summary.status === 'awaiting_details') && (
-            <button type="button" onClick={copyNewLink} disabled={isBusy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/5">
-              <Link2 className="h-3.5 w-3.5" /> Copy new set-up link
+          {canSendLink && !issuedUrl && (
+            <button type="button" onClick={sendLink} disabled={isBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50">
+              {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+              {summary ? 'Send a new set-up link' : 'Send set-up link'}
             </button>
           )}
           {summary?.status === 'failed' && (

@@ -57,18 +57,19 @@ describe('submitCheckoutForm rate limit', () => {
 
     // Assert
     expect(result.error).toMatch(/too many/i)
-    expect(result.setupToken).toBeNull()
+    expect(result).not.toHaveProperty("setupToken")
     expect(createCheckoutLead).not.toHaveBeenCalled()
     expect(startStoreOnboarding).not.toHaveBeenCalled()
   })
 
-  test('an allowed monthly lead still gets its set-up link', async () => {
+  test('an allowed monthly lead is saved but gets no set-up link until it is paid', async () => {
     // Act
     const result = await submit()
 
     // Assert
     expect(checkActionRateLimit).toHaveBeenCalledWith('checkout-lead', expect.objectContaining({ limit: expect.any(Number) }))
-    expect(result.setupToken).toBe('token-1')
-    expect(startStoreOnboarding).toHaveBeenCalledWith('lead-1')
+    expect(createCheckoutLead).toHaveBeenCalled()
+    expect(result).not.toHaveProperty("setupToken")
+    expect(startStoreOnboarding).not.toHaveBeenCalled()
   })
 })

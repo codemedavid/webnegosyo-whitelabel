@@ -210,6 +210,15 @@ Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/b
 
 Dev gotcha (fixed 2026-10-04): `next.config.ts` used to mark `/_next/static` `immutable` in dev too, and dev chunk names don't change, so browsers kept stale CSS/JS after edits. The header is now production-only; a browser that cached a chunk before the fix needs one hard refresh.
 
+### Store onboarding (paid-first set-up link)
+
+`/onboarding/[token]` builds a paying merchant's store for them. The token (256-bit, only its sha256 stored in `store_onboardings`) is the buyer's only credential.
+
+- **Link only after payment**: the funnel never mints one. Staff mark the checkout lead Paid, then "Send set-up link" (`issueLeadSetupLink` refuses unpaid leads) or "Invite paid customer" (creates a lead already `paid`). The share panel builds the message + `sms:`/`mailto:` drafts (`src/lib/onboarding/invite.ts`); nothing is sent server-side.
+- **Wizard** (`src/components/onboarding/`): welcome → store → brand → menu → ordering → hours → account, beside a live phone preview built with the SAME `buildLaunchBranding` palette. The logo's color is read at upload (`assets.logoColor`) and re-themes the wizard (`--ob-accent`); `answers.brandColor` (hex, validated) wins in the build (`pickLaunchBrandColor`). Submit creates the tenant (pre-launch, platform backend) + owner, then signs the browser in.
+- **Build** (`src/lib/onboarding/build.ts`, background `after()`): branding → menu (AI parse) → payments/hours/order types → Boost offers → starter stamp card. Steps never re-run once settled.
+- **Go live**: the reveal's button posts `{action:'launch'}`; `decideBuyerLaunch` requires store built, lead paid|live and no readiness blockers. `is_prelaunch` is privileged (service role only). The admin `/[tenant]/admin/launch` page keeps the older two-key path.
+
 ### Hero Builder (custom storefront hero)
 
 `/[tenant]/admin/hero-designer` (sidebar: "Hero Builder", full-screen like Branding Studio) edits a **v5 flow design**: sections → columns → widgets, each node a desktop `style` + optional `tablet`/`mobile` partial overrides (desktop-first cascade, `resolveStyle`). Nothing is absolutely positioned, so a design cannot overflow a phone.

@@ -4,13 +4,15 @@ import { useCallback, useEffect, useState } from 'react'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { fetchOnboardingView } from './onboarding-api'
 import { OnboardingWizard } from './onboarding-wizard'
-import { OnboardingProgress } from './onboarding-progress'
+import { OnboardingBuilding } from './onboarding-building'
+import { OnboardingReveal } from './onboarding-reveal'
+import { accentStyle } from './onboarding-theme'
 
 const POLL_INTERVAL_MS = 2500
 
 /**
- * Wizard until the store is created, then live progress until the build
- * settles. Polls only while something is actually being built.
+ * Wizard → live build → reveal. Polls only while something is being built.
+ * After the wizard, the pages wear the brand color the build applied.
  */
 export function OnboardingFlow({ token, initialView }: { token: string; initialView: OnboardingView }) {
   const [view, setView] = useState(initialView)
@@ -37,5 +39,18 @@ export function OnboardingFlow({ token, initialView }: { token: string; initialV
   if (view.status === 'awaiting_details') {
     return <OnboardingWizard token={token} view={view} onSubmitted={markQueued} />
   }
-  return <OnboardingProgress token={token} view={view} onRetried={markQueued} />
+
+  const brand = view.summary?.brandColor ?? view.assets.logoColor ?? null
+  return (
+    <div style={accentStyle(brand, '')}>
+      {isBuilding || !view.store
+        ? <OnboardingBuilding view={view} />
+        : <OnboardingReveal token={token} view={view} onRefresh={markQueuedOrRefresh(view, markQueued, refresh)} />}
+    </div>
+  )
+}
+
+/** A retry re-queues the build; a launch only needs a fresh read. */
+function markQueuedOrRefresh(view: OnboardingView, markQueued: () => void, refresh: () => Promise<void>): () => void {
+  return view.status === 'failed' ? markQueued : () => void refresh()
 }

@@ -58,3 +58,27 @@ export function retryOnboarding(token: string): Promise<ApiResult<true>> {
     () => true as const,
   )
 }
+
+/** "Go live" — opens the paid, built store to customers. */
+export function launchOnboardingStore(token: string): Promise<ApiResult<true>> {
+  return call(
+    base(token),
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'launch' }) },
+    () => true as const,
+  )
+}
+
+/**
+ * Sign the new owner in with the password they just chose, so "Open my
+ * dashboard" lands inside instead of on a login form. Best effort: a refusal
+ * only means they log in by hand later.
+ */
+export async function signInNewOwner(email: string, password: string): Promise<boolean> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client')
+    const { error } = await createClient().auth.signInWithPassword({ email, password })
+    return !error
+  } catch {
+    return false
+  }
+}

@@ -17,6 +17,8 @@ export interface WizardDraft {
   storeName: string
   storeType: StoreType | ''
   tagline: string
+  /** '' = use the color read from the logo. */
+  brandColor: string
   menuText: string
   bestSellers: [string, string, string]
   orderTypes: OnboardingOrderType[]
@@ -36,6 +38,7 @@ export function emptyDraft(businessName: string): WizardDraft {
     storeName: businessName,
     storeType: '',
     tagline: '',
+    brandColor: '',
     menuText: '',
     bestSellers: ['', '', ''],
     orderTypes: ['pickup', 'delivery'],
@@ -60,6 +63,7 @@ export function draftToAnswers(draft: WizardDraft): { ok: true; answers: Onboard
     storeName: draft.storeName,
     storeType: draft.storeType,
     tagline: draft.tagline,
+    brandColor: draft.brandColor || null,
     menuText: draft.menuText,
     bestSellers: draft.bestSellers.map((name) => name.trim()).filter(Boolean),
     orderTypes: draft.orderTypes,
@@ -78,12 +82,16 @@ export function draftToAnswers(draft: WizardDraft): { ok: true; answers: Onboard
   return parsed.success ? { ok: true, answers: parsed.data } : { ok: false, error: describeAnswersError(parsed.error) }
 }
 
-export const WIZARD_STEPS = ['store', 'menu', 'ordering', 'hours', 'account'] as const
+export const WIZARD_STEPS = ['welcome', 'store', 'brand', 'menu', 'ordering', 'hours', 'account'] as const
 export type WizardStep = (typeof WIZARD_STEPS)[number]
 
 /** Why the buyer cannot leave this step yet, or null. Checked before "Next". */
 export function stepBlocker(step: WizardStep, draft: WizardDraft, menuPhotoCount: number): string | null {
   switch (step) {
+    case 'welcome':
+    case 'brand':
+      // A logo is optional: the store type's color stands in until one is added.
+      return null
     case 'store':
       if (draft.storeName.trim().length < 2) return 'Enter your store name'
       return draft.storeType ? null : 'Pick what kind of store you run'
@@ -98,7 +106,8 @@ export function stepBlocker(step: WizardStep, draft: WizardDraft, menuPhotoCount
       return null
     }
     case 'hours':
-      return draft.open === draft.close ? 'Opening and closing time cannot be the same' : null
+      // Store hours cannot cross midnight yet: such a window silently falls back to the default.
+      return draft.close > draft.open ? null : 'Closing time must be later than opening time (same day)'
     case 'account':
       return null
   }
@@ -131,6 +140,8 @@ export function restoreDraft(fallback: WizardDraft, saved: unknown): WizardDraft
       if (isArrayOf(value, (item) => (ONBOARDING_ORDER_TYPES as readonly unknown[]).includes(item))) restored[key] = value
     } else if (key === 'storeType') {
       if (value === '' || isStoreType(value)) restored[key] = value
+    } else if (key === 'brandColor') {
+      if (value === '' || (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value))) restored[key] = value
     } else if (key === 'closedDays') {
       if (isArrayOf(value, (item) => Number.isInteger(item) && (item as number) >= 0 && (item as number) <= 6)) restored[key] = value
     } else if (typeof value === typeof current) {

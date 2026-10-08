@@ -44,6 +44,7 @@ describe('buildOnboardingView', () => {
       slug: 'juans-kitchen',
       loginPath: '/juans-kitchen/login?redirect=%2Fjuans-kitchen%2Fadmin%2Flaunch',
       previewPath: '/juans-kitchen/menu',
+      dashboardPath: '/juans-kitchen/admin',
       isLive: false,
     })
   })
@@ -78,5 +79,45 @@ describe('buildOnboardingView', () => {
     // Assert
     expect(dead.status).toBe('failed')
     expect(live.status).toBe('running')
+  })
+})
+
+describe('buildOnboardingView — colors and go-live', () => {
+  test('exposes the color read from the logo', () => {
+    // Act
+    const view = buildOnboardingView({ onboarding: { ...ONBOARDING, assets: { logoUrl: 'x.png', logoColor: '#aa3300' } }, lead: LEAD, tenant: null })
+
+    // Assert
+    expect(view.assets.logoColor).toBe('#aa3300')
+  })
+
+  test('go-live state is absent until readiness was read', () => {
+    expect(buildOnboardingView({ onboarding: ONBOARDING, lead: LEAD, tenant: null }).launch).toBeNull()
+  })
+
+  test('go-live lists the blocker labels only', () => {
+    // Act
+    const view = buildOnboardingView({
+      onboarding: ONBOARDING,
+      lead: LEAD,
+      tenant: { name: 'K', slug: 'k', is_prelaunch: true },
+      readiness: {
+        canLaunch: false,
+        score: 50,
+        items: [],
+        blockers: [{ id: 'menu', label: 'Add your menu', hint: '', isDone: false, isBlocker: true, adminPath: '/menu' }],
+      },
+    })
+
+    // Assert
+    expect(view.launch).toEqual({ canLaunch: false, blockers: ['Add your menu'] })
+  })
+
+  test('the store carries its dashboard path', () => {
+    // Act
+    const view = buildOnboardingView({ onboarding: ONBOARDING, lead: LEAD, tenant: { name: 'K', slug: 'k', is_prelaunch: false } })
+
+    // Assert
+    expect(view.store?.dashboardPath).toBe('/k/admin')
   })
 })

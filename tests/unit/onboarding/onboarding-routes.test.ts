@@ -139,3 +139,37 @@ describe('DELETE /api/onboarding/[token]/upload', () => {
     expect(console.error).toHaveBeenCalled()
   })
 })
+
+const launchFromSetupLink = jest.fn()
+jest.mock('@/lib/onboarding/buyer-launch', () => ({ launchFromSetupLink: (...a: unknown[]) => launchFromSetupLink(...a) }))
+
+describe('POST /api/onboarding/[token] launch', () => {
+  test('a ready store goes live from its set-up link', async () => {
+    // Arrange
+    const { POST } = await import('@/app/api/onboarding/[token]/route')
+    findOnboardingForToken.mockResolvedValue(onboarding({ status: 'ready' }))
+    launchFromSetupLink.mockResolvedValue({ ok: true })
+
+    // Act
+    const response = await POST(jsonRequest('POST', { action: 'launch' }), context)
+
+    // Assert
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true })
+    expect(launchFromSetupLink).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: 'onb-1' }))
+  })
+
+  test('a refused launch returns its reason and status', async () => {
+    // Arrange
+    const { POST } = await import('@/app/api/onboarding/[token]/route')
+    findOnboardingForToken.mockResolvedValue(onboarding({ status: 'ready' }))
+    launchFromSetupLink.mockResolvedValue({ ok: false, status: 409, error: 'Finish these first: Add your menu.' })
+
+    // Act
+    const response = await POST(jsonRequest('POST', { action: 'launch' }), context)
+
+    // Assert
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({ error: 'Finish these first: Add your menu.' })
+  })
+})

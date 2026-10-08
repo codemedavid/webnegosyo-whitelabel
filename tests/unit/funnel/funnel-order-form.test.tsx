@@ -71,23 +71,6 @@ describe('FunnelOrderForm', () => {
     )
   })
 
-  it('carries the store set-up link onto the confirmation page', async () => {
-    submitCheckoutForm.mockResolvedValue({
-      data: { reference_number: 'SM-123', amount: 999 },
-      error: null,
-      setupToken: 'tok_abc',
-    })
-    await renderForm()
-    await waitFor(() => expect(fetchActivePlatformPaymentMethods).toHaveBeenCalled())
-
-    const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: /claim my setup slot/i }))
-
-    await waitFor(() =>
-      expect(push).toHaveBeenCalledWith('/checkout/confirmation?confirm=SM-123&setup=tok_abc')
-    )
-  })
-
   it('stays pending after the lead is saved so a second tap cannot file a duplicate', async () => {
     submitCheckoutForm.mockResolvedValue({
       data: { reference_number: 'SM-123', amount: 999 },

@@ -8,6 +8,7 @@ import { getCheckoutLeads } from '@/lib/checkout-leads/checkout-leads-service'
 import { CheckoutLeadAnalytics } from './components/checkout-lead-analytics'
 import { CheckoutLeadPipeline } from './components/checkout-lead-pipeline'
 import { CheckoutLeadsTable } from './components/checkout-leads-table'
+import { InvitePaidCustomer } from './components/invite-paid-customer'
 
 // Operational lead data behind superadmin auth: render per request so the
 // production build never has to reach Supabase to prerender this page.
@@ -26,12 +27,15 @@ export default async function CheckoutLeadsPage() {
         title="Checkout Leads"
         subtitle="Track Smart Menu purchases, payment status, and onboarding progress"
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href="/superadmin/checkout-leads/payment-methods">
-              <Settings2 className="mr-1.5 h-3.5 w-3.5" />
-              Payment Methods
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <InvitePaidCustomer />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/superadmin/checkout-leads/payment-methods">
+                <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                Payment Methods
+              </Link>
+            </Button>
+          </div>
         }
       />
 

@@ -15,6 +15,8 @@ export type OnboardingStatus = 'awaiting_details' | 'queued' | 'running' | 'read
 
 export interface OnboardingAssets {
   logoUrl?: string | null
+  /** Brand color read from the logo at upload, so the wizard can theme itself at once. */
+  logoColor?: string | null
   menuImageUrls?: string[]
 }
 

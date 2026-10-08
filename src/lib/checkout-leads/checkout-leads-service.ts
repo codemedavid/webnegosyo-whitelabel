@@ -117,6 +117,43 @@ export async function createCheckoutLead(
   return { data: null, error: 'Failed to generate unique reference number' }
 }
 
+/**
+ * A lead for a customer who paid outside the funnel. Created already 'paid'
+ * (staff vouch for the payment) with no payment method and no Meta event.
+ */
+export async function createPaidCheckoutLead(input: {
+  name: string
+  email: string
+  phone: string
+  business_name: string
+  payment_term: CheckoutPaymentTerm
+  notes?: string
+}): Promise<{ data: CheckoutLead | null; error: string | null }> {
+  const supabase = createAdminClient()
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await supabase
+      .from('checkout_leads')
+      .insert({
+        reference_number: generateReferenceNumber(),
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        business_name: input.business_name,
+        notes: input.notes ?? null,
+        selected_payment_method_id: null,
+        payment_term: input.payment_term,
+        amount: getCheckoutPayableAmount(input.payment_term),
+        status: 'paid',
+      } as never)
+      .select()
+      .single()
+    if (!error) return { data: data as CheckoutLead, error: null }
+    if (error.code === '23505' && error.message.includes('reference_number')) continue
+    return { data: null, error: error.message }
+  }
+  return { data: null, error: 'Failed to generate unique reference number' }
+}
+
 // Get checkout lead by reference number (for confirmation page)
 export async function getCheckoutLeadByRef(
   ref: string

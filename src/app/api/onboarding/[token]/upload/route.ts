@@ -8,6 +8,7 @@ import { getClientIP } from '@/lib/rate-limit'
 import { findOnboardingForToken } from '@/lib/onboarding/access'
 import { updateOnboardingAssets, type OnboardingAssets } from '@/lib/onboarding/repository'
 import { MAX_MENU_PHOTOS } from '@/lib/onboarding/answers'
+import { extractBrandColorFromImage } from '@/lib/onboarding/logo-color'
 
 /**
  * /api/onboarding/[token]/upload — the wizard's logo and menu photos.
@@ -47,8 +48,8 @@ async function resolve(context: RouteContext) {
   return onboarding ? { admin, onboarding } : null
 }
 
-function withUpload(assets: OnboardingAssets, kind: UploadKind, url: string): OnboardingAssets | null {
-  if (kind === 'logo') return { ...assets, logoUrl: url }
+function withUpload(assets: OnboardingAssets, kind: UploadKind, url: string, logoColor: string | null): OnboardingAssets | null {
+  if (kind === 'logo') return { ...assets, logoUrl: url, logoColor }
   const menu = assets.menuImageUrls ?? []
   if (menu.length >= MAX_MENU_PHOTOS) return null
   return { ...assets, menuImageUrls: [...menu, url] }
@@ -77,6 +78,16 @@ async function readImage(request: NextRequest): Promise<{ kind: UploadKind; byte
   return { kind, bytes, mime }
 }
 
+/** A logo with no readable color (or a decode failure) simply leaves the choice to the owner. */
+async function readLogoColor(bytes: Uint8Array): Promise<string | null> {
+  try {
+    return await extractBrandColorFromImage(Buffer.from(bytes))
+  } catch (error) {
+    console.warn('[onboarding/upload] logo color could not be read', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   const ip = getClientIP(request)
   if (ip) {
@@ -100,8 +111,10 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
       fileName: `${image.kind}-${randomUUID()}.${EXTENSIONS[image.mime]}`,
       mimeType: image.mime,
     })
+    // Read now, not at build time, so the wizard re-themes to the brand the moment the logo lands.
+    const logoColor = image.kind === 'logo' ? await readLogoColor(image.bytes) : null
     // Applied to the row as it is NOW, so a parallel upload is never erased.
-    const assets = await updateOnboardingAssets(found.admin, found.onboarding.id, (current) => withUpload(current, image.kind, uploaded.url))
+    const assets = await updateOnboardingAssets(found.admin, found.onboarding.id, (current) => withUpload(current, image.kind, uploaded.url, logoColor))
     if (!assets) return respond({ error: `Up to ${MAX_MENU_PHOTOS} menu photos.` }, 409)
     return respond({ success: true, assets })
   } catch (error) {
@@ -124,7 +137,7 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
   // Remove the photo the buyer saw at that index, from the row as it is now.
   const removedUrl = menu[index]
   const withoutPhoto = (current: OnboardingAssets): OnboardingAssets => isLogo
-    ? { ...current, logoUrl: null }
+    ? { ...current, logoUrl: null, logoColor: null }
     : { ...current, menuImageUrls: (current.menuImageUrls ?? []).filter((url) => url !== removedUrl) }
   try {
     const assets = await updateOnboardingAssets(found.admin, found.onboarding.id, withoutPhoto)

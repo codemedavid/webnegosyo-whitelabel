@@ -2,6 +2,7 @@
 
 import {
   createCheckoutLead,
+  createPaidCheckoutLead,
   getCheckoutLeads,
   getCheckoutLeadById,
   getCheckoutLeadByRef,
@@ -22,16 +23,16 @@ import { requirePlatformPermission } from '@/lib/platform-staff/guard'
 import type { CheckoutLeadStatus } from '@/types/database'
 import { captureCheckoutLeadCreated } from '@/lib/posthog'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { issueOnboardingLink, startStoreOnboarding } from '@/lib/onboarding/start'
+import { issueOnboardingLink } from '@/lib/onboarding/start'
+import { canSendSetupLink, invitePaidCustomerSchema } from '@/lib/onboarding/invite'
 import { applyLeadStatusWithLaunch, readLeadOnboarding } from '@/lib/onboarding/staff'
 import { findOnboardingByLead } from '@/lib/onboarding/repository'
 import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import type { RateLimitOptions } from '@/lib/distributed-rate-limit'
 
 /**
- * Public funnel submits per client IP. Each monthly lead mints a set-up link
- * that creates a store, an owner login and an AI menu read, so an unthrottled
- * form is unbounded tenants and AI spend for a script.
+ * Public funnel submits per client IP. Leads are worked by staff, so an
+ * unthrottled form is a flooded console (and Meta conversion noise).
  */
 const CHECKOUT_FORM_RATE_LIMIT: RateLimitOptions = { limit: 5, windowSec: 3600 }
 
@@ -40,16 +41,12 @@ const CHECKOUT_FORM_RATE_LIMIT: RateLimitOptions = { limit: 5, windowSec: 3600 }
 export async function submitCheckoutForm(input: CreateCheckoutLeadInput) {
   const rate = await checkActionRateLimit('checkout-lead', CHECKOUT_FORM_RATE_LIMIT)
   if (!rate.allowed) {
-    return { data: null, error: 'Too many orders from this connection. Please try again later.', setupToken: null }
+    return { data: null, error: 'Too many orders from this connection. Please try again later.' }
   }
 
+  // No set-up link here: staff send it once the payment is confirmed
+  // (issueLeadSetupLink), so an unpaid order never gets a store.
   const result = await createCheckoutLead(input)
-
-  // The ₱999/month funnel continues straight into the store set-up wizard.
-  const setupToken =
-    result.data && !result.error && input.payment_term === 'monthly_subscription'
-      ? await startStoreOnboarding(result.data.id)
-      : null
 
   if (result.data && !result.error) {
     captureCheckoutLeadCreated({
@@ -62,7 +59,7 @@ export async function submitCheckoutForm(input: CreateCheckoutLeadInput) {
     }).catch(() => {})
   }
 
-  return { ...result, setupToken }
+  return result
 }
 
 export async function fetchCheckoutLeads(options: {
@@ -107,14 +104,45 @@ export async function fetchLeadOnboarding(leadId: string) {
   return readLeadOnboarding(leadId)
 }
 
-/** A fresh set-up link for the buyer; the old one stops working. Path only. */
+/**
+ * A fresh set-up link for a PAID buyer; any older link stops working. Path
+ * only — the console turns it into a ready-to-send message.
+ */
 export async function issueLeadSetupLink(leadId: string): Promise<{ path: string | null; error: string | null }> {
   await requirePlatformPermission('checkout_leads.edit')
   try {
+    const { data: lead, error } = await createAdminClient().from('checkout_leads').select('status').eq('id', leadId).maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!canSendSetupLink((lead as { status: string } | null)?.status)) {
+      return { path: null, error: 'Mark the payment as Paid first — the set-up link is only for paid customers.' }
+    }
     const token = await issueOnboardingLink(leadId)
     return { path: `/onboarding/${token}`, error: null }
   } catch (error) {
     return { path: null, error: error instanceof Error ? error.message : 'Could not create a link' }
+  }
+}
+
+/**
+ * A customer who paid outside the funnel (Messenger, cash, bank transfer):
+ * create their lead already marked paid and hand back their set-up link.
+ */
+export async function invitePaidCustomer(input: unknown): Promise<
+  { leadId: string; path: string; error: null } | { leadId: null; path: null; error: string }
+> {
+  await requirePlatformPermission('checkout_leads.edit')
+  const parsed = invitePaidCustomerSchema.safeParse(input)
+  if (!parsed.success) return { leadId: null, path: null, error: parsed.error.issues[0]?.message ?? 'Check the form.' }
+
+  const created = await createPaidCheckoutLead(parsed.data)
+  if (!created.data) return { leadId: null, path: null, error: created.error ?? 'The customer could not be saved.' }
+  try {
+    const token = await issueOnboardingLink(created.data.id)
+    return { leadId: created.data.id, path: `/onboarding/${token}`, error: null }
+  } catch (error) {
+    console.error('[checkout-leads] invite link failed', error instanceof Error ? error.message : error)
+    // The paid lead exists; staff can issue the link from it.
+    return { leadId: null, path: null, error: 'Customer saved, but the link could not be created. Open the lead and press "Send set-up link".' }
   }
 }
 

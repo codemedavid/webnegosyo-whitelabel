@@ -125,6 +125,18 @@ export function matchBestSellers(
   })
 }
 
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+/**
+ * The launch brand color: what the owner picked in the wizard, else the color
+ * read from the logo when it was uploaded. Null leaves it to the build (a
+ * fresh read of the logo, then the store type's default).
+ */
+export function pickLaunchBrandColor(picked: string | null | undefined, logoColor: string | null | undefined): string | null {
+  const usable = [picked, logoColor].find((value) => typeof value === 'string' && HEX_COLOR.test(value))
+  return usable ? usable.toLowerCase() : null
+}
+
 export const ONBOARDING_BUILD_STEPS = [
   { id: 'branding', label: 'Designing your store from your logo' },
   { id: 'menu', label: 'Reading your menu' },

@@ -9,6 +9,7 @@ import { runOnboardingBuild } from '@/lib/onboarding/build'
 import { isWellFormedOnboardingToken } from '@/lib/onboarding/token'
 import { isBuildRetryable, MAX_BUYER_BUILD_ATTEMPTS } from '@/lib/onboarding/build-staleness'
 import { isBuyerFacingError } from '@/lib/onboarding/errors'
+import { launchFromSetupLink } from '@/lib/onboarding/buyer-launch'
 
 /**
  * /api/onboarding/[token] — the buyer's store set-up.
@@ -16,9 +17,10 @@ import { isBuyerFacingError } from '@/lib/onboarding/errors'
  *   GET                         progress view (polled by the progress screen)
  *   POST { answers, ownerPassword }   create the store + owner, then build it
  *   POST { action: 'retry' }          re-run the build steps that failed (or a build that died mid-run)
+ *   POST { action: 'launch' }         "Go live": open the built, paid store to customers
  *
- * The token in the path is the only credential: a 256-bit secret handed to
- * the buyer after checkout. The build (menu reading, offers, loyalty) runs
+ * The token in the path is the only credential: a 256-bit secret sent to the
+ * buyer once their payment is confirmed. The build (menu reading, offers, loyalty) runs
  * after the response, so the buyer sees progress instead of a spinner.
  */
 export const dynamic = 'force-dynamic'
@@ -85,7 +87,13 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     if (!found) return respond(NOT_FOUND, 404)
     const { admin, onboarding } = found
 
-    if ((body as { action?: unknown } | null)?.action === 'retry') {
+    const action = (body as { action?: unknown } | null)?.action
+    if (action === 'launch') {
+      const launched = await launchFromSetupLink(admin, onboarding)
+      return launched.ok ? respond({ success: true }) : respond({ error: launched.error }, launched.status)
+    }
+
+    if (action === 'retry') {
       if (!isBuildRetryable(onboarding)) return respond({ error: 'Nothing to retry.' }, 409)
       if (onboarding.attempts >= MAX_BUYER_BUILD_ATTEMPTS) {
         return respond({ error: 'This set-up needs a hand from our team. Message us and we will finish it for you.' }, 429)

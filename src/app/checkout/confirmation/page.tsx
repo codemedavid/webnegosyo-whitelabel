@@ -1,14 +1,13 @@
 import { notFound } from 'next/navigation'
 import { fetchCheckoutLeadByRef } from '@/app/actions/checkout-leads'
 import { ConfirmationContent } from './confirmation-content'
-import { isWellFormedOnboardingToken } from '@/lib/onboarding/token'
 
 interface ConfirmationPageProps {
-  searchParams: Promise<{ confirm?: string; setup?: string }>
+  searchParams: Promise<{ confirm?: string }>
 }
 
 export default async function ConfirmationPage({ searchParams }: ConfirmationPageProps) {
-  const { confirm, setup } = await searchParams
+  const { confirm } = await searchParams
 
   if (!confirm) {
     notFound()
@@ -21,9 +20,6 @@ export default async function ConfirmationPage({ searchParams }: ConfirmationPag
   }
 
   return (
-    <ConfirmationContent
-      lead={result.data}
-      setupToken={isWellFormedOnboardingToken(setup) ? setup : null}
-    />
+    <ConfirmationContent lead={result.data} />
   )
 }

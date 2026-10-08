@@ -9,7 +9,9 @@ import { ONBOARDING_BUILD_STEPS, type OnboardingBuildStepId, type StepStatus } f
 import type { OnboardingAssets, OnboardingStatus, StoreOnboarding } from './repository'
 import type { LaunchBuildSummary } from './summary'
 import { displayedBuildStatus } from './build-staleness'
+import { isPaidLeadStatus } from './lead-status'
 import type { FirstWeekPlan } from './first-week'
+import type { LaunchReadiness } from './readiness'
 
 export interface OnboardingStepView {
   id: OnboardingBuildStepId
@@ -25,12 +27,22 @@ export interface OnboardingStoreView {
   loginPath: string
   /** Path of the storefront preview (it refuses orders until launch). */
   previewPath: string
+  /** The owner's dashboard; the wizard signs them in, so this opens straight in. */
+  dashboardPath: string
   isLive: boolean
+}
+
+/** Whether "Go live" may be pressed, and what still blocks it. */
+export interface OnboardingLaunchView {
+  canLaunch: boolean
+  blockers: string[]
 }
 
 export interface OnboardingView {
   status: OnboardingStatus
   businessName: string
+  /** For the greeting only; '' when the lead has no name. */
+  ownerFirstName: string
   ownerEmail: string
   assets: Required<OnboardingAssets>
   steps: OnboardingStepView[]
@@ -41,17 +53,18 @@ export interface OnboardingView {
   isPaymentConfirmed: boolean
   /** App downloads + University lessons, once the store exists. Filled by the server reader. */
   firstWeek: FirstWeekPlan | null
+  /** Null until the build stopped and the checklist was read. */
+  launch: OnboardingLaunchView | null
 }
 
 export interface OnboardingViewSources {
   onboarding: StoreOnboarding
-  lead: { business_name: string; email: string; status: string }
+  lead: { business_name: string; email: string; status: string; name?: string | null }
   tenant: { name: string; slug: string; is_prelaunch: boolean } | null
+  readiness?: LaunchReadiness | null
 }
 
-const PAID_STATUSES = new Set(['paid', 'live'])
-
-export function buildOnboardingView({ onboarding, lead, tenant }: OnboardingViewSources, nowMs: number = Date.now()): OnboardingView {
+export function buildOnboardingView({ onboarding, lead, tenant, readiness = null }: OnboardingViewSources, nowMs: number = Date.now()): OnboardingView {
   const steps = ONBOARDING_BUILD_STEPS.map(({ id, label }) => {
     const state = onboarding.steps[id]
     return { id, label, status: state?.status ?? 'pending', detail: state?.detail ?? null }
@@ -61,9 +74,11 @@ export function buildOnboardingView({ onboarding, lead, tenant }: OnboardingView
     // A build that died mid-run reads as failed, so the retry button shows.
     status: displayedBuildStatus(onboarding, nowMs),
     businessName: lead.business_name,
+    ownerFirstName: (lead.name ?? '').trim().split(/\s+/)[0] ?? '',
     ownerEmail: lead.email,
     assets: {
       logoUrl: onboarding.assets.logoUrl ?? null,
+      logoColor: onboarding.assets.logoColor ?? null,
       menuImageUrls: onboarding.assets.menuImageUrls ?? [],
     },
     steps,
@@ -77,11 +92,13 @@ export function buildOnboardingView({ onboarding, lead, tenant }: OnboardingView
           slug: tenant.slug,
           loginPath: `/${tenant.slug}/login?redirect=${encodeURIComponent(`/${tenant.slug}/admin/launch`)}`,
           previewPath: `/${tenant.slug}/menu`,
+          dashboardPath: `/${tenant.slug}/admin`,
           isLive: !tenant.is_prelaunch,
         }
       : null,
     isLaunchRequested: !!onboarding.launchRequestedAt,
-    isPaymentConfirmed: PAID_STATUSES.has(lead.status),
+    isPaymentConfirmed: isPaidLeadStatus(lead.status),
     firstWeek: null,
+    launch: readiness ? { canLaunch: readiness.canLaunch, blockers: readiness.blockers.map((item) => item.label) } : null,
   }
 }

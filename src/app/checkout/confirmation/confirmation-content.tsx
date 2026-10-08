@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft, Sparkles, ArrowRight } from 'lucide-react'
+import { Check, Copy, Upload, Loader2, MessageCircle, ArrowLeft, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { submitPaymentProof } from '@/app/actions/checkout-leads'
@@ -13,15 +13,19 @@ const FACEBOOK_PAGE_USERNAME = 'WebNegosyoOfficial'
 
 interface ConfirmationContentProps {
   lead: CheckoutLeadWithPaymentMethod
-  /** The store set-up wizard's key, present right after a funnel order. */
-  setupToken?: string | null
 }
 
 /**
- * The next step after paying: build the store now, while the payment is being
- * confirmed. The store is ready to review by the time it is confirmed.
+ * What happens after paying: once the payment is confirmed the buyer gets a
+ * private set-up link, and the store is built for them from their logo and
+ * menu photos. No link before that — an unpaid order never gets a store.
  */
-function SetupStoreCard({ setupToken }: { setupToken: string }) {
+function NextStepsCard() {
+  const steps = [
+    'Send your payment and upload the screenshot below.',
+    'We confirm it and send your private set-up link by SMS or email.',
+    'Upload your logo and menu photo — we build your store in minutes, then you go live.',
+  ]
   return (
     <div className="rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white p-6 shadow-sm">
       <div className="flex items-start gap-3">
@@ -29,20 +33,17 @@ function SetupStoreCard({ setupToken }: { setupToken: string }) {
           <Sparkles className="h-5 w-5 text-orange-600" aria-hidden />
         </div>
         <div className="min-w-0">
-          <h3 className="text-lg font-bold text-gray-900">Next: build your store (5 minutes)</h3>
-          <p className="mt-1 text-sm text-gray-600">
-            Send your logo and menu photos. We set up your menu, combos, upsells and a loyalty stamp card for you —
-            ready to review while we confirm your payment.
-          </p>
+          <h3 className="text-lg font-bold text-gray-900">What happens next</h3>
+          <ol className="mt-3 space-y-2.5">
+            {steps.map((step, index) => (
+              <li key={step} className="flex gap-3 text-sm text-gray-700">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-bold text-white">{index + 1}</span>
+                <span className="pt-0.5">{step}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
-      <Link
-        href={`/onboarding/${encodeURIComponent(setupToken)}`}
-        className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-orange-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-700"
-      >
-        Build my store <ArrowRight className="h-4 w-4" aria-hidden />
-      </Link>
-      <p className="mt-2 text-center text-xs text-gray-500">Bookmark this link — it is your key to set-up.</p>
     </div>
   )
 }
@@ -60,7 +61,7 @@ function getPaymentTermLabel(paymentTerm: CheckoutLeadWithPaymentMethod['payment
   }
 }
 
-export function ConfirmationContent({ lead, setupToken = null }: ConfirmationContentProps) {
+export function ConfirmationContent({ lead }: ConfirmationContentProps) {
   const [copied, setCopied] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -172,7 +173,7 @@ export function ConfirmationContent({ lead, setupToken = null }: ConfirmationCon
           </p>
         </div>
 
-        {setupToken && <SetupStoreCard setupToken={setupToken} />}
+        {lead.payment_term === 'monthly_subscription' && <NextStepsCard />}
 
         {paymentMethod && (
           <div className="rounded-xl bg-white p-6 shadow-sm">

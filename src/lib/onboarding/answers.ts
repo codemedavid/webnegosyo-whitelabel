@@ -19,6 +19,7 @@ export const MIN_OWNER_PASSWORD = 8
 export const MAX_OWNER_PASSWORD = 72
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
 /** PH mobile: 09XXXXXXXXX or +639XXXXXXXXX, spaces/dashes allowed. */
 const PH_MOBILE = /^(\+?63|0)9\d{9}$/
 
@@ -41,6 +42,13 @@ export const onboardingAnswersSchema = z
     storeName: z.string().trim().min(2, 'Enter your store name').max(60),
     storeType: storeTypeSchema,
     tagline: z.string().trim().max(120).optional().or(z.literal('')),
+    /** The owner's pick in the wizard; null = use the logo's color. */
+    brandColor: z
+      .string()
+      .regex(HEX_COLOR, 'Pick a color from the list')
+      .transform((value) => value.toLowerCase())
+      .nullable()
+      .optional(),
     menuText: z.string().trim().max(MAX_ONBOARDING_MENU_TEXT).optional().or(z.literal('')),
     bestSellers: z.array(z.string().trim().min(1).max(80)).max(MAX_BEST_SELLERS).default([]),
     orderTypes: z.array(z.enum(ONBOARDING_ORDER_TYPES)).min(1, 'Pick at least one way to order'),
@@ -60,7 +68,7 @@ export const onboardingAnswersSchema = z
         stopOrdersWhenClosed: z.boolean().default(true),
       })
       .strict()
-      .refine((h) => h.open !== h.close, 'Opening and closing time cannot be the same'),
+      .refine((h) => h.close > h.open, 'Closing time must be later than opening time (same day)'),
   })
   .strict()
 

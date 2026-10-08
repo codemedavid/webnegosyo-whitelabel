@@ -5,6 +5,7 @@ import { findOnboardingForToken, loadOnboardingView } from '@/lib/onboarding/acc
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow'
 import { SMARTMENU } from '@/components/landing/landing-theme'
+import { landingFontClass } from '@/components/landing/landing-fonts'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,9 +16,11 @@ export const metadata: Metadata = {
   referrer: 'no-referrer',
 }
 
+const HELP_URL = 'https://m.me/WebNegosyoOfficial'
+
 function Notice({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-2xl bg-white p-6 text-center shadow-sm">
+    <div className="mx-auto max-w-md rounded-3xl bg-white p-8 text-center shadow-sm">
       <h1 className="text-xl font-extrabold" style={{ color: SMARTMENU.ink }}>{title}</h1>
       <p className="mt-2 text-sm" style={{ color: SMARTMENU.cocoa }}>{body}</p>
     </div>
@@ -62,12 +65,28 @@ export default async function OnboardingPage({ params }: { params: Promise<{ tok
   const state = await loadPageState(token)
 
   return (
-    <main className="min-h-screen px-4 pb-16 pt-6" style={{ backgroundColor: SMARTMENU.cream }}>
-      <div className="mx-auto max-w-xl">
-        <div className="mb-6 flex items-center gap-2">
-          <Image src="/smartmenu-mark.png" alt="SmartMenu" width={32} height={32} className="h-8 w-8 rounded-lg" />
-          <span className="text-sm font-extrabold tracking-tight" style={{ color: SMARTMENU.ink }}>SmartMenu set-up</span>
-        </div>
+    <main
+      className={`${landingFontClass} min-h-screen px-4 pb-16 pt-5 sm:px-6`}
+      style={{ backgroundColor: SMARTMENU.cream, fontFamily: 'var(--font-landing-text), system-ui, sans-serif' }}
+    >
+      <div className="mx-auto max-w-6xl">
+        <header className="mb-8 flex items-center justify-between sm:mb-12">
+          <div className="flex items-center gap-2.5">
+            <Image src="/smartmenu-mark.png" alt="" width={36} height={36} className="h-9 w-9 rounded-xl" />
+            <span className="text-base font-extrabold tracking-tight" style={{ color: SMARTMENU.ink, fontFamily: 'var(--font-landing-display), system-ui' }}>
+              SmartMenu
+            </span>
+          </div>
+          <a
+            href={HELP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-bold transition hover:bg-black/[0.03]"
+            style={{ color: SMARTMENU.ink }}
+          >
+            Need help? Message us
+          </a>
+        </header>
         {state.kind === 'ready' && <OnboardingFlow token={token} initialView={state.view} />}
         {state.kind === 'invalid' && <InvalidLink />}
         {state.kind === 'unavailable' && <Unavailable />}

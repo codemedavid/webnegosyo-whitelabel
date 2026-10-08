@@ -33,6 +33,7 @@ import {
   isStepSettled,
   matchBestSellers,
   orderTypeToggles,
+  pickLaunchBrandColor,
   type OnboardingBuildStepId,
   type OnboardingSteps,
 } from './plan'
@@ -75,9 +76,11 @@ interface StepOutcome {
 
 async function brandingStep(build: BuildContext): Promise<StepOutcome> {
   const logoUrl = build.assets.logoUrl
-  const brandColor = logoUrl
+  // The owner already saw (and maybe changed) this color in the wizard's live preview.
+  const chosenColor = pickLaunchBrandColor(build.answers.brandColor, build.assets.logoColor)
+  const brandColor = chosenColor ?? (logoUrl
     ? await fetchImageBuffer(logoUrl).then(({ buffer }) => extractBrandColorFromImage(buffer)).catch(() => null)
-    : null
+    : null)
 
   const patch = buildLaunchBranding({
     storeType: build.answers.storeType,
@@ -92,7 +95,9 @@ async function brandingStep(build: BuildContext): Promise<StepOutcome> {
 
   return {
     status: 'done',
-    detail: brandColor ? `Colors taken from your logo (${brandColor})` : 'Colors chosen for your store type',
+    detail: build.answers.brandColor
+      ? `Your colors applied (${brandColor})`
+      : brandColor ? `Colors taken from your logo (${brandColor})` : 'Colors chosen for your store type',
     summary: { brandColor },
   }
 }
@@ -168,7 +173,7 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
   )
   const bestSellerNames = bestSellers.names
   const warnings = [
-    'Check your menu names and prices — they were read from your photos.',
+    'Check your menu names and prices — our AI typed them in for you.',
     ...(imported.itemsFailed > 0 ? [`${imported.itemsFailed} items could not be saved; add them by hand.`] : []),
     ...bestSellerWarnings(bestSellers.hasFailed, bestSellerNames.length, build.answers.bestSellers.length),
   ]

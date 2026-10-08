@@ -136,10 +136,15 @@ export function CheckoutLeadDetailPanel({
               </div>
             </div>
 
-            {/* Automated store set-up (₱999 funnel) */}
+            {/* Store set-up: the link goes out once the lead is Paid */}
             <div className="space-y-3">
               <SectionLabel>Store set-up</SectionLabel>
-              <CheckoutLeadOnboarding leadId={lead.id} canEdit={canChangeStatus} refreshKey={lead.status} />
+              <CheckoutLeadOnboarding
+                leadId={lead.id}
+                leadStatus={lead.status}
+                canEdit={canChangeStatus}
+                contact={{ name: lead.name, businessName: lead.business_name, phone: lead.phone, email: lead.email }}
+              />
             </div>
 
             {/* Contact */}

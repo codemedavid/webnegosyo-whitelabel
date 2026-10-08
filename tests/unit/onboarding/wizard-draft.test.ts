@@ -90,3 +90,38 @@ describe('restoreDraft', () => {
     expect(restoreDraft(fallback, [1, 2])).toBe(fallback)
   })
 })
+
+describe('brand color in the draft', () => {
+  test('a picked color travels with the answers', () => {
+    // Act
+    const result = draftToAnswers({ ...filled(), brandColor: '#7B4A2D' })
+
+    // Assert
+    expect(result.ok && result.answers.brandColor).toBe('#7b4a2d')
+  })
+
+  test('no pick leaves the color to the logo', () => {
+    // Act
+    const result = draftToAnswers({ ...filled(), brandColor: '' })
+
+    // Assert
+    expect(result.ok && result.answers.brandColor).toBeNull()
+  })
+
+  test('a malformed saved color is dropped on restore', () => {
+    expect(restoreDraft(filled(), { brandColor: 'url(x)' }).brandColor).toBe('')
+    expect(restoreDraft(filled(), { brandColor: '#123abc' }).brandColor).toBe('#123abc')
+  })
+})
+
+describe('hours that cross midnight', () => {
+  test('are refused up front instead of silently falling back to default hours', () => {
+    expect(stepBlocker('hours', { ...filled(), open: '16:00', close: '02:00' }, 0)).toBe('Closing time must be later than opening time (same day)')
+    expect(draftToAnswers({ ...filled(), open: '16:00', close: '02:00' })).toEqual({ ok: false, error: 'Closing time must be later than opening time (same day)' })
+  })
+
+  test('welcome and brand never block', () => {
+    expect(stepBlocker('welcome', filled(), 0)).toBeNull()
+    expect(stepBlocker('brand', filled(), 0)).toBeNull()
+  })
+})

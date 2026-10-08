@@ -117,3 +117,21 @@ describe('isBlockedByDependency', () => {
     expect(isBlockedByDependency({ menu: { status: 'skipped' } }, 'loyalty')).toBe(false)
   })
 })
+
+describe('pickLaunchBrandColor — the owner choice beats the logo', () => {
+  const { pickLaunchBrandColor } = jest.requireActual('@/lib/onboarding/plan') as typeof import('@/lib/onboarding/plan')
+
+  test('the color the owner picked wins', () => {
+    expect(pickLaunchBrandColor('#AA3300', '#112233')).toBe('#aa3300')
+  })
+
+  test('falls back to the color read from the logo at upload', () => {
+    expect(pickLaunchBrandColor(null, '#112233')).toBe('#112233')
+    expect(pickLaunchBrandColor('', '#112233')).toBe('#112233')
+  })
+
+  test('null when neither is a usable hex color', () => {
+    expect(pickLaunchBrandColor('red', 'javascript:alert(1)')).toBeNull()
+    expect(pickLaunchBrandColor(undefined, undefined)).toBeNull()
+  })
+})

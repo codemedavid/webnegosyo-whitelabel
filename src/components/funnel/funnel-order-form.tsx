@@ -142,8 +142,7 @@ export function FunnelOrderForm() {
         eventId
       )
       isSaved = true
-      const setupParam = result.setupToken ? `&setup=${encodeURIComponent(result.setupToken)}` : ''
-      router.push(`/checkout/confirmation?confirm=${encodeURIComponent(result.data.reference_number)}${setupParam}`)
+      router.push(`/checkout/confirmation?confirm=${encodeURIComponent(result.data.reference_number)}`)
     } catch (error) {
       console.error('[funnel] checkout lead failed', error)
       toast.error(ORDER_FORM.connectionFailed)
