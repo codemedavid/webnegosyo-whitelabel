@@ -25,6 +25,7 @@ import { STORE_LOOKS, buildLaunchBranding, buildLaunchDesign, toStoreLook } from
 import { applyLaunchHero, chooseLaunchDesign, launchHeroInput, readStoreFacts } from './design-step'
 import { applyLaunchBoost } from './boost-autopilot'
 import { launchStarterLoyalty } from './launch-loyalty'
+import { draftLaunchCampaigns } from './launch-campaigns'
 import { launchFromSetupLink } from './buyer-launch'
 import type { OnboardingAnswers } from './answers'
 import {
@@ -177,8 +178,10 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
     },
   )
   const bestSellerNames = bestSellers.names
+  const freeItems = imported.createdItems.filter((item) => !(item.price > 0)).length
   const warnings = [
     'Check your menu names and prices — our AI typed them in for you.',
+    ...(freeItems > 0 ? [`${freeItems} ${freeItems === 1 ? 'item is' : 'items are'} ₱0. Set a price, or leave ${freeItems === 1 ? 'it' : 'them'} as a free inclusion. We never use ₱0 items in offers.`] : []),
     ...(imported.itemsFailed > 0 ? [`${imported.itemsFailed} items could not be saved; add them by hand.`] : []),
     ...bestSellerWarnings(bestSellers.hasFailed, bestSellerNames.length, build.answers.bestSellers.length),
   ]
@@ -269,15 +272,26 @@ async function readFeaturedIds(build: BuildContext): Promise<string[]> {
   return (data ?? []).map((row) => (row as { id: string }).id)
 }
 
+function boostDetail(live: number, waiting: number): string {
+  const parts = [
+    live > 0 ? `${live} ${live === 1 ? 'upsell' : 'upsells'} live` : null,
+    waiting > 0 ? `${waiting} ${waiting === 1 ? 'combo' : 'combos'} for your OK` : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
 async function boostStep(build: BuildContext): Promise<StepOutcome> {
   const result = await applyLaunchBoost(build.ctx, build.tenantId, { bestSellerIds: await readFeaturedIds(build) })
-  if (result.applied.length === 0) {
+  if (result.applied.length === 0 && result.awaitingApproval.length === 0) {
     return { status: 'skipped', detail: 'Not enough menu items for offers yet', summary: {} }
   }
   return {
     status: 'done',
-    detail: `${result.applied.length} offers live`,
-    summary: { offers: result.applied.map(({ kind, title }) => ({ kind, title })) },
+    detail: boostDetail(result.applied.length, result.awaitingApproval.length),
+    summary: {
+      offers: result.applied.map(({ kind, title }) => ({ kind, title })),
+      offersAwaitingApproval: result.awaitingApproval.map(({ kind, title }) => ({ kind, title })),
+    },
   }
 }
 
@@ -290,17 +304,35 @@ async function loyaltyStep(build: BuildContext): Promise<StepOutcome> {
   return {
     status: 'done',
     detail: `${result.threshold} orders → ${result.rewardLabel}`,
-    summary: { loyalty: { rewardLabel: result.rewardLabel, threshold: result.threshold } },
+    summary: { loyalty: { rewardLabel: result.rewardLabel, threshold: result.threshold, minSpend: result.minSpend } },
   }
 }
 
-const STEP_RUNNERS: Record<OnboardingBuildStepId, (build: BuildContext) => Promise<StepOutcome>> = {
+/**
+ * Cosmetic like the design step: drafts send nothing, so a failure here only
+ * costs the owner some ready-made texts and never blocks go-live.
+ */
+async function campaignsStep(build: BuildContext, summary: LaunchBuildSummary): Promise<StepOutcome> {
+  try {
+    const result = await draftLaunchCampaigns(build.admin as unknown as SupabaseClient, build.tenantId, {
+      rewardLabel: summary.loyalty?.rewardLabel ?? null,
+      threshold: summary.loyalty?.threshold ?? null,
+    })
+    return { status: 'done', detail: `${result.drafted} texts ready to turn on`, summary: { campaigns: { drafted: result.drafted } } }
+  } catch (error) {
+    console.error('[onboarding] text campaigns not drafted', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
+    return { status: 'skipped', detail: 'Add text campaigns from the app anytime', summary: {} }
+  }
+}
+
+const STEP_RUNNERS: Record<OnboardingBuildStepId, (build: BuildContext, summary: LaunchBuildSummary) => Promise<StepOutcome>> = {
   branding: brandingStep,
   menu: menuStep,
   design: designStep,
   store_setup: storeSetupStep,
   boost: boostStep,
   loyalty: loyaltyStep,
+  campaigns: campaignsStep,
 }
 
 // --------------------------------------------------------------- runner
@@ -317,6 +349,7 @@ const FRIENDLY_STEP_ERRORS: Record<OnboardingBuildStepId, string> = {
   store_setup: 'Payments, hours or order types could not be saved. Retry, or set them in Settings.',
   boost: 'Combos and upsells could not be created. Retry, or add them in Boost Sales.',
   loyalty: 'The stamp card could not be started. Retry, or set it up in Loyalty.',
+  campaigns: 'Your text messages could not be saved. Retry, or add them from the app.',
 }
 
 function technicalError(stepId: OnboardingBuildStepId, error: unknown): string {
@@ -339,7 +372,7 @@ async function runSteps(build: BuildContext, onboardingId: string, initial: Onbo
     steps = withStep(steps, id, { status: 'running', detail: label })
     await writeOnboardingSteps(build.admin, onboardingId, steps)
     try {
-      const outcome = await STEP_RUNNERS[id](build)
+      const outcome = await STEP_RUNNERS[id](build, current)
       steps = withStep(steps, id, { status: outcome.status, detail: outcome.detail })
       current = mergeSummary(current, outcome.summary)
     } catch (error) {

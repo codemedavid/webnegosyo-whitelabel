@@ -19,6 +19,7 @@ const RUNNING_LINES: Record<OnboardingBuildStepId, string[]> = {
   store_setup: ['Adding your ways to pay', 'Setting your opening hours'],
   boost: ['Pairing your best sellers', 'Building combo deals', 'Adding upsells'],
   loyalty: ['Printing your stamp card'],
+  campaigns: ['Writing your text messages'],
 }
 
 const OPENING_LINES = ['Opening your store for orders']

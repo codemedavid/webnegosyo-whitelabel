@@ -41,6 +41,8 @@ const audienceSchema = z
         lastOrderOlderThanDays: z.number().int().positive().optional(),
         lastOrderWithinDays: z.number().int().positive().optional(),
         minOrderCount: z.number().int().nonnegative().optional(),
+        /** Second-visit invites: at most this many orders so far (webnegosyo-app/lib/sms/types.ts). */
+        maxOrderCount: z.number().int().positive().optional(),
         minTotalSpent: z.number().nonnegative().optional(),
         channels: z.array(z.string()).optional(),
     })

@@ -43,7 +43,19 @@ function generationLine(generation: BoostAiGeneration): string {
   return parts.filter(Boolean).join(' · ')
 }
 
+function generationTitle(generation: BoostAiGeneration): string {
+  return generation.source === 'launch' ? 'Your launch combos' : formatWhen(generation.createdAt)
+}
+
+/** Open what still needs a decision (launch combos included), else the newest run. */
+function initiallyOpen(log: BoostAiLog | null): Set<string> {
+  const waiting = (log?.generations ?? []).filter((generation) => generation.proposals.some((p) => p.status === 'pending' || p.status === 'approved'))
+  const first = log?.generations[0]
+  return new Set(waiting.length > 0 ? waiting.map((generation) => generation.id) : first ? [first.id] : [])
+}
+
 function historyLine(generation: BoostAiGeneration): string | null {
+  if (generation.source === 'launch') return 'They wait for your OK: approve the ones you like and they go on your menu.'
   if (generation.status !== 'succeeded') return null
   if (generation.ordersAnalyzed === 0) return 'Built from your menu (no order history yet).'
   return `Learned from ${generation.ordersAnalyzed.toLocaleString('en-PH')} of your orders.`
@@ -59,7 +71,7 @@ export function BoostAiPanel({ log, tenantId, tenantSlug, itemsById, onEdit }: B
   const router = useRouter()
   const [isGenerating, setGenerating] = useState(false)
   const [busy, setBusy] = useState<{ id: string; action: ProposalAction } | null>(null)
-  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set(log?.generations[0] ? [log.generations[0].id] : []))
+  const [openIds, setOpenIds] = useState<Set<string>>(() => initiallyOpen(log))
 
   if (!log) {
     return (
@@ -152,7 +164,7 @@ export function BoostAiPanel({ log, tenantId, tenantSlug, itemsById, onEdit }: B
 
       {log.generations.length > 0 && (
         <div>
-          <h3 className="mb-2 text-sm font-semibold">Generation log</h3>
+          <h3 id="boost-ai-log" className="mb-2 scroll-mt-20 text-sm font-semibold">Generation log</h3>
           <ol className="space-y-2">
             {log.generations.map((generation) => {
               const isOpen = openIds.has(generation.id)
@@ -167,7 +179,7 @@ export function BoostAiPanel({ log, tenantId, tenantSlug, itemsById, onEdit }: B
                   >
                     {generation.status === 'failed' && <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{formatWhen(generation.createdAt)}</span>
+                      <span className="block text-sm font-medium">{generationTitle(generation)}</span>
                       <span className="block text-xs text-muted-foreground">{generationLine(generation)}</span>
                     </span>
                     {canOpen && <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', isOpen && 'rotate-180')} aria-hidden="true" />}

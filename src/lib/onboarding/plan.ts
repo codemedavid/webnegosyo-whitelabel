@@ -144,6 +144,7 @@ export const ONBOARDING_BUILD_STEPS = [
   { id: 'store_setup', label: 'Setting up payments, hours and order types' },
   { id: 'boost', label: 'Creating combos and upsells' },
   { id: 'loyalty', label: 'Launching your loyalty stamp card' },
+  { id: 'campaigns', label: 'Writing your text messages' },
 ] as const
 
 export type OnboardingBuildStepId = (typeof ONBOARDING_BUILD_STEPS)[number]['id']

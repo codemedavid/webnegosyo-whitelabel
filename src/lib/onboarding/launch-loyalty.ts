@@ -18,12 +18,14 @@ import { buildStarterLoyaltyProgram, STARTER_STAMP_THRESHOLD, type StarterLoyalt
 import { switchLoyaltyLive } from '@/lib/loyalty/go-live-write'
 
 export type LaunchLoyaltyResult =
-  | { status: 'created'; programId: string; rewardLabel: string; threshold: number }
+  | { status: 'created'; programId: string; rewardLabel: string; threshold: number; minSpend: number | null }
   | { status: 'skipped'; reason: string }
 
 export interface LaunchLoyaltyOptions {
   storeName: string
   bestSellerIds: readonly string[]
+  /** The owner's own "typical order" answer, in pesos; sizes the reward and minimum spend. */
+  typicalOrder?: number | null
   /** Who the program is created as; defaults to the store's owner account. */
   actorUserId?: string
 }
@@ -67,16 +69,29 @@ async function readOwnerUserId(admin: SupabaseClient, tenantId: string): Promise
 async function readRewardableItems(admin: SupabaseClient, tenantId: string): Promise<StarterLoyaltyItem[]> {
   const { data, error } = await admin
     .from('menu_items')
-    .select('id, name, price, is_available, presell_enabled')
+    .select('id, name, price, is_available, presell_enabled, category:categories(name)')
     .eq('tenant_id', tenantId)
     .order('order', { ascending: true })
     .limit(MAX_MENU_ROWS)
   if (error) throw new Error(`Menu items could not be read: ${error.message}`)
-  const rows = (data ?? []) as Array<{ id: string; name: string; price: number | string | null; is_available: boolean | null; presell_enabled: boolean | null }>
+  const rows = (data ?? []) as unknown as Array<{
+    id: string
+    name: string
+    price: number | string | null
+    is_available: boolean | null
+    presell_enabled: boolean | null
+    category: { name: string | null } | null
+  }>
   // Pre-sell items cannot be a free-item reward (`resolveProgramCatalog` refuses them).
   return rows
     .filter((row) => !row.presell_enabled)
-    .map((row) => ({ id: row.id, name: row.name, price: Number(row.price ?? 0), isAvailable: row.is_available !== false }))
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      price: Number(row.price ?? 0),
+      isAvailable: row.is_available !== false,
+      categoryName: row.category?.name ?? null,
+    }))
 }
 
 export async function launchStarterLoyalty(
@@ -94,6 +109,7 @@ export async function launchStarterLoyalty(
     storeName: opts.storeName,
     items: await readRewardableItems(admin, tenantId),
     bestSellerIds: opts.bestSellerIds,
+    typicalOrder: opts.typicalOrder ?? null,
   })
   if (!starter) return { status: 'skipped', reason: 'No available menu item can be the free reward.' }
 
@@ -109,5 +125,5 @@ export async function launchStarterLoyalty(
   await writeLoyaltyProgramStatus(admin, tenantId, programId, { status: 'active' }, actor, 'draft')
   await switchLoyaltyLive(admin, tenantId)
 
-  return { status: 'created', programId, rewardLabel: starter.rewardLabel, threshold: STARTER_STAMP_THRESHOLD }
+  return { status: 'created', programId, rewardLabel: starter.rewardLabel, threshold: STARTER_STAMP_THRESHOLD, minSpend: starter.minSpend }
 }
