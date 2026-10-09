@@ -135,6 +135,25 @@ A loyalty member can add their stamp card to Apple or Google Wallet from the ord
 - **Routes**: `GET /api/loyalty/passes/{apple,google}` (issue), `/api/loyalty/passes/apple-ws/v1/...` (device web service), `POST /api/loyalty/passes/sync`, `POST /api/loyalty/passes/identify` (bearer, same tenant + `pos`).
 - **Config** (`config.ts`) fails closed per wallet; see ENV_VARIABLES_NEEDED.txt. Swap the text buttons for Apple's/Google's official badge artwork before launch.
 
+### Bills: combine & split (merchant app)
+
+`webnegosyo-app/app/(main)/bill.tsx?orders=<id,id>` — one bill over one or more PLACED orders. Opened from a table ("Bill & split") or an order ("Split or combine bill"); "Combine another order" adds more. Modes: One bill · Split evenly · By item (tap a guest, tap dishes).
+
+- **A bill never moves items between orders** (unlike Toast/Loyverse "merge/split tickets"): kitchen, stock, analytics and each order's own receipt are untouched. Only the paper and the payment spread change. Pure engine in `webnegosyo-app/lib/bill/` (tested in place).
+- **Money in centavos** (`money.ts` largest-remainder): by item prices every PIECE (`bill-split.ts` units) with its slice of its order's service/delivery/discount, so an order's units always sum to its total. Even split freezes the owed amount when chosen (`bill-plan.ts` `basisCents`).
+- **Paying** = `settleBill`: one `orders:recordPayment` row per order the payment settles (by-item shares fill their own orders first, else oldest first), never more than an order owes; cash/change noted on the first row only; `updatePaymentStatus('paid')` only when square. Stops at the first failed write and reports it. Gate = `canCollectPayment` for every owing order (`bill-state.ts`).
+- **Plan** (mode, guests, who-had-what, per-guest paid) is in-memory zustand (`stores/bill-store.ts`), locked once a guest pays; the ledgers stay the truth. By item is refused once money was taken outside the split.
+- **Receipts** go through the merchant's layout: `ReceiptOrder.bill` (heading / orderRefs / share) + `amountPaid` (Paid · Balance due · Amount due). Bills print without the tracking QR (`printOrder(order, { printKey, withQr: false })`) and never inherit an order's stored cash/change.
+
+### POS checkout questions & delivery (merchant app)
+
+The register asks the storefront's own checkout questions (`customer_form_fields`, per order type) — all OPTIONAL at the counter.
+
+- **Fields** (`webnegosyo-app/lib/pos-checkout-fields.ts`, resource `use-checkout-setup.ts`, optional offline-pack part): name/phone/table/address (incl. aliases like "Contact Number") map onto the register's existing controls; everything else is a custom question under the tender screen's folded "More details" (`CheckoutDetails`). Answers live in the cart store (`checkoutAnswers`, cleared with every sale) and are written to `customerData` under the field's own name — spread FIRST in `buildPosOrder`, so register keys always win.
+- **Delivery sheet** (`components/pos/DeliverySheet.tsx` + `delivery/`): address type-ahead → `POST /api/maps/places` (Apple Maps Server API search, store-pin biased); a pick stores `delivery_lat/lng` (strings, like the web) and shows a static map (`/api/maps/snapshot`, signed Apple snapshot URL — no native map module; drag-pin needs an EAS build) + "Open in Google Maps". Appending to a picked address keeps the pin.
+- **Fee**: `/api/maps/delivery-quote` runs the checkout's own ROAD-distance pricing; the app applies the free-delivery minimum and fills the box ("Auto") only when it is empty or still holds a suggestion — a typed fee always wins. Offline → straight line × 1.3, labelled "estimate". Lalamove stores get no suggestion.
+- All three routes: bearer member of the store (`gateAppMapsRequest`), per-person burst + daily limits (shared Apple quota).
+
 ### Convex (Real-Time Backend)
 
 Convex serves as a secondary real-time backend alongside Supabase. Each tenant optionally has a `convex_deployment_url`.
@@ -204,21 +223,15 @@ Two-path architecture with graceful degradation:
 - `src/components/superadmin/` — Platform admin
 - `src/components/shared/` — Cross-cutting (navigation, forms, modals)
 
+### Receipt payment lines
+
+The receipt engine (`webnegosyo-app/lib/receipt-layout.ts`, mirrored in `src/lib/receipt-layout.ts`; `tests/unit/receipt-layout-parity.test.ts` fails if the code drifts) prints discounts from `discount_data`/`customerData.discount`, and cash/change/ref from the caller OR the register's stored `customerData.pos` (stored cash only while cash − change still equals the total, so an edited order never reprints stale change). `amountPaid` (absent = say nothing) adds Paid / Balance due / Amount due; a fully paid cash sale adds nothing more. Classic output is unchanged for inputs without these fields.
+
 ### Tenant Branding
 
 Tenants have 40+ customizable color fields applied via CSS variables (`src/lib/branding-utils.ts`). Card templates: classic, minimal, modern, elegant, bold, glass, polaroid, brutalist, magazine, zen, neon, storefront (fixed designs), plus the **flexible** set — showcase, atelier, kiosk, sticker, menuboard, arch, bistro — built on `card-templates/flex/card-kit.tsx` and tuned by six `card_*` knob columns (`src/lib/card-style.ts`; NULL/`auto` = template default, per-device via `mobile_overrides`). A new flexible design is flagged `isFlexible` in `CARD_TEMPLATES` and composes the kit. Page layouts add storefront, kiosk, rails, lookbook — scroll-based catalogs sharing `layouts/layout-parts.tsx` + `useCategoryScrollSpy`. The Studio pickers and the SmartMenu MCP (`get_branding` `designCatalog`, `src/lib/mcp/design-catalog.ts`) derive from `CARD_TEMPLATES` / `PAGE_LAYOUTS`, so registering a design there is the only edit. The `compact` card was retired 2026-09-24 (stores moved to `menuboard`).
 
 Dev gotcha (fixed 2026-10-04): `next.config.ts` used to mark `/_next/static` `immutable` in dev too, and dev chunk names don't change, so browsers kept stale CSS/JS after edits. The header is now production-only; a browser that cached a chunk before the fix needs one hard refresh.
-
-### Store onboarding (paid-first set-up link)
-
-`/onboarding/[token]` builds a paying merchant's store for them. The token (256-bit, only its sha256 stored in `store_onboardings`) is the buyer's only credential.
-
-- **Link only after payment**: the funnel never mints one. Staff mark the checkout lead Paid, then "Send set-up link" (`issueLeadSetupLink` refuses unpaid leads) or "Invite paid customer" (creates a lead already `paid`). The share panel builds the message + `sms:`/`mailto:` drafts (`src/lib/onboarding/invite.ts`); nothing is sent server-side.
-- **Wizard** (`src/components/onboarding/`, Airbnb-style: one question per screen, fixed footer progress + Back/Next, white studio wearing only the owner's brand via `--ob-accent`; direction contract atop `onboarding-ui.tsx`): welcome → store → brand (logo, named colors, **menu layout** = `answers.look`) → menu → ordering → hours → account, beside a live phone preview that mirrors the real storefront, built with the SAME `buildLaunchBranding` palette. `LiveStoreFrame` renders the real store at 390px scaled into the frame. The logo's color is read at upload (`assets.logoColor`) and re-themes the wizard (`--ob-accent`); `answers.brandColor` (hex, validated) wins in the build (`pickLaunchBrandColor`). Submit creates the tenant (pre-launch, platform backend) + owner, then signs the browser in.
-- **Build** (`src/lib/onboarding/build.ts`, background `after()`): branding → menu (AI parse) → payments/hours/order types → Boost offers → starter stamp card. Steps never re-run once settled.
-- **Photo-less design**: onboarded menus have no dish photos, so `STORE_LOOKS` (`store-type.ts`: board / chapters / tiles / cards) pairs a card, layout and a TEXT hero (heroes with a picture panel draw giant initials); each store type has a default look. Every card template renders a dish without its own photo as a text card (`hasDishPhoto`, `src/lib/dish-photo.ts`) — no logo fallback, all stores (2026-10-08).
-- **Go live is automatic**: when the build finishes, `openStoreWhenReady` (build.ts) runs `launchFromSetupLink` on the FINISHED row — the same rules as the reveal's button (`{action:'launch'}` → `decideBuyerLaunch`: store built, lead paid|live, no readiness blockers). A refusal leaves the store in pre-launch and the reveal shows what to fix; it never fails the build. `is_prelaunch` is privileged (service role only). The admin `/[tenant]/admin/launch` page keeps the older two-key path.
 
 ### Hero Builder (custom storefront hero)
 
@@ -229,6 +242,27 @@ Dev gotcha (fixed 2026-10-04): `next.config.ts` used to mark `/_next/static` `im
 - A custom hero renders ONLY when `hero_preset === 'custom'`; `publishHeroDesignAction` validates, stores and sets it. v3 (absolute) designs keep the legacy `HeroRenderer`.
 - **Every value is re-validated at render** (`safe-values.ts`) because the sheet is injected into `<style>`; table lookups use own-property checks (`constructor`/`__proto__` keys once crashed the sheet build).
 - **Custom code**: "HTML & CSS" = DOMPurify (browser-side, at output) into a shadow root with `contain: layout paint` (styles can't leak, `position:fixed` can't escape the box). "Embed" = `srcdoc` iframe sandboxed WITHOUT `allow-same-origin`/`allow-top-navigation`; only height messages from that frame's own window are honoured.
+
+### Welcome Builder (custom welcome page)
+
+`/[tenant]/admin/welcome-designer` (sidebar: Store Setup → "Welcome Builder", full-screen) is the SAME editor as the Hero Builder, driven by a `BuilderSurface` (`components/hero-builder/editor/surface.ts`: title, templates, Add groups, section presets, publish/unpublish, link surface). A change to the shared editor ships to both builders.
+
+- **Stored** in `tenants.welcome_design` (TEXT, v5 JSON, read via `loadHeroDesign`) + `welcome_design_enabled` (published = true; "Turn off welcome page" clears it, keeps the design). Both are tenant-admin writable (not in the privileged-column guard). `resolveCustomWelcomeDesign` (`lib/welcome-builder/welcome-mode.ts`) is the one reader.
+- **Welcome-only blocks** (engine-wide kinds, offered only in the welcome Add panel except Slideshow): `order-entry` ("How to order": tiles / list / one button; shows only the order types actually on offer, falls back to the button when none), `store-logo` (branding logo; name or nothing as fallback), `slideshow`. They read the live store from `WelcomeRuntimeProvider` (`renderer/welcome-runtime.tsx`); outside a provider they render a sample store. `{store}` in heading/text becomes the store name only under a provider.
+- **Links**: `#welcome-start` and `#welcome-mode-<dine_in|pickup|delivery>`. On the welcome page menu/category/product links ALSO start an order (no menu exists before a branch is chosen); on the menu they scroll to the menu.
+- **A way in is guaranteed**: `publishWelcomeDesignAction` refuses a design with no visible entry on any device (`entryProblem`), and the storefront appends a device-scoped start button to any stored design that lacks one (`withGuaranteedEntry`).
+- **Where it shows**: multi-branch stores with the branch picked BEFORE the menu → it replaces the classic first screen of `OutletSplash` (tiles carry the mode to the branch list; start = mode-less). Every other store (single location, or branch at checkout) → `WelcomeLanding` over the menu once per browser session (`sessionStorage wn-welcome-seen:<slug>`), skipped for `?table=` links; a tile sets the cart's order type. The server always renders it open; an inline pre-paint script (`hideIfSeenScript`) hides it for a returning visitor before hydration, and while order types load the tiles render as a non-tappable placeholder (`isLoadingModes`) so the start button never swaps to tiles under a thumb.
+- **Templates** `lib/welcome-builder/templates*.ts` (12, phone-first, every one publishable as-is — pinned by `tests/unit/welcome-builder/templates.test.ts`); section presets in `section-presets.ts`. Thumbnails render at 390px with `viewportHeight` so "fill the screen" sections don't use the real viewport.
+
+### Store onboarding (paid-first set-up link)
+
+`/onboarding/[token]` builds a paying merchant's store for them. The token (256-bit, only its sha256 stored in `store_onboardings`) is the buyer's only credential.
+
+- **Link only after payment**: the funnel never mints one. Staff mark the checkout lead Paid, then "Send set-up link" (`issueLeadSetupLink` refuses unpaid leads) or "Invite paid customer" (creates a lead already `paid`). The share panel builds the message + `sms:`/`mailto:` drafts (`src/lib/onboarding/invite.ts`); nothing is sent server-side.
+- **Wizard** (`src/components/onboarding/`, Airbnb-style: one question per screen, fixed footer progress + Back/Next, white studio wearing only the owner's brand via `--ob-accent`; direction contract atop `onboarding-ui.tsx`): welcome → store → brand (logo, named colors, **menu layout** = `answers.look`) → menu → ordering → hours → account, beside a live phone preview that mirrors the real storefront, built with the SAME `buildLaunchBranding` palette. `LiveStoreFrame` renders the real store at 390px scaled into the frame. The logo's color is read at upload (`assets.logoColor`) and re-themes the wizard (`--ob-accent`); `answers.brandColor` (hex, validated) wins in the build (`pickLaunchBrandColor`). Submit creates the tenant (pre-launch, platform backend) + owner, then signs the browser in.
+- **Build** (`src/lib/onboarding/build.ts`, background `after()`): branding → menu (AI parse) → payments/hours/order types → Boost offers → starter stamp card. Steps never re-run once settled.
+- **Photo-less design**: onboarded menus have no dish photos, so `STORE_LOOKS` (`store-type.ts`: board / chapters / tiles / cards) pairs a card, layout and a TEXT hero (heroes with a picture panel draw giant initials); each store type has a default look. A dish without its own photo shows the store logo in every card template (the 2026-10-08 text-card change was reverted 2026-10-09 at the owner's request — don't reintroduce it).
+- **Go live is automatic**: when the build finishes, `openStoreWhenReady` (build.ts) runs `launchFromSetupLink` on the FINISHED row — the same rules as the reveal's button (`{action:'launch'}` → `decideBuyerLaunch`: store built, lead paid|live, no readiness blockers). A refusal leaves the store in pre-launch and the reveal shows what to fix; it never fails the build. `is_prelaunch` is privileged (service role only). The admin `/[tenant]/admin/launch` page keeps the older two-key path.
 
 ### Feature Flags
 
