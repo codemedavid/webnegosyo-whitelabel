@@ -1,7 +1,7 @@
 /**
  * The slow half of onboarding: turn the buyer's answers into a finished store.
  *
- * Five steps, each recorded on the onboarding row as it runs so the progress
+ * Six steps, each recorded on the onboarding row as it runs so the progress
  * screen can show it live. A step that finished is never repeated: a retry
  * re-runs only what failed. One failed step does not stop the others — a menu
  * the AI could not read still leaves the store with its colors, payments and
@@ -21,7 +21,8 @@ import { invalidateBundlesCache } from '@/lib/bundles-service'
 import { invalidateCheckoutUpsellCache } from '@/lib/menu-engineering-service'
 import { invalidateComplementaryPairsCache } from '@/lib/complementary-pairs-service'
 import { extractBrandColorFromImage } from './logo-color'
-import { buildLaunchBranding } from './store-type'
+import { STORE_LOOKS, buildLaunchBranding, buildLaunchDesign, toStoreLook } from './store-type'
+import { applyLaunchHero, chooseLaunchDesign, launchHeroInput, readStoreFacts } from './design-step'
 import { applyLaunchBoost } from './boost-autopilot'
 import { launchStarterLoyalty } from './launch-loyalty'
 import { launchFromSetupLink } from './buyer-launch'
@@ -90,7 +91,8 @@ async function brandingStep(build: BuildContext): Promise<StepOutcome> {
     // Imported menus carry no dish photos yet, so the design starts text-first.
     hasItemPhotos: false,
     tagline: build.answers.tagline || null,
-    look: build.answers.look ?? null,
+    // Until the design step reads the menu: the owner's pick or the store type's look.
+    look: toStoreLook(build.answers.look),
   })
   const result = await saveBrandingWithClient(build.admin, build.tenantId, patch)
   if (!result.success) throw new Error(result.error ?? 'Branding could not be saved')
@@ -191,6 +193,41 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
   }
 }
 
+/**
+ * Cosmetic: the branding step already saved a working look, so a failure here
+ * keeps that look and never fails the build (a failed build skips go-live).
+ */
+async function designStep(build: BuildContext): Promise<StepOutcome> {
+  try {
+    const facts = await readStoreFacts(build.admin, build.tenantId)
+    const choice = await chooseLaunchDesign(build.answers, facts)
+    const result = await saveBrandingWithClient(build.admin, build.tenantId, buildLaunchDesign(build.answers.storeType, choice))
+    if (!result.success) throw new Error(result.error ?? 'Design could not be saved')
+    const isHeroSaved = await applyLaunchHero(build.admin, build.tenantId, choice.hero, launchHeroInput(build.answers, facts)).then(
+      () => true,
+      (error: unknown) => {
+        console.error('[onboarding] launch hero not saved', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
+        return false
+      },
+    )
+    return {
+      status: 'done',
+      detail: `${STORE_LOOKS[choice.look].label} layout`,
+      summary: {
+        design: { look: choice.look, ...(isHeroSaved ? { hero: choice.hero } : {}), reason: choice.reason, source: choice.source },
+        ...(isHeroSaved ? {} : { warnings: ['Your hero banner could not be set up. Add one in Hero Builder.'] }),
+      },
+    }
+  } catch (error) {
+    console.error('[onboarding] design step kept the starting look', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
+    return {
+      status: 'done',
+      detail: 'Kept your starting layout',
+      summary: { warnings: ['We kept your starting layout. Pick another in Branding anytime.'] },
+    }
+  }
+}
+
 async function addPaymentMethods(build: BuildContext): Promise<string[]> {
   const { data, error } = await build.admin.from('payment_methods').select('name').eq('tenant_id', build.tenantId)
   if (error) throw new Error(`Payment methods could not be read: ${error.message}`)
@@ -260,6 +297,7 @@ async function loyaltyStep(build: BuildContext): Promise<StepOutcome> {
 const STEP_RUNNERS: Record<OnboardingBuildStepId, (build: BuildContext) => Promise<StepOutcome>> = {
   branding: brandingStep,
   menu: menuStep,
+  design: designStep,
   store_setup: storeSetupStep,
   boost: boostStep,
   loyalty: loyaltyStep,
@@ -275,6 +313,7 @@ function mergeSummary(summary: LaunchBuildSummary, patch: Partial<LaunchBuildSum
 const FRIENDLY_STEP_ERRORS: Record<OnboardingBuildStepId, string> = {
   branding: 'Your colors could not be applied. Retry, or pick them in Branding.',
   menu: 'We could not read your menu automatically. Retry, or add items from your dashboard.',
+  design: 'Your store layout could not be applied. Retry, or pick one in Branding.',
   store_setup: 'Payments, hours or order types could not be saved. Retry, or set them in Settings.',
   boost: 'Combos and upsells could not be created. Retry, or add them in Boost Sales.',
   loyalty: 'The stamp card could not be started. Retry, or set it up in Loyalty.',

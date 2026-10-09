@@ -107,6 +107,7 @@ describe('isStepSettled', () => {
 describe('isBlockedByDependency', () => {
   test('offers and loyalty wait while the menu has failed, so a retry still builds them', () => {
     const steps = { menu: { status: 'failed' as const } }
+    expect(isBlockedByDependency(steps, 'design')).toBe(true)
     expect(isBlockedByDependency(steps, 'boost')).toBe(true)
     expect(isBlockedByDependency(steps, 'loyalty')).toBe(true)
     expect(isBlockedByDependency(steps, 'store_setup')).toBe(false)

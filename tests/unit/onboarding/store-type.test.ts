@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { STORE_LOOKS, STORE_TYPES, isStoreLook, isStoreType, buildLaunchBranding, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
+import { STORE_LOOKS, STORE_LOOK_IDS, STORE_TYPES, isStoreLook, isStoreType, buildLaunchBranding, buildLaunchDesign, toStoreLook, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
 import { brandingPatchSchema } from '@/lib/branding-service'
 import { assertKnownDesignIds } from '@/lib/mcp/design-catalog'
 import { CARD_TEMPLATE_IDS } from '@/lib/card-templates'
@@ -68,8 +68,60 @@ describe('buildLaunchBranding', () => {
   })
 
   it('the look the owner picked in the wizard wins over the store type default', () => {
-    const patch = buildLaunchBranding({ storeType: 'restaurant', storeName: 'X', brandColor: null, hasItemPhotos: false, look: 'tiles' })
-    expect(patch).toMatchObject({ card_template: STORE_LOOKS.tiles.card, page_layout: STORE_LOOKS.tiles.layout, hero_preset: STORE_LOOKS.tiles.hero })
+    const patch = buildLaunchBranding({ storeType: 'restaurant', storeName: 'X', brandColor: null, hasItemPhotos: false, look: 'kiosk' })
+    expect(patch).toMatchObject({ card_template: STORE_LOOKS.kiosk.card, page_layout: STORE_LOOKS.kiosk.layout, hero_preset: STORE_LOOKS.kiosk.hero })
+  })
+
+  it('never launches on the retired menu board or the default layout', () => {
+    for (const look of Object.values(STORE_LOOKS)) {
+      expect(look.card).not.toBe('menuboard')
+      expect(look.layout).not.toBe('default')
+    }
+  })
+
+  it('switches the branded loading screen on, named and colored for the store', () => {
+    const patch = buildLaunchBranding({ storeType: 'cafe', storeName: '  Kape ni Juan ', brandColor: '#2a6fdb', hasItemPhotos: false, tagline: 'Brewed slow' })
+    expect(patch).toMatchObject({
+      flash_screen_feature_enabled: true,
+      flash_screen_is_active: true,
+      flash_screen_title: 'Kape ni Juan',
+      flash_screen_subtitle: 'Brewed slow',
+      flash_screen_background_color: patch.button_primary_color,
+      flash_screen_text_color: patch.button_primary_text_color,
+    })
+    // No image: the loading screen shows the logo and follows a later logo change.
+    expect(patch.flash_screen_image_url).toBeUndefined()
+  })
+})
+
+describe('toStoreLook', () => {
+  it('maps every look an older wizard saved to a current one', () => {
+    expect(toStoreLook('board')).toBe('sidebar')
+    expect(toStoreLook('chapters')).toBe('cafe')
+    expect(toStoreLook('tiles')).toBe('kiosk')
+    expect(toStoreLook('cards')).toBe('bistro')
+    expect(toStoreLook('shop')).toBe('shop')
+    expect(toStoreLook('constructor')).toBeNull()
+    expect(toStoreLook(undefined)).toBeNull()
+  })
+})
+
+describe('buildLaunchDesign', () => {
+  it.each(STORE_LOOK_IDS)('look %s passes the branding schema and the design registries', (look) => {
+    const patch = buildLaunchDesign('restaurant', { look, fontPair: 'elegant serif' })
+    expect(() => brandingPatchSchema.parse(patch)).not.toThrow()
+    expect(() => assertKnownDesignIds(patch as Record<string, unknown>)).not.toThrow()
+    expect(patch).toEqual({ card_template: STORE_LOOKS[look].card, page_layout: STORE_LOOKS[look].layout, hero_preset: STORE_LOOKS[look].hero, font_pair: 'elegant serif' })
+  })
+
+  it("keeps the store type's font pairing when none (or a bogus one) is given", () => {
+    expect(buildLaunchDesign('cafe', { look: 'cafe' }).font_pair).toBe(STORE_TYPES.cafe.fontPair)
+    expect(buildLaunchDesign('cafe', { look: 'cafe', fontPair: 'Comic Sans' as never }).font_pair).toBe(STORE_TYPES.cafe.fontPair)
+  })
+
+  it('only touches the layout: colors and hero copy stay as the branding step set them', () => {
+    const keys = Object.keys(buildLaunchDesign('bakery', { look: 'shop' })).sort()
+    expect(keys).toEqual(['card_template', 'font_pair', 'hero_preset', 'page_layout'])
   })
 
   it.each(Object.keys(STORE_LOOKS) as StoreLook[])('look %s is photo-free: no hero that draws a picture panel, known design ids', (id) => {
@@ -81,7 +133,8 @@ describe('buildLaunchBranding', () => {
 
   it('offers at least three looks so the wizard has a real choice', () => {
     expect(Object.keys(STORE_LOOKS).length).toBeGreaterThanOrEqual(3)
-    expect(isStoreLook('board')).toBe(true)
+    expect(isStoreLook('shop')).toBe(true)
+    expect(isStoreLook('board')).toBe(false)
     expect(isStoreLook('constructor')).toBe(false)
   })
 

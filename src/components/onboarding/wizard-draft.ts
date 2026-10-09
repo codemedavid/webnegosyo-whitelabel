@@ -11,7 +11,7 @@ import {
   type OnboardingAnswers,
   type OnboardingOrderType,
 } from '@/lib/onboarding/answers'
-import { isStoreLook, isStoreType, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
+import { isStoreType, toStoreLook, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
 
 export interface WizardDraft {
   storeName: string
@@ -19,7 +19,7 @@ export interface WizardDraft {
   tagline: string
   /** '' = use the color read from the logo. */
   brandColor: string
-  /** '' = the store type's own look. */
+  /** '' = let the build's AI pick from the menu. */
   look: StoreLook | ''
   menuText: string
   bestSellers: [string, string, string]
@@ -145,7 +145,8 @@ export function restoreDraft(fallback: WizardDraft, saved: unknown): WizardDraft
     } else if (key === 'storeType') {
       if (value === '' || isStoreType(value)) restored[key] = value
     } else if (key === 'look') {
-      if (value === '' || isStoreLook(value)) restored[key] = value
+      const look = value === '' ? '' : toStoreLook(value)
+      if (look !== null) restored[key] = look
     } else if (key === 'brandColor') {
       if (value === '' || (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value))) restored[key] = value
     } else if (key === 'closedDays') {

@@ -127,12 +127,19 @@ describe('hours that cross midnight', () => {
 })
 
 describe('draftToAnswers — look', () => {
-  test('a picked look travels to the answers; no pick leaves it to the store type', async () => {
+  test('a picked look travels to the answers; no pick leaves it to the build AI', async () => {
     const { draftToAnswers, emptyDraft } = await import('@/components/onboarding/wizard-draft')
     const base = { ...emptyDraft('Kape'), storeType: 'cafe' as const, menuText: 'Latte 150', acceptsCash: true }
-    const picked = draftToAnswers({ ...base, look: 'tiles' })
+    const picked = draftToAnswers({ ...base, look: 'kiosk' })
     const unpicked = draftToAnswers({ ...base, look: '' })
-    expect(picked.ok && picked.answers.look).toBe('tiles')
+    expect(picked.ok && picked.answers.look).toBe('kiosk')
     expect(unpicked.ok && unpicked.answers.look).toBeUndefined()
+  })
+
+  test('a draft saved by the older wizard keeps its pick as the matching new look', async () => {
+    const { restoreDraft, emptyDraft } = await import('@/components/onboarding/wizard-draft')
+    expect(restoreDraft(emptyDraft('Kape'), { look: 'tiles' }).look).toBe('kiosk')
+    expect(restoreDraft(emptyDraft('Kape'), { look: 'board' }).look).toBe('sidebar')
+    expect(restoreDraft(emptyDraft('Kape'), { look: 'bogus' }).look).toBe('')
   })
 })
