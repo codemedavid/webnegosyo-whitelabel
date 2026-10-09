@@ -14,6 +14,8 @@
  * `selection-timing.ts`, so the server render and the client overlay agree.
  */
 
+import type { WelcomeDesignFields } from '@/lib/welcome-builder/welcome-mode'
+
 export type WelcomeEntryMode = 'order_types' | 'single_cta'
 
 export type WelcomeBannerFormat = 'landscape' | 'portrait' | 'square'
@@ -31,7 +33,7 @@ export interface WelcomeBanner {
 }
 
 /** The subset of tenant columns this module reads. All optional by design. */
-export interface WelcomeTenantFields {
+export interface WelcomeTenantFields extends WelcomeDesignFields {
   welcome_entry_mode?: string | null
   welcome_show_order_types?: boolean | null
   welcome_cta_text?: string | null

@@ -214,6 +214,7 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Printed store, branch and table codes.
   'qr-codes': 'store_setup',
   'hero-designer': 'store_setup',
+  'welcome-designer': 'store_setup',
   // Minting an MCP key grants full merchant authority — owner/store_setup only.
   mcp: 'store_setup',
   customers: 'customers',

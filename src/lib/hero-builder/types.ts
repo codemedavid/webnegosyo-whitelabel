@@ -243,6 +243,54 @@ export interface EmbedContent {
   autoHeight: boolean
 }
 
+/** The three ways a customer can take an order — mirrors OutletOrderMode. */
+export type EntryMode = 'dine_in' | 'pickup' | 'delivery'
+
+/**
+ * Welcome page only: the block that starts an order. `tiles` / `list` offer
+ * one choice per order type the store can fulfil (unavailable ones are never
+ * shown); `cta` is one button that leaves the order type to checkout. Blank
+ * labels and blurbs fall back to the defaults, so a template never ships
+ * copy the merchant has to rewrite.
+ */
+export interface OrderEntryContent {
+  kind: 'order-entry'
+  layout: 'tiles' | 'list' | 'cta'
+  ctaLabel: string
+  ctaIcon?: string
+  showIcons: boolean
+  showBlurbs: boolean
+  labels: Partial<Record<EntryMode, string>>
+  blurbs: Partial<Record<EntryMode, string>>
+  icons: Partial<Record<EntryMode, string>>
+}
+
+/** The store's own logo, read from its branding at render time. */
+export interface StoreLogoContent {
+  kind: 'store-logo'
+  /** No logo uploaded: write the store name instead, or show nothing. */
+  fallback: 'name' | 'none'
+}
+
+export interface Slide {
+  id: string
+  src: string
+  alt: string
+  title?: string
+  caption?: string
+  href?: string
+}
+
+/** Swipeable promo banners that advance on their own. */
+export interface SlideshowContent {
+  kind: 'slideshow'
+  slides: Slide[]
+  autoplay: boolean
+  /** Seconds per slide. */
+  interval: number
+  showDots: boolean
+}
+
 export type WidgetContent =
   | HeadingContent
   | TextContent
@@ -258,6 +306,9 @@ export type WidgetContent =
   | GalleryContent
   | HtmlContent
   | EmbedContent
+  | OrderEntryContent
+  | StoreLogoContent
+  | SlideshowContent
 
 export type WidgetKind = WidgetContent['kind']
 

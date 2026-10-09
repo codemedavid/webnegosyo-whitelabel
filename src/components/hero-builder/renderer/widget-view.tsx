@@ -11,6 +11,8 @@ import type { Widget } from '@/lib/hero-builder/types'
 import { HeroIcon } from '../icons'
 import { useHeroLinkClick } from './link-context'
 import { CountdownBlock, EmbedBlock, HtmlBlock } from './live-blocks'
+import { OrderEntryBlock, SlideshowBlock, StoreLogoBlock } from './welcome-blocks'
+import { useStoreNameToken } from './welcome-runtime'
 
 interface WidgetViewProps {
   widget: Widget
@@ -38,11 +40,17 @@ function Placeholder({ show, label }: { show: boolean; label: string }) {
   return show ? <div className="hb-placeholder">{label}</div> : null
 }
 
+const STORE_TOKEN = /\{store\}/gi
+
 function Markup({ value }: { value: unknown }) {
   const onLinkClick = useHeroLinkClick()
+  const storeName = useStoreNameToken()
+  // `{store}` is only swapped where a store is known (the welcome page and its
+  // editor); elsewhere it stays as typed rather than vanishing.
+  const source = storeName && typeof value === 'string' ? value.replace(STORE_TOKEN, storeName) : value
   return (
     <>
-      {parseMarkup(value).map((token, i) => {
+      {parseMarkup(source).map((token, i) => {
         switch (token.type) {
           case 'break':
             return <br key={i} />
@@ -211,6 +219,12 @@ export function WidgetView({ widget, isEditor, isPriority }: WidgetViewProps): R
     case 'embed':
       if (!text(c.code).trim()) return <Placeholder show={isEditor} label="Paste embed code (maps, forms, booking widgets…)" />
       return <EmbedBlock code={text(c.code)} height={Number(c.height) || 360} autoHeight={c.autoHeight !== false} />
+    case 'order-entry':
+      return <OrderEntryBlock content={c} />
+    case 'store-logo':
+      return <StoreLogoBlock content={c} isEditor={isEditor} />
+    case 'slideshow':
+      return <SlideshowBlock content={c} isEditor={isEditor} />
     default:
       return null
   }

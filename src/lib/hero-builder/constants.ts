@@ -12,6 +12,9 @@ export const DEVICE_MAX_WIDTH: Record<Exclude<Device, 'desktop'>, number> = {
   mobile: 767.98,
 }
 
+/** Slideshow timing bounds, in seconds per slide. */
+export const SLIDE_INTERVAL = { min: 2, max: 15, fallback: 5 } as const
+
 export const DEVICES: readonly Device[] = ['desktop', 'tablet', 'mobile']
 
 export const CANVAS_WIDTH: Record<Device, number> = {
@@ -27,6 +30,7 @@ export const LIMITS = {
   buttonsPerWidget: 4,
   listItems: 24,
   galleryImages: 24,
+  slides: 12,
   textLength: 4_000,
   shortText: 300,
   htmlLength: 50_000,

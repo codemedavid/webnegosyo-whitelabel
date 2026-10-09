@@ -64,6 +64,7 @@ describe('buildSettingsCatalog — what each viewer is offered', () => {
       'connect-ai',
       'branding',
       'hero',
+      'welcome',
       'footer',
       'team',
       'account',

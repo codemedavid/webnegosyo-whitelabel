@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { CustomWelcomePage } from '@/components/customer/custom-welcome-page'
 import { OutletModeScreen } from '@/components/customer/outlet-mode-screen'
 import { OutletPickerScreen, type PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import { resolveAvailableModes } from '@/lib/outlets/outlet-modes'
@@ -10,6 +11,7 @@ import {
   type WelcomeTenantFields,
 } from '@/lib/outlets/welcome-page'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
+import { resolveCustomWelcomeDesign } from '@/lib/welcome-builder/welcome-mode'
 import type { Tenant } from '@/types/database'
 
 interface OutletSplashProps {
@@ -33,6 +35,14 @@ interface OutletSplashProps {
   onSelect: (outletId: string, mode: OutletOrderMode | null) => void
   /** Welcome-page design columns; null/absent keeps the shipped screen. */
   welcome?: WelcomeTenantFields | null
+  /**
+   * The branch the customer already chose, when they are shown the list again
+   * on a return visit. Opens straight on the branch list (back still reaches
+   * the first screen) with this branch pinned first and marked current.
+   */
+  currentOutletId?: string | null
+  /** The mode remembered with `currentOutletId`; null = entered via the CTA. */
+  initialMode?: OutletOrderMode | null
 }
 
 const REASON_MESSAGE: Record<string, string> = {
@@ -66,12 +76,15 @@ export function OutletSplash({
   rankFor,
   onSelect,
   welcome,
+  currentOutletId = null,
+  initialMode = null,
 }: OutletSplashProps) {
-  const [mode, setMode] = useState<OutletOrderMode | null>(null)
+  const isRevisit = currentOutletId !== null
+  const [mode, setMode] = useState<OutletOrderMode | null>(isRevisit ? initialMode : null)
   // Single-CTA entry: the welcome page shows one button, and pressing it goes
   // straight to the branch list with no mode chosen — checkout asks instead.
   const showTiles = shouldShowOrderTypeStep(welcome)
-  const [hasStarted, setHasStarted] = useState(false)
+  const [hasStarted, setHasStarted] = useState(isRevisit)
 
   // Offer to locate once, in the background. Neither screen waits on it.
   useEffect(() => {
@@ -93,6 +106,16 @@ export function OutletSplash({
 
   const modes = useMemo(() => resolveAvailableModes(outlets), [outlets])
 
+  // A published Welcome Builder page replaces the classic first screen. It is
+  // parsed once per stored value, not on every render.
+  const designSource = welcome?.welcome_design
+  const isDesignEnabled = welcome?.welcome_design_enabled
+  const customDesign = useMemo(
+    () => resolveCustomWelcomeDesign({ welcome_design: designSource, welcome_design_enabled: isDesignEnabled }),
+    [designSource, isDesignEnabled]
+  )
+  const isCustom = customDesign !== null
+
   // One clock reading for the whole picker: deriving `new Date()` per card
   // would let two branches on the same screen disagree across a midnight
   // boundary. Safe to read at first render because this component only mounts
@@ -105,14 +128,40 @@ export function OutletSplash({
   // to the branch list rather than showing a single tile that must be tapped —
   // and then there is nothing to go back to. The CTA entry never skips: the
   // welcome page IS the merchant's branded front door.
-  const isModeForced = showTiles && modes.length === 1
+  // The custom page never skips either: its tiles AND its start buttons both
+  // work whatever the classic entry setting says.
+  const isModeForced = !isCustom && showTiles && modes.length === 1
   const effectiveMode = mode ?? (isModeForced ? modes[0] : null)
 
-  const isPickerOpen = showTiles ? effectiveMode !== null : hasStarted
-  const pickerMode = showTiles ? effectiveMode : null
+  const isPickerOpen = isCustom
+    ? mode !== null || hasStarted
+    : showTiles
+      ? effectiveMode !== null
+      : hasStarted
+  const pickerMode = isCustom || showTiles ? effectiveMode : null
+  const backToWelcome = () => {
+    setMode(null)
+    setHasStarted(false)
+  }
 
   const message = reason ? REASON_MESSAGE[reason] : null
   const surfaceColor = resolveWelcomeTheme(welcome).backgroundColor
+
+  if (customDesign && !isPickerOpen) {
+    return (
+      <div data-testid="welcome-surface" className="fixed inset-0 z-[110] flex flex-col overflow-y-auto bg-background">
+        <CustomWelcomePage
+          design={customDesign}
+          storeName={tenantName}
+          logoUrl={logoUrl ?? null}
+          modes={modes}
+          message={message}
+          onChooseMode={setMode}
+          onStart={() => setHasStarted(true)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div
@@ -145,13 +194,16 @@ export function OutletSplash({
             isLocating={isLocating}
             onLocate={onLocate}
             onBack={
-              showTiles
-                ? isModeForced
-                  ? null
-                  : () => setMode(null)
-                : () => setHasStarted(false)
+              isCustom
+                ? backToWelcome
+                : showTiles
+                  ? isModeForced
+                    ? null
+                    : () => setMode(null)
+                  : () => setHasStarted(false)
             }
             onSelect={(outletId) => onSelect(outletId, pickerMode)}
+            currentOutletId={currentOutletId}
             now={now}
           />
         )}

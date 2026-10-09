@@ -1,25 +1,40 @@
 'use client'
 
 import {
-  BadgeCheck, Code2, Columns3, Film, Heading1, Image as ImageIcon, Images, List, Minus, MousePointerClick,
-  MoveVertical, Puzzle, Star, Timer, Type,
+  BadgeCheck, Code2, Columns3, Film, GalleryHorizontal, Heading1, Image as ImageIcon, Images, List, Minus,
+  MousePointerClick, MoveVertical, Puzzle, Star, Store, Timer, Type, UtensilsCrossed,
   type LucideIcon,
 } from 'lucide-react'
 
 import { COLUMN_LAYOUTS, createSection } from '@/lib/hero-builder/defaults'
-import { SECTION_PRESETS } from '@/lib/hero-builder/section-presets'
+import { SECTION_PRESETS, type SectionPreset } from '@/lib/hero-builder/section-presets'
 import type { WidgetKind } from '@/lib/hero-builder/types'
 
 import { DRAG_NEW } from '../canvas'
 import type { HeroBuilderApi } from '../use-hero-builder'
 
-interface Tile {
+export interface AddTile {
   kind: WidgetKind
   label: string
   icon: LucideIcon
 }
 
-const GROUPS: readonly { title: string; tiles: readonly Tile[] }[] = [
+export interface AddGroup {
+  title: string
+  tiles: readonly AddTile[]
+}
+
+/** Blocks only a welcome page can use: they need the live store to render. */
+export const WELCOME_ADD_GROUP: AddGroup = {
+  title: 'Welcome page',
+  tiles: [
+    { kind: 'order-entry', label: 'How to order', icon: UtensilsCrossed },
+    { kind: 'store-logo', label: 'Store logo', icon: Store },
+    { kind: 'slideshow', label: 'Slideshow', icon: GalleryHorizontal },
+  ],
+}
+
+export const HERO_ADD_GROUPS: readonly AddGroup[] = [
   {
     title: 'Basic',
     tiles: [
@@ -38,6 +53,7 @@ const GROUPS: readonly { title: string; tiles: readonly Tile[] }[] = [
       { kind: 'badge', label: 'Badge', icon: BadgeCheck },
       { kind: 'countdown', label: 'Countdown', icon: Timer },
       { kind: 'gallery', label: 'Gallery', icon: Images },
+      { kind: 'slideshow', label: 'Slideshow', icon: GalleryHorizontal },
       { kind: 'divider', label: 'Divider', icon: Minus },
       { kind: 'spacer', label: 'Spacer', icon: MoveVertical },
     ],
@@ -51,13 +67,19 @@ const GROUPS: readonly { title: string; tiles: readonly Tile[] }[] = [
   },
 ]
 
-export function AddPanel({ api }: { api: HeroBuilderApi }) {
+interface AddPanelProps {
+  api: HeroBuilderApi
+  groups?: readonly AddGroup[]
+  presets?: readonly SectionPreset[]
+}
+
+export function AddPanel({ api, groups = HERO_ADD_GROUPS, presets = SECTION_PRESETS }: AddPanelProps) {
   return (
     <div className="space-y-6 p-4">
       <p className="text-[11px] leading-relaxed text-neutral-500">
         Drag an element onto the canvas, or click to add it after the selection.
       </p>
-      {GROUPS.map((group) => (
+      {groups.map((group) => (
         <section key={group.title}>
           <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">{group.title}</h3>
           <div className="grid grid-cols-3 gap-2">
@@ -105,7 +127,7 @@ export function AddPanel({ api }: { api: HeroBuilderApi }) {
           <Columns3 className="h-3.5 w-3.5" /> Ready-made sections
         </h3>
         <div className="space-y-1.5">
-          {SECTION_PRESETS.map((preset) => (
+          {presets.map((preset) => (
             <button
               key={preset.id}
               type="button"

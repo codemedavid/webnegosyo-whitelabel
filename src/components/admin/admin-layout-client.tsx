@@ -28,13 +28,14 @@ interface AdminLayoutClientProps {
 export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: AdminLayoutClientProps) {
   const router = useRouter()
   const pathname = usePathname()
-  // Branding Studio, Receipt Studio and the Hero Builder are full-screen
+  // Branding Studio, Receipt Studio and the Hero / Welcome Builders are full-screen
   // workspaces with their own top bars — no sidebar/container chrome, which
   // would stack over them.
   const isFullBleedRoute =
     (pathname?.startsWith(`/${tenantSlug}/admin/branding`) ||
       pathname?.startsWith(`/${tenantSlug}/admin/receipt-editor`) ||
-      pathname?.startsWith(`/${tenantSlug}/admin/hero-designer`)) ??
+      pathname?.startsWith(`/${tenantSlug}/admin/hero-designer`) ||
+      pathname?.startsWith(`/${tenantSlug}/admin/welcome-designer`)) ??
     false
 
   const handleLogout = async () => {

@@ -34,6 +34,7 @@ export const TENANT_STOREFRONT_SELECT = `
   welcome_background_color, welcome_heading_color, welcome_subtext_color,
   welcome_tile_background_color, welcome_tile_icon_color, welcome_tile_text_color,
   welcome_cta_background_color, welcome_cta_text_color,
+  welcome_design, welcome_design_enabled,
   checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items,
   checkout_modal_background_color, checkout_modal_title_color, checkout_modal_description_color,
   checkout_modal_price_color, checkout_modal_button_color, checkout_modal_button_text_color, checkout_modal_border_color,

@@ -7065,6 +7065,8 @@ export type Database = {
           welcome_cta_background_color: string | null
           welcome_cta_text: string | null
           welcome_cta_text_color: string | null
+          welcome_design: string | null
+          welcome_design_enabled: boolean
           welcome_entry_mode: string
           welcome_heading_color: string | null
           welcome_heading_text: string | null
@@ -7352,6 +7354,8 @@ export type Database = {
           welcome_cta_background_color?: string | null
           welcome_cta_text?: string | null
           welcome_cta_text_color?: string | null
+          welcome_design?: string | null
+          welcome_design_enabled?: boolean
           welcome_entry_mode?: string
           welcome_heading_color?: string | null
           welcome_heading_text?: string | null
@@ -7639,6 +7643,8 @@ export type Database = {
           welcome_cta_background_color?: string | null
           welcome_cta_text?: string | null
           welcome_cta_text_color?: string | null
+          welcome_design?: string | null
+          welcome_design_enabled?: boolean
           welcome_entry_mode?: string
           welcome_heading_color?: string | null
           welcome_heading_text?: string | null

@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { publishHeroDesignAction, unpublishHeroDesignAction } from '@/app/actions/hero-builder'
 import { CANVAS_WIDTH, THEME_COLOR_FALLBACK, THEME_COLOR_KEYS } from '@/lib/hero-builder/constants'
 import { createBlankDesign } from '@/lib/hero-builder/defaults'
 import type { LinkCatalog } from '@/lib/hero-builder/link-catalog'
@@ -23,10 +22,11 @@ import {
 
 import { Canvas } from './canvas'
 import { Inspector } from './inspector/inspector'
-import { LinkCatalogProvider } from './inspector/link-picker'
+import { LinkCatalogProvider, LinkSurfaceProvider } from './inspector/link-picker'
 import { AddPanel } from './panels/add-panel'
 import { LayersPanel } from './panels/layers-panel'
 import { ThemePanel } from './panels/theme-panel'
+import { HERO_SURFACE, type BuilderSurface } from './surface'
 import { TemplateGallery } from './template-gallery'
 import { useHeroBuilder } from './use-hero-builder'
 
@@ -42,6 +42,10 @@ interface HeroBuilderEditorProps {
   brandStyle: CSSProperties
   /** Categories and products buttons can link to. */
   linkCatalog: LinkCatalog
+  /** Which builder this is (hero by default): templates, blocks, publishing. */
+  surface?: BuilderSurface
+  /** Where "View live" opens. */
+  liveHref?: string
 }
 
 type LeftTab = 'add' | 'layers' | 'theme'
@@ -65,7 +69,16 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 }
 
-export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initialIsLive, brandStyle, linkCatalog }: HeroBuilderEditorProps) {
+export function HeroBuilderEditor({
+  tenantId,
+  tenantSlug,
+  initialDesign,
+  initialIsLive,
+  brandStyle,
+  linkCatalog,
+  surface = HERO_SURFACE,
+  liveHref = `/${tenantSlug}/menu`,
+}: HeroBuilderEditorProps) {
   const start = useMemo(() => initialDesign ?? createBlankDesign(), [initialDesign])
   const api = useHeroBuilder(start)
   const [leftTab, setLeftTab] = useState<LeftTab>(initialDesign?.sections.length ? 'layers' : 'add')
@@ -77,7 +90,7 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
   const [isLive, setIsLive] = useState(initialIsLive)
   const [publishedJson, setPublishedJson] = useState(() => (initialIsLive ? JSON.stringify(start) : null))
   const [isPending, startTransition] = useTransition()
-  const draftKey = `hb-draft:${tenantId}`
+  const draftKey = `${surface.draftPrefix}:${tenantId}`
 
   const designJson = useMemo(() => JSON.stringify(api.design), [api.design])
   const hasUnpublishedChanges = designJson !== (publishedJson ?? JSON.stringify(start))
@@ -123,7 +136,7 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
   // ── Publishing ────────────────────────────────────────────────────────────
   const publish = useCallback(() => {
     startTransition(async () => {
-      const result = await publishHeroDesignAction(tenantId, tenantSlug, api.design)
+      const result = await surface.publish({ tenantId, tenantSlug }, api.design)
       if (!result.success) {
         toast.error(result.error ?? 'Could not publish')
         return
@@ -135,21 +148,21 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
       } catch {
         // ignore
       }
-      toast.success('Published — your storefront hero is live')
+      toast.success(surface.publishedToast)
     })
-  }, [api.design, draftKey, tenantId, tenantSlug])
+  }, [api.design, draftKey, surface, tenantId, tenantSlug])
 
   const unpublish = useCallback(() => {
     startTransition(async () => {
-      const result = await unpublishHeroDesignAction(tenantId, tenantSlug)
+      const result = await surface.unpublish({ tenantId, tenantSlug })
       if (!result.success) {
         toast.error(result.error ?? 'Could not update the storefront')
         return
       }
       setIsLive(false)
-      toast.success('Removed from the storefront. Your design is kept here.')
+      toast.success(surface.removedToast)
     })
-  }, [tenantId, tenantSlug])
+  }, [surface, tenantId, tenantSlug])
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -196,7 +209,7 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-3">
         <Link href={`/${tenantSlug}/admin`} className="flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-neutral-600 hover:bg-neutral-100" title="Back to admin">
           <ArrowLeft className="h-4 w-4" />
-          <span className="hidden font-semibold text-neutral-900 md:inline">Hero Builder</span>
+          <span className="hidden font-semibold text-neutral-900 md:inline">{surface.title}</span>
         </Link>
         <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline', status.className)}>{status.label}</span>
         <button type="button" onClick={() => setPanels((p) => ({ ...p, left: !p.left }))} className="rounded-md p-2 text-neutral-600 hover:bg-neutral-100 lg:hidden" aria-label="Toggle elements panel">
@@ -247,10 +260,10 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => setShowTemplates(true)} className="md:hidden">Templates…</DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <a href={`/${tenantSlug}/menu`} target="_blank" rel="noopener noreferrer">View live storefront</a>
+                <a href={liveHref} target="_blank" rel="noopener noreferrer">View live storefront</a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={!isLive || isPending} onClick={unpublish}>Remove from storefront</DropdownMenuItem>
+              <DropdownMenuItem disabled={!isLive || isPending} onClick={unpublish}>{surface.removeLabel}</DropdownMenuItem>
               <DropdownMenuItem
                 className="text-red-600"
                 onClick={() => {
@@ -306,7 +319,7 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
             ))}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {leftTab === 'add' && <AddPanel api={api} />}
+            {leftTab === 'add' && <AddPanel api={api} groups={surface.addGroups} presets={surface.sectionPresets} />}
             {leftTab === 'layers' && <LayersPanel api={api} />}
             {leftTab === 'theme' && <ThemePanel api={api} />}
           </div>
@@ -329,9 +342,11 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
             panels.right || api.selectedId ? 'max-lg:translate-x-0' : 'max-lg:translate-x-full',
           )}
         >
-          <LinkCatalogProvider value={linkCatalog}>
-            <Inspector api={api} contentRequest={contentRequest} />
-          </LinkCatalogProvider>
+          <LinkSurfaceProvider value={surface.linkSurface}>
+            <LinkCatalogProvider value={linkCatalog}>
+              <Inspector api={api} contentRequest={contentRequest} />
+            </LinkCatalogProvider>
+          </LinkSurfaceProvider>
         </aside>
       </div>
 
@@ -339,6 +354,9 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
         open={showTemplates}
         onOpenChange={setShowTemplates}
         hasContent={api.design.sections.length > 0}
+        templates={surface.templates}
+        categories={surface.templateCategories}
+        preview={surface.templatePreview}
         onPick={(design) => {
           api.replaceDesign(design)
           setLeftTab('layers')
@@ -372,9 +390,11 @@ export function HeroBuilderEditor({ tenantId, tenantSlug, initialDesign, initial
               style={{ width: previewDevice === 'desktop' ? '100%' : CANVAS_WIDTH[previewDevice], maxWidth: '100%' }}
             >
               <HeroBuilderRenderer design={api.design} />
-              <div className="flex h-40 items-center justify-center border-t border-dashed border-neutral-200 text-xs text-neutral-400">
-                Your menu continues here
-              </div>
+              {surface.previewFooter && (
+                <div className="flex h-40 items-center justify-center border-t border-dashed border-neutral-200 text-xs text-neutral-400">
+                  {surface.previewFooter}
+                </div>
+              )}
             </div>
           </div>
         </div>

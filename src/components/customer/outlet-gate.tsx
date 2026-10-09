@@ -1,14 +1,18 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useOutletSelection } from '@/hooks/use-outlet-selection'
 import { useCart } from '@/hooks/useCart'
 import { createClient } from '@/lib/supabase/client'
 import { resolveOrderTypeIdForMode } from '@/lib/outlets/mode-order-type'
 import type { OrderType } from '@/types/database'
 import { OutletSplash } from '@/components/customer/outlet-splash'
+import { WelcomeLanding } from '@/components/customer/welcome-landing'
+import { hasCustomWelcome } from '@/lib/welcome-builder/welcome-mode'
 import type { PickerOutlet } from '@/components/customer/outlet-picker-screen'
 import { shouldGateMenuForOutlet } from '@/lib/outlets/selection-timing'
+import { claimBranchRevisit, shouldOfferBranchRevisit } from '@/lib/outlets/branch-revisit'
 import { rankOutlets } from '@/lib/outlets/nearest-outlet'
 import type { SelectableOutlet } from '@/lib/outlets/outlet-selection'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
@@ -37,17 +41,23 @@ interface OutletGateProps {
 }
 
 /**
- * Decides whether the customer sees the branch chooser before the menu.
+ * Decides whether the customer sees the branch chooser (or, for a store
+ * without one, its Welcome Builder page) before the menu.
  *
  * Renders nothing at all unless the tenant opted in AND has two or more active
  * branches AND asked for the branch BEFORE the menu AND the customer has not
- * already chosen one — so a single-location tenant, one with the flag off, or
+ * already chosen one — or, once per page load, has chosen one and is shown the
+ * list again with it marked current — so a single-location tenant, one with the flag off, or
  * one that moved the question to checkout gets exactly today's storefront. The
  * menu itself is untouched; this sits over it and then gets out of the way.
  */
 export function OutletGate({ tenant, tenantSlug, outlets, isPreview }: OutletGateProps) {
   if (isPreview) return <OutletGatePreview tenant={tenant} outlets={outlets} />
-  if (!shouldGateMenuForOutlet(tenant, outlets)) return null
+  if (!shouldGateMenuForOutlet(tenant, outlets)) {
+    // No branch chooser: a published Welcome Builder page is the front door
+    // instead (once per visit). Without one this is today's storefront.
+    return tenant && hasCustomWelcome(tenant) ? <WelcomeLanding tenant={tenant} tenantSlug={tenantSlug} /> : null
+  }
 
   return (
     <Suspense fallback={null}>
@@ -92,11 +102,35 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
   })
   const { setOrderType } = useCart()
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
+  const searchParams = useSearchParams()
+  const hasOutletLink = Boolean(searchParams?.get('outlet')?.trim())
+  const hasTableLink = Boolean(searchParams?.get('table')?.trim())
+
+  // A remembered branch skips the question, but on a refresh or a return visit
+  // the customer still gets the list once, their branch marked current. Decided
+  // on the first hydrated look of this page load only, so a client-side trip
+  // menu → cart → menu does not ask again.
+  const [revisit, setRevisit] = useState<{ outletId: string; mode: OutletOrderMode | null } | null>(null)
+  const hasDecidedRevisit = useRef(false)
+  useEffect(() => {
+    if (!selection.isHydrated || hasDecidedRevisit.current) return
+    hasDecidedRevisit.current = true
+    if (!claimBranchRevisit()) return
+    const isOffered = shouldOfferBranchRevisit({
+      hasRememberedOutlet: selection.outlet !== null,
+      isAlreadyPrompting: selection.shouldPrompt,
+      hasOutletLink,
+      hasTableLink,
+    })
+    if (isOffered && selection.outlet) setRevisit({ outletId: selection.outlet.id, mode: selection.mode })
+  }, [selection.isHydrated, selection.outlet, selection.mode, selection.shouldPrompt, hasOutletLink, hasTableLink])
+
+  const isShowing = selection.shouldPrompt || revisit !== null
 
   // Loaded only once the picker is actually showing, which is the multi-branch
   // path alone — a single-location storefront pays nothing for this.
   useEffect(() => {
-    if (!selection.shouldPrompt || !tenant?.id) return
+    if (!isShowing || !tenant?.id) return
     let isCurrent = true
 
     createClient()
@@ -115,24 +149,29 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
     return () => {
       isCurrent = false
     }
-  }, [selection.shouldPrompt, tenant?.id])
+  }, [isShowing, tenant?.id])
 
   /**
    * Record the branch, then carry the mode forward as the order type so
    * checkout does not ask the same question twice. No match simply leaves the
    * order type unset, which is today's behaviour — as does a mode-less
    * selection from the welcome page's single CTA, where checkout asks.
+   * Re-confirming the remembered branch and mode changes nothing, so it leaves
+   * whatever order type the cart holds alone.
    */
   const handleSelect = useCallback(
     (outletId: string, mode: OutletOrderMode | null) => {
       selection.select(outletId, mode)
+      const isUnchanged = revisit !== null && revisit.outletId === outletId && revisit.mode === mode
+      setRevisit(null)
+      if (isUnchanged) return
       const orderTypeId = mode ? resolveOrderTypeIdForMode(orderTypes, mode) : null
       if (orderTypeId) setOrderType(orderTypeId)
     },
-    [selection, orderTypes, setOrderType]
+    [selection, revisit, orderTypes, setOrderType]
   )
 
-  if (!selection.shouldPrompt) return null
+  if (!isShowing) return null
 
   return (
     <OutletSplash
@@ -148,6 +187,8 @@ function OutletGateInner({ tenant, tenantSlug, outlets }: OutletGateProps) {
       rankFor={selection.rankFor as unknown as OutletSplashRankFor}
       onSelect={handleSelect}
       welcome={tenant}
+      currentOutletId={revisit?.outletId ?? null}
+      initialMode={revisit?.mode ?? null}
     />
   )
 }

@@ -137,6 +137,34 @@ export const WIDGET_DEFAULTS: Record<WidgetKind, WidgetDefaults> = {
     content: () => ({ kind: 'embed', code: '', height: 360, autoHeight: true }),
     style: {},
   },
+  'order-entry': {
+    label: 'How to order',
+    content: () => ({
+      kind: 'order-entry',
+      layout: 'tiles',
+      ctaLabel: 'Start ordering',
+      ctaIcon: 'ArrowRight',
+      showIcons: true,
+      showBlurbs: true,
+      labels: {},
+      blurbs: {},
+      icons: {},
+    }),
+    // Colours stay blank so tiles follow the theme surface and the start
+    // button follows the theme primary (see the entry rules in base-css.ts).
+    style: { fontSize: 15, radius: 18, gap: 12, size: 26 },
+  },
+  'store-logo': {
+    label: 'Store logo',
+    content: () => ({ kind: 'store-logo', fallback: 'name' }),
+    style: { size: 88, textAlign: 'center', fontFamily: 'heading', fontSize: 28, fontWeight: 700, color: '@text' },
+    mobile: { size: 72 },
+  },
+  slideshow: {
+    label: 'Slideshow',
+    content: () => ({ kind: 'slideshow', slides: [], autoplay: true, interval: 5, showDots: true }),
+    style: { radius: 18, aspectRatio: '16/9', objectFit: 'cover', accentColor: '@text' },
+  },
 }
 
 export function createWidget(kind: WidgetKind): Widget {
@@ -206,5 +234,6 @@ export function cloneWithNewIds<T extends Section | Column | Widget>(node: T): T
     if (c.kind === 'buttons') c.items.forEach(refresh)
     if (c.kind === 'icon-list') c.items.forEach(refresh)
     if (c.kind === 'gallery') c.images.forEach(refresh)
+    if (c.kind === 'slideshow') c.slides.forEach(refresh)
   }
 }

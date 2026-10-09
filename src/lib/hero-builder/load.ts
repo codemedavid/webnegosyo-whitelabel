@@ -13,6 +13,7 @@ import type { Column, HeroDesignV5, NodeStyle, Section, Theme, Widget, WidgetKin
 const WIDGET_KINDS: readonly WidgetKind[] = [
   'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
   'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
+  'order-entry', 'store-logo', 'slideshow',
 ]
 
 type Loose = Record<string, unknown>

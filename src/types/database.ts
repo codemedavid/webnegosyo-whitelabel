@@ -260,6 +260,9 @@ export interface Tenant {
   welcome_tile_text_color?: string | null;
   welcome_cta_background_color?: string | null;
   welcome_cta_text_color?: string | null;
+  /** Welcome Builder design (v5 JSON as TEXT) — read via loadHeroDesign. */
+  welcome_design?: string | null;
+  welcome_design_enabled?: boolean | null;
   // Hero section
   hero_section_enabled?: boolean;
   // Flash screen

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ChevronLeft, Crosshair, MapPin, Search, Store } from 'lucide-react'
+import { Check, ChevronLeft, Crosshair, MapPin, Search, Store } from 'lucide-react'
 import { buildOutletCard, filterOutletsByQuery } from '@/lib/outlets/outlet-card'
 import { OUTLET_MODE_LABELS } from '@/lib/outlets/outlet-modes'
 import type { OutletOrderMode, RankedOutlet } from '@/lib/outlets/nearest-outlet'
@@ -35,6 +35,11 @@ interface OutletPickerScreenProps {
   /** Why the customer is being asked again, when they have been before. */
   notice?: string | null
   onSelect: (outletId: string) => void
+  /**
+   * The branch the customer is already ordering from (a return visit). Pinned
+   * first and marked, so continuing is one tap and switching is another.
+   */
+  currentOutletId?: string | null
   /** Injected so the open/closed label is decided once, not per render tick. */
   now: Date
 }
@@ -58,6 +63,7 @@ export function OutletPickerScreen({
   onBack,
   notice,
   onSelect,
+  currentOutletId = null,
   now,
 }: OutletPickerScreenProps) {
   const [query, setQuery] = useState('')
@@ -68,8 +74,10 @@ export function OutletPickerScreen({
       query
     )
     const allowed = new Set(matches.map((outlet) => outlet.id))
-    return ranked.filter((entry) => allowed.has(entry.outlet.id))
-  }, [ranked, query])
+    const filtered = ranked.filter((entry) => allowed.has(entry.outlet.id))
+    const current = filtered.filter((entry) => entry.outlet.id === currentOutletId)
+    return [...current, ...filtered.filter((entry) => entry.outlet.id !== currentOutletId)]
+  }, [ranked, query, currentOutletId])
 
   return (
     <div className="flex min-h-full w-full flex-col">
@@ -145,6 +153,7 @@ export function OutletPickerScreen({
             now
           )
           const outOfRange = mode === 'delivery' && !withinDeliveryRadius
+          const isCurrent = outlet.id === currentOutletId
 
           return (
             <div key={outlet.id} className="space-y-2">
@@ -162,13 +171,23 @@ export function OutletPickerScreen({
                  */
                 aria-label={[
                   outlet.name,
+                  isCurrent ? 'current branch' : null,
                   card.isOpen ? 'Open' : 'Closed',
                   outOfRange ? 'outside delivery area' : null,
                 ]
                   .filter(Boolean)
                   .join(' — ')}
-                className="block w-full overflow-hidden rounded-2xl text-left transition-opacity disabled:opacity-50"
+                aria-current={isCurrent ? 'true' : undefined}
+                className={`relative block w-full overflow-hidden rounded-2xl text-left transition-opacity disabled:opacity-50 ${
+                  isCurrent ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''
+                }`}
               >
+                {isCurrent && (
+                  <span className="absolute left-3 top-3 z-[1] inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow">
+                    <Check className="h-3.5 w-3.5" aria-hidden />
+                    Current branch
+                  </span>
+                )}
                 {outlet.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img

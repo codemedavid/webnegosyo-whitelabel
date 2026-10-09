@@ -6,7 +6,7 @@
 
 import { z } from 'zod'
 
-import { FONT_OPTIONS, LIMITS } from './constants'
+import { FONT_OPTIONS, LIMITS, SLIDE_INTERVAL } from './constants'
 import { isSafeColor, safeHref, safeMediaUrl } from './safe-values'
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'Invalid id')
@@ -26,6 +26,9 @@ const font = z
 const shortText = z.string().max(LIMITS.shortText)
 const iconName = z.string().regex(/^[A-Za-z0-9]{0,40}$/, 'Invalid icon')
 const num = (min: number, max: number) => z.number().finite().min(min).max(max)
+/** One optional value per order type (dine-in, pickup, delivery). */
+const perMode = <T extends z.ZodTypeAny>(value: T) =>
+  z.object({ dine_in: value.optional(), pickup: value.optional(), delivery: value.optional() }).strict()
 
 const box = z.object({
   top: num(-400, 400),
@@ -152,6 +155,36 @@ const content = z.discriminatedUnion('kind', [
     height: num(40, LIMITS.embedMaxHeight),
     autoHeight: z.boolean(),
   }),
+  z.object({
+    kind: z.literal('order-entry'),
+    layout: z.enum(['tiles', 'list', 'cta']),
+    ctaLabel: shortText,
+    ctaIcon: iconName.optional(),
+    showIcons: z.boolean(),
+    showBlurbs: z.boolean(),
+    labels: perMode(shortText),
+    blurbs: perMode(shortText),
+    icons: perMode(iconName),
+  }),
+  z.object({ kind: z.literal('store-logo'), fallback: z.enum(['name', 'none']) }),
+  z.object({
+    kind: z.literal('slideshow'),
+    slides: z
+      .array(
+        z.object({
+          id,
+          src: mediaUrl,
+          alt: shortText,
+          title: shortText.optional(),
+          caption: shortText.optional(),
+          href: href.optional(),
+        }),
+      )
+      .max(LIMITS.slides),
+    autoplay: z.boolean(),
+    interval: num(SLIDE_INTERVAL.min, SLIDE_INTERVAL.max),
+    showDots: z.boolean(),
+  }),
 ])
 
 const widget = z
@@ -160,6 +193,7 @@ const widget = z
     kind: z.enum([
       'heading', 'text', 'buttons', 'image', 'video', 'icon', 'icon-list',
       'badge', 'countdown', 'divider', 'spacer', 'gallery', 'html', 'embed',
+      'order-entry', 'store-logo', 'slideshow',
     ]),
     content,
     animation: animation.optional(),

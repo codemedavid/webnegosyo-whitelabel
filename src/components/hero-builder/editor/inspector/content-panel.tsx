@@ -5,13 +5,15 @@ import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import { COLUMN_LAYOUTS, newId } from '@/lib/hero-builder/defaults'
-import { LIMITS } from '@/lib/hero-builder/constants'
+import { LIMITS, SLIDE_INTERVAL } from '@/lib/hero-builder/constants'
 import { safeAnchor } from '@/lib/hero-builder/safe-values'
-import type { ButtonItem, Section, Widget, WidgetContent } from '@/lib/hero-builder/types'
+import { ENTRY_DEFAULTS } from '@/lib/hero-builder/entry-copy'
+import { ENTRY_MODES } from '@/lib/hero-builder/link-target'
+import type { ButtonItem, EntryMode, OrderEntryContent, Section, Slide, Widget, WidgetContent } from '@/lib/hero-builder/types'
 
 import { Field, Group, IconPicker, ImageField, Segmented, SelectField, TextArea, TextInput, Toggle } from '../controls'
 import type { HeroBuilderApi } from '../use-hero-builder'
-import { LinkPicker, sectionAnchorsOf } from './link-picker'
+import { LinkPicker, sectionAnchorsOf, useLinkSurface } from './link-picker'
 
 function move<T>(items: readonly T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return [...items]
@@ -74,16 +76,76 @@ function SafetyNote({ children }: { children: ReactNode }) {
 const MARKUP_HINT =
   'Formatting: **bold**, *italic*, [link text](https://…) — [link text](#storefront-menu) jumps to your menu. Press Enter for a new line.'
 
+const STORE_HINT = ' Type {store} for your store name.'
+
+const ENTRY_MODE_TITLE: Record<EntryMode, string> = { dine_in: 'Dine in', pickup: 'Pickup', delivery: 'Delivery' }
+
+/** The "How to order" block: layout, start-button copy and per-order-type copy. */
+function OrderEntryFields({ content, edit }: { content: OrderEntryContent; edit: (patch: Partial<OrderEntryContent>, key?: string) => void }) {
+  const setFor = (field: 'labels' | 'blurbs' | 'icons', mode: EntryMode, value: string | undefined) =>
+    edit({ [field]: { ...content[field], [mode]: value || undefined } }, `${field}-${mode}`)
+  const hasChoices = content.layout !== 'cta'
+  return (
+    <>
+      <Field label="Style">
+        <Segmented
+          value={content.layout}
+          onChange={(layout) => edit({ layout })}
+          options={[
+            { value: 'tiles', label: 'Tiles' },
+            { value: 'list', label: 'List' },
+            { value: 'cta', label: 'One button' },
+          ]}
+        />
+      </Field>
+      <p className="text-[11px] leading-snug text-neutral-500">
+        {hasChoices
+          ? 'Customers pick dine-in, pickup or delivery here. Only the order types you offer online are shown.'
+          : 'One button that opens your branch list (or your menu). The order type is asked at checkout.'}
+      </p>
+      <Field label={hasChoices ? 'Button text (shown if no order type is available)' : 'Button text'}>
+        <TextInput value={content.ctaLabel} placeholder="Start ordering" maxLength={LIMITS.shortText} onChange={(e) => edit({ ctaLabel: e.target.value }, 'cta')} />
+      </Field>
+      {!hasChoices && (
+        <Field label="Button icon">
+          <IconPicker value={content.ctaIcon} onChange={(ctaIcon) => edit({ ctaIcon })} allowNone />
+        </Field>
+      )}
+      {hasChoices && (
+        <>
+          <Toggle label="Show icons" checked={content.showIcons !== false} onChange={(showIcons) => edit({ showIcons })} />
+          <Toggle label="Show short descriptions" checked={content.showBlurbs !== false} onChange={(showBlurbs) => edit({ showBlurbs })} />
+          {ENTRY_MODES.map((mode) => (
+            <div key={mode} className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50/60 p-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{ENTRY_MODE_TITLE[mode]}</p>
+              <TextInput aria-label={`${ENTRY_MODE_TITLE[mode]} label`} value={content.labels[mode] ?? ''} placeholder={ENTRY_DEFAULTS[mode].label} maxLength={LIMITS.shortText} onChange={(e) => setFor('labels', mode, e.target.value)} />
+              {content.showBlurbs !== false && (
+                <TextInput aria-label={`${ENTRY_MODE_TITLE[mode]} description`} value={content.blurbs[mode] ?? ''} placeholder={ENTRY_DEFAULTS[mode].blurb} maxLength={LIMITS.shortText} onChange={(e) => setFor('blurbs', mode, e.target.value)} />
+              )}
+              {content.showIcons !== false && (
+                <IconPicker value={content.icons[mode] ?? ENTRY_DEFAULTS[mode].icon} onChange={(icon) => setFor('icons', mode, icon)} />
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </>
+  )
+}
+
 function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilderApi }) {
   const c = widget.content
   const edit = (patch: Partial<WidgetContent>, key?: string) => api.editContent(widget.id, patch, key)
   const sectionAnchors = sectionAnchorsOf(api.design.sections)
+  const isWelcome = useLinkSurface() === 'welcome'
+  const markupHint = isWelcome ? MARKUP_HINT + STORE_HINT : MARKUP_HINT
+  const newButtonHref = isWelcome ? '#welcome-start' : '#storefront-menu'
 
   switch (c.kind) {
     case 'heading':
       return (
         <>
-          <Field label="Text" hint={MARKUP_HINT}>
+          <Field label="Text" hint={markupHint}>
             <TextArea rows={3} value={c.text} maxLength={LIMITS.textLength} onChange={(e) => edit({ text: e.target.value }, 'text')} />
           </Field>
           <Field label="Heading level" hint="Use one H1 per page — it helps Google understand your store.">
@@ -103,7 +165,7 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
       )
     case 'text':
       return (
-        <Field label="Text" hint={MARKUP_HINT}>
+        <Field label="Text" hint={markupHint}>
           <TextArea rows={6} value={c.text} maxLength={LIMITS.textLength} onChange={(e) => edit({ text: e.target.value }, 'text')} />
         </Field>
       )
@@ -114,7 +176,7 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
           max={LIMITS.buttonsPerWidget}
           addLabel="Add button"
           onChange={(items) => edit({ items })}
-          create={() => ({ id: newId(), label: 'Button', href: '#storefront-menu', newTab: false, variant: c.items.length ? 'outline' : 'solid' })}
+          create={() => ({ id: newId(), label: 'Button', href: newButtonHref, newTab: false, variant: c.items.length ? 'outline' : 'solid' })}
           render={(item, update) => (
             <>
               <TextInput value={item.label} placeholder="Label" maxLength={LIMITS.shortText} onChange={(e) => update({ label: e.target.value })} />
@@ -305,6 +367,60 @@ function WidgetContentFields({ widget, api }: { widget: Widget; api: HeroBuilder
             Runs in a locked sandbox: scripts work, but they can&apos;t read your store, your customers&apos; data or checkout,
             and can&apos;t redirect the page.
           </SafetyNote>
+        </>
+      )
+    case 'order-entry':
+      return <OrderEntryFields content={c} edit={edit} />
+    case 'store-logo':
+      return (
+        <>
+          <p className="text-xs leading-relaxed text-neutral-500">
+            Shows the logo from your Branding Studio, so it stays right when you change it there. Set its height in the Layout tab.
+          </p>
+          <Field label="If you have no logo">
+            <Segmented
+              value={c.fallback}
+              onChange={(fallback) => edit({ fallback })}
+              options={[
+                { value: 'name', label: 'Show store name' },
+                { value: 'none', label: 'Show nothing' },
+              ]}
+            />
+          </Field>
+        </>
+      )
+    case 'slideshow':
+      return (
+        <>
+          <Toggle label="Play automatically" checked={c.autoplay} onChange={(autoplay) => edit({ autoplay })} />
+          {c.autoplay && (
+            <Field label="Seconds per slide">
+              <TextInput
+                type="number"
+                min={SLIDE_INTERVAL.min}
+                max={SLIDE_INTERVAL.max}
+                value={c.interval}
+                onChange={(e) => edit({ interval: Math.min(SLIDE_INTERVAL.max, Math.max(SLIDE_INTERVAL.min, Number(e.target.value) || SLIDE_INTERVAL.fallback)) }, 'interval')}
+              />
+            </Field>
+          )}
+          <Toggle label="Show dots" checked={c.showDots} onChange={(showDots) => edit({ showDots })} />
+          <ListEditor<Slide>
+            items={c.slides}
+            max={LIMITS.slides}
+            addLabel="Add slide"
+            onChange={(slides) => edit({ slides })}
+            create={() => ({ id: newId(), src: '', alt: '' })}
+            render={(slide, update) => (
+              <>
+                <ImageField value={slide.src} onChange={(src) => update({ src })} />
+                <TextInput value={slide.title ?? ''} placeholder="Title (optional)" maxLength={LIMITS.shortText} onChange={(e) => update({ title: e.target.value || undefined })} />
+                <TextInput value={slide.caption ?? ''} placeholder="Caption (optional)" maxLength={LIMITS.shortText} onChange={(e) => update({ caption: e.target.value || undefined })} />
+                <TextInput value={slide.alt} placeholder="Alt text" maxLength={LIMITS.shortText} onChange={(e) => update({ alt: e.target.value })} />
+                <LinkPicker value={slide.href} onChange={(href) => update({ href: href || undefined })} sectionAnchors={sectionAnchors} allowNone />
+              </>
+            )}
+          />
         </>
       )
     default:

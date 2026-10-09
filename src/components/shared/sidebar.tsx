@@ -376,6 +376,7 @@ export const adminSidebarItems: SidebarEntry[] = [
       { label: 'Receipt Studio', href: '/admin/receipt-editor' },
       { label: 'QR Codes', href: '/admin/qr-codes' },
       { label: 'Hero Builder', href: '/admin/hero-designer' },
+      { label: 'Welcome Builder', href: '/admin/welcome-designer' },
       { label: 'Connect AI', href: '/admin/mcp' },
     ],
   },

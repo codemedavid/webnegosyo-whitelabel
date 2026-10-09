@@ -11,7 +11,7 @@ import type { NodeStyleBinding } from './node-style'
 const FONT_CHOICES = Object.entries(FONT_OPTIONS).map(([value, f]) => ({ value, label: f.label }))
 const WEIGHTS = [300, 400, 500, 600, 700, 800, 900].map((w) => ({ value: String(w), label: String(w) }))
 
-const TEXT_KINDS: readonly WidgetKind[] = ['heading', 'text', 'buttons', 'icon-list', 'badge', 'countdown']
+const TEXT_KINDS: readonly WidgetKind[] = ['heading', 'text', 'buttons', 'icon-list', 'badge', 'countdown', 'order-entry', 'store-logo']
 const ACCENT_LABEL: Partial<Record<WidgetKind, string>> = {
   buttons: 'Button color',
   'icon-list': 'Icon color',
@@ -19,10 +19,19 @@ const ACCENT_LABEL: Partial<Record<WidgetKind, string>> = {
   badge: 'Icon color',
   countdown: 'Box color',
   divider: 'Line color',
+  'order-entry': 'Tile / button color',
+  slideshow: 'Dot color',
 }
 const ACCENT_TEXT_LABEL: Partial<Record<WidgetKind, string>> = {
   buttons: 'Button text',
   countdown: 'Box text',
+  'order-entry': 'Tile / button text',
+}
+/** Kinds whose "text color" paints something else. */
+const COLOR_LABEL: Partial<Record<WidgetKind, string>> = {
+  icon: 'Icon color',
+  'order-entry': 'Icon color',
+  'store-logo': 'Name color (no logo)',
 }
 
 export function TypographyGroup({ b }: { b: NodeStyleBinding }) {
@@ -247,13 +256,13 @@ export function StylePanel({ b, nodeKind, widgetKind }: StylePanelProps) {
   const isText = nodeKind !== 'widget' || (widgetKind && TEXT_KINDS.includes(widgetKind))
   const accent = widgetKind ? ACCENT_LABEL[widgetKind] : undefined
   const accentText = widgetKind ? ACCENT_TEXT_LABEL[widgetKind] : undefined
-  const hasColor = nodeKind !== 'widget' || !['spacer', 'divider', 'image', 'gallery', 'video', 'embed'].includes(widgetKind ?? '')
+  const hasColor = nodeKind !== 'widget' || !['spacer', 'divider', 'image', 'gallery', 'video', 'embed', 'slideshow'].includes(widgetKind ?? '')
   return (
     <>
       {(hasColor || accent) && (
         <Group title="Colors">
           {hasColor && (
-            <Field label={widgetKind === 'icon' ? 'Icon color' : 'Text color'} {...b.field('color')}>
+            <Field label={(widgetKind && COLOR_LABEL[widgetKind]) || 'Text color'} {...b.field('color')}>
               <ColorField value={b.style.color} onChange={(v) => b.set({ color: v }, 'color')} />
             </Field>
           )}

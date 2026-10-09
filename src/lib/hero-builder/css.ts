@@ -20,6 +20,11 @@ export interface CssBuildOptions {
   scope: string
   /** Editor canvas: show hidden nodes faded instead of removing them. */
   showHidden?: boolean
+  /**
+   * Thumbnails: the px height "fill the screen" sections fill. The page's own
+   * viewport means nothing inside a scaled-down template card.
+   */
+  viewportHeight?: number
 }
 
 export interface BuiltDesignCss {
@@ -157,18 +162,18 @@ function displayRules(rules: RuleSet, s: NodeStyle, display: string, showHidden:
   }
 }
 
-function minHeightValue(s: NodeStyle): string | null {
-  if (s.fullHeight) return '100svh'
+function minHeightValue(s: NodeStyle, viewportHeight: number | null): string | null {
+  if (s.fullHeight) return viewportHeight ? `${viewportHeight}px` : '100svh'
   return px(s.minHeight, 0, 2000)
 }
 
-function sectionRules(section: Section, s: NodeStyle, showHidden: boolean): RuleSet {
+function sectionRules(section: Section, s: NodeStyle, showHidden: boolean, viewportHeight: number | null = null): RuleSet {
   const rules: RuleSet = new Map()
   displayRules(rules, s, 'flex', showHidden)
   frameRules(rules, '', s)
   typographyRules(rules, '', s)
   set(rules, '', 'margin', boxValue(s.margin, -400, 400))
-  if (s.fullHeight !== undefined || s.minHeight !== undefined) set(rules, '', 'min-height', minHeightValue(s) ?? '0px')
+  if (s.fullHeight !== undefined || s.minHeight !== undefined) set(rules, '', 'min-height', minHeightValue(s, viewportHeight) ?? '0px')
   set(rules, '', 'justify-content', own(JUSTIFY, s.verticalAlign))
   const contentWidth = clampNumber(s.contentWidth, 0, 2400)
   if (contentWidth !== null) set(rules, ' > .hb-row', 'max-width', contentWidth === 0 ? 'none' : `${contentWidth}px`)
@@ -210,7 +215,7 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
   const { kind } = widget
   displayRules(rules, s, 'block', showHidden)
   const frameTarget = own(INNER_FRAME, kind) ?? ''
-  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery')
+  frameRules(rules, frameTarget, s, kind === 'buttons' || kind === 'gallery' || kind === 'order-entry' || kind === 'slideshow')
   typographyRules(rules, '', s)
   set(rules, '', 'margin', boxValue(s.margin, -400, 400))
   const width = clampNumber(s.width, 1, 100)
@@ -286,6 +291,26 @@ function widgetRules(widget: Widget, s: NodeStyle, showHidden: boolean): RuleSet
       set(rules, ' .hb-gallery img', 'object-fit', pickEnum(s.objectFit, ['cover', 'contain'] as const))
       break
     }
+    case 'order-entry':
+      set(rules, '', '--hb-entry-bg', accent)
+      set(rules, '', '--hb-entry-fg', accentText)
+      set(rules, '', '--hb-entry-ic-color', cssColor(s.color))
+      set(rules, '', '--hb-entry-radius', px(s.radius, 0, 999))
+      set(rules, '', '--hb-entry-ic', px(s.size, 12, 96))
+      set(rules, ' .hb-entry', 'justify-content', justify)
+      set(rules, ' .hb-entry', 'gap', px(s.gap, 0, 80))
+      if (s.align !== undefined) set(rules, ' .hb-entry-cta', 'flex', s.align === 'stretch' ? '1 1 100%' : '0 1 auto')
+      break
+    case 'store-logo':
+      set(rules, '', '--hb-logo-h', px(s.size, 16, 400))
+      set(rules, ' .hb-logo', 'justify-content', justify)
+      break
+    case 'slideshow':
+      set(rules, '', '--hb-slide-aspect', aspect && aspect !== 'auto' ? aspectValue : null)
+      set(rules, '', '--hb-slide-radius', px(s.radius, 0, 999))
+      set(rules, '', '--hb-slide-fit', pickEnum(s.objectFit, ['cover', 'contain'] as const))
+      set(rules, '', '--hb-dot', accent)
+      break
     default:
       break
   }
@@ -334,7 +359,7 @@ interface NodeEntry {
   extra?: string
 }
 
-function collectNodes(design: HeroDesignV5, showHidden: boolean): { entries: NodeEntry[]; classes: Record<string, string> } {
+function collectNodes(design: HeroDesignV5, showHidden: boolean, viewportHeight: number | null): { entries: NodeEntry[]; classes: Record<string, string> } {
   const entries: NodeEntry[] = []
   const classes: Record<string, string> = {}
   let counter = 0
@@ -345,7 +370,7 @@ function collectNodes(design: HeroDesignV5, showHidden: boolean): { entries: Nod
   }
   for (const section of design.sections) {
     const sectionCls = nextClass(section.id)
-    entries.push({ cls: sectionCls, build: (d) => sectionRules(section, resolveStyle(section, d), showHidden) })
+    entries.push({ cls: sectionCls, build: (d) => sectionRules(section, resolveStyle(section, d), showHidden, viewportHeight) })
     for (const column of section.columns) {
       const colCls = nextClass(column.id)
       entries.push({ cls: colCls, build: (d) => columnRules(resolveStyle(column, d), showHidden) })
@@ -419,7 +444,8 @@ const SCOPE_PATTERN = /^[a-z][a-z0-9-]{0,40}$/
 export function buildDesignCss(design: HeroDesignV5, options: CssBuildOptions): BuiltDesignCss {
   const scope = SCOPE_PATTERN.test(options.scope) ? options.scope : 'hb-root'
   const showHidden = !!options.showHidden
-  const { entries, classes } = collectNodes(design, showHidden)
+  const viewportHeight = clampNumber(options.viewportHeight, 100, 4000)
+  const { entries, classes } = collectNodes(design, showHidden, viewportHeight)
 
   let css = HERO_BASE_CSS.replace(/\.S\b/g, `.${scope}`)
   css += `.${scope}{${themeVars(design)}}`

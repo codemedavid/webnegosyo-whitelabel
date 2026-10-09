@@ -334,6 +334,15 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
       'Multi-branch starter page shown before the storefront — entry choice, promo banners and palette. Visible to customers only when the branch is picked before the menu.',
     sections: [
       {
+        title: 'Welcome Builder',
+        fields: [
+          note(
+            'note_welcome_builder',
+            'Want full control? The Welcome Builder (Store Setup → Welcome Builder) lets you design this page block by block from ready-made templates, for single-location stores too. A published Welcome Builder page replaces the settings below.'
+          ),
+        ],
+      },
+      {
         title: 'Entry',
         fields: [
           select('welcome_entry_mode', 'Entry style', ['order_types', 'single_cta'], 'order_types'),

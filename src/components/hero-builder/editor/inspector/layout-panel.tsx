@@ -35,6 +35,8 @@ const SIZE_LABEL: Partial<Record<WidgetKind, { label: string; min: number; max: 
   spacer: { label: 'Height', min: 0, max: 400 },
   divider: { label: 'Thickness', min: 1, max: 20 },
   'icon-list': { label: 'Icon size', min: 10, max: 60 },
+  'order-entry': { label: 'Icon size', min: 12, max: 96 },
+  'store-logo': { label: 'Logo height', min: 16, max: 400 },
 }
 
 interface LayoutPanelProps {
@@ -87,7 +89,7 @@ export function LayoutPanel({ b, nodeKind, widget, device, onAnimation }: Layout
   const s = b.style
   const kind = widget?.kind
   const size = kind ? SIZE_LABEL[kind] : undefined
-  const hasMedia = kind === 'image' || kind === 'video' || kind === 'gallery'
+  const hasMedia = kind === 'image' || kind === 'video' || kind === 'gallery' || kind === 'slideshow'
 
   return (
     <>
@@ -185,7 +187,7 @@ export function LayoutPanel({ b, nodeKind, widget, device, onAnimation }: Layout
               </Field>
             </>
           )}
-          {(kind === 'buttons' || kind === 'icon-list' || kind === 'gallery' || kind === 'countdown') && (
+          {(kind === 'buttons' || kind === 'icon-list' || kind === 'gallery' || kind === 'countdown' || kind === 'order-entry') && (
             <Field label="Spacing between items" {...b.field('gap')}>
               <NumberField value={s.gap} onChange={(v) => b.set({ gap: v }, 'gap')} min={0} max={80} unit="px" />
             </Field>
@@ -200,7 +202,7 @@ export function LayoutPanel({ b, nodeKind, widget, device, onAnimation }: Layout
               <SelectField value={s.aspectRatio} onChange={(v) => b.set({ aspectRatio: v })} options={ASPECTS} />
             </Field>
           )}
-          {(kind === 'image' || kind === 'gallery') && (
+          {(kind === 'image' || kind === 'gallery' || kind === 'slideshow') && (
             <Field label="Crop" {...b.field('objectFit')}>
               <Segmented
                 value={s.objectFit ?? 'cover'}

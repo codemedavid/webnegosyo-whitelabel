@@ -3,7 +3,9 @@
 import { createContext, useContext, useMemo, useState } from 'react'
 
 import { EMPTY_LINK_CATALOG, type LinkCatalog } from '@/lib/hero-builder/link-catalog'
-import { linkTargetHref, parseLinkTarget, type LinkTarget } from '@/lib/hero-builder/link-target'
+import { resolveEntryOption } from '@/lib/hero-builder/entry-copy'
+import { ENTRY_MODES, linkTargetHref, parseLinkTarget, type LinkTarget } from '@/lib/hero-builder/link-target'
+import type { EntryMode } from '@/lib/hero-builder/types'
 import { safeAnchor } from '@/lib/hero-builder/safe-values'
 
 import { Field, SelectField, TextInput, Toggle } from '../controls'
@@ -14,15 +16,32 @@ const MAX_PRODUCT_OPTIONS = 150
 const LinkCatalogContext = createContext<LinkCatalog>(EMPTY_LINK_CATALOG)
 export const LinkCatalogProvider = LinkCatalogContext.Provider
 
-type LinkMode = 'none' | 'menu' | 'category' | 'product' | 'section' | 'url'
+/**
+ * Which page the links live on. A hero sits above the menu, so it links into
+ * it; a welcome page comes BEFORE the menu (and before a branch is chosen), so
+ * its in-store links start an order instead.
+ */
+export type LinkSurface = 'hero' | 'welcome'
+const LinkSurfaceContext = createContext<LinkSurface>('hero')
+export const LinkSurfaceProvider = LinkSurfaceContext.Provider
+export const useLinkSurface = (): LinkSurface => useContext(LinkSurfaceContext)
+
+type LinkMode = 'none' | 'menu' | 'category' | 'product' | 'start' | 'order-type' | 'section' | 'url'
 
 const MODE_LABELS: Record<LinkMode, string> = {
   none: 'No link',
   menu: 'The menu',
   category: 'A category',
   product: 'A product',
-  section: 'A section of this hero',
+  start: 'Start ordering',
+  'order-type': 'Start a dine-in, pickup or delivery order',
+  section: 'A section of this page',
   url: 'Web address, phone or email',
+}
+
+const SURFACE_MODES: Record<LinkSurface, readonly LinkMode[]> = {
+  hero: ['none', 'menu', 'category', 'product', 'section', 'url'],
+  welcome: ['none', 'start', 'order-type', 'section', 'url'],
 }
 
 function modeOf(target: LinkTarget, fallback: LinkMode): LinkMode {
@@ -32,6 +51,10 @@ function modeOf(target: LinkTarget, fallback: LinkMode): LinkMode {
     case 'product':
     case 'url':
       return target.type
+    case 'welcome-start':
+      return 'start'
+    case 'welcome-mode':
+      return 'order-type'
     case 'anchor':
       return 'section'
     default:
@@ -52,8 +75,9 @@ interface LinkPickerProps {
 
 export function LinkPicker({ value, onChange, sectionAnchors, allowNone = false, newTab, onNewTabChange }: LinkPickerProps) {
   const catalog = useContext(LinkCatalogContext)
+  const surface = useContext(LinkSurfaceContext)
   const target = parseLinkTarget(value)
-  const fallback: LinkMode = allowNone ? 'none' : 'menu'
+  const fallback: LinkMode = allowNone ? 'none' : surface === 'welcome' ? 'start' : 'menu'
   // A blank or half-typed web address parses as "no link": typed text stays in
   // web-address mode, and a just-chosen blank one is remembered here.
   const [isUrlPending, setIsUrlPending] = useState(false)
@@ -65,15 +89,22 @@ export function LinkPicker({ value, onChange, sectionAnchors, allowNone = false,
     menu: true,
     category: catalog.categories.length > 0,
     product: catalog.products.length > 0,
+    start: true,
+    'order-type': true,
     section: sectionAnchors.length > 0,
     url: true,
   }
-  const modes = (Object.keys(MODE_LABELS) as LinkMode[]).filter((m) => m === mode || hasChoices[m])
+  const offered = SURFACE_MODES[surface].filter((m) => m === mode || hasChoices[m])
+  // A link carried over from the other builder (e.g. a hero section preset)
+  // still shows what it points at, so the merchant can see and change it.
+  const modes = offered.includes(mode) ? offered : [mode, ...offered]
 
   const chooseMode = (next: LinkMode) => {
     setIsUrlPending(next === 'url')
     if (next === 'none' || next === 'url') return onChange('')
     if (next === 'menu') return onChange(linkTargetHref({ type: 'menu' }))
+    if (next === 'start') return onChange(linkTargetHref({ type: 'welcome-start' }))
+    if (next === 'order-type') return onChange(linkTargetHref({ type: 'welcome-mode', mode: 'pickup' }))
     if (next === 'category') {
       const first = catalog.categories[0]
       return onChange(first ? linkTargetHref({ type: 'category', categoryId: first.id }) : '')
@@ -92,6 +123,12 @@ export function LinkPicker({ value, onChange, sectionAnchors, allowNone = false,
         <SelectField<LinkMode> value={mode} onChange={chooseMode} options={modes.map((m) => ({ value: m, label: MODE_LABELS[m] }))} />
       </Field>
       {mode === 'menu' && <p className="text-[11px] leading-snug text-neutral-500">Scrolls down to your menu.</p>}
+      {mode === 'start' && (
+        <p className="text-[11px] leading-snug text-neutral-500">
+          Opens your branch list (or your menu, for a single store). Customers choose the order type at checkout.
+        </p>
+      )}
+      {mode === 'order-type' && <OrderTypeChoice target={target} onChange={onChange} />}
       {mode === 'category' && <CategoryChoice target={target} catalog={catalog} onChange={onChange} />}
       {mode === 'product' && <ProductChoice target={target} catalog={catalog} onChange={onChange} />}
       {mode === 'section' && <SectionChoice target={target} anchors={sectionAnchors} onChange={onChange} />}
@@ -160,6 +197,24 @@ function ProductChoice({ target, catalog, onChange }: ChoiceProps) {
       />
       {selected && !selectedProduct && <MissingNote>The linked product is no longer on your menu — pick another.</MissingNote>}
       <p className="text-[11px] leading-snug text-neutral-500">Opens the product so customers can add it to their order.</p>
+    </>
+  )
+}
+
+const NO_COPY = { labels: {}, blurbs: {}, icons: {} }
+
+function OrderTypeChoice({ target, onChange }: { target: LinkTarget; onChange: (href: string) => void }) {
+  const selected: EntryMode = target.type === 'welcome-mode' ? target.mode : 'pickup'
+  return (
+    <>
+      <SelectField<EntryMode>
+        value={selected}
+        onChange={(mode) => onChange(linkTargetHref({ type: 'welcome-mode', mode }))}
+        options={ENTRY_MODES.map((mode) => ({ value: mode, label: resolveEntryOption(NO_COPY, mode).label }))}
+      />
+      <p className="text-[11px] leading-snug text-neutral-500">
+        If no branch offers it right now, the customer just starts a normal order.
+      </p>
     </>
   )
 }

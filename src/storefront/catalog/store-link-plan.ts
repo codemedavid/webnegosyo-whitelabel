@@ -37,5 +37,9 @@ export function planStoreLink<Item extends { id: string }>(
     }
     case 'anchor':
       return context.hasElement(target.anchor) ? { kind: 'scroll-to', elementId: target.anchor } : { kind: 'ignore' }
+    // Welcome-page links ("start ordering") already ARE on the menu here.
+    case 'welcome-start':
+    case 'welcome-mode':
+      return { kind: 'scroll-menu' }
   }
 }

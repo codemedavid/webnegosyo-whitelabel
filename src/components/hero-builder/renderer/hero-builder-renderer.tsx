@@ -13,6 +13,8 @@ export interface HeroBuilderRendererProps {
   /** Editor canvas: tags nodes for selection and shows hidden/empty nodes. */
   isEditor?: boolean
   className?: string
+  /** Template thumbnails: fixed px height for "fill the screen" sections. */
+  viewportHeight?: number
 }
 
 interface NodeContext {
@@ -99,10 +101,14 @@ export const HeroBuilderRenderer = memo(function HeroBuilderRenderer({
   design,
   isEditor = false,
   className,
+  viewportHeight,
 }: HeroBuilderRendererProps) {
   const reactId = useId()
   const scope = useMemo(() => `hb-${reactId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'root'}`, [reactId])
-  const built = useMemo(() => buildDesignCss(design, { scope, showHidden: isEditor }), [design, scope, isEditor])
+  const built = useMemo(
+    () => buildDesignCss(design, { scope, showHidden: isEditor, viewportHeight }),
+    [design, scope, isEditor, viewportHeight],
+  )
   const ctx: NodeContext = { classes: built.classes, isEditor }
 
   if (!design.sections.length && !isEditor) return null
