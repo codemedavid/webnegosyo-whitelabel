@@ -27,7 +27,10 @@ import { applyLaunchBoost } from './boost-autopilot'
 import { launchStarterLoyalty } from './launch-loyalty'
 import { draftLaunchCampaigns } from './launch-campaigns'
 import { launchFromSetupLink } from './buyer-launch'
+import { menuReadKey, usableMenuRead } from './menu-read'
+import { typicalOrderPesos } from './goals'
 import type { OnboardingAnswers } from './answers'
+import type { ParsedMenuData } from '@/types/ai-menu-parser'
 import {
   ONBOARDING_BUILD_STEPS,
   buildOperatingHours,
@@ -114,6 +117,24 @@ async function readMenuSources(build: BuildContext): Promise<{ text?: string; im
   return { text, images }
 }
 
+/**
+ * The menu as read while the owner answered the wizard, when it was a read of
+ * exactly these photos and text; otherwise read now. Null when nothing was added.
+ */
+async function readMenu(build: BuildContext): Promise<ParsedMenuData | null> {
+  const imageUrls = build.assets.menuImageUrls ?? []
+  const cached = usableMenuRead(build.assets.menuRead, menuReadKey(imageUrls, build.answers.menuText))
+  if (cached) return cached
+
+  const sources = await readMenuSources(build)
+  if (!sources.text && sources.images.length === 0) return null
+  const parsed = await parseMenuWithAi(sources, {
+    fetchImpl: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(MENU_PARSE_DEADLINE_MS) }),
+  })
+  if (!parsed.ok) throw new Error(parsed.error)
+  return parsed.data
+}
+
 async function markBestSellers(build: BuildContext, items: ReadonlyArray<{ id: string; name: string }>): Promise<string[]> {
   const ids = matchBestSellers(build.answers.bestSellers, items)
   if (ids.length === 0) return []
@@ -155,17 +176,12 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
     }
   }
 
-  const sources = await readMenuSources(build)
-  if (!sources.text && sources.images.length === 0) {
+  const parsed = await readMenu(build)
+  if (!parsed) {
     return { status: 'skipped', detail: 'No menu was added', summary: { warnings: ['Add your menu items — none were uploaded.'] } }
   }
 
-  const parsed = await parseMenuWithAi(sources, {
-    fetchImpl: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(MENU_PARSE_DEADLINE_MS) }),
-  })
-  if (!parsed.ok) throw new Error(parsed.error)
-
-  const imported = await importParsedMenu(build.admin, build.tenantId, parsed.data)
+  const imported = await importParsedMenu(build.admin, build.tenantId, parsed)
   if (imported.itemsCreated === 0) throw new Error('No menu items could be saved')
 
   // The items are saved now, so the step must end `done`: a failed step is
@@ -299,6 +315,7 @@ async function loyaltyStep(build: BuildContext): Promise<StepOutcome> {
   const result = await launchStarterLoyalty(build.admin, build.tenantId, {
     storeName: build.answers.storeName,
     bestSellerIds: await readFeaturedIds(build),
+    typicalOrder: typicalOrderPesos(build.answers.typicalOrder),
   })
   if (result.status === 'skipped') return { status: 'skipped', detail: result.reason, summary: {} }
   return {

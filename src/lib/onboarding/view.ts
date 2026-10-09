@@ -6,7 +6,7 @@
  */
 
 import { ONBOARDING_BUILD_STEPS, type OnboardingBuildStepId, type StepStatus } from './plan'
-import type { OnboardingAssets, OnboardingStatus, StoreOnboarding } from './repository'
+import { publicAssets, type OnboardingStatus, type PublicOnboardingAssets, type StoreOnboarding } from './repository'
 import type { LaunchBuildSummary } from './summary'
 import { displayedBuildStatus } from './build-staleness'
 import { isPaidLeadStatus } from './lead-status'
@@ -47,7 +47,7 @@ export interface OnboardingView {
   /** For the greeting only; '' when the lead has no name. */
   ownerFirstName: string
   ownerEmail: string
-  assets: Required<OnboardingAssets>
+  assets: PublicOnboardingAssets
   steps: OnboardingStepView[]
   summary: LaunchBuildSummary | null
   error: string | null
@@ -90,11 +90,7 @@ export function buildOnboardingView({ onboarding, lead, tenant, readiness = null
     businessName: lead.business_name,
     ownerFirstName: (lead.name ?? '').trim().split(/\s+/)[0] ?? '',
     ownerEmail: lead.email,
-    assets: {
-      logoUrl: onboarding.assets.logoUrl ?? null,
-      logoColor: onboarding.assets.logoColor ?? null,
-      menuImageUrls: onboarding.assets.menuImageUrls ?? [],
-    },
+    assets: publicAssets(onboarding.assets),
     steps,
     summary: onboarding.summary,
     // A refused submit stores a buyer-facing message; a failed build stores

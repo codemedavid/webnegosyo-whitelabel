@@ -7,6 +7,7 @@
 
 import { z } from 'zod'
 import { STORE_TYPES, toStoreLook, type StoreLook, type StoreType } from './store-type'
+import { CHANNEL_IDS, DAILY_ORDER_IDS, GOAL_IDS, TYPICAL_ORDER_IDS, orderGoals, type ChannelId } from './goals'
 
 export const ONBOARDING_ORDER_TYPES = ['dine_in', 'pickup', 'delivery'] as const
 export type OnboardingOrderType = (typeof ONBOARDING_ORDER_TYPES)[number]
@@ -37,8 +38,19 @@ const walletSchema = z
 const STORE_TYPE_IDS = Object.keys(STORE_TYPES) as [StoreType, ...StoreType[]]
 const storeTypeSchema = z.enum(STORE_TYPE_IDS, { message: 'Pick a store type' })
 
+function uniqueChannels(channels: readonly ChannelId[]): ChannelId[] {
+  return CHANNEL_IDS.filter((channel) => channels.includes(channel))
+}
+
 export const onboardingAnswersSchema = z
   .object({
+    /** What the owner wants (several allowed). Absent on submits from the older wizard. */
+    goals: z.array(z.enum(GOAL_IDS)).max(GOAL_IDS.length).default([]).transform(orderGoals),
+    /** Where orders come from today. */
+    channels: z.array(z.enum(CHANNEL_IDS)).max(CHANNEL_IDS.length).default([]).transform(uniqueChannels),
+    /** Their own "before" numbers, as buckets: the goal trackers compare against them. */
+    dailyOrders: z.enum(DAILY_ORDER_IDS).nullable().optional(),
+    typicalOrder: z.enum(TYPICAL_ORDER_IDS).nullable().optional(),
     storeName: z.string().trim().min(2, 'Enter your store name').max(60),
     storeType: storeTypeSchema,
     tagline: z.string().trim().max(120).optional().or(z.literal('')),

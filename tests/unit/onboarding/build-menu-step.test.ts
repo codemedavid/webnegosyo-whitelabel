@@ -137,3 +137,48 @@ describe('runOnboardingBuild — menu step', () => {
     expect(lastSteps.menu.status).toBe('done')
   })
 })
+
+describe('runOnboardingBuild — menu read in the wizard', () => {
+  test('reuses the read of exactly these sources instead of reading the menu again', async () => {
+    // Arrange
+    const { runOnboardingBuild } = await import('@/lib/onboarding/build')
+    const { menuReadKey } = await import('@/lib/onboarding/menu-read')
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const parsed = { categories: [{ name: 'Mains' }], items: [{ name: 'Adobo', category: 'Mains', price: 180 }] }
+    findOnboardingById.mockResolvedValueOnce({
+      id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status: 'queued',
+      answers: { storeName: 'Kape', storeType: 'restaurant', menuText: 'Adobo 180', bestSellers: [] },
+      assets: { menuImageUrls: [], menuRead: { key: menuReadKey([], 'Adobo 180'), status: 'done', startedAt: '2026-10-06T00:00:00Z', parsed } },
+      steps: { branding: DONE, design: DONE, store_setup: DONE, boost: DONE, loyalty: DONE, campaigns: DONE },
+      summary: null, error: null, attempts: 0, launchRequestedAt: null,
+      createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:00Z',
+    })
+
+    // Act
+    await runOnboardingBuild(fakeAdmin() as never, 'onb-1')
+
+    // Assert
+    expect(parseMenuWithAi).not.toHaveBeenCalled()
+    expect(importParsedMenu).toHaveBeenCalledWith(expect.anything(), 'tenant-1', parsed)
+  })
+
+  test('reads again when the text changed after the wizard read it', async () => {
+    const { runOnboardingBuild } = await import('@/lib/onboarding/build')
+    const { menuReadKey } = await import('@/lib/onboarding/menu-read')
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    findOnboardingById.mockResolvedValueOnce({
+      id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status: 'queued',
+      answers: { storeName: 'Kape', storeType: 'restaurant', menuText: 'Adobo 190', bestSellers: [] },
+      assets: { menuRead: { key: menuReadKey([], 'Adobo 180'), status: 'done', startedAt: '2026-10-06T00:00:00Z', parsed: { categories: [], items: [{ name: 'x', category: 'y', price: 1 }] } } },
+      steps: { branding: DONE, design: DONE, store_setup: DONE, boost: DONE, loyalty: DONE, campaigns: DONE },
+      summary: null, error: null, attempts: 0, launchRequestedAt: null,
+      createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:00Z',
+    })
+
+    await runOnboardingBuild(fakeAdmin() as never, 'onb-1')
+
+    expect(parseMenuWithAi).toHaveBeenCalledTimes(1)
+  })
+})

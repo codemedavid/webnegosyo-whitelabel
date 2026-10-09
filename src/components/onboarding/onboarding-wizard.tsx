@@ -5,66 +5,101 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, Eye, Loader2, X } from 'lucide-react'
 import { MIN_OWNER_PASSWORD } from '@/lib/onboarding/answers'
 import { STORE_TYPES } from '@/lib/onboarding/store-type'
-import type { OnboardingAssets } from '@/lib/onboarding/repository'
+import type { PublicOnboardingAssets } from '@/lib/onboarding/repository'
+import type { MenuReadView } from '@/lib/onboarding/menu-read'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { removeOnboardingPhoto, signInNewOwner, submitOnboarding, uploadOnboardingPhoto } from './onboarding-api'
-import { ACCENT, ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, PrimaryButton, TextButton } from './onboarding-ui'
+import { ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, PrimaryButton, TextButton } from './onboarding-ui'
 import { accentStyle, resolveBrandColor } from './onboarding-theme'
 import { StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
-import { previewMenuRows } from './preview-menu'
-import { BrandStep, MenuStep, StoreStep, WelcomeStep } from './wizard-steps'
-import { AccountStep, HoursStep, OrderingStep } from './wizard-steps-setup'
-import { WIZARD_STEPS, draftToAnswers, emptyDraft, restoreDraft, stepBlocker, type WizardDraft, type WizardStep } from './wizard-draft'
-
-/** Steps the progress bar counts (the welcome screen is not a question). */
-const QUESTION_STEPS = WIZARD_STEPS.filter((step) => step !== 'welcome')
+import { previewMenuRows, type PreviewMenuRow } from './preview-menu'
+import { ChannelsStep, DailyOrdersStep, GoalsStep, PlanStep, TypicalOrderStep, WelcomeStep } from './wizard-about'
+import { BrandStep, MenuStep, StoreStep } from './wizard-steps'
+import { AccountStep, HoursStep, OrderingStep, PaymentsStep } from './wizard-steps-setup'
+import { BestSellersStep } from './wizard-bestsellers'
+import { ChapterProgress } from './wizard-progress'
+import { useMenuRead } from './use-menu-read'
+import {
+  AUTO_ADVANCE_STEPS,
+  WIZARD_STEPS,
+  chapterOf,
+  draftToAnswers,
+  emptyDraft,
+  firstUnansweredStep,
+  restoreDraft,
+  stepBlocker,
+  type WizardDraft,
+  type WizardStep,
+} from './wizard-draft'
 
 const STEP_EASE = [0.16, 1, 0.3, 1] as const
 const STEP_SHIFT_PX = 28
+/** Long enough to see the card light up, short enough to feel instant. */
+const AUTO_ADVANCE_MS = 280
+const MENU_STEP_INDEX = WIZARD_STEPS.indexOf('menu')
+/** The phone only earns its space where answers change it. */
+const PREVIEW_STEPS: ReadonlySet<WizardStep> = new Set(['brand', 'menu'])
+const ABOUT_STEPS: ReadonlySet<WizardStep> = new Set(['welcome', 'goals', 'channels', 'daily', 'typical', 'plan'])
+const PREVIEW_ROWS = 6
 
 const draftKey = (token: string) => `onboarding-draft:${token.slice(0, 12)}`
+const stepKey = (token: string) => `onboarding-step:${token.slice(0, 12)}`
 
-function readSavedDraft(token: string, fallback: WizardDraft): WizardDraft {
+function readStorage(key: string): string | null {
   try {
-    const raw = window.localStorage.getItem(draftKey(token))
-    return raw ? restoreDraft(fallback, JSON.parse(raw)) : fallback
+    return window.localStorage.getItem(key)
   } catch {
-    return fallback
+    return null
   }
 }
 
-/** The draft holds wallet numbers and names; drop it once the server has the answers. */
-function clearSavedDraft(token: string): void {
+function writeStorage(key: string, value: string | null): void {
   try {
-    window.localStorage.removeItem(draftKey(token))
-  } catch {
-    // Storage unavailable: nothing was saved either.
-  }
-}
-
-function saveDraft(token: string, draft: WizardDraft): void {
-  try {
-    window.localStorage.setItem(draftKey(token), JSON.stringify(draft))
+    if (value === null) window.localStorage.removeItem(key)
+    else window.localStorage.setItem(key, value)
   } catch {
     // Private mode or full storage: the wizard still works, it just won't survive a reload.
   }
 }
 
-/** Airbnb's footer progress: one segment per question, filled as you go. */
-function ProgressBar({ step }: { step: WizardStep }) {
-  const index = QUESTION_STEPS.indexOf(step as (typeof QUESTION_STEPS)[number])
-  return (
-    <div className="flex gap-1.5" role="progressbar" aria-label="Set-up progress" aria-valuemin={0} aria-valuemax={QUESTION_STEPS.length} aria-valuenow={Math.max(index, 0)}>
-      {QUESTION_STEPS.map((id, position) => (
-        <span key={id} className="h-1 flex-1 overflow-hidden rounded-full" style={{ backgroundColor: OB.line }}>
-          <span
-            className="block h-full rounded-full transition-[width] duration-500 ease-out"
-            style={{ width: position < index ? '100%' : position === index ? '50%' : '0%', backgroundColor: ACCENT }}
-          />
-        </span>
-      ))}
-    </div>
-  )
+function readSavedDraft(token: string, fallback: WizardDraft): WizardDraft {
+  const raw = readStorage(draftKey(token))
+  if (!raw) return fallback
+  try {
+    return restoreDraft(fallback, JSON.parse(raw))
+  } catch {
+    return fallback
+  }
+}
+
+/** Resume where they left off, but never past a question they still have to answer. */
+function resumeIndex(token: string, draft: WizardDraft, photoCount: number): number {
+  const saved = WIZARD_STEPS.indexOf(readStorage(stepKey(token)) as WizardStep)
+  if (saved <= 0) return 0
+  return Math.min(saved, WIZARD_STEPS.indexOf(firstUnansweredStep(draft, photoCount)))
+}
+
+/** "About you · 2 of 5". */
+function eyebrowFor(step: WizardStep): string {
+  const chapter = chapterOf(step)
+  if (!chapter) return ''
+  if (chapter.steps.length === 1) return chapter.label
+  return `${chapter.label} · ${(chapter.steps as readonly WizardStep[]).indexOf(step) + 1} of ${chapter.steps.length}`
+}
+
+function continueLabel(step: WizardStep, isSubmitting: boolean): string {
+  if (step === 'welcome') return "Let's go"
+  if (step === 'plan') return 'Sounds good'
+  if (step === 'account') return isSubmitting ? 'Building…' : 'Build my store'
+  return 'Continue'
+}
+
+/** The real dishes once the menu is read; until then, what the owner typed. */
+function previewRows(read: MenuReadView, draft: WizardDraft): PreviewMenuRow[] {
+  if (read.status !== 'done' || read.dishes.length === 0) return previewMenuRows(draft.menuText, draft.bestSellers)
+  const picked = new Set(draft.bestSellers.map((name) => name.trim().toLowerCase()).filter(Boolean))
+  const rows = read.dishes.map((dish) => ({ name: dish.name, price: String(dish.price), isBestSeller: picked.has(dish.name.toLowerCase()) }))
+  return [...rows.filter((row) => row.isBestSeller), ...rows.filter((row) => !row.isBestSeller)].slice(0, PREVIEW_ROWS)
 }
 
 /** Phones see the store on demand, in a sheet over the form. */
@@ -116,7 +151,7 @@ interface OnboardingWizardProps {
 
 export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardProps) {
   const [draft, setDraft] = useState<WizardDraft>(() => emptyDraft(view.businessName))
-  const [assets, setAssets] = useState<Required<OnboardingAssets>>(view.assets)
+  const [assets, setAssets] = useState<PublicOnboardingAssets>(view.assets)
   const [stepIndex, setStepIndex] = useState(0)
   const [direction, setDirection] = useState(1)
   const [password, setPassword] = useState('')
@@ -124,43 +159,59 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const headingRef = useRef<HTMLDivElement>(null)
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isReducedMotion = useReducedMotion()
 
   // Restore after mount (never during render: localStorage is browser-only).
-  useEffect(() => setDraft((current) => readSavedDraft(token, current)), [token])
+  useEffect(() => {
+    const restored = readSavedDraft(token, emptyDraft(view.businessName))
+    setDraft(restored)
+    setStepIndex(resumeIndex(token, restored, view.assets.menuImageUrls.length))
+  }, [token, view.businessName, view.assets.menuImageUrls.length])
+
+  useEffect(() => () => {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current)
+  }, [])
 
   const step = WIZARD_STEPS[stepIndex]
   const isWelcome = step === 'welcome'
   const isLastStep = stepIndex === WIZARD_STEPS.length - 1
+  const isAboutChapter = ABOUT_STEPS.has(step)
   const brand = resolveBrandColor(draft.brandColor, assets.logoColor, draft.storeType)
-  // Until the build reads the menu, an AI pick previews as the store type's own look.
-  const look = draft.look || (draft.storeType ? STORE_TYPES[draft.storeType].look : 'shop')
+  const look = draft.storeType ? STORE_TYPES[draft.storeType].look : 'shop'
+  const menuRead = useMenuRead(token, draft.menuText, assets.menuImageUrls, stepIndex > MENU_STEP_INDEX)
 
   function update(patch: Partial<WizardDraft>) {
     setDraft((current) => {
       const next = { ...current, ...patch }
-      saveDraft(token, next)
+      writeStorage(draftKey(token), JSON.stringify(next))
       return next
     })
     setError(null)
   }
 
-  function applyAssets(next: OnboardingAssets) {
-    setAssets({ logoUrl: next.logoUrl ?? null, logoColor: next.logoColor ?? null, menuImageUrls: next.menuImageUrls ?? [] })
-  }
-
   async function uploadPhoto(kind: 'logo' | 'menu', file: File): Promise<string | null> {
     const result = await uploadOnboardingPhoto(token, kind, file)
     if (!result.ok) return result.error
-    applyAssets(result.data)
+    setAssets(result.data)
     return null
   }
 
   async function removePhoto(kind: 'logo' | 'menu', index = 0): Promise<string | null> {
     const result = await removeOnboardingPhoto(token, kind, index)
     if (!result.ok) return result.error
-    applyAssets(result.data)
+    if (result.data) setAssets(result.data)
     return null
+  }
+
+  const previewProps: StorePreviewProps = {
+    storeName: draft.storeName,
+    tagline: '',
+    storeType: draft.storeType,
+    brand: brand ?? OB.ink,
+    logoUrl: assets.logoUrl,
+    rows: previewRows(menuRead, draft),
+    look,
   }
 
   async function submit() {
@@ -175,15 +226,19 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
       setIsSubmitting(false)
       return setError(result.error)
     }
-    clearSavedDraft(token)
+    // The draft holds wallet numbers and names; drop it once the server has the answers.
+    writeStorage(draftKey(token), null)
+    writeStorage(stepKey(token), null)
     // The login exists now: sign in, so the dashboard opens without a password prompt.
     await signInNewOwner(view.ownerEmail, password)
     onSubmitted(previewProps)
   }
 
   function goTo(nextIndex: number) {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current)
     setDirection(nextIndex > stepIndex ? 1 : -1)
     setStepIndex(nextIndex)
+    writeStorage(stepKey(token), WIZARD_STEPS[nextIndex])
     setError(null)
     window.scrollTo({ top: 0, behavior: isReducedMotion ? 'auto' : 'smooth' })
   }
@@ -196,6 +251,14 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
     goTo(stepIndex + 1)
   }
 
+  /** A one-tap answer moves on by itself, after the card has visibly lit up. */
+  function advanceAfterAnswer() {
+    if (!AUTO_ADVANCE_STEPS.has(step) || isLastStep) return
+    if (advanceTimer.current) clearTimeout(advanceTimer.current)
+    const target = stepIndex + 1
+    advanceTimer.current = setTimeout(() => goTo(target), isReducedMotion ? 0 : AUTO_ADVANCE_MS)
+  }
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     next()
@@ -206,67 +269,72 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
     if (stepIndex > 0) headingRef.current?.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true })
   }, [stepIndex])
 
-  const previewProps: StorePreviewProps = {
-    storeName: draft.storeName,
-    tagline: draft.tagline,
-    storeType: draft.storeType,
-    brand: brand ?? OB.ink,
-    logoUrl: assets.logoUrl,
-    rows: previewMenuRows(draft.menuText, draft.bestSellers),
-    look,
-  }
   const preview = <StorePreviewPhone {...previewProps} />
   const stepProps = { draft, update }
   const photoProps = { assets, uploadPhoto, removePhoto }
-  const continueLabel = isWelcome ? 'Get started' : isLastStep ? (isSubmitting ? 'Building…' : 'Build my store') : 'Next'
+  const eyebrow = eyebrowFor(step)
+  const storeName = draft.storeName.trim() || view.businessName
   const shift = isReducedMotion ? 0 : STEP_SHIFT_PX * direction
+  const hasPreviewButton = PREVIEW_STEPS.has(step)
+
+  const question = (
+    <AnimatePresence mode="wait" initial={false} custom={direction}>
+      <motion.div
+        key={step}
+        ref={headingRef}
+        initial={{ opacity: 0, x: shift }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -shift }}
+        transition={{ duration: 0.26, ease: STEP_EASE }}
+        className="[&_h1]:outline-none"
+      >
+        {step === 'welcome' && <WelcomeStep firstName={view.ownerFirstName} businessName={view.businessName} isPaid={view.isPaymentConfirmed} />}
+        {step === 'goals' && <GoalsStep {...stepProps} eyebrow={eyebrow} storeName={storeName} />}
+        {step === 'channels' && <ChannelsStep {...stepProps} eyebrow={eyebrow} storeName={storeName} />}
+        {step === 'daily' && <DailyOrdersStep {...stepProps} eyebrow={eyebrow} storeName={storeName} onAnswered={advanceAfterAnswer} />}
+        {step === 'typical' && <TypicalOrderStep {...stepProps} eyebrow={eyebrow} storeName={storeName} onAnswered={advanceAfterAnswer} />}
+        {step === 'plan' && <PlanStep draft={draft} storeName={storeName} />}
+        {step === 'store' && <StoreStep {...stepProps} eyebrow={eyebrow} />}
+        {step === 'brand' && <BrandStep {...stepProps} {...photoProps} brand={brand ?? OB.ink} eyebrow={eyebrow} />}
+        {step === 'menu' && <MenuStep {...stepProps} {...photoProps} eyebrow={eyebrow} />}
+        {step === 'ordering' && <OrderingStep {...stepProps} eyebrow={eyebrow} />}
+        {step === 'payments' && <PaymentsStep {...stepProps} eyebrow={eyebrow} />}
+        {step === 'hours' && <HoursStep {...stepProps} eyebrow={eyebrow} />}
+        {step === 'bestsellers' && <BestSellersStep {...stepProps} eyebrow={eyebrow} read={menuRead} />}
+        {step === 'account' && <AccountStep eyebrow={eyebrow} email={view.ownerEmail} password={password} setPassword={setPassword} />}
+      </motion.div>
+    </AnimatePresence>
+  )
 
   return (
-    <form onSubmit={handleSubmit} noValidate style={accentStyle(brand, draft.storeType)} className="lg:grid lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div className="min-w-0 px-5 pb-40 pt-6 sm:px-8 lg:flex lg:items-start lg:justify-center lg:px-12 lg:pb-36 lg:pt-14">
-        <div className="mx-auto w-full max-w-[34rem]">
-          <AnimatePresence mode="wait" initial={false} custom={direction}>
-            <motion.div
-              key={step}
-              ref={headingRef}
-              initial={{ opacity: 0, x: shift }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -shift }}
-              transition={{ duration: 0.28, ease: STEP_EASE }}
-              className="[&_h1]:outline-none"
-            >
-              {step === 'welcome' && <WelcomeStep firstName={view.ownerFirstName} businessName={view.businessName} isPaid={view.isPaymentConfirmed} />}
-              {step === 'store' && <StoreStep {...stepProps} />}
-              {step === 'brand' && <BrandStep {...stepProps} {...photoProps} brand={brand ?? OB.ink} />}
-              {step === 'menu' && <MenuStep {...stepProps} {...photoProps} />}
-              {step === 'ordering' && <OrderingStep {...stepProps} />}
-              {step === 'hours' && <HoursStep {...stepProps} />}
-              {step === 'account' && <AccountStep email={view.ownerEmail} password={password} setPassword={setPassword} />}
-            </motion.div>
-          </AnimatePresence>
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      style={accentStyle(isAboutChapter ? null : brand, draft.storeType)}
+      className={isAboutChapter ? '' : 'lg:grid lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'}
+    >
+      <div className={`min-w-0 px-5 pb-40 pt-4 sm:px-8 ${isAboutChapter ? '' : 'lg:flex lg:items-start lg:justify-center lg:px-12 lg:pb-36 lg:pt-8'}`}>
+        <div className={`mx-auto w-full ${isAboutChapter ? 'max-w-[36rem]' : 'max-w-[34rem]'}`}>
+          {!isWelcome && <div className="mb-8"><ChapterProgress step={step} /></div>}
+          {isWelcome && <div className="h-6 sm:h-10" aria-hidden />}
+          {question}
           {error && <div className="mt-6"><ErrorNote>{error}</ErrorNote></div>}
         </div>
       </div>
 
-      <aside className="hidden lg:block lg:p-4 lg:pb-28" aria-label="Live preview of your store">
-        <div className="sticky top-4 flex h-[calc(100dvh-9rem)] min-h-[560px] flex-col items-center justify-center rounded-3xl transition-colors duration-700" style={{ backgroundColor: ACCENT_SOFT }}>
-          <div className="w-full max-w-[290px]">{preview}</div>
-          <p className="mt-5 flex items-center gap-2 text-[13px] font-medium" style={{ color: OB.muted }}>
-            <span className="relative flex h-2 w-2" aria-hidden>
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60 motion-reduce:animate-none" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            </span>
-            Updates as you answer
-          </p>
-        </div>
-      </aside>
+      {!isAboutChapter && (
+        <aside className="hidden lg:block lg:p-4 lg:pb-28" aria-label="Preview of your store">
+          <div className="sticky top-4 flex h-[calc(100dvh-9rem)] min-h-[560px] flex-col items-center justify-center rounded-3xl transition-colors duration-700" style={{ backgroundColor: ACCENT_SOFT }}>
+            <div className="w-full max-w-[290px]">{preview}</div>
+          </div>
+        </aside>
+      )}
 
       <footer className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur" style={{ borderColor: OB.line }}>
-        {!isWelcome && <ProgressBar step={step} />}
-        <div className="mx-auto flex h-[4.75rem] items-center gap-3 px-5 sm:px-8">
+        <div className="mx-auto flex h-[4.75rem] max-w-5xl items-center gap-3 px-5 sm:px-8">
           {stepIndex > 0 ? <TextButton onClick={() => goTo(stepIndex - 1)}>Back</TextButton> : <span />}
           <div className={`ml-auto flex items-center gap-2 ${isWelcome ? 'w-full sm:w-auto [&>button]:w-full sm:[&>button]:w-auto' : ''}`}>
-            {!isWelcome && (
+            {hasPreviewButton && (
               <button type="button" onClick={() => setIsPreviewOpen(true)}
                 className={`inline-flex min-h-12 items-center gap-2 rounded-xl border px-4 text-[15px] font-semibold lg:hidden ${FOCUS_RING}`}
                 style={{ borderColor: OB.lineStrong, color: OB.ink }}>
@@ -275,7 +343,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
             )}
             <PrimaryButton type="submit" isDisabled={isSubmitting}>
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-              {continueLabel}
+              {continueLabel(step, isSubmitting)}
               {!isLastStep && !isSubmitting && <ArrowRight className="h-4 w-4" aria-hidden />}
             </PrimaryButton>
           </div>
