@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ArrowRight, Check } from 'lucide-react'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { shareHint } from '@/lib/onboarding/goals'
@@ -9,6 +9,8 @@ import { LiveStoreFrame } from './store-preview-phone'
 import { Celebration } from './celebration'
 import { OpenStorePanel, RetryFailedSteps, ShareLink, useOrigin } from './reveal-peak'
 import { ComboChoice, StampChoice, TextsChoice, type ChoiceId } from './reveal-choices'
+import { fetchLaunchCombos } from './onboarding-api'
+import type { LaunchComboView } from '@/lib/onboarding/launch-offers'
 
 /**
  * The store is built. First the peak: it's open, share your link (one
@@ -49,8 +51,12 @@ function Peak({ view, token, isLive, storeUrl, choiceCount, onNext, onRefresh, o
   return (
     <div className="relative space-y-8">
       {isLive && <Celebration />}
-      <div className="flex h-24 items-center justify-center rounded-3xl px-6 text-center text-[22px] font-extrabold tracking-tight" style={{ backgroundColor: ACCENT, color: ACCENT_INK }}>
-        {store.name}
+      <div className="flex h-24 items-center justify-center gap-3 rounded-3xl px-6 text-center text-[22px] font-extrabold tracking-tight" style={{ backgroundColor: ACCENT, color: ACCENT_INK }}>
+        {view.assets.logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={view.assets.logoUrl} alt="" className="h-12 w-12 shrink-0 rounded-full bg-white object-contain p-1" />
+        )}
+        <span className="min-w-0 truncate">{store.name}</span>
       </div>
       <div>
         <h1 tabIndex={-1} className="text-balance text-[2.25rem] font-extrabold leading-[1.05] tracking-[-0.03em] outline-none sm:text-[2.75rem]" style={{ color: OB.ink }}>
@@ -130,7 +136,19 @@ export function OnboardingReveal({ token, view, onRefresh }: OnboardingRevealPro
   const [hasLaunched, setHasLaunched] = useState(false)
   const [phase, setPhase] = useState<Phase>('peak')
   const [keptCombos, setKeptCombos] = useState<number | null>(null)
+  const [prefetched, setPrefetched] = useState<LaunchComboView[] | null>(null)
   const choices = choicesFor(view)
+  const hasCombos = choices.includes('combos')
+
+  // Read the combos while the owner is on the peak, so "Next" shows the first card at once.
+  useEffect(() => {
+    if (!hasCombos) return
+    let isCancelled = false
+    void fetchLaunchCombos(token).then((result) => {
+      if (!isCancelled && result.ok) setPrefetched(result.data)
+    })
+    return () => { isCancelled = true }
+  }, [token, hasCombos])
 
   const advanceFrom = useCallback((current: Phase) => {
     const order: Phase[] = ['peak', ...choices, 'done']
@@ -158,7 +176,7 @@ export function OnboardingReveal({ token, view, onRefresh }: OnboardingRevealPro
               onLaunched={() => { setHasLaunched(true); onRefresh() }} />
           )}
           {phase === 'combos' && (
-            <ComboChoice token={token} eyebrow={eyebrowOf('combos')} boostHref={`${store.dashboardPath}/boost-sales#boost-ai-log`} onDone={handleCombosDone} />
+            <ComboChoice token={token} initialCombos={prefetched} eyebrow={eyebrowOf('combos')} boostHref={`${store.dashboardPath}/boost-sales#boost-ai-log`} onDone={handleCombosDone} />
           )}
           {phase === 'stamp' && view.summary?.loyalty && (
             <StampChoice eyebrow={eyebrowOf('stamp')} loyalty={view.summary.loyalty} loyaltyHref={`${store.dashboardPath}/loyalty`} onKeep={() => advanceFrom('stamp')} />

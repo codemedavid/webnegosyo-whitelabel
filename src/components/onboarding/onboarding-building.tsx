@@ -23,8 +23,9 @@ const STEP_GOALS: Partial<Record<OnboardingBuildStepId, GoalId>> = {
 
 function statusLine(view: OnboardingView, isOpening: boolean): string {
   if (isOpening) return 'Opening your store for orders'
-  const running = view.steps.find((step) => step.status === 'running')
-  return running ? running.label : 'Getting started'
+  // Between two steps nothing is "running" for a moment: name the next one, not "getting started".
+  const current = view.steps.find((step) => step.status === 'running') ?? view.steps.find((step) => step.status === 'pending')
+  return current ? current.label : 'Finishing up'
 }
 
 function StepMark({ status }: { status: StepStatus }) {

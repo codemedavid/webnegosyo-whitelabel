@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, Loader2, MessageSquareText } from 'lucide-react'
+import { ArrowUpRight, Gift, Loader2, MessageSquareText } from 'lucide-react'
 import type { LaunchComboView } from '@/lib/onboarding/launch-offers'
 import type { LaunchBuildSummary } from '@/lib/onboarding/summary'
 import { LAUNCH_CAMPAIGNS } from '@/lib/onboarding/launch-campaigns'
@@ -58,17 +58,20 @@ function ComboCard({ combo, stackDepth }: { combo: LaunchComboView; stackDepth: 
 
 interface ComboChoiceProps {
   token: string
+  /** Read while the owner looked at the peak, so the first card shows at once. */
+  initialCombos: LaunchComboView[] | null
   eyebrow: string
   boostHref: string
   onDone: (keptCount: number) => void
 }
 
-export function ComboChoice({ token, eyebrow, boostHref, onDone }: ComboChoiceProps) {
-  const [combos, setCombos] = useState<LaunchComboView[] | null>(null)
+export function ComboChoice({ token, initialCombos, eyebrow, boostHref, onDone }: ComboChoiceProps) {
+  const [combos, setCombos] = useState<LaunchComboView[] | null>(initialCombos)
   const [busy, setBusy] = useState<'keep' | 'skip' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (initialCombos) return
     let isCancelled = false
     void fetchLaunchCombos(token).then((result) => {
       if (isCancelled) return
@@ -76,7 +79,7 @@ export function ComboChoice({ token, eyebrow, boostHref, onDone }: ComboChoicePr
       else setError(result.error)
     })
     return () => { isCancelled = true }
-  }, [token])
+  }, [token, initialCombos])
 
   const waiting = (combos ?? []).filter((combo) => combo.status === 'waiting')
   const kept = (combos ?? []).filter((combo) => combo.status === 'kept').length
@@ -152,7 +155,9 @@ export function StampChoice({ eyebrow, loyalty, loyaltyHref, onKeep }: StampChoi
         <p className="mt-1 text-[22px] font-extrabold leading-tight" style={{ color: OB.ink }}>{loyalty.rewardLabel}</p>
         <div className="mt-4 grid grid-cols-8 gap-1.5" aria-label={`${loyalty.threshold} stamps`}>
           {Array.from({ length: slots }, (_, index) => (
-            <span key={index} className="aspect-square rounded-full border-2" style={{ borderColor: ACCENT, backgroundColor: index === slots - 1 ? ACCENT : 'transparent' }} />
+            <span key={index} className="flex aspect-square items-center justify-center rounded-full border-2" style={{ borderColor: ACCENT, backgroundColor: index === slots - 1 ? ACCENT : 'transparent' }}>
+              {index === slots - 1 && <Gift className="h-1/2 w-1/2" strokeWidth={2.25} style={{ color: ACCENT_INK }} aria-hidden />}
+            </span>
           ))}
         </div>
         <p className="mt-4 text-[14px] leading-snug" style={{ color: OB.muted }}>
