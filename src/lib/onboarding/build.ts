@@ -22,7 +22,7 @@ import { invalidateCheckoutUpsellCache } from '@/lib/menu-engineering-service'
 import { invalidateComplementaryPairsCache } from '@/lib/complementary-pairs-service'
 import { extractBrandColorFromImage } from './logo-color'
 import { STORE_LOOKS, buildLaunchBranding, buildLaunchDesign, toStoreLook } from './store-type'
-import { chooseLaunchDesign } from './design-step'
+import { applyLaunchHero, chooseLaunchDesign, launchHeroInput, readStoreFacts } from './design-step'
 import { applyLaunchBoost } from './boost-autopilot'
 import { launchStarterLoyalty } from './launch-loyalty'
 import { launchFromSetupLink } from './buyer-launch'
@@ -199,13 +199,24 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
  */
 async function designStep(build: BuildContext): Promise<StepOutcome> {
   try {
-    const choice = await chooseLaunchDesign(build.admin, build.tenantId, build.answers)
+    const facts = await readStoreFacts(build.admin, build.tenantId)
+    const choice = await chooseLaunchDesign(build.answers, facts)
     const result = await saveBrandingWithClient(build.admin, build.tenantId, buildLaunchDesign(build.answers.storeType, choice))
     if (!result.success) throw new Error(result.error ?? 'Design could not be saved')
+    const isHeroSaved = await applyLaunchHero(build.admin, build.tenantId, choice.hero, launchHeroInput(build.answers, facts)).then(
+      () => true,
+      (error: unknown) => {
+        console.error('[onboarding] launch hero not saved', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
+        return false
+      },
+    )
     return {
       status: 'done',
       detail: `${STORE_LOOKS[choice.look].label} layout`,
-      summary: { design: { look: choice.look, reason: choice.reason, source: choice.source } },
+      summary: {
+        design: { look: choice.look, ...(isHeroSaved ? { hero: choice.hero } : {}), reason: choice.reason, source: choice.source },
+        ...(isHeroSaved ? {} : { warnings: ['Your hero banner could not be set up. Add one in Hero Builder.'] }),
+      },
     }
   } catch (error) {
     console.error('[onboarding] design step kept the starting look', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })

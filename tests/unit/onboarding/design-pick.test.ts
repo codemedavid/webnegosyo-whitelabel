@@ -3,11 +3,13 @@ import {
   RULE_REASONS,
   buildDesignPrompt,
   parseDesignAnswer,
+  pickHeroByRules,
   pickLookByRules,
   summarizeMenuShape,
   type MenuShapeRow,
 } from '@/lib/onboarding/design-pick'
 import { STORE_LOOKS, STORE_LOOK_IDS, STORE_TYPES } from '@/lib/onboarding/store-type'
+import { LAUNCH_HERO_CHOICES } from '@/lib/onboarding/launch-heroes'
 
 function rows(category: string, count: number, price = 150): MenuShapeRow[] {
   return Array.from({ length: count }, (_, index) => ({ categoryName: category, itemName: `${category} ${index + 1}`, price }))
@@ -91,15 +93,38 @@ describe('pickLookByRules', () => {
   })
 })
 
+describe('pickHeroByRules', () => {
+  it('a big sidebar menu starts right at the top, with no hero', () => {
+    expect(pickHeroByRules('sidebar', LAUNCH_HERO_CHOICES)).toBe('none')
+  })
+
+  it('takes the first hero the look calls for that the store can have', () => {
+    expect(pickHeroByRules('shop', LAUNCH_HERO_CHOICES)).toBe('favorites')
+    expect(pickHeroByRules('shop', ['steps', 'poster', 'none'])).toBe('steps')
+    expect(pickHeroByRules('kiosk', ['steps', 'poster', 'none'])).toBe('steps')
+    expect(pickHeroByRules('bistro', LAUNCH_HERO_CHOICES)).toBe('poster')
+  })
+
+  it('always answers a hero every store can have', () => {
+    for (const look of STORE_LOOK_IDS) expect(['steps', 'poster', 'none']).toContain(pickHeroByRules(look, ['steps', 'poster', 'none']))
+  })
+})
+
 describe('buildDesignPrompt', () => {
   const shape = summarizeMenuShape([...rows('Silog', 4, 160), ...rows('Drinks', 3, 45)])
   const messages = buildDesignPrompt({
     storeName: 'Migos', storeType: 'restaurant', tagline: 'Silog all day', orderTypes: ['pickup', 'delivery'], shape,
+    heroes: ['steps', 'poster', 'none'],
   })
 
-  it('lists every look so the model can only choose from the catalog', () => {
+  it('lists every look and hero so the model can only choose from the catalogs', () => {
     const system = messages[0].content
     for (const look of STORE_LOOK_IDS) expect(system).toContain(`"${look}"`)
+    for (const hero of LAUNCH_HERO_CHOICES) expect(system).toContain(`"${hero}"`)
+  })
+
+  it('tells the model which heroes this store can have, in the data message', () => {
+    expect(JSON.parse(messages[1].content).availableHeroes).toEqual(['steps', 'poster', 'none'])
   })
 
   it('hands the menu over as facts in the user message, never in the system prompt', () => {
@@ -112,8 +137,14 @@ describe('buildDesignPrompt', () => {
 
 describe('parseDesignAnswer', () => {
   it('reads a JSON answer, even inside a code fence', () => {
-    const answer = parseDesignAnswer('```json\n{"look":"kiosk","fontPair":"bold display","reason":"Short menu, fast picks."}\n```')
-    expect(answer).toEqual({ look: 'kiosk', fontPair: 'bold display', reason: 'Short menu, fast picks.' })
+    const answer = parseDesignAnswer('```json\n{"look":"kiosk","hero":"ways","fontPair":"bold display","reason":"Short menu, fast picks."}\n```')
+    expect(answer).toEqual({ look: 'kiosk', hero: 'ways', fontPair: 'bold display', reason: 'Short menu, fast picks.' })
+  })
+
+  it('drops a hero the store cannot have or that is not in the catalog, keeping the look', () => {
+    expect(parseDesignAnswer('{"look":"kiosk","hero":"ways"}', ['steps', 'none'])?.hero).toBeNull()
+    expect(parseDesignAnswer('{"look":"kiosk","hero":"video-hero"}')?.hero).toBeNull()
+    expect(parseDesignAnswer('{"look":"kiosk","hero":"none"}', ['steps', 'none'])?.hero).toBe('none')
   })
 
   it('refuses a look outside the catalog, including the retired menu board', () => {
@@ -124,7 +155,7 @@ describe('parseDesignAnswer', () => {
 
   it('drops an unknown font pairing but keeps the look', () => {
     const answer = parseDesignAnswer('{"look":"cafe","fontPair":"Comic Sans","reason":"Mostly coffee."}')
-    expect(answer).toEqual({ look: 'cafe', fontPair: null, reason: 'Mostly coffee.' })
+    expect(answer).toEqual({ look: 'cafe', fontPair: null, hero: null, reason: 'Mostly coffee.' })
   })
 
   it('gives a missing reason the look\'s own reason, and caps a long one', () => {

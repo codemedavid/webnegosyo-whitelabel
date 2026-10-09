@@ -6,6 +6,7 @@ import { ArrowUpRight, Check, Copy, Download, Loader2, QrCode, RotateCw, Share2 
 import type { BoostIdeaKind } from '@/lib/boost/ideas'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { STORE_LOOKS, isStoreLook } from '@/lib/onboarding/store-type'
+import { LAUNCH_HERO_LABELS, isLaunchHeroChoice } from '@/lib/onboarding/launch-heroes'
 import { launchOnboardingStore, retryOnboarding } from './onboarding-api'
 import { ACCENT_SOFT, FOCUS_RING, OB, PrimaryButton, PrimaryLink, SecondaryButton, SecondaryLink, StepHeading } from './onboarding-ui'
 import { LiveStoreFrame } from './store-preview-phone'
@@ -200,6 +201,11 @@ function BuiltLedger({ view }: { view: OnboardingView }) {
   if (!summary) return null
   const rows = [
     summary.design && isStoreLook(summary.design.look) && { label: 'Design', value: `${STORE_LOOKS[summary.design.look].label}. ${summary.design.reason}`, href: `${dashboard}/branding` },
+    summary.design?.hero && isLaunchHeroChoice(summary.design.hero) && {
+      label: 'Hero',
+      value: summary.design.hero === 'none' ? 'None, your menu starts at the top' : LAUNCH_HERO_LABELS[summary.design.hero],
+      href: `${dashboard}/hero-designer`,
+    },
     summary.menu && { label: 'Menu', value: `${plural(summary.menu.items, 'dish', 'dishes')} in ${plural(summary.menu.categories, 'category', 'categories')}`, href: `${dashboard}/menu` },
     summary.paymentMethods.length > 0 && { label: 'Payments', value: summary.paymentMethods.join(', '), href: `${dashboard}/payment-methods` },
     summary.offers.length > 0 && { label: 'Offers', value: offerCounts(summary.offers), href: `${dashboard}/boost-sales` },
