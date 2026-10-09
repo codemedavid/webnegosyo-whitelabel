@@ -768,8 +768,10 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          live_at: string | null
           name: string
           notes: string | null
+          paid_at: string | null
           payment_proof_uploaded_at: string | null
           payment_proof_url: string | null
           payment_term: string | null
@@ -786,8 +788,10 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          live_at?: string | null
           name: string
           notes?: string | null
+          paid_at?: string | null
           payment_proof_uploaded_at?: string | null
           payment_proof_url?: string | null
           payment_term?: string | null
@@ -804,8 +808,10 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          live_at?: string | null
           name?: string
           notes?: string | null
+          paid_at?: string | null
           payment_proof_uploaded_at?: string | null
           payment_proof_url?: string | null
           payment_term?: string | null

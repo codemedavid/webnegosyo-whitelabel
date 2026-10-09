@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BarChart3,
   CornerDownLeft,
+  Filter,
   LayoutDashboard,
   MapPinned,
   Plus,
@@ -53,6 +54,15 @@ const DESTINATIONS: CommandDestination[] = [
     icon: BarChart3,
     group: 'Overview',
     keywords: ['gmv', 'revenue', 'charts', 'metrics'],
+  },
+  {
+    id: 'pipeline',
+    label: 'Sales Pipeline',
+    hint: 'Order to live store, and who is stuck',
+    href: '/superadmin/pipeline',
+    icon: Filter,
+    group: 'Overview',
+    keywords: ['funnel', 'conversion', 'signups', 'onboarding', 'stuck'],
   },
   {
     id: 'store-activity',

@@ -14,7 +14,15 @@ import { InvitePaidCustomer } from './components/invite-paid-customer'
 // production build never has to reach Supabase to prerender this page.
 export const dynamic = 'force-dynamic'
 
-export default async function CheckoutLeadsPage() {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+interface CheckoutLeadsPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function CheckoutLeadsPage({ searchParams }: CheckoutLeadsPageProps) {
+  const { lead } = await searchParams
+  const selectedLeadId = typeof lead === 'string' && UUID_PATTERN.test(lead) ? lead : null
   const [stats, leadsResult] = await Promise.all([
     getCheckoutLeadStats(),
     getCheckoutLeads({ page: 1, pageSize: 20 }),
@@ -46,7 +54,11 @@ export default async function CheckoutLeadsPage() {
       <Suspense
         fallback={<div className="h-96 animate-pulse rounded-2xl border border-white/10 bg-white/[0.02]" />}
       >
-        <CheckoutLeadsTable initialLeads={leadsResult.data} initialCount={leadsResult.count} />
+        <CheckoutLeadsTable
+          initialLeads={leadsResult.data}
+          initialCount={leadsResult.count}
+          initialSelectedLeadId={selectedLeadId}
+        />
       </Suspense>
     </div>
   )
