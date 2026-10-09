@@ -28,6 +28,7 @@ import { launchStarterLoyalty } from './launch-loyalty'
 import { draftLaunchCampaigns } from './launch-campaigns'
 import { launchFromSetupLink } from './buyer-launch'
 import { menuReadKey, usableMenuRead } from './menu-read'
+import { recordOnboardingEvent } from './events'
 import { typicalOrderPesos } from './goals'
 import type { OnboardingAnswers } from './answers'
 import type { ParsedMenuData } from '@/types/ai-menu-parser'
@@ -431,7 +432,8 @@ async function openStoreWhenReady(admin: AdminClient, onboardingId: string): Pro
     const finished = await findOnboardingById(admin, onboardingId)
     if (!finished) return
     const result = await launchFromSetupLink(admin, finished)
-    if (!result.ok) console.warn('[onboarding] store left closed after build', { onboardingId, reason: result.error })
+    if (result.ok) await recordOnboardingEvent(admin as unknown as SupabaseClient, onboardingId, 'live')
+    else console.warn('[onboarding] store left closed after build', { onboardingId, reason: result.error })
   } catch (error) {
     console.error('[onboarding] auto go-live failed', { onboardingId, message: error instanceof Error ? error.message : String(error) })
   }
@@ -463,6 +465,7 @@ export async function runOnboardingBuild(admin: AdminClient, onboardingId: strin
     await finishOnboardingBuild(admin, onboarding.id, failures.length === 0
       ? { status: 'ready', summary }
       : { status: 'failed', error: failures.join(' · '), summary })
+    await recordOnboardingEvent(admin as unknown as SupabaseClient, onboarding.id, failures.length === 0 ? 'build_ready' : 'build_failed')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error('[onboarding] build crashed', { onboardingId, message })

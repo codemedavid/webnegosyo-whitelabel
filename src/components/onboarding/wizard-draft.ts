@@ -23,6 +23,7 @@ import {
   type TypicalOrder,
 } from '@/lib/onboarding/goals'
 import { isStoreType, type StoreType } from '@/lib/onboarding/store-type'
+import { WIZARD_STEPS, type WizardStep } from '@/lib/onboarding/wizard-steps'
 
 export interface WizardDraft {
   goals: GoalId[]
@@ -107,13 +108,7 @@ export function draftToAnswers(draft: WizardDraft): { ok: true; answers: Onboard
  * the menu is read in the background from the menu step on, so by then the
  * owner taps their best sellers from their own dishes instead of typing them.
  */
-export const WIZARD_STEPS = [
-  'welcome',
-  'goals', 'channels', 'daily', 'typical', 'plan',
-  'store', 'brand', 'menu', 'ordering', 'payments', 'hours', 'bestsellers',
-  'account',
-] as const
-export type WizardStep = (typeof WIZARD_STEPS)[number]
+export { WIZARD_STEPS, type WizardStep }
 
 export const WIZARD_CHAPTERS = [
   { id: 'about', label: 'About you', steps: ['goals', 'channels', 'daily', 'typical', 'plan'] },

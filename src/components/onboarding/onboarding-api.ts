@@ -109,3 +109,17 @@ export function decideLaunchCombo(
     (body) => ({ outcome: body.outcome as 'kept' | 'skipped' | 'needs-edit', combos: (body.combos ?? []) as LaunchComboView[] }),
   )
 }
+
+/** Fire-and-forget funnel beacon (a fixed event name, never an answer). */
+export function trackOnboardingEvent(token: string, event: string): void {
+  try {
+    void fetch(`${base(token)}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event }),
+      keepalive: true,
+    }).catch(() => undefined)
+  } catch {
+    // Measurement never breaks the set-up.
+  }
+}

@@ -10,6 +10,8 @@ import { isWellFormedOnboardingToken } from '@/lib/onboarding/token'
 import { isBuildRetryable, MAX_BUYER_BUILD_ATTEMPTS } from '@/lib/onboarding/build-staleness'
 import { isBuyerFacingError } from '@/lib/onboarding/errors'
 import { launchFromSetupLink } from '@/lib/onboarding/buyer-launch'
+import { recordOnboardingEvent } from '@/lib/onboarding/events'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * /api/onboarding/[token] — the buyer's store set-up.
@@ -90,6 +92,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     const action = (body as { action?: unknown } | null)?.action
     if (action === 'launch') {
       const launched = await launchFromSetupLink(admin, onboarding)
+      if (launched.ok) await recordOnboardingEvent(admin as unknown as SupabaseClient, onboarding.id, 'live')
       return launched.ok ? respond({ success: true }) : respond({ error: launched.error }, launched.status)
     }
 
@@ -108,6 +111,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     if (!parsed.success) return respond({ error: describeAnswersError(parsed.error) }, 400)
 
     const store = await provisionStore(admin, onboarding, parsed.data.answers, parsed.data.ownerPassword)
+    await recordOnboardingEvent(admin as unknown as SupabaseClient, onboarding.id, 'submitted')
     scheduleBuild(onboarding.id)
     return respond({ success: true, slug: store.slug })
   } catch (error) {

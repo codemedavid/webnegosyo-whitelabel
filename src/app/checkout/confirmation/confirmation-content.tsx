@@ -24,7 +24,7 @@ function NextStepsCard() {
   const steps = [
     'Send your payment and upload the screenshot below.',
     'We confirm it and send your private set-up link by SMS or email.',
-    'Upload your logo and menu photo — we build your store in minutes, then you go live.',
+    'Answer a few questions (about 5 minutes) and add your menu photo. We build your store and you go live within 48 hours of getting your menu, often the same day.',
   ]
   return (
     <div className="rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white p-6 shadow-sm">
@@ -34,6 +34,7 @@ function NextStepsCard() {
         </div>
         <div className="min-w-0">
           <h3 className="text-lg font-bold text-gray-900">What happens next</h3>
+          <p className="mt-1 text-sm text-gray-600">Have ready: a photo of your menu, your logo if you have one, and your GCash or Maya number.</p>
           <ol className="mt-3 space-y-2.5">
             {steps.map((step, index) => (
               <li key={step} className="flex gap-3 text-sm text-gray-700">
@@ -219,7 +220,7 @@ export function ConfirmationContent({ lead }: ConfirmationContentProps) {
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xs font-bold text-orange-600">
                     3
                   </span>
-                  We&apos;ll set you up within 48 hours
+                  We send your set-up link, and you go live within 48 hours of getting your menu
                 </li>
               </ol>
             </div>

@@ -66,7 +66,7 @@ export function WelcomeStep({ firstName, businessName, isPaid }: WelcomeProps) {
         {greeting} Let&apos;s open {businessName || 'your store'}.
       </h1>
       <p className="mt-4 max-w-[30rem] text-[17px] leading-relaxed" style={{ color: OB.muted }}>
-        About 4 minutes, mostly taps. You tell us what you want, we set up your store around it.
+        About 5 minutes, mostly taps. You tell us what you want, we set up your store around it.
       </p>
       <div className="mt-9 rounded-2xl border-2 p-5" style={{ borderColor: OB.line }}>
         <p className="text-[13px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>Have these ready</p>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { Check, Copy, Download, Loader2, QrCode, RotateCw, Share2 } from 'lucide-react'
 import type { OnboardingView } from '@/lib/onboarding/view'
-import { launchOnboardingStore, retryOnboarding } from './onboarding-api'
+import { launchOnboardingStore, retryOnboarding, trackOnboardingEvent } from './onboarding-api'
 import { ACCENT, ACCENT_INK, FOCUS_RING, OB, PrimaryButton, SecondaryButton } from './onboarding-ui'
 
 /*
@@ -52,12 +52,13 @@ function QrPanel({ storeUrl, storeName }: { storeUrl: string; storeName: string 
   )
 }
 
-export function ShareLink({ storeUrl, storeName }: { storeUrl: string; storeName: string }) {
+export function ShareLink({ token, storeUrl, storeName }: { token: string; storeUrl: string; storeName: string }) {
   const [isCopied, setIsCopied] = useState(false)
   const [isQrOpen, setIsQrOpen] = useState(false)
   const displayUrl = storeUrl.replace(/^https?:\/\//, '')
 
   async function copy() {
+    trackOnboardingEvent(token, 'shared')
     try {
       await navigator.clipboard.writeText(storeUrl)
       setIsCopied(true)
@@ -68,6 +69,7 @@ export function ShareLink({ storeUrl, storeName }: { storeUrl: string; storeName
   }
 
   async function share() {
+    trackOnboardingEvent(token, 'shared')
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share({ title: storeName, text: `Order from ${storeName} online`, url: storeUrl })
@@ -91,7 +93,7 @@ export function ShareLink({ storeUrl, storeName }: { storeUrl: string; storeName
         </button>
       </div>
       <PrimaryButton onClick={share} isFull><Share2 className="h-4 w-4" aria-hidden /> Share my link</PrimaryButton>
-      <SecondaryButton onClick={() => setIsQrOpen(!isQrOpen)} isFull><QrCode className="h-4 w-4" aria-hidden /> {isQrOpen ? 'Hide' : 'Show'} my counter QR</SecondaryButton>
+      <SecondaryButton onClick={() => { if (!isQrOpen) trackOnboardingEvent(token, 'qr_shown'); setIsQrOpen(!isQrOpen) }} isFull><QrCode className="h-4 w-4" aria-hidden /> {isQrOpen ? 'Hide' : 'Show'} my counter QR</SecondaryButton>
       {isQrOpen && <QrPanel storeUrl={storeUrl} storeName={storeName} />}
     </div>
   )

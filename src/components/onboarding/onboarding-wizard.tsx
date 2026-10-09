@@ -8,7 +8,7 @@ import { STORE_TYPES } from '@/lib/onboarding/store-type'
 import type { PublicOnboardingAssets } from '@/lib/onboarding/repository'
 import type { MenuReadView } from '@/lib/onboarding/menu-read'
 import type { OnboardingView } from '@/lib/onboarding/view'
-import { removeOnboardingPhoto, signInNewOwner, submitOnboarding, uploadOnboardingPhoto } from './onboarding-api'
+import { removeOnboardingPhoto, signInNewOwner, submitOnboarding, trackOnboardingEvent, uploadOnboardingPhoto } from './onboarding-api'
 import { ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, PrimaryButton, TextButton } from './onboarding-ui'
 import { accentStyle, resolveBrandColor } from './onboarding-theme'
 import { StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
@@ -263,6 +263,11 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
     event.preventDefault()
     next()
   }
+
+  // The funnel: the first time this set-up reaches each screen (names only, never answers).
+  useEffect(() => {
+    trackOnboardingEvent(token, stepIndex === 0 ? 'opened' : `screen:${WIZARD_STEPS[stepIndex]}`)
+  }, [token, stepIndex])
 
   // Move focus to the new question so screen readers announce it.
   useEffect(() => {

@@ -9,7 +9,7 @@ import { LiveStoreFrame } from './store-preview-phone'
 import { Celebration } from './celebration'
 import { OpenStorePanel, RetryFailedSteps, ShareLink, useOrigin } from './reveal-peak'
 import { ComboChoice, StampChoice, TextsChoice, type ChoiceId } from './reveal-choices'
-import { fetchLaunchCombos } from './onboarding-api'
+import { fetchLaunchCombos, trackOnboardingEvent } from './onboarding-api'
 import type { LaunchComboView } from '@/lib/onboarding/launch-offers'
 
 /**
@@ -68,7 +68,7 @@ function Peak({ view, token, isLive, storeUrl, choiceCount, onNext, onRefresh, o
       <RetryFailedSteps token={token} view={view} onRetried={onRefresh} />
 
       {isLive
-        ? storeUrl && <ShareLink storeUrl={storeUrl} storeName={store.name} />
+        ? storeUrl && <ShareLink token={token} storeUrl={storeUrl} storeName={store.name} />
         : <OpenStorePanel token={token} view={view} onLaunched={onLaunched} />}
 
       {choiceCount > 0 ? (
@@ -152,9 +152,11 @@ export function OnboardingReveal({ token, view, onRefresh }: OnboardingRevealPro
 
   const advanceFrom = useCallback((current: Phase) => {
     const order: Phase[] = ['peak', ...choices, 'done']
-    setPhase(order[order.indexOf(current) + 1] ?? 'done')
+    const next = order[order.indexOf(current) + 1] ?? 'done'
+    if (next === 'done') trackOnboardingEvent(token, 'choices_done')
+    setPhase(next)
     window.scrollTo({ top: 0 })
-  }, [choices])
+  }, [choices, token])
 
   const handleCombosDone = useCallback((kept: number) => {
     setKeptCombos(kept)
