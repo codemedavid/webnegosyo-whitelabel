@@ -26,7 +26,7 @@ describe('buildOnboardingView', () => {
     const view = buildOnboardingView({ onboarding: ONBOARDING, lead: LEAD, tenant: null })
 
     // Assert
-    expect(view.steps.map((s) => s.id)).toEqual(['branding', 'menu', 'store_setup', 'boost', 'loyalty'])
+    expect(view.steps.map((s) => s.id)).toEqual(['branding', 'menu', 'design', 'store_setup', 'boost', 'loyalty'])
     expect(view.steps[0]).toMatchObject({ status: 'done', detail: 'Colors from your logo' })
     expect(view.steps[2]).toMatchObject({ status: 'pending', detail: null })
   })

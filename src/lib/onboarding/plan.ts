@@ -138,8 +138,9 @@ export function pickLaunchBrandColor(picked: string | null | undefined, logoColo
 }
 
 export const ONBOARDING_BUILD_STEPS = [
-  { id: 'branding', label: 'Designing your store' },
+  { id: 'branding', label: 'Choosing your colors' },
   { id: 'menu', label: 'Reading your menu' },
+  { id: 'design', label: 'Designing your store' },
   { id: 'store_setup', label: 'Setting up payments, hours and order types' },
   { id: 'boost', label: 'Creating combos and upsells' },
   { id: 'loyalty', label: 'Launching your loyalty stamp card' },
@@ -158,12 +159,13 @@ export interface StepState {
 export type OnboardingSteps = Partial<Record<OnboardingBuildStepId, StepState>>
 
 /**
- * Offers and the loyalty reward are built FROM the menu. While the menu step
+ * The design, offers and the loyalty reward are built FROM the menu. While the menu step
  * has failed they wait (stay pending) instead of settling as "skipped" — a
  * skipped step is never re-run, so a retry that fixes the menu would otherwise
  * leave the store with no offers and no stamp card.
  */
 export const STEP_DEPENDENCIES: Partial<Record<OnboardingBuildStepId, OnboardingBuildStepId>> = {
+  design: 'menu',
   boost: 'menu',
   loyalty: 'menu',
 }

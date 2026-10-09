@@ -49,7 +49,7 @@ function onboardingRow(status: string) {
   return {
     id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status,
     answers: { storeName: 'Kape', storeType: 'cafe', menuText: 'Latte 150', bestSellers: [] },
-    assets: {}, steps: { branding: DONE, menu: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
+    assets: {}, steps: { branding: DONE, menu: DONE, design: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
     summary: null, error: null, attempts: 1, launchRequestedAt: null,
     createdAt: '2026-10-08T00:00:00Z', updatedAt: '2026-10-08T00:00:00Z',
   }

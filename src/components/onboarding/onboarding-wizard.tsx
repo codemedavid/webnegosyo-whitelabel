@@ -133,7 +133,8 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const isWelcome = step === 'welcome'
   const isLastStep = stepIndex === WIZARD_STEPS.length - 1
   const brand = resolveBrandColor(draft.brandColor, assets.logoColor, draft.storeType)
-  const look = draft.look || (draft.storeType ? STORE_TYPES[draft.storeType].look : 'board')
+  // Until the build reads the menu, an AI pick previews as the store type's own look.
+  const look = draft.look || (draft.storeType ? STORE_TYPES[draft.storeType].look : 'shop')
 
   function update(patch: Partial<WizardDraft>) {
     setDraft((current) => {

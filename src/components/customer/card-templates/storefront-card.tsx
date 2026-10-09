@@ -38,7 +38,8 @@ export const StorefrontCard = memo(function StorefrontCard({
   const hasPhoto = hasDishPhoto(item)
 
   const price = (
-    <div className="mt-1.5 flex items-baseline gap-2 md:mt-2">
+    // Wraps so a struck-through price never pushes the add button off a narrow card.
+    <div className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2 md:mt-2">
       {hasDiscount && (
         <span
           className="text-sm line-through md:text-base"

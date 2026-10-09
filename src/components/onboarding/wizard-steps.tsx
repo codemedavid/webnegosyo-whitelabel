@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, Coffee, CupSoda, Croissant, ShieldCheck, Store, UtensilsCrossed } from 'lucide-react'
+import { ChevronDown, Coffee, CupSoda, Croissant, ShieldCheck, Sparkles, Store, UtensilsCrossed } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { STORE_LOOKS, STORE_TYPES, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
+import { STORE_LOOKS, STORE_LOOK_IDS, STORE_TYPES, type StoreLook, type StoreType } from '@/lib/onboarding/store-type'
 import { MAX_MENU_PHOTOS } from '@/lib/onboarding/answers'
 import type { OnboardingAssets } from '@/lib/onboarding/repository'
 import { ACCENT, ACCENT_SOFT, Field, FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, PhotoSlot, StepHeading } from './onboarding-ui'
@@ -144,63 +144,127 @@ interface BrandStepProps extends StepProps, PhotoProps {
 /** A tiny drawing of each look, in the owner's color. */
 function LookSketch({ look }: { look: StoreLook }) {
   const bar = (width: string) => <span className="h-1 rounded-full bg-[#D3CCC4]" style={{ width }} />
-  const row = (key: number) => (
-    <span key={key} className="flex items-center gap-1">{bar('40%')}<span className="flex-1 border-b border-dotted border-[#D3CCC4]" /><span className="h-1 w-3 rounded-full" style={{ backgroundColor: ACCENT }} /></span>
+  const card = (key: number, isCentered = false) => (
+    <span key={key} className={`flex flex-col justify-end gap-1 rounded border border-[#D3CCC4] p-1 ${isCentered ? 'items-center' : ''}`}>
+      {bar('80%')}<span className="h-1 w-3 rounded-full" style={{ backgroundColor: ACCENT }} />
+    </span>
   )
-  if (look === 'chapters') {
-    return <span className="flex h-full flex-col gap-1.5"><span className="h-6 rounded-md" style={{ backgroundColor: ACCENT }} />{[0, 1].map(row)}</span>
+  const tiles = (
+    <span className="grid grid-cols-4 gap-1">{[0, 1, 2, 3].map((key) => <span key={key} className="h-4 rounded" style={{ backgroundColor: ACCENT, opacity: 1 - key * 0.2 }} />)}</span>
+  )
+  if (look === 'sidebar') {
+    return (
+      <span className="flex h-full gap-1.5">
+        <span className="flex w-3 flex-col gap-1">{[0, 1, 2].map((key) => <span key={key} className="h-2 rounded-sm" style={{ backgroundColor: key === 0 ? ACCENT : '#E9E4DE' }} />)}</span>
+        <span className="grid flex-1 grid-cols-2 gap-1">{[0, 1].map((key) => card(key))}</span>
+      </span>
+    )
   }
-  if (look === 'tiles') {
+  if (look === 'kiosk' || look === 'sticker') {
     return (
       <span className="flex h-full flex-col gap-1.5">
-        <span className="grid grid-cols-4 gap-1">{[0, 1, 2, 3].map((key) => <span key={key} className="aspect-square rounded" style={{ backgroundColor: ACCENT, opacity: 1 - key * 0.2 }} />)}</span>
-        <span className="h-3 rounded border border-[#D3CCC4]" />
+        {tiles}
+        <span className="grid flex-1 grid-cols-2 gap-1">
+          {[0, 1].map((key) => look === 'kiosk'
+            ? <span key={key} className="rounded bg-[#2A2622]" />
+            : <span key={key} className="relative rounded border border-[#D3CCC4]"><span className="absolute -bottom-0.5 left-1 h-2 w-2 rounded-full" style={{ backgroundColor: ACCENT }} /></span>)}
+        </span>
       </span>
     )
   }
-  if (look === 'cards') {
+  if (look === 'cafe') {
     return (
-      <span className="grid h-full grid-cols-2 gap-1">
-        {[0, 1].map((key) => <span key={key} className="flex flex-col justify-end gap-1 rounded border border-[#D3CCC4] p-1"><span className="h-0.5 w-2 rounded-full" style={{ backgroundColor: ACCENT }} />{bar('80%')}</span>)}
+      <span className="flex h-full flex-col justify-center gap-1.5">
+        {[0, 1].map((key) => <span key={key} className="flex gap-1">{[0, 1, 2].map((cell) => <span key={cell} className="h-4 w-1/3 shrink-0 rounded-t-full border border-[#D3CCC4]" />)}</span>)}
       </span>
     )
   }
-  return <span className="flex h-full flex-col justify-center gap-1.5">{[0, 1, 2].map(row)}</span>
+  if (look === 'bistro') {
+    return (
+      <span className="flex h-full flex-col justify-center gap-1.5">
+        {[0, 1].map((key) => (
+          <span key={key} className="flex items-center gap-1 rounded border border-[#D3CCC4] px-1 py-1">
+            {bar('45%')}<span className="flex-1" /><span className="h-1 w-3 rounded-full" style={{ backgroundColor: ACCENT }} />
+          </span>
+        ))}
+      </span>
+    )
+  }
+  return (
+    <span className="flex h-full flex-col gap-1.5">
+      <span className="flex gap-1">{[0, 1, 2].map((key) => <span key={key} className="h-1.5 w-5 rounded-full" style={{ backgroundColor: key === 0 ? ACCENT : '#E9E4DE' }} />)}</span>
+      <span className="grid flex-1 grid-cols-2 gap-1">{[0, 1].map((key) => card(key))}</span>
+    </span>
+  )
 }
 
-function LookPicker({ value, suggested, onChange }: { value: StoreLook; suggested: StoreLook; onChange: (look: StoreLook) => void }) {
-  const ordered = [suggested, ...(Object.keys(STORE_LOOKS) as StoreLook[]).filter((look) => look !== suggested)]
+const AI_LOOK_LABEL = 'Let us design it'
+const AI_LOOK_DESCRIPTION = 'Our AI reads your menu and picks the layout that fits it best.'
+
+interface LookOptionProps {
+  isSelected: boolean
+  label: string
+  description: string
+  sketch: React.ReactNode
+  badge?: string
+  onSelect: () => void
+  className?: string
+}
+
+function LookOption({ isSelected, label, description, sketch, badge, onSelect, className = '' }: LookOptionProps) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={isSelected}
+      onClick={onSelect}
+      className={`flex flex-col gap-3 rounded-xl border p-3 text-left transition-[border-color,box-shadow,background-color] duration-150 hover:border-[#17130F] ${FOCUS_RING} ${className}`}
+      style={{ borderColor: isSelected ? ACCENT : OB.lineStrong, boxShadow: isSelected ? `0 0 0 1px ${ACCENT}` : 'none', backgroundColor: isSelected ? ACCENT_SOFT : OB.canvas }}
+    >
+      {sketch}
+      <span>
+        <span className="flex items-center gap-2 text-[15px] font-semibold" style={{ color: OB.ink }}>
+          {label}
+          {badge && <span className="text-[12px] font-medium" style={{ color: OB.muted }}>{badge}</span>}
+        </span>
+        <span className="mt-0.5 block text-[13px] leading-snug" style={{ color: OB.muted }}>{description}</span>
+      </span>
+    </button>
+  )
+}
+
+/** '' = the AI picks once it has read the menu; a look = the owner's own pick, which the build keeps. */
+function LookPicker({ value, onChange }: { value: StoreLook | ''; onChange: (look: StoreLook | '') => void }) {
   return (
     <div role="radiogroup" aria-label="Menu layout" className="grid grid-cols-2 gap-3">
-      {ordered.map((look) => {
-        const isSelected = value === look
-        return (
-          <button
-            key={look}
-            type="button"
-            role="radio"
-            aria-checked={isSelected}
-            onClick={() => onChange(look)}
-            className={`flex flex-col gap-3 rounded-xl border p-3 text-left transition-[border-color,box-shadow,background-color] duration-150 hover:border-[#17130F] ${FOCUS_RING}`}
-            style={{ borderColor: isSelected ? ACCENT : OB.lineStrong, boxShadow: isSelected ? `0 0 0 1px ${ACCENT}` : 'none', backgroundColor: isSelected ? ACCENT_SOFT : OB.canvas }}
-          >
-            <span className="block h-14 rounded-lg bg-white p-2 ring-1 ring-black/[0.04]" aria-hidden><LookSketch look={look} /></span>
-            <span>
-              <span className="flex items-center gap-2 text-[15px] font-semibold" style={{ color: OB.ink }}>
-                {STORE_LOOKS[look].label}
-                {look === suggested && <span className="text-[12px] font-medium" style={{ color: OB.muted }}>Suggested</span>}
-              </span>
-              <span className="mt-0.5 block text-[13px] leading-snug" style={{ color: OB.muted }}>{STORE_LOOKS[look].description}</span>
-            </span>
-          </button>
-        )
-      })}
+      <LookOption
+        className="col-span-2 sm:flex-row sm:items-center"
+        isSelected={value === ''}
+        label={AI_LOOK_LABEL}
+        description={AI_LOOK_DESCRIPTION}
+        badge="Recommended"
+        onSelect={() => onChange('')}
+        sketch={(
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white" style={{ backgroundColor: ACCENT }} aria-hidden>
+            <Sparkles className="h-5 w-5" />
+          </span>
+        )}
+      />
+      {STORE_LOOK_IDS.map((look) => (
+        <LookOption
+          key={look}
+          isSelected={value === look}
+          label={STORE_LOOKS[look].label}
+          description={STORE_LOOKS[look].description}
+          onSelect={() => onChange(look)}
+          sketch={<span className="block h-14 rounded-lg bg-white p-2 ring-1 ring-black/[0.04]" aria-hidden><LookSketch look={look} /></span>}
+        />
+      ))}
     </div>
   )
 }
 
 export function BrandStep({ draft, update, assets, uploadPhoto, removePhoto, brand }: BrandStepProps) {
-  const suggested = draft.storeType ? STORE_TYPES[draft.storeType].look : 'board'
   return (
     <div className="space-y-9">
       <StepHeading title="Make it look like you" lede="Your logo, color and menu layout go on every page of your store." />
@@ -235,7 +299,7 @@ export function BrandStep({ draft, update, assets, uploadPhoto, removePhoto, bra
       </div>
       <div className="space-y-4">
         <GroupLabel hint="How your menu is laid out. You can switch anytime in Branding.">Menu layout</GroupLabel>
-        <LookPicker value={draft.look || suggested} suggested={suggested} onChange={(look) => update({ look })} />
+        <LookPicker value={draft.look} onChange={(look) => update({ look })} />
       </div>
     </div>
   )

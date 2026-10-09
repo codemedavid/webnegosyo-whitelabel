@@ -58,7 +58,7 @@ beforeEach(() => {
   findOnboardingById.mockResolvedValue({
     id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status: 'failed',
     answers: { storeName: 'Kape', storeType: 'restaurant', menuText: 'Adobo 180\nSinigang 220', bestSellers: ['Adobo'] },
-    assets: {}, steps: { branding: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
+    assets: {}, steps: { branding: DONE, design: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
     summary: null, error: null, attempts: 1, launchRequestedAt: null,
     createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:00Z',
   })
@@ -66,6 +66,32 @@ beforeEach(() => {
   importParsedMenu.mockResolvedValue({
     itemsCreated: 2, itemsFailed: 0, categoriesCreated: 1, categoriesSkipped: 0,
     createdItems: [{ id: 'i1', name: 'Adobo' }, { id: 'i2', name: 'Sinigang' }],
+  })
+})
+
+describe('runOnboardingBuild — design step', () => {
+  test('a design that cannot be chosen or saved keeps the starting look and never fails the build', async () => {
+    // Arrange: every other step settled; the design step's reads and save fail.
+    const { runOnboardingBuild } = await import('@/lib/onboarding/build')
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    findOnboardingById.mockResolvedValueOnce({
+      id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status: 'running',
+      answers: { storeName: 'Kape', storeType: 'restaurant', menuText: 'Adobo 180', bestSellers: [] },
+      assets: {}, steps: { branding: DONE, menu: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
+      summary: null, error: null, attempts: 1, launchRequestedAt: null,
+      createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:00Z',
+    })
+
+    // Act
+    await runOnboardingBuild(fakeAdmin() as never, 'onb-1')
+
+    // Assert
+    const lastSteps = writeOnboardingSteps.mock.calls.at(-1)?.[2] as Record<string, { status: string; detail: string }>
+    expect(lastSteps.design).toMatchObject({ status: 'done', detail: 'Kept your starting layout' })
+    const outcome = finishOnboardingBuild.mock.calls[0][2] as { status: string; summary: { warnings: string[] } }
+    expect(outcome.status).toBe('ready')
+    expect(outcome.summary.warnings.some((w) => /starting layout/i.test(w))).toBe(true)
   })
 })
 
@@ -96,7 +122,7 @@ describe('runOnboardingBuild — menu step', () => {
     findOnboardingById.mockResolvedValueOnce({
       id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status: 'running',
       answers: { storeName: 'Kape', storeType: 'restaurant', menuText: 'Adobo 180', bestSellers: [] },
-      assets: {}, steps: { branding: DONE, menu: { status: 'running', detail: 'Reading your menu' }, store_setup: DONE, boost: DONE, loyalty: DONE },
+      assets: {}, steps: { branding: DONE, menu: { status: 'running', detail: 'Reading your menu' }, design: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
       summary: null, error: null, attempts: 1, launchRequestedAt: null,
       createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:00Z',
     })

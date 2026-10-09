@@ -13,8 +13,9 @@ import { LiveStoreFrame, PhoneFrame, PhoneSkeleton, StorePreviewPhone, type Stor
  */
 
 const RUNNING_LINES: Record<OnboardingBuildStepId, string[]> = {
-  branding: ['Mixing your colors', 'Choosing fonts that fit', 'Painting every page'],
+  branding: ['Mixing your colors', 'Painting every page', 'Making your loading screen'],
   menu: ['Reading every line of your menu', 'Typing dishes and prices', 'Sorting them into categories', 'Checking the prices twice'],
+  design: ['Studying your menu', 'Trying layouts that fit it', 'Choosing fonts that fit'],
   store_setup: ['Adding your ways to pay', 'Setting your opening hours'],
   boost: ['Pairing your best sellers', 'Building combo deals', 'Adding upsells'],
   loyalty: ['Printing your stamp card'],

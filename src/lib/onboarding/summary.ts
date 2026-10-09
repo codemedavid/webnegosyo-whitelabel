@@ -4,6 +4,8 @@
  */
 
 import type { BoostIdeaKind } from '@/lib/boost/ideas'
+import type { DesignSource } from './design-step'
+import type { StoreLook } from './store-type'
 
 export interface LaunchBuildSummary {
   brandColor: string | null
@@ -12,6 +14,8 @@ export interface LaunchBuildSummary {
   paymentMethods: string[]
   offers: Array<{ kind: BoostIdeaKind; title: string }>
   loyalty: { rewardLabel: string; threshold: number } | null
+  /** The launch look and why; absent on builds from before the design step. */
+  design?: { look: StoreLook; reason: string; source: DesignSource } | null
   /** Things the owner should look at, in plain words. */
   warnings: string[]
 }
