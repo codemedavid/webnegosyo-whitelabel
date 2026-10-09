@@ -3,8 +3,7 @@
 import { memo } from 'react'
 import type { CardStyle } from '@/lib/card-style'
 import {
-  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, InlineCardLabels, Price, SoldOutVeil,
-  hasDishPhoto, readableOn, tint, useFlexCard,
+  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, readableOn, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
 
@@ -21,8 +20,7 @@ const SHOWCASE_DEFAULTS: CardStyle = {
  * Showcase — the premium catalog card (Shopify Dawn / Prestige).
  * A tall borderless photo carries the card; name and price sit quietly under
  * it. On pointer devices a quick-add bar rises from the photo's foot on hover;
- * on touch it is a round button that never leaves. A dish without a photo is
- * a soft brand-tinted tile: labels, name, then price beside the add control.
+ * on touch it is a round button that never leaves.
  */
 export const ShowcaseCard = memo(function ShowcaseCard({
   item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority,
@@ -33,72 +31,6 @@ export const ShowcaseCard = memo(function ShowcaseCard({
   const density = DENSITY_CLASS[style.density]
   const addBackground = branding.buttonPrimary
   const addColor = branding.buttonPrimaryText || readableOn(addBackground)
-  const alignClass = isCentered ? 'items-center text-center' : 'items-start text-left'
-
-  const title = (
-    <CardTitleButton
-      item={item}
-      onSelect={onSelect}
-      className="line-clamp-2 text-[14px] font-medium leading-snug tracking-[-0.01em] @xs:text-[16px]"
-      style={{ color: branding.cardTitle }}
-    />
-  )
-  const description = showDescription && (
-    <p className="line-clamp-2 text-[12.5px] leading-relaxed @xs:text-[13.5px]" style={{ color: branding.cardDescription }}>
-      {item.description}
-    </p>
-  )
-  const price = (
-    <Price
-      price={displayPrice}
-      compareAt={hasDiscount ? item.price : null}
-      hasOptions={hasOptions}
-      hideCurrencySymbol={hideCurrencySymbol}
-      color={branding.cardPrice}
-      saleColor={branding.error}
-      mutedColor={branding.textMuted}
-      className="text-[14px] font-semibold @xs:text-[15px]"
-    />
-  )
-
-  if (!hasDishPhoto(item)) {
-    const isBar = style.addButton === 'bar'
-    return (
-      <article
-        onClick={selectOnCardClick(item, onSelect)}
-        className={`group @container relative flex h-full flex-col rounded-[var(--brand-radius,14px)] ${density.pad} ${density.gap} ${alignClass}`}
-        style={{ backgroundColor: tint(branding.primary, 6, branding.cards) }}
-      >
-        <InlineCardLabels
-          item={item}
-          branding={branding}
-          isOrderable={isOrderable}
-          menuEngineeringEnabled={menuEngineeringEnabled}
-          discountPercent={discountPercent}
-          className={isCentered ? 'justify-center' : ''}
-        />
-        {title}
-        {description}
-        <div
-          className={`mt-auto flex w-full gap-2 pt-1 ${
-            isBar || isCentered ? 'flex-col' : 'items-center justify-between'
-          } ${isCentered ? 'items-center' : ''}`}
-        >
-          {price}
-          <AddButton
-            item={item}
-            variant={style.addButton}
-            isOrderable={isOrderable}
-            onSelect={onSelect}
-            background={addBackground}
-            color={addColor}
-            label="Quick add"
-            className={isBar ? 'h-10 rounded-[calc(var(--brand-radius,14px)*0.7)]' : ''}
-          />
-        </div>
-      </article>
-    )
-  }
 
   return (
     <article
@@ -169,10 +101,30 @@ export const ShowcaseCard = memo(function ShowcaseCard({
         )}
       </div>
 
-      <div className={`flex flex-col px-0.5 pt-2.5 @xs:pt-3.5 ${density.gap} ${alignClass}`}>
-        {title}
-        {description}
-        {price}
+      <div
+        className={`flex flex-col px-0.5 pt-2.5 @xs:pt-3.5 ${density.gap} ${isCentered ? 'items-center text-center' : 'items-start text-left'}`}
+      >
+        <CardTitleButton
+          item={item}
+          onSelect={onSelect}
+          className="line-clamp-2 text-[14px] font-medium leading-snug tracking-[-0.01em] @xs:text-[16px]"
+          style={{ color: branding.cardTitle }}
+        />
+        {showDescription && (
+          <p className="line-clamp-2 text-[12.5px] leading-relaxed @xs:text-[13.5px]" style={{ color: branding.cardDescription }}>
+            {item.description}
+          </p>
+        )}
+        <Price
+          price={displayPrice}
+          compareAt={hasDiscount ? item.price : null}
+          hasOptions={hasOptions}
+          hideCurrencySymbol={hideCurrencySymbol}
+          color={branding.cardPrice}
+          saleColor={branding.error}
+          mutedColor={branding.textMuted}
+          className="text-[14px] font-semibold @xs:text-[15px]"
+        />
       </div>
     </article>
   )

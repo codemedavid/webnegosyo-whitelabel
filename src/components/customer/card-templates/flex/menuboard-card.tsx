@@ -2,9 +2,8 @@
 
 import { memo } from 'react'
 import type { CardStyle } from '@/lib/card-style'
-import { dishBadgeLabel } from '@/lib/dish-photo'
 import {
-  AddButton, selectOnCardClick, CardMedia, CardTitleButton, Price, SoldOutTag, SoldOutVeil, hasDishPhoto, optionHint, useFlexCard,
+  AddButton, selectOnCardClick, CardMedia, CardTitleButton, Price, SoldOutVeil, optionHint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
 
@@ -36,7 +35,6 @@ const THUMB_CLASS: Record<CardStyle['imageRatio'], string> = {
  * dotted leader that ends at the price, the way a chalkboard or printed menu
  * sets it, with a small photo at the side. Rows stack with hairlines, so a
  * whole category reads as one board. Narrow columns drop the leader and stack.
- * A dish without a photo is just the row: no thumbnail, sold out said in words.
  */
 export const MenuboardCard = memo(function MenuboardCard({
   item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority,
@@ -45,8 +43,7 @@ export const MenuboardCard = memo(function MenuboardCard({
     useFlexCard(item, branding, MENUBOARD_DEFAULTS)
   const isCentered = style.textAlign === 'center'
   const hint = optionHint(item)
-  const badge = dishBadgeLabel(item, menuEngineeringEnabled)
-  const isSoldOutTagShown = !isOrderable && !hasDishPhoto(item)
+  const badge = menuEngineeringEnabled && item.badge_text ? item.badge_text : item.is_featured ? 'Featured' : null
   const price = (
     <Price
       price={displayPrice}
@@ -103,7 +100,6 @@ export const MenuboardCard = memo(function MenuboardCard({
         )}
 
         <div className={`flex items-center gap-2 pt-0.5 ${isCentered ? 'justify-center' : ''}`}>
-          {isSoldOutTagShown && <SoldOutTag background={branding.cardTitle} color={branding.cards} />}
           {badge && (
             <span className="text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: branding.primary }}>
               {badge}

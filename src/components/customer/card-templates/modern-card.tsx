@@ -5,9 +5,6 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
-import { tint } from '@/lib/card-color'
-import { hasDishPhoto } from '@/lib/dish-photo'
-import { TextCardTags } from './text-card-tags'
 
 interface ModernCardProps {
   item: MenuItem
@@ -21,111 +18,11 @@ interface ModernCardProps {
 
 /**
  * Modern Card Template
- * Contemporary design with overlapping elements and bold typography. A dish
- * without a photo is one panel: tags, name, note, then the price chip and the
- * add button that would have floated on the photo.
+ * Contemporary design with overlapping elements and bold typography
  */
 export const ModernCard = memo(function ModernCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: ModernCardProps) {
-  const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
+  const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
-  const hasPhoto = hasDishPhoto(item)
-
-  const price = (
-    <div className="flex items-center gap-2">
-      {hasDiscount && (
-        <span
-          className="text-xs line-through"
-          style={{ color: branding.textMuted }}
-        >
-          {formatPrice(item.price, { hideCurrencySymbol })}
-        </span>
-      )}
-      <span
-        className="text-sm md:text-xl font-black"
-        data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
-      >
-        {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
-      </span>
-    </div>
-  )
-
-  const addButton = (
-    <button
-      className={`${hasPhoto ? 'absolute bottom-2 right-2 md:bottom-4 md:right-4 shadow-2xl' : 'shrink-0 shadow-md'} flex h-9 w-9 md:h-12 md:w-12 items-center justify-center rounded-xl md:rounded-2xl transition-all hover:scale-110`}
-      style={{
-        backgroundColor: branding.buttonPrimary,
-        color: branding.buttonPrimaryText
-      }}
-      onClick={(e) => {
-        e.stopPropagation()
-        onSelect(item)
-      }}
-      disabled={!isOrderable}
-      aria-label={`Add ${item.name}`}
-    >
-      <svg
-        className="h-4 w-4 md:h-6 md:w-6"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={3}
-          d="M12 4v16m8-8H4"
-        />
-      </svg>
-    </button>
-  )
-
-  if (!hasPhoto) {
-    return (
-      <div
-        className="group relative flex h-full cursor-pointer flex-col rounded-2xl md:rounded-3xl p-3 shadow-md transition-all hover:shadow-2xl md:p-4"
-        style={{ backgroundColor: branding.cards }}
-        onClick={() => onSelect(item)}
-      >
-        <TextCardTags
-          item={item}
-          branding={branding}
-          isOrderable={isOrderable}
-          hasDiscount={hasDiscount}
-          menuEngineeringEnabled={menuEngineeringEnabled}
-          soldOutLabel="Unavailable"
-          className="mb-2"
-        />
-        <h3
-          className="text-sm md:text-base font-black leading-snug line-clamp-2"
-          data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
-        >
-          {item.name}
-        </h3>
-        {item.description && (
-          <p
-            className="mt-1 text-[11px] md:text-xs line-clamp-2"
-            data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
-          >
-            {item.description}
-          </p>
-        )}
-        {item.variations.length > 0 && (
-          <span className="mt-1 text-xs font-medium" style={{ color: branding.textSecondary }}>
-            {item.variations.length} options available
-          </span>
-        )}
-        <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-          <div
-            className="rounded-xl px-2 py-1 md:px-3 md:py-2"
-            style={{ backgroundColor: tint(branding.primary, 10, branding.cards) }}
-          >
-            {price}
-          </div>
-          {addButton}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div
@@ -137,16 +34,24 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, i
     >
       {/* Image Container with gradient overlay */}
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        <OptimizedImage
-          src={item.image_url}
-          fallbackSrc={branding.logoUrl}
-          alt={item.name}
-          fill
-          className="object-cover transition-transform group-hover:scale-110"
-          sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-          loading={priority ? 'eager' : 'lazy'}
-          fetchPriority={priority ? 'high' : undefined}
-        />
+        {(item.image_url || branding.logoUrl) ? (
+          <OptimizedImage
+            src={item.image_url}
+            fallbackSrc={branding.logoUrl}
+            alt={item.name}
+            fill
+            className="object-cover transition-transform group-hover:scale-110"
+            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: branding.border }}>
+            <svg className="h-12 w-12 opacity-40" fill="currentColor" viewBox="0 0 24 24" style={{ color: branding.textMuted }}>
+              <path d="M8.1 13.34l2.83-2.83L3.91 3.5c-1.56 1.56-1.56 4.09 0 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41L12 14.41l6.88 6.88 1.41-1.41L13.41 13l1.47-1.47z" />
+            </svg>
+          </div>
+        )}
 
         {/* Gradient overlay for text readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -202,11 +107,51 @@ export const ModernCard = memo(function ModernCard({ item, onSelect, branding, i
           className="absolute bottom-2 left-2 md:bottom-4 md:left-4 rounded-xl px-2 py-1 md:px-3 md:py-2 backdrop-blur-md"
           style={{ backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
         >
-          {price}
+          <div className="flex items-center gap-2">
+            {hasDiscount && (
+              <span
+                className="text-xs line-through"
+                style={{ color: branding.textMuted }}
+              >
+                {formatPrice(item.price, { hideCurrencySymbol })}
+              </span>
+            )}
+            <span
+              className="text-sm md:text-xl font-black"
+              data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
+            >
+              {item.variations.length > 0 ? 'from ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
+            </span>
+          </div>
         </div>
 
         {/* Floating Add Button - bottom right */}
-        {addButton}
+        <button
+          className="absolute bottom-2 right-2 md:bottom-4 md:right-4 flex h-9 w-9 md:h-12 md:w-12 items-center justify-center rounded-xl md:rounded-2xl shadow-2xl transition-all hover:scale-110"
+          style={{
+            backgroundColor: branding.buttonPrimary,
+            color: branding.buttonPrimaryText
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect(item)
+          }}
+          disabled={!isOrderable}
+        >
+          <svg
+            className="h-4 w-4 md:h-6 md:w-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={3}
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+        </button>
       </div>
 
       {/* Content - Overlapping the image */}

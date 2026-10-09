@@ -5,8 +5,6 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
-import { hasDishPhoto } from '@/lib/dish-photo'
-import { TextCardTags } from './text-card-tags'
 
 interface GlassCardProps {
     item: MenuItem
@@ -20,38 +18,15 @@ interface GlassCardProps {
 
 /**
  * Glass Card Template
- * Glassmorphism design with frosted glass effect, backdrop blur, and translucent layers.
- * A dish without a photo is the frosted panel alone, with the add button beside the price.
+ * Glassmorphism design with frosted glass effect, backdrop blur, and translucent layers
  */
 export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: GlassCardProps) {
-    const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
+    const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
-    const hasPhoto = hasDishPhoto(item)
-
-    const addButton = (
-        <button
-            className={`${hasPhoto ? 'absolute bottom-2 right-2 md:bottom-3 md:right-3' : 'shrink-0'} flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl`}
-            style={{
-                backgroundColor: `${branding.buttonPrimary}dd`,
-                color: branding.buttonPrimaryText,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-            }}
-            onClick={(e) => {
-                e.stopPropagation()
-                onSelect(item)
-            }}
-            disabled={!isOrderable}
-            aria-label={`Add ${item.name}`}
-        >
-            <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-        </button>
-    )
 
     return (
         <div
-            className={`group relative overflow-hidden rounded-xl md:rounded-2xl cursor-pointer transition-all duration-300 ${hasPhoto ? '' : 'flex h-full flex-col'}`}
+            className="group relative overflow-hidden rounded-xl md:rounded-2xl cursor-pointer transition-all duration-300"
             style={{
                 background: `linear-gradient(135deg, ${branding.cards}cc, ${branding.cards}99)`,
                 backdropFilter: 'blur(20px)',
@@ -72,8 +47,8 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
             onClick={() => onSelect(item)}
         >
             {/* Image Container */}
-            {hasPhoto && (
-                <div className="relative aspect-[4/3] overflow-hidden">
+            <div className="relative aspect-[4/3] overflow-hidden">
+                {(item.image_url || branding.logoUrl) && (
                     <OptimizedImage
                         src={item.image_url}
                         fallbackSrc={branding.logoUrl}
@@ -84,97 +59,101 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                         loading={priority ? 'eager' : 'lazy'}
                         fetchPriority={priority ? 'high' : undefined}
                     />
+                )}
 
-                    {/* Frosted overlay at bottom */}
-                    <div
-                        className="absolute bottom-0 left-0 right-0 h-1/3"
-                        style={{
-                            background: 'linear-gradient(to top, rgba(255,255,255,0.4), transparent)',
-                            backdropFilter: 'blur(4px)',
-                            WebkitBackdropFilter: 'blur(4px)',
-                        }}
-                    />
+                {/* Frosted overlay at bottom */}
+                <div
+                    className="absolute bottom-0 left-0 right-0 h-1/3"
+                    style={{
+                        background: 'linear-gradient(to top, rgba(255,255,255,0.4), transparent)',
+                        backdropFilter: 'blur(4px)',
+                        WebkitBackdropFilter: 'blur(4px)',
+                    }}
+                />
 
-                    {/* Badges */}
-                    {menuEngineeringEnabled && item.badge_text && (
-                        <div className="absolute left-2 top-2 md:left-3 md:top-3 z-10">
-                            <span
-                                className="rounded-full px-2 py-0.5 text-[10px] md:px-2.5 md:py-1 md:text-xs font-bold backdrop-blur-xl"
-                                style={{
-                                    backgroundColor: `${branding.primary}dd`,
-                                    color: branding.buttonPrimaryText || '#ffffff',
-                                }}
-                            >
-                                {item.badge_text}
-                            </span>
-                        </div>
-                    )}
-
-                    {item.is_featured && !item.badge_text && (
-                        <div className="absolute left-2 top-2 md:left-3 md:top-3">
-                            <span
-                                className="rounded-full px-2 py-1 text-xs font-medium backdrop-blur-md"
-                                style={{
-                                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                    color: branding.primary,
-                                }}
-                            >
-                                ⭐ Featured
-                            </span>
-                        </div>
-                    )}
-
-                    {hasDiscount && (
-                        <div className="absolute right-2 top-2 md:right-3 md:top-3">
-                            <span
-                                className="rounded-full px-2 py-1 text-xs font-bold backdrop-blur-md"
-                                style={{ backgroundColor: `${branding.error}d9`, color: '#ffffff' }}
-                            >
-                                SALE
-                            </span>
-                        </div>
-                    )}
-
-                    {!isOrderable && (
-                        <div
-                            className="absolute inset-0 flex items-center justify-center"
-                            style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(255,255,255,0.3)' }}
+                {/* Badges */}
+                {menuEngineeringEnabled && item.badge_text && (
+                    <div className="absolute left-2 top-2 md:left-3 md:top-3 z-10">
+                        <span
+                            className="rounded-full px-2 py-0.5 text-[10px] md:px-2.5 md:py-1 md:text-xs font-bold backdrop-blur-xl"
+                            style={{
+                                backgroundColor: `${branding.primary}dd`,
+                                color: branding.buttonPrimaryText || '#ffffff',
+                            }}
                         >
-                            <span
-                                className="rounded-full px-4 py-2 text-sm font-semibold backdrop-blur-xl"
-                                style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: branding.textPrimary }}
-                            >
-                                Unavailable
-                            </span>
-                        </div>
-                    )}
+                            {item.badge_text}
+                        </span>
+                    </div>
+                )}
 
-                    {/* Floating Add Button */}
-                    {addButton}
-                </div>
-            )}
+                {item.is_featured && !item.badge_text && (
+                    <div className="absolute left-2 top-2 md:left-3 md:top-3">
+                        <span
+                            className="rounded-full px-2 py-1 text-xs font-medium backdrop-blur-md"
+                            style={{
+                                backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                color: branding.primary,
+                            }}
+                        >
+                            ⭐ Featured
+                        </span>
+                    </div>
+                )}
+
+                {hasDiscount && (
+                    <div className="absolute right-2 top-2 md:right-3 md:top-3">
+                        <span
+                            className="rounded-full px-2 py-1 text-xs font-bold backdrop-blur-md"
+                            style={{ backgroundColor: `${branding.error}d9`, color: '#ffffff' }}
+                        >
+                            SALE
+                        </span>
+                    </div>
+                )}
+
+                {!isOrderable && (
+                    <div
+                        className="absolute inset-0 flex items-center justify-center"
+                        style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(255,255,255,0.3)' }}
+                    >
+                        <span
+                            className="rounded-full px-4 py-2 text-sm font-semibold backdrop-blur-xl"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: branding.textPrimary }}
+                        >
+                            Unavailable
+                        </span>
+                    </div>
+                )}
+
+                {/* Floating Add Button */}
+                <button
+                    className="absolute bottom-2 right-2 md:bottom-3 md:right-3 flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full transition-all duration-200 hover:scale-110 backdrop-blur-xl"
+                    style={{
+                        backgroundColor: `${branding.buttonPrimary}dd`,
+                        color: branding.buttonPrimaryText,
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        onSelect(item)
+                    }}
+                    disabled={!isOrderable}
+                >
+                    <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                </button>
+            </div>
 
             {/* Content — frosted glass panel */}
             <div
-                className={`p-2.5 space-y-1 md:p-4 md:space-y-2 ${hasPhoto ? '' : 'flex flex-1 flex-col'}`}
+                className="p-2.5 space-y-1 md:p-4 md:space-y-2"
                 style={{
                     background: `linear-gradient(135deg, ${branding.cards}ee, ${branding.cards}cc)`,
                 }}
             >
-                {!hasPhoto && (
-                    <TextCardTags
-                        item={item}
-                        branding={branding}
-                        isOrderable={isOrderable}
-                        hasDiscount={hasDiscount}
-                        menuEngineeringEnabled={menuEngineeringEnabled}
-                        soldOutLabel="Unavailable"
-                        className="pb-1"
-                        tagClassName="rounded-full px-2 py-0.5 text-[10px] font-semibold backdrop-blur-md"
-                    />
-                )}
                 <h3
-                    className={`text-sm md:text-base font-semibold ${hasPhoto ? 'line-clamp-1' : 'line-clamp-2 leading-snug'}`}
+                    className="text-sm md:text-base font-semibold line-clamp-1"
                     data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
                 >
                     {item.name}
@@ -189,7 +168,7 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                     </p>
                 )}
 
-                <div className={`flex items-center justify-between pt-1 ${hasPhoto ? '' : 'mt-auto gap-2'}`}>
+                <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2">
                         {hasDiscount && (
                             <span className="text-sm line-through" style={{ color: branding.textMuted }}>
@@ -212,7 +191,6 @@ export const GlassCard = memo(function GlassCard({ item, onSelect, branding, isO
                             {item.variations.length} sizes
                         </span>
                     )}
-                    {!hasPhoto && addButton}
                 </div>
             </div>
         </div>

@@ -3,8 +3,7 @@
 import { memo } from 'react'
 import type { CardStyle } from '@/lib/card-style'
 import {
-  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, InlineCardLabels, Price, SoldOutVeil,
-  hasDishPhoto, readableOn, tint, useFlexCard,
+  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, readableOn, tint, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
 
@@ -21,8 +20,7 @@ const KIOSK_DEFAULTS: CardStyle = {
  * Kiosk — the fast-food ordering-screen tile (Jollibee, McDonald's kiosks).
  * The whole tile is the brand color. The food sits on a lit disc, the name is
  * set loud and upper-case, the price rides a chip in the accent color, and a
- * full-width bar in the inverse color owns the foot of the tile. A dish
- * without a photo is the same tile without the disc, its labels above the name.
+ * full-width bar in the inverse color owns the foot of the tile.
  */
 export const KioskCard = memo(function KioskCard({
   item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority,
@@ -35,7 +33,6 @@ export const KioskCard = memo(function KioskCard({
   const ink = readableOn(tile)
   const chip = branding.accent || branding.secondary
   const isContained = style.imageFit === 'contain'
-  const hasPhoto = hasDishPhoto(item)
 
   return (
     <article
@@ -43,51 +40,33 @@ export const KioskCard = memo(function KioskCard({
       className="group @container relative flex h-full flex-col overflow-hidden rounded-[var(--brand-radius,22px)] shadow-[0_10px_24px_-12px_rgba(0,0,0,0.45)] transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1"
       style={{ backgroundColor: tile, color: ink }}
     >
-      {hasPhoto && (
-        <div className={isContained ? 'px-3 pt-3 @xs:px-5 @xs:pt-5' : ''}>
-          <CardMedia
-            item={item}
-            branding={branding}
-            style={style}
-            priority={priority}
-            panel="transparent"
-            mediaStyle={isContained
-              ? { backgroundImage: `radial-gradient(circle at 50% 54%, ${tint(ink, 16)} 0 57%, transparent 57.5%)` }
-              : undefined}
-            imageClassName="transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.07] group-hover:-rotate-2"
-          >
-            {!isOrderable && <SoldOutVeil />}
-          </CardMedia>
-        </div>
-      )}
-
-      {hasPhoto && (
-        <CardBadges
+      <div className={isContained ? 'px-3 pt-3 @xs:px-5 @xs:pt-5' : ''}>
+        <CardMedia
           item={item}
-          menuEngineeringEnabled={menuEngineeringEnabled}
-          discountPercent={discountPercent}
-          background={ink}
-          color={tile}
-          saleBackground={branding.error}
-          className="left-3 top-3"
-        />
-      )}
+          branding={branding}
+          style={style}
+          priority={priority}
+          panel="transparent"
+          mediaStyle={isContained
+            ? { backgroundImage: `radial-gradient(circle at 50% 54%, ${tint(ink, 16)} 0 57%, transparent 57.5%)` }
+            : undefined}
+          imageClassName="transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.07] group-hover:-rotate-2"
+        >
+          {!isOrderable && <SoldOutVeil />}
+        </CardMedia>
+      </div>
+
+      <CardBadges
+        item={item}
+        menuEngineeringEnabled={menuEngineeringEnabled}
+        discountPercent={discountPercent}
+        background={ink}
+        color={tile}
+        saleBackground={branding.error}
+        className="left-3 top-3"
+      />
 
       <div className={`flex flex-1 flex-col ${density.pad} ${density.gap} ${isCentered ? 'items-center text-center' : 'items-start text-left'}`}>
-        {!hasPhoto && (
-          <InlineCardLabels
-            item={item}
-            branding={branding}
-            isOrderable={isOrderable}
-            menuEngineeringEnabled={menuEngineeringEnabled}
-            discountPercent={discountPercent}
-            badgeBackground={ink}
-            badgeColor={tile}
-            soldOutBackground={ink}
-            soldOutColor={tile}
-            className={isCentered ? 'justify-center' : ''}
-          />
-        )}
         <CardTitleButton
           item={item}
           onSelect={onSelect}

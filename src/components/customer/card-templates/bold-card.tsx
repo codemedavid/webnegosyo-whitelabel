@@ -5,9 +5,6 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
-import { tint } from '@/lib/card-color'
-import { hasDishPhoto } from '@/lib/dish-photo'
-import { TextCardTags } from './text-card-tags'
 
 interface BoldCardProps {
   item: MenuItem
@@ -21,110 +18,11 @@ interface BoldCardProps {
 
 /**
  * Bold Card Template
- * High contrast design with prominent CTA. A dish without a photo sets its
- * name and price loud on a brand-tinted panel above the same CTA.
+ * High contrast design with prominent CTA
  */
 export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: BoldCardProps) {
-  const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
+  const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
-  const hasPhoto = hasDishPhoto(item)
-
-  // Large prominent CTA button
-  const ctaButton = (
-    <button
-      className="w-full py-2.5 md:py-4 text-sm md:text-base font-black uppercase tracking-wide transition-all"
-      style={{
-        backgroundColor: branding.buttonPrimary,
-        color: branding.buttonPrimaryText
-      }}
-      onClick={(e) => {
-        e.stopPropagation()
-        onSelect(item)
-      }}
-      disabled={!isOrderable}
-      aria-label={`Add ${item.name}`}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'scale(1.02)'
-        e.currentTarget.style.opacity = '0.9'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'scale(1)'
-        e.currentTarget.style.opacity = '1'
-      }}
-    >
-      {isOrderable ? (
-        <>
-          <span className="text-lg md:text-2xl mr-1.5 md:mr-2">+</span>
-          Add to Cart
-        </>
-      ) : (
-        'Unavailable'
-      )}
-    </button>
-  )
-
-  if (!hasPhoto) {
-    return (
-      <div
-        className="group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl md:rounded-2xl shadow-lg transition-all hover:shadow-2xl"
-        style={{
-          backgroundColor: branding.cards,
-          borderColor: branding.primary,
-          borderWidth: '2px',
-          borderStyle: 'solid'
-        }}
-        onClick={() => onSelect(item)}
-      >
-        <div
-          className="flex flex-1 flex-col gap-1.5 p-3 md:gap-2 md:p-4"
-          style={{ backgroundColor: tint(branding.primary, 12, branding.cards) }}
-        >
-          <TextCardTags
-            item={item}
-            branding={branding}
-            isOrderable={isOrderable}
-            hasDiscount={hasDiscount}
-            menuEngineeringEnabled={menuEngineeringEnabled}
-            soldOutLabel="Sold Out"
-            tagClassName="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wide"
-          />
-          <h3
-            className="text-base md:text-xl font-black leading-tight line-clamp-2"
-            data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
-          >
-            {item.name}
-          </h3>
-          {item.description && (
-            <p
-              className="text-xs md:text-sm font-medium line-clamp-2"
-              data-branding-scope="storefront/card-description" style={{ color: branding.cardDescription }}
-            >
-              {item.description}
-            </p>
-          )}
-          {item.variations.length > 0 && (
-            <p className="text-xs font-semibold" style={{ color: branding.textSecondary }}>
-              {item.variations.length} SIZES AVAILABLE
-            </p>
-          )}
-          <div className="mt-auto flex items-baseline gap-2 pt-1">
-            {hasDiscount && (
-              <span className="text-sm font-bold line-through" style={{ color: branding.textMuted }}>
-                {formatPrice(item.price, { hideCurrencySymbol })}
-              </span>
-            )}
-            <span
-              className="text-xl md:text-3xl font-black"
-              data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
-            >
-              {item.variations.length > 0 ? 'FROM ' : ''}{formatPrice(displayPrice, { hideCurrencySymbol })}
-            </span>
-          </div>
-        </div>
-        {ctaButton}
-      </div>
-    )
-  }
 
   return (
     <div
@@ -139,16 +37,18 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
     >
       {/* Image Container */}
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-        <OptimizedImage
-          src={item.image_url}
-          fallbackSrc={branding.logoUrl}
-          alt={item.name}
-          fill
-          className="object-cover transition-transform group-hover:scale-105"
-          sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-          loading={priority ? 'eager' : 'lazy'}
-          fetchPriority={priority ? 'high' : undefined}
-        />
+        {(item.image_url || branding.logoUrl) && (
+          <OptimizedImage
+            src={item.image_url}
+            fallbackSrc={branding.logoUrl}
+            alt={item.name}
+            fill
+            className="object-cover transition-transform group-hover:scale-105"
+            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
+          />
+        )}
 
         {/* Strong dark gradient for text contrast */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
@@ -244,7 +144,36 @@ export const BoldCard = memo(function BoldCard({ item, onSelect, branding, isOrd
         </div>
       </div>
 
-      {ctaButton}
+      {/* Large prominent CTA button */}
+      <button
+        className="w-full py-2.5 md:py-4 text-sm md:text-base font-black uppercase tracking-wide transition-all"
+        style={{
+          backgroundColor: branding.buttonPrimary,
+          color: branding.buttonPrimaryText
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onSelect(item)
+        }}
+        disabled={!isOrderable}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.02)'
+          e.currentTarget.style.opacity = '0.9'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)'
+          e.currentTarget.style.opacity = '1'
+        }}
+      >
+        {isOrderable ? (
+          <>
+            <span className="text-lg md:text-2xl mr-1.5 md:mr-2">+</span>
+            Add to Cart
+          </>
+        ) : (
+          'Unavailable'
+        )}
+      </button>
     </div>
   )
 })

@@ -5,9 +5,6 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
-import { tint } from '@/lib/card-color'
-import { hasDishPhoto } from '@/lib/dish-photo'
-import { TextCardTags } from './text-card-tags'
 
 interface ZenCardProps {
     item: MenuItem
@@ -21,23 +18,21 @@ interface ZenCardProps {
 
 /**
  * Zen Card Template
- * Ultra-minimal, borderless design with generous whitespace and muted tones.
- * A dish without a photo rests its text on a barely-there brand wash instead.
+ * Ultra-minimal, borderless design with generous whitespace and muted tones
  */
 export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority }: ZenCardProps) {
-    const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
+    const hasDiscount = item.discounted_price && item.discounted_price < item.price
     const displayPrice = hasDiscount ? item.discounted_price! : item.price
-    const hasPhoto = hasDishPhoto(item)
 
     return (
         <div
-            className={`group relative cursor-pointer transition-all duration-500 ${hasPhoto ? '' : 'flex h-full flex-col rounded-2xl md:rounded-3xl p-2 md:p-3'}`}
-            style={{ backgroundColor: hasPhoto ? 'transparent' : tint(branding.primary, 5, branding.cards) }}
+            className="group relative cursor-pointer transition-all duration-500"
+            style={{ backgroundColor: 'transparent' }}
             onClick={() => onSelect(item)}
         >
             {/* Image — soft rounded, no border */}
-            {hasPhoto && (
-                <div className="relative aspect-[1/1] overflow-hidden rounded-2xl md:rounded-3xl bg-muted">
+            <div className="relative aspect-[1/1] overflow-hidden rounded-2xl md:rounded-3xl bg-muted">
+                {(item.image_url || branding.logoUrl) && (
                     <OptimizedImage
                         src={item.image_url}
                         fallbackSrc={branding.logoUrl}
@@ -48,71 +43,57 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrder
                         loading={priority ? 'eager' : 'lazy'}
                         fetchPriority={priority ? 'high' : undefined}
                     />
+                )}
 
-                    {/* Ultra-subtle badges */}
-                    {menuEngineeringEnabled && item.badge_text && (
-                        <div className="absolute left-2 top-2 md:left-4 md:top-4 z-10">
-                            <span
-                                className="rounded-full px-2 py-0.5 md:px-2.5 md:py-1 text-[10px] font-medium tracking-wide"
-                                style={{
-                                    backgroundColor: `${branding.primary}22`,
-                                    color: branding.primary,
-                                    backdropFilter: 'blur(12px)',
-                                }}
-                            >
-                                {item.badge_text}
-                            </span>
-                        </div>
-                    )}
+                {/* Ultra-subtle badges */}
+                {menuEngineeringEnabled && item.badge_text && (
+                    <div className="absolute left-2 top-2 md:left-4 md:top-4 z-10">
+                        <span
+                            className="rounded-full px-2 py-0.5 md:px-2.5 md:py-1 text-[10px] font-medium tracking-wide"
+                            style={{
+                                backgroundColor: `${branding.primary}22`,
+                                color: branding.primary,
+                                backdropFilter: 'blur(12px)',
+                            }}
+                        >
+                            {item.badge_text}
+                        </span>
+                    </div>
+                )}
 
-                    {item.is_featured && !item.badge_text && (
-                        <div className="absolute left-2 top-2 md:left-4 md:top-4">
-                            <span className="text-sm opacity-70">✦</span>
-                        </div>
-                    )}
+                {item.is_featured && !item.badge_text && (
+                    <div className="absolute left-2 top-2 md:left-4 md:top-4">
+                        <span className="text-sm opacity-70">✦</span>
+                    </div>
+                )}
 
-                    {hasDiscount && (
-                        <div className="absolute right-2 top-2 md:right-4 md:top-4">
-                            <span
-                                className="text-[10px] font-medium tracking-wider uppercase"
-                                style={{ color: branding.error, opacity: 0.9 }}
-                            >
-                                Sale
-                            </span>
-                        </div>
-                    )}
+                {hasDiscount && (
+                    <div className="absolute right-2 top-2 md:right-4 md:top-4">
+                        <span
+                            className="text-[10px] font-medium tracking-wider uppercase"
+                            style={{ color: branding.error, opacity: 0.9 }}
+                        >
+                            Sale
+                        </span>
+                    </div>
+                )}
 
-                    {!isOrderable && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm">
-                            <span
-                                className="text-xs font-medium tracking-wider uppercase"
-                                style={{ color: branding.textMuted }}
-                            >
-                                Unavailable
-                            </span>
-                        </div>
-                    )}
-                </div>
-            )}
+                {!isOrderable && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+                        <span
+                            className="text-xs font-medium tracking-wider uppercase"
+                            style={{ color: branding.textMuted }}
+                        >
+                            Unavailable
+                        </span>
+                    </div>
+                )}
+            </div>
 
             {/* Content — minimal, airy */}
-            <div className={`px-1 pb-1 space-y-1 md:px-2 md:pb-2 md:space-y-1.5 ${hasPhoto ? 'pt-2.5 md:pt-4' : 'flex flex-1 flex-col pt-1 md:pt-2'}`}>
-                {!hasPhoto && (
-                    <TextCardTags
-                        item={item}
-                        branding={branding}
-                        isOrderable={isOrderable}
-                        hasDiscount={hasDiscount}
-                        menuEngineeringEnabled={menuEngineeringEnabled}
-                        soldOutLabel="Unavailable"
-                        tagClassName="rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase"
-                        soldOutStyle={{ backgroundColor: 'transparent', color: branding.textMuted, boxShadow: `inset 0 0 0 1px ${branding.textMuted}` }}
-                        badgeStyle={{ backgroundColor: tint(branding.primary, 14), color: branding.primary }}
-                        saleStyle={{ backgroundColor: 'transparent', color: branding.error }}
-                    />
-                )}
+            <div className="px-1 pt-2.5 pb-1 space-y-1 md:px-2 md:pt-4 md:pb-2 md:space-y-1.5">
                 <h3
-                    className={`text-xs md:text-sm font-medium tracking-wide ${hasPhoto ? 'line-clamp-1' : 'line-clamp-2'}`}
+                    className="text-xs md:text-sm font-medium line-clamp-1 tracking-wide"
                     data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
                 >
                     {item.name}
@@ -127,7 +108,7 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrder
                     </p>
                 )}
 
-                <div className={`flex items-center justify-between pt-2 ${hasPhoto ? '' : 'mt-auto'}`}>
+                <div className="flex items-center justify-between pt-2">
                     <div className="flex items-baseline gap-1.5">
                         {hasDiscount && (
                             <span className="text-xs line-through" style={{ color: branding.textMuted, opacity: 0.5 }}>
@@ -153,7 +134,6 @@ export const ZenCard = memo(function ZenCard({ item, onSelect, branding, isOrder
                             onSelect(item)
                         }}
                         disabled={!isOrderable}
-                        aria-label={`Add ${item.name}`}
                     >
                         <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

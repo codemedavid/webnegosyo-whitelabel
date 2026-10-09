@@ -3,8 +3,7 @@
 import { memo } from 'react'
 import type { CardStyle } from '@/lib/card-style'
 import {
-  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, InlineCardLabels, Price, SoldOutVeil,
-  hasDishPhoto, readableOn, useFlexCard,
+  AddButton, selectOnCardClick, CardBadges, CardMedia, CardTitleButton, DENSITY_CLASS, Price, SoldOutVeil, readableOn, useFlexCard,
   type FlexCardProps,
 } from './card-kit'
 
@@ -27,8 +26,7 @@ const ADD_SHAPE_CLASS: Partial<Record<CardStyle['addButton'], string>> = {
  * Bistro — the clean café-site card (Squarespace / Toast menus).
  * A white card with a wide photo flush to its top edge, the dish name in
  * serif capitals, a two-line description, and the price on the left of a
- * solid pill "Add" button. Calm and legible in a 2-3 column grid. A dish
- * without a photo is the white card's text alone, labels above the name.
+ * solid pill "Add" button. Calm and legible in a 2-3 column grid.
  */
 export const BistroCard = memo(function BistroCard({
   item, onSelect, branding, isOrderable, menuEngineeringEnabled, hideCurrencySymbol, priority,
@@ -37,7 +35,6 @@ export const BistroCard = memo(function BistroCard({
     useFlexCard(item, branding, BISTRO_DEFAULTS)
   const isCentered = style.textAlign === 'center'
   const density = DENSITY_CLASS[style.density]
-  const hasPhoto = hasDishPhoto(item)
   const addBackground = branding.buttonPrimary
   const addColor = branding.buttonPrimaryText || readableOn(addBackground)
 
@@ -47,41 +44,28 @@ export const BistroCard = memo(function BistroCard({
       className="group @container relative flex h-full flex-col overflow-hidden rounded-[var(--brand-radius,16px)] border shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow duration-300 hover:shadow-[0_10px_28px_rgba(0,0,0,0.08)]"
       style={{ backgroundColor: branding.cards, borderColor: branding.cardsBorder }}
     >
-      {hasPhoto && (
-        <div className="relative">
-          <CardMedia
-            item={item}
-            branding={branding}
-            style={style}
-            priority={priority}
-            imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]"
-          >
-            {!isOrderable && <SoldOutVeil label="Unavailable" />}
-          </CardMedia>
-          <CardBadges
-            item={item}
-            menuEngineeringEnabled={menuEngineeringEnabled}
-            discountPercent={discountPercent}
-            background={branding.cards}
-            color={branding.cardTitle}
-            saleBackground={branding.error}
-            className="left-2.5 top-2.5"
-          />
-        </div>
-      )}
+      <div className="relative">
+        <CardMedia
+          item={item}
+          branding={branding}
+          style={style}
+          priority={priority}
+          imageClassName="transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]"
+        >
+          {!isOrderable && <SoldOutVeil label="Unavailable" />}
+        </CardMedia>
+        <CardBadges
+          item={item}
+          menuEngineeringEnabled={menuEngineeringEnabled}
+          discountPercent={discountPercent}
+          background={branding.cards}
+          color={branding.cardTitle}
+          saleBackground={branding.error}
+          className="left-2.5 top-2.5"
+        />
+      </div>
 
       <div className={`flex flex-1 flex-col ${density.pad} ${density.gap} ${isCentered ? 'items-center text-center' : 'items-start text-left'}`}>
-        {!hasPhoto && (
-          <InlineCardLabels
-            item={item}
-            branding={branding}
-            isOrderable={isOrderable}
-            menuEngineeringEnabled={menuEngineeringEnabled}
-            discountPercent={discountPercent}
-            soldOutLabel="Unavailable"
-            className={isCentered ? 'justify-center' : ''}
-          />
-        )}
         <CardTitleButton
           item={item}
           onSelect={onSelect}

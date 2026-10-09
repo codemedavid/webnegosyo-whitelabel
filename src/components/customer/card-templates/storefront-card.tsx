@@ -5,9 +5,6 @@ import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { MenuItem } from '@/types/database'
-import { tint } from '@/lib/card-color'
-import { hasDishPhoto } from '@/lib/dish-photo'
-import { TextCardTags } from './text-card-tags'
 
 interface StorefrontCardProps {
   item: MenuItem
@@ -22,7 +19,6 @@ interface StorefrontCardProps {
 /**
  * Storefront Card Template
  * Square product-led catalog card inspired by marketplace food apps.
- * A dish without a photo is a compact brand-tinted tile: name, price, add.
  */
 export const StorefrontCard = memo(function StorefrontCard({
   item,
@@ -33,74 +29,8 @@ export const StorefrontCard = memo(function StorefrontCard({
   hideCurrencySymbol,
   priority,
 }: StorefrontCardProps) {
-  const hasDiscount = Boolean(item.discounted_price && item.discounted_price < item.price)
+  const hasDiscount = item.discounted_price && item.discounted_price < item.price
   const displayPrice = hasDiscount ? item.discounted_price! : item.price
-  const hasPhoto = hasDishPhoto(item)
-
-  const price = (
-    <div className="mt-1.5 flex items-baseline gap-2 md:mt-2">
-      {hasDiscount && (
-        <span
-          className="text-sm line-through md:text-base"
-          style={{ color: branding.textMuted }}
-        >
-          {formatPrice(item.price, { hideCurrencySymbol })}
-        </span>
-      )}
-
-      <span
-        className="text-[0.95rem] font-medium md:text-lg"
-        data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
-      >
-        {item.variations.length > 0 ? 'from ' : ''}
-        {formatPrice(displayPrice, { hideCurrencySymbol })}
-      </span>
-    </div>
-  )
-
-  if (!hasPhoto) {
-    return (
-      <div
-        className="group flex h-full cursor-pointer flex-col rounded-[22px] p-3.5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg md:rounded-[26px] md:p-4"
-        style={{ backgroundColor: tint(branding.primary, 8, branding.cards) }}
-        onClick={() => onSelect(item)}
-      >
-        <TextCardTags
-          item={item}
-          branding={branding}
-          isOrderable={isOrderable}
-          hasDiscount={hasDiscount}
-          menuEngineeringEnabled={menuEngineeringEnabled}
-          soldOutLabel="Unavailable"
-          className="mb-2"
-          tagClassName="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-        />
-        <h3
-          className="line-clamp-2 text-base font-bold leading-tight md:text-[1.35rem] md:leading-tight"
-          data-branding-scope="storefront/card-title" style={{ color: branding.cardTitle }}
-        >
-          {item.name}
-        </h3>
-        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
-          {price}
-          <button
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-[0_6px_16px_rgba(0,0,0,0.16)] transition-transform duration-200 hover:scale-110 md:h-12 md:w-12"
-            style={{ backgroundColor: branding.buttonPrimary, color: branding.buttonPrimaryText }}
-            onClick={(event) => {
-              event.stopPropagation()
-              onSelect(item)
-            }}
-            disabled={!isOrderable}
-            aria-label={`Add ${item.name}`}
-          >
-            <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M12 5v14m7-7H5" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="group cursor-pointer" onClick={() => onSelect(item)}>
@@ -109,16 +39,27 @@ export const StorefrontCard = memo(function StorefrontCard({
           className="relative aspect-square overflow-hidden rounded-[22px] md:rounded-[26px] shadow-sm transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lg"
           style={{ backgroundColor: branding.primary }}
         >
-          <OptimizedImage
-            src={item.image_url}
-            fallbackSrc={branding.logoUrl}
-            alt={item.name}
-            fill
-            className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
-            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-            loading={priority ? 'eager' : 'lazy'}
-            fetchPriority={priority ? 'high' : undefined}
-          />
+          {(item.image_url || branding.logoUrl) ? (
+            <OptimizedImage
+              src={item.image_url}
+              fallbackSrc={branding.logoUrl}
+              alt={item.name}
+              fill
+              className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
+              sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : undefined}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center px-5 text-center">
+              <span
+                className="text-sm font-semibold"
+                style={{ color: branding.buttonPrimaryText || '#ffffff' }}
+              >
+                {item.name}
+              </span>
+            </div>
+          )}
 
           {menuEngineeringEnabled && item.badge_text && (
             <div className="absolute left-3 top-3 z-10 md:left-4 md:top-4">
@@ -192,7 +133,24 @@ export const StorefrontCard = memo(function StorefrontCard({
             {item.name}
           </h3>
 
-          {price}
+          <div className="mt-1.5 flex items-baseline gap-2 md:mt-2">
+            {hasDiscount && (
+              <span
+                className="text-sm line-through md:text-base"
+                style={{ color: branding.textMuted }}
+              >
+                {formatPrice(item.price, { hideCurrencySymbol })}
+              </span>
+            )}
+
+            <span
+              className="text-[0.95rem] font-medium md:text-lg"
+              data-branding-scope="storefront/card-price" style={{ color: branding.cardPrice }}
+            >
+              {item.variations.length > 0 ? 'from ' : ''}
+              {formatPrice(displayPrice, { hideCurrencySymbol })}
+            </span>
+          </div>
         </div>
       </div>
     </div>
