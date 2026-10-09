@@ -19,6 +19,7 @@
  */
 
 import { round2 } from "./pos-cart";
+import type { LatLng } from "./pos-checkout-fields";
 
 /** The delivery half of the register's state for one sale. */
 export interface PosDeliveryDetails {
@@ -26,6 +27,11 @@ export interface PosDeliveryDetails {
   fee: number | null;
   address: string;
   phone: string;
+  /**
+   * Where the address is on the map, when it was picked from the address
+   * search. Absent/null for a typed address — the pin is never guessed.
+   */
+  location?: LatLng | null;
 }
 
 /** The delivery slice of the store, as a finished sale leaves it. */
@@ -40,6 +46,7 @@ export interface ClearedSaleDelivery {
  * object — the same reasoning as `clearedSaleCustomer`.
  */
 export function clearedSaleDelivery(): ClearedSaleDelivery {
+  // No `location` key: absent already means "not pinned".
   return { delivery: { fee: null, address: "", phone: "" } };
 }
 
@@ -72,6 +79,14 @@ export function chargeableDeliveryFee(
   return round2(fee);
 }
 
+function validLocation(location: LatLng | null | undefined): LatLng | null {
+  if (!location) return null;
+  const { lat, lng } = location;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
 /**
  * The blob keys a delivery sale writes into `customerData`.
  *
@@ -83,9 +98,15 @@ export function deliveryCustomerData(
 ): Record<string, string> {
   const address = delivery?.address.trim() ?? "";
   const phone = delivery?.phone.trim() ?? "";
+  const location = address ? validLocation(delivery?.location) : null;
 
   return {
     ...(address ? { delivery_address: address } : {}),
+    // Strings, exactly as the web checkout writes them (`customer-field-input.ts`).
+    // Only with an address: a pin without one would be a dot nobody can read.
+    ...(location
+      ? { delivery_lat: String(location.lat), delivery_lng: String(location.lng) }
+      : {}),
     ...(phone ? { customer_phone: phone } : {}),
   };
 }

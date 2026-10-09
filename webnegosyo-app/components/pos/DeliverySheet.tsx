@@ -12,11 +12,18 @@ import {
 import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
+import { AddressField } from "./delivery/AddressField";
+import { DeliveryFeeField } from "./delivery/DeliveryFeeField";
 import {
   clearedSaleDelivery,
   parseDeliveryFee,
   type PosDeliveryDetails,
 } from "../../lib/pos-delivery";
+import { canSuggestDeliveryFee } from "../../lib/pos-delivery-quote";
+import { EMPTY_CHECKOUT_SETUP, type LatLng } from "../../lib/pos-checkout-fields";
+import { useDeliveryFeeSuggestion } from "../../lib/maps/use-delivery-fee-suggestion";
+import { useCheckoutSetup } from "../../lib/query/use-checkout-setup";
+import { useAuthStore } from "../../stores/auth-store";
 
 interface DeliverySheetProps {
   visible: boolean;
@@ -30,16 +37,18 @@ interface DeliverySheetProps {
    * let a cashier "save" changes nothing persists.
    */
   feeOnly?: boolean;
+  /** The sale's item subtotal, for the store's free-delivery minimum. */
+  itemsSubtotal?: number;
 }
 
 /**
- * Delivery details for a counter sale — fee, address, phone, all optional.
+ * Delivery details for a counter sale — address, fee, contact, all optional.
  *
- * One sheet for all three rather than a fee prompt plus fields on the tender
- * screen: the cashier taking a phoned-in delivery writes everything down in
- * one motion, and a fee with no address is as common as the reverse (a rider
- * who already knows the block). Nothing here validates beyond the fee being a
- * positive number, because every field is optional by design.
+ * The address searches the same places as the storefront's address field;
+ * picking one pins it (map preview + "Open in Google Maps") and, on a store
+ * with distance pricing, fills in the fee it would charge online. The fee
+ * stays the cashier's call: typing over it wins, and a typed fee is never
+ * replaced by a later suggestion.
  */
 export function DeliverySheet({
   visible,
@@ -47,9 +56,16 @@ export function DeliverySheet({
   delivery,
   onSave,
   feeOnly = false,
+  itemsSubtotal = 0,
 }: DeliverySheetProps) {
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const setup = useCheckoutSetup(visible ? tenantId : null).data ?? EMPTY_CHECKOUT_SETUP;
+
   const [feeText, setFeeText] = useState("");
+  // True while the fee box holds the suggestion rather than the cashier's own figure.
+  const [isFeeSuggested, setIsFeeSuggested] = useState(false);
   const [address, setAddress] = useState("");
+  const [location, setLocation] = useState<LatLng | null>(null);
   const [phone, setPhone] = useState("");
   const [feeError, setFeeError] = useState<string | null>(null);
 
@@ -58,10 +74,44 @@ export function DeliverySheet({
   useEffect(() => {
     if (!visible) return;
     setFeeText(delivery.fee !== null ? String(delivery.fee) : "");
+    setIsFeeSuggested(false);
     setAddress(delivery.address);
+    setLocation(delivery.location ?? null);
     setPhone(delivery.phone);
     setFeeError(null);
   }, [visible, delivery]);
+
+  const { suggestion, isCalculating } = useDeliveryFeeSuggestion(
+    feeOnly ? null : tenantId,
+    setup.delivery,
+    location,
+    itemsSubtotal,
+  );
+
+  // A new suggestion fills an EMPTY fee box, or replaces an earlier
+  // suggestion — never a figure the cashier typed.
+  useEffect(() => {
+    if (!suggestion) return;
+    if (feeText.trim() !== "" && !isFeeSuggested) return;
+    setFeeText(suggestion.fee > 0 ? String(suggestion.fee) : "");
+    setIsFeeSuggested(true);
+    setFeeError(null);
+    // Only a new suggestion should refill the box.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion]);
+
+  function handleFeeChange(next: string) {
+    setFeeText(next);
+    setIsFeeSuggested(false);
+    setFeeError(null);
+  }
+
+  function handleUseSuggestion() {
+    if (!suggestion) return;
+    setFeeText(suggestion.fee > 0 ? String(suggestion.fee) : "");
+    setIsFeeSuggested(true);
+    setFeeError(null);
+  }
 
   function save() {
     const fee = parseDeliveryFee(feeText);
@@ -72,7 +122,13 @@ export function DeliverySheet({
       return;
     }
 
-    onSave({ fee, address: address.trim(), phone: phone.trim() });
+    const trimmedAddress = address.trim();
+    onSave({
+      fee,
+      address: trimmedAddress,
+      phone: phone.trim(),
+      location: trimmedAddress ? location : null,
+    });
     onClose();
   }
 
@@ -83,6 +139,7 @@ export function DeliverySheet({
 
   const hasExisting =
     delivery.fee !== null || delivery.address !== "" || delivery.phone !== "";
+  const canHintPin = canSuggestDeliveryFee(setup.delivery);
 
   // A docked sheet becomes a centred dialog once the glass is a tablet's
   // (components/pos/dialog-layout.ts).
@@ -101,9 +158,17 @@ export function DeliverySheet({
         />
 
         <View style={[styles.sheet, isCentered && centeredDialog.sheet]}>
+          <View style={styles.grabber} />
           <View style={styles.header}>
-            <Text style={styles.title}>Delivery details</Text>
-            <TouchableOpacity onPress={onClose} accessibilityRole="button">
+            <View style={styles.headerText}>
+              <Text style={styles.title}>{feeOnly ? "Delivery fee" : "Delivery details"}</Text>
+              {!feeOnly && <Text style={styles.subtitle}>Everything here is optional</Text>}
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              accessibilityRole="button"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Text style={styles.close}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -111,52 +176,61 @@ export function DeliverySheet({
           <ScrollView
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.sectionLabel}>Delivery fee (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={feeText}
-              onChangeText={(next) => {
-                setFeeText(next);
-                setFeeError(null);
-              }}
-              placeholder="e.g. 50"
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="decimal-pad"
-              accessibilityLabel="Delivery fee"
-            />
-            {feeError && <Text style={styles.error}>{feeError}</Text>}
-
             {!feeOnly && (
-              <>
-                <Text style={styles.sectionLabel}>Delivery address (optional)</Text>
-            <TextInput
-              style={[styles.input, styles.addressInput]}
-              value={address}
-              onChangeText={setAddress}
-              placeholder="Street, barangay, landmark…"
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              accessibilityLabel="Delivery address"
-            />
-
-            <Text style={styles.sectionLabel}>Contact number (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="e.g. 0917 000 1234"
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="phone-pad"
-              accessibilityLabel="Contact number"
-            />
-              </>
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Address</Text>
+                <AddressField
+                  key={visible ? "open" : "closed"}
+                  tenantId={tenantId}
+                  address={address}
+                  location={location}
+                  near={setup.delivery.store}
+                  onChange={(next) => {
+                    setAddress(next.address);
+                    setLocation(next.location);
+                  }}
+                />
+              </View>
             )}
 
-            <TouchableOpacity style={styles.save} onPress={save} accessibilityRole="button">
-              <Text style={styles.saveText}>Save delivery details</Text>
-            </TouchableOpacity>
+            <View style={styles.section}>
+              {/* The title already says it when the fee is all there is. */}
+              {!feeOnly && <Text style={styles.sectionLabel}>Delivery fee</Text>}
+              <DeliveryFeeField
+                value={feeText}
+                onChange={handleFeeChange}
+                error={feeError}
+                suggestion={suggestion}
+                isCalculating={isCalculating}
+                isSuggested={isFeeSuggested}
+                onUseSuggestion={handleUseSuggestion}
+                showPinHint={canHintPin && !feeOnly && location === null && address.trim() !== ""}
+              />
+            </View>
 
+            {!feeOnly && (
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Contact number</Text>
+                <TextInput
+                  style={styles.input}
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="e.g. 0917 000 1234"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  accessibilityLabel="Contact number"
+                />
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.save} onPress={save} accessibilityRole="button">
+              <Text style={styles.saveText}>Save</Text>
+            </TouchableOpacity>
             {hasExisting && (
               <TouchableOpacity
                 style={styles.remove}
@@ -166,7 +240,7 @@ export function DeliverySheet({
                 <Text style={styles.removeText}>Remove delivery from this sale</Text>
               </TouchableOpacity>
             )}
-          </ScrollView>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -185,26 +259,37 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-    maxHeight: "85%",
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+    maxHeight: "92%",
   },
-  scrollContent: { paddingBottom: spacing.lg },
+  grabber: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.separator,
+    marginBottom: spacing.md,
+  },
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
   },
+  headerText: { flex: 1 },
   title: { ...typography.heading, color: colors.textPrimary },
-  close: { ...typography.caption, color: colors.textSecondary, fontWeight: "700" },
+  subtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  close: { ...typography.caption, color: colors.textSecondary, fontWeight: "700", paddingTop: 2 },
+  scrollContent: { paddingBottom: spacing.md },
+  section: { marginTop: spacing.lg },
   sectionLabel: {
     ...typography.small,
     color: colors.textSecondary,
     fontWeight: "700",
     textTransform: "uppercase",
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    letterSpacing: 0.4,
+    marginBottom: spacing.sm,
   },
   input: {
     ...typography.body,
@@ -214,16 +299,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.separator,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: 48,
   },
-  addressInput: { minHeight: 64, textAlignVertical: "top" },
-  error: { ...typography.small, color: colors.danger, marginTop: spacing.xs },
+  footer: {
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+  },
   save: {
     backgroundColor: colors.primary,
     borderRadius: radius.lg,
     alignItems: "center",
-    paddingVertical: spacing.md,
-    marginTop: spacing.xl,
+    paddingVertical: spacing.md + 2,
   },
   saveText: { ...typography.body, fontWeight: "700", color: colors.textOnDark },
   remove: { alignItems: "center", paddingVertical: spacing.md },

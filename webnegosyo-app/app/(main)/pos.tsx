@@ -748,6 +748,7 @@ export default function PosScreen() {
               }
             : delivery
         }
+        itemsSubtotal={totals.subtotal}
         onSave={(details) => {
           if (editContext) setEditDeliveryFee(details.fee ?? 0);
           else setDelivery(details);

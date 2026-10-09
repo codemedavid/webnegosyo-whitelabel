@@ -57,6 +57,7 @@ import {
   clearedSaleDelivery,
   type PosDeliveryDetails,
 } from "../lib/pos-delivery";
+import { clearedSaleAnswers, withAnswer, type CheckoutAnswers } from "../lib/pos-checkout-answers";
 import { clearedSaleTable, isDineInType, type PosTableDetails } from "../lib/pos-table";
 import type { OrderTypePricing } from "../lib/order-type-pricing";
 import {
@@ -119,6 +120,11 @@ interface PosCartState {
    * a takeaway on the floor plan.
    */
   table: PosTableDetails;
+  /**
+   * Answers to the merchant's own checkout questions ("Landmark", …), keyed by
+   * field name. Cleared with the sale like the delivery details.
+   */
+  checkoutAnswers: CheckoutAnswers;
 
   add: (input: PosLineInput) => void;
   setQty: (key: string, quantity: number) => void;
@@ -138,6 +144,8 @@ interface PosCartState {
   setAttachedCustomer: (customer: AttachedCustomer | null) => void;
   /** Merge a partial update into this sale's delivery details. */
   setDelivery: (patch: Partial<PosDeliveryDetails>) => void;
+  /** Set (or, with a blank value, clear) one checkout answer. */
+  setCheckoutAnswer: (fieldName: string, value: string) => void;
   /** Attach, change or (with the cleared shape) remove this sale's table. */
   setTable: (table: PosTableDetails) => void;
   /**
@@ -225,6 +233,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   orderTypePricing: null,
   ...clearedSaleCustomer(),
   ...clearedSaleDelivery(),
+  ...clearedSaleAnswers(),
   ...clearedSaleTable(),
   discount: EMPTY_POS_DISCOUNT_SESSION,
 
@@ -274,6 +283,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       saleOutlet: null,
       ...clearedSaleCustomer(),
       ...clearedSaleDelivery(),
+      ...clearedSaleAnswers(),
       ...clearedSaleTable(),
       editContext: null,
       editWarnings: [],
@@ -293,6 +303,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       ...clearedSaleDelivery(),
       ...clearedSaleTable(),
       discount: EMPTY_POS_DISCOUNT_SESSION,
+      ...clearedSaleAnswers(),
     }),
 
   /**
@@ -318,6 +329,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       saleOutlet: null,
       ...clearedSaleCustomer(),
       ...clearedSaleDelivery(),
+      ...clearedSaleAnswers(),
       ...clearedSaleTable(),
       editContext: null,
       editWarnings: [],
@@ -393,6 +405,8 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   setAttachedCustomer: (attachedCustomer) => set({ attachedCustomer }),
 
   setDelivery: (patch) => set((s) => ({ delivery: { ...s.delivery, ...patch } })),
+  setCheckoutAnswer: (fieldName, value) =>
+    set((s) => ({ checkoutAnswers: withAnswer(s.checkoutAnswers, fieldName, value) })),
   setTable: (table) => set({ table }),
 
   setEditDeliveryFee: (fee) =>

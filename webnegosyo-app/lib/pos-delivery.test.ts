@@ -223,3 +223,22 @@ describe("buildPosOrder — deliveryAddress column parity", () => {
     expect("deliveryAddress" in order).toBe(false);
   });
 });
+
+describe("deliveryCustomerData — the pinned spot", () => {
+  it("writes the pin as strings beside the address, exactly like the web checkout", () => {
+    expect(
+      deliveryCustomerData(delivery({ address: "SM North EDSA, Quezon City", location: { lat: 14.6566, lng: 121.0298 } })),
+    ).toEqual({
+      delivery_address: "SM North EDSA, Quezon City",
+      delivery_lat: "14.6566",
+      delivery_lng: "121.0298",
+    });
+  });
+
+  it("never writes a pin without an address, or an impossible one", () => {
+    expect(deliveryCustomerData(delivery({ address: "", location: { lat: 14.6, lng: 121 } }))).toEqual({});
+    expect(
+      deliveryCustomerData(delivery({ address: "Somewhere", location: { lat: 140, lng: 121 } })),
+    ).toEqual({ delivery_address: "Somewhere" });
+  });
+});

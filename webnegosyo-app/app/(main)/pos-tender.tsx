@@ -61,6 +61,11 @@ import {
   walkInPhoneProblem,
 } from "../../lib/customers/pos-attachment";
 import { CustomerPickerSheet } from "../../components/pos/CustomerPickerSheet";
+import { CheckoutDetails } from "../../components/pos/CheckoutDetails";
+import { DeliverySheet } from "../../components/pos/DeliverySheet";
+import { useCheckoutSetup } from "../../lib/query/use-checkout-setup";
+import { customFieldsFor, EMPTY_CHECKOUT_SETUP } from "../../lib/pos-checkout-fields";
+import { answersCustomerData } from "../../lib/pos-checkout-answers";
 import { posStockRevision } from "../../lib/pos-stock-revision";
 import { freshTenderSession } from "../../lib/pos-tender-session";
 import { usePosSaleTotals } from "../../lib/use-pos-sale-totals";
@@ -139,6 +144,10 @@ export default function PosTenderScreen() {
   const orderTypeKind = usePosCartStore((s) => s.orderTypeKind);
   const attachedCustomer = usePosCartStore((s) => s.attachedCustomer);
   const setAttachedCustomer = usePosCartStore((s) => s.setAttachedCustomer);
+  const delivery = usePosCartStore((s) => s.delivery);
+  const setDelivery = usePosCartStore((s) => s.setDelivery);
+  const checkoutAnswers = usePosCartStore((s) => s.checkoutAnswers);
+  const setCheckoutAnswer = usePosCartStore((s) => s.setCheckoutAnswer);
   const reset = usePosCartStore((s) => s.reset);
   const editContext = usePosCartStore((s) => s.editContext);
   const endEdit = usePosCartStore((s) => s.endEdit);
@@ -159,6 +168,7 @@ export default function PosTenderScreen() {
   const [proof, setProof] = useState<CapturedProof | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
   /** Why the order was changed. Edit mode only; written to the audit row. */
   const [editReason, setEditReason] = useState("");
   /** Take the money now, or place the order unpaid and collect it later. */
@@ -196,6 +206,14 @@ export default function PosTenderScreen() {
   // Editing a placed order: `edit` is what it is now worth, and what still has
   // to move. Every part of that judgement lives in `pos-edit-mode.ts`.
   const { totals, discountLines: shownDiscountLines, edit } = usePosSaleTotals();
+
+  // The storefront's checkout questions for this order type. Optional at the
+  // counter: a failed read just means none are shown.
+  const checkoutSetup = useCheckoutSetup(tenantId).data ?? EMPTY_CHECKOUT_SETUP;
+  const customFields = useMemo(
+    () => customFieldsFor(checkoutSetup.fields, orderTypeId),
+    [checkoutSetup.fields, orderTypeId],
+  );
 
   const isRefund = edit?.intent === "refund";
   const isAlreadySettled = edit?.intent === "settled";
@@ -499,6 +517,8 @@ export default function PosTenderScreen() {
         delivery: usePosCartStore.getState().delivery,
         // The table, likewise, is whatever the sale holds at tender.
         table: usePosCartStore.getState().table,
+        // Only answers to questions THIS order type asks.
+        checkoutAnswers: answersCustomerData(customFields, usePosCartStore.getState().checkoutAnswers),
         // Keep the branch that supplied the cart's prices and stock.
         outlet: saleOutlet,
       });
@@ -656,6 +676,7 @@ export default function PosTenderScreen() {
     customerName,
     customerPhone,
     isPhoneOffered,
+    customFields,
     // Without this the callback closes over the attachment as it was when the
     // screen last rendered, so a guest picked and then immediately charged
     // would ring up against whoever was attached before them.
@@ -806,6 +827,15 @@ export default function PosTenderScreen() {
                 {attachmentSummary(attachedCustomer)}
               </Text>
             </TouchableOpacity>
+            <CheckoutDetails
+              isDelivery={orderTypeKind === "delivery"}
+              delivery={delivery}
+              deliveryFee={totals.deliveryFee}
+              onOpenDelivery={() => setIsDeliveryOpen(true)}
+              customFields={customFields}
+              answers={checkoutAnswers}
+              onAnswer={setCheckoutAnswer}
+            />
           </>
         )}
 
@@ -977,6 +1007,14 @@ export default function PosTenderScreen() {
           setAttachedCustomer(customer);
           setIsPickerOpen(false);
         }}
+      />
+
+      <DeliverySheet
+        visible={isDeliveryOpen}
+        onClose={() => setIsDeliveryOpen(false)}
+        delivery={delivery}
+        onSave={setDelivery}
+        itemsSubtotal={totals.subtotal}
       />
     </View>
   );

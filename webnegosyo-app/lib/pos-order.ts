@@ -86,6 +86,12 @@ export interface PosOrderContext {
   /** Any non-POS customerData the caller already assembled. */
   customerData?: Record<string, unknown>;
   /**
+   * Answers to the merchant's own checkout questions (`answersCustomerData`),
+   * keyed by field name. Spread before everything else in the blob, so a
+   * merchant field can never displace a key the register writes.
+   */
+  checkoutAnswers?: Record<string, string>;
+  /**
    * Vouchers and manual discounts already resolved by `pos-discount.ts`.
    *
    * Lines rather than codes, because the register prices locally — it has to
@@ -257,6 +263,7 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
     // the order still lands on a customer profile.
     customerContact: context.customerContact || deliveryBlob.customer_phone || "",
     customerData: {
+      ...(context.checkoutAnswers ?? {}),
       // The branch is stamped by the register, not accepted from the caller,
       // so a counter sale is always attributable to the till that rang it.
       ...withOrderOutlet(context.customerData, context.outlet),

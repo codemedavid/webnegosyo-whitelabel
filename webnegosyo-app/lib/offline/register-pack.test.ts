@@ -14,6 +14,7 @@ jest.mock("../query/use-register-pricing", () => ({
   fetchRegisterPricing: jest.fn(),
 }));
 jest.mock("../pos-catalog", () => ({ listRegisterPaymentMethods: jest.fn() }));
+jest.mock("../pos-checkout-fields", () => ({ fetchCheckoutSetup: jest.fn() }));
 jest.mock("../use-outlets", () => ({ OUTLETS_RESOURCE: "outlets", fetchOutlets: jest.fn() }));
 jest.mock("../tables/tables-service", () => ({
   DINING_TABLES_RESOURCE: "dining-tables",
@@ -27,6 +28,8 @@ import { fetchRegisterPricing, registerPricingKey } from "../query/use-register-
 import { tenderPaymentMethodsKey } from "../query/use-tender-payment-methods";
 import { listRegisterPaymentMethods } from "../pos-catalog";
 import { fetchOutlets } from "../use-outlets";
+import { fetchCheckoutSetup } from "../pos-checkout-fields";
+import { checkoutSetupKey } from "../query/use-checkout-setup";
 import { fetchDiningTables } from "../tables/tables-service";
 import { registerPackParts, registerPackThumbnails, summarizeRegisterPack } from "./register-pack";
 
@@ -45,7 +48,11 @@ describe("registerPackParts", () => {
       "prices",
       "payment methods",
     ]);
+    // The storefront's checkout questions are saved too, but never hold the
+    // download back: the register sells without them.
+    expect(byLabel.get("checkout questions")?.key).toEqual(checkoutSetupKey("t1"));
     expect(parts.filter((part) => !part.isRequired).map((part) => part.label)).toEqual([
+      "checkout questions",
       "branches",
       "tables",
     ]);
@@ -58,6 +65,7 @@ describe("registerPackParts", () => {
     expect(fetchPosCatalog).toHaveBeenCalledWith("t1", "o-north");
     expect(fetchRegisterPricing).toHaveBeenCalledWith("t1");
     expect(listRegisterPaymentMethods).toHaveBeenCalledWith("t-imp");
+    expect(fetchCheckoutSetup).toHaveBeenCalledWith("t1");
     expect(fetchOutlets).toHaveBeenCalledWith("t1");
     expect(fetchDiningTables).toHaveBeenCalledWith("t1");
   });

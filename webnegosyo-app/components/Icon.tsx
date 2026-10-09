@@ -81,7 +81,10 @@ export type IconName =
   | "undo"
   // Owl assistant
   | "photo"
-  | "mic";
+  | "mic"
+  // Delivery address
+  | "pin"
+  | "external";
 
 interface IconProps {
   name: IconName;
@@ -574,6 +577,19 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Rect x={9} y={3} width={6} height={11.5} rx={3} />
       <Path d="M5.5 11a6.5 6.5 0 0 0 13 0" />
       <Line x1={12} y1={17.5} x2={12} y2={21} />
+    </>
+  ),
+  pin: (
+    <>
+      <Path d="M12 21s-6.5-6.2-6.5-11.5a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z" />
+      <Circle cx={12} cy={9.5} r={2.25} />
+    </>
+  ),
+  external: (
+    <>
+      <Path d="M14 4h6v6" />
+      <Line x1={20} y1={4} x2={11} y2={13} />
+      <Path d="M18 14v6H4V6h6" />
     </>
   ),
 };

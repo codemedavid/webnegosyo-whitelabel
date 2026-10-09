@@ -10,6 +10,8 @@
 
 import { fetchPosCatalog, posCatalogKey, type PosCatalog } from "../query/use-pos-catalog";
 import { fetchRegisterPricing, registerPricingKey } from "../query/use-register-pricing";
+import { checkoutSetupKey } from "../query/use-checkout-setup";
+import { fetchCheckoutSetup } from "../pos-checkout-fields";
 import { tenderPaymentMethodsKey } from "../query/use-tender-payment-methods";
 import { listRegisterPaymentMethods } from "../pos-catalog";
 import { OUTLETS_RESOURCE, fetchOutlets } from "../use-outlets";
@@ -50,6 +52,14 @@ export function registerPackParts({
       key: tenderPaymentMethodsKey(paymentTenantId),
       fetch: () => listRegisterPaymentMethods(paymentTenantId),
       isRequired: true,
+    },
+    {
+      // The storefront's checkout questions + delivery pricing. Nice to have
+      // offline, never worth failing the download over.
+      label: "checkout questions",
+      key: checkoutSetupKey(tenantId),
+      fetch: () => fetchCheckoutSetup(tenantId),
+      isRequired: false,
     },
     {
       label: "branches",
