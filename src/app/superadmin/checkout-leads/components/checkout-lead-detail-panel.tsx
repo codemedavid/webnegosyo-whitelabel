@@ -13,9 +13,10 @@ import {
   ExternalLink,
   CreditCard,
   Wallet,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency } from '@/components/superadmin/ui/format'
 import { fetchCheckoutLeadDetail, changeCheckoutLeadStatus } from '@/app/actions/checkout-leads'
@@ -96,9 +97,14 @@ export function CheckoutLeadDetailPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto border-white/10 sm:max-w-lg">
-        <SheetHeader>
+      {/* Portaled to <body>, outside the dark superadmin shell — restate the surface. */}
+      <SheetContent className="w-full gap-0 overflow-y-auto border-white/10 bg-[#0a0a0a] text-white sm:max-w-lg" hideCloseButton>
+        <SheetHeader className="flex-row items-center justify-between border-b border-white/[0.06] px-6 py-5">
           <SheetTitle className="text-white">Checkout lead</SheetTitle>
+          <SheetClose className="rounded-lg p-1.5 text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </SheetClose>
         </SheetHeader>
 
         {isLoading || !lead ? (
@@ -106,7 +112,7 @@ export function CheckoutLeadDetailPanel({
             <Loader2 className="h-6 w-6 animate-spin text-white/45" />
           </div>
         ) : (
-          <div className="mt-4 space-y-6">
+          <div className="space-y-6 px-6 py-6">
             {/* Hero — reference, amount, status */}
             <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
               <div className="flex items-start justify-between gap-3">
@@ -247,7 +253,10 @@ export function CheckoutLeadDetailPanel({
                   onValueChange={(val) => handleStatusChange(val as CheckoutLeadStatus)}
                   disabled={isChangingStatus}
                 >
-                  <SelectTrigger aria-label="Change lead status">
+                  <SelectTrigger
+                    aria-label="Change lead status"
+                    className="h-10 w-full rounded-xl border-white/10 bg-white/[0.03] text-white"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

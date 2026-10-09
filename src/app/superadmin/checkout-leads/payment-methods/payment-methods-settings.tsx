@@ -320,7 +320,7 @@ export function PaymentMethodsSettings({ initialMethods }: PaymentMethodsSetting
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="border-white/10">
+        <DialogContent className="rounded-2xl border-white/10 bg-[#0a0a0a] text-white">
           <DialogHeader>
             <DialogTitle className="text-white">
               {editingId ? 'Edit payment method' : 'Add payment method'}
