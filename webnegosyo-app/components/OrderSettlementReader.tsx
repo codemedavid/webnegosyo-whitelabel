@@ -10,6 +10,8 @@ interface LedgerRead { data?: StaffPayment[]; error: string | null }
 const perOrderRef = "orders:getOrderPayments" as unknown as FunctionReference<"query">;
 const bulkRef = "orders:getOrderPaymentsForOrders" as unknown as FunctionReference<"query">;
 
+const NO_PAYMENTS: StaffPayment[] = [];
+
 const MISSING_FUNCTION_MESSAGE = "Update this store's backend to read settlement history.";
 const TRUNCATED_MESSAGE = TRUNCATED_LEDGER_MESSAGE;
 
@@ -23,6 +25,13 @@ function OrderLedger({ id, report }: { id: string; report: (id: string, read: Le
 }
 
 type ReaderChildren = (payments: StaffPayment[], ready: boolean, error: string | null) => React.ReactNode;
+
+/** One finished read of the ledgers, as a screen hands it to its children. */
+export interface OrderLedger {
+  payments: StaffPayment[];
+  ready: boolean;
+  error: string | null;
+}
 
 /**
  * Convex is a live subscription with nothing to poll, and its deployed bundles
@@ -55,9 +64,12 @@ export function OrderSettlementReader({ ids, children }: {
 }) {
   const isBulk = useRefRoute("orders:getOrderPaymentsForOrders") === "platform";
   const orderIds = useMemo(() => [...ids], [ids]);
-  const bulk = useSafeQuery<StaffPayment[]>(bulkRef, isBulk ? { orderIds } : "skip");
+  // No orders, no ledgers: the complete answer is known without asking.
+  const isEmpty = orderIds.length === 0;
+  const bulk = useSafeQuery<StaffPayment[]>(bulkRef, isBulk && !isEmpty ? { orderIds } : "skip");
 
   if (!isBulk) return <PerOrderReader ids={ids}>{children}</PerOrderReader>;
+  if (isEmpty) return <>{children(NO_PAYMENTS, true, null)}</>;
 
   const payments = bulk.data ?? [];
   // No truncation check here. The bulk read is capped at the per-order ceiling

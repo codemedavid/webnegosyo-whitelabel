@@ -199,6 +199,18 @@ function TableDetail() {
                 </View>
               ) : null}
             </View>
+            <Button
+              label="Bill & split"
+              icon="payments"
+              onPress={() =>
+                router.push({
+                  pathname: "/(main)/bill",
+                  params: { orders: view.orders.map((order) => order._id).join(",") },
+                })
+              }
+              fullWidth
+              style={styles.billButton}
+            />
             {view.orders.map((order) => (
               <ListRow
                 key={order._id}
@@ -251,4 +263,5 @@ const styles = StyleSheet.create({
   billLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
   billValue: { ...typography.heading, color: colors.textPrimary, fontVariant: ["tabular-nums"] },
   owed: { color: colors.danger },
+  billButton: { marginBottom: spacing.md },
 });

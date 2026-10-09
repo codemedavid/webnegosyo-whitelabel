@@ -12,7 +12,7 @@ import { listCashMoves, recordCashMove } from "../lib/cash-drawer-service";
 import { canManageCash, drawerBoard, type CashMoveKind } from "../lib/cash-drawers";
 import { expectDrawer, type DrawerExpectationRead, type ExpectationSources } from "../lib/drawer-expectation";
 import { useCashFloor } from "../lib/use-cash-floor";
-import { OrderSettlementReader, type StaffPayment } from "./OrderSettlementReader";
+import { OrderSettlementReader, type OrderLedger, type StaffPayment } from "./OrderSettlementReader";
 import type { CounterSale } from "../lib/pos-sales";
 import { formatPeso } from "../lib/format";
 import { listOrderActivity } from "../lib/staff-activity/activity-service";
@@ -39,9 +39,31 @@ const CASH_SETUP_ROUTE = "/(main)/cash-drawers";
  * size of that page: whether it covers a shift is judged against the shift's
  * own start (isShiftHistoryComplete).
  */
-export function ShiftCard({ orders, pageLimit }: { orders: readonly CounterSale[]; pageLimit: number }) {
+interface ShiftCardProps {
+  orders: readonly CounterSale[];
+  pageLimit: number;
+  /**
+   * The settlement ledger, when the screen has already read it for its own
+   * totals. Absent, the card reads it itself.
+   */
+  ledger?: OrderLedger;
+}
+
+export function ShiftCard({ orders, pageLimit, ledger }: ShiftCardProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
+  if (ledger) {
+    return (
+      <ShiftCardContent
+        key={`${tenantId}:${userId}`}
+        orders={orders}
+        payments={ledger.payments}
+        pageLimit={pageLimit}
+        ledgerReady={ledger.ready}
+        ledgerError={ledger.error}
+      />
+    );
+  }
   return (
     <OrderSettlementReader key={`${tenantId}:${userId}`} ids={orders.map((order) => order._id)}>
       {(payments, ready, error) => (

@@ -99,6 +99,22 @@ describe("one sale in the list", () => {
     expect(describeDrawerSale(sale({ paymentMethod: "Cash" })).meta).not.toMatch(/change/);
   });
 
+  it("names how the money was actually taken when the register recorded it", () => {
+    // Placed as Cash, paid by GCash at the counter — the row must agree with
+    // the Non-cash total it was counted in.
+    const meta = describeDrawerSale(sale({ paymentMethod: "Cash" }), ["Gcash"]).meta;
+    expect(meta).toMatch(/^Gcash/);
+  });
+
+  it("lists every method a split bill was paid with, once each", () => {
+    const meta = describeDrawerSale(sale({ paymentMethod: "NONE" }), ["Cash", "Gcash", "Cash"]).meta;
+    expect(meta).toMatch(/^Cash \+ Gcash/);
+  });
+
+  it("says when a counter-only list includes online orders paid here", () => {
+    expect(describeCounting("counter")).toMatch(/paid here/i);
+  });
+
   it("marks an order the register did not ring up, so a mixed list stays readable", () => {
     expect(describeDrawerSale(sale({ source: "web" })).tag).toBe("Smart Menu");
     expect(describeDrawerSale(sale({ source: "pos" })).tag).toBeNull();

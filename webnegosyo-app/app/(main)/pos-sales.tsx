@@ -1,6 +1,7 @@
 import { ShiftCard } from "../../components/ShiftCard";
+import { OrderSettlementReader, type OrderLedger } from "../../components/OrderSettlementReader";
 import React, { useCallback, useMemo, useState } from "react";
-import { localDayStartMs } from "../../lib/backends/analytics-time";
+import { DAY_MS, localDayStartMs } from "../../lib/backends/analytics-time";
 import {
   Alert,
   RefreshControl,
@@ -23,6 +24,7 @@ import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { useAuthStore } from "../../stores/auth-store";
 import { useRegisterSettingsStore } from "../../stores/register-settings-store";
 import { selectShiftSales, summarizeCounterSales } from "../../lib/pos-sales";
+import { idsBeyondPage, ordersSince, pageReachesBack } from "../../lib/drawer-day";
 import {
   DRAWER_COUNTING_OPTIONS,
   countingFromPolicy,
@@ -63,6 +65,15 @@ const updateOrderStatusRef =
 const SHIFT_ORDER_LIMIT = 200;
 
 /**
+ * Ceiling on the day read that fills in what the page dropped on a busy day.
+ * Above the live-read size on purpose: it is report-sized, so it polls slowly
+ * and is not re-read on every order change — the live page above it is.
+ */
+const DAY_ORDER_LIMIT = 1000;
+
+const NO_SALES: DrawerSale[] = [];
+
+/**
  * Intake rows shown before the screen stops listing them.
  *
  * The Drawer is where a cashier counts money; a twenty-row backlog pinned
@@ -85,16 +96,50 @@ function formatSaleTime(at: number): string {
   return new Date(at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
 }
 
+interface DrawerRead {
+  /** The newest-first page the shift card reconciles against. */
+  page: DrawerSale[];
+  /** Every order created today, the page's dropped morning included. */
+  todaysSales: DrawerSale[];
+  /** Settlements against the page and today's orders, read once for both. */
+  ledger: OrderLedger;
+  /** Set when today's totals are known to leave sales out, and why. */
+  coverageNote: string | null;
+  isOffline: boolean;
+  savedAt: number | null;
+  refetch: () => Promise<void>;
+}
+
+/** What the screen says when today's totals cannot see the whole day. */
+function describeCoverage(input: {
+  reachesBack: boolean;
+  canReadDay: boolean;
+  dayError: string | null;
+  dayCount: number | undefined;
+}): string | null {
+  if (input.reachesBack) return null;
+  if (!input.canReadDay || input.dayError) {
+    return `Only the latest ${SHIFT_ORDER_LIMIT} orders are counted — earlier sales today are not in these totals.`;
+  }
+  if ((input.dayCount ?? 0) >= DAY_ORDER_LIMIT) {
+    return `Only the latest ${DAY_ORDER_LIMIT} orders today are counted.`;
+  }
+  return null;
+}
+
+/**
+ * Reads the orders and their settlement ledger, then hands both to the screen.
+ *
+ * One ledger read serves the day totals AND the shift card: it is keyed on the
+ * same page of order ids the card always read, so a normal day costs no new
+ * request. Only a day busier than the page asks for more — the dropped
+ * morning's orders, and the ledgers of those orders alone.
+ */
 export default function PosSalesScreen() {
   const convexUrl = useAuthStore((s) => s.convexUrl);
   const orderBackend = useAuthStore((s) => s.orderBackend);
-  const includeOnlineOrders = useRegisterSettingsStore((s) => s.drawerIncludesOnlineOrders);
-  const setIncludeOnlineOrders = useRegisterSettingsStore((s) => s.setDrawerIncludesOnlineOrders);
-  const scope = useBranchScope();
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const counting: DrawerCounting = countingFromPolicy(includeOnlineOrders);
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
+  const userId = useAuthStore((s) => s.userId);
 
   const salesResult = useSafeQuery<DrawerSale[]>(getOrdersRef, {
     limit: SHIFT_ORDER_LIMIT,
@@ -103,7 +148,133 @@ export default function PosSalesScreen() {
   const { data: mergedSales, isLoading, refetch, isOffline, savedAt } = useOfflineOrderList(salesResult, {
     snapshotName: "drawer:getOrders",
   });
-  const data = mergedSales as DrawerSale[] | undefined;
+  const page = (mergedSales as DrawerSale[] | undefined) ?? NO_SALES;
+
+  const dayStart = startOfToday();
+  const reachesBack = pageReachesBack(page, SHIFT_ORDER_LIMIT, dayStart);
+  // Platform only: older Convex deployments refuse the window arguments.
+  const canReadDay = orderBackend === "platform" && !isOffline;
+  const needsDayRead = canReadDay && !reachesBack;
+  const dayResult = useSafeQuery<DrawerSale[]>(
+    getOrdersRef,
+    needsDayRead ? { startMs: dayStart, endMs: dayStart + DAY_MS, limit: DAY_ORDER_LIMIT } : "skip",
+  );
+  const dayRead = needsDayRead ? dayResult.data : undefined;
+
+  const todaysSales = useMemo(() => ordersSince(page, dayRead, dayStart), [page, dayRead, dayStart]);
+  const pageIds = useMemo(() => page.map((order) => order._id), [page]);
+  const morningIds = useMemo(() => idsBeyondPage(page, todaysSales), [page, todaysSales]);
+
+  const coverageNote = describeCoverage({
+    reachesBack,
+    canReadDay,
+    dayError: needsDayRead ? dayResult.error : null,
+    dayCount: dayRead?.length,
+  });
+  const isDayPending = needsDayRead && dayRead === undefined && !dayResult.error;
+
+  const refetchDay = dayResult.refetch;
+  const refetchAll = useCallback(async () => {
+    await Promise.all([refetch(), needsDayRead ? refetchDay() : undefined]);
+  }, [refetch, needsDayRead, refetchDay]);
+
+  if (!hasLiveOrderBackend({ convexUrl, orderBackend })) {
+    return (
+      <View style={styles.center}>
+        <EmptyState
+          icon="drawer"
+          title="No till to count"
+          message="This store's order backend is not configured yet, so the register has nothing to reconcile."
+        />
+      </View>
+    );
+  }
+
+  if (isLoading) return <LoadingState />;
+
+  return (
+    <DrawerLedgerReader key={`${tenantId}:${userId}`} pageIds={pageIds} morningIds={morningIds}>
+      {(ledger) => (
+        <DrawerContent
+          page={page}
+          todaysSales={todaysSales}
+          ledger={isDayPending ? { ...ledger, ready: false } : ledger}
+          coverageNote={coverageNote}
+          isOffline={isOffline}
+          savedAt={savedAt ?? null}
+          refetch={refetchAll}
+        />
+      )}
+    </DrawerLedgerReader>
+  );
+}
+
+interface DrawerLedgerReaderProps {
+  pageIds: readonly string[];
+  morningIds: readonly string[];
+  children: (ledger: OrderLedger) => React.ReactNode;
+}
+
+/**
+ * The page's ledgers, plus the dropped morning's on a day the page could not
+ * hold. Two reads so the page's stays the exact read the shift card always
+ * made, live and shared. The second is always mounted — empty on a normal
+ * day, which asks nothing — so the 201st order of the day cannot remount the
+ * screen and close a count the cashier has open.
+ */
+function DrawerLedgerReader({ pageIds, morningIds, children }: DrawerLedgerReaderProps) {
+  return (
+    <OrderSettlementReader ids={pageIds}>
+      {(payments, ready, error) => (
+        <OrderSettlementReader ids={morningIds}>
+          {(morning, morningReady, morningError) => (
+            <JoinedLedger
+              page={{ payments, ready, error }}
+              morning={{ payments: morning, ready: morningReady, error: morningError }}
+            >
+              {children}
+            </JoinedLedger>
+          )}
+        </OrderSettlementReader>
+      )}
+    </OrderSettlementReader>
+  );
+}
+
+/** Joins the two reads once per change, so the totals keep a stable input. */
+function JoinedLedger({
+  page,
+  morning,
+  children,
+}: {
+  page: OrderLedger;
+  morning: OrderLedger;
+  children: (ledger: OrderLedger) => React.ReactNode;
+}) {
+  const payments = useMemo(
+    () => (morning.payments.length === 0 ? page.payments : [...page.payments, ...morning.payments]),
+    [page.payments, morning.payments],
+  );
+  return (
+    <>
+      {children({
+        payments,
+        ready: page.ready && morning.ready,
+        error: page.error ?? morning.error,
+      })}
+    </>
+  );
+}
+
+function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, savedAt, refetch }: DrawerRead) {
+  const orderBackend = useAuthStore((s) => s.orderBackend);
+  const includeOnlineOrders = useRegisterSettingsStore((s) => s.drawerIncludesOnlineOrders);
+  const setIncludeOnlineOrders = useRegisterSettingsStore((s) => s.setDrawerIncludesOnlineOrders);
+  const scope = useBranchScope();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const counting: DrawerCounting = countingFromPolicy(includeOnlineOrders);
 
   // The same live queue the Register and the ringtone watch, so the backend
   // de-dupes the subscription and the two lists can never disagree.
@@ -120,26 +291,41 @@ export default function PosSalesScreen() {
     [scope, queue],
   );
 
-  // Which rows count toward this shift is the pure core's call; the screen only
-  // narrows to today and hands over the merchant's opt-in.
-  const todaysSales = useMemo(() => {
-    const since = startOfToday();
-    return (data ?? []).filter((order) => order._creationTime >= since);
-  }, [data]);
-
+  // Which rows count is the pure core's call. The ledger is what lets money
+  // taken at this counter for an online order — a QR table's GCash, a Grab
+  // order — reach the totals by the method it was actually paid with.
   const summary = useMemo(
-    () => summarizeCounterSales(todaysSales, [], { includeOnlineOrders }),
-    [todaysSales, includeOnlineOrders],
+    () => summarizeCounterSales(todaysSales, ledger.payments, { includeOnlineOrders }),
+    [todaysSales, ledger.payments, includeOnlineOrders],
   );
 
   // Same predicate the summary uses, so the list can never show a row the
   // totals ignored.
   const shiftSales = useMemo(
-    () => selectShiftSales(todaysSales, { includeOnlineOrders }) as DrawerSale[],
-    [todaysSales, includeOnlineOrders],
+    () => selectShiftSales(todaysSales, { includeOnlineOrders }, ledger.payments) as DrawerSale[],
+    [todaysSales, includeOnlineOrders, ledger.payments],
   );
 
   const breakdown = useMemo(() => drawerBreakdown(summary), [summary]);
+
+  // How each listed sale was actually paid, so a row agrees with the column
+  // its money was counted in.
+  const paidWithByOrder = useMemo(() => {
+    const byOrder = new Map<string, string[]>();
+    for (const payment of ledger.payments) {
+      if (payment.kind !== "charge" || !payment.paymentMethodName) continue;
+      byOrder.set(payment.orderId, [...(byOrder.get(payment.orderId) ?? []), payment.paymentMethodName]);
+    }
+    return byOrder;
+  }, [ledger.payments]);
+
+  // A failed ledger read still shows what the orders alone say, and says so:
+  // online orders paid at this counter are then missing from the totals.
+  const ledgerNote = ledger.error
+    ? `Payments taken at the counter could not be read (${ledger.error}). Online orders paid here are not in these totals.`
+    : ledger.ready
+      ? null
+      : "Adding up payments taken at the counter…";
 
   const onRefresh = useCallback(
     () => refreshWithMinSpinner([refetch, refetchQueue], setIsRefreshing),
@@ -185,20 +371,6 @@ export default function PosSalesScreen() {
     }
   };
 
-  if (!hasLiveOrderBackend({ convexUrl, orderBackend })) {
-    return (
-      <View style={styles.center}>
-        <EmptyState
-          icon="drawer"
-          title="No till to count"
-          message="This store's order backend is not configured yet, so the register has nothing to reconcile."
-        />
-      </View>
-    );
-  }
-
-  if (isLoading) return <LoadingState />;
-
   const preview = incoming.slice(0, INTAKE_PREVIEW);
   const overflow = incoming.length - preview.length;
 
@@ -224,7 +396,7 @@ export default function PosSalesScreen() {
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       >
-        <ShiftCard orders={data ?? []} pageLimit={SHIFT_ORDER_LIMIT} />
+        <ShiftCard orders={page} pageLimit={SHIFT_ORDER_LIMIT} ledger={ledger} />
         {/* The money first: it is the only reason this screen is open. */}
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Today at this counter · Cash</Text>
@@ -245,6 +417,8 @@ export default function PosSalesScreen() {
         </View>
 
         <Text style={styles.heroNote}>{describeCounting(counting)}</Text>
+        {ledgerNote ? <Text style={styles.heroNote}>{ledgerNote}</Text> : null}
+        {coverageNote ? <Text style={styles.heroNote}>{coverageNote}</Text> : null}
 
         {preview.length > 0 && (
           <>
@@ -307,7 +481,7 @@ export default function PosSalesScreen() {
         ) : (
           <View style={styles.group}>
             {shiftSales.map((sale, index) => {
-              const row = describeDrawerSale(sale);
+              const row = describeDrawerSale(sale, paidWithByOrder.get(sale._id));
               const isLast = index === shiftSales.length - 1;
               return (
                 <TouchableOpacity

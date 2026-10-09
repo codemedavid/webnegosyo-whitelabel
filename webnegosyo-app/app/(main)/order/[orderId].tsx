@@ -12,6 +12,7 @@ import { BackHeader } from "../../../components/BackHeader";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { useOrderPrint } from "../../../hooks/useOrderPrint";
+import { receiptAmountPaid } from "../../../lib/receipt-settlement";
 import { ReprintButton } from "../../../components/order/ReprintButton";
 import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { displayCustomerName, getInitials, getAvatarColor } from "../../../lib/order-visuals";
@@ -761,6 +762,8 @@ export default function OrderDetailScreen() {
         paymentReference: payment.reference,
         cashTendered: payment.cashTendered,
         changeDue: payment.changeDue,
+        // Collecting needs a readable ledger, so what came before is known.
+        amountPaid: (collectedFromLedger ?? 0) + payment.amount,
       });
     },
   });
@@ -1092,12 +1095,30 @@ export default function OrderDetailScreen() {
             <ReprintButton
               status={printFeedback?.orderId === order._id ? printFeedback.status : null}
               onPress={async () => {
-                const printed = await printOrder(order);
+                const printed = await printOrder({
+                  ...order,
+                  amountPaid: receiptAmountPaid({
+                    isUnpaid,
+                    total: order.total,
+                    ledgerPaid: collectedFromLedger,
+                  }),
+                });
                 if (!printed) {
                   Alert.alert("Print Failed", "Could not print receipt.");
                 }
               }}
             />
+          )}
+          {order.status !== "cancelled" && !isFromDevice && (
+            <TouchableOpacity
+              style={styles.billLink}
+              accessibilityRole="button"
+              onPress={() =>
+                router.push({ pathname: "/(main)/bill", params: { orders: order._id } })
+              }
+            >
+              <Text style={styles.billLinkText}>Split or combine bill</Text>
+            </TouchableOpacity>
           )}
           {canCancelOrder(order.status) && (
             <TouchableOpacity
@@ -1140,6 +1161,8 @@ const styles = StyleSheet.create({
   totalLabel: { ...typography.heading, color: colors.textPrimary },
   totalValue: { ...typography.heading, color: colors.primary },
   actions: { marginTop: spacing.md, gap: spacing.sm },
+  billLink: { alignItems: "center", paddingVertical: spacing.sm },
+  billLinkText: { ...typography.body, fontWeight: "700", color: colors.accent },
   primaryAction: { backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 16, alignItems: "center" },
   primaryActionText: { color: colors.textOnDark, ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },

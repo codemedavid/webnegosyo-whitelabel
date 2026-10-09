@@ -70,6 +70,29 @@ export interface ReceiptOrder {
   customerData?: unknown;
   customer_data?: unknown;
   discount_data?: unknown;
+  /**
+   * What has been collected against this paper so far. Absent means the caller
+   * does not know, and the receipt then says nothing about paid or owed.
+   */
+  amountPaid?: number;
+  /** Set when this paper is a bill over several orders, or one guest's part. */
+  bill?: ReceiptBill;
+}
+
+/**
+ * A bill is printed through the same blocks as an order. Only the heading, the
+ * list of orders it covers and a guest's share are its own.
+ */
+export interface ReceiptBill {
+  /** Printed where the order number goes: "Table 4 bill", "Guest 2 of 3". */
+  heading: string;
+  /** The orders it covers, by the refs staff know them by ("#12"). */
+  orderRefs?: string[];
+  /**
+   * An even split prints every item and the full total, then this guest's
+   * share. Paid and owed are measured against the share, not the total.
+   */
+  share?: { label: string; amount: number };
 }
 
 export interface ReceiptConfig {
@@ -434,6 +457,7 @@ function itemLines(item: ReceiptOrderItem, w: number, slotPrefix = ""): string[]
 // builders, so stacking the four details reproduces orderMeta byte-for-byte.
 
 function orderNumberLine(order: ReceiptOrder, label: string): string {
+  if (order.bill) return order.bill.heading;
   return `${label}: ${order._id.slice(-8).toUpperCase()}`;
 }
 
@@ -621,22 +645,130 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
 
   lines.push(rule("-", w));
   lines.push(leftRight("TOTAL:", `P${order.total.toFixed(2)}`, w));
+  if (order.bill?.share) {
+    const amount = `P${order.bill.share.amount.toFixed(2)}`;
+    lines.push(leftRight(truncate(`${order.bill.share.label}:`, Math.max(0, w - amount.length - 1)), amount, w));
+  }
   if (order.paymentMethod) {
     lines.push(`Payment: ${order.paymentMethod}`);
   }
 
   // POS cash block. Both halves are required — printing a tender without the
   // change owed (or vice versa) would be worse than printing neither.
-  if (order.cashTendered !== undefined && order.changeDue !== undefined) {
-    lines.push(leftRight("CASH:", `P${order.cashTendered.toFixed(2)}`, w));
-    lines.push(leftRight("CHANGE:", `P${order.changeDue.toFixed(2)}`, w));
+  const tender = receiptTender(order);
+  if (tender.cashTendered !== undefined && tender.changeDue !== undefined) {
+    lines.push(leftRight("CASH:", `P${tender.cashTendered.toFixed(2)}`, w));
+    lines.push(leftRight("CHANGE:", `P${tender.changeDue.toFixed(2)}`, w));
   }
 
-  if (order.paymentReference) {
-    lines.push(truncate(`Ref: ${order.paymentReference}`, w));
+  if (tender.reference) {
+    lines.push(truncate(`Ref: ${tender.reference}`, w));
   }
+
+  for (const row of settlementRows(order, tender)) {
+    lines.push(leftRight(CLASSIC_SETTLEMENT_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w));
+  }
+  lines.push(...billRefLines(order, w));
 
   return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Payment and settlement
+// ---------------------------------------------------------------------------
+
+interface ReceiptTender {
+  cashTendered?: number;
+  changeDue?: number;
+  reference?: string;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The register keeps a sale's tender in `customerData.pos`. A receipt printed
+ * at the sale is handed the figures directly; a reprint is handed the stored
+ * order, so the stored tender is read here. What the caller passed wins.
+ */
+function storedTender(order: ReceiptOrder): ReceiptTender {
+  const blob = order.customerData ?? order.customer_data;
+  if (typeof blob !== "object" || blob === null) return {};
+  const pos = (blob as { pos?: unknown }).pos;
+  if (typeof pos !== "object" || pos === null || Array.isArray(pos)) return {};
+  const record = pos as Record<string, unknown>;
+  const reference = typeof record.reference === "string" ? record.reference.trim() : "";
+  return {
+    cashTendered: finiteNumber(record.cashTendered),
+    changeDue: finiteNumber(record.changeDue),
+    ...(reference ? { reference } : {}),
+  };
+}
+
+/**
+ * The stored cash is the sale's, and an edit afterwards does not rewrite it.
+ * It is printed only while it still squares with the order's total.
+ */
+function storedCashSquares(stored: ReceiptTender, total: number): boolean {
+  if (stored.cashTendered === undefined || stored.changeDue === undefined) return false;
+  return Math.abs(stored.cashTendered - stored.changeDue - total) < 0.01;
+}
+
+function receiptTender(order: ReceiptOrder): ReceiptTender {
+  const hasCash = order.cashTendered !== undefined && order.changeDue !== undefined;
+  const stored = storedTender(order);
+  const cash = hasCash
+    ? { cashTendered: order.cashTendered, changeDue: order.changeDue }
+    : storedCashSquares(stored, order.total)
+      ? { cashTendered: stored.cashTendered, changeDue: stored.changeDue }
+      : {};
+  return { ...cash, reference: order.paymentReference || stored.reference };
+}
+
+type SettlementKind = "paid" | "balance" | "due";
+
+const CLASSIC_SETTLEMENT_LABELS: Record<SettlementKind, string> = {
+  paid: "PAID:",
+  balance: "BALANCE DUE:",
+  due: "AMOUNT DUE:",
+};
+
+const MODERN_SETTLEMENT_LABELS: Record<SettlementKind, string> = {
+  paid: "Paid",
+  balance: "Balance due",
+  due: "Amount due",
+};
+
+/** Under half a centavo is float drift, not money. */
+const SETTLED_EPSILON = 0.005;
+
+/**
+ * Paid and owed, measured against what this paper bills: a guest's share, or
+ * the whole total. A cash sale settled in full says nothing more, because its
+ * cash and change already tell the story.
+ */
+function settlementRows(
+  order: ReceiptOrder,
+  tender: ReceiptTender,
+): { kind: SettlementKind; amount: number }[] {
+  const paid = finiteNumber(order.amountPaid);
+  if (paid === undefined) return [];
+  const billed = order.bill?.share?.amount ?? order.total;
+  const owed = Math.round((billed - paid) * 100) / 100;
+  if (owed > SETTLED_EPSILON) {
+    return paid > SETTLED_EPSILON
+      ? [{ kind: "paid", amount: paid }, { kind: "balance", amount: owed }]
+      : [{ kind: "due", amount: owed }];
+  }
+  const hasCash = tender.cashTendered !== undefined && tender.changeDue !== undefined;
+  return hasCash ? [] : [{ kind: "paid", amount: billed }];
+}
+
+/** "Orders: #12, #15", wrapped to the paper. */
+function billRefLines(order: ReceiptOrder, w: number): string[] {
+  const refs = order.bill?.orderRefs ?? [];
+  return refs.length > 0 ? wrapText(`Orders: ${refs.join(", ")}`, w, w) : [];
 }
 
 const PLACEHOLDER_CONTACTS = new Set(["", "n/a", "na", "-"]);
@@ -680,6 +812,7 @@ function centered(text: string, w: number): string {
 
 /** "Order #A1B2C3D4" — a label ending in "#" hugs the number. */
 function modernOrderNumberText(order: ReceiptOrder, label: string): string {
+  if (order.bill) return order.bill.heading;
   const id = order._id.slice(-8).toUpperCase();
   return label.endsWith("#") ? `${label}${id}` : `${label} #${id}`;
 }
@@ -779,15 +912,27 @@ function renderModernTotals(order: ReceiptOrder, ctx: RenderContext, w: number):
   lines.push(rule("-", w));
   // Straight from `order.total`, the backend's figure — never a recomputed sum.
   lines.push(`<H><B>${leftRight("TOTAL", `P${order.total.toFixed(2)}`, w)}</B></H>`);
+  if (order.bill?.share) {
+    const amount = `P${order.bill.share.amount.toFixed(2)}`;
+    const label = truncate(order.bill.share.label, Math.max(0, w - amount.length - 1));
+    lines.push(`<B>${leftRight(label, amount, w)}</B>`);
+  }
 
   if (order.paymentMethod) {
     lines.push(leftRight("Payment", truncate(order.paymentMethod, Math.max(0, w - 8)), w));
   }
-  if (order.cashTendered !== undefined && order.changeDue !== undefined) {
-    lines.push(leftRight("Cash", `P${order.cashTendered.toFixed(2)}`, w));
-    lines.push(leftRight("Change", `P${order.changeDue.toFixed(2)}`, w));
+  const tender = receiptTender(order);
+  if (tender.cashTendered !== undefined && tender.changeDue !== undefined) {
+    lines.push(leftRight("Cash", `P${tender.cashTendered.toFixed(2)}`, w));
+    lines.push(leftRight("Change", `P${tender.changeDue.toFixed(2)}`, w));
   }
-  if (order.paymentReference) lines.push(truncate(`Ref: ${order.paymentReference}`, w));
+  if (tender.reference) lines.push(truncate(`Ref: ${tender.reference}`, w));
+  for (const row of settlementRows(order, tender)) {
+    const line = leftRight(MODERN_SETTLEMENT_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w);
+    // What is still owed is the line the customer must not miss.
+    lines.push(row.kind === "paid" ? line : `<B>${line}</B>`);
+  }
+  lines.push(...billRefLines(order, w));
   return lines;
 }
 

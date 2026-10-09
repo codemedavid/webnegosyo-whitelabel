@@ -121,11 +121,14 @@ describe("on the platform backend", () => {
     expect(outputOf(render(<Probe ids={[A]} />))).toEqual({ n: 0, ready: false, error: "Connection lost" });
   });
 
-  it("is ready with nothing to total when there are no orders", () => {
-    mockUseSafeQuery.mockReturnValue({ data: [], error: null, isMissingFunction: false });
+  it("is ready with nothing to total when there are no orders, without asking", () => {
+    // The Drawer keeps a second reader mounted for a busy day's dropped
+    // morning; on every other day it is empty and must cost no request.
+    mockUseSafeQuery.mockReturnValue({ data: undefined, error: null, isMissingFunction: false });
 
     const screen = render(<Probe ids={[]} />);
 
+    expect(refsAsked().filter((call) => call.args !== "skip")).toEqual([]);
     expect(outputOf(screen)).toEqual({ n: 0, ready: true, error: null });
   });
 });

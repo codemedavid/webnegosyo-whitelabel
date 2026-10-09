@@ -141,15 +141,35 @@ const CONFIRMED_ONLINE_STATUSES: readonly string[] = [
 /**
  * Whether a row belongs in this shift's drawer at all.
  *
- * Counter sales qualify on source alone — the cashier rang them up. An online
- * order qualifies only once the register has confirmed it, which is what turns
- * a Smart Menu order into this shift's responsibility.
+ * Counter sales qualify on source alone — the cashier rang them up. So does
+ * any order the register recorded a settlement against: a QR table paying its
+ * bill in GCash, a Grab order settled at the counter. That money was taken
+ * here whatever channel the order came in on, and leaving it out is a till
+ * that never tallies. Any other online order qualifies only once the register
+ * has confirmed it, which is what turns a Smart Menu order into this shift's
+ * responsibility.
  */
-function belongsToShift(order: CounterSale, policy: SourcePolicy): boolean {
+function belongsToShift(
+  order: CounterSale,
+  policy: SourcePolicy,
+  settledOrderIds: ReadonlySet<string>,
+): boolean {
   if (order.status === "cancelled") return false;
   if (order.source === "pos") return true;
+  if (settledOrderIds.has(order._id)) return true;
   if (!policy.includeOnlineOrders) return false;
   return CONFIRMED_ONLINE_STATUSES.includes(order.status ?? "");
+}
+
+/** Settlement rows by order, grouped once rather than filtered per sale. */
+function groupByOrder(payments: readonly CounterPayment[]): Map<string, CounterPayment[]> {
+  const byOrder = new Map<string, CounterPayment[]>();
+  for (const payment of payments) {
+    const rows = byOrder.get(payment.orderId);
+    if (rows) rows.push(payment);
+    else byOrder.set(payment.orderId, [payment]);
+  }
+  return byOrder;
 }
 
 /**
@@ -162,8 +182,10 @@ function belongsToShift(order: CounterSale, policy: SourcePolicy): boolean {
 export function selectShiftSales(
   orders: readonly CounterSale[],
   policy: SourcePolicy = {},
+  payments: readonly CounterPayment[] = [],
 ): CounterSale[] {
-  return orders.filter((order) => belongsToShift(order, policy));
+  const settledOrderIds = new Set(payments.map((payment) => payment.orderId));
+  return orders.filter((order) => belongsToShift(order, policy, settledOrderIds));
 }
 
 /**
@@ -186,8 +208,8 @@ function settledAmount(order: CounterSale): number {
 }
 
 /**
- * Totals for the register's own sales, plus — when the policy allows it —
- * online orders this register confirmed.
+ * Totals for the register's own sales and any order it took money for, plus —
+ * when the policy allows it — online orders this register confirmed.
  *
  * When a sale has settlement rows, the drawer split comes from THEM — they
  * record how each peso was actually taken, which the order's single
@@ -203,10 +225,11 @@ export function summarizeCounterSales(
   payments: readonly CounterPayment[] = [],
   policy: SourcePolicy = {},
 ): CounterSalesSummary {
-  const counterSales = selectShiftSales(orders, policy);
+  const counterSales = selectShiftSales(orders, policy, payments);
+  const paymentsByOrder = groupByOrder(payments);
 
   const summary = counterSales.reduce<CounterSalesSummary>((acc, sale) => {
-    const rows = payments.filter((payment) => payment.orderId === sale._id);
+    const rows = paymentsByOrder.get(sale._id) ?? [];
     const changeDue = readPosPayment(sale.customerData)?.changeDue ?? 0;
 
     if (rows.length === 0) {

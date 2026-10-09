@@ -35,6 +35,14 @@ type PrintableOrder = ReceiptOrder;
  * way to tell whether the first one had registered, so they tapped again and
  * got two receipts.
  */
+/** For paper that is not one order's receipt — a bill, or one guest's share. */
+export interface PrintOptions {
+  /** Identifies this print for double-tap protection and feedback; defaults to the order id. */
+  printKey?: string;
+  /** A bill spans orders, so it has no tracking page to point a QR at. */
+  withQr?: boolean;
+}
+
 export interface PrintFeedback {
   orderId: string;
   status: "printing" | "printed" | "failed";
@@ -102,8 +110,8 @@ export function useOrderPrint() {
   );
 
   const buildSegments = useCallback(
-    async (order: PrintableOrder): Promise<PrintSegment[]> => {
-      const trackingUrl = await resolveTrackingUrl(order._id);
+    async (order: PrintableOrder, withQr: boolean): Promise<PrintSegment[]> => {
+      const trackingUrl = withQr ? await resolveTrackingUrl(order._id) : null;
       return buildReceiptSegments(
         order,
         tenantName ?? "Store",
@@ -126,35 +134,36 @@ export function useOrderPrint() {
   }, []);
 
   const printOrder = useCallback(
-    async (order: PrintableOrder): Promise<boolean> => {
+    async (order: PrintableOrder, options: PrintOptions = {}): Promise<boolean> => {
       if (!hasCashierPrinter) return false;
 
-      const inFlight = inFlightRef.current.get(order._id);
+      const key = options.printKey ?? order._id;
+      const inFlight = inFlightRef.current.get(key);
       if (inFlight) return inFlight;
 
       const job = (async () => {
-        showFeedback({ orderId: order._id, status: "printing" });
+        showFeedback({ orderId: key, status: "printing" });
         try {
           // The logo download runs alongside the tracking mint and the
           // Bluetooth handshake; the queue connects first and only then
           // waits for the receipt to finish building.
           prefetchLogo(receiptLogoUrl);
-          const outcome = await printForRole("cashier", buildSegments(order));
+          const outcome = await printForRole("cashier", buildSegments(order, options.withQr ?? true));
           if (!outcome.anySuccess) {
             const firstError = outcome.results[0]?.result.error;
             console.warn("[useOrderPrint] Print failed:", firstError ?? "no cashier printer");
           }
-          showFeedback({ orderId: order._id, status: outcome.anySuccess ? "printed" : "failed" });
+          showFeedback({ orderId: key, status: outcome.anySuccess ? "printed" : "failed" });
           return outcome.anySuccess;
         } catch (err: unknown) {
           console.warn("[useOrderPrint] Print failed:", err instanceof Error ? err.message : err);
-          showFeedback({ orderId: order._id, status: "failed" });
+          showFeedback({ orderId: key, status: "failed" });
           return false;
         } finally {
-          inFlightRef.current.delete(order._id);
+          inFlightRef.current.delete(key);
         }
       })();
-      inFlightRef.current.set(order._id, job);
+      inFlightRef.current.set(key, job);
       return job;
     },
     [hasCashierPrinter, receiptLogoUrl, buildSegments, showFeedback],

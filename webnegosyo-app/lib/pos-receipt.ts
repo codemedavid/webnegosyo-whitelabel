@@ -35,6 +35,8 @@ export function posReceiptOrder(
     cashTendered: tender?.cashTendered,
     changeDue: tender?.changeDue,
     paymentReference: tender?.reference,
+    // A tendered sale is settled in full at the counter; a pay-later one owes it all.
+    amountPaid: tender ? args.total : 0,
     items: args.items.map((item) => ({
       menuItemName: item.menuItemName,
       quantity: item.quantity,

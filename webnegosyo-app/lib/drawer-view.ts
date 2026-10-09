@@ -42,7 +42,7 @@ export function policyFromCounting(counting: DrawerCounting): boolean {
 export function describeCounting(counting: DrawerCounting): string {
   return counting === "all"
     ? "Counter sales plus Smart Menu orders this register confirmed, at what has actually been paid"
-    : "Only the sales rung up at this counter";
+    : "Sales rung up at this counter, plus online orders paid here";
 }
 
 /** One figure under the cash headline. */
@@ -93,11 +93,23 @@ function trimmed(value: string | undefined): string | null {
   return text ? text : null;
 }
 
-export function describeDrawerSale(sale: DrawerSale): DrawerSaleView {
+/** Each method once, in the order the money was taken. */
+function joinMethods(methods: readonly string[]): string | null {
+  const names = [...new Set(methods.map((name) => name.trim()).filter(Boolean))];
+  return names.length > 0 ? names.join(" + ") : null;
+}
+
+/**
+ * `paidWith` is the methods on the sale's settlement rows. When there are any
+ * they win over the method the order was placed with, because they are what
+ * the totals split the sale by — a row reading "Cash" over money counted as
+ * Non-cash is a till that looks wrong when it is right.
+ */
+export function describeDrawerSale(sale: DrawerSale, paidWith: readonly string[] = []): DrawerSaleView {
   const changeDue = readPosPayment(sale.customerData)?.changeDue ?? 0;
   // An unrecorded method is not a formatting gap, it is a sale nobody can
   // reconcile — and `summarizeCounterSales` has already banked it as non-cash.
-  const method = trimmed(sale.paymentMethod) ?? "No payment recorded";
+  const method = joinMethods(paidWith) ?? trimmed(sale.paymentMethod) ?? "No payment recorded";
   const change = changeDue > 0 ? `  ·  ${formatPeso(changeDue)} change` : "";
 
   return {

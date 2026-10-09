@@ -200,6 +200,8 @@ export default function MainLayout() {
         <Tabs.Screen name="order/[orderId]" options={{ href: null, title: "Order Detail" }} />
         {/* One table's party, its open orders and its scan-to-order code. */}
         <Tabs.Screen name="table/[tableId]" options={{ href: null, title: "Table" }} />
+        {/* One bill over one or more orders: combine, split, print, collect. */}
+        <Tabs.Screen name="bill" options={{ href: null, title: "Bill" }} />
         <Tabs.Screen
           name="pos-loyalty"
           options={{ href: null, title: "Redeem Reward", tabBarStyle: { display: "none" } }}

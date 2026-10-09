@@ -242,3 +242,94 @@ describe("summarizeCounterSales — pay-later counter sales", () => {
     expect(summary).toMatchObject({ cashTotal: 100, nonCashTotal: 0 });
   });
 });
+
+/**
+ * Money a cashier recorded against an online order — a QR table paying its
+ * bill, a Grab order settled at the counter — was taken by this register, so
+ * it belongs in the drawer even in "Counter only". Reported by a store whose
+ * GCash and Grab payments never reached Non-cash, so the till never tallied.
+ */
+describe("summarizeCounterSales — online orders settled at the register", () => {
+  const COUNTER_ONLY = { includeOnlineOrders: false };
+
+  it("puts GCash collected on a QR order in Non-cash with Counter only", () => {
+    // Arrange
+    const orders = [posSale(), onlineOrder({ status: "delivered", paymentMethod: "Gcash", total: 525 })];
+    const payments: CounterPayment[] = [
+      { orderId: "web-1", kind: "charge", amount: 525, paymentMethodName: "Gcash" },
+    ];
+
+    // Act
+    const summary = summarizeCounterSales(orders, payments, COUNTER_ONLY);
+
+    // Assert
+    expect(summary).toMatchObject({ saleCount: 2, grossTotal: 625, cashTotal: 100, nonCashTotal: 525 });
+  });
+
+  it("puts a GRAB DELIVERY payment in Non-cash", () => {
+    // Arrange
+    const orders = [onlineOrder({ status: "delivered", paymentMethod: "GRAB DELIVERY", total: 1139.25 })];
+    const payments: CounterPayment[] = [
+      { orderId: "web-1", kind: "charge", amount: 1139.25, paymentMethodName: "GRAB DELIVERY" },
+    ];
+
+    // Act
+    const summary = summarizeCounterSales(orders, payments, COUNTER_ONLY);
+
+    // Assert
+    expect(summary).toMatchObject({ cashTotal: 0, nonCashTotal: 1139.25 });
+  });
+
+  it("follows how the money was taken, not the method the order was placed with", () => {
+    // Arrange — ordered as Cash, paid by GCash at the counter.
+    const orders = [onlineOrder({ status: "delivered", paymentMethod: "Cash", total: 525.35 })];
+    const payments: CounterPayment[] = [
+      { orderId: "web-1", kind: "charge", amount: 525.35, paymentMethodName: "Gcash" },
+    ];
+
+    // Act
+    const summary = summarizeCounterSales(orders, payments, COUNTER_ONLY);
+
+    // Assert
+    expect(summary).toMatchObject({ cashTotal: 0, nonCashTotal: 525.35 });
+  });
+
+  it("still leaves out an online order nobody collected at the register", () => {
+    // Arrange
+    const orders = [onlineOrder({ status: "delivered", paymentMethod: "Gcash", amountPaid: 250 })];
+
+    // Act
+    const summary = summarizeCounterSales(orders, [], COUNTER_ONLY);
+
+    // Assert
+    expect(summary.saleCount).toBe(0);
+  });
+
+  it("still leaves out a cancelled order with money recorded against it", () => {
+    // Arrange
+    const orders = [onlineOrder({ status: "cancelled" })];
+    const payments: CounterPayment[] = [
+      { orderId: "web-1", kind: "charge", amount: 250, paymentMethodName: "Gcash" },
+    ];
+
+    // Act
+    const summary = summarizeCounterSales(orders, payments, COUNTER_ONLY);
+
+    // Assert
+    expect(summary.saleCount).toBe(0);
+  });
+
+  it("lists the settled online order alongside the counter sales", () => {
+    // Arrange
+    const orders = [posSale(), onlineOrder({ _id: "web-2" }), onlineOrder({ status: "delivered" })];
+    const payments: CounterPayment[] = [
+      { orderId: "web-1", kind: "charge", amount: 250, paymentMethodName: "Gcash" },
+    ];
+
+    // Act
+    const listed = selectShiftSales(orders, COUNTER_ONLY, payments);
+
+    // Assert
+    expect(listed.map((sale) => sale._id)).toEqual(["pos-1", "web-1"]);
+  });
+});

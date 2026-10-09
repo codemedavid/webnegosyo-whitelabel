@@ -72,3 +72,22 @@ describe("posReceiptOrder", () => {
     expect(receipt.total).toBe(90);
   });
 });
+
+describe("posReceiptOrder settlement", () => {
+  it("prints a wallet sale as paid in full", () => {
+    const tender = { methodName: "GCash", isCash: false, reference: "GC-1" };
+    const { receipt } = saleWith({ cart: [LINE], tender, clientOrderId: "c1" });
+
+    expect(receipt.amountPaid).toBe(100);
+    expect(renderReceipt(receipt, { storeName: "Shop" }, CLASSIC_RECEIPT_LAYOUT)).toMatch(/PAID:\s+P100\.00/);
+  });
+
+  it("prints a pay-later sale as an amount still due", () => {
+    const { receipt } = saleWith({ cart: [LINE], tender: null, clientOrderId: "c1" });
+
+    expect(receipt.amountPaid).toBe(0);
+    expect(renderReceipt(receipt, { storeName: "Shop" }, CLASSIC_RECEIPT_LAYOUT)).toMatch(
+      /AMOUNT DUE:\s+P100\.00/,
+    );
+  });
+});
