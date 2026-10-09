@@ -53,7 +53,7 @@ async function readExistingPrograms(admin: SupabaseClient, tenantId: string): Pr
   }
 }
 
-async function readOwnerUserId(admin: SupabaseClient, tenantId: string): Promise<string | null> {
+export async function readOwnerUserId(admin: SupabaseClient, tenantId: string): Promise<string | null> {
   const { data, error } = await admin
     .from('app_users')
     .select('user_id')

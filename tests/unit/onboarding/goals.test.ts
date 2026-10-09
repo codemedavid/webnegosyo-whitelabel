@@ -58,3 +58,13 @@ describe('typicalOrderPesos', () => {
     expect(typicalOrderPesos(undefined)).toBeNull()
   })
 })
+
+describe('shareHint', () => {
+  it('points the link at where their customers already are', async () => {
+    const { shareHint } = await import('@/lib/onboarding/goals')
+    expect(shareHint(['walk_in', 'facebook'])).toMatch(/Facebook/)
+    expect(shareHint(['text'])).toMatch(/regulars/)
+    expect(shareHint(['walk_in'])).toMatch(/QR/)
+    expect(shareHint(['not_open'])).toMatch(/already buy/)
+  })
+})

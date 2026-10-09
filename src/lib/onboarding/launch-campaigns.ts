@@ -25,6 +25,16 @@ const PLAIN_TEXT = /^[A-Za-z0-9 .,'&!()-]+$/
 /** Keeps the first-timer text one SMS even with a long store name. */
 const MAX_REWARD_TEXT = 30
 const FRIDAY = 5
+
+/** The drafts, in order, with when each one texts: the reveal lists them. */
+export const LAUNCH_CAMPAIGNS = [
+  { name: 'Invite first-timers back', when: 'A week after their first order' },
+  { name: 'Nudge slipping regulars', when: 'When a regular goes quiet for 2 weeks' },
+  { name: 'Win back lapsed guests', when: 'After 3 quiet weeks' },
+  { name: 'Weekend reminder', when: 'Fridays, to your regulars' },
+] as const
+
+const [FIRST_TIMERS, SLIPPING, WIN_BACK, WEEKEND] = LAUNCH_CAMPAIGNS.map((campaign) => campaign.name)
 const SEND_TIME = '10:00'
 
 function rewardSentence({ rewardLabel, threshold }: LaunchCampaignOptions): string | null {
@@ -37,7 +47,7 @@ export function buildLaunchCampaigns(options: LaunchCampaignOptions): SmsCampaig
   const reward = rewardSentence(options)
   const drafts = [
     {
-      name: 'Invite first-timers back',
+      name: FIRST_TIMERS,
       message_template: reward
         ? `Hi {{firstName}}, thanks for trying {{storeName}}! ${reward}`
         : "Hi {{firstName}}, thanks for trying {{storeName}}! Come back this week, we'd love to see you again.",
@@ -46,21 +56,21 @@ export function buildLaunchCampaigns(options: LaunchCampaignOptions): SmsCampaig
       schedule_interval_days: 7,
     },
     {
-      name: 'Nudge slipping regulars',
+      name: SLIPPING,
       message_template: "Hi {{firstName}}, it's been a while! Your usual is waiting at {{storeName}}. See you soon?",
       audience: { minOrderCount: 2, lastOrderOlderThanDays: 14 },
       schedule_kind: 'every_n_days',
       schedule_interval_days: 14,
     },
     {
-      name: 'Win back lapsed guests',
+      name: WIN_BACK,
       message_template: 'Hi {{firstName}}, we miss you at {{storeName}}! Drop by this week for your favourite.',
       audience: { lastOrderOlderThanDays: 21 },
       schedule_kind: 'every_n_days',
       schedule_interval_days: 14,
     },
     {
-      name: 'Weekend reminder',
+      name: WEEKEND,
       message_template: 'Hi {{firstName}}, {{storeName}} is open all weekend. Order ahead and skip the wait!',
       audience: { minOrderCount: 2 },
       schedule_kind: 'weekly',

@@ -6,6 +6,7 @@
 import type { OnboardingAnswers } from '@/lib/onboarding/answers'
 import type { PublicOnboardingAssets } from '@/lib/onboarding/repository'
 import type { MenuReadView } from '@/lib/onboarding/menu-read'
+import type { LaunchComboView } from '@/lib/onboarding/launch-offers'
 import type { OnboardingView } from '@/lib/onboarding/view'
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -90,5 +91,21 @@ export function requestMenuRead(token: string, menuText: string): Promise<ApiRes
     `${base(token)}/menu-read`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ menuText }) },
     (body) => body.read as MenuReadView,
+  )
+}
+
+export function fetchLaunchCombos(token: string): Promise<ApiResult<LaunchComboView[]>> {
+  return call(`${base(token)}/launch-offers`, { method: 'GET' }, (body) => (body.combos ?? []) as LaunchComboView[])
+}
+
+export function decideLaunchCombo(
+  token: string,
+  proposalId: string,
+  decision: 'keep' | 'skip',
+): Promise<ApiResult<{ outcome: 'kept' | 'skipped' | 'needs-edit'; combos: LaunchComboView[] }>> {
+  return call(
+    `${base(token)}/launch-offers`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proposalId, decision }) },
+    (body) => ({ outcome: body.outcome as 'kept' | 'skipped' | 'needs-edit', combos: (body.combos ?? []) as LaunchComboView[] }),
   )
 }

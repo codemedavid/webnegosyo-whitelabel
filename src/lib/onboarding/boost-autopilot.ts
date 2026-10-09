@@ -91,7 +91,7 @@ interface TenantLastCallRow {
   checkout_upsell_max_items: number | null
 }
 
-interface LaunchMenu {
+export interface LaunchMenu {
   rows: MenuRow[]
   items: BoostItem[]
   lastCall: BoostLastCall
@@ -102,7 +102,7 @@ function raise(what: string, error: { message: string } | null): void {
   if (error) throw new Error(`${what} could not be read: ${error.message}`)
 }
 
-async function loadLaunchMenu(ctx: ProvisioningCtx, tenantId: string): Promise<LaunchMenu> {
+export async function loadLaunchMenu(ctx: ProvisioningCtx, tenantId: string): Promise<LaunchMenu> {
   const client = ctx.client
   const [menu, tenant, slots, pairs] = await Promise.all([
     client

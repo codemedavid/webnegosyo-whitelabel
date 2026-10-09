@@ -134,3 +134,11 @@ export function buildLaunchPlan(picked: readonly GoalId[]): LaunchPlan {
     alsoReady: rest.length > 0 ? `Also ready: ${joinWithAnd(rest.map((goal) => ALSO_READY[goal]))}.` : null,
   }
 }
+
+/** Where to post the link first, from where their orders come from today. */
+export function shareHint(channels: readonly ChannelId[]): string {
+  if (channels.includes('facebook')) return 'Post it on your Facebook page and send it to the people who message you.'
+  if (channels.includes('text')) return 'Text it to your regulars first. They are the easiest first orders.'
+  if (channels.includes('walk_in')) return 'Show the QR at your counter so walk-ins can order from their phones.'
+  return 'Send it to the people who already buy from you.'
+}

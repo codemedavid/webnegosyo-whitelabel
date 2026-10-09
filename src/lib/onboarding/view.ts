@@ -13,6 +13,7 @@ import { isPaidLeadStatus } from './lead-status'
 import type { FirstWeekPlan } from './first-week'
 import type { LaunchReadiness } from './readiness'
 import { getStoreOpenStatus, type StoreHoursSource } from '@/lib/store-open-status'
+import type { ChannelId, GoalId } from './goals'
 
 export interface OnboardingStepView {
   id: OnboardingBuildStepId
@@ -30,6 +31,8 @@ export interface OnboardingStoreView {
   previewPath: string
   /** The owner's dashboard; the wizard signs them in, so this opens straight in. */
   dashboardPath: string
+  /** The address to share (the store's subdomain); null = share the preview path on this host. */
+  shareUrl: string | null
   isLive: boolean
   /** Live but outside its hours: when orders open next ("tomorrow at 9:00 AM"). */
   opensLabel: string | null
@@ -47,6 +50,9 @@ export interface OnboardingView {
   /** For the greeting only; '' when the lead has no name. */
   ownerFirstName: string
   ownerEmail: string
+  /** What the owner said they want, once submitted (the build and reveal frame around it). */
+  goals: GoalId[]
+  channels: ChannelId[]
   assets: PublicOnboardingAssets
   steps: OnboardingStepView[]
   summary: LaunchBuildSummary | null
@@ -90,6 +96,8 @@ export function buildOnboardingView({ onboarding, lead, tenant, readiness = null
     businessName: lead.business_name,
     ownerFirstName: (lead.name ?? '').trim().split(/\s+/)[0] ?? '',
     ownerEmail: lead.email,
+    goals: onboarding.answers?.goals ?? [],
+    channels: onboarding.answers?.channels ?? [],
     assets: publicAssets(onboarding.assets),
     steps,
     summary: onboarding.summary,
@@ -103,6 +111,7 @@ export function buildOnboardingView({ onboarding, lead, tenant, readiness = null
           loginPath: `/${tenant.slug}/login?redirect=${encodeURIComponent(`/${tenant.slug}/admin/launch`)}`,
           previewPath: `/${tenant.slug}/menu`,
           dashboardPath: `/${tenant.slug}/admin`,
+          shareUrl: null,
           isLive: !tenant.is_prelaunch,
           opensLabel: opensLabel(tenant, nowMs),
         }
