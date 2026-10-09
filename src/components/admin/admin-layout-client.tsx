@@ -96,6 +96,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
     // not theirs to open, so it is not offered. With no caller (the pre-auth
     // render) this reads as store-wide, matching the permission filter above.
     isBranchScopedAccount: caller ? !canViewBranchDirectory(caller) : false,
+    hasStartHere: tenant.has_start_here,
   }
 
   // The owl is for store-wide accounts on stores a superadmin switched it on for;

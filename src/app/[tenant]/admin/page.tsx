@@ -18,6 +18,7 @@ import { LiveOrdersStrip } from '@/components/admin/dashboard/live-orders-strip'
 import { MetricsPanel } from '@/components/admin/dashboard/metrics-panel'
 import { TodoCard } from '@/components/admin/dashboard/todo-card'
 import { WhoIsBuyingCard } from '@/components/admin/dashboard/who-is-buying-card'
+import { StartHereNudge } from '@/components/admin/start-here/start-here-nudge'
 import type { Tenant } from '@/types/database'
 
 interface AdminDashboardProps {
@@ -156,6 +157,10 @@ export default async function AdminDashboard({ params, searchParams }: AdminDash
   return (
     <div className="space-y-6">
       <DashboardHeader storeName={tenant.name} storefrontHref={`/${tenantSlug}/menu`} now={new Date()} />
+
+      <Suspense fallback={null}>
+        <StartHereNudge tenant={tenant} />
+      </Suspense>
 
       <Suspense key={range} fallback={<AnalyticsDashboardSkeleton />}>
         <DashboardContent tenant={tenant} tenantSlug={tenantSlug} range={range} />

@@ -20,6 +20,8 @@ export interface AdminSidebarFlags {
    * store-wide, which is what every account meant before branches existed.
    */
   isBranchScopedAccount?: boolean | null
+  /** The store is in its first weeks after onboarding: "Start here" is offered. Absent = not offered. */
+  hasStartHere?: boolean | null
 }
 
 export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
@@ -52,6 +54,8 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
   // not a manager's to read. The route is gated too (`isStoreWideAdminPath`);
   // hiding the entry is what stops it being offered.
   if (!flags.multiBranchEnabled || flags.isBranchScopedAccount) paths.add('/outlets')
+  // Only stores set up through onboarding have a path (and goals) to show.
+  if (!flags.hasStartHere) paths.add('/admin/start')
 
   return paths
 }

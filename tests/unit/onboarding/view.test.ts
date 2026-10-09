@@ -43,7 +43,7 @@ describe('buildOnboardingView', () => {
     expect(view.store).toEqual({
       name: "Juan's Kitchen",
       slug: 'juans-kitchen',
-      loginPath: '/juans-kitchen/login?redirect=%2Fjuans-kitchen%2Fadmin%2Flaunch',
+      loginPath: '/juans-kitchen/login?redirect=%2Fjuans-kitchen%2Fadmin%2Fstart',
       previewPath: '/juans-kitchen/menu',
       dashboardPath: '/juans-kitchen/admin',
       // Filled by the server reader from the platform's root domain.

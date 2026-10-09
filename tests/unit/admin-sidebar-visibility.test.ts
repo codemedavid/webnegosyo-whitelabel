@@ -23,12 +23,15 @@ describe('hiddenAdminSidebarPaths — existing behaviour (regression lock)', () 
       // `/boost-sales` left this set when merchants could switch Boost Sales on
       // themselves: without the flag the page is its welcome screen, so hiding
       // the entry would hide the only way to turn it on.
+      // `/admin/start` joined when Start here shipped: offered only to stores
+      // in their first weeks after onboarding — more hiding, never less.
       new Set([
         '/product-analytics',
         '/bundles',
         '/inventory',
         '/inventory/transfers',
         '/outlets',
+        '/admin/start',
       ])
     )
   })
@@ -42,9 +45,15 @@ describe('hiddenAdminSidebarPaths — existing behaviour (regression lock)', () 
         convexConfigured: true,
         inventoryEnabled: true,
         multiBranchEnabled: true,
+        hasStartHere: true,
       })
     )
     expect(hidden).toEqual(new Set())
+  })
+
+  it('offers Start here only to a store in its first weeks after onboarding', () => {
+    expect(hiddenAdminSidebarPaths(flags({ hasStartHere: true })).has('/admin/start')).toBe(false)
+    expect(hiddenAdminSidebarPaths(flags({ hasStartHere: false })).has('/admin/start')).toBe(true)
   })
 
   it('hides orders only when order management is explicitly switched off', () => {

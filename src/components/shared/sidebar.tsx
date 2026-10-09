@@ -17,6 +17,8 @@ import {
   ArrowUpRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Flag,
+  GraduationCap,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -339,6 +341,7 @@ export function MobileSidebar({ items, onLogout, tenantName, tenantLogoUrl, stor
 // business, then set the store up. `section` opens a labelled block.
 
 export const adminSidebarItems: SidebarEntry[] = [
+  { label: 'Start here', href: '/admin/start', icon: Flag },
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { label: 'Orders', href: '/admin/orders', icon: ShoppingBag },
   {
@@ -381,6 +384,7 @@ export const adminSidebarItems: SidebarEntry[] = [
     ],
   },
   { label: 'Settings', href: '/admin/settings', icon: Settings, section: 'Store' },
+  { label: 'Learn', href: '/admin/learn', icon: GraduationCap, section: 'Help' },
 ]
 
 export const superAdminSidebarItems: SidebarEntry[] = [

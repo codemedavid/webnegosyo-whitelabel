@@ -7,6 +7,7 @@ import type { Tenant } from '@/types/database'
 import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
 import { toAdminShellTenant } from '@/lib/admin-shell-tenant'
 import { PrelaunchBanner } from '@/components/admin/launch/prelaunch-banner'
+import { hasStartHere } from '@/lib/onboarding/start-here-eligibility'
 
 // Authenticated, per-request, never pre-rendered at build time (see the
 // superadmin layout for why this is pinned rather than inferred).
@@ -27,10 +28,12 @@ export default async function AdminLayout({
   // read so it overlaps the auth check; it is request-cached, so the
   // verifyTenantAdmin calls beneath this layout reuse it instead of re-reading.
   const tenantRead = getCachedTenantBySlug(tenantSlug)
-  const [userRoleData, tenantData, subscription] = await Promise.all([
+  const [userRoleData, tenantData, subscription, isStartHereOffered] = await Promise.all([
     getCachedCurrentUserRole(),
     tenantRead,
     tenantRead.then((found) => (found ? getRequestSubscription(found.id) : null)),
+    // Never throws (fails closed); rides on the tenant read like the subscription.
+    tenantRead.then((found) => (found ? hasStartHere(found.id) : false)),
   ])
 
   if (!userRoleData) {
@@ -90,7 +93,7 @@ export default async function AdminLayout({
   return (
     <AdminLayoutClient
       tenantSlug={tenantSlug}
-      tenant={toAdminShellTenant(tenant)}
+      tenant={toAdminShellTenant(tenant, { hasStartHere: isStartHereOffered })}
       caller={{
         role: role.role,
         is_owner: role.is_owner ?? false,

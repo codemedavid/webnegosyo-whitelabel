@@ -108,7 +108,7 @@ export function buildOnboardingView({ onboarding, lead, tenant, readiness = null
       ? {
           name: tenant.name,
           slug: tenant.slug,
-          loginPath: `/${tenant.slug}/login?redirect=${encodeURIComponent(`/${tenant.slug}/admin/launch`)}`,
+          loginPath: `/${tenant.slug}/login?redirect=${encodeURIComponent(`/${tenant.slug}/admin/start`)}`,
           previewPath: `/${tenant.slug}/menu`,
           dashboardPath: `/${tenant.slug}/admin`,
           shareUrl: null,
