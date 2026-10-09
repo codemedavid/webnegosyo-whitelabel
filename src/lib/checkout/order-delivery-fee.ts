@@ -5,16 +5,22 @@
  *  - a Lalamove quotation, when the tenant has Lalamove on;
  *  - the tenant's distance formula, otherwise, when that is on.
  * Anything else carries no fee. The distance fee is recomputed here from the
- * store and destination coordinates; the browser's number is ignored.
+ * road distance between the store and destination coordinates (the same
+ * cached measurement the checkout quote used); the browser's number is ignored.
  *
  * A Lalamove fee cannot be recomputed without re-quoting Lalamove, so the
  * caller passes the price the quote action SIGNED (see
  * delivery-quote-signature.ts) as `clientFee` — never the browser's number.
  *
- * Pure: the caller supplies config and coordinates.
+ * Pure: the caller supplies config, coordinates and the distance meter.
  */
 
-import { quoteDistanceDelivery, type DistanceDeliveryConfig, type LatLng } from '@/lib/delivery-fee'
+import {
+  quoteDistanceDelivery,
+  type DistanceDeliveryConfig,
+  type LatLng,
+  type MeasureDistanceKm,
+} from '@/lib/delivery-fee'
 
 /** No delivery in any market this platform serves costs more than this. */
 export const MAX_DELIVERY_FEE = 100_000
@@ -35,8 +41,11 @@ export interface OrderDeliveryFeeInput {
   lalamoveEnabled: boolean
   /** Non-null only when distance delivery is on and Lalamove is off. */
   distanceConfig: DistanceDeliveryConfig | null
-  store: LatLng
-  destination: LatLng
+  /** Null when the store has no usable location (see `toLatLng`). */
+  store: LatLng | null
+  /** Null when the customer never picked an address from the suggestions. */
+  destination: LatLng | null
+  measureKm: MeasureDistanceKm
 }
 
 export type OrderDeliveryFeeResolution =
@@ -46,10 +55,7 @@ export type OrderDeliveryFeeResolution =
   /** The store is misconfigured — not the customer's doing. */
   | { kind: 'abort'; error: string }
 
-const isFiniteLatLng = (point: LatLng): boolean =>
-  Number.isFinite(point.lat) && Number.isFinite(point.lng)
-
-export function resolveOrderDeliveryFee(input: OrderDeliveryFeeInput): OrderDeliveryFeeResolution {
+export async function resolveOrderDeliveryFee(input: OrderDeliveryFeeInput): Promise<OrderDeliveryFeeResolution> {
   if (!input.isDeliveryOrder) return { kind: 'fee', fee: undefined }
 
   if (input.lalamoveEnabled) {
@@ -59,19 +65,23 @@ export function resolveOrderDeliveryFee(input: OrderDeliveryFeeInput): OrderDeli
   const config = input.distanceConfig
   if (!config) return { kind: 'fee', fee: undefined }
 
-  if (!isFiniteLatLng(input.store)) {
+  const outcome = await quoteDistanceDelivery({
+    config,
+    store: input.store,
+    destination: input.destination,
+    measureKm: input.measureKm,
+  })
+  if (outcome.kind === 'store-unlocated') {
     return { kind: 'abort', error: 'Delivery is unavailable: the store location has not been configured.' }
   }
-  if (!isFiniteLatLng(input.destination)) {
+  if (outcome.kind === 'destination-unlocated') {
     return {
       kind: 'refuse',
       error: 'Please select your delivery address from the suggestions so we can calculate the delivery fee.',
     }
   }
-
-  const quote = quoteDistanceDelivery(input.store, input.destination, config)
-  if (!quote.withinRadius) {
-    return { kind: 'refuse', error: `Sorry, this address is outside our delivery area (${config.radiusKm} km).` }
+  if (!outcome.quote.withinRadius) {
+    return { kind: 'refuse', error: `Sorry, this address is outside our delivery area (${config.radiusKm} km by road).` }
   }
-  return { kind: 'fee', fee: quote.fee }
+  return { kind: 'fee', fee: outcome.quote.fee }
 }

@@ -16,7 +16,8 @@ import { resolveOrderBackend, assertOrderBackendReady } from '@/lib/order-backen
 import { generateTrackingToken } from '@/lib/tracking-token'
 import { findCartPresellDate } from '@/lib/presell/availability'
 import { withPresellCustomerData, type PresellClaimRecord } from '@/lib/presell/checkout-schedule'
-import { resolveDistanceDeliveryConfig } from '@/lib/delivery-fee'
+import { distanceConfigFromTenant, toLatLng } from '@/lib/delivery-fee'
+import { measureRoadDistanceKm } from '@/lib/maps/road-distance-server'
 import { resolveFreeDeliveryThreshold, waiveDeliveryFee } from '@/lib/free-delivery'
 import { checkOrderMinimum, formatOrderMinimumMessage } from '@/lib/order-minimum'
 import {
@@ -530,18 +531,14 @@ export async function createOrderAction(
       }
     }
 
-    const deliveryResolution = resolveOrderDeliveryFee({
+    const deliveryResolution = await resolveOrderDeliveryFee({
       clientFee: trustedDeliveryFee,
       isDeliveryOrder: orderTypeRow?.type === 'delivery',
       lalamoveEnabled: tenantConfig.lalamove_enabled === true,
-      distanceConfig: resolveDistanceDeliveryConfig({
-        enabled: tenantConfig.distance_delivery_enabled === true && tenantConfig.lalamove_enabled !== true,
-        perKm: tenantConfig.delivery_price_per_km,
-        minFee: tenantConfig.delivery_min_fee,
-        radiusKm: tenantConfig.delivery_radius_km,
-      }),
-      store: { lat: Number(tenantConfig.restaurant_latitude), lng: Number(tenantConfig.restaurant_longitude) },
-      destination: { lat: Number(deliveryDestination.delivery_lat), lng: Number(deliveryDestination.delivery_lng) },
+      distanceConfig: distanceConfigFromTenant(tenantConfig),
+      store: toLatLng(tenantConfig.restaurant_latitude, tenantConfig.restaurant_longitude),
+      destination: toLatLng(deliveryDestination.delivery_lat, deliveryDestination.delivery_lng),
+      measureKm: measureRoadDistanceKm,
     })
     if (deliveryResolution.kind === 'abort') return await abort(deliveryResolution.error)
     if (deliveryResolution.kind === 'refuse') return await refuse(deliveryResolution.error)

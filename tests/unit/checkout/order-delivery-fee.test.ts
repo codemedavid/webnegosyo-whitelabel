@@ -25,65 +25,68 @@ describe('isValidClientDeliveryFee', () => {
 })
 
 describe('resolveOrderDeliveryFee', () => {
-  it('bills no fee on a non-delivery order, whatever was sent', () => {
-    expect(
-      resolveOrderDeliveryFee({ clientFee: 120, isDeliveryOrder: false, lalamoveEnabled: true, distanceConfig: null, store, destination: near })
-    ).toEqual({ kind: 'fee', fee: undefined })
+  const byRoad = (km: number) => jest.fn(async () => km)
+  const base = {
+    clientFee: 1,
+    isDeliveryOrder: true,
+    lalamoveEnabled: false,
+    distanceConfig: distance,
+    store,
+    destination: near,
+    measureKm: byRoad(1.2),
+  }
+
+  it('bills no fee on a non-delivery order, whatever was sent', async () => {
+    await expect(
+      resolveOrderDeliveryFee({ ...base, clientFee: 120, isDeliveryOrder: false, lalamoveEnabled: true, distanceConfig: null })
+    ).resolves.toEqual({ kind: 'fee', fee: undefined })
   })
 
-  it('bills no fee when the tenant has no fee source', () => {
-    expect(
-      resolveOrderDeliveryFee({ clientFee: 120, isDeliveryOrder: true, lalamoveEnabled: false, distanceConfig: null, store, destination: near })
-    ).toEqual({ kind: 'fee', fee: undefined })
+  it('bills no fee when the tenant has no fee source', async () => {
+    await expect(resolveOrderDeliveryFee({ ...base, clientFee: 120, distanceConfig: null })).resolves.toEqual({
+      kind: 'fee',
+      fee: undefined,
+    })
   })
 
-  it('keeps a Lalamove quotation fee, including ₱0', () => {
-    expect(
-      resolveOrderDeliveryFee({ clientFee: 0, isDeliveryOrder: true, lalamoveEnabled: true, distanceConfig: null, store, destination: near })
-    ).toEqual({ kind: 'fee', fee: 0 })
-    expect(
-      resolveOrderDeliveryFee({ clientFee: 185, isDeliveryOrder: true, lalamoveEnabled: true, distanceConfig: null, store, destination: near })
-    ).toEqual({ kind: 'fee', fee: 185 })
+  it('keeps a Lalamove quotation fee, including ₱0, without measuring anything', async () => {
+    const measureKm = byRoad(1)
+
+    await expect(
+      resolveOrderDeliveryFee({ ...base, clientFee: 0, lalamoveEnabled: true, distanceConfig: null, measureKm })
+    ).resolves.toEqual({ kind: 'fee', fee: 0 })
+    await expect(
+      resolveOrderDeliveryFee({ ...base, clientFee: 185, lalamoveEnabled: true, distanceConfig: null, measureKm })
+    ).resolves.toEqual({ kind: 'fee', fee: 185 })
+    expect(measureKm).not.toHaveBeenCalled()
   })
 
-  it('recomputes a distance fee and ignores the sent one', () => {
-    const result = resolveOrderDeliveryFee({ clientFee: 1, isDeliveryOrder: true, lalamoveEnabled: false, distanceConfig: distance, store, destination: near })
-
-    expect(result.kind).toBe('fee')
-    if (result.kind === 'fee') expect(result.fee).toBeGreaterThanOrEqual(50)
+  it('recomputes the fee from the road distance and ignores the sent one', async () => {
+    // 6 km by road × ₱10 = ₱60, above the ₱50 minimum.
+    await expect(resolveOrderDeliveryFee({ ...base, distanceConfig: { ...distance, radiusKm: 10 }, measureKm: byRoad(6) })).resolves.toEqual({
+      kind: 'fee',
+      fee: 60,
+    })
   })
 
-  it('refuses an address outside the radius', () => {
+  it('refuses an address whose road trip is longer than the radius', async () => {
+    await expect(resolveOrderDeliveryFee({ ...base, measureKm: byRoad(5.5) })).resolves.toMatchObject({ kind: 'refuse' })
+  })
+
+  it('refuses an address outside the radius in a straight line', async () => {
     const far = { lat: 15.5, lng: 121.5 }
 
-    expect(
-      resolveOrderDeliveryFee({ clientFee: 1, isDeliveryOrder: true, lalamoveEnabled: false, distanceConfig: distance, store, destination: far }).kind
-    ).toBe('refuse')
+    await expect(resolveOrderDeliveryFee({ ...base, destination: far })).resolves.toMatchObject({ kind: 'refuse' })
   })
 
-  it('refuses a delivery with no picked coordinates', () => {
-    expect(
-      resolveOrderDeliveryFee({
-        clientFee: 1,
-        isDeliveryOrder: true,
-        lalamoveEnabled: false,
-        distanceConfig: distance,
-        store,
-        destination: { lat: Number.NaN, lng: Number.NaN },
-      }).kind
-    ).toBe('refuse')
+  it('refuses a delivery with no picked coordinates', async () => {
+    await expect(resolveOrderDeliveryFee({ ...base, destination: null })).resolves.toMatchObject({
+      kind: 'refuse',
+      error: expect.stringContaining('select your delivery address'),
+    })
   })
 
-  it('treats a store without coordinates as a store-side failure, not a refusal', () => {
-    expect(
-      resolveOrderDeliveryFee({
-        clientFee: 1,
-        isDeliveryOrder: true,
-        lalamoveEnabled: false,
-        distanceConfig: distance,
-        store: { lat: Number.NaN, lng: Number.NaN },
-        destination: near,
-      }).kind
-    ).toBe('abort')
+  it('treats a store without coordinates as a store-side failure, not a refusal', async () => {
+    await expect(resolveOrderDeliveryFee({ ...base, store: null })).resolves.toMatchObject({ kind: 'abort' })
   })
 })

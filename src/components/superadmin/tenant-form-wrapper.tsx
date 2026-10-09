@@ -1778,7 +1778,7 @@ function DistanceDeliverySection({
             <Separator />
 
             <p className="text-xs text-muted-foreground">
-              Fee = max(minimum fee, distance in km × price per km). The store location is set in the
+              Fee = max(minimum fee, road distance in km × price per km). The store location is set in the
               Restaurant Address section above. Addresses beyond the radius are blocked from delivery.
             </p>
 

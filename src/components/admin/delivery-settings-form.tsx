@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation'
 import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
 import { parseLatLng } from '@/lib/maps/apple/mapkit-address'
 import { updateTenantDeliveryForAdminAction } from '@/actions/tenants'
+import { DeliveryFeePreview } from '@/components/admin/delivery-fee-preview'
 
 interface DeliverySettingsInitial {
   distance_delivery_enabled: boolean
@@ -116,9 +117,10 @@ export function DeliverySettingsForm({
           <Truck className="h-5 w-5" /> Distance-Based Delivery
         </CardTitle>
         <CardDescription>
-          Charge a delivery fee based on how far the customer is from your store. The fee is
-          calculated as <span className="font-medium">max(minimum fee, distance × per-km rate)</span>,
-          and orders beyond the delivery radius are blocked at checkout.
+          Charge a delivery fee based on how far the customer is from your store, measured along
+          the road. The fee is calculated as{' '}
+          <span className="font-medium">max(minimum fee, road distance × per-km rate)</span>,
+          and orders beyond the delivery radius (by road) are blocked at checkout.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -187,7 +189,7 @@ export function DeliverySettingsForm({
                   disabled={isPending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Orders farther than this are blocked.
+                  Orders farther than this by road are blocked.
                 </p>
               </div>
 
@@ -207,7 +209,7 @@ export function DeliverySettingsForm({
                   disabled={isPending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Charged for each kilometer of distance.
+                  Charged for each kilometer of road distance.
                 </p>
               </div>
 
@@ -231,6 +233,8 @@ export function DeliverySettingsForm({
                 </p>
               </div>
             </div>
+
+            <DeliveryFeePreview perKm={perKm} minFee={minFee} radiusKm={radiusKm} />
 
             <p className="text-xs text-muted-foreground">
               Note: If Lalamove delivery is enabled, its live quote takes precedence over this

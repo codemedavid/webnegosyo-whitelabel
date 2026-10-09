@@ -3,7 +3,13 @@ import {
   resolveDistanceDeliveryConfig,
   calculateDistanceDeliveryFee,
   quoteDistanceDelivery,
+  toLatLng,
+  distanceConfigFromTenant,
+  feeStartsRisingAtKm,
+  isFlatFee,
+  feePreview,
   type DistanceDeliveryConfig,
+  type MeasureDistanceKm,
 } from '@/lib/delivery-fee'
 
 describe('haversineDistanceKm', () => {
@@ -114,27 +120,135 @@ describe('calculateDistanceDeliveryFee', () => {
 })
 
 describe('quoteDistanceDelivery', () => {
-  const config: DistanceDeliveryConfig = { perKm: 15, minFee: 49, radiusKm: 50 }
-  const store = { lat: 14.5995, lng: 120.9842 }
+  const config: DistanceDeliveryConfig = { perKm: 7, minFee: 55, radiusKm: 10 }
+  // Ate Lolet's store and a real order: 4.0 km in a straight line, 8.16 km by road.
+  const store = { lat: 15.44454447, lng: 120.77120664 }
+  const destination = { lat: 15.4804001, lng: 120.77600268 }
+  const byRoad = (km: number) => jest.fn<ReturnType<MeasureDistanceKm>, Parameters<MeasureDistanceKm>>(async () => km)
 
-  test('combines distance and fee for two coordinates', () => {
-    const destination = { lat: 14.676, lng: 121.0437 }
-    const quote = quoteDistanceDelivery(store, destination, config)
-    expect(quote.distanceKm).toBeGreaterThan(0)
-    expect(quote.withinRadius).toBe(true)
-    expect(quote.fee).toBeGreaterThanOrEqual(config.minFee)
+  test('prices the measured road distance, not the straight line', async () => {
+    const measureKm = byRoad(8.16)
+
+    const outcome = await quoteDistanceDelivery({ config, store, destination, measureKm })
+
+    expect(measureKm).toHaveBeenCalledWith(store, destination)
+    expect(outcome).toEqual({ kind: 'quote', quote: { distanceKm: 8.16, withinRadius: true, fee: 57.12 } })
   })
 
-  test('flags destinations beyond the radius as out of range', () => {
-    const farConfig: DistanceDeliveryConfig = { ...config, radiusKm: 1 }
-    const destination = { lat: 14.676, lng: 121.0437 }
-    expect(quoteDistanceDelivery(store, destination, farConfig).withinRadius).toBe(false)
+  test('refuses a road trip longer than the radius even when the straight line fits', async () => {
+    const outcome = await quoteDistanceDelivery({ config, store, destination, measureKm: byRoad(19.2) })
+
+    expect(outcome.kind === 'quote' && outcome.quote.withinRadius).toBe(false)
   })
 
-  test('identical store/destination is zero distance at the minimum fee', () => {
-    const quote = quoteDistanceDelivery(store, store, config)
-    expect(quote.distanceKm).toBe(0)
-    expect(quote.fee).toBe(config.minFee)
-    expect(quote.withinRadius).toBe(true)
+  test('never prices below the straight-line distance (a road cannot be shorter)', async () => {
+    const outcome = await quoteDistanceDelivery({ config: { ...config, minFee: 0 }, store, destination, measureKm: byRoad(1) })
+
+    expect(outcome.kind === 'quote' && outcome.quote.distanceKm).toBeCloseTo(4.02, 2)
+  })
+
+  test('skips the road lookup when even the straight line is beyond the radius', async () => {
+    const measureKm = byRoad(1)
+
+    const outcome = await quoteDistanceDelivery({ config: { ...config, radiusKm: 2 }, store, destination, measureKm })
+
+    expect(measureKm).not.toHaveBeenCalled()
+    expect(outcome.kind === 'quote' && outcome.quote.withinRadius).toBe(false)
+  })
+
+  test('reports a store without a location', async () => {
+    const outcome = await quoteDistanceDelivery({ config, store: null, destination, measureKm: byRoad(1) })
+
+    expect(outcome).toEqual({ kind: 'store-unlocated' })
+  })
+
+  test('reports a destination without a location', async () => {
+    const outcome = await quoteDistanceDelivery({ config, store, destination: null, measureKm: byRoad(1) })
+
+    expect(outcome).toEqual({ kind: 'destination-unlocated' })
+  })
+})
+
+describe('toLatLng', () => {
+  test('accepts numbers and numeric strings', () => {
+    expect(toLatLng(15.44, 120.77)).toEqual({ lat: 15.44, lng: 120.77 })
+    expect(toLatLng('15.4804001', ' 120.776 ')).toEqual({ lat: 15.4804001, lng: 120.776 })
+  })
+
+  test('accepts 0 as a real coordinate', () => {
+    expect(toLatLng(0, 0)).toEqual({ lat: 0, lng: 0 })
+  })
+
+  test.each([
+    [null, 120],
+    [undefined, 120],
+    ['', 120],
+    ['   ', 120],
+    ['abc', 120],
+    [Number.NaN, 120],
+    [91, 120],
+    [15, 181],
+    [true, 120],
+  ])('rejects a missing or impossible coordinate (%p, %p)', (lat, lng) => {
+    // Number(null) is 0: a missing store location used to become a point off
+    // the coast of Africa, and every address then read "outside the delivery area".
+    expect(toLatLng(lat, lng)).toBeNull()
+  })
+})
+
+describe('distanceConfigFromTenant', () => {
+  const tenant = {
+    lalamove_enabled: false,
+    distance_delivery_enabled: true,
+    delivery_price_per_km: 7,
+    delivery_min_fee: 55,
+    delivery_radius_km: 10,
+  }
+
+  test('reads the pricing columns', () => {
+    expect(distanceConfigFromTenant(tenant)).toEqual({ perKm: 7, minFee: 55, radiusKm: 10 })
+  })
+
+  test('accepts numeric strings as Postgres numerics can arrive', () => {
+    expect(
+      distanceConfigFromTenant({ ...tenant, delivery_price_per_km: '7.00', delivery_min_fee: '55.00', delivery_radius_km: '10.00' })
+    ).toEqual({ perKm: 7, minFee: 55, radiusKm: 10 })
+  })
+
+  test('is off while Lalamove is on (Lalamove always wins)', () => {
+    expect(distanceConfigFromTenant({ ...tenant, lalamove_enabled: true })).toBeNull()
+  })
+
+  test('is off when the store has not enabled it', () => {
+    expect(distanceConfigFromTenant({ ...tenant, distance_delivery_enabled: false })).toBeNull()
+  })
+})
+
+describe('fee preview', () => {
+  test('the fee starts rising where distance × rate passes the minimum', () => {
+    expect(feeStartsRisingAtKm({ perKm: 7, minFee: 55, radiusKm: 10 })).toBeCloseTo(7.857, 3)
+  })
+
+  test('a free per-km rate never rises', () => {
+    expect(feeStartsRisingAtKm({ perKm: 0, minFee: 55, radiusKm: 10 })).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  test('flags a setup that can only ever charge the minimum', () => {
+    // Kkape at Tsaa: 3 km × ₱15 = ₱45 never passes ₱50.
+    expect(isFlatFee({ perKm: 15, minFee: 50, radiusKm: 3 })).toBe(true)
+    expect(isFlatFee({ perKm: 7, minFee: 55, radiusKm: 10 })).toBe(false)
+  })
+
+  test('previews the fee at quarter points of the radius', () => {
+    expect(feePreview({ perKm: 7, minFee: 55, radiusKm: 10 })).toEqual([
+      { distanceKm: 2.5, fee: 55 },
+      { distanceKm: 5, fee: 55 },
+      { distanceKm: 7.5, fee: 55 },
+      { distanceKm: 10, fee: 70 },
+    ])
+  })
+
+  test('drops duplicate preview points on a tiny radius', () => {
+    expect(feePreview({ perKm: 10, minFee: 0, radiusKm: 0.2 }).map((p) => p.distanceKm)).toEqual([0.1, 0.2])
   })
 })

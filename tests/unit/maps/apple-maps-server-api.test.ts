@@ -100,3 +100,46 @@ describe('createAppleMapsClient', () => {
     await expect(client.geocode('Makati')).rejects.toThrow('Apple Maps token exchange failed with status 401')
   })
 })
+
+describe('driving distance (ETA)', () => {
+  const store = { lat: 15.44454447, lng: 120.77120664 }
+  const home = { lat: 15.4804001, lng: 120.77600268 }
+
+  it('reads distanceMeters from the first ETA', async () => {
+    const { parseEtaDistanceMeters } = await load()
+    expect(parseEtaDistanceMeters({ etas: [{ transportType: 'Automobile', distanceMeters: 8160, expectedTravelTimeSeconds: 1126 }] })).toBe(8160)
+  })
+
+  it.each([{ etas: [] }, null, { etas: [{ distanceMeters: -1 }] }, { etas: [{ distanceMeters: 'far' }] }])(
+    'finds no distance in %p',
+    async (payload) => {
+      const { parseEtaDistanceMeters } = await load()
+      expect(parseEtaDistanceMeters(payload)).toBeNull()
+    },
+  )
+
+  it('asks for a driving ETA from the store to the address', async () => {
+    const { createAppleMapsClient } = await load()
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(200, { accessToken: 'access-1', expiresInSeconds: 1800 }))
+      .mockResolvedValue(json(200, { etas: [{ distanceMeters: 8160 }] }))
+    const client = createAppleMapsClient(config, fetchImpl)
+
+    await expect(client.drivingDistanceMeters(store, home)).resolves.toBe(8160)
+    expect(fetchImpl.mock.calls[1][0]).toBe(
+      'https://maps-api.apple.com/v1/etas?origin=15.44454447%2C120.77120664&destinations=15.4804001%2C120.77600268&transportType=Automobile',
+    )
+  })
+
+  it('throws when Apple finds no route, so another provider can try', async () => {
+    const { createAppleMapsClient } = await load()
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(200, { accessToken: 'access-1', expiresInSeconds: 1800 }))
+      .mockResolvedValue(json(200, { etas: [] }))
+    const client = createAppleMapsClient(config, fetchImpl)
+
+    await expect(client.drivingDistanceMeters(store, home)).rejects.toThrow('no driving route')
+  })
+})

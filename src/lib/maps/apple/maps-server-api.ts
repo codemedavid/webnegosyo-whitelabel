@@ -1,6 +1,6 @@
 /**
  * Apple Maps Server API (https://maps-api.apple.com/v1) for server-side
- * geocoding, reverse geocoding and search. Server only.
+ * geocoding, reverse geocoding, search and driving distance (ETA). Server only.
  *
  * Auth is two-step: our ES256 JWT (no origin claim) is exchanged at /v1/token
  * for a 30-minute access token, which this client caches until shortly before
@@ -82,8 +82,16 @@ export function parseServerPlaces(payload: unknown): ServerPlace[] {
     .filter((place): place is ServerPlace => place !== null)
 }
 
-function timeoutSignal(): AbortSignal | undefined {
-  return typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined
+/** Driving distance of the first ETA, or null when Apple found no route. */
+export function parseEtaDistanceMeters(payload: unknown): number | null {
+  const etas = (payload as { etas?: unknown } | null)?.etas
+  if (!Array.isArray(etas) || etas.length === 0) return null
+  const meters = (etas[0] as { distanceMeters?: unknown } | null)?.distanceMeters
+  return typeof meters === 'number' && Number.isFinite(meters) && meters >= 0 ? meters : null
+}
+
+function timeoutSignal(timeoutMs: number): AbortSignal | undefined {
+  return typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : undefined
 }
 
 function point(at: LatLng): string {
@@ -94,11 +102,19 @@ export interface AppleMapsClient {
   geocode(query: string): Promise<ServerPlace[]>
   reverseGeocode(at: LatLng): Promise<ServerPlace[]>
   search(query: string, near?: LatLng): Promise<ServerPlace[]>
+  /** Driving distance from `origin` to `destination`; throws when there is no route. */
+  drivingDistanceMeters(origin: LatLng, destination: LatLng): Promise<number>
+}
+
+export interface AppleMapsClientOptions {
+  /** Per-request bound; request paths (checkout) want less than the default. */
+  timeoutMs?: number
 }
 
 export function createAppleMapsClient(
   config: MapKitConfig,
   fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  { timeoutMs = REQUEST_TIMEOUT_MS }: AppleMapsClientOptions = {},
 ): AppleMapsClient {
   let cached: { token: string; refreshAt: number } | null = null
 
@@ -106,7 +122,7 @@ export function createAppleMapsClient(
     if (cached && Date.now() < cached.refreshAt) return cached.token
     const response = await fetchImpl(`${API_BASE}/token`, {
       headers: { Authorization: `Bearer ${signMapKitToken(config, { ttlSeconds: JWT_TTL_SECONDS })}` },
-      signal: timeoutSignal(),
+      signal: timeoutSignal(timeoutMs),
     })
     if (!response.ok) throw new Error(`Apple Maps token exchange failed with status ${response.status}`)
     const body = (await response.json()) as { accessToken?: unknown; expiresInSeconds?: unknown }
@@ -117,14 +133,29 @@ export function createAppleMapsClient(
     return token
   }
 
-  async function get(path: string, params: Record<string, string>): Promise<ServerPlace[]> {
+  async function getJson(path: string, params: Record<string, string>): Promise<unknown> {
     const url = `${API_BASE}/${path}?${new URLSearchParams(params).toString()}`
     const response = await fetchImpl(url, {
       headers: { Authorization: `Bearer ${await accessToken()}` },
-      signal: timeoutSignal(),
+      signal: timeoutSignal(timeoutMs),
     })
     if (!response.ok) throw new Error(`Apple Maps ${path} failed with status ${response.status}`)
-    return parseServerPlaces(await response.json())
+    return response.json()
+  }
+
+  async function get(path: string, params: Record<string, string>): Promise<ServerPlace[]> {
+    return parseServerPlaces(await getJson(path, params))
+  }
+
+  async function drivingDistanceMeters(origin: LatLng, destination: LatLng): Promise<number> {
+    const payload = await getJson('etas', {
+      origin: point(origin),
+      destinations: point(destination),
+      transportType: 'Automobile',
+    })
+    const meters = parseEtaDistanceMeters(payload)
+    if (meters === null) throw new Error('Apple Maps found no driving route')
+    return meters
   }
 
   return {
@@ -138,5 +169,6 @@ export function createAppleMapsClient(
         resultTypeFilter: 'Address,Poi',
         ...(near ? { searchLocation: point(near) } : {}),
       }),
+    drivingDistanceMeters,
   }
 }
