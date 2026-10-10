@@ -21,13 +21,18 @@ export function WatchedToggle({ tenantId, tenantSlug, courseSlug, lessonSlug, is
   function toggle() {
     const next = !isWatched
     startTransition(async () => {
-      const result = await setLessonWatchedAction(tenantId, tenantSlug, courseSlug, lessonSlug, next)
-      if (!result.success) {
-        toast.error(result.error)
-        return
+      try {
+        const result = await setLessonWatchedAction(tenantId, tenantSlug, courseSlug, lessonSlug, next)
+        if (!result.success) {
+          toast.error(result.error)
+          return
+        }
+        setIsWatched(next)
+        if (next) toast.success('Marked as watched')
+      } catch {
+        // A rejected action must not reach the error boundary and replace the page.
+        toast.error('Could not save. Check your connection and try again.')
       }
-      setIsWatched(next)
-      if (next) toast.success('Marked as watched')
     })
   }
 

@@ -26,7 +26,8 @@ export function useMenuRead(token: string, menuText: string, photoUrls: readonly
     let timer: ReturnType<typeof setTimeout> | undefined
 
     const tick = async () => {
-      const result = await requestMenuRead(token, menuText)
+      // A thrown fetch counts as a refused poll, never an unhandled rejection.
+      const result = await requestMenuRead(token, menuText).catch(() => ({ ok: false as const }))
       if (isCancelled) return
       if (!result.ok) {
         // A refused poll is not a failed read: keep any dishes already shown.
@@ -35,7 +36,13 @@ export function useMenuRead(token: string, menuText: string, photoUrls: readonly
       }
       setView(result.data)
       polls += 1
-      if (result.data.status === 'reading' && polls < MAX_POLLS) timer = setTimeout(tick, POLL_INTERVAL_MS)
+      if (result.data.status !== 'reading') return
+      if (polls < MAX_POLLS) {
+        timer = setTimeout(tick, POLL_INTERVAL_MS)
+        return
+      }
+      // Still reading after the server's own deadline: stop spinning and let the owner type names instead.
+      setView({ status: 'failed', dishes: [] })
     }
 
     void tick()

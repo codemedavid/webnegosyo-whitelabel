@@ -144,9 +144,10 @@ export function OnboardingReveal({ token, view, onRefresh }: OnboardingRevealPro
   useEffect(() => {
     if (!hasCombos) return
     let isCancelled = false
+    // A failed prefetch is not fatal: ComboChoice fetches again and shows a retry if that fails too.
     void fetchLaunchCombos(token).then((result) => {
       if (!isCancelled && result.ok) setPrefetched(result.data)
-    })
+    }).catch(() => undefined)
     return () => { isCancelled = true }
   }, [token, hasCombos])
 

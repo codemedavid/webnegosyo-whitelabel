@@ -87,7 +87,8 @@ function eyebrowFor(step: WizardStep): string {
   return `${chapter.label} · ${(chapter.steps as readonly WizardStep[]).indexOf(step) + 1} of ${chapter.steps.length}`
 }
 
-function continueLabel(step: WizardStep, isSubmitting: boolean): string {
+function continueLabel(step: WizardStep, isSubmitting: boolean, isUploadingMenu: boolean): string {
+  if (isUploadingMenu) return 'Uploading…'
   if (step === 'welcome') return "Let's go"
   if (step === 'plan') return 'Sounds good'
   if (step === 'account') return isSubmitting ? 'Building…' : 'Build my store'
@@ -104,11 +105,37 @@ function previewRows(read: MenuReadView, draft: WizardDraft): PreviewMenuRow[] {
 
 /** Phones see the store on demand, in a sheet over the form. */
 function MobilePreviewSheet({ isOpen, onClose, children }: { isOpen: boolean; onClose: () => void; children: React.ReactNode }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!isOpen) return
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
+    // Move focus into the sheet, keep Tab inside it, and hand focus back to the trigger on close.
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const focusables = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button, a[href], [tabindex]:not([tabindex="-1"])') ?? [])
+    focusables()[0]?.focus({ preventScroll: true })
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') return onClose()
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      } else if (!dialogRef.current?.contains(document.activeElement)) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      trigger?.focus({ preventScroll: true })
+    }
   }, [isOpen, onClose])
 
   return (
@@ -116,6 +143,7 @@ function MobilePreviewSheet({ isOpen, onClose, children }: { isOpen: boolean; on
       {isOpen && (
         <motion.div
           className="fixed inset-0 z-50 flex items-end bg-black/40 lg:hidden"
+          ref={dialogRef}
           role="dialog" aria-modal="true" aria-label="Store preview"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           onClick={onClose}
@@ -157,16 +185,25 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(view.error)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Menu pages still uploading: moving on now would start the one AI read on a partial set.
+  const [isUploadingMenu, setIsUploadingMenu] = useState(false)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  // False until the saved draft and step were read, so a returning owner never sees the Welcome screen flash.
+  const [isRestored, setIsRestored] = useState(false)
   const headingRef = useRef<HTMLDivElement>(null)
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isReducedMotion = useReducedMotion()
 
   // Restore after mount (never during render: localStorage is browser-only).
+  // Once per token: a refreshed view must not restore the saved draft over live edits.
+  const restoredToken = useRef<string | null>(null)
   useEffect(() => {
+    if (restoredToken.current === token) return
+    restoredToken.current = token
     const restored = readSavedDraft(token, emptyDraft(view.businessName))
     setDraft(restored)
     setStepIndex(resumeIndex(token, restored, view.assets.menuImageUrls.length))
+    setIsRestored(true)
   }, [token, view.businessName, view.assets.menuImageUrls.length])
 
   useEffect(() => () => {
@@ -244,7 +281,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   }
 
   function next() {
-    if (isSubmitting) return
+    if (isSubmitting || isUploadingMenu) return
     const blocker = stepBlocker(step, draft, assets.menuImageUrls.length)
     if (blocker) return setError(blocker)
     if (isLastStep) return void submit()
@@ -265,14 +302,18 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   }
 
   // The funnel: the first time this set-up reaches each screen (names only, never answers).
+  // Not before the saved step is known, or a returning owner records a spurious 'opened'.
   useEffect(() => {
+    if (!isRestored) return
     trackOnboardingEvent(token, stepIndex === 0 ? 'opened' : `screen:${WIZARD_STEPS[stepIndex]}`)
-  }, [token, stepIndex])
+  }, [token, stepIndex, isRestored])
 
   // Move focus to the new question so screen readers announce it.
   useEffect(() => {
     if (stepIndex > 0) headingRef.current?.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true })
   }, [stepIndex])
+
+  if (!isRestored) return <div className="min-h-[60dvh]" aria-busy="true" />
 
   const preview = <StorePreviewPhone {...previewProps} />
   const stepProps = { draft, update }
@@ -301,7 +342,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
         {step === 'plan' && <PlanStep draft={draft} storeName={storeName} />}
         {step === 'store' && <StoreStep {...stepProps} eyebrow={eyebrow} />}
         {step === 'brand' && <BrandStep {...stepProps} {...photoProps} brand={brand ?? OB.ink} eyebrow={eyebrow} />}
-        {step === 'menu' && <MenuStep {...stepProps} {...photoProps} eyebrow={eyebrow} />}
+        {step === 'menu' && <MenuStep {...stepProps} {...photoProps} eyebrow={eyebrow} onUploadingChange={setIsUploadingMenu} />}
         {step === 'ordering' && <OrderingStep {...stepProps} eyebrow={eyebrow} />}
         {step === 'payments' && <PaymentsStep {...stepProps} eyebrow={eyebrow} />}
         {step === 'hours' && <HoursStep {...stepProps} eyebrow={eyebrow} />}
@@ -337,7 +378,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
 
       <footer className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur" style={{ borderColor: OB.line }}>
         <div className="mx-auto flex h-[4.75rem] max-w-5xl items-center gap-3 px-5 sm:px-8">
-          {stepIndex > 0 ? <TextButton onClick={() => goTo(stepIndex - 1)}>Back</TextButton> : <span />}
+          {stepIndex > 0 ? <TextButton onClick={() => goTo(stepIndex - 1)} isDisabled={isUploadingMenu}>Back</TextButton> : <span />}
           <div className={`ml-auto flex items-center gap-2 ${isWelcome ? 'w-full sm:w-auto [&>button]:w-full sm:[&>button]:w-auto' : ''}`}>
             {hasPreviewButton && (
               <button type="button" onClick={() => setIsPreviewOpen(true)}
@@ -346,9 +387,9 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
                 <Eye className="h-4 w-4" aria-hidden /> Preview
               </button>
             )}
-            <PrimaryButton type="submit" isDisabled={isSubmitting}>
+            <PrimaryButton type="submit" isDisabled={isSubmitting || isUploadingMenu}>
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-              {continueLabel(step, isSubmitting)}
+              {continueLabel(step, isSubmitting, isUploadingMenu)}
               {!isLastStep && !isSubmitting && <ArrowRight className="h-4 w-4" aria-hidden />}
             </PrimaryButton>
           </div>

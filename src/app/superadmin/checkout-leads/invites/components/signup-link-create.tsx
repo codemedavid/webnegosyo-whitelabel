@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Copy, Link2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -21,16 +21,35 @@ interface CreateForm {
 }
 
 const EMPTY_FORM: CreateForm = { label: '', payment_term: 'monthly_subscription', expires_in_days: DEFAULT_INVITE_EXPIRY_DAYS, notes: '' }
+const COPIED_RESET_MS = 2000
 const SHARE_BUTTON = 'inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/[0.06]'
 
 function NewLink({ url, onDone }: { url: string; onDone: () => void }) {
   const message = buildSignupLinkMessage(url)
   const [copied, setCopied] = useState<'link' | 'message' | null>(null)
+  const [hasCopiedAny, setHasCopiedAny] = useState(false)
+  const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false)
+
+  // The check mark only vouches for the copy that just happened.
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(null), COPIED_RESET_MS)
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  // Only the hash is stored: closing the tab with an uncopied link loses it for good.
+  useEffect(() => {
+    if (hasCopiedAny) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [hasCopiedAny])
 
   async function copy(kind: 'link' | 'message') {
     try {
       await navigator.clipboard.writeText(kind === 'link' ? url : message)
       setCopied(kind)
+      setHasCopiedAny(true)
       toast.success(kind === 'link' ? 'Link copied' : 'Message copied')
     } catch {
       toast.warning('Could not copy — select the text and copy by hand.')
@@ -51,8 +70,17 @@ function NewLink({ url, onDone }: { url: string; onDone: () => void }) {
         <button type="button" onClick={() => copy('link')} className={SHARE_BUTTON}>
           {copied === 'link' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} Copy link
         </button>
-        <button type="button" onClick={onDone} className={`${DIALOG_PRIMARY_BUTTON} ml-auto`}>Make another</button>
+        <button
+          type="button"
+          onClick={() => (hasCopiedAny || isConfirmingDiscard ? onDone() : setIsConfirmingDiscard(true))}
+          className={`${DIALOG_PRIMARY_BUTTON} ml-auto`}
+        >
+          {isConfirmingDiscard && !hasCopiedAny ? 'Discard link and make another' : 'Make another'}
+        </button>
       </div>
+      {isConfirmingDiscard && !hasCopiedAny && (
+        <p role="alert" className="text-xs text-amber-300">You have not copied the link yet. It cannot be shown again.</p>
+      )}
     </div>
   )
 }

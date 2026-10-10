@@ -13,12 +13,14 @@ export async function LearnChip({ tenantSlug, lessonSlug }: { tenantSlug: string
   return (
     <Link
       href={`/${tenantSlug}/admin/learn/${lesson.courseSlug}/${lesson.slug}`}
-      className="inline-flex min-h-9 items-center gap-2 rounded-full bg-wn-ink py-1 pl-1 pr-3 text-[12px] font-bold text-white transition-colors hover:bg-wn-ink-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wn-coral focus-visible:ring-offset-2"
+      className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-full bg-wn-ink py-1 pl-1 pr-3 text-[12px] font-bold text-white transition-colors hover:bg-wn-ink-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wn-coral focus-visible:ring-offset-2"
     >
-      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E8B23A] text-wn-ink" aria-hidden>
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E8B23A] text-wn-ink" aria-hidden>
         <Play className="h-3.5 w-3.5 translate-x-px fill-current" />
       </span>
-      {lesson.durationMinutes ? `${lesson.durationMinutes}-min video` : 'Video'}: {lesson.title}
+      <span className="truncate">
+        {lesson.durationMinutes ? `${lesson.durationMinutes}-min video` : 'Video'}: {lesson.title}
+      </span>
     </Link>
   )
 }

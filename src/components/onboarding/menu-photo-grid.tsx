@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Camera, Loader2 } from 'lucide-react'
 import { FOCUS_RING, OB, PhotoSlot } from './onboarding-ui'
 import { shrinkPhoto } from './shrink-photo'
@@ -11,6 +11,8 @@ interface MenuPhotoGridProps {
   /** Resolves to an error message, or null on success. */
   onUpload: (file: File) => Promise<string | null>
   onRemove: (index: number) => Promise<string | null>
+  /** Tells the wizard while pages are still uploading, so it can hold Continue until they land. */
+  onUploadingChange?: (isUploading: boolean) => void
 }
 
 const TILE_CLASS = 'flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border'
@@ -26,12 +28,18 @@ function skippedNote(skipped: number, max: number): string | null {
  * upload one after another, because each reply carries every photo so far and
  * the last reply must be the fullest. A failed page never stops the rest.
  */
-export function MenuPhotoGrid({ urls, max, onUpload, onRemove }: MenuPhotoGridProps) {
+export function MenuPhotoGrid({ urls, max, onUpload, onRemove, onUploadingChange }: MenuPhotoGridProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
   const isUploading = pendingCount > 0
+  useEffect(() => {
+    onUploadingChange?.(isUploading)
+  }, [isUploading, onUploadingChange])
+  // Leaving the step must never leave the wizard believing an upload is still running.
+  useEffect(() => () => onUploadingChange?.(false), [onUploadingChange])
+
   const canAdd = !isUploading && urls.length < max
 
   async function handleFiles(event: React.ChangeEvent<HTMLInputElement>) {

@@ -6,7 +6,7 @@ import type { LucideIcon } from 'lucide-react'
 import { STORE_TYPES, type StoreType } from '@/lib/onboarding/store-type'
 import { MAX_MENU_PHOTOS } from '@/lib/onboarding/answers'
 import type { PublicOnboardingAssets } from '@/lib/onboarding/repository'
-import { FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, PhotoSlot, QuestionHeading } from './onboarding-ui'
+import { FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, PhotoSlot, QuestionHeading, handleRadioGroupKeyDown } from './onboarding-ui'
 import { ColorPicker } from './color-picker'
 import { MenuPhotoGrid } from './menu-photo-grid'
 import type { WizardDraft } from './wizard-draft'
@@ -53,7 +53,7 @@ export function StoreStep({ draft, update, eyebrow }: StepProps & { eyebrow: str
       />
       <div className="space-y-3">
         <GroupLabel hint="It sets your starting colors and design.">What do you sell?</GroupLabel>
-        <div role="radiogroup" aria-label="What do you sell?" className="grid grid-cols-2 gap-3 sm:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
+        <div role="radiogroup" onKeyDown={handleRadioGroupKeyDown} aria-label="What do you sell?" className="grid grid-cols-2 gap-3 sm:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
           {(Object.keys(STORE_TYPES) as StoreType[]).map((type) => {
             const Icon = STORE_TYPE_ICONS[type]
             return (
@@ -118,7 +118,7 @@ export function BrandStep({ draft, update, assets, uploadPhoto, removePhoto, bra
 const MIN_MENU_ROWS = 5
 const MAX_MENU_ROWS = 16
 
-export function MenuStep({ draft, update, assets, uploadPhoto, removePhoto, eyebrow }: StepProps & PhotoProps & { eyebrow: string }) {
+export function MenuStep({ draft, update, assets, uploadPhoto, removePhoto, eyebrow, onUploadingChange }: StepProps & PhotoProps & { eyebrow: string; onUploadingChange?: (isUploading: boolean) => void }) {
   const [isTyping, setIsTyping] = useState(draft.menuText.trim().length > 0)
 
   return (
@@ -130,6 +130,7 @@ export function MenuStep({ draft, update, assets, uploadPhoto, removePhoto, eyeb
         max={MAX_MENU_PHOTOS}
         onUpload={(file) => uploadPhoto('menu', file)}
         onRemove={(index) => removePhoto('menu', index)}
+        onUploadingChange={onUploadingChange}
       />
 
       <div>

@@ -114,6 +114,26 @@ export function OptionTile({ isSelected, onClick, title, description, icon, isMu
   )
 }
 
+/**
+ * Arrow keys move focus between the radios of a `role="radiogroup"` (Home/End
+ * jump to the ends). Focus only: Space/Enter still chooses, because choosing a
+ * single-answer card moves the wizard on and a keyboard user must not be
+ * carried away just by looking along the list.
+ */
+export function handleRadioGroupKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+  const keyStep: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }
+  const isEdgeKey = event.key === 'Home' || event.key === 'End'
+  if (!isEdgeKey && keyStep[event.key] === undefined) return
+  const radios = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'))
+  const currentIndex = radios.findIndex((radio) => radio === document.activeElement)
+  if (radios.length === 0 || currentIndex < 0) return
+  event.preventDefault()
+  const targetIndex = isEdgeKey
+    ? (event.key === 'Home' ? 0 : radios.length - 1)
+    : (currentIndex + keyStep[event.key] + radios.length) % radios.length
+  radios[targetIndex].focus()
+}
+
 /** A full-width choice with a check on the right. */
 export function OptionRow({ isSelected, onClick, title, description, icon, isMulti = false }: OptionProps) {
   return (
@@ -384,10 +404,10 @@ export function SecondaryLink({ href, children, isExternal = false, isFull = fal
 }
 
 /** Airbnb's underlined text action (Back, Skip). */
-export function TextButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+export function TextButton({ children, onClick, isDisabled = false }: { children: React.ReactNode; onClick: () => void; isDisabled?: boolean }) {
   return (
-    <button type="button" onClick={onClick}
-      className={`min-h-12 rounded-lg px-2 text-[15px] font-semibold underline decoration-1 underline-offset-4 transition-colors hover:bg-[#F6F4F1] ${FOCUS_RING}`}
+    <button type="button" onClick={onClick} disabled={isDisabled}
+      className={`min-h-12 rounded-lg px-2 disabled:opacity-50 text-[15px] font-semibold underline decoration-1 underline-offset-4 transition-colors hover:bg-[#F6F4F1] ${FOCUS_RING}`}
       style={{ color: OB.ink }}>
       {children}
     </button>

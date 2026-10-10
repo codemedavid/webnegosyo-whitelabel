@@ -69,17 +69,25 @@ export function ComboChoice({ token, initialCombos, eyebrow, boostHref, onDone }
   const [combos, setCombos] = useState<LaunchComboView[] | null>(initialCombos)
   const [busy, setBusy] = useState<'keep' | 'skip' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (initialCombos) return
     let isCancelled = false
-    void fetchLaunchCombos(token).then((result) => {
-      if (isCancelled) return
-      if (result.ok) setCombos(result.data)
-      else setError(result.error)
-    })
+    void fetchLaunchCombos(token)
+      .catch(() => ({ ok: false as const, error: 'We could not load your combos. Check your connection and try again.' }))
+      .then((result) => {
+        if (isCancelled) return
+        if (result.ok) setCombos(result.data)
+        else setError(result.error)
+      })
     return () => { isCancelled = true }
-  }, [token, initialCombos])
+  }, [token, initialCombos, attempt])
+
+  function retryLoad() {
+    setError(null)
+    setAttempt((count) => count + 1)
+  }
 
   const waiting = (combos ?? []).filter((combo) => combo.status === 'waiting')
   const kept = (combos ?? []).filter((combo) => combo.status === 'kept').length
@@ -101,6 +109,18 @@ export function ComboChoice({ token, initialCombos, eyebrow, boostHref, onDone }
     setCombos(result.data.combos)
   }
 
+  if (!combos && error) {
+    // A failed read must never strand a phone owner on a spinner: offer a retry and a way past the step.
+    return (
+      <div className="space-y-4 py-6" role="alert">
+        <ErrorNote>{error}</ErrorNote>
+        <div className="flex gap-3">
+          <SecondaryButton onClick={() => onDone(0)}>Skip for now</SecondaryButton>
+          <PrimaryButton onClick={retryLoad}>Try again</PrimaryButton>
+        </div>
+      </div>
+    )
+  }
   if (!combos) {
     return (
       <div className="flex items-center gap-3 py-10" role="status">

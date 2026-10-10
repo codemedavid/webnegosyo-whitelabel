@@ -17,7 +17,7 @@ import {
   type GoalId,
   type TypicalOrder,
 } from '@/lib/onboarding/goals'
-import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB, QuestionHeading, TapCard } from './onboarding-ui'
+import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB, QuestionHeading, TapCard, handleRadioGroupKeyDown } from './onboarding-ui'
 import { toggleChannel, toggleGoal } from './wizard-draft'
 import type { StepProps } from './wizard-steps'
 
@@ -159,7 +159,7 @@ export function DailyOrdersStep({ draft, update, eyebrow, onAnswered }: SingleCh
         title="Ilang orders sa isang normal na araw?"
         lede="A rough guess is fine. It's your before number, so you can see your progress later."
       />
-      <div role="radiogroup" aria-label="Orders on a normal day" className="space-y-3">
+      <div role="radiogroup" onKeyDown={handleRadioGroupKeyDown} aria-label="Orders on a normal day" className="space-y-3">
         {buckets.map((bucket: DailyOrders) => (
           <TapCard
             key={bucket}
@@ -184,7 +184,7 @@ export function TypicalOrderStep({ draft, update, eyebrow, onAnswered }: SingleC
         title="Magkano ang usual na order?"
         lede="Per customer, roughly. We use it to pick a stamp-card reward worth coming back for."
       />
-      <div role="radiogroup" aria-label="A typical order" className="space-y-3">
+      <div role="radiogroup" onKeyDown={handleRadioGroupKeyDown} aria-label="A typical order" className="space-y-3">
         {TYPICAL_ORDER_IDS.map((bucket: TypicalOrder) => (
           <TapCard
             key={bucket}

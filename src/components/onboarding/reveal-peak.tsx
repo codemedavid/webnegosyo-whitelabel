@@ -55,6 +55,7 @@ function QrPanel({ storeUrl, storeName }: { storeUrl: string; storeName: string 
 export function ShareLink({ token, storeUrl, storeName }: { token: string; storeUrl: string; storeName: string }) {
   const [isCopied, setIsCopied] = useState(false)
   const [isQrOpen, setIsQrOpen] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const displayUrl = storeUrl.replace(/^https?:\/\//, '')
 
   async function copy() {
@@ -62,9 +63,12 @@ export function ShareLink({ token, storeUrl, storeName }: { token: string; store
     try {
       await navigator.clipboard.writeText(storeUrl)
       setIsCopied(true)
+      setCopyFailed(false)
       setTimeout(() => setIsCopied(false), COPIED_RESET_MS)
     } catch {
+      // In-app browsers refuse the clipboard: say so, instead of a button that seems to do nothing.
       setIsCopied(false)
+      setCopyFailed(true)
     }
   }
 
@@ -74,8 +78,9 @@ export function ShareLink({ token, storeUrl, storeName }: { token: string; store
       try {
         await navigator.share({ title: storeName, text: `Order from ${storeName} online`, url: storeUrl })
         return
-      } catch {
-        // Cancelled or refused: fall through to Facebook.
+      } catch (error) {
+        // Dismissing the share sheet is a choice, not a failure: never open Facebook after it.
+        if (error instanceof DOMException && error.name === 'AbortError') return
       }
     }
     window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(storeUrl)}`, '_blank', 'noopener,noreferrer')
@@ -84,7 +89,7 @@ export function ShareLink({ token, storeUrl, storeName }: { token: string; store
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 rounded-2xl border-2 border-dashed p-1.5 pl-4" style={{ borderColor: ACCENT }}>
-        <span className="min-w-0 flex-1 truncate text-[15px] font-bold" style={{ color: OB.ink }}>{displayUrl}</span>
+        <span className="min-w-0 flex-1 select-all truncate text-[15px] font-bold" style={{ color: OB.ink }}>{displayUrl}</span>
         <button type="button" onClick={copy}
           className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl px-4 text-sm font-bold transition-[filter] hover:brightness-110 ${FOCUS_RING}`}
           style={{ backgroundColor: ACCENT, color: ACCENT_INK }}>
@@ -92,6 +97,11 @@ export function ShareLink({ token, storeUrl, storeName }: { token: string; store
           <span aria-live="polite">{isCopied ? 'Copied' : 'Copy'}</span>
         </button>
       </div>
+      {copyFailed && (
+        <p role="status" className="text-[13px]" style={{ color: OB.muted }}>
+          We could not copy it here. Press and hold the link above to copy it.
+        </p>
+      )}
       <PrimaryButton onClick={share} isFull><Share2 className="h-4 w-4" aria-hidden /> Share my link</PrimaryButton>
       <SecondaryButton onClick={() => { if (!isQrOpen) trackOnboardingEvent(token, 'qr_shown'); setIsQrOpen(!isQrOpen) }} isFull><QrCode className="h-4 w-4" aria-hidden /> {isQrOpen ? 'Hide' : 'Show'} my counter QR</SecondaryButton>
       {isQrOpen && <QrPanel storeUrl={storeUrl} storeName={storeName} />}
