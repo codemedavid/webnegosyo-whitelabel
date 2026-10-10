@@ -2,6 +2,7 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OnboardingAnswers } from '@/lib/onboarding/answers'
 import type { StoreFacts } from '@/lib/onboarding/design-step'
+import type { LaunchCopy } from '@/lib/onboarding/launch-copy'
 import { summarizeMenuShape } from '@/lib/onboarding/design-pick'
 
 const CATEGORIES = [
@@ -81,49 +82,70 @@ describe('readStoreFacts', () => {
   })
 })
 
+const AI_COPY: LaunchCopy = {
+  kicker: 'Silog all day',
+  headline: 'Breakfast plates worth waking up for',
+  body: 'Tapsilog and longsilog, cooked when you order.',
+  highlights: ['Tapsilog and longsilog', 'Garlic rice on every plate', 'Sawsawan on the side'],
+  primaryCta: 'Order now',
+}
+
 describe('chooseLaunchDesign', () => {
-  test("the owner's look wins without asking the AI; the hero follows the look", async () => {
+  test("the owner's look wins; the AI still picks the hero and writes its words", async () => {
     const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
-    const model = jest.fn(async () => '{"look":"kiosk"}')
+    const model = jest.fn<(messages: Array<{ content: string }>) => Promise<string>>(
+      async () => JSON.stringify({ look: 'kiosk', hero: 'press-quote', copy: AI_COPY }),
+    )
     const choice = await chooseLaunchDesign({ ...ANSWERS, look: 'bistro' }, facts(), model)
-    expect(choice).toMatchObject({ look: 'bistro', hero: 'poster', source: 'owner' })
-    expect(model).not.toHaveBeenCalled()
+    expect(choice).toMatchObject({ look: 'bistro', hero: 'press-quote', source: 'owner', copy: AI_COPY })
+    expect(JSON.parse(model.mock.calls[0][0][1].content).fixedLook).toBe('bistro')
   })
 
   test('an owner pick saved by the older wizard maps to its new look', async () => {
     const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
     const choice = await chooseLaunchDesign({ ...ANSWERS, look: 'board' as never }, facts(), jest.fn(async () => ''))
-    expect(choice).toMatchObject({ look: 'sidebar', hero: 'none', source: 'owner' })
+    expect(choice).toMatchObject({ look: 'sidebar', source: 'owner' })
   })
 
-  test('the AI chooses the look and the hero, shown only heroes the store can have', async () => {
+  test('the AI chooses the look, the hero and its words, shown only heroes the store can have', async () => {
     // Arrange
     const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
     const model = jest.fn<(messages: Array<{ content: string }>) => Promise<string>>(
-      async () => '{"look":"kiosk","hero":"ways","fontPair":"bold display","reason":"Short silog menu, fast picks."}',
+      async () => JSON.stringify({ look: 'kiosk', hero: 'chalkboard', fontPair: 'bold display', reason: 'Short silog menu, fast picks.', copy: AI_COPY }),
     )
 
     // Act
     const choice = await chooseLaunchDesign(ANSWERS, facts(), model)
 
     // Assert
-    expect(choice).toEqual({ look: 'kiosk', hero: 'ways', fontPair: 'bold display', reason: 'Short silog menu, fast picks.', source: 'ai' })
-    const shown = JSON.parse(model.mock.calls[0][0][1].content) as { availableHeroes: string[] }
-    expect(shown.availableHeroes).toEqual(['ways', 'steps', 'favorites', 'poster', 'none'])
+    expect(choice).toEqual({ look: 'kiosk', hero: 'chalkboard', fontPair: 'bold display', reason: 'Short silog menu, fast picks.', source: 'ai', copy: AI_COPY })
+    const shown = JSON.parse(model.mock.calls[0][0][1].content) as { availableHeroes: string[]; neutralBrand: boolean }
+    expect(shown.availableHeroes).toContain('chalkboard')
+    expect(shown.neutralBrand).toBe(false)
   })
 
-  test('a hero the store cannot have (no best sellers) is replaced by the look\'s rule hero', async () => {
+  test("a hero the store cannot have (no best sellers) is replaced by the look's rule hero", async () => {
     const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
-    const choice = await chooseLaunchDesign(ANSWERS, facts({ favorites: [] }), jest.fn(async () => '{"look":"shop","hero":"favorites"}'))
-    expect(choice).toMatchObject({ look: 'shop', hero: 'steps', source: 'ai' })
+    const choice = await chooseLaunchDesign(ANSWERS, facts({ favorites: [] }), jest.fn(async () => '{"look":"shop","hero":"chalkboard"}'))
+    expect(choice).toMatchObject({ look: 'shop', hero: 'split-photo', source: 'ai' })
   })
 
-  test('an off-catalog AI answer falls back to the menu rules', async () => {
+  test('AI words that claim what we cannot know are replaced with honest store-type copy', async () => {
+    const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
+    const model = jest.fn(async () => JSON.stringify({ look: 'shop', hero: 'split-photo', copy: { ...AI_COPY, headline: 'Rated 4.9 by 1,000 regulars', kicker: 'Since 1998' } }))
+    const choice = await chooseLaunchDesign(ANSWERS, facts(), model)
+    expect(choice.copy.headline).toBe('Migos')
+    expect(choice.copy.kicker).not.toContain('1998')
+    expect(choice.copy.body).toBe(AI_COPY.body)
+  })
+
+  test('an off-catalog AI answer falls back to the menu rules and honest copy', async () => {
     const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
     const { RULE_REASONS } = await import('@/lib/onboarding/design-pick')
     const choice = await chooseLaunchDesign(ANSWERS, facts(), jest.fn(async () => '{"look":"menuboard"}'))
     expect(choice.source).toBe('rules')
     expect(choice.reason).toBe(RULE_REASONS[choice.look])
+    expect(choice.copy.headline).toBe('Migos')
   })
 
   test('an AI that throws (no key, timeout) falls back to the menu rules, never fails', async () => {
@@ -132,13 +154,42 @@ describe('chooseLaunchDesign', () => {
     expect(choice.source).toBe('rules')
   })
 
+  const BIG_MENU = summarizeMenuShape(['Main Course', 'Appetizers', 'Pasta', 'Seafoods', 'Rice Platter', 'Drinks'].flatMap((name) =>
+    Array.from({ length: 8 }, (_, index) => ({ categoryName: name, itemName: `${name} ${index}`, price: 180 }))))
+
+  test('a black-and-white brand gets a hero with its own colors (the AI wrote the words)', async () => {
+    const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
+    const model = jest.fn(async () => JSON.stringify({ look: 'sidebar', copy: AI_COPY }))
+    const choice = await chooseLaunchDesign(ANSWERS, facts({ shape: BIG_MENU, buttonColor: '#1c1c1c' }), model)
+    expect(choice).toMatchObject({ look: 'sidebar', hero: 'press-quote', source: 'ai' })
+  })
+
+  test('without an AI headline the press quote is never used: it would quote the store name', async () => {
+    const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
+    const down = jest.fn(async () => { throw new Error('down') })
+    const choice = await chooseLaunchDesign(ANSWERS, facts({ shape: BIG_MENU, buttonColor: '#1c1c1c' }), down)
+    expect(choice).toMatchObject({ look: 'sidebar', source: 'rules' })
+    expect(choice.hero).not.toBe('press-quote')
+    const asked = await chooseLaunchDesign(ANSWERS, facts(), jest.fn(async () => JSON.stringify({ look: 'shop', hero: 'press-quote', copy: { headline: 'Rated 5 stars' } })))
+    expect(asked.hero).not.toBe('press-quote')
+  })
+
   test('an empty menu skips the AI and designs for the store type', async () => {
     const { chooseLaunchDesign } = await import('@/lib/onboarding/design-step')
     const { STORE_TYPES } = await import('@/lib/onboarding/store-type')
     const model = jest.fn(async () => '{"look":"kiosk"}')
     const choice = await chooseLaunchDesign({ ...ANSWERS, storeType: 'cafe' }, facts({ shape: summarizeMenuShape([]), favorites: [] }), model)
     expect(model).not.toHaveBeenCalled()
-    expect(choice).toMatchObject({ look: STORE_TYPES.cafe.look, source: 'rules' })
+    expect(choice).toMatchObject({ look: STORE_TYPES.cafe.look, hero: 'cafe-minimal', source: 'rules' })
+  })
+})
+
+describe('isNeutralColor', () => {
+  test('black, white and greys are neutral; brand colors and oxblood are not', async () => {
+    const { isNeutralColor } = await import('@/lib/onboarding/design-step')
+    for (const hex of ['#1c1c1c', '#ffffff', '#6b6b6b']) expect(isNeutralColor(hex)).toBe(true)
+    for (const hex of ['#c0392b', '#fbd905', '#3b0d14']) expect(isNeutralColor(hex)).toBe(false)
+    expect(isNeutralColor('not a color')).toBe(false)
   })
 })
 
@@ -148,32 +199,35 @@ describe('applyLaunchHero', () => {
     const { heroDesignV5Schema } = await import('@/lib/hero-builder/schema')
     const { client, updates } = fakeAdmin()
 
-    await applyLaunchHero(client as never, 't1', 'steps', launchHeroInput(ANSWERS, facts()))
+    await applyLaunchHero(client as never, 't1', 'how-it-works', launchHeroInput(ANSWERS, facts()), AI_COPY)
 
     expect(updates).toHaveLength(1)
     expect(updates[0]).toMatchObject({ hero_preset: 'custom', hero_section_enabled: true })
+    expect(updates[0]).not.toHaveProperty('header_color')
     expect(heroDesignV5Schema.safeParse(JSON.parse(updates[0].hero_design as string)).success).toBe(true)
     expect(updates[0].hero_design).toContain('GCash or Cash.')
+    expect(updates[0].hero_design).toContain(AI_COPY.headline)
   })
 
-  test('"none" only switches the hero off', async () => {
+  test('a hero with its own band paints the header to match, in the same write', async () => {
     const { applyLaunchHero, launchHeroInput } = await import('@/lib/onboarding/design-step')
     const { client, updates } = fakeAdmin()
-    await applyLaunchHero(client as never, 't1', 'none', launchHeroInput(ANSWERS, facts()))
-    expect(updates).toEqual([{ hero_section_enabled: false }])
+    await applyLaunchHero(client as never, 't1', 'press-quote', launchHeroInput(ANSWERS, facts()), AI_COPY)
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatchObject({ header_color: '#3b0d14', menu_main_header_text_color: '#e0b44c', hero_preset: 'custom' })
   })
 
   test('an update that reached no row is an error, not a silent success', async () => {
     const { applyLaunchHero, launchHeroInput } = await import('@/lib/onboarding/design-step')
-    await expect(applyLaunchHero(fakeAdmin({ updatedRows: 0 }).client as never, 't1', 'poster', launchHeroInput(ANSWERS, facts())))
+    await expect(applyLaunchHero(fakeAdmin({ updatedRows: 0 }).client as never, 't1', 'split-photo', launchHeroInput(ANSWERS, facts()), AI_COPY))
       .rejects.toThrow(/Hero could not be saved/)
   })
 
-  test("the hero's words come from the answers: tagline, or the store type's line", async () => {
+  test('the hero facts come from the answers and the menu', async () => {
     const { launchHeroInput } = await import('@/lib/onboarding/design-step')
-    const { STORE_TYPES } = await import('@/lib/onboarding/store-type')
-    expect(launchHeroInput(ANSWERS, facts()).line).toBe(STORE_TYPES.restaurant.heroLine)
-    expect(launchHeroInput({ ...ANSWERS, tagline: 'Silog all day' }, facts()).line).toBe('Silog all day')
-    expect(launchHeroInput(ANSWERS, facts()).paymentNames).toEqual(['GCash', 'Cash'])
+    const input = launchHeroInput(ANSWERS, facts())
+    expect(input.paymentNames).toEqual(['GCash', 'Cash'])
+    expect(input.storeType).toBe('restaurant')
+    expect(input.menuCategories).toEqual(['Silog'])
   })
 })

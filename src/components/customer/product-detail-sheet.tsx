@@ -9,6 +9,7 @@ import {
     type ProductDetailUpsells,
 } from '@/app/actions/product-detail'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
+import { STOREFRONT_LAYERS } from './overlay-layers'
 import type { MenuItem, Category, Tenant } from '@/types/database'
 import type { BrandingColors } from '@/lib/branding-utils'
 import type { SelectedTenant } from '@/lib/product-detail-data'
@@ -53,6 +54,9 @@ export function ProductDetailSheet({
     // The item currently shown in the sheet — swappable in-place via upgrade /
     // related-item selection without navigating routes.
     const [currentItem, setCurrentItem] = useState<MenuItem | null>(item)
+    // Dishes passed through on the way here (upgrade, related item). Back steps
+    // through them like a kiosk, so "Make it a meal" can be undone.
+    const [trail, setTrail] = useState<readonly MenuItem[]>([])
     // Tenant-level theme settings — fetched once on mount (item-invariant) so the
     // theme is ready before the first open. Persists across item swaps.
     const [customization, setCustomization] = useState<ProductDetailSettings | null>(null)
@@ -89,6 +93,7 @@ export function ProductDetailSheet({
     useEffect(() => {
         if (item) {
             setCurrentItem(item)
+            setTrail([])
         }
     }, [item])
 
@@ -158,8 +163,19 @@ export function ProductDetailSheet({
     }, [allMenuItems, currentItem?.category_id, currentItem?.id])
 
     const handleNavigateToItem = useCallback((next: MenuItem) => {
+        if (currentItem) setTrail((previous) => [...previous, currentItem])
         setCurrentItem(next)
-    }, [])
+    }, [currentItem])
+
+    const handleBack = useCallback(() => {
+        const previous = trail[trail.length - 1]
+        if (!previous) {
+            onClose()
+            return
+        }
+        setTrail(trail.slice(0, -1))
+        setCurrentItem(previous)
+    }, [trail, onClose])
 
     const handleDragEnd = useCallback(
         (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -173,7 +189,7 @@ export function ProductDetailSheet({
     return (
         <AnimatePresence>
             {open && currentItem && (
-                <motion.div className="fixed inset-0 z-[100]" key="product-detail-sheet">
+                <motion.div className="fixed inset-0" style={{ zIndex: STOREFRONT_LAYERS.itemSheet }} key="product-detail-sheet">
                     {/* Backdrop */}
                     <motion.div
                         className="absolute inset-0 bg-black/40"
@@ -231,6 +247,7 @@ export function ProductDetailSheet({
                             isBrandAdmin={false}
                             upsellsPending={upsellsLoading}
                             onClose={onClose}
+                            onBack={handleBack}
                             onNavigateToItem={handleNavigateToItem}
                         />
                     </motion.div>

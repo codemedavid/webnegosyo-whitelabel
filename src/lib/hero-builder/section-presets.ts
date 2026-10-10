@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import { createBlankDesign, createSection, createWidget, newId } from './defaults'
+import { photoAt, type TemplateCopy, type TemplateHighlight } from './template-copy'
 import type {
   AnimationType,
   Box,
@@ -131,6 +132,17 @@ export function iconList(
   return widget('icon-list', { items, layout }, style, mobile)
 }
 
+/** An icon list of the copy's highlights; none when there are none. */
+export function highlightList(
+  highlights: readonly TemplateHighlight[],
+  layout: 'vertical' | 'inline',
+  style: NodeStyle = {},
+  mobile?: NodeStyle,
+): Widget[] {
+  if (highlights.length === 0) return []
+  return [iconList(highlights.map((item) => listItem(item.icon, item.label)), layout, style, mobile)]
+}
+
 export function image(src: string, alt: string, style: NodeStyle = {}, mobile?: NodeStyle): Widget {
   return widget('image', { src, alt }, style, mobile)
 }
@@ -186,7 +198,19 @@ const CENTER_MOBILE: NodeStyle = { textAlign: 'center' }
 
 // ── Presets ────────────────────────────────────────────────────────────────
 
-export function buildHeroSplit(): Section {
+export const HERO_SPLIT_SAMPLE: TemplateCopy = {
+  kicker: 'Now taking orders',
+  headline: 'Home-style Filipino favorites, cooked fresh daily',
+  body: 'From sizzling sisig to slow-braised adobo — order in a few taps for pickup or delivery.',
+  highlights: [{ icon: 'Star', label: '4.9 from 1,200+ reviews' }, { icon: 'Truck', label: 'Delivery in 30–45 min' }],
+  primaryCta: 'Order now',
+  secondaryCta: 'View menu',
+  photos: [{ url: photo(PHOTOS.feast), alt: 'A table of freshly cooked Filipino dishes' }],
+}
+
+/** Uses one photo. */
+export function buildHeroSplit(copy: TemplateCopy = HERO_SPLIT_SAMPLE): Section {
+  const dish = photoAt(copy, HERO_SPLIT_SAMPLE, 0)
   return section({
     label: 'Hero — split',
     widths: [52, 48],
@@ -197,22 +221,17 @@ export function buildHeroSplit(): Section {
         style: { gap: 20 },
         mobile: { textAlign: 'center', gap: 16 },
         widgets: [
-          animate(badge('Now taking orders', 'Sparkles'), 'fade'),
-          animate(heading('Home-style Filipino favorites, cooked fresh daily', 'h1', DISPLAY, DISPLAY_MOBILE), 'slide-up', 80),
-          animate(text('From sizzling sisig to slow-braised adobo — order in a few taps for pickup or delivery.', LEAD, LEAD_MOBILE), 'slide-up', 160),
-          animate(buttons([button('Order now', MENU_ANCHOR, 'solid', 'ShoppingBag'), button('View menu', MENU_ANCHOR, 'outline')]), 'slide-up', 240),
-          iconList(
-            [listItem('Star', '4.9 from 1,200+ reviews'), listItem('Truck', 'Delivery in 30–45 min')],
-            'inline',
-            { fontSize: 14, color: '@muted', accentColor: '@primary', margin: box(8, 0, 0, 0) },
-            CENTER_MOBILE,
-          ),
+          animate(badge(copy.kicker, 'Sparkles'), 'fade'),
+          animate(heading(copy.headline, 'h1', DISPLAY, DISPLAY_MOBILE), 'slide-up', 80),
+          animate(text(copy.body, LEAD, LEAD_MOBILE), 'slide-up', 160),
+          animate(buttons([button(copy.primaryCta, MENU_ANCHOR, 'solid', 'ShoppingBag'), button(copy.secondaryCta, MENU_ANCHOR, 'outline')]), 'slide-up', 240),
+          ...highlightList(copy.highlights, 'inline', { fontSize: 14, color: '@muted', accentColor: '@primary', margin: box(8, 0, 0, 0) }, CENTER_MOBILE),
         ],
       },
       {
         widgets: [
           animate(
-            image(photo(PHOTOS.feast), 'A table of freshly cooked Filipino dishes', { radius: 28, aspectRatio: '4/3', shadow: 'xl' }, { radius: 20, aspectRatio: '16/9' }),
+            image(dish.url, dish.alt, { radius: 28, aspectRatio: '4/3', shadow: 'xl' }, { radius: 20, aspectRatio: '16/9' }),
             'zoom',
             120,
           ),
@@ -446,7 +465,7 @@ export interface SectionPreset {
 }
 
 export const SECTION_PRESETS: readonly SectionPreset[] = [
-  { id: 'hero-split', name: 'Hero — split', description: 'Headline, pitch and order buttons beside a big food photo.', build: buildHeroSplit },
+  { id: 'hero-split', name: 'Hero — split', description: 'Headline, pitch and order buttons beside a big food photo.', build: () => buildHeroSplit() },
   { id: 'hero-centered', name: 'Hero — centered', description: 'Centered headline and buttons on a soft brand gradient.', build: buildHeroCentered },
   { id: 'features', name: '3 features', description: 'Three icon cards that answer “why order from us?”.', build: buildFeatures },
   { id: 'promo-countdown', name: 'Promo + countdown', description: 'Bold brand-gradient band with a live countdown to create urgency.', build: buildPromoBanner },

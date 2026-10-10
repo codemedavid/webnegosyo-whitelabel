@@ -1,16 +1,23 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
+const SHARP_NATIVE_FILES = "./node_modules/@img/sharp-*/**/*";
+
 const nextConfig: NextConfig = {
   // Cross-app regression tests import Electron/Expo sources. Their dependencies
   // belong to those projects, not Vercel's web-only install. Keep production
   // typechecking focused on the application; root tsc still checks the tests.
   typescript: { tsconfigPath: "tsconfig.build.json" },
   // sharp picks its native binary at runtime from `@img/sharp-<platform>`, so
-  // file tracing keeps its JS but drops the `.node` file and libvips — the
-  // wallet pass routes then 500 with "Could not load the sharp module".
+  // file tracing keeps its JS but drops the `.node` file and libvips — every
+  // route that reaches sharp then 500s with "Could not load the sharp module".
+  // List each one: the onboarding submit/build route shipped without it on
+  // 2026-10-10 and no buyer could press "Build my store". Superadmin pages run
+  // the onboarding build through the checkout-leads "retry" server action.
   outputFileTracingIncludes: {
-    "/api/loyalty/passes/**": ["./node_modules/@img/sharp-*/**/*"],
+    "/api/loyalty/passes/**": [SHARP_NATIVE_FILES],
+    "/api/onboarding/**": [SHARP_NATIVE_FILES],
+    "/superadmin/checkout-leads/**": [SHARP_NATIVE_FILES],
   },
   images: {
     // Cache optimized images longer to reduce repeated requests

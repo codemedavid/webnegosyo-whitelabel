@@ -1,4 +1,4 @@
-import { needsChoices, offerableItems } from '@/lib/boost/offer-items'
+import { needsChoices, offerableItems, postAddOffers } from '@/lib/boost/offer-items'
 import type { MenuItem } from '@/types/database'
 
 const base = (overrides: Partial<MenuItem> = {}): MenuItem =>
@@ -45,5 +45,23 @@ describe('offerableItems', () => {
     ]
     expect(offerableItems(items, { excludeIds: new Set(['c']), limit: 5 }).map((i) => i.id)).toEqual(['a', 'd'])
     expect(offerableItems(items, { limit: 1 }).map((i) => i.id)).toEqual(['a'])
+  })
+})
+
+describe('postAddOffers', () => {
+  const pairings = [base({ id: 'lumpia' }), base({ id: 'rice' }), base({ id: 'gulay' })]
+
+  it('leaves out the dish just added and anything already in the cart', () => {
+    const offers = postAddOffers(pairings, { addedItemId: 'rice', cartItemIds: ['lumpia'] })
+    expect(offers.map((i) => i.id)).toEqual(['gulay'])
+  })
+
+  it('offers nothing once every pairing is already in the order, so no empty sheet opens', () => {
+    expect(postAddOffers(pairings, { addedItemId: 'bbq', cartItemIds: ['lumpia', 'rice', 'gulay'] })).toEqual([])
+  })
+
+  it('shows at most four pairings', () => {
+    const many = ['a', 'b', 'c', 'd', 'e'].map((id) => base({ id }))
+    expect(postAddOffers(many, { addedItemId: 'x', cartItemIds: [] })).toHaveLength(4)
   })
 })

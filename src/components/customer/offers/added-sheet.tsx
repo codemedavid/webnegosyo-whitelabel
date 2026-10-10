@@ -4,15 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { trackAnalyticsEventAction } from '@/app/actions/analytics'
 import { formatPrice } from '@/lib/cart-utils'
-import { needsChoices, offerableItems } from '@/lib/boost/offer-items'
+import { MAX_POST_ADD_OFFERS, needsChoices, offerableItems } from '@/lib/boost/offer-items'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import type { MenuItem } from '@/types/database'
+import { STOREFRONT_LAYERS } from '../overlay-layers'
 import { AddedSheetContent } from './added-sheet-content'
 import type { OfferTheme } from './offer-theme'
 
 /** Keeps the upsell report continuous with the screen this replaces. */
 const ANALYTICS_SOURCE = 'post_add'
-const MAX_SUGGESTIONS = 4
 
 interface AddedSheetProps {
   open: boolean
@@ -50,7 +50,7 @@ export function AddedSheet({
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   const [isMounted, setMounted] = useState(false)
   const trackedRef = useRef(false)
-  const shown = offerableItems(suggestions, { excludeIds: new Set([addedItem.id]), limit: MAX_SUGGESTIONS })
+  const shown = offerableItems(suggestions, { excludeIds: new Set([addedItem.id]), limit: MAX_POST_ADD_OFFERS })
 
   useBodyScrollLock(open)
   useEffect(() => setMounted(true), [])
@@ -100,7 +100,13 @@ export function AddedSheet({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex flex-col justify-end" role="dialog" aria-modal="true" aria-label="Added to your order">
+    <div
+      className="fixed inset-0 flex flex-col justify-end"
+      style={{ zIndex: STOREFRONT_LAYERS.addedSheet }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Added to your order"
+    >
       <button
         type="button"
         aria-label="Close"

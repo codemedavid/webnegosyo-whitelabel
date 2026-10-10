@@ -16,9 +16,8 @@ import {
   design,
   galleryImage,
   heading,
-  iconList,
+  highlightList,
   image,
-  listItem,
   photo,
   section,
   text,
@@ -26,6 +25,7 @@ import {
   animate,
   type ColumnSpec,
 } from './section-presets'
+import { photoAt, type TemplateBand, type TemplateCopy } from './template-copy'
 import type { HeroDesignV5, NodeStyle } from './types'
 
 const EYEBROW: NodeStyle = { fontSize: 13, fontWeight: 700, letterSpacing: 3, textTransform: 'uppercase' }
@@ -37,8 +37,26 @@ const EYEBROW_MOBILE: NodeStyle = { fontSize: 12, letterSpacing: 2 }
 const BONE = '#f4efe6'
 const INK = '#1c1a17'
 const MOSS = '#4d5b3a'
+export const MASTHEAD_BAND: TemplateBand = { background: BONE, title: INK }
 
-export function buildMastheadPanorama(): HeroDesignV5 {
+/** `headline` is the wordmark (set huge in lowercase); `body` is set in italics. */
+export const MASTHEAD_SAMPLE: TemplateCopy = {
+  kicker: 'Kitchen & wine bar · Since 2016',
+  headline: 'kusina',
+  body: 'Seasonal plates, natural wine and a long table for everyone.',
+  highlights: [
+    { icon: 'MapPin', label: 'Poblacion, Makati' },
+    { icon: 'Clock', label: 'Tue–Sun · 11 AM – 10 PM' },
+    { icon: 'Phone', label: '0917 123 4567' },
+  ],
+  primaryCta: 'Order now',
+  secondaryCta: '',
+  photos: [{ url: photo(PHOTOS.diningRoom, 2200), alt: 'Our dining room, set for dinner' }],
+}
+
+/** Uses one wide photo; one button. */
+export function buildMastheadPanorama(copy: TemplateCopy = MASTHEAD_SAMPLE): HeroDesignV5 {
+  const panoramaPhoto = photoAt(copy, MASTHEAD_SAMPLE, 0)
   const masthead = section({
     label: 'Hero — masthead',
     widths: [100],
@@ -48,15 +66,15 @@ export function buildMastheadPanorama(): HeroDesignV5 {
       {
         style: { gap: 18, textAlign: 'center' },
         widgets: [
-          text('Kitchen & wine bar · Since 2016', { ...EYEBROW, color: MOSS, textAlign: 'center' }, EYEBROW_MOBILE),
+          text(copy.kicker, { ...EYEBROW, color: MOSS, textAlign: 'center' }, EYEBROW_MOBILE),
           animate(
-            heading('kusina', 'h1', { fontFamily: 'cormorant-garamond', fontSize: 168, fontWeight: 500, lineHeight: 0.85, letterSpacing: -4, color: INK, textAlign: 'center' }, { fontSize: 84, letterSpacing: -2 }),
+            heading(copy.headline, 'h1', { fontFamily: 'cormorant-garamond', fontSize: 168, fontWeight: 500, lineHeight: 0.85, letterSpacing: -4, color: INK, textAlign: 'center' }, { fontSize: 84, letterSpacing: -2 }),
             'fade',
             0,
             1200,
           ),
-          text('*Seasonal plates, natural wine and a long table for everyone.*', { fontFamily: 'lora', fontSize: 21, color: INK, textAlign: 'center' }, { fontSize: 17 }),
-          buttons([button('Order now', MENU_ANCHOR, 'outline')], { textAlign: 'center', accentColor: INK, radius: 0, letterSpacing: 1, margin: box(6, 0, 0, 0) }),
+          text(`*${copy.body}*`, { fontFamily: 'lora', fontSize: 21, color: INK, textAlign: 'center' }, { fontSize: 17 }),
+          buttons([button(copy.primaryCta, MENU_ANCHOR, 'outline')], { textAlign: 'center', accentColor: INK, radius: 0, letterSpacing: 1, margin: box(6, 0, 0, 0) }),
         ],
       },
     ],
@@ -70,7 +88,7 @@ export function buildMastheadPanorama(): HeroDesignV5 {
       {
         widgets: [
           animate(
-            image(photo(PHOTOS.diningRoom, 2200), 'Our dining room, set for dinner', { radius: 0, aspectRatio: '21/9' }, { aspectRatio: '4/3' }),
+            image(panoramaPhoto.url, panoramaPhoto.alt, { radius: 0, aspectRatio: '21/9' }, { aspectRatio: '4/3' }),
             'fade',
             200,
             1200,
@@ -89,8 +107,8 @@ export function buildMastheadPanorama(): HeroDesignV5 {
         style: { gap: 18 },
         widgets: [
           widget('divider', {}, { size: 1, accentColor: 'rgba(28,26,23,0.25)', margin: box(0) }),
-          iconList(
-            [listItem('MapPin', 'Poblacion, Makati'), listItem('Clock', 'Tue–Sun · 11 AM – 10 PM'), listItem('Phone', '0917 123 4567')],
+          ...highlightList(
+            copy.highlights,
             'inline',
             { fontSize: 15, gap: 32, color: INK, accentColor: MOSS, textAlign: 'center' },
             { fontSize: 14, gap: 14 },
@@ -205,8 +223,27 @@ export function buildTriptych(): HeroDesignV5 {
 const OXBLOOD = '#3b0d14'
 const CREAM = '#f6eee3'
 const GOLD = '#e0b44c'
+export const PRESS_QUOTE_BAND: TemplateBand = { background: OXBLOOD, title: GOLD }
 
-export function buildPressQuote(): HeroDesignV5 {
+/** `kicker` is the ornament line above the quote; `headline` is set in quotes and `signature` signs it. */
+export const PRESS_QUOTE_SAMPLE: TemplateCopy = {
+  kicker: '★★★★★',
+  headline: 'The kind of place you tell all your friends about — then quietly worry it will get too busy.',
+  body: '',
+  highlights: [],
+  signature: 'A very happy regular',
+  primaryCta: 'Order now',
+  secondaryCta: 'View menu',
+  photos: [
+    { url: photo(PHOTOS.plated, 800), alt: 'A plated main course' },
+    { url: photo(PHOTOS.diningRoom, 800), alt: 'Dinner service in the dining room' },
+    { url: photo(PHOTOS.salad, 800), alt: 'A bright salad bowl' },
+  ],
+}
+
+/** Uses three photos in a strip; `body` and highlights are not shown. */
+export function buildPressQuote(copy: TemplateCopy = PRESS_QUOTE_SAMPLE): HeroDesignV5 {
+  const strip = [0, 1, 2].map((index) => photoAt(copy, PRESS_QUOTE_SAMPLE, index))
   const quote = section({
     label: 'Hero — press quote',
     widths: [100],
@@ -216,16 +253,16 @@ export function buildPressQuote(): HeroDesignV5 {
       {
         style: { gap: 22, textAlign: 'center' },
         widgets: [
-          text('★★★★★', { fontSize: 22, letterSpacing: 6, color: GOLD, textAlign: 'center' }),
+          text(copy.kicker, { fontSize: 22, letterSpacing: 6, color: GOLD, textAlign: 'center' }),
           animate(
-            heading('“The kind of place you tell all your friends about — then quietly worry it will get too busy.”', 'p', { fontFamily: 'cormorant-garamond', fontSize: 50, fontWeight: 500, lineHeight: 1.15, italic: true, color: CREAM, textAlign: 'center' }, { fontSize: 30 }),
+            heading(`“${copy.headline}”`, 'p', { fontFamily: 'cormorant-garamond', fontSize: 50, fontWeight: 500, lineHeight: 1.15, italic: true, color: CREAM, textAlign: 'center' }, { fontSize: 30 }),
             'fade',
             100,
             1100,
           ),
-          text('— A very happy regular', { fontFamily: 'montserrat', fontSize: 12, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', color: 'rgba(246,238,227,0.7)', textAlign: 'center' }, { fontSize: 11 }),
+          text(`— ${copy.signature ?? ''}`, { fontFamily: 'montserrat', fontSize: 12, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', color: 'rgba(246,238,227,0.7)', textAlign: 'center' }, { fontSize: 11 }),
           widget('divider', {}, { size: 1, accentColor: GOLD, maxWidth: 64, textAlign: 'center', margin: box(4, 0) }),
-          buttons([button('Order now', MENU_ANCHOR, 'solid'), button('View menu', MENU_ANCHOR, 'outline')], {
+          buttons([button(copy.primaryCta, MENU_ANCHOR, 'solid'), button(copy.secondaryCta, MENU_ANCHOR, 'outline')], {
             textAlign: 'center',
             accentColor: CREAM,
             accentTextColor: OXBLOOD,
@@ -246,11 +283,7 @@ export function buildPressQuote(): HeroDesignV5 {
           widget(
             'gallery',
             {
-              images: [
-                galleryImage(photo(PHOTOS.plated, 800), 'A plated main course'),
-                galleryImage(photo(PHOTOS.diningRoom, 800), 'Dinner service in the dining room'),
-                galleryImage(photo(PHOTOS.salad, 800), 'A bright salad bowl'),
-              ],
+              images: strip.map((picture) => galleryImage(picture.url, picture.alt)),
             },
             { columns: 3, gap: 16, radius: 4, aspectRatio: '1/1' },
             { columns: 3, gap: 8 },

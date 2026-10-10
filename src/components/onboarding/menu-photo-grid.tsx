@@ -60,6 +60,12 @@ export function MenuPhotoGrid({ urls, max, onUpload, onRemove, onUploadingChange
     setError(notes.length > 0 ? notes.join(' ') : null)
   }
 
+  async function handleRemove(index: number): Promise<string | null> {
+    // The cap note is about the last pick; a removal makes room, so it no longer holds.
+    setError(null)
+    return onRemove(index)
+  }
+
   const label = urls.length === 0 ? 'Add photos' : 'Add pages'
 
   return (
@@ -71,7 +77,7 @@ export function MenuPhotoGrid({ urls, max, onUpload, onRemove, onUploadingChange
             label={`Menu page ${index + 1}`}
             imageUrl={url}
             onUpload={async () => null}
-            onRemove={() => onRemove(index)}
+            onRemove={() => handleRemove(index)}
           />
         ))}
         {Array.from({ length: pendingCount }, (_, index) => (

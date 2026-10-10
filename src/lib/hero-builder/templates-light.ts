@@ -22,6 +22,7 @@ import {
   design,
   galleryImage,
   heading,
+  highlightList,
   iconList,
   image,
   listItem,
@@ -31,6 +32,7 @@ import {
   widget,
   type ColumnSpec,
 } from './section-presets'
+import { photoAt, type TemplateBand, type TemplateCopy } from './template-copy'
 import type { Background, HeroDesignV5, NodeStyle } from './types'
 
 const SERIF_DISPLAY: NodeStyle = { fontFamily: 'fraunces', fontWeight: 600, lineHeight: 1.02, letterSpacing: -2 }
@@ -154,8 +156,25 @@ export function buildPhotoMosaic(): HeroDesignV5 {
 const CREAM = '#fbf3e6'
 const COCOA = '#3b2a1a'
 const COCOA_SOFT = 'rgba(59,42,26,0.74)'
+export const BAKERY_BAND: TemplateBand = { background: CREAM, title: COCOA }
 
-export function buildBakery(): HeroDesignV5 {
+export const BAKERY_SAMPLE: TemplateCopy = {
+  kicker: 'Baked with love',
+  headline: 'Warm from the oven, every single morning',
+  body: 'Buttery croissants, ensaymada and pandesal baked before sunrise. Reserve yours today — they sell out by noon.',
+  highlights: [
+    { icon: 'Croissant', label: 'Fresh batches at 6 AM' },
+    { icon: 'Cake', label: 'Whole cakes by pre-order' },
+    { icon: 'Clock', label: 'Pickup from 7 AM' },
+  ],
+  primaryCta: 'Reserve a box',
+  secondaryCta: 'View menu',
+  photos: [{ url: photo(PHOTOS.croissants, 1200), alt: 'A tray of freshly baked croissants' }],
+}
+
+/** Uses one photo, framed round. */
+export function buildBakery(copy: TemplateCopy = BAKERY_SAMPLE): HeroDesignV5 {
+  const picture = photoAt(copy, BAKERY_SAMPLE, 0)
   const hero = section({
     label: 'Hero — bakery',
     widths: [55, 45],
@@ -167,20 +186,20 @@ export function buildBakery(): HeroDesignV5 {
         style: { gap: 20, verticalAlign: 'center' },
         mobile: { textAlign: 'center', gap: 14 },
         widgets: [
-          animate(text('Baked with love', { fontFamily: 'pacifico', fontSize: 30, color: '@primary' }, { fontSize: 24 }), 'fade'),
+          animate(text(copy.kicker, { fontFamily: 'pacifico', fontSize: 30, color: '@primary' }, { fontSize: 24 }), 'fade'),
           animate(
-            heading('Warm from the oven, every single morning', 'h1', { ...SERIF_DISPLAY, fontSize: 64, letterSpacing: -1.5, color: COCOA }, { fontSize: 38, letterSpacing: -0.5 }),
+            heading(copy.headline, 'h1', { ...SERIF_DISPLAY, fontSize: 64, letterSpacing: -1.5, color: COCOA }, { fontSize: 38, letterSpacing: -0.5 }),
             'slide-up',
             80,
           ),
-          text('Buttery croissants, ensaymada and pandesal baked before sunrise. Reserve yours today — they sell out by noon.', { ...LEAD, color: COCOA_SOFT, maxWidth: 500 }, LEAD_MOBILE),
-          iconList(
-            [listItem('Croissant', 'Fresh batches at 6 AM'), listItem('Cake', 'Whole cakes by pre-order'), listItem('Clock', 'Pickup from 7 AM')],
+          text(copy.body, { ...LEAD, color: COCOA_SOFT, maxWidth: 500 }, LEAD_MOBILE),
+          ...highlightList(
+            copy.highlights,
             'vertical',
             { fontSize: 16, gap: 10, size: 20, color: COCOA, accentColor: '@primary', margin: box(4, 0, 8, 0) },
             { fontSize: 15, textAlign: 'left' },
           ),
-          buttons([button('Reserve a box', MENU_ANCHOR, 'solid', 'ShoppingBag'), button('View menu', MENU_ANCHOR, 'ghost', 'ArrowRight')], { radius: 999 }),
+          buttons([button(copy.primaryCta, MENU_ANCHOR, 'solid', 'ShoppingBag'), button(copy.secondaryCta, MENU_ANCHOR, 'ghost', 'ArrowRight')], { radius: 999 }),
         ],
       },
       {
@@ -188,8 +207,8 @@ export function buildBakery(): HeroDesignV5 {
         widgets: [
           animate(
             image(
-              photo(PHOTOS.croissants, 1200),
-              'A tray of freshly baked croissants',
+              picture.url,
+              picture.alt,
               { radius: 999, aspectRatio: '1/1', borderWidth: 12, borderColor: WHITE, shadow: 'xl', maxWidth: 460, align: 'center' },
               { borderWidth: 8, maxWidth: 300 },
             ),
@@ -320,7 +339,24 @@ function stepsBackground(): Background {
   return { type: 'color', color: '@secondary' }
 }
 
-export function buildHowItWorks(): HeroDesignV5 {
+export const HOW_IT_WORKS_SAMPLE: TemplateCopy = {
+  kicker: 'Order in under a minute',
+  headline: 'Hungry? Three taps and it’s on the way.',
+  body: '',
+  highlights: [],
+  primaryCta: 'Start my order',
+  secondaryCta: '',
+  photos: [],
+  cards: [
+    { title: 'Pick your favorites', body: 'Browse the menu, customize your order and add it to your cart.' },
+    { title: 'Pay your way', body: 'GCash, Maya, card or cash — choose pickup or delivery.' },
+    { title: 'We bring it hot', body: 'Track your order live and get a message the moment it leaves.' },
+  ],
+}
+
+/** No photos; one button; three `cards` as numbered steps. */
+export function buildHowItWorks(copy: TemplateCopy = HOW_IT_WORKS_SAMPLE): HeroDesignV5 {
+  const steps = (copy.cards ?? HOW_IT_WORKS_SAMPLE.cards ?? []).slice(0, 3)
   const hero = section({
     label: 'Hero — how it works',
     widths: [100],
@@ -330,10 +366,10 @@ export function buildHowItWorks(): HeroDesignV5 {
       {
         style: { gap: 18, textAlign: 'center' },
         widgets: [
-          animate(badge('Order in under a minute', 'Zap', { color: WHITE, accentColor: WHITE, background: { type: 'color', color: WHITE_GLASS } }), 'fade'),
-          animate(heading('Hungry? Three taps and it’s on the way.', 'h1', { ...DISPLAY, fontSize: 62, color: WHITE, maxWidth: 900, textAlign: 'center' }, DISPLAY_MOBILE), 'slide-up', 80),
+          animate(badge(copy.kicker, 'Zap', { color: WHITE, accentColor: WHITE, background: { type: 'color', color: WHITE_GLASS } }), 'fade'),
+          animate(heading(copy.headline, 'h1', { ...DISPLAY, fontSize: 62, color: WHITE, maxWidth: 900, textAlign: 'center' }, DISPLAY_MOBILE), 'slide-up', 80),
           animate(
-            buttons([button('Start my order', MENU_ANCHOR, 'solid', 'ShoppingBag')], { textAlign: 'center', accentColor: WHITE, accentTextColor: '@primary', margin: box(8, 0, 0, 0) }),
+            buttons([button(copy.primaryCta, MENU_ANCHOR, 'solid', 'ShoppingBag')], { textAlign: 'center', accentColor: WHITE, accentTextColor: '@primary', margin: box(8, 0, 0, 0) }),
             'slide-up',
             160,
           ),
@@ -341,16 +377,12 @@ export function buildHowItWorks(): HeroDesignV5 {
       },
     ],
   })
-  const steps = section({
+  const stepsBand = section({
     label: 'Three steps',
     widths: [33, 34, 33],
     style: { padding: box(32, 24, 104, 24), gap: 20, align: 'stretch', color: WHITE, background: stepsBackground() },
     mobile: { padding: box(16, 16, 56, 16), gap: 12 },
-    columns: [
-      stepColumn('01', 'Pick your favorites', 'Browse the menu, customize your order and add it to your cart.'),
-      stepColumn('02', 'Pay your way', 'GCash, Maya, card or cash — choose pickup or delivery.'),
-      stepColumn('03', 'We bring it hot', 'Track your order live and get a message the moment it leaves.'),
-    ],
+    columns: steps.map((step, index) => stepColumn(String(index + 1).padStart(2, '0'), step.title, step.body)),
   })
-  return design([hero, steps])
+  return design([hero, stepsBand])
 }

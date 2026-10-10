@@ -283,6 +283,15 @@ describe('palette presets + generate from logo color', () => {
     expect(palette.background_color).not.toBe(palette.text_primary_color)
   })
 
+  it('keeps a grey or black seed neutral: no tinted secondary or muted text', () => {
+    const palette = generatePaletteFromColor('#1c1c1c')
+
+    for (const key of ['background_color', 'border_color', 'text_secondary_color', 'text_muted_color'] as const) {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(palette[key].slice(i, i + 2), 16))
+      expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(2)
+    }
+  })
+
   it('every preset value key is a known registry color field', () => {
     for (const preset of BRANDING_PRESETS) {
       for (const key of Object.keys(preset.values)) {

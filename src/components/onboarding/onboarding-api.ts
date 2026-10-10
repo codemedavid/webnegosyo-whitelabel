@@ -11,13 +11,16 @@ import type { OnboardingView } from '@/lib/onboarding/view'
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
+/** The request never reached us (offline, dropped). */
 const CONNECTION_ERROR = 'Connection problem. Check your internet and try again.'
+/** We answered with an error but no message of our own (a crash, a gateway timeout). */
+const SERVER_ERROR = 'Something went wrong on our side. Please try again in a minute.'
 
 async function call<T>(input: string, init: RequestInit, pick: (body: Record<string, unknown>) => T): Promise<ApiResult<T>> {
   try {
     const response = await fetch(input, { ...init, cache: 'no-store' })
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown>
-    if (!response.ok) return { ok: false, error: typeof body.error === 'string' ? body.error : CONNECTION_ERROR }
+    if (!response.ok) return { ok: false, error: typeof body.error === 'string' ? body.error : SERVER_ERROR }
     return { ok: true, data: pick(body) }
   } catch {
     return { ok: false, error: CONNECTION_ERROR }

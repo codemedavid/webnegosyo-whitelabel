@@ -803,7 +803,9 @@ export function generatePaletteFromColor(hex: string): Record<string, string> {
     background_color: hslToHex(h, Math.min(s, 0.5), 0.965),
     border_color: hslToHex(h, Math.min(s, 0.35), 0.88),
     text_primary_color: hslToHex(h, Math.min(s, 0.4), 0.11),
-    text_secondary_color: hslToHex(h, 0.12, 0.42),
-    text_muted_color: hslToHex(h, 0.12, 0.6),
+    // Capped by the seed's own saturation: a grey or black brand has no hue,
+    // so its text greys stay neutral instead of picking up hue 0 (red).
+    text_secondary_color: hslToHex(h, Math.min(s, 0.12), 0.42),
+    text_muted_color: hslToHex(h, Math.min(s, 0.12), 0.6),
   }
 }

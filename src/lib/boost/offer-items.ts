@@ -36,3 +36,21 @@ export function offerableItems<T extends Pick<MenuItem, 'id' | 'is_available'>>(
   }
   return out
 }
+
+/** The "Added — goes well with…" sheet never shows more than this. */
+export const MAX_POST_ADD_OFFERS = 4
+
+/**
+ * Pairings worth showing right after a dish goes in: not the dish itself and
+ * nothing the diner already ordered. Taken at the moment of the add, so an
+ * item tapped inside the sheet stays on screen marked "Added".
+ */
+export function postAddOffers<T extends Pick<MenuItem, 'id' | 'is_available'>>(
+  pairings: readonly T[],
+  { addedItemId, cartItemIds }: { addedItemId: string; cartItemIds: readonly string[] }
+): T[] {
+  return offerableItems(pairings, {
+    excludeIds: new Set([addedItemId, ...cartItemIds]),
+    limit: MAX_POST_ADD_OFFERS,
+  })
+}

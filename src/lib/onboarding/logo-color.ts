@@ -2,17 +2,23 @@
  * The brand color of a store, read out of its logo.
  *
  * Onboarding asks a merchant for a logo, not a hex code, so the palette is
- * derived from the logo itself. The answer is deliberately conservative: a
- * logo that is mostly white, black or grey has no brand color to speak of, and
- * the caller then falls back to its store type's default — a wrong, muddy
- * color is worse than a sensible default.
+ * derived from the logo itself. A logo with a real color mark gives that
+ * color. A black-and-white logo IS a brand too: it gives its dark ink, so the
+ * store launches monochrome instead of in its store type's default color (a
+ * black logo on a red restaurant palette reads as somebody else's store).
+ * Only a logo with neither (pale greys, a stray colored fringe) gives null,
+ * and the caller then falls back to the store type's default.
  *
  * `pickBrandColor` is the pure decision over raw pixels; the sharp half only
  * decodes and shrinks the image.
  */
 
 import 'server-only'
-import sharp from 'sharp'
+
+// sharp is loaded on first use, never at import: its native binary can be
+// missing from a serverless bundle, and a top-level import then fails the
+// whole importing route (2026-10-10: every "Build my store" tap 500'd). A
+// missing binary costs only the logo color.
 
 /** Logos are shrunk to this box before counting; color, not detail, matters. */
 const SAMPLE_SIZE = 64
@@ -28,6 +34,10 @@ const MIN_CHROMA = 0.15
  * "brand color" is a stray antialiasing fringe.
  */
 const MIN_COLORED_SHARE = 0.01
+/** Grey pixels at most this light are the logo's ink (black, charcoal). */
+const MAX_INK_LIGHTNESS = 0.3
+/** Ink must make up at least this share of the visible logo to be the brand. */
+const MIN_INK_SHARE = 0.02
 /** Channel bits kept when bucketing (4 → 16 levels per channel). */
 const BUCKET_SHIFT = 4
 
@@ -50,19 +60,33 @@ function saturationOf(max: number, min: number, lightness: number): number {
   return chroma / (1 - Math.abs(2 * lightness - 1))
 }
 
+interface InkTotal {
+  count: number
+  r: number
+  g: number
+  b: number
+}
+
+function averageHex(total: { count: number; r: number; g: number; b: number }): string {
+  return `#${toHex(total.r / total.count)}${toHex(total.g / total.count)}${toHex(total.b / total.count)}`
+}
+
 /**
- * The dominant saturated color of raw pixels (`channels` = 3 RGB or 4 RGBA),
- * as `#rrggbb`, or null when the image is essentially greyscale.
+ * The brand color of raw pixels (`channels` = 3 RGB or 4 RGBA) as `#rrggbb`:
+ * the dominant saturated color, else the dark ink of a black-and-white logo,
+ * else null.
  *
  * Buckets colors coarsely, then scores each bucket by how often it appears,
  * weighted toward saturation so a vivid mark beats a large dull area. The
  * winning bucket's AVERAGE is returned, not its corner, so the hex matches
- * what the logo actually shows.
+ * what the logo actually shows. A real color always beats ink, however much
+ * of the logo the ink covers.
  */
 export function pickBrandColor(pixels: Uint8Array, channels: number): string | null {
   if (channels < 3 || pixels.length < channels) return null
   const hasAlpha = channels >= 4
   const buckets = new Map<number, Bucket>()
+  let ink: InkTotal = { count: 0, r: 0, g: 0, b: 0 }
   let visible = 0
   let colored = 0
 
@@ -76,8 +100,12 @@ export function pickBrandColor(pixels: Uint8Array, channels: number): string | n
     const max = Math.max(r, g, b)
     const min = Math.min(r, g, b)
     const lightness = (max + min) / 510
-    if (lightness < MIN_LIGHTNESS || lightness > MAX_LIGHTNESS) continue
-    if ((max - min) / 255 < MIN_CHROMA) continue
+    const isGrey = (max - min) / 255 < MIN_CHROMA
+    if ((isGrey || lightness < MIN_LIGHTNESS) && lightness <= MAX_INK_LIGHTNESS) {
+      ink = { count: ink.count + 1, r: ink.r + r, g: ink.g + g, b: ink.b + b }
+      continue
+    }
+    if (isGrey || lightness < MIN_LIGHTNESS || lightness > MAX_LIGHTNESS) continue
     colored++
 
     const key = ((r >> BUCKET_SHIFT) << 8) | ((g >> BUCKET_SHIFT) << 4) | (b >> BUCKET_SHIFT)
@@ -91,7 +119,8 @@ export function pickBrandColor(pixels: Uint8Array, channels: number): string | n
     })
   }
 
-  if (visible === 0 || colored / visible < MIN_COLORED_SHARE) return null
+  if (visible === 0) return null
+  if (colored / visible < MIN_COLORED_SHARE) return ink.count / visible >= MIN_INK_SHARE ? averageHex(ink) : null
 
   let best: Bucket | null = null
   let bestScore = -1
@@ -102,17 +131,17 @@ export function pickBrandColor(pixels: Uint8Array, channels: number): string | n
       bestScore = score
     }
   }
-  if (!best) return null
-
-  return `#${toHex(best.r / best.count)}${toHex(best.g / best.count)}${toHex(best.b / best.count)}`
+  return best ? averageHex(best) : null
 }
 
 /**
- * The brand color of an encoded logo (PNG, JPEG, WEBP, …), or null when the
- * image cannot be decoded or has no clear brand color. Never throws.
+ * The brand color of an encoded logo (PNG, JPEG, WEBP, …) — a color mark, or
+ * the ink of a black-and-white logo — or null when the image cannot be
+ * decoded or has neither. Never throws.
  */
 export async function extractBrandColorFromImage(buffer: Buffer): Promise<string | null> {
   try {
+    const { default: sharp } = await import('sharp')
     const { data, info } = await sharp(buffer)
       .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: 'inside', withoutEnlargement: true })
       .ensureAlpha()

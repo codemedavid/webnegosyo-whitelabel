@@ -9,7 +9,7 @@ import {
   type MenuShapeRow,
 } from '@/lib/onboarding/design-pick'
 import { STORE_LOOKS, STORE_LOOK_IDS, STORE_TYPES } from '@/lib/onboarding/store-type'
-import { LAUNCH_HERO_CHOICES } from '@/lib/onboarding/launch-heroes'
+import { LAUNCH_HEROES, type LaunchHero } from '@/lib/onboarding/launch-heroes'
 
 function rows(category: string, count: number, price = 150): MenuShapeRow[] {
   return Array.from({ length: count }, (_, index) => ({ categoryName: category, itemName: `${category} ${index + 1}`, price }))
@@ -94,19 +94,28 @@ describe('pickLookByRules', () => {
 })
 
 describe('pickHeroByRules', () => {
-  it('a big sidebar menu starts right at the top, with no hero', () => {
-    expect(pickHeroByRules('sidebar', LAUNCH_HERO_CHOICES)).toBe('none')
-  })
+  const ALL: readonly LaunchHero[] = LAUNCH_HEROES
 
   it('takes the first hero the look calls for that the store can have', () => {
-    expect(pickHeroByRules('shop', LAUNCH_HERO_CHOICES)).toBe('favorites')
-    expect(pickHeroByRules('shop', ['steps', 'poster', 'none'])).toBe('steps')
-    expect(pickHeroByRules('kiosk', ['steps', 'poster', 'none'])).toBe('steps')
-    expect(pickHeroByRules('bistro', LAUNCH_HERO_CHOICES)).toBe('poster')
+    expect(pickHeroByRules({ look: 'sidebar', storeType: 'restaurant', available: ALL, isNeutralBrand: false })).toBe('press-quote')
+    expect(pickHeroByRules({ look: 'bistro', storeType: 'restaurant', available: ALL, isNeutralBrand: false })).toBe('fine-dining')
+    expect(pickHeroByRules({ look: 'shop', storeType: 'restaurant', available: ['split-photo', 'how-it-works'], isNeutralBrand: false })).toBe('split-photo')
   })
 
-  it('always answers a hero every store can have', () => {
-    for (const look of STORE_LOOK_IDS) expect(['steps', 'poster', 'none']).toContain(pickHeroByRules(look, ['steps', 'poster', 'none']))
+  it("puts the store type's own template first", () => {
+    expect(pickHeroByRules({ look: 'shop', storeType: 'bakery', available: ALL, isNeutralBrand: false })).toBe('bakery')
+    expect(pickHeroByRules({ look: 'shop', storeType: 'cafe', available: ALL, isNeutralBrand: false })).toBe('cafe-minimal')
+  })
+
+  it('a black-and-white brand gets a hero that brings its own colors', () => {
+    expect(pickHeroByRules({ look: 'shop', storeType: 'cafe', available: ALL, isNeutralBrand: true })).toBe('bakery')
+    expect(pickHeroByRules({ look: 'shop', storeType: 'restaurant', available: ['split-photo', 'full-bleed-photo', 'how-it-works'], isNeutralBrand: true })).toBe('full-bleed-photo')
+  })
+
+  it('always answers a hero the store can have, even when nothing the look wants is available', () => {
+    for (const look of STORE_LOOK_IDS) {
+      expect(pickHeroByRules({ look, storeType: 'milk_tea', available: ['how-it-works'], isNeutralBrand: false })).toBe('how-it-works')
+    }
   })
 })
 
@@ -114,17 +123,32 @@ describe('buildDesignPrompt', () => {
   const shape = summarizeMenuShape([...rows('Silog', 4, 160), ...rows('Drinks', 3, 45)])
   const messages = buildDesignPrompt({
     storeName: 'Migos', storeType: 'restaurant', tagline: 'Silog all day', orderTypes: ['pickup', 'delivery'], shape,
-    heroes: ['steps', 'poster', 'none'],
+    heroes: ['press-quote', 'how-it-works'],
+    isNeutralBrand: true,
   })
 
   it('lists every look and hero so the model can only choose from the catalogs', () => {
     const system = messages[0].content
     for (const look of STORE_LOOK_IDS) expect(system).toContain(`"${look}"`)
-    for (const hero of LAUNCH_HERO_CHOICES) expect(system).toContain(`"${hero}"`)
+    for (const hero of LAUNCH_HEROES) expect(system).toContain(`"${hero}"`)
   })
 
-  it('tells the model which heroes this store can have, in the data message', () => {
-    expect(JSON.parse(messages[1].content).availableHeroes).toEqual(['steps', 'poster', 'none'])
+  it('tells the model which heroes this store can have and whether its brand is neutral, in the data message', () => {
+    const facts = JSON.parse(messages[1].content)
+    expect(facts.availableHeroes).toEqual(['press-quote', 'how-it-works'])
+    expect(facts.neutralBrand).toBe(true)
+    expect(facts.fixedLook).toBeUndefined()
+  })
+
+  it("passes the owner's look as fixed when they picked one", () => {
+    const fixed = buildDesignPrompt({ storeName: 'Migos', storeType: 'restaurant', orderTypes: [], shape, heroes: ['how-it-works'], isNeutralBrand: false, fixedLook: 'bistro' })
+    expect(JSON.parse(fixed[1].content).fixedLook).toBe('bistro')
+  })
+
+  it('asks for hero words and forbids claims the store never made', () => {
+    const system = messages[0].content
+    expect(system).toContain('"copy"')
+    expect(system).toMatch(/no numbers, prices, ratings, reviews, awards, years/)
   })
 
   it('hands the menu over as facts in the user message, never in the system prompt', () => {
@@ -137,14 +161,14 @@ describe('buildDesignPrompt', () => {
 
 describe('parseDesignAnswer', () => {
   it('reads a JSON answer, even inside a code fence', () => {
-    const answer = parseDesignAnswer('```json\n{"look":"kiosk","hero":"ways","fontPair":"bold display","reason":"Short menu, fast picks."}\n```')
-    expect(answer).toEqual({ look: 'kiosk', hero: 'ways', fontPair: 'bold display', reason: 'Short menu, fast picks.' })
+    const answer = parseDesignAnswer('```json\n{"look":"kiosk","hero":"chalkboard","fontPair":"bold display","reason":"Short menu, fast picks.","copy":{"headline":"Hi there"}}\n```')
+    expect(answer).toEqual({ look: 'kiosk', hero: 'chalkboard', fontPair: 'bold display', reason: 'Short menu, fast picks.', copy: { headline: 'Hi there' } })
   })
 
   it('drops a hero the store cannot have or that is not in the catalog, keeping the look', () => {
-    expect(parseDesignAnswer('{"look":"kiosk","hero":"ways"}', ['steps', 'none'])?.hero).toBeNull()
+    expect(parseDesignAnswer('{"look":"kiosk","hero":"chalkboard"}', ['how-it-works'])?.hero).toBeNull()
     expect(parseDesignAnswer('{"look":"kiosk","hero":"video-hero"}')?.hero).toBeNull()
-    expect(parseDesignAnswer('{"look":"kiosk","hero":"none"}', ['steps', 'none'])?.hero).toBe('none')
+    expect(parseDesignAnswer('{"look":"kiosk","hero":"how-it-works"}', ['how-it-works'])?.hero).toBe('how-it-works')
   })
 
   it('refuses a look outside the catalog, including the retired menu board', () => {
@@ -155,7 +179,7 @@ describe('parseDesignAnswer', () => {
 
   it('drops an unknown font pairing but keeps the look', () => {
     const answer = parseDesignAnswer('{"look":"cafe","fontPair":"Comic Sans","reason":"Mostly coffee."}')
-    expect(answer).toEqual({ look: 'cafe', fontPair: null, hero: null, reason: 'Mostly coffee.' })
+    expect(answer).toEqual({ look: 'cafe', fontPair: null, hero: null, reason: 'Mostly coffee.', copy: null })
   })
 
   it('gives a missing reason the look\'s own reason, and caps a long one', () => {
