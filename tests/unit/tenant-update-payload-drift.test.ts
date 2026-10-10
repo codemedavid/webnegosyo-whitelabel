@@ -36,8 +36,12 @@ function writtenColumns(relativePath: string): Set<string> {
  * the legacy form write the zod default ('webhook') over a tenant's real
  * choice, so the drift here is the safer of two bugs until the legacy form
  * carries the field.
+ *
+ * `domain` is deliberately never written by the superadmin form: the custom-
+ * domain flow (`src/lib/domains/`, TXT ownership proof) is its only writer
+ * there. The provisioning/MCP path is superadmin-key-only and keeps it.
  */
-const ALLOWED_DRIFT = new Set(['messenger_redirect_mode'])
+const ALLOWED_DRIFT = new Set(['messenger_redirect_mode', 'domain'])
 
 describe('superadmin tenant write path', () => {
   it('writes every tenant column the provisioning service writes', () => {
