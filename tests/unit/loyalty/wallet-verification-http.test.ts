@@ -116,6 +116,29 @@ test('says plainly when the store cannot text anyone, without issuing', async ()
   expect(issue).not.toHaveBeenCalled()
 })
 
+test('a rate-limited number is told how long to wait instead of "a code is on its way"', async () => {
+  const { handleWalletCodeRequest, issue, dispatch } = await load()
+  gateway(true)
+  issue.mockResolvedValue({ ok: false, error: 'rate_limited', retryAfterSeconds: 412 })
+  const response = await handleWalletCodeRequest(post('code', codeRequest))
+  expect(response.status).toBe(429)
+  expect(response.headers.get('retry-after')).toBe('412')
+  const body = await response.json()
+  expect(body).toMatchObject({ reason: 'rate_limited', retryAfterSeconds: 412 })
+  expect(body.error).toMatch(/too many codes/i)
+  expect(body.error).toMatch(/7 minutes/)
+  expect(body.challengeId).toBeUndefined()
+  expect(dispatch).not.toHaveBeenCalled()
+})
+
+test('a short wait is said in seconds', async () => {
+  const { handleWalletCodeRequest, issue } = await load()
+  gateway(true)
+  issue.mockResolvedValue({ ok: false, error: 'rate_limited', retryAfterSeconds: 42 })
+  const body = await (await handleWalletCodeRequest(post('code', codeRequest))).json()
+  expect(body.error).toMatch(/42 seconds/)
+})
+
 test('a non-member gets the same answer as a member, and nothing is sent', async () => {
   const { handleWalletCodeRequest, issue, dispatch, readFallback } = await load()
   gateway(false)

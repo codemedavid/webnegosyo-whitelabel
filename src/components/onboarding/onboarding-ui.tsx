@@ -4,15 +4,18 @@
  * DIRECTION — merchant set-up (/onboarding/[token])
  * THESIS: a quiet white studio whose only color is the one the owner gives it.
  *   The setup starts in ink and takes on their brand the moment they pick it;
- *   the phone showing their store is the hero. Refuses the cream-card wall.
+ *   the phone showing their store is the hero of the store chapter.
  * OWN-WORLD: white ground, warm ink (#17130F), one hairline gray, Figtree only
- *   (the Baloo wordmark stays in the header), 12px radii, 1px → 2px selection
- *   borders, lucide icons at 1.75 stroke. Accent = --ob-accent (ink until a brand).
- * STORY: one question per screen → watch the store being built → it opens →
- *   a short setup guide for the first week.
- * FIRST VIEWPORT: question column left, brand-tinted panel with the phone right;
- *   on phones the question fills the screen and a fixed bar carries Back / Next.
- * FORM: canon (user-pinned): Airbnb host flow, Shopify setup guide, Stripe restraint.
+ *   (the Baloo wordmark stays in the header), 16px radii on tap cards, 2px
+ *   borders with a 4px pressable ledge (a box-shadow, so pressing never shifts
+ *   the layout), lucide icons at 1.75–2 stroke. Accent = --ob-accent (ink until a brand).
+ * STORY: what you want (About you) → your plan → your store, one question a
+ *   screen → watch it being built → it opens → three quick choices → Start here.
+ * FIRST VIEWPORT: About you is one centred column (nothing to preview yet);
+ *   Your store puts the question left and the phone right. On phones the
+ *   question fills the screen and a fixed bar carries Back / Continue.
+ * FORM: canon (user-pinned): Duolingo's one-tap questions and chapter progress,
+ *   Airbnb host flow, Stripe restraint. No mascots, no confetti walls.
  */
 
 import { useRef, useState } from 'react'
@@ -90,24 +93,45 @@ function selectionStyle(isSelected: boolean): React.CSSProperties {
   }
 }
 
-/** Airbnb-style tile: icon over a title, the border thickens when chosen. */
+/** A tile in a grid (store type, order types): icon over a title, with the same pressable ledge as `TapCard`. */
 export function OptionTile({ isSelected, onClick, title, description, icon, isMulti = false }: OptionProps) {
+  const edge = isSelected ? ACCENT : OB.lineStrong
   return (
     <button
       type="button"
       onClick={onClick}
       role={isMulti ? 'checkbox' : 'radio'}
       aria-checked={isSelected}
-      className={`flex h-full min-h-[7.25rem] flex-col items-start justify-start gap-3 rounded-xl border p-4 text-left transition-[border-color,box-shadow,background-color,transform] duration-150 hover:border-[#17130F] active:scale-[0.98] ${FOCUS_RING}`}
-      style={selectionStyle(isSelected)}
+      className={`flex h-full min-h-[7.25rem] flex-col items-start justify-start gap-3 rounded-2xl border-2 p-4 text-left transition-[transform,box-shadow,border-color,background-color] duration-100 ease-out [box-shadow:0_4px_0_var(--tap-edge)] active:translate-y-[2px] active:[box-shadow:0_2px_0_var(--tap-edge)] motion-reduce:transition-none ${FOCUS_RING}`}
+      style={{ borderColor: edge, backgroundColor: isSelected ? ACCENT_SOFT : OB.canvas, '--tap-edge': edge } as React.CSSProperties}
     >
       <span style={{ color: isSelected ? ACCENT : OB.ink }} aria-hidden>{icon}</span>
       <span>
-        <span className="block text-[15px] font-semibold" style={{ color: OB.ink }}>{title}</span>
+        <span className="block text-[15px] font-bold" style={{ color: OB.ink }}>{title}</span>
         {description && <span className="mt-0.5 block text-[13px] leading-snug" style={{ color: OB.muted }}>{description}</span>}
       </span>
     </button>
   )
+}
+
+/**
+ * Arrow keys move focus between the radios of a `role="radiogroup"` (Home/End
+ * jump to the ends). Focus only: Space/Enter still chooses, because choosing a
+ * single-answer card moves the wizard on and a keyboard user must not be
+ * carried away just by looking along the list.
+ */
+export function handleRadioGroupKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+  const keyStep: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }
+  const isEdgeKey = event.key === 'Home' || event.key === 'End'
+  if (!isEdgeKey && keyStep[event.key] === undefined) return
+  const radios = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'))
+  const currentIndex = radios.findIndex((radio) => radio === document.activeElement)
+  if (radios.length === 0 || currentIndex < 0) return
+  event.preventDefault()
+  const targetIndex = isEdgeKey
+    ? (event.key === 'Home' ? 0 : radios.length - 1)
+    : (currentIndex + keyStep[event.key] + radios.length) % radios.length
+  radios[targetIndex].focus()
 }
 
 /** A full-width choice with a check on the right. */
@@ -134,6 +158,75 @@ export function OptionRow({ isSelected, onClick, title, description, icon, isMul
         {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} style={{ color: ACCENT_INK }} />}
       </span>
     </button>
+  )
+}
+
+interface TapCardProps {
+  isSelected: boolean
+  onClick: () => void
+  title: string
+  description?: string
+  icon?: React.ReactNode
+  /** Checkbox semantics (many may be on) instead of a single choice. */
+  isMulti?: boolean
+}
+
+/**
+ * The set-up's main answer control: a big card with a pressable ledge. Tapping
+ * sinks it 2px (a shadow shrink, never a layout shift); a chosen card wears
+ * the accent. One tap answers a single-choice question.
+ */
+export function TapCard({ isSelected, onClick, title, description, icon, isMulti = false }: TapCardProps) {
+  const edge = isSelected ? ACCENT : OB.lineStrong
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      role={isMulti ? 'checkbox' : 'radio'}
+      aria-checked={isSelected}
+      className={`group flex w-full items-center gap-3.5 rounded-2xl border-2 px-4 py-3.5 text-left transition-[transform,box-shadow,border-color,background-color] duration-100 ease-out [box-shadow:0_4px_0_var(--tap-edge)] hover:brightness-[0.985] active:translate-y-[2px] active:[box-shadow:0_2px_0_var(--tap-edge)] motion-reduce:transition-none ${FOCUS_RING}`}
+      style={{
+        borderColor: edge,
+        backgroundColor: isSelected ? ACCENT_SOFT : OB.canvas,
+        '--tap-edge': edge,
+      } as React.CSSProperties}
+    >
+      {icon && (
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors duration-150"
+          style={{ backgroundColor: isSelected ? ACCENT : OB.wash, color: isSelected ? ACCENT_INK : OB.muted }}
+          aria-hidden
+        >
+          {icon}
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block text-[16px] font-bold leading-snug" style={{ color: OB.ink }}>{title}</span>
+        {description && <span className="mt-0.5 block text-[13.5px] leading-snug" style={{ color: OB.muted }}>{description}</span>}
+      </span>
+      {isMulti && (
+        <span
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors duration-150"
+          style={{ borderColor: isSelected ? ACCENT : OB.lineStrong, backgroundColor: isSelected ? ACCENT : 'transparent' }}
+          aria-hidden
+        >
+          {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3.5} style={{ color: ACCENT_INK }} />}
+        </span>
+      )}
+    </button>
+  )
+}
+
+/** Eyebrow ("About you · 2 of 5"), the question, and one line under it. */
+export function QuestionHeading({ eyebrow, title, lede }: { eyebrow?: string; title: React.ReactNode; lede?: React.ReactNode }) {
+  return (
+    <div>
+      {eyebrow && <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>{eyebrow}</p>}
+      <h1 tabIndex={-1} className="text-balance text-[1.75rem] font-extrabold leading-[1.1] tracking-[-0.025em] sm:text-[2.25rem]" style={{ color: OB.ink }}>
+        {title}
+      </h1>
+      {lede && <p className="mt-2.5 max-w-[34rem] text-pretty text-base leading-relaxed" style={{ color: OB.muted }}>{lede}</p>}
+    </div>
   )
 }
 
@@ -261,9 +354,12 @@ interface ButtonProps {
 const BUTTON_BASE = `inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-[15px] font-semibold transition-[filter,transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`
 const PRIMARY_STYLE = { backgroundColor: ACCENT, color: ACCENT_INK }
 
+/** The primary action sits on a darker ledge of its own color, like the tap cards, and sinks when pressed. */
+const PRIMARY_LEDGE = '[box-shadow:0_4px_0_color-mix(in_srgb,var(--ob-accent,#17130F)_62%,black)] active:translate-y-[2px] active:[box-shadow:0_2px_0_color-mix(in_srgb,var(--ob-accent,#17130F)_62%,black)] disabled:active:translate-y-0'
+
 export function PrimaryButton({ children, onClick, isDisabled = false, type = 'button', isFull = false }: ButtonProps) {
   return (
-    <button type={type} onClick={onClick} disabled={isDisabled} className={`${BUTTON_BASE} hover:brightness-110 ${isFull ? 'w-full' : ''}`} style={PRIMARY_STYLE}>
+    <button type={type} onClick={onClick} disabled={isDisabled} className={`${BUTTON_BASE} ${PRIMARY_LEDGE} font-bold hover:brightness-110 ${isFull ? 'w-full' : ''}`} style={PRIMARY_STYLE}>
       {children}
     </button>
   )
@@ -308,10 +404,10 @@ export function SecondaryLink({ href, children, isExternal = false, isFull = fal
 }
 
 /** Airbnb's underlined text action (Back, Skip). */
-export function TextButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+export function TextButton({ children, onClick, isDisabled = false }: { children: React.ReactNode; onClick: () => void; isDisabled?: boolean }) {
   return (
-    <button type="button" onClick={onClick}
-      className={`min-h-12 rounded-lg px-2 text-[15px] font-semibold underline decoration-1 underline-offset-4 transition-colors hover:bg-[#F6F4F1] ${FOCUS_RING}`}
+    <button type="button" onClick={onClick} disabled={isDisabled}
+      className={`min-h-12 rounded-lg px-2 disabled:opacity-50 text-[15px] font-semibold underline decoration-1 underline-offset-4 transition-colors hover:bg-[#F6F4F1] ${FOCUS_RING}`}
       style={{ color: OB.ink }}>
       {children}
     </button>

@@ -26,7 +26,7 @@ describe('buildOnboardingView', () => {
     const view = buildOnboardingView({ onboarding: ONBOARDING, lead: LEAD, tenant: null })
 
     // Assert
-    expect(view.steps.map((s) => s.id)).toEqual(['branding', 'menu', 'store_setup', 'boost', 'loyalty'])
+    expect(view.steps.map((s) => s.id)).toEqual(['branding', 'menu', 'design', 'store_setup', 'boost', 'loyalty', 'campaigns'])
     expect(view.steps[0]).toMatchObject({ status: 'done', detail: 'Colors from your logo' })
     expect(view.steps[2]).toMatchObject({ status: 'pending', detail: null })
   })
@@ -43,9 +43,11 @@ describe('buildOnboardingView', () => {
     expect(view.store).toEqual({
       name: "Juan's Kitchen",
       slug: 'juans-kitchen',
-      loginPath: '/juans-kitchen/login?redirect=%2Fjuans-kitchen%2Fadmin%2Flaunch',
+      loginPath: '/juans-kitchen/login?redirect=%2Fjuans-kitchen%2Fadmin%2Fstart',
       previewPath: '/juans-kitchen/menu',
       dashboardPath: '/juans-kitchen/admin',
+      // Filled by the server reader from the platform's root domain.
+      shareUrl: null,
       isLive: false,
       opensLabel: null,
     })

@@ -1,20 +1,26 @@
 /**
- * Turn on a brand-new store's first Boost Sales offers without a merchant tap.
+ * A brand-new store's first Boost Sales offers.
  *
  * A new store has no orders, so the ideas come from the menu alone (cold
  * start: a main wants a side and a drink). The merchant's best sellers are
- * marked featured so combos and upgrades anchor on them. Every idea goes live
- * through `applyBoostIdea` — the exact path an approved AI proposal takes —
- * on the injected service-role client.
+ * marked featured so combos and upgrades anchor on them.
+ *
+ * Upgrades, pairings and the cart's last call go live at once through
+ * `applyBoostIdea` — the exact path an approved AI proposal takes — on the
+ * injected service-role client. COMBOS DO NOT: they change what the menu
+ * sells and at what price, so they are filed as pending suggestions
+ * (`fileForApproval`) and wait for the owner's OK.
  *
  * Re-running is safe: offers already live are passed as `existing`, so the
- * same idea is never built twice.
+ * same idea is never built twice, and the launch filing is one per store.
  */
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import { buildBoostIdeas, type BoostIdea, type ExistingOffers } from '@/lib/boost/ideas'
 import { classifyMenuRole } from '@/lib/boost/menu-roles'
 import { applyBoostIdea } from '@/lib/boost/ai/apply'
+import { fileLaunchProposals } from '@/lib/boost/ai/store'
 import type { BoostItem, BoostLastCall } from '@/lib/boost/workspace'
 
 export interface LaunchIdeaLimits {
@@ -26,7 +32,27 @@ export interface LaunchIdeaLimits {
 
 export interface LaunchBoostResult {
   applied: Array<{ kind: BoostIdea['kind']; ideaId: string; title: string; ref: string | null }>
+  /** Filed for the owner's OK (combos), not live yet. */
+  awaitingApproval: Array<{ kind: BoostIdea['kind']; ideaId: string; title: string }>
   skipped: Array<{ ideaId: string; reason: string }>
+  /**
+   * The subset of `skipped` that hit an error (a write threw, or the combos
+   * could not be filed) rather than a deliberate "needs editing". The build
+   * must treat these as a failed step so a retry can fill them in.
+   */
+  failed: Array<{ ideaId: string; reason: string }>
+}
+
+export interface LaunchBoostOptions {
+  bestSellerIds?: readonly string[]
+  limits?: LaunchIdeaLimits
+  /** Where combos wait for approval; defaults to the store's launch suggestions. */
+  fileForApproval?: (ideas: readonly BoostIdea[]) => Promise<void>
+}
+
+/** Offers that change what the menu sells and its prices wait for the owner. */
+function needsApproval(idea: BoostIdea): boolean {
+  return idea.kind === 'combo'
 }
 
 const DEFAULT_LIMITS: Required<LaunchIdeaLimits> = { combos: 2, upgrades: 3, pairings: 3, lastCall: true }
@@ -71,7 +97,7 @@ interface TenantLastCallRow {
   checkout_upsell_max_items: number | null
 }
 
-interface LaunchMenu {
+export interface LaunchMenu {
   rows: MenuRow[]
   items: BoostItem[]
   lastCall: BoostLastCall
@@ -82,7 +108,7 @@ function raise(what: string, error: { message: string } | null): void {
   if (error) throw new Error(`${what} could not be read: ${error.message}`)
 }
 
-async function loadLaunchMenu(ctx: ProvisioningCtx, tenantId: string): Promise<LaunchMenu> {
+export async function loadLaunchMenu(ctx: ProvisioningCtx, tenantId: string): Promise<LaunchMenu> {
   const client = ctx.client
   const [menu, tenant, slots, pairs] = await Promise.all([
     client
@@ -143,10 +169,26 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : 'The offer could not be saved.'
 }
 
+async function fileCombos(
+  ideas: readonly BoostIdea[],
+  file: (ideas: readonly BoostIdea[]) => Promise<void>,
+  result: LaunchBoostResult
+): Promise<LaunchBoostResult> {
+  if (ideas.length === 0) return result
+  try {
+    await file(ideas)
+    return { ...result, awaitingApproval: ideas.map((idea) => ({ kind: idea.kind, ideaId: idea.id, title: idea.title })) }
+  } catch (error) {
+    console.error('[onboarding/boost] combos not filed for approval:', describeError(error))
+    const failures = ideas.map((idea) => ({ ideaId: idea.id, reason: describeError(error) }))
+    return { ...result, skipped: [...result.skipped, ...failures], failed: [...result.failed, ...failures] }
+  }
+}
+
 export async function applyLaunchBoost(
   ctx: ProvisioningCtx,
   tenantId: string,
-  opts: { bestSellerIds?: readonly string[] } = {},
+  opts: LaunchBoostOptions = {},
 ): Promise<LaunchBoostResult> {
   const menu = await loadLaunchMenu(ctx, tenantId)
   const bestSellers = new Set(opts.bestSellerIds ?? [])
@@ -168,10 +210,13 @@ export async function applyLaunchBoost(
     limit: IDEA_POOL_SIZE,
   })
 
-  const result: LaunchBoostResult = { applied: [], skipped: [] }
+  const selected = selectLaunchIdeas(ideas, opts.limits)
+  const file = opts.fileForApproval
+    ?? (async (combos: readonly BoostIdea[]) => { await fileLaunchProposals(ctx.client as unknown as SupabaseClient, tenantId, combos) })
+  const result: LaunchBoostResult = { applied: [], awaitingApproval: [], skipped: [], failed: [] }
   // One at a time: each offer is its own set of writes, and a failure on one
   // must not leave another half-written beside it.
-  for (const idea of selectLaunchIdeas(ideas)) {
+  for (const idea of selected.filter((candidate) => !needsApproval(candidate))) {
     try {
       const outcome = await applyBoostIdea(tenantId, idea, { items: menu.items, lastCall: menu.lastCall }, ctx)
       if (outcome.status === 'needs-edit') {
@@ -181,8 +226,10 @@ export async function applyLaunchBoost(
       result.applied.push({ kind: idea.kind, ideaId: idea.id, title: idea.title, ref: outcome.ref })
     } catch (error) {
       console.error('[onboarding/boost] offer not applied:', idea.id, describeError(error))
-      result.skipped.push({ ideaId: idea.id, reason: describeError(error) })
+      const failure = { ideaId: idea.id, reason: describeError(error) }
+      result.skipped.push(failure)
+      result.failed.push(failure)
     }
   }
-  return result
+  return fileCombos(selected.filter(needsApproval), file, result)
 }

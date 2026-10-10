@@ -80,6 +80,16 @@ function shouldRetry(method: HttpMethod, error: unknown): boolean {
   return method !== 'POST'
 }
 
+/**
+ * Whether a failed POST may still have been processed by Loyverse: a timeout,
+ * a dropped connection or a 5xx can arrive after the receipt was created. A
+ * 4xx (429 included) is an answer — the request was refused, nothing exists.
+ */
+export function isOutcomeUnknownError(error: unknown): boolean {
+  if (error instanceof LoyverseApiError) return error.code === 'TIMEOUT' || error.status >= 500
+  return true
+}
+
 function retryDelayMs(attempt: number, response: Response | null): number {
   const backoff = BACKOFF_BASE_MS * 2 ** (attempt - 1)
   const header = response?.headers?.get?.('retry-after')

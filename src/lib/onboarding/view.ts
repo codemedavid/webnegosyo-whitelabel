@@ -6,13 +6,14 @@
  */
 
 import { ONBOARDING_BUILD_STEPS, type OnboardingBuildStepId, type StepStatus } from './plan'
-import type { OnboardingAssets, OnboardingStatus, StoreOnboarding } from './repository'
+import { publicAssets, type OnboardingStatus, type PublicOnboardingAssets, type StoreOnboarding } from './repository'
 import type { LaunchBuildSummary } from './summary'
 import { displayedBuildStatus } from './build-staleness'
 import { isPaidLeadStatus } from './lead-status'
 import type { FirstWeekPlan } from './first-week'
 import type { LaunchReadiness } from './readiness'
 import { getStoreOpenStatus, type StoreHoursSource } from '@/lib/store-open-status'
+import type { ChannelId, GoalId } from './goals'
 
 export interface OnboardingStepView {
   id: OnboardingBuildStepId
@@ -30,6 +31,8 @@ export interface OnboardingStoreView {
   previewPath: string
   /** The owner's dashboard; the wizard signs them in, so this opens straight in. */
   dashboardPath: string
+  /** The address to share (the store's subdomain); null = share the preview path on this host. */
+  shareUrl: string | null
   isLive: boolean
   /** Live but outside its hours: when orders open next ("tomorrow at 9:00 AM"). */
   opensLabel: string | null
@@ -47,7 +50,10 @@ export interface OnboardingView {
   /** For the greeting only; '' when the lead has no name. */
   ownerFirstName: string
   ownerEmail: string
-  assets: Required<OnboardingAssets>
+  /** What the owner said they want, once submitted (the build and reveal frame around it). */
+  goals: GoalId[]
+  channels: ChannelId[]
+  assets: PublicOnboardingAssets
   steps: OnboardingStepView[]
   summary: LaunchBuildSummary | null
   error: string | null
@@ -90,11 +96,9 @@ export function buildOnboardingView({ onboarding, lead, tenant, readiness = null
     businessName: lead.business_name,
     ownerFirstName: (lead.name ?? '').trim().split(/\s+/)[0] ?? '',
     ownerEmail: lead.email,
-    assets: {
-      logoUrl: onboarding.assets.logoUrl ?? null,
-      logoColor: onboarding.assets.logoColor ?? null,
-      menuImageUrls: onboarding.assets.menuImageUrls ?? [],
-    },
+    goals: onboarding.answers?.goals ?? [],
+    channels: onboarding.answers?.channels ?? [],
+    assets: publicAssets(onboarding.assets),
     steps,
     summary: onboarding.summary,
     // A refused submit stores a buyer-facing message; a failed build stores
@@ -104,9 +108,10 @@ export function buildOnboardingView({ onboarding, lead, tenant, readiness = null
       ? {
           name: tenant.name,
           slug: tenant.slug,
-          loginPath: `/${tenant.slug}/login?redirect=${encodeURIComponent(`/${tenant.slug}/admin/launch`)}`,
+          loginPath: `/${tenant.slug}/login?redirect=${encodeURIComponent(`/${tenant.slug}/admin/start`)}`,
           previewPath: `/${tenant.slug}/menu`,
           dashboardPath: `/${tenant.slug}/admin`,
+          shareUrl: null,
           isLive: !tenant.is_prelaunch,
           opensLabel: opensLabel(tenant, nowMs),
         }

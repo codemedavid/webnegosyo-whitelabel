@@ -30,6 +30,7 @@ export async function requestStoreLaunchAction(tenantId: string, tenantSlug: str
 
     const outcome = await requestStoreLaunch(admin, tenantId)
     revalidatePath(`/${tenantSlug}/admin/launch`)
+    revalidatePath(`/${tenantSlug}/admin/start`)
     return { success: true, outcome }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Launch failed.'

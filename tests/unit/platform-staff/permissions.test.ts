@@ -94,6 +94,7 @@ describe('platformPermissionForPath', () => {
     ['/superadmin/restaurants', 'tenants.view'],
     ['/superadmin/leads', 'leads.view'],
     ['/superadmin/checkout-leads', 'checkout_leads.view'],
+    ['/superadmin/pipeline', 'checkout_leads.view'],
     ['/superadmin/checkout-leads/payment-methods', 'payment_methods.view'],
     ['/superadmin/subscriptions', 'subscriptions.view'],
     ['/superadmin/whats-new', 'whats_new.view'],

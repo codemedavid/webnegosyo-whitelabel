@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { Settings2 } from 'lucide-react'
+import { Link2, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/superadmin/ui/primitives'
 import { getCheckoutLeadStats } from '@/lib/checkout-leads/checkout-leads-analytics'
@@ -14,7 +14,15 @@ import { InvitePaidCustomer } from './components/invite-paid-customer'
 // production build never has to reach Supabase to prerender this page.
 export const dynamic = 'force-dynamic'
 
-export default async function CheckoutLeadsPage() {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+interface CheckoutLeadsPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function CheckoutLeadsPage({ searchParams }: CheckoutLeadsPageProps) {
+  const { lead } = await searchParams
+  const selectedLeadId = typeof lead === 'string' && UUID_PATTERN.test(lead) ? lead : null
   const [stats, leadsResult] = await Promise.all([
     getCheckoutLeadStats(),
     getCheckoutLeads({ page: 1, pageSize: 20 }),
@@ -29,6 +37,12 @@ export default async function CheckoutLeadsPage() {
         actions={
           <div className="flex items-center gap-2">
             <InvitePaidCustomer />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/superadmin/checkout-leads/invites">
+                <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                Sign-up links
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm">
               <Link href="/superadmin/checkout-leads/payment-methods">
                 <Settings2 className="mr-1.5 h-3.5 w-3.5" />
@@ -46,7 +60,11 @@ export default async function CheckoutLeadsPage() {
       <Suspense
         fallback={<div className="h-96 animate-pulse rounded-2xl border border-white/10 bg-white/[0.02]" />}
       >
-        <CheckoutLeadsTable initialLeads={leadsResult.data} initialCount={leadsResult.count} />
+        <CheckoutLeadsTable
+          initialLeads={leadsResult.data}
+          initialCount={leadsResult.count}
+          initialSelectedLeadId={selectedLeadId}
+        />
       </Suspense>
     </div>
   )

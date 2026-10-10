@@ -40,14 +40,15 @@ async function load() {
 describe('applyLaunchBoost', () => {
   beforeEach(() => applyBoostIdea.mockReset())
 
-  it('applies the selected cold-start ideas on the injected client and reports each one', async () => {
+  it('puts upsells live on the injected client and files combos for the owner to approve', async () => {
     // Arrange
     const { applyLaunchBoost } = await load()
     const ctx = fakeCtx({ menu_items: MENU, tenants: TENANT, bundles: [], upsell_pairs: [] })
     applyBoostIdea.mockImplementation(async (_t: string, idea: BoostIdea) => ({ status: 'applied', ref: `${idea.kind}-ref` }))
+    const fileForApproval = jest.fn(async () => undefined)
 
     // Act
-    const result = await applyLaunchBoost(ctx, 'tenant-1', { bestSellerIds: ['sisig'] })
+    const result = await applyLaunchBoost(ctx, 'tenant-1', { bestSellerIds: ['sisig'], fileForApproval })
 
     // Assert
     expect(result.applied.length).toBeGreaterThan(0)
@@ -55,10 +56,31 @@ describe('applyLaunchBoost', () => {
     for (const call of applyBoostIdea.mock.calls) {
       expect(call[0]).toBe('tenant-1')
       expect(call[3]).toBe(ctx)
+      // A combo never goes live without the owner's OK.
+      expect((call[1] as BoostIdea).kind).not.toBe('combo')
     }
-    const kinds = result.applied.map((a) => a.kind)
-    expect(kinds).toEqual(expect.arrayContaining(['combo', 'pairing', 'last_call']))
-    expect(kinds.filter((k) => k === 'combo').length).toBeLessThanOrEqual(2)
+    expect(result.applied.map((a) => a.kind)).toEqual(expect.arrayContaining(['pairing', 'last_call']))
+    expect(result.awaitingApproval.length).toBeGreaterThan(0)
+    expect(result.awaitingApproval.length).toBeLessThanOrEqual(2)
+    expect(result.awaitingApproval.every((offer) => offer.kind === 'combo')).toBe(true)
+    expect(fileForApproval).toHaveBeenCalledTimes(1)
+    const filed = (fileForApproval.mock.calls[0] as unknown as [BoostIdea[]])[0]
+    expect(filed.map((idea) => idea.kind)).toEqual(result.awaitingApproval.map(() => 'combo'))
+  })
+
+  it('reports the combos as skipped (and keeps the upsells) when filing them fails', async () => {
+    const { applyLaunchBoost } = await load()
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const ctx = fakeCtx({ menu_items: MENU, tenants: TENANT, bundles: [], upsell_pairs: [] })
+    applyBoostIdea.mockResolvedValue({ status: 'applied', ref: null })
+
+    const result = await applyLaunchBoost(ctx, 'tenant-1', { fileForApproval: async () => { throw new Error('db down') } })
+
+    expect(result.awaitingApproval).toEqual([])
+    expect(result.skipped.some((skip) => skip.reason === 'db down')).toBe(true)
+    // An error (unlike needs-edit) is surfaced as `failed` so the build step can retry.
+    expect(result.failed.some((failure) => failure.reason === 'db down')).toBe(true)
+    expect(result.applied.length).toBeGreaterThan(0)
   })
 
   it('records a failing or needs-edit idea as skipped and keeps going', async () => {
@@ -70,10 +92,11 @@ describe('applyLaunchBoost', () => {
       .mockResolvedValueOnce({ status: 'needs-edit' })
       .mockResolvedValue({ status: 'applied', ref: null })
 
-    const result = await applyLaunchBoost(ctx, 'tenant-1')
+    const result = await applyLaunchBoost(ctx, 'tenant-1', { fileForApproval: async () => undefined })
 
     expect(result.skipped[0]).toMatchObject({ reason: 'boom' })
     expect(result.skipped[1].reason).toMatch(/needs editing/)
+    expect(result.failed).toEqual([expect.objectContaining({ reason: 'boom' })])
     expect(result.applied.length).toBe(applyBoostIdea.mock.calls.length - 2)
   })
 
@@ -90,10 +113,13 @@ describe('applyLaunchBoost', () => {
       ]),
     })
     applyBoostIdea.mockResolvedValue({ status: 'applied', ref: null })
+    const fileForApproval = jest.fn(async () => undefined)
 
-    const result = await applyLaunchBoost(ctx, 'tenant-1')
+    const result = await applyLaunchBoost(ctx, 'tenant-1', { fileForApproval })
 
     expect(result.applied).toEqual([])
+    expect(result.awaitingApproval).toEqual([])
+    expect(fileForApproval).not.toHaveBeenCalled()
     expect(applyBoostIdea).not.toHaveBeenCalled()
   })
 

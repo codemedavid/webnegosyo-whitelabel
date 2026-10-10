@@ -63,6 +63,7 @@ export function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags
     inventoryEnabled,
     multiBranchEnabled,
     isBranchScopedAccount,
+    hasStartHere,
   } = flags
 
   const hiddenPaths = useMemo(
@@ -75,6 +76,7 @@ export function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags
         inventoryEnabled,
         multiBranchEnabled,
         isBranchScopedAccount,
+        hasStartHere,
       }),
     [
       enableOrderManagement,
@@ -84,6 +86,7 @@ export function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags
       inventoryEnabled,
       multiBranchEnabled,
       isBranchScopedAccount,
+      hasStartHere,
     ],
   )
 

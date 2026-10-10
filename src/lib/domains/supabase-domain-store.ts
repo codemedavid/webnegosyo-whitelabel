@@ -7,7 +7,8 @@ import type { DomainPatch, DomainStore, TenantDomainRow } from '@/lib/domains/cu
  * them — the server action authorizes first, then writes through this.
  */
 
-const COLUMNS = 'id, slug, domain, pending_domain, pending_domain_token, pending_domain_claimed_at, domain_verified_at'
+const COLUMNS =
+  'id, slug, domain, pending_domain, pending_domain_token, pending_domain_claimed_at, domain_verified_at, domain_vercel_names'
 const UNIQUE_VIOLATION = '23505'
 
 interface DomainColumns {
@@ -18,6 +19,7 @@ interface DomainColumns {
   pending_domain_token: string | null
   pending_domain_claimed_at: string | null
   domain_verified_at: string | null
+  domain_vercel_names: string[] | null
 }
 
 const PATCH_COLUMNS: Record<keyof DomainPatch, keyof DomainColumns> = {
@@ -26,6 +28,7 @@ const PATCH_COLUMNS: Record<keyof DomainPatch, keyof DomainColumns> = {
   pendingToken: 'pending_domain_token',
   pendingClaimedAt: 'pending_domain_claimed_at',
   domainVerifiedAt: 'domain_verified_at',
+  vercelNames: 'domain_vercel_names',
 }
 
 function fromRow(row: DomainColumns): TenantDomainRow {
@@ -37,10 +40,11 @@ function fromRow(row: DomainColumns): TenantDomainRow {
     pendingToken: row.pending_domain_token,
     pendingClaimedAt: row.pending_domain_claimed_at,
     domainVerifiedAt: row.domain_verified_at,
+    vercelNames: row.domain_vercel_names ?? [],
   }
 }
 
-function toColumns(patch: DomainPatch): Record<string, string | null> {
+function toColumns(patch: DomainPatch): Record<string, string | string[] | null> {
   return Object.fromEntries(
     (Object.keys(patch) as Array<keyof DomainPatch>)
       .filter((key) => patch[key] !== undefined)

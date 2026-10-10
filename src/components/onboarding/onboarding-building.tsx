@@ -1,38 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { ArrowUpRight, Check, Minus, X } from 'lucide-react'
+import { Check, Minus, Play, X } from 'lucide-react'
 import type { OnboardingBuildStepId, StepStatus } from '@/lib/onboarding/plan'
+import { GOALS, type GoalId } from '@/lib/onboarding/goals'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB } from './onboarding-ui'
 import { LiveStoreFrame, PhoneFrame, PhoneSkeleton, StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
 
 /**
- * The wait while the store is built: one plain status line that keeps moving,
- * the steps ticking off, and the real storefront filling in inside the phone.
+ * The wait while the store is built: the step really running (never a
+ * made-up activity line), the steps ticking off with what each one found,
+ * the steps that serve the owner's goals saying so, the real storefront
+ * filling in inside the phone, and the first lesson to watch meanwhile.
  */
 
-const RUNNING_LINES: Record<OnboardingBuildStepId, string[]> = {
-  branding: ['Mixing your colors', 'Choosing fonts that fit', 'Painting every page'],
-  menu: ['Reading every line of your menu', 'Typing dishes and prices', 'Sorting them into categories', 'Checking the prices twice'],
-  store_setup: ['Adding your ways to pay', 'Setting your opening hours'],
-  boost: ['Pairing your best sellers', 'Building combo deals', 'Adding upsells'],
-  loyalty: ['Printing your stamp card'],
+/** A build step that serves one of the owner's goals says so: their words, quoted back. */
+const STEP_GOALS: Partial<Record<OnboardingBuildStepId, GoalId>> = {
+  boost: 'bigger_orders',
+  loyalty: 'regulars',
+  campaigns: 'regulars',
 }
 
-const OPENING_LINES = ['Opening your store for orders']
-const STARTING_LINES = ['Getting started']
-const LINE_INTERVAL_MS = 2600
-
-function useRotatingLine(lines: string[]): string {
-  const [index, setIndex] = useState(0)
-  useEffect(() => {
-    setIndex(0)
-    if (lines.length < 2) return
-    const timer = setInterval(() => setIndex((current) => (current + 1) % lines.length), LINE_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [lines])
-  return lines[index] ?? ''
+function statusLine(view: OnboardingView, isOpening: boolean): string {
+  if (isOpening) return 'Opening your store for orders'
+  // Between two steps nothing is "running" for a moment: name the next one, not "getting started".
+  const current = view.steps.find((step) => step.status === 'running') ?? view.steps.find((step) => step.status === 'pending')
+  return current ? current.label : 'Finishing up'
 }
 
 function StepMark({ status }: { status: StepStatus }) {
@@ -64,8 +57,10 @@ const STATUS_WORDS: Record<StepStatus, string> = {
   done: 'done', failed: 'needs a retry', skipped: 'skipped', running: 'in progress', pending: 'waiting',
 }
 
-function BuildStepRow({ step }: { step: OnboardingView['steps'][number] }) {
+function BuildStepRow({ step, goals }: { step: OnboardingView['steps'][number]; goals: readonly GoalId[] }) {
   const isQuiet = step.status === 'pending'
+  const goal = STEP_GOALS[step.id]
+  const isForGoal = !!goal && goals.includes(goal)
   return (
     <li className="flex items-start gap-4 py-3">
       <StepMark status={step.status} />
@@ -74,11 +69,33 @@ function BuildStepRow({ step }: { step: OnboardingView['steps'][number] }) {
           {step.label}
           <span className="sr-only">, {STATUS_WORDS[step.status]}</span>
         </p>
+        {isForGoal && goal && (
+          <p className="mt-0.5 text-[11.5px] font-bold uppercase tracking-[0.07em]" style={{ color: OB.faint }}>For {GOALS[goal].title.toLowerCase()}</p>
+        )}
         {step.detail && step.status !== 'running' && step.status !== 'pending' && (
           <p className="mt-0.5 text-[13px] leading-snug" style={{ color: step.status === 'failed' ? '#B91C1C' : OB.muted }}>{step.detail}</p>
         )}
       </div>
     </li>
+  )
+}
+
+/** The wait becomes lesson one: the first video of their path, not a spinner. */
+function WhileYouWait({ title, href }: { title: string; href: string }) {
+  return (
+    <div className="mt-8">
+      <p className="text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>While you wait</p>
+      <a href={href} target="_blank" rel="noopener noreferrer"
+        className="mt-2.5 flex items-center gap-4 rounded-2xl bg-[#1B1815] p-4 text-white transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E8B23A] focus-visible:ring-offset-2 motion-reduce:transition-none">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E8B23A] text-[#1B1815]" aria-hidden>
+          <Play className="h-5 w-5 translate-x-px fill-current" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[15px] font-bold leading-snug">{title}</span>
+          <span className="mt-0.5 block text-[13px] text-white/70">A short video. Opens in a new tab.</span>
+        </span>
+      </a>
+    </div>
   )
 }
 
@@ -92,8 +109,7 @@ function WaitingPhone() {
 
 export function OnboardingBuilding({ view, isOpening = false, preview = null }: { view: OnboardingView; isOpening?: boolean; preview?: StorePreviewProps | null }) {
   const settled = view.steps.filter((step) => step.status === 'done' || step.status === 'skipped').length
-  const running = view.steps.find((step) => step.status === 'running')
-  const line = useRotatingLine(isOpening ? OPENING_LINES : running ? RUNNING_LINES[running.id] : STARTING_LINES)
+  const line = statusLine(view, isOpening)
   const isBrandingDone = view.steps.find((step) => step.id === 'branding')?.status === 'done'
   const storeName = view.store?.name ?? view.businessName ?? 'your store'
   const firstLesson = view.firstWeek?.steps.flatMap((step) => step.lessons)[0] ?? null
@@ -102,32 +118,28 @@ export function OnboardingBuilding({ view, isOpening = false, preview = null }: 
     <div className="lg:grid lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-2">
       <div className="px-5 pb-16 pt-8 sm:px-8 lg:flex lg:justify-center lg:px-12 lg:pt-16">
         <div className="mx-auto w-full max-w-[34rem]">
-          <h1 className="text-balance text-[2.25rem] font-extrabold leading-[1.06] tracking-[-0.03em] sm:text-[3rem]" style={{ color: OB.ink }}>
+          <p className="text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>Go live</p>
+          <h1 className="mt-2 text-balance text-[2.25rem] font-extrabold leading-[1.06] tracking-[-0.03em] sm:text-[3rem]" style={{ color: OB.ink }}>
             Building {storeName}
           </h1>
           <p className="mt-4 flex items-center gap-2 text-[17px]" style={{ color: OB.muted }} aria-live="polite">
             <span key={line} className="animate-in fade-in slide-in-from-bottom-1 duration-500">{line}…</span>
           </p>
 
-          <div className="mt-8 h-1 overflow-hidden rounded-full" style={{ backgroundColor: OB.line }}
+          <div className="mt-8 h-2.5 overflow-hidden rounded-full" style={{ backgroundColor: OB.line }}
             role="progressbar" aria-label="Build progress" aria-valuemin={0} aria-valuemax={view.steps.length} aria-valuenow={settled}>
             <div className="h-full rounded-full transition-[width] duration-700 ease-out"
               style={{ width: `${Math.max((settled / view.steps.length) * 100, 4)}%`, backgroundColor: ACCENT }} />
           </div>
 
           <ol className="mt-6">
-            {view.steps.map((step) => <BuildStepRow key={step.id} step={step} />)}
+            {view.steps.map((step) => <BuildStepRow key={step.id} step={step} goals={view.goals} />)}
           </ol>
 
-          <p className="mt-8 text-[13px] leading-relaxed" style={{ color: OB.muted }}>
-            About a minute. You can close this page and come back to the same link anytime.
+          <p className="mt-6 text-[13px] leading-relaxed" style={{ color: OB.muted }}>
+            A minute or two. You can close this page and come back to the same link anytime.
           </p>
-          {firstLesson && (
-            <a href={firstLesson.href} target="_blank" rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-[13px] font-semibold underline decoration-1 underline-offset-4" style={{ color: OB.ink }}>
-              While you wait: {firstLesson.title} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
-            </a>
-          )}
+          {firstLesson && <WhileYouWait title={firstLesson.title} href={firstLesson.href} />}
         </div>
       </div>
 

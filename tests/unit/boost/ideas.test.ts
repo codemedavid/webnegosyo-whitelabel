@@ -168,3 +168,69 @@ describe('buildBoostIdeas — cafés and drink-led menus', () => {
     expect(combo.picks.map((p) => p.itemIds[0])).toContain('croissant')
   })
 })
+
+describe('buildBoostIdeas — free (₱0) items', () => {
+  // The menu reader turns "Served with: Garlic Rice" into a ₱0 item. Offering
+  // it earns nothing, and a combo built on it charges for what was already free.
+  const SILOG_MENU: IdeaItem[] = [
+    item('sisig', 'Sisigsilog', 179, 'Best Sellers'),
+    item('tapa', 'Tapsilog', 159, 'Best Sellers'),
+    item('free-rice', 'Garlic Rice', 0, 'Served With'),
+    item('free-egg', '2 Eggs', 0, 'Served With'),
+    item('coke', 'Regular Coke', 38, 'Drinks'),
+    item('oj', 'Orange Juice', 65, 'Drinks'),
+  ].map((it, index) => ({ ...it, order: index }))
+
+  it('never puts a ₱0 item in any offer', () => {
+    const ideas = buildBoostIdeas({ items: SILOG_MENU, limit: 20 })
+    expect(ideas.length).toBeGreaterThan(0)
+    const used = ideas.flatMap((idea) => [
+      ...idea.itemIds,
+      ...(idea.kind === 'combo' ? idea.picks.flatMap((pick) => pick.itemIds) : []),
+      ...(idea.kind === 'pairing' ? idea.targetIds : []),
+    ])
+    expect(used).not.toContain('free-rice')
+    expect(used).not.toContain('free-egg')
+  })
+
+  it('still builds a main + drink combo when the only side is free', () => {
+    const combo = buildBoostIdeas({ items: SILOG_MENU, limit: 20 }).find((idea) => idea.kind === 'combo')
+    if (combo?.kind !== 'combo') throw new Error('expected combo')
+    expect(combo.picks.map((pick) => pick.itemIds[0])).toEqual(['sisig', 'coke'])
+    expect(combo.regularPrice).toBe(179 + 38)
+  })
+})
+
+describe('buildBoostIdeas — trade-up upgrades', () => {
+  const TAPA_MENU: IdeaItem[] = [
+    item('baboy', 'Tapang Baboy', 179, 'Best Sellers'),
+    item('baka', 'Tapang Baka', 198, 'Best Sellers'),
+    item('kabayo', 'Tapang Kabayo', 260, 'Best Sellers'),
+    item('pinoy', 'Pinoy Tapa Bowl', 189, 'Rice Bowls'),
+    item('coke', 'Coke', 38, 'Drinks'),
+  ].map((it, index) => ({ ...it, order: index }))
+
+  it('suggests the premium version of the same dish in the same category', () => {
+    const upgrade = buildBoostIdeas({ items: TAPA_MENU, limit: 20 }).find(
+      (idea) => idea.kind === 'upgrade' && idea.sourceId === 'baboy',
+    )
+    expect(upgrade).toMatchObject({ targetId: 'baka', header: 'Upgrade it?', priceDifference: 19 })
+  })
+
+  it('never trades up to a much pricier dish, another category or a same-price dish', () => {
+    const upgrades = buildBoostIdeas({ items: TAPA_MENU, limit: 20 }).filter((idea) => idea.kind === 'upgrade')
+    // Baka → Kabayo is +31%: too big a jump to suggest on the item page.
+    expect(upgrades.some((idea) => idea.kind === 'upgrade' && idea.sourceId === 'baka')).toBe(false)
+    expect(upgrades.every((idea) => idea.kind === 'upgrade' && idea.targetId !== 'pinoy')).toBe(true)
+  })
+
+  it('prefers a real bigger or meal version over a trade-up', () => {
+    const upgrades = buildBoostIdeas({ items: MENU, limit: 20 }).filter((idea) => idea.kind === 'upgrade')
+    expect(upgrades.find((idea) => idea.kind === 'upgrade' && idea.sourceId === 'burger')).toMatchObject({ targetId: 'burger-meal' })
+  })
+
+  it('does not trade up between drinks that only share a generic word', () => {
+    const menu = [item('pj', 'Pineapple Juice', 55, 'Drinks'), item('oj', 'Orange Juice', 65, 'Drinks')]
+    expect(buildBoostIdeas({ items: menu, limit: 20 }).some((idea) => idea.kind === 'upgrade')).toBe(false)
+  })
+})

@@ -12,7 +12,7 @@
 import { invalidateTenantCache } from '@/lib/cache'
 import { openRouterChat } from '@/lib/ai/openrouter'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
-import { getBoostMenu, getBoostWorkspace, type BoostTenantFields } from '../workspace'
+import { getBoostMenu, getBoostWorkspace, type BoostItem, type BoostLastCall, type BoostTenantFields } from '../workspace'
 import { readBasketSummary } from '../order-baskets'
 import { refreshOfferCaches } from '../refresh-offer-caches'
 import { runBoostAiGeneration, type GenerationOutcome } from './generate'
@@ -38,6 +38,11 @@ export interface BoostAiTenant extends BoostTenantFields {
 }
 
 export type ApplyOutcome = 'applied' | 'needs-edit'
+
+export interface BoostMenu {
+  items: readonly BoostItem[]
+  lastCall: BoostLastCall
+}
 
 export function generateBoostAiProposals(tenant: BoostAiTenant, userId: string): Promise<GenerationOutcome> {
   return runBoostAiGeneration({
@@ -85,7 +90,9 @@ export async function applyBoostAiProposal(
   tenant: BoostAiTenant,
   userId: string,
   proposalId: string,
-  ctx?: ProvisioningCtx
+  ctx?: ProvisioningCtx,
+  /** The store's menu, when the caller read it itself (no cookie session, e.g. the set-up link). */
+  menu?: BoostMenu
 ): Promise<ApplyOutcome> {
   const proposal = await loadBoostAiProposal(tenant.id, proposalId)
   if (!canApplyProposal(proposal.status)) {
@@ -96,7 +103,7 @@ export async function applyBoostAiProposal(
   if (!claimed) throw new Error('This suggestion was just applied or changed. Refresh to see it.')
 
   try {
-    const result = await applyBoostIdea(tenant.id, proposal.idea, await getBoostMenu(tenant), ctx)
+    const result = await applyBoostIdea(tenant.id, proposal.idea, menu ?? await getBoostMenu(tenant), ctx)
     if (result.status === 'needs-edit') {
       await setBoostAiProposalStatus(tenant.id, proposalId, ['applied'], { to: 'approved', userId })
       return 'needs-edit'
@@ -117,11 +124,12 @@ export async function createBoostAiProposalNow(
   tenant: BoostAiTenant,
   userId: string,
   proposalId: string,
-  ctx?: ProvisioningCtx
+  ctx?: ProvisioningCtx,
+  menu?: BoostMenu
 ): Promise<ApplyOutcome> {
   const proposal = await loadBoostAiProposal(tenant.id, proposalId)
   const plan = planOneTapCreate(proposal.status)
   if (!plan.ok) throw new Error(plan.error)
   if (plan.approveFirst) await decideBoostAiProposal(tenant.id, userId, proposalId, 'approve')
-  return applyBoostAiProposal(tenant, userId, proposalId, ctx)
+  return applyBoostAiProposal(tenant, userId, proposalId, ctx, menu)
 }

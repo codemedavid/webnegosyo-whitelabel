@@ -15,6 +15,8 @@ import type { BoostIdea } from '../ideas'
 import { FREE_BOOST_AI_GENERATIONS, type ProposalStatus } from './lifecycle'
 
 export type GenerationStatus = 'running' | 'succeeded' | 'failed'
+/** ai = a merchant-started run (counts against the allowance); launch = combos drafted by onboarding. */
+export type GenerationSource = 'ai' | 'launch'
 
 export interface BoostAiProposal {
   id: string
@@ -31,6 +33,7 @@ export interface BoostAiProposal {
 export interface BoostAiGeneration {
   id: string
   status: GenerationStatus
+  source: GenerationSource
   model: string | null
   dataSource: string | null
   ordersAnalyzed: number
@@ -62,6 +65,7 @@ interface ProposalRow {
 interface GenerationRow {
   id: string
   status: GenerationStatus
+  source: GenerationSource | null
   model: string | null
   data_source: string | null
   orders_analyzed: number
@@ -99,6 +103,7 @@ function toGeneration(row: GenerationRow): BoostAiGeneration {
   return {
     id: row.id,
     status: row.status,
+    source: row.source === 'launch' ? 'launch' : 'ai',
     model: row.model,
     dataSource: row.data_source,
     ordersAnalyzed: row.orders_analyzed,
@@ -181,10 +186,11 @@ export async function listBoostAiLog(tenantId: string): Promise<BoostAiLog> {
       .from('boost_ai_generations')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
+      .eq('source', 'ai')
       .in('status', ['running', 'succeeded']),
     client
       .from('boost_ai_generations')
-      .select(`id, status, model, data_source, orders_analyzed, summary, error, created_at, completed_at, boost_ai_proposals(${PROPOSAL_COLUMNS})`)
+      .select(`id, status, source, model, data_source, orders_analyzed, summary, error, created_at, completed_at, boost_ai_proposals(${PROPOSAL_COLUMNS})`)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .limit(MAX_LOGGED_GENERATIONS),
@@ -235,4 +241,86 @@ export async function setBoostAiProposalStatus(
     .select('id')
   if (error) throw new Error(`Could not update this suggestion: ${error.message}`)
   return (data ?? []).length > 0
+}
+
+const LAUNCH_SUMMARY = 'Drafted from your menu when we built your store.'
+const UNIQUE_VIOLATION = '23505'
+
+async function findLaunchGeneration(client: SupabaseClient, tenantId: string): Promise<string | null> {
+  const { data, error } = await client
+    .from('boost_ai_generations')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('source', 'launch')
+    .maybeSingle()
+  if (error) throw new Error(`Could not read the launch suggestions: ${error.message}`)
+  return (data as { id: string } | null)?.id ?? null
+}
+
+async function countProposals(client: SupabaseClient, tenantId: string, generationId: string): Promise<number> {
+  const { count, error } = await client
+    .from('boost_ai_proposals')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('generation_id', generationId)
+  if (error) throw new Error(`Could not read the launch suggestions: ${error.message}`)
+  return count ?? 0
+}
+
+async function insertProposals(client: SupabaseClient, tenantId: string, generationId: string, ideas: readonly BoostIdea[]) {
+  return client.from('boost_ai_proposals').insert(
+    ideas.map((idea, position) => ({ generation_id: generationId, tenant_id: tenantId, kind: idea.kind, position, payload: idea }))
+  )
+}
+
+/**
+ * File a new store's launch combos as pending suggestions: they wait for the
+ * owner's OK like any AI suggestion, but never count against the free AI
+ * generations. One launch generation per store (a unique index), so a retried
+ * build files nothing twice. A half-written filing is removed so a retry can
+ * file it again. If the process died between the two inserts (so the delete
+ * never ran), the next call finds a launch generation with NO proposals and
+ * fills it in rather than treating it as filed: the unique index would block a
+ * second generation, so the combos would otherwise never be offered.
+ */
+export async function fileLaunchProposals(
+  client: SupabaseClient,
+  tenantId: string,
+  ideas: readonly BoostIdea[]
+): Promise<{ generationId: string; isNew: boolean }> {
+  const existing = await findLaunchGeneration(client, tenantId)
+  if (existing) {
+    if ((await countProposals(client, tenantId, existing)) > 0) return { generationId: existing, isNew: false }
+    const { error: refillError } = await insertProposals(client, tenantId, existing, ideas)
+    if (refillError) throw new Error(`Could not save the launch suggestions: ${refillError.message}`)
+    return { generationId: existing, isNew: true }
+  }
+
+  const now = new Date().toISOString()
+  const { data, error } = await client
+    .from('boost_ai_generations')
+    .insert({
+      tenant_id: tenantId,
+      source: 'launch',
+      status: 'succeeded',
+      data_source: 'menu',
+      orders_analyzed: 0,
+      summary: LAUNCH_SUMMARY,
+      completed_at: now,
+    })
+    .select('id')
+    .single()
+  if (error?.code === UNIQUE_VIOLATION) {
+    const winner = await findLaunchGeneration(client, tenantId)
+    if (winner) return { generationId: winner, isNew: false }
+  }
+  if (error || !data) throw new Error(`Could not save the launch suggestions: ${error?.message ?? 'no row'}`)
+  const generationId = (data as { id: string }).id
+
+  const { error: insertError } = await insertProposals(client, tenantId, generationId, ideas)
+  if (insertError) {
+    await client.from('boost_ai_generations').delete().eq('id', generationId).eq('tenant_id', tenantId)
+    throw new Error(`Could not save the launch suggestions: ${insertError.message}`)
+  }
+  return { generationId, isNew: true }
 }

@@ -17,7 +17,7 @@
 
 import type { ModifierGroup, OrderItem } from '@/types/database'
 import type { LoyverseConfig } from '@/lib/loyverse/config'
-import { loyverseRequest } from '@/lib/loyverse/client'
+import { isOutcomeUnknownError, loyverseRequest, type LoyverseCallOptions } from '@/lib/loyverse/client'
 import { parseModifierOptionId, parseVariantOptionId } from '@/lib/loyverse/option-ids'
 
 export interface LoyverseReceiptCatalogEntry {
@@ -138,11 +138,27 @@ export interface LoyversePushResult {
   receiptNumber?: string
   unmapped: string[]
   error?: string
+  /**
+   * The POST failed in a way that may still have created the receipt
+   * (timeout, dropped connection, 5xx). Never resend without looking first.
+   */
+  isOutcomeUnknown?: boolean
 }
 
 interface LoyverseReceiptResponse {
   receipt_number?: string
 }
+
+/** One order label normally matches one receipt; this only bounds the reply. */
+const RECEIPT_LOOKUP_LIMIT = 50
+
+interface LoyverseReceiptListResponse {
+  receipts?: Array<{ receipt_number?: string; order?: string | null; receipt_type?: string }>
+}
+
+export type LoyverseReceiptLookup =
+  | { ok: true; receiptNumber: string | null }
+  | { ok: false; error: string }
 
 /**
  * Sends the receipt. Never throws — order flows must not break because the
@@ -151,7 +167,8 @@ interface LoyverseReceiptResponse {
 export async function sendLoyverseReceipt(
   config: LoyverseConfig,
   order: LoyverseOrderInput,
-  catalog: LoyverseReceiptCatalog
+  catalog: LoyverseReceiptCatalog,
+  callOptions: LoyverseCallOptions = {}
 ): Promise<LoyversePushResult> {
   const { receipt, unmapped } = buildLoyverseReceipt(config, order, catalog)
   if (receipt.line_items.length === 0) {
@@ -159,6 +176,7 @@ export async function sendLoyverseReceipt(
   }
   try {
     const response = await loyverseRequest<LoyverseReceiptResponse>(config.accessToken, {
+      ...callOptions,
       path: '/receipts',
       method: 'POST',
       body: receipt,
@@ -166,6 +184,32 @@ export async function sendLoyverseReceipt(
     return { success: true, receiptNumber: response.receipt_number, unmapped }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Loyverse receipt push failed'
-    return { success: false, unmapped, error: message }
+    return { success: false, unmapped, error: message, isOutcomeUnknown: isOutcomeUnknownError(error) }
+  }
+}
+
+/**
+ * The sale receipt an earlier push created for `orderLabel` in this store
+ * since `createdSince`, if any. A lookup that could not complete is
+ * `ok: false` — never read it as "no receipt", or the sale is booked twice.
+ */
+export async function findLoyverseReceiptForOrder(
+  config: LoyverseConfig,
+  orderLabel: string,
+  createdSince: string,
+  callOptions: LoyverseCallOptions = {}
+): Promise<LoyverseReceiptLookup> {
+  try {
+    const response = await loyverseRequest<LoyverseReceiptListResponse>(config.accessToken, {
+      ...callOptions,
+      path: '/receipts',
+      query: { store_id: config.storeId, order: orderLabel, created_at_min: createdSince, limit: RECEIPT_LOOKUP_LIMIT },
+    })
+    const match = (response.receipts ?? []).find(
+      (receipt) => receipt.order === orderLabel && receipt.receipt_type !== 'REFUND' && receipt.receipt_number,
+    )
+    return { ok: true, receiptNumber: match?.receipt_number ?? null }
+  } catch (error: unknown) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Loyverse receipt lookup failed' }
   }
 }

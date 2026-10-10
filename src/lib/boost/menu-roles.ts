@@ -81,3 +81,12 @@ export function classifyMenuRole({ categoryName, itemName }: MenuRoleInput): Men
   if (fromCategory !== 'other') return fromCategory
   return roleOf(itemName)
 }
+
+const ROLE_WORDS: ReadonlySet<string> = new Set(
+  [...DRINK_WORDS, ...DESSERT_WORDS, ...MAIN_WORDS, ...SIDE_WORDS].filter((word) => !word.includes(' ')),
+)
+
+/** "juice", "rice", "burger": a word that names a kind of dish, not one dish. */
+export function isRoleWord(word: string): boolean {
+  return ROLE_WORDS.has(word.toLowerCase())
+}

@@ -10,6 +10,19 @@ import { buildOnboardingView, type OnboardingView } from './view'
 import { loadFirstWeekPlan } from './first-week-data'
 import { loadLaunchSnapshot, type LaunchTenantFields } from './launch-snapshot'
 import { buildLaunchReadiness, type LaunchReadiness } from './readiness'
+import { listStoreAddresses } from '@/lib/qr-print/qr-links'
+
+/** The store's own address (its subdomain in production) for the reveal's Share button. */
+function withShareUrl(view: OnboardingView): OnboardingView {
+  if (!view.store) return view
+  const [address] = listStoreAddresses({
+    slug: view.store.slug,
+    domain: null,
+    rootDomain: process.env.PLATFORM_ROOT_DOMAIN ?? null,
+    appUrl: null,
+  })
+  return { ...view, store: { ...view.store, shareUrl: address?.baseUrl ?? null } }
+}
 
 type AdminClient = SupabaseClient<Database>
 
@@ -29,7 +42,7 @@ export async function loadOnboardingView(admin: AdminClient, onboarding: StoreOn
 
   const lead = leadResult.data as { business_name: string; email: string; status: string; name: string | null }
   const tenant = (tenantResult.data as (LaunchTenantFields & { name: string; slug: string; is_prelaunch: boolean }) | null) ?? null
-  const view = buildOnboardingView({ onboarding, lead, tenant })
+  const view = withShareUrl(buildOnboardingView({ onboarding, lead, tenant }))
   if (!view.store || !tenant) return view
   // Lessons fill the wait while the store builds (a cached read, cheap to poll).
   // The wizard is served on the platform host, so University links stay relative.
@@ -38,7 +51,7 @@ export async function loadOnboardingView(admin: AdminClient, onboarding: StoreOn
   const isBuilding = view.status === 'queued' || view.status === 'running'
   if (isBuilding) return { ...view, firstWeek }
   const readiness = await readReadiness(admin, tenant)
-  return { ...buildOnboardingView({ onboarding, lead, tenant, readiness }), firstWeek }
+  return { ...withShareUrl(buildOnboardingView({ onboarding, lead, tenant, readiness })), firstWeek }
 }
 
 /** A failed checklist read hides "Go live" (null) instead of failing the page. */

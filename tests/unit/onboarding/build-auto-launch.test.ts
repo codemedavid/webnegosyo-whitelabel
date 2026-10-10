@@ -49,7 +49,7 @@ function onboardingRow(status: string) {
   return {
     id: 'onb-1', checkoutLeadId: 'lead-1', tenantId: 'tenant-1', status,
     answers: { storeName: 'Kape', storeType: 'cafe', menuText: 'Latte 150', bestSellers: [] },
-    assets: {}, steps: { branding: DONE, menu: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
+    assets: {}, steps: { branding: DONE, menu: DONE, design: DONE, store_setup: DONE, boost: DONE, loyalty: DONE },
     summary: null, error: null, attempts: 1, launchRequestedAt: null,
     createdAt: '2026-10-08T00:00:00Z', updatedAt: '2026-10-08T00:00:00Z',
   }
@@ -105,6 +105,23 @@ describe('runOnboardingBuild — opens the store when the build finishes', () =>
     // Assert
     expect(console.error).toHaveBeenCalledWith('[onboarding] auto go-live failed', expect.objectContaining({ onboardingId: 'onb-1' }))
     expect(invalidateTenantCache).toHaveBeenCalledWith('kape', 'tenant-1')
+  })
+
+  test('a FAILED build leaves the store in pre-launch (no auto go-live) until a retry succeeds', async () => {
+    // Arrange: the store_setup step is not settled and its runner will throw
+    findOnboardingById.mockReset()
+    const failing = { ...onboardingRow('queued'), steps: { branding: DONE, menu: DONE, design: DONE, boost: DONE, loyalty: DONE } }
+    findOnboardingById.mockResolvedValueOnce(failing).mockResolvedValue({ ...failing, status: 'failed' })
+    const { runOnboardingBuild } = await import('@/lib/onboarding/build')
+    writeOnboardingSteps.mockImplementation(async () => undefined)
+    finishOnboardingBuild.mockImplementation(async () => undefined)
+
+    // Act
+    await runOnboardingBuild({ ...(fakeAdmin() as object), from: () => { throw new Error('db down') } } as never, 'onb-1')
+
+    // Assert
+    expect(finishOnboardingBuild).toHaveBeenCalledWith(expect.anything(), 'onb-1', expect.objectContaining({ status: 'failed' }))
+    expect(launchFromSetupLink).not.toHaveBeenCalled()
   })
 
   test('a build that loses the claim never tries to open the store', async () => {

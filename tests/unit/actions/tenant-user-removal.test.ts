@@ -143,3 +143,5 @@ describe('updateTenantUser', () => {
     expect(log).toHaveLength(0)
   })
 })
+
+export {}

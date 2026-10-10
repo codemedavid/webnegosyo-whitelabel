@@ -27,9 +27,11 @@ export interface AdminShellTenant {
   multi_branch_enabled: boolean | null
   /** Owner AI assistant ("the Owl"). Coerced: only a strict `true` shows it. */
   assistant_enabled: boolean
+  /** In its first weeks after onboarding: the sidebar offers "Start here". */
+  has_start_here: boolean
 }
 
-export function toAdminShellTenant(tenant: Tenant): AdminShellTenant {
+export function toAdminShellTenant(tenant: Tenant, opts: { hasStartHere?: boolean } = {}): AdminShellTenant {
   return {
     id: tenant.id,
     name: tenant.name,
@@ -41,5 +43,6 @@ export function toAdminShellTenant(tenant: Tenant): AdminShellTenant {
     inventory_enabled: tenant.inventory_enabled ?? null,
     multi_branch_enabled: tenant.multi_branch_enabled ?? null,
     assistant_enabled: tenant.assistant_enabled === true,
+    has_start_here: opts.hasStartHere === true,
   }
 }

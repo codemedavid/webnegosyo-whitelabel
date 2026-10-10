@@ -1,11 +1,10 @@
 -- ===========================================================================
--- NOT YET APPLIED — DO NOT APPLY YET.
--- Apply only after a merchant-app build that uses
--- webnegosyo-app/lib/customers/attach-lookup.ts (the pos_find_customer /
--- pos_create_customer RPC path) has shipped to ALL stores. Older builds read
--- public.customers directly from the POS picker and Wallet-card scan, so a
--- register-only cashier on such a build would lose guest search/attach the
--- moment these policies land.
+-- APPLIED to platform 2026-10-09 (via Supabase MCP), with minimum_version left
+-- at 1.0.0. Register-only cashiers on builds older than 1.0.12 lose POS guest
+-- search/attach until they update; 1.0.12+ attach through
+-- webnegosyo-app/lib/customers/attach-lookup.ts (pos_find_customer /
+-- pos_create_customer). Probed as a register-only staff account: 0 guests
+-- readable, exact-phone RPC lookup still found the guest; owner unaffected.
 --
 -- Formerly 20261004120000_customers_staff_permission.sql (a version that
 -- collided with 20261004120000_loyalty_sms_gateway.sql). The two register

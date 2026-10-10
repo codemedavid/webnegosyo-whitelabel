@@ -28,9 +28,11 @@ const STATUS_TABS: { value: StatusFilter; label: string }[] = [
 interface CheckoutLeadsTableProps {
   initialLeads: CheckoutLeadWithPaymentMethod[]
   initialCount: number
+  /** Opens this lead's panel on arrival (`?lead=<id>`, linked from the sales pipeline). */
+  initialSelectedLeadId?: string | null
 }
 
-export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeadsTableProps) {
+export function CheckoutLeadsTable({ initialLeads, initialCount, initialSelectedLeadId = null }: CheckoutLeadsTableProps) {
   const [leads, setLeads] = useState(initialLeads)
   const [count, setCount] = useState(initialCount)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -38,7 +40,7 @@ export function CheckoutLeadsTable({ initialLeads, initialCount }: CheckoutLeads
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(initialSelectedLeadId)
 
   useEffect(() => {
     const timer = setTimeout(() => {

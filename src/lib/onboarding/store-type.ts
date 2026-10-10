@@ -41,37 +41,74 @@ export interface StoreTypeDefinition {
 /**
  * Looks for a menu without dish photos (every onboarded menu starts that way).
  * Each pairs a card, a page layout and a TEXT hero: a hero that draws a
- * picture panel shows a giant initial when there is no photo. The owner picks
- * one in the wizard; otherwise the store type's own look applies. Chosen by
- * rendering every candidate on real photo-less stores (2026-10-08).
+ * picture panel shows a giant initial when there is no photo. The build's AI
+ * picks one from the menu it read (`design-pick.ts`) unless the owner picked
+ * one in the wizard. Every pair was rendered on a real photo-less store
+ * (2026-10-09). The menu board on the default layout is retired: every
+ * onboarded store launched looking the same with it.
  */
 export const STORE_LOOKS = {
-  board: {
-    label: 'Menu board',
-    description: 'Like a printed menu: dish, dotted line, price.',
-    card: 'menuboard', layout: 'default', hero: 'editorial',
+  shop: {
+    label: 'Shop',
+    description: 'A clean grid with a category bar that follows you.',
+    card: 'storefront', layout: 'storefront', hero: 'minimal',
   },
-  chapters: {
-    label: 'Chapters',
-    description: 'Each category opens on a page in your color.',
-    card: 'menuboard', layout: 'lookbook', hero: 'editorial',
+  sidebar: {
+    label: 'Side menu',
+    description: 'Categories down the side, easy on a big menu.',
+    card: 'storefront', layout: 'sidebar', hero: 'minimal',
   },
-  tiles: {
+  kiosk: {
     label: 'Quick order',
-    description: 'Big category tiles up top, made for fast picks.',
-    card: 'atelier', layout: 'kiosk', hero: 'banner',
+    description: 'Big category tiles and bold cards for fast picks.',
+    card: 'kiosk', layout: 'kiosk', hero: 'banner',
   },
-  cards: {
-    label: 'Cards',
-    description: 'Every dish on its own card.',
-    card: 'elegant', layout: 'default', hero: 'minimal',
+  sticker: {
+    label: 'Playful',
+    description: 'Price stickers and big tiles, fun for drinks and snacks.',
+    card: 'sticker', layout: 'kiosk', hero: 'banner',
+  },
+  cafe: {
+    label: 'Café rows',
+    description: 'Swipe through each category, like a café app.',
+    card: 'arch', layout: 'rails', hero: 'minimal',
+  },
+  bistro: {
+    label: 'Bistro',
+    description: 'Refined cards for a sit-down restaurant.',
+    card: 'bistro', layout: 'storefront', hero: 'editorial',
   },
 } as const satisfies Record<string, { label: string; description: string; card: CardTemplate; layout: PageLayout; hero: HeroPreset }>
 
 export type StoreLook = keyof typeof STORE_LOOKS
 
+export const STORE_LOOK_IDS = Object.keys(STORE_LOOKS) as [StoreLook, ...StoreLook[]]
+
 export function isStoreLook(value: unknown): value is StoreLook {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(STORE_LOOKS, value)
+}
+
+/** Looks an older wizard saved, mapped to their closest current look. */
+const LEGACY_STORE_LOOKS: Record<string, StoreLook> = {
+  board: 'sidebar',
+  chapters: 'cafe',
+  tiles: 'kiosk',
+  cards: 'bistro',
+}
+
+/** A current look, the current look a legacy one maps to, or null. */
+export function toStoreLook(value: unknown): StoreLook | null {
+  if (isStoreLook(value)) return value
+  if (typeof value !== 'string' || !Object.prototype.hasOwnProperty.call(LEGACY_STORE_LOOKS, value)) return null
+  return LEGACY_STORE_LOOKS[value]
+}
+
+/** Font pairings a launch design may use; each is registered in `FONT_PAIRS`. */
+export const LAUNCH_FONT_PAIRS = ['modern sans', 'elegant serif', 'bold display', 'warm editorial'] as const
+export type LaunchFontPair = (typeof LAUNCH_FONT_PAIRS)[number]
+
+export function isLaunchFontPair(value: unknown): value is LaunchFontPair {
+  return typeof value === 'string' && (LAUNCH_FONT_PAIRS as readonly string[]).includes(value)
 }
 
 export const STORE_TYPES = {
@@ -81,7 +118,7 @@ export const STORE_TYPES = {
     defaultColor: '#c0392b',
     heroLine: 'Freshly cooked, made to order',
     fontPair: 'modern sans',
-    look: 'board',
+    look: 'shop',
     photo: { card: 'bistro', layout: 'default' },
   },
   cafe: {
@@ -90,7 +127,7 @@ export const STORE_TYPES = {
     defaultColor: '#7b4a2d',
     heroLine: 'Freshly brewed, made to order',
     fontPair: 'elegant serif',
-    look: 'chapters',
+    look: 'cafe',
     photo: { card: 'arch', layout: 'rails' },
   },
   milk_tea: {
@@ -99,7 +136,7 @@ export const STORE_TYPES = {
     defaultColor: '#7c4dbd',
     heroLine: 'Shaken fresh, just the way you like it',
     fontPair: 'bold display',
-    look: 'tiles',
+    look: 'sticker',
     photo: { card: 'showcase', layout: 'rails' },
   },
   bakery: {
@@ -108,7 +145,7 @@ export const STORE_TYPES = {
     defaultColor: '#a4643c',
     heroLine: 'Baked fresh every day',
     fontPair: 'warm editorial',
-    look: 'cards',
+    look: 'shop',
     photo: { card: 'atelier', layout: 'default' },
   },
   other: {
@@ -117,7 +154,7 @@ export const STORE_TYPES = {
     defaultColor: '#2a6fdb',
     heroLine: 'Order online in a few taps',
     fontPair: 'theme',
-    look: 'board',
+    look: 'shop',
     photo: { card: 'showcase', layout: 'default' },
   },
 } as const satisfies Record<string, StoreTypeDefinition>
@@ -139,6 +176,13 @@ export interface LaunchBrandingInput {
   look?: StoreLook | null
 }
 
+/** The part of the launch branding the build's design step may change. */
+export interface LaunchDesign {
+  look: StoreLook
+  /** Absent = the store type's own pairing. */
+  fontPair?: LaunchFontPair | null
+}
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 const CARD_BACKGROUND = '#ffffff'
 const LIGHT_INK = '#ffffff'
@@ -153,6 +197,8 @@ const MAX_DARKEN_STEPS = 12
 /** brandingPatchSchema limits. */
 const MAX_HERO_TITLE = 200
 const MAX_HERO_DESCRIPTION = 1000
+const MAX_FLASH_TITLE = 200
+const MAX_FLASH_SUBTITLE = 500
 
 function channels(hex: string): [number, number, number] {
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
@@ -215,9 +261,11 @@ export function buildLaunchBranding(input: LaunchBrandingInput): BrandingPatchIn
   // A pale brand color vanishes as price text on a white card.
   const priceColor = contrastRatio(brand, CARD_BACKGROUND) >= MIN_PRICE_CONTRAST ? brand : palette.primary_color
   const tagline = input.tagline?.trim()
+  const heroLine = tagline || type.heroLine
 
   return {
     ...palette,
+    ...launchFlashScreen(input.storeName, heroLine, button),
     accent_color: brand,
     brand_color: brand,
     secondary_color: palette.text_secondary_color,
@@ -232,6 +280,36 @@ export function buildLaunchBranding(input: LaunchBrandingInput): BrandingPatchIn
     font_pair: type.fontPair,
     hero_preset: design.hero,
     hero_title: input.storeName.trim().slice(0, MAX_HERO_TITLE),
-    hero_description: (tagline || type.heroLine).slice(0, MAX_HERO_DESCRIPTION),
+    hero_description: heroLine.slice(0, MAX_HERO_DESCRIPTION),
+  }
+}
+
+/**
+ * The branded loading screen, switched on: store name over the brand's button
+ * color with its readable ink. No image is set, so it shows the logo (or the
+ * store's initial) and follows a later logo change.
+ */
+function launchFlashScreen(storeName: string, line: string, button: { color: string; ink: string }): BrandingPatchInput {
+  return {
+    flash_screen_feature_enabled: true,
+    flash_screen_is_active: true,
+    flash_screen_title: storeName.trim().slice(0, MAX_FLASH_TITLE),
+    flash_screen_subtitle: line.slice(0, MAX_FLASH_SUBTITLE),
+    flash_screen_background_color: button.color,
+    flash_screen_text_color: button.ink,
+  }
+}
+
+/**
+ * Only the layout part of the launch branding, for the build's design step:
+ * colors, hero copy and the flash screen were already set and stay as they are.
+ */
+export function buildLaunchDesign(storeType: StoreType, design: LaunchDesign): BrandingPatchInput {
+  const look = STORE_LOOKS[design.look]
+  return {
+    card_template: look.card,
+    page_layout: look.layout,
+    hero_preset: look.hero,
+    font_pair: design.fontPair && isLaunchFontPair(design.fontPair) ? design.fontPair : STORE_TYPES[storeType].fontPair,
   }
 }

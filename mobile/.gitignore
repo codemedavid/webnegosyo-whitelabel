@@ -1,7 +1,9 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
-node_modules/
+# No trailing slash: in a git worktree this is a symlink, which `node_modules/`
+# (directories only) would not ignore.
+node_modules
 
 # Expo
 .expo/

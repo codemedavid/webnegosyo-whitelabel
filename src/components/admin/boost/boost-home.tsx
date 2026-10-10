@@ -107,10 +107,14 @@ export function BoostHome({
   // Fresh server data supersedes every optimistic toggle.
   useEffect(() => setLiveOverrides({}), [workspace])
 
-  const visibleIdeas = useMemo(
-    () => workspace.ideas.filter((idea) => !dismissed.has(idea.id)),
-    [workspace.ideas, dismissed]
-  )
+  // An idea already waiting in the AI log (e.g. a launch combo) is reviewed there, not twice.
+  const visibleIdeas = useMemo(() => {
+    const inReview = new Set(
+      (aiLog?.generations ?? []).flatMap((generation) =>
+        generation.proposals.filter((proposal) => proposal.status !== 'rejected').map((proposal) => proposal.idea.id))
+    )
+    return workspace.ideas.filter((idea) => !dismissed.has(idea.id) && !inReview.has(idea.id))
+  }, [workspace.ideas, dismissed, aiLog])
 
   const live = useCallback((key: string, stored: boolean) => liveOverrides[key] ?? stored, [liveOverrides])
   const liveCounts = {

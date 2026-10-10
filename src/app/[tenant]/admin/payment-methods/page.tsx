@@ -1,3 +1,4 @@
+import { LearnChip } from '@/components/admin/learn/learn-chip'
 import { Suspense } from 'react'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -104,6 +105,9 @@ export default async function PaymentMethodsPage({ params }: PaymentMethodsPageP
         <p className="text-gray-600 mt-2">
           Manage payment methods and their availability for different order types
         </p>
+        <div className="mt-3">
+          <LearnChip tenantSlug={tenantSlug} lessonSlug="payment-methods-management" />
+        </div>
       </div>
 
       <Suspense

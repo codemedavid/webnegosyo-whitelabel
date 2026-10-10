@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
+  Filter,
   LayoutDashboard,
   Settings,
   LogOut,
@@ -53,6 +54,7 @@ const navGroups: SidebarGroup[] = [
     items: [
       { label: 'Dashboard', href: '/superadmin', icon: LayoutDashboard },
       { label: 'Analytics', href: '/superadmin/analytics', icon: BarChart3 },
+      { label: 'Sales Pipeline', href: '/superadmin/pipeline', icon: Filter },
       { label: 'Store Activity', href: '/superadmin/activity', icon: Activity },
       { label: 'Client Map', href: '/superadmin/map', icon: MapPinned },
     ],
@@ -63,6 +65,7 @@ const navGroups: SidebarGroup[] = [
       { label: 'Restaurants', href: '/superadmin/tenants', icon: Store },
       { label: 'Leads', href: '/superadmin/leads', icon: Users },
       { label: 'Checkout Leads', href: '/superadmin/checkout-leads', icon: ShoppingCart },
+      { label: 'Onboarding Funnel', href: '/superadmin/onboarding-funnel', icon: Filter },
       { label: 'MCP Keys', href: '/superadmin/mcp-keys', icon: KeyRound },
       { label: 'Subscriptions', href: '/superadmin/subscriptions', icon: CreditCard },
       { label: 'Billing Calendar', href: '/superadmin/subscriptions/calendar', icon: CalendarDays },
