@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Banknote, Bike, Eye, EyeOff, Mail, PauseCircle, ShoppingBag, UtensilsCrossed } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { MAX_OWNER_PASSWORD, MIN_OWNER_PASSWORD, type OnboardingOrderType } from '@/lib/onboarding/answers'
-import { ACCENT, Chip, Field, FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, StepHeading, Switch } from './onboarding-ui'
+import { ACCENT, Chip, Field, FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, QuestionHeading, Switch } from './onboarding-ui'
 import type { StepProps } from './wizard-steps'
 import type { WizardDraft } from './wizard-draft'
 
@@ -46,12 +46,12 @@ function PaymentRow({ icon, title, description, isOn, onChange, children }: {
   children?: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border transition-[border-color,box-shadow] duration-150"
-      style={{ borderColor: isOn ? ACCENT : OB.lineStrong, boxShadow: isOn ? `0 0 0 1px ${ACCENT}` : 'none' }}>
+    <div className="rounded-2xl border-2 transition-[border-color,box-shadow] duration-150"
+      style={{ borderColor: isOn ? ACCENT : OB.lineStrong }}>
       <div className="flex min-h-16 items-center gap-4 px-4 py-3">
         {icon}
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold" style={{ color: OB.ink }}>{title}</span>
+          <span className="block text-[16px] font-bold" style={{ color: OB.ink }}>{title}</span>
           <span className="block text-[13px]" style={{ color: OB.muted }}>{description}</span>
         </span>
         <Switch isOn={isOn} label={`Accept ${title}`} onChange={onChange} />
@@ -93,10 +93,12 @@ function WalletRow({ wallet, draft, update }: StepProps & { wallet: WalletKey })
   )
 }
 
-export function OrderingStep({ draft, update }: StepProps) {
+type EyebrowProps = StepProps & { eyebrow: string }
+
+export function OrderingStep({ draft, update, eyebrow }: EyebrowProps) {
   return (
     <div className="space-y-9">
-      <StepHeading title="How do customers order?" lede="Pick every way you serve. You can turn any of them off later." />
+      <QuestionHeading eyebrow={eyebrow} title="How do customers get their order?" lede="Pick every way you serve. You can turn any of them off later." />
       <div role="group" aria-label="How customers get their order" className="grid grid-cols-2 gap-3 sm:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         {(Object.keys(ORDER_TYPES) as OnboardingOrderType[]).map((type) => {
           const { icon: Icon, title, description } = ORDER_TYPES[type]
@@ -106,8 +108,15 @@ export function OrderingStep({ draft, update }: StepProps) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+export function PaymentsStep({ draft, update, eyebrow }: EyebrowProps) {
+  return (
+    <div className="space-y-9">
+      <QuestionHeading eyebrow={eyebrow} title="How do they pay you?" lede="Money goes straight to you. E-wallet customers send a screenshot of their payment." />
       <div className="space-y-3">
-        <GroupLabel hint="Money goes straight to you. E-wallet customers send a screenshot of their payment.">How do they pay you?</GroupLabel>
         <WalletRow wallet="gcash" draft={draft} update={update} />
         <WalletRow wallet="maya" draft={draft} update={update} />
         <PaymentRow
@@ -122,12 +131,12 @@ export function OrderingStep({ draft, update }: StepProps) {
   )
 }
 
-export function HoursStep({ draft, update }: StepProps) {
+export function HoursStep({ draft, update, eyebrow }: EyebrowProps) {
   const isPreset = (preset: (typeof HOUR_PRESETS)[number]) =>
     preset.open === draft.open && preset.close === draft.close && preset.closedDays.join() === [...draft.closedDays].sort().join()
   return (
     <div className="space-y-9">
-      <StepHeading title="When are you open?" lede="Customers see your hours, and orders can pause while you're closed." />
+      <QuestionHeading eyebrow={eyebrow} title="When are you open?" lede="Customers see your hours, and orders can pause while you're closed." />
 
       <div className="flex flex-wrap gap-2">
         {HOUR_PRESETS.map((preset) => (
@@ -178,17 +187,18 @@ function passwordStrength(password: string): { label: string; share: number } {
 }
 
 interface AccountStepProps {
+  eyebrow: string
   email: string
   password: string
   setPassword: (value: string) => void
 }
 
-export function AccountStep({ email, password, setPassword }: AccountStepProps) {
+export function AccountStep({ eyebrow, email, password, setPassword }: AccountStepProps) {
   const [isVisible, setIsVisible] = useState(false)
   const strength = passwordStrength(password)
   return (
     <div className="space-y-9">
-      <StepHeading title="Last step: your login" lede="You'll use it for your dashboard and the SmartMenu app on your phone." />
+      <QuestionHeading eyebrow={eyebrow} title="Last step: your password" lede="You'll use it for your dashboard and the SmartMenu app on your phone." />
 
       <div className="flex items-center gap-3 rounded-xl px-4 py-3.5" style={{ backgroundColor: OB.wash }}>
         <Mail className="h-5 w-5 shrink-0" strokeWidth={1.75} style={{ color: OB.muted }} aria-hidden />
@@ -229,7 +239,7 @@ export function AccountStep({ email, password, setPassword }: AccountStepProps) 
       </div>
 
       <p className="text-[15px] leading-relaxed" style={{ color: OB.muted }}>
-        When you tap <b style={{ color: OB.ink }}>Build my store</b>, we set everything up in about a minute and open it for orders.
+        When you tap <b style={{ color: OB.ink }}>Build my store</b>, we set everything up in a minute or two and open it for orders.
       </p>
     </div>
   )

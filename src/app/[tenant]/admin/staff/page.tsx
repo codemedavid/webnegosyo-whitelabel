@@ -1,3 +1,4 @@
+import { LearnChip } from '@/components/admin/learn/learn-chip'
 import { notFound } from 'next/navigation'
 import { ClipboardList, Clock, Receipt, Users, Wallet } from 'lucide-react'
 import { Breadcrumbs } from '@/components/shared/breadcrumbs'
@@ -123,6 +124,9 @@ export default async function AdminStaffPage({ params, searchParams }: StaffPage
           <p className="text-muted-foreground">
             Your team, what each person can do, and the orders and shifts they handled.
           </p>
+          <div className="mt-3">
+            <LearnChip tenantSlug={tenantSlug} lessonSlug="creating-accounts-para-sa-staffs-mo" />
+          </div>
         </div>
         <StaffPeriodTabs basePath={basePath} period={period} />
       </div>

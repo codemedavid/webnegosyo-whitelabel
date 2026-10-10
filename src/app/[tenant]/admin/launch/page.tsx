@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { verifyTenantAdmin } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -9,6 +9,7 @@ import { LaunchChecklist } from '@/components/admin/launch/launch-checklist'
 import { loadFirstWeekPlan } from '@/lib/onboarding/first-week-data'
 import { resolvePlatformOrigin } from '@/lib/onboarding/first-week'
 import { FirstWeekPlan } from '@/components/onboarding/first-week-plan'
+import { hasStartHere } from '@/lib/onboarding/start-here-eligibility'
 
 interface LaunchPageProps {
   params: Promise<{ tenant: string }>
@@ -29,6 +30,8 @@ export default async function LaunchPage({ params }: LaunchPageProps) {
   const tenant = await getCachedTenantBySlug(tenantSlug)
   if (!tenant) notFound()
   await verifyTenantAdmin(tenant.id, 'view')
+  // Onboarded stores in their first weeks have one place for all of this: Start here.
+  if (await hasStartHere(tenant.id)) redirect(`/${tenantSlug}/admin/start${tenant.is_prelaunch === true ? '#launch' : ''}`)
 
   const admin = createAdminClient()
   const [snapshot, onboarding, firstWeek] = await Promise.all([

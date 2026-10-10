@@ -67,6 +67,7 @@ function generation(id: string, overrides: Partial<BoostAiGeneration> = {}): Boo
   return {
     id,
     status: 'succeeded',
+    source: 'ai',
     model: 'm',
     dataSource: 'platform',
     ordersAnalyzed: 120,

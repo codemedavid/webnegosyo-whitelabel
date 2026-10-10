@@ -10,6 +10,7 @@ import type { OnboardingAnswers } from './answers'
 import type { OnboardingBuildStepId, OnboardingSteps, StepState } from './plan'
 import type { LaunchBuildSummary } from './summary'
 import { staleBuildCutoff } from './build-staleness'
+import type { MenuReadRecord } from './menu-read'
 
 export type OnboardingStatus = 'awaiting_details' | 'queued' | 'running' | 'ready' | 'failed'
 
@@ -18,6 +19,17 @@ export interface OnboardingAssets {
   /** Brand color read from the logo at upload, so the wizard can theme itself at once. */
   logoColor?: string | null
   menuImageUrls?: string[]
+  /** The menu read while the owner answers questions (server-side only; never sent to the browser). */
+  menuRead?: MenuReadRecord | null
+  /** How many reads this set-up started (capped). */
+  menuReadStarts?: number
+}
+
+/** What the browser may see of the assets: the photos and the logo color, never the stored read. */
+export type PublicOnboardingAssets = Required<Pick<OnboardingAssets, 'logoUrl' | 'logoColor' | 'menuImageUrls'>>
+
+export function publicAssets(assets: OnboardingAssets): PublicOnboardingAssets {
+  return { logoUrl: assets.logoUrl ?? null, logoColor: assets.logoColor ?? null, menuImageUrls: assets.menuImageUrls ?? [] }
 }
 
 export interface StoreOnboarding {

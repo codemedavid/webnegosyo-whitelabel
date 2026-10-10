@@ -6,7 +6,7 @@ import { detectImageMime, type DetectedImageMime } from '@/lib/imagekit-signatur
 import { checkRateLimit } from '@/lib/distributed-rate-limit'
 import { getClientIP } from '@/lib/rate-limit'
 import { findOnboardingForToken } from '@/lib/onboarding/access'
-import { updateOnboardingAssets, type OnboardingAssets } from '@/lib/onboarding/repository'
+import { publicAssets, updateOnboardingAssets, type OnboardingAssets } from '@/lib/onboarding/repository'
 import { MAX_MENU_PHOTOS } from '@/lib/onboarding/answers'
 import { extractBrandColorFromImage } from '@/lib/onboarding/logo-color'
 
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     // Applied to the row as it is NOW, so a parallel upload is never erased.
     const assets = await updateOnboardingAssets(found.admin, found.onboarding.id, (current) => withUpload(current, image.kind, uploaded.url, logoColor))
     if (!assets) return respond({ error: `Up to ${MAX_MENU_PHOTOS} menu photos.` }, 409)
-    return respond({ success: true, assets })
+    return respond({ success: true, assets: publicAssets(assets) })
   } catch (error) {
     console.error('[onboarding/upload] failed', error instanceof Error ? error.message : error)
     return respond({ error: 'We could not upload that photo. Please try again.' }, 502)
@@ -141,7 +141,7 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
     : { ...current, menuImageUrls: (current.menuImageUrls ?? []).filter((url) => url !== removedUrl) }
   try {
     const assets = await updateOnboardingAssets(found.admin, found.onboarding.id, withoutPhoto)
-    return respond({ success: true, assets })
+    return respond({ success: true, assets: assets ? publicAssets(assets) : null })
   } catch (error) {
     console.error('[onboarding/upload] remove failed', error instanceof Error ? error.message : error)
     return respond({ error: 'Could not remove the photo. Please refresh and try again.' }, 409)

@@ -73,7 +73,7 @@ describe('launchStarterLoyalty', () => {
     const result = await launchStarterLoyalty(client, 'tenant-1', { storeName: 'Kape', bestSellerIds: ['adobo', 'latte'] })
 
     // Assert
-    expect(result).toEqual({ status: 'created', programId: 'prog-1', rewardLabel: 'Free Iced Latte', threshold: 8 })
+    expect(result).toEqual({ status: 'created', programId: 'prog-1', rewardLabel: 'Free Iced Latte', threshold: 8, minSpend: 90 })
     expect(rpc).toHaveBeenNthCalledWith(1, 'manage_loyalty_program', expect.objectContaining({
       p_tenant_id: 'tenant-1', p_actor: 'owner-1', p_action: 'create',
     }))
@@ -115,7 +115,7 @@ describe('launchStarterLoyalty', () => {
     const result = await launchStarterLoyalty(client, 'tenant-1', { storeName: 'Kape', bestSellerIds: ['adobo', 'latte'] })
 
     // Assert: no second program, the existing draft goes live.
-    expect(result).toEqual({ status: 'created', programId: 'prog-draft', rewardLabel: 'Free Iced Latte', threshold: 8 })
+    expect(result).toEqual({ status: 'created', programId: 'prog-draft', rewardLabel: 'Free Iced Latte', threshold: 8, minSpend: 90 })
     expect(rpc).toHaveBeenCalledTimes(1)
     expect(rpc).toHaveBeenCalledWith('manage_loyalty_program', expect.objectContaining({
       p_actor: 'owner-1', p_action: 'set_status', p_program_id: 'prog-draft',

@@ -11,7 +11,7 @@
  * dismissal survives a reload.
  */
 
-import { classifyMenuRole, type MenuRole } from './menu-roles'
+import { classifyMenuRole, isRoleWord, type MenuRole } from './menu-roles'
 import { topPartners, type BasketStats } from './basket-stats'
 import { comboRegularPrice, describeSavings, suggestComboPrice, type Savings } from './pricing'
 
@@ -166,9 +166,18 @@ function byPopularity(a: RankedItem, b: RankedItem): number {
   )
 }
 
+/**
+ * A ₱0 item is never offered: the menu reader turns "Served with: Garlic Rice"
+ * into one, and a combo, pairing or upgrade built on it earns nothing (or
+ * charges for what the dish already includes).
+ */
+function isOfferable(item: IdeaItem): boolean {
+  return item.isAvailable && Number.isFinite(item.price) && item.price > 0
+}
+
 function rankItems(items: readonly IdeaItem[], stats: BasketStats | null | undefined): RankedItem[] {
   return items
-    .filter((item) => item.isAvailable && item.price >= 0)
+    .filter(isOfferable)
     .map((item) => ({
       ...item,
       role: classifyMenuRole({ categoryName: item.categoryName, itemName: item.name }),
@@ -304,45 +313,99 @@ function upgradeHeader(extraWords: readonly string[]): string {
   return 'Upgrade it?'
 }
 
+/** A trade-up suggests at most this much more, as a share of the dish's price. */
+const MAX_TRADE_UP_RATIO = 0.25
+/** A shared word shorter than this ("ng", "w/") says nothing about the dish. */
+const MIN_DISTINCT_WORD_LENGTH = 4
+
+interface UpgradeCandidate {
+  target: RankedItem
+  extra: string[]
+}
+
+/** "Iced Tea" → "Iced Tea Large", "Burger" → "Burger Meal". */
+function biggerVersionOf(source: RankedItem, ranked: readonly RankedItem[]): UpgradeCandidate | null {
+  const sourceWords = new Set(tokens(source.name))
+  if (sourceWords.size === 0) return null
+  const candidates = ranked
+    .filter((target) => target.id !== source.id && target.price > source.price)
+    .map((target) => {
+      const words = tokens(target.name)
+      const extra = words.filter((w) => !sourceWords.has(w))
+      const containsSource = [...sourceWords].every((w) => words.includes(w))
+      const isUpgrade = extra.some((w) => MEAL_WORDS.has(w) || SIZE_WORDS.has(w))
+      return containsSource && isUpgrade ? { target, extra } : null
+    })
+    .filter((c): c is UpgradeCandidate => c !== null)
+    .sort((a, b) => a.target.price - b.target.price || byPopularity(a.target, b.target))
+  return candidates[0] ?? null
+}
+
+/** Words that tell one dish apart: "tapang" in "Tapang Baboy", never "juice" or "large". */
+function distinctWords(name: string): Set<string> {
+  return new Set(
+    tokens(name).filter((w) => w.length >= MIN_DISTINCT_WORD_LENGTH && !MEAL_WORDS.has(w) && !SIZE_WORDS.has(w) && !isRoleWord(w))
+  )
+}
+
+/**
+ * "Tapang Baboy" → "Tapang Baka": the premium version of the same dish, in the
+ * same category, for a little more. Most onboarded menus list sizes as
+ * variations, so a separate "Large" item rarely exists; the trade-up is the
+ * upgrade those menus actually have.
+ */
+function tradeUpOf(
+  source: RankedItem,
+  ranked: readonly RankedItem[],
+  wordsOf: (item: RankedItem) => ReadonlySet<string>
+): UpgradeCandidate | null {
+  const sourceWords = wordsOf(source)
+  if (sourceWords.size === 0 || !source.categoryId) return null
+  const ceiling = source.price * (1 + MAX_TRADE_UP_RATIO)
+  const candidates = ranked
+    .filter((target) =>
+      target.id !== source.id &&
+      target.categoryId === source.categoryId &&
+      target.role === source.role &&
+      target.price > source.price &&
+      target.price <= ceiling &&
+      [...wordsOf(target)].some((w) => sourceWords.has(w))
+    )
+    .sort((a, b) => a.price - b.price || byPopularity(a, b))
+  return candidates[0] ? { target: candidates[0], extra: [] } : null
+}
+
 function buildUpgradeIdeas(ranked: readonly RankedItem[], input: IdeaInput): UpgradeIdea[] {
   const taken = input.existing?.upgradeSourceIds ?? new Set<string>()
-  const ideas: UpgradeIdea[] = []
+  const sources = ranked.filter((source) => !taken.has(source.id))
+  const wordsById = new Map(ranked.map((item) => [item.id, distinctWords(item.name)]))
+  const wordsOf = (item: RankedItem) => wordsById.get(item.id) ?? new Set<string>()
+  const bigger = sources.flatMap((source) => {
+    const best = biggerVersionOf(source, ranked)
+    return best ? [{ source, best, isTradeUp: false }] : []
+  })
+  const tradeUps = sources.flatMap((source) => {
+    if (bigger.some((pick) => pick.source.id === source.id)) return []
+    const best = tradeUpOf(source, ranked, wordsOf)
+    return best ? [{ source, best, isTradeUp: true }] : []
+  })
 
-  for (const source of ranked) {
-    if (ideas.length >= MAX_UPGRADE_IDEAS) break
-    if (taken.has(source.id)) continue
-    const sourceWords = new Set(tokens(source.name))
-    if (sourceWords.size === 0) continue
-
-    const candidates = ranked
-      .filter((target) => target.id !== source.id && target.price > source.price)
-      .map((target) => {
-        const words = tokens(target.name)
-        const extra = words.filter((w) => !sourceWords.has(w))
-        const containsSource = [...sourceWords].every((w) => words.includes(w))
-        const isUpgrade = extra.some((w) => MEAL_WORDS.has(w) || SIZE_WORDS.has(w))
-        return containsSource && isUpgrade ? { target, extra } : null
-      })
-      .filter((c): c is { target: RankedItem; extra: string[] } => c !== null)
-      .sort((a, b) => a.target.price - b.target.price || byPopularity(a.target, b.target))
-
-    const best = candidates[0]
-    if (!best) continue
+  return [...bigger, ...tradeUps].slice(0, MAX_UPGRADE_IDEAS).map(({ source, best, isTradeUp }) => {
     const difference = best.target.price - source.price
-    ideas.push({
-      kind: 'upgrade',
+    return {
+      kind: 'upgrade' as const,
       id: `upgrade:${source.id}:${best.target.id}`,
       title: `${source.name} → ${best.target.name}`,
-      reason: `${best.target.name} is the bigger version of ${source.name}, for ${peso(difference)} more`,
+      reason: isTradeUp
+        ? `${best.target.name} is a step up from ${source.name}, for ${peso(difference)} more`
+        : `${best.target.name} is the bigger version of ${source.name}, for ${peso(difference)} more`,
       itemIds: [source.id, best.target.id],
       sourceId: source.id,
       targetId: best.target.id,
-      header: upgradeHeader(best.extra),
+      header: isTradeUp ? 'Upgrade it?' : upgradeHeader(best.extra),
       priceDifference: difference,
-    })
-  }
-
-  return ideas
+    }
+  })
 }
 
 interface CategoryGroup {

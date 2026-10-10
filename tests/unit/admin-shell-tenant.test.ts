@@ -44,6 +44,7 @@ describe('toAdminShellTenant', () => {
       inventory_enabled: true,
       multi_branch_enabled: false,
       assistant_enabled: true,
+      has_start_here: false,
     })
   })
 

@@ -16,6 +16,7 @@ import type { PreviewMenuRow } from './preview-menu'
 const SKELETON_ROWS = 4
 const STATUS_BAR_PX = 44
 const TILE_COUNT = 4
+const SIDEBAR_SLOTS = 4
 
 export interface StorePreviewProps {
   storeName: string
@@ -97,28 +98,15 @@ function Name({ row, palette }: { row: PreviewMenuRow; palette: StorePalette }) 
   )
 }
 
-function BoardRows({ rows, palette }: { rows: PreviewMenuRow[]; palette: StorePalette }) {
+/** The bistro's white bordered cards: name, price, a small Add pill. */
+function BistroCards({ rows, palette }: { rows: PreviewMenuRow[]; palette: StorePalette }) {
   return (
-    <ul>
+    <ul className="grid grid-cols-2 gap-2">
       {rows.map((row) => (
-        <li key={`${row.name}-${row.isBestSeller}`} className="flex items-baseline gap-1.5 border-b py-2" style={{ borderColor: palette.border }}>
-          <Name row={row} palette={palette} />
-          <span className="min-w-3 flex-1 border-b border-dotted" style={{ borderColor: palette.border }} />
+        <li key={`${row.name}-${row.isBestSeller}`} className="flex flex-col items-start gap-1.5 rounded-lg border bg-white px-2.5 py-2" style={{ borderColor: palette.border }}>
+          <span className="line-clamp-2 text-[10px] font-bold uppercase leading-tight tracking-wide" style={{ color: palette.text }}>{row.name}</span>
           <Price row={row} palette={palette} />
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function CardRows({ rows, palette }: { rows: PreviewMenuRow[]; palette: StorePalette }) {
-  return (
-    <ul className="space-y-2">
-      {rows.map((row) => (
-        <li key={`${row.name}-${row.isBestSeller}`} className="rounded-xl border px-3 py-2.5" style={{ borderColor: palette.border, backgroundColor: palette.surface }}>
-          <span className="mb-1.5 block h-0.5 w-4 rounded-full" style={{ backgroundColor: palette.brand }} />
-          <Name row={row} palette={palette} />
-          <span className="mt-1 block"><Price row={row} palette={palette} /></span>
+          <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold" style={{ backgroundColor: palette.button, color: palette.buttonInk }}>Add</span>
         </li>
       ))}
     </ul>
@@ -139,32 +127,87 @@ function MenuBody({ look, rows, palette }: { look: StoreLook; rows: PreviewMenuR
       </ul>
     )
   }
-  if (look === 'chapters') {
-    return (
-      <>
-        <div className="mb-2 flex h-20 items-end rounded-xl px-3 pb-2.5 transition-colors duration-500" style={{ backgroundColor: palette.brand }}>
-          <span className="text-[15px] font-extrabold" style={{ color: palette.brandInk }}>Menu</span>
-        </div>
-        <BoardRows rows={rows} palette={palette} />
-      </>
-    )
-  }
-  if (look === 'tiles') {
+  if (look === 'kiosk' || look === 'sticker') {
     return (
       <>
         <div className="mb-3 grid grid-cols-4 gap-1.5">
           {rows.slice(0, TILE_COUNT).map((row) => (
-            <span key={row.name} className="flex aspect-square items-end rounded-lg p-1 text-[8px] font-bold leading-tight" style={{ backgroundColor: palette.background, color: palette.text }}>
+            <span key={row.name} className="flex aspect-square items-end rounded-lg p-1 text-[8px] font-bold leading-tight" style={{ backgroundColor: palette.surface, color: palette.text }}>
               <span className="line-clamp-2">{row.name}</span>
             </span>
           ))}
         </div>
-        <CardRows rows={rows} palette={palette} />
+        {look === 'kiosk' ? <DarkCardGrid rows={rows} palette={palette} /> : <CardGrid rows={rows} palette={palette} isSticker />}
       </>
     )
   }
-  if (look === 'cards') return <CardRows rows={rows} palette={palette} />
-  return <BoardRows rows={rows} palette={palette} />
+  if (look === 'sidebar') {
+    return (
+      <div className="flex gap-2">
+        <ul className="w-9 shrink-0 space-y-2 pt-1" aria-hidden>
+          {Array.from({ length: SIDEBAR_SLOTS }, (_, index) => (
+            <li key={index} className="mx-auto h-6 w-6 rounded-full" style={{ backgroundColor: index === 0 ? palette.brand : palette.border }} />
+          ))}
+        </ul>
+        <div className="min-w-0 flex-1"><CardGrid rows={rows} palette={palette} /></div>
+      </div>
+    )
+  }
+  if (look === 'cafe') return <CafeRails rows={rows} palette={palette} />
+  if (look === 'bistro') return <BistroCards rows={rows} palette={palette} />
+  return <CardGrid rows={rows} palette={palette} />
+}
+
+/** Two text cards a row, price under the name: the storefront and sticker cards. */
+function CardGrid({ rows, palette, isSticker = false }: { rows: PreviewMenuRow[]; palette: StorePalette; isSticker?: boolean }) {
+  return (
+    <ul className="grid grid-cols-2 gap-2">
+      {rows.map((row) => (
+        <li key={`${row.name}-${row.isBestSeller}`} className="relative flex min-h-16 flex-col justify-between rounded-xl px-2.5 py-2" style={{ backgroundColor: palette.surface }}>
+          <Name row={row} palette={palette} />
+          {isSticker ? (
+            <span className="mt-2 self-start rounded-full px-1.5 py-0.5 text-[10px] font-extrabold" style={{ backgroundColor: palette.brand, color: palette.brandInk }}>{row.price ? `₱${row.price}` : '₱—'}</span>
+          ) : (
+            <span className="mt-2 flex items-center justify-between">
+              <Price row={row} palette={palette} />
+              <span className="h-5 w-5 rounded-full" style={{ backgroundColor: palette.button }} aria-hidden />
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** The kiosk's bold dark tiles. */
+function DarkCardGrid({ rows, palette }: { rows: PreviewMenuRow[]; palette: StorePalette }) {
+  return (
+    <ul className="grid grid-cols-2 gap-2">
+      {rows.map((row) => (
+        <li key={`${row.name}-${row.isBestSeller}`} className="flex min-h-16 flex-col justify-between rounded-xl bg-[#2A2622] px-2.5 py-2">
+          <span className="line-clamp-2 text-[10px] font-extrabold uppercase leading-tight text-white">{row.name}</span>
+          <span className="mt-2 self-start rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: palette.button, color: palette.buttonInk }}>{row.price ? `₱${row.price}` : '₱—'}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** One swipeable row of arched cards, like a café app. */
+function CafeRails({ rows, palette }: { rows: PreviewMenuRow[]; palette: StorePalette }) {
+  return (
+    <>
+      <p className="mb-1.5 text-[12px] font-bold" style={{ color: palette.text }}>Menu</p>
+      <ul className="flex gap-2 overflow-hidden">
+        {rows.map((row) => (
+          <li key={`${row.name}-${row.isBestSeller}`} className="flex w-24 shrink-0 flex-col items-center rounded-t-full border px-2 pb-2 pt-6 text-center" style={{ borderColor: palette.border, backgroundColor: palette.surface }}>
+            <span className="line-clamp-2 text-[10px] font-semibold leading-tight" style={{ color: palette.text }}>{row.name}</span>
+            <span className="mt-1"><Price row={row} palette={palette} /></span>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
 }
 
 export function StorePreviewPhone({ storeName, tagline, storeType, brand, logoUrl, rows, look }: StorePreviewProps) {

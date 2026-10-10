@@ -1,7 +1,7 @@
 /**
  * The slow half of onboarding: turn the buyer's answers into a finished store.
  *
- * Five steps, each recorded on the onboarding row as it runs so the progress
+ * Six steps, each recorded on the onboarding row as it runs so the progress
  * screen can show it live. A step that finished is never repeated: a retry
  * re-runs only what failed. One failed step does not stop the others — a menu
  * the AI could not read still leaves the store with its colors, payments and
@@ -21,11 +21,17 @@ import { invalidateBundlesCache } from '@/lib/bundles-service'
 import { invalidateCheckoutUpsellCache } from '@/lib/menu-engineering-service'
 import { invalidateComplementaryPairsCache } from '@/lib/complementary-pairs-service'
 import { extractBrandColorFromImage } from './logo-color'
-import { buildLaunchBranding } from './store-type'
+import { STORE_LOOKS, buildLaunchBranding, buildLaunchDesign, toStoreLook } from './store-type'
+import { applyLaunchHero, chooseLaunchDesign, launchHeroInput, readStoreFacts } from './design-step'
 import { applyLaunchBoost } from './boost-autopilot'
 import { launchStarterLoyalty } from './launch-loyalty'
+import { draftLaunchCampaigns } from './launch-campaigns'
 import { launchFromSetupLink } from './buyer-launch'
+import { menuReadKey, usableMenuRead } from './menu-read'
+import { recordOnboardingEvent } from './events'
+import { typicalOrderPesos } from './goals'
 import type { OnboardingAnswers } from './answers'
+import type { ParsedMenuData } from '@/types/ai-menu-parser'
 import {
   ONBOARDING_BUILD_STEPS,
   buildOperatingHours,
@@ -90,7 +96,8 @@ async function brandingStep(build: BuildContext): Promise<StepOutcome> {
     // Imported menus carry no dish photos yet, so the design starts text-first.
     hasItemPhotos: false,
     tagline: build.answers.tagline || null,
-    look: build.answers.look ?? null,
+    // Until the design step reads the menu: the owner's pick or the store type's look.
+    look: toStoreLook(build.answers.look),
   })
   const result = await saveBrandingWithClient(build.admin, build.tenantId, patch)
   if (!result.success) throw new Error(result.error ?? 'Branding could not be saved')
@@ -109,6 +116,24 @@ async function readMenuSources(build: BuildContext): Promise<{ text?: string; im
   const images = await Promise.all((build.assets.menuImageUrls ?? []).map((url) => fetchImageAsDataUrl(url)))
   const text = build.answers.menuText?.trim() || undefined
   return { text, images }
+}
+
+/**
+ * The menu as read while the owner answered the wizard, when it was a read of
+ * exactly these photos and text; otherwise read now. Null when nothing was added.
+ */
+async function readMenu(build: BuildContext): Promise<ParsedMenuData | null> {
+  const imageUrls = build.assets.menuImageUrls ?? []
+  const cached = usableMenuRead(build.assets.menuRead, menuReadKey(imageUrls, build.answers.menuText))
+  if (cached) return cached
+
+  const sources = await readMenuSources(build)
+  if (!sources.text && sources.images.length === 0) return null
+  const parsed = await parseMenuWithAi(sources, {
+    fetchImpl: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(MENU_PARSE_DEADLINE_MS) }),
+  })
+  if (!parsed.ok) throw new Error(parsed.error)
+  return parsed.data
 }
 
 async function markBestSellers(build: BuildContext, items: ReadonlyArray<{ id: string; name: string }>): Promise<string[]> {
@@ -152,17 +177,12 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
     }
   }
 
-  const sources = await readMenuSources(build)
-  if (!sources.text && sources.images.length === 0) {
+  const parsed = await readMenu(build)
+  if (!parsed) {
     return { status: 'skipped', detail: 'No menu was added', summary: { warnings: ['Add your menu items — none were uploaded.'] } }
   }
 
-  const parsed = await parseMenuWithAi(sources, {
-    fetchImpl: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(MENU_PARSE_DEADLINE_MS) }),
-  })
-  if (!parsed.ok) throw new Error(parsed.error)
-
-  const imported = await importParsedMenu(build.admin, build.tenantId, parsed.data)
+  const imported = await importParsedMenu(build.admin, build.tenantId, parsed)
   if (imported.itemsCreated === 0) throw new Error('No menu items could be saved')
 
   // The items are saved now, so the step must end `done`: a failed step is
@@ -175,8 +195,10 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
     },
   )
   const bestSellerNames = bestSellers.names
+  const freeItems = imported.createdItems.filter((item) => !(item.price > 0)).length
   const warnings = [
     'Check your menu names and prices — our AI typed them in for you.',
+    ...(freeItems > 0 ? [`${freeItems} ${freeItems === 1 ? 'item is' : 'items are'} ₱0. Set a price, or leave ${freeItems === 1 ? 'it' : 'them'} as a free inclusion. We never use ₱0 items in offers.`] : []),
     ...(imported.itemsFailed > 0 ? [`${imported.itemsFailed} items could not be saved; add them by hand.`] : []),
     ...bestSellerWarnings(bestSellers.hasFailed, bestSellerNames.length, build.answers.bestSellers.length),
   ]
@@ -188,6 +210,41 @@ async function menuStep(build: BuildContext): Promise<StepOutcome> {
       bestSellerNames,
       warnings,
     },
+  }
+}
+
+/**
+ * Cosmetic: the branding step already saved a working look, so a failure here
+ * keeps that look and never fails the build (a failed build skips go-live).
+ */
+async function designStep(build: BuildContext): Promise<StepOutcome> {
+  try {
+    const facts = await readStoreFacts(build.admin, build.tenantId)
+    const choice = await chooseLaunchDesign(build.answers, facts)
+    const result = await saveBrandingWithClient(build.admin, build.tenantId, buildLaunchDesign(build.answers.storeType, choice))
+    if (!result.success) throw new Error(result.error ?? 'Design could not be saved')
+    const isHeroSaved = await applyLaunchHero(build.admin, build.tenantId, choice.hero, launchHeroInput(build.answers, facts)).then(
+      () => true,
+      (error: unknown) => {
+        console.error('[onboarding] launch hero not saved', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
+        return false
+      },
+    )
+    return {
+      status: 'done',
+      detail: `${STORE_LOOKS[choice.look].label} layout`,
+      summary: {
+        design: { look: choice.look, ...(isHeroSaved ? { hero: choice.hero } : {}), reason: choice.reason, source: choice.source },
+        ...(isHeroSaved ? {} : { warnings: ['Your hero banner could not be set up. Add one in Hero Builder.'] }),
+      },
+    }
+  } catch (error) {
+    console.error('[onboarding] design step kept the starting look', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
+    return {
+      status: 'done',
+      detail: 'Kept your starting layout',
+      summary: { warnings: ['We kept your starting layout. Pick another in Branding anytime.'] },
+    }
   }
 }
 
@@ -232,15 +289,26 @@ async function readFeaturedIds(build: BuildContext): Promise<string[]> {
   return (data ?? []).map((row) => (row as { id: string }).id)
 }
 
+function boostDetail(live: number, waiting: number): string {
+  const parts = [
+    live > 0 ? `${live} ${live === 1 ? 'upsell' : 'upsells'} live` : null,
+    waiting > 0 ? `${waiting} ${waiting === 1 ? 'combo' : 'combos'} for your OK` : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
 async function boostStep(build: BuildContext): Promise<StepOutcome> {
   const result = await applyLaunchBoost(build.ctx, build.tenantId, { bestSellerIds: await readFeaturedIds(build) })
-  if (result.applied.length === 0) {
+  if (result.applied.length === 0 && result.awaitingApproval.length === 0) {
     return { status: 'skipped', detail: 'Not enough menu items for offers yet', summary: {} }
   }
   return {
     status: 'done',
-    detail: `${result.applied.length} offers live`,
-    summary: { offers: result.applied.map(({ kind, title }) => ({ kind, title })) },
+    detail: boostDetail(result.applied.length, result.awaitingApproval.length),
+    summary: {
+      offers: result.applied.map(({ kind, title }) => ({ kind, title })),
+      offersAwaitingApproval: result.awaitingApproval.map(({ kind, title }) => ({ kind, title })),
+    },
   }
 }
 
@@ -248,21 +316,41 @@ async function loyaltyStep(build: BuildContext): Promise<StepOutcome> {
   const result = await launchStarterLoyalty(build.admin, build.tenantId, {
     storeName: build.answers.storeName,
     bestSellerIds: await readFeaturedIds(build),
+    typicalOrder: typicalOrderPesos(build.answers.typicalOrder),
   })
   if (result.status === 'skipped') return { status: 'skipped', detail: result.reason, summary: {} }
   return {
     status: 'done',
     detail: `${result.threshold} orders → ${result.rewardLabel}`,
-    summary: { loyalty: { rewardLabel: result.rewardLabel, threshold: result.threshold } },
+    summary: { loyalty: { rewardLabel: result.rewardLabel, threshold: result.threshold, minSpend: result.minSpend } },
   }
 }
 
-const STEP_RUNNERS: Record<OnboardingBuildStepId, (build: BuildContext) => Promise<StepOutcome>> = {
+/**
+ * Cosmetic like the design step: drafts send nothing, so a failure here only
+ * costs the owner some ready-made texts and never blocks go-live.
+ */
+async function campaignsStep(build: BuildContext, summary: LaunchBuildSummary): Promise<StepOutcome> {
+  try {
+    const result = await draftLaunchCampaigns(build.admin as unknown as SupabaseClient, build.tenantId, {
+      rewardLabel: summary.loyalty?.rewardLabel ?? null,
+      threshold: summary.loyalty?.threshold ?? null,
+    })
+    return { status: 'done', detail: `${result.drafted} texts ready to turn on`, summary: { campaigns: { drafted: result.drafted } } }
+  } catch (error) {
+    console.error('[onboarding] text campaigns not drafted', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
+    return { status: 'skipped', detail: 'Add text campaigns from the app anytime', summary: {} }
+  }
+}
+
+const STEP_RUNNERS: Record<OnboardingBuildStepId, (build: BuildContext, summary: LaunchBuildSummary) => Promise<StepOutcome>> = {
   branding: brandingStep,
   menu: menuStep,
+  design: designStep,
   store_setup: storeSetupStep,
   boost: boostStep,
   loyalty: loyaltyStep,
+  campaigns: campaignsStep,
 }
 
 // --------------------------------------------------------------- runner
@@ -275,9 +363,11 @@ function mergeSummary(summary: LaunchBuildSummary, patch: Partial<LaunchBuildSum
 const FRIENDLY_STEP_ERRORS: Record<OnboardingBuildStepId, string> = {
   branding: 'Your colors could not be applied. Retry, or pick them in Branding.',
   menu: 'We could not read your menu automatically. Retry, or add items from your dashboard.',
+  design: 'Your store layout could not be applied. Retry, or pick one in Branding.',
   store_setup: 'Payments, hours or order types could not be saved. Retry, or set them in Settings.',
   boost: 'Combos and upsells could not be created. Retry, or add them in Boost Sales.',
   loyalty: 'The stamp card could not be started. Retry, or set it up in Loyalty.',
+  campaigns: 'Your text messages could not be saved. Retry, or add them from the app.',
 }
 
 function technicalError(stepId: OnboardingBuildStepId, error: unknown): string {
@@ -300,7 +390,7 @@ async function runSteps(build: BuildContext, onboardingId: string, initial: Onbo
     steps = withStep(steps, id, { status: 'running', detail: label })
     await writeOnboardingSteps(build.admin, onboardingId, steps)
     try {
-      const outcome = await STEP_RUNNERS[id](build)
+      const outcome = await STEP_RUNNERS[id](build, current)
       steps = withStep(steps, id, { status: outcome.status, detail: outcome.detail })
       current = mergeSummary(current, outcome.summary)
     } catch (error) {
@@ -342,7 +432,8 @@ async function openStoreWhenReady(admin: AdminClient, onboardingId: string): Pro
     const finished = await findOnboardingById(admin, onboardingId)
     if (!finished) return
     const result = await launchFromSetupLink(admin, finished)
-    if (!result.ok) console.warn('[onboarding] store left closed after build', { onboardingId, reason: result.error })
+    if (result.ok) await recordOnboardingEvent(admin as unknown as SupabaseClient, onboardingId, 'live')
+    else console.warn('[onboarding] store left closed after build', { onboardingId, reason: result.error })
   } catch (error) {
     console.error('[onboarding] auto go-live failed', { onboardingId, message: error instanceof Error ? error.message : String(error) })
   }
@@ -374,6 +465,7 @@ export async function runOnboardingBuild(admin: AdminClient, onboardingId: strin
     await finishOnboardingBuild(admin, onboarding.id, failures.length === 0
       ? { status: 'ready', summary }
       : { status: 'failed', error: failures.join(' · '), summary })
+    await recordOnboardingEvent(admin as unknown as SupabaseClient, onboarding.id, failures.length === 0 ? 'build_ready' : 'build_failed')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error('[onboarding] build crashed', { onboardingId, message })

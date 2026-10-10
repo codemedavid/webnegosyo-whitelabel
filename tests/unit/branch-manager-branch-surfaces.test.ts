@@ -104,6 +104,7 @@ describe('hiddenAdminSidebarPaths — branch-scoped account', () => {
       convexConfigured: true,
       inventoryEnabled: true,
       multiBranchEnabled: true,
+      hasStartHere: true,
     })
     const branchScoped = hiddenAdminSidebarPaths({
       enableOrderManagement: true,
@@ -112,6 +113,7 @@ describe('hiddenAdminSidebarPaths — branch-scoped account', () => {
       convexConfigured: true,
       inventoryEnabled: true,
       multiBranchEnabled: true,
+      hasStartHere: true,
       isBranchScopedAccount: true,
     })
 
