@@ -14,9 +14,12 @@ import { findOnboardingByTenant, type StoreOnboarding } from './repository'
 import { buildStartPath, type PathSignals, type StartPath } from './start-path'
 import { buildGoalTrackers, type GoalTracker, type TrackedOrder } from './goal-trackers'
 import type { ChannelId, GoalId } from './goals'
+import { manilaDate, sumVisits, type VisitDayRow, type VisitTotals } from '@/lib/storefront/visit-totals'
 
 /** A new store's first weeks fit well under this; trackers only need a sample. */
 const MAX_ORDER_ROWS = 1000
+/** One row per day; the path runs 60 days, so this is never reached in practice. */
+const MAX_VISIT_DAYS = 400
 
 export interface StartHereTenant extends OrderBackendTenantFields {
   id: string
@@ -39,6 +42,8 @@ export interface StartHereData {
   trackers: GoalTracker[]
   ready: ReadyForYou
   warnings: string[]
+  /** Storefront opens since going live (advisory, never ticks a step); null when unreadable. */
+  visits: VisitTotals | null
 }
 
 type Admin = SupabaseClient
@@ -119,6 +124,17 @@ async function readTicks(admin: Admin, tenantId: string): Promise<Set<string>> {
   return new Set(((data ?? []) as Array<{ step_id: string }>).map((row) => row.step_id))
 }
 
+async function readVisits(admin: Admin, tenantId: string, liveSince: string, now: Date): Promise<VisitTotals> {
+  const { data, error } = await admin
+    .from('storefront_visits')
+    .select('day, visits')
+    .eq('tenant_id', tenantId)
+    .gte('day', manilaDate(new Date(liveSince)))
+    .limit(MAX_VISIT_DAYS)
+  if (error) throw new Error(error.message)
+  return sumVisits((data ?? []) as VisitDayRow[], now)
+}
+
 async function readLessonsWatched(admin: Admin, userId: string | null): Promise<number> {
   if (!userId) return 0
   return countRows(admin.from('university_lesson_progress').select('lesson_id', { count: 'exact', head: true }).eq('user_id', userId), 'lessons watched')
@@ -135,7 +151,7 @@ export async function loadStartHere(
 
   const { liveSince, firstName } = await readLead(admin, onboarding)
   const isPlatform = resolveOrderBackend(tenant) === 'platform'
-  const [orders, combosWaiting, appLogins, stamps, activeTexts, draftTexts, photos, ticks, lessonsWatched, combosLive] = await Promise.all([
+  const [orders, combosWaiting, appLogins, stamps, activeTexts, draftTexts, photos, ticks, lessonsWatched, combosLive, visits] = await Promise.all([
     isPlatform ? safely('orders', () => readOrders(admin, tenant.id, liveSince)) : Promise.resolve(null),
     safely('launch combos', () => readLaunchCombosWaiting(admin, tenant.id)),
     safely('app logins', () => countRows(admin.from('platform_device_tokens').select('token', { count: 'exact', head: true }).eq('tenant_id', tenant.id), 'app')),
@@ -146,6 +162,7 @@ export async function loadStartHere(
     safely('ticks', () => readTicks(admin, tenant.id)),
     safely('lessons', () => readLessonsWatched(admin, opts.userId)),
     safely('combos', () => countRows(admin.from('bundles').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('is_active', true), 'bundles')),
+    safely('visits', () => readVisits(admin, tenant.id, liveSince, new Date())),
   ])
 
   const signals: PathSignals = {
@@ -183,6 +200,7 @@ export async function loadStartHere(
       textsReady: draftTexts,
     },
     warnings: onboarding.summary?.warnings ?? [],
+    visits,
   }
 }
 

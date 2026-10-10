@@ -6,6 +6,7 @@ import { applyCategoryDraft, type CategoryStudioDraft } from '@/lib/category-stu
 import { getTenantBranding } from '@/lib/branding-utils'
 import { OutletGate } from '@/components/customer/outlet-gate'
 import { TableLinkCapture } from '@/components/customer/table-link-capture'
+import { StorefrontVisitBeacon } from '@/components/customer/storefront-visit-beacon'
 import { useStorefrontMenu } from '@/storefront/catalog/use-storefront-menu'
 import { STOREFRONT_PACK_PAGES, type StorefrontPackPages } from '@/storefront/packs/registry'
 import { getStorefrontPack, resolveStorefrontPack } from '@/lib/storefront-packs'
@@ -59,6 +60,7 @@ function ReadyMenu({ isWelcomePreview, page = 'menu', ...props }: StorefrontClie
   const PackPage = (page === 'home' ? pages.home : undefined) ?? pages.menu
   return <>
     <TableLinkCapture tenantSlug={props.tenantSlug} />
+    <StorefrontVisitBeacon tenantSlug={props.tenantSlug} isOwnerViewing={!!props.isBrandAdmin || isWelcomePreview} />
     <OutletGate tenant={props.tenant} tenantSlug={props.tenantSlug} outlets={props.outlets} isPreview={isWelcomePreview} />
     <StorefrontRuntime menu={menu} checkoutEntry={getStorefrontPack(packId).checkoutEntry}>
       <PackPage />

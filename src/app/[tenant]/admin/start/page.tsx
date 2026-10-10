@@ -1,4 +1,5 @@
 import Image from 'next/image'
+import { Eye } from 'lucide-react'
 import { notFound, redirect } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { verifyTenantAdmin } from '@/lib/admin-service'
@@ -12,6 +13,7 @@ import { findOnboardingByTenant } from '@/lib/onboarding/repository'
 import { loadLaunchSnapshot } from '@/lib/onboarding/launch-snapshot'
 import { buildLaunchReadiness } from '@/lib/onboarding/readiness'
 import { listStoreAddresses } from '@/lib/qr-print/qr-links'
+import { visitLine } from '@/lib/storefront/visit-totals'
 import { LaunchChecklist } from '@/components/admin/launch/launch-checklist'
 import { PathStepRow, type LessonChip } from '@/components/admin/start-here/path-step'
 import { GoalTrackerCard } from '@/components/admin/start-here/goal-tracker-card'
@@ -106,6 +108,12 @@ export default async function StartHerePage({ params }: StartPageProps) {
             {goalTitles.length > 0 && <>Your goals: <b className="text-wn-ink">{goalTitles.join(' · ')}</b> · </>}
             {data.path.done} of {data.path.total} done
           </p>
+          {data.visits && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[13.5px] font-semibold text-wn-ink">
+              <Eye className="h-4 w-4 shrink-0 text-wn-stone" aria-hidden />
+              {visitLine(data.visits)}
+            </p>
+          )}
           <div
             className="mt-3 h-2.5 max-w-md overflow-hidden rounded-full bg-wn-line"
             role="progressbar" aria-label="Start here progress" aria-valuemin={0} aria-valuemax={data.path.total} aria-valuenow={data.path.done}

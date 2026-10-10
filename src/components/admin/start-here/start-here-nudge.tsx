@@ -6,6 +6,7 @@ import { getRequestCaller } from '@/lib/auth/request-caller'
 import { hasStartHere } from '@/lib/onboarding/start-here-eligibility'
 import { loadStartHere, type StartHereTenant } from '@/lib/onboarding/start-path-data'
 import { resolvePlatformOrigin } from '@/lib/onboarding/first-week'
+import { visitLine } from '@/lib/storefront/visit-totals'
 
 /**
  * "Start here · 3 of 10 — next: Get the app" on top of the dashboard while a
@@ -23,6 +24,9 @@ export async function StartHereNudge({ tenant }: { tenant: StartHereTenant }) {
     })
     if (!data || data.path.isComplete) return null
     const next = data.path.units.flatMap((unit) => unit.steps).find((step) => step.state === 'current')
+    // Visits lead only once there are some: "nobody yet" reads as a scolding on a dashboard.
+    const visits = data.visits && data.visits.total > 0 ? visitLine(data.visits) : null
+    const subtitle = [visits, next ? `Next: ${next.title}` : null].filter(Boolean).join(' · ')
     return (
       <Link
         href={`/${tenant.slug}/admin/start`}
@@ -33,7 +37,7 @@ export async function StartHereNudge({ tenant }: { tenant: StartHereTenant }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-extrabold text-wn-ink">Start here · {data.path.done} of {data.path.total} done</span>
-          {next && <span className="block truncate text-[13px] text-wn-stone">Next: {next.title}</span>}
+          {subtitle && <span className="block truncate text-[13px] text-wn-stone">{subtitle}</span>}
         </span>
         <span className="hidden shrink-0 items-center gap-1 text-[13.5px] font-bold text-wn-coral-deep sm:inline-flex">
           Continue <ArrowRight className="h-4 w-4" aria-hidden />
