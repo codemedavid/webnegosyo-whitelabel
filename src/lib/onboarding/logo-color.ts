@@ -14,7 +14,11 @@
  */
 
 import 'server-only'
-import sharp from 'sharp'
+
+// sharp is loaded on first use, never at import: its native binary can be
+// missing from a serverless bundle, and a top-level import then fails the
+// whole importing route (2026-10-10: every "Build my store" tap 500'd). A
+// missing binary costs only the logo color.
 
 /** Logos are shrunk to this box before counting; color, not detail, matters. */
 const SAMPLE_SIZE = 64
@@ -137,6 +141,7 @@ export function pickBrandColor(pixels: Uint8Array, channels: number): string | n
  */
 export async function extractBrandColorFromImage(buffer: Buffer): Promise<string | null> {
   try {
+    const { default: sharp } = await import('sharp')
     const { data, info } = await sharp(buffer)
       .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: 'inside', withoutEnlargement: true })
       .ensureAlpha()

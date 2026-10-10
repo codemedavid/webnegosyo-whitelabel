@@ -166,6 +166,8 @@ describe('availableLaunchHeroes', () => {
     expect(availableLaunchHeroes({ ...INPUT, storeName: 'Karamotan Grill' })).toContain('masthead-panorama')
     expect(availableLaunchHeroes({ ...INPUT, storeName: 'Lola Remedios Carinderia' })).not.toContain('masthead-panorama')
     expect(availableLaunchHeroes({ ...INPUT, storeName: 'Kapampangan Eats' })).not.toContain('masthead-panorama')
+    // A name of only symbols cleans to '' — an empty masthead is no hero at all.
+    expect(availableLaunchHeroes({ ...INPUT, storeName: '***' })).not.toContain('masthead-panorama')
   })
 
   it('cafés and bakeries get the café and bakery templates; restaurants do not', () => {
@@ -194,5 +196,7 @@ describe('hours wording', () => {
 
   it('says "daily" when the store never closes for a day', () => {
     expect(hoursLine({ open: '09:00', close: '21:00', closedDays: [] })).toBe('Open daily, 9:00 AM – 9:00 PM')
+    // A day number outside Sun–Sat never prints as "Closed undefined".
+    expect(hoursLine({ open: '09:00', close: '21:00', closedDays: [9] })).toBe('Open daily, 9:00 AM – 9:00 PM')
   })
 })

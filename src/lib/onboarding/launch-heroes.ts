@@ -98,7 +98,8 @@ export function formatClock(hhmm: string): string {
 export function hoursLine(hours: LaunchHeroInput['hours']): string {
   const open = `${formatClock(hours.open)} – ${formatClock(hours.close)}`
   if (hours.closedDays.length === 0) return `Open daily, ${open}`
-  const closed = [...hours.closedDays].sort((a, b) => a - b).map((day) => DAY_NAMES[day]).join(', ')
+  const closed = [...hours.closedDays].sort((a, b) => a - b).flatMap((day) => DAY_NAMES[day] ?? []).join(', ')
+  if (!closed) return `Open daily, ${open}`
   return `Open ${open} · Closed ${closed}`
 }
 
@@ -239,7 +240,7 @@ const LAUNCH_HERO_SPECS: Record<LaunchHero, LaunchHeroSpec> = {
     band: MASTHEAD_BAND,
     fits: (input) => {
       const name = storeName(input)
-      return withPhotos(input) && name.length <= MASTHEAD_MAX_NAME && name.split(' ').every((word) => word.length <= MASTHEAD_MAX_WORD)
+      return withPhotos(input) && name.length > 0 && name.length <= MASTHEAD_MAX_NAME && name.split(' ').every((word) => word.length <= MASTHEAD_MAX_WORD)
     },
     fill: ({ input, base }) => ({ ...base, headline: storeName(input).toLowerCase(), highlights: factHighlights(input, 3) }),
     build: buildMastheadPanorama,

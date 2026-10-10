@@ -107,3 +107,26 @@ describe('extractBrandColorFromImage', () => {
     await expect(extractBrandColorFromImage(Buffer.from('not an image'))).resolves.toBeNull()
   })
 })
+
+describe('when the sharp native binary is missing (Vercel 2026-10-10)', () => {
+  // Production: sharp's linux binary was not traced into /api/onboarding/[token],
+  // so a top-level `import sharp` threw while the route module loaded and EVERY
+  // "Build my store" tap answered a bare 500 — the wizard said "Connection
+  // problem". The brand color is best effort; a missing binary must cost only it.
+  afterEach(() => {
+    jest.resetModules()
+    jest.dontMock('sharp')
+  })
+
+  it('loads the module and answers null instead of throwing', async () => {
+    jest.resetModules()
+    jest.doMock('sharp', () => {
+      throw new Error('Could not load the "sharp" module using the linux-x64 runtime')
+    })
+
+    const { extractBrandColorFromImage, pickBrandColor } = await load()
+
+    expect(pickBrandColor(Uint8Array.from([200, 30, 60, 255]), 4)).toMatch(/^#/)
+    await expect(extractBrandColorFromImage(Buffer.from('any bytes'))).resolves.toBeNull()
+  })
+})
