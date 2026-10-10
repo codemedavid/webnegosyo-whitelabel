@@ -23,6 +23,8 @@ const NAME_SUFFIX = 'Stamp Card'
 const REWARD_SHARE_OF_TYPICAL_ORDER = 0.8
 /** How far from that target a reward may land, as shares of it. */
 const REWARD_BAND = { min: 0.4, max: 1.15 } as const
+/** With nothing in the band, a reward may still be this many times the target; beyond that no card beats a loss-making giveaway. */
+const REWARD_FALLBACK_CEILING = 2
 /** An order under half a typical order (a lone ₱25 water) earns no stamp. */
 const MIN_SPEND_SHARE_OF_TYPICAL_ORDER = 0.5
 const MIN_SPEND_STEP = 10
@@ -94,7 +96,7 @@ function pickRewardItem(input: StarterLoyaltyInput, typicalOrder: number, reward
   const bestSellers = new Set(input.bestSellerIds)
   return closestTo(target, inBand.filter((item) => bestSellers.has(item.id)))
     ?? closestTo(target, inBand)
-    ?? closestTo(target, rewardable)
+    ?? closestTo(target, rewardable.filter((item) => item.price <= target * REWARD_FALLBACK_CEILING))
 }
 
 function minSpendFor(typicalOrder: number): number | null {

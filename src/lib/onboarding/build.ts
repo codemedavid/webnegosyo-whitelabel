@@ -299,6 +299,12 @@ function boostDetail(live: number, waiting: number): string {
 
 async function boostStep(build: BuildContext): Promise<StepOutcome> {
   const result = await applyLaunchBoost(build.ctx, build.tenantId, { bestSellerIds: await readFeaturedIds(build) })
+  // A write that threw (or combos that could not be filed) is NOT "menu too
+  // small": fail the step so it is retryable instead of settling as done/skipped.
+  // Re-applying is idempotent (`existing` offers + one launch filing per store).
+  if (result.failed.length > 0) {
+    throw new Error(`${result.failed.length} offer(s) could not be saved: ${result.failed[0].reason}`)
+  }
   if (result.applied.length === 0 && result.awaitingApproval.length === 0) {
     return { status: 'skipped', detail: 'Not enough menu items for offers yet', summary: {} }
   }
@@ -457,6 +463,7 @@ export async function runOnboardingBuild(admin: AdminClient, onboardingId: strin
     assets: onboarding.assets,
   }
 
+  let isBuildReady = false
   try {
     // A retry keeps what earlier attempts found: settled steps (the only ones
     // that add warnings) never run twice, so nothing is duplicated.
@@ -465,13 +472,17 @@ export async function runOnboardingBuild(admin: AdminClient, onboardingId: strin
     await finishOnboardingBuild(admin, onboarding.id, failures.length === 0
       ? { status: 'ready', summary }
       : { status: 'failed', error: failures.join(' · '), summary })
-    await recordOnboardingEvent(admin as unknown as SupabaseClient, onboarding.id, failures.length === 0 ? 'build_ready' : 'build_failed')
+    isBuildReady = failures.length === 0
+    await recordOnboardingEvent(admin as unknown as SupabaseClient, onboarding.id, isBuildReady ? 'build_ready' : 'build_failed')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error('[onboarding] build crashed', { onboardingId, message })
     await finishOnboardingBuild(admin, onboarding.id, { status: 'failed', error: 'The build stopped unexpectedly. Press retry.', summary: onboarding.summary ?? EMPTY_BUILD_SUMMARY })
       .catch(() => undefined)
   }
-  await openStoreWhenReady(admin, onboarding.id)
+  // Only a build that finished clean opens the store. After a failed or crashed
+  // build the store stays in pre-launch (hours, stamp card or offers may be
+  // missing); the retry that succeeds reaches this line and opens it then.
+  if (isBuildReady) await openStoreWhenReady(admin, onboarding.id)
   await refreshStoreCaches(admin, onboarding.tenantId)
 }

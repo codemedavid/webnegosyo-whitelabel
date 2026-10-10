@@ -16,6 +16,8 @@ interface Script {
   /** What a re-read finds after a lost insert race. */
   winner?: { id: string } | null
   insertProposals?: { error: { message: string } | null }
+  /** Proposals already stored under the existing generation (default: has some). */
+  storedProposals?: number
 }
 
 function fakeClient(script: Script) {
@@ -27,6 +29,8 @@ function fakeClient(script: Script) {
       const chain = () => builder
       Object.assign(builder, {
         select: chain, eq: chain,
+        // `select('id', { count, head })` awaited directly: the stored proposal count.
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ count: script.storedProposals ?? 1, error: null }).then(resolve),
         maybeSingle: async () => {
           reads += 1
           return { data: reads === 1 ? script.existing ?? null : script.winner ?? null, error: null }
@@ -75,6 +79,18 @@ describe('fileLaunchProposals', () => {
 
     expect(result).toEqual({ generationId: 'gen-old', isNew: false })
     expect(calls).toEqual([])
+  })
+
+  it('fills in a launch generation left EMPTY by a process that died between the two inserts', async () => {
+    const { fileLaunchProposals } = await load()
+    const { client, calls } = fakeClient({ existing: { id: 'gen-orphan' }, storedProposals: 0 })
+
+    const result = await fileLaunchProposals(client, 'tenant-1', [COMBO])
+
+    expect(result).toEqual({ generationId: 'gen-orphan', isNew: true })
+    const proposals = calls.find((c) => c.table === 'boost_ai_proposals')?.payload as Array<Record<string, unknown>>
+    expect(proposals).toEqual([{ generation_id: 'gen-orphan', tenant_id: 'tenant-1', kind: 'combo', position: 0, payload: COMBO }])
+    expect(calls.some((c) => c.op === 'delete')).toBe(false)
   })
 
   it('treats a lost race on the one-per-store index as already filed', async () => {

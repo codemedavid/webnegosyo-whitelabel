@@ -13,7 +13,7 @@
 import 'server-only'
 
 import { resolveOrderBackend, type OrderBackendPreference } from '@/lib/order-backend'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { ADMIN_QUERY_TIMEOUT_MS, createAdminClient } from '@/lib/supabase/admin'
 import { matchesOffer, windowStartMs, type PipelineFilters } from './filters'
 import { leadTenantId, toPipelineLeads, type LeadRow, type OnboardingRow, type PaymentRow } from './rows'
 import type { PipelineLead } from './types'
@@ -141,7 +141,7 @@ async function loadFirstOrders(admin: AdminClient, tenantIds: readonly string[])
  * is applied after, as `payment_term` may be null), with its store's facts.
  */
 export async function loadPipelineData(filters: PipelineFilters, nowMs: number = Date.now()): Promise<PipelineData> {
-  const admin = createAdminClient()
+  const admin = createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS })
   const windowRows = await loadLeadRows(admin, windowStartMs(filters.range, nowMs))
   const leadRows = windowRows.filter((lead) => matchesOffer(lead.payment_term, filters.offer))
   const onboardings = await loadOnboardings(admin, leadRows.map((lead) => lead.id))

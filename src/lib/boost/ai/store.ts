@@ -257,12 +257,31 @@ async function findLaunchGeneration(client: SupabaseClient, tenantId: string): P
   return (data as { id: string } | null)?.id ?? null
 }
 
+async function countProposals(client: SupabaseClient, tenantId: string, generationId: string): Promise<number> {
+  const { count, error } = await client
+    .from('boost_ai_proposals')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('generation_id', generationId)
+  if (error) throw new Error(`Could not read the launch suggestions: ${error.message}`)
+  return count ?? 0
+}
+
+async function insertProposals(client: SupabaseClient, tenantId: string, generationId: string, ideas: readonly BoostIdea[]) {
+  return client.from('boost_ai_proposals').insert(
+    ideas.map((idea, position) => ({ generation_id: generationId, tenant_id: tenantId, kind: idea.kind, position, payload: idea }))
+  )
+}
+
 /**
  * File a new store's launch combos as pending suggestions: they wait for the
  * owner's OK like any AI suggestion, but never count against the free AI
  * generations. One launch generation per store (a unique index), so a retried
  * build files nothing twice. A half-written filing is removed so a retry can
- * file it again.
+ * file it again. If the process died between the two inserts (so the delete
+ * never ran), the next call finds a launch generation with NO proposals and
+ * fills it in rather than treating it as filed: the unique index would block a
+ * second generation, so the combos would otherwise never be offered.
  */
 export async function fileLaunchProposals(
   client: SupabaseClient,
@@ -270,7 +289,12 @@ export async function fileLaunchProposals(
   ideas: readonly BoostIdea[]
 ): Promise<{ generationId: string; isNew: boolean }> {
   const existing = await findLaunchGeneration(client, tenantId)
-  if (existing) return { generationId: existing, isNew: false }
+  if (existing) {
+    if ((await countProposals(client, tenantId, existing)) > 0) return { generationId: existing, isNew: false }
+    const { error: refillError } = await insertProposals(client, tenantId, existing, ideas)
+    if (refillError) throw new Error(`Could not save the launch suggestions: ${refillError.message}`)
+    return { generationId: existing, isNew: true }
+  }
 
   const now = new Date().toISOString()
   const { data, error } = await client
@@ -293,9 +317,7 @@ export async function fileLaunchProposals(
   if (error || !data) throw new Error(`Could not save the launch suggestions: ${error?.message ?? 'no row'}`)
   const generationId = (data as { id: string }).id
 
-  const { error: insertError } = await client.from('boost_ai_proposals').insert(
-    ideas.map((idea, position) => ({ generation_id: generationId, tenant_id: tenantId, kind: idea.kind, position, payload: idea }))
-  )
+  const { error: insertError } = await insertProposals(client, tenantId, generationId, ideas)
   if (insertError) {
     await client.from('boost_ai_generations').delete().eq('id', generationId).eq('tenant_id', tenantId)
     throw new Error(`Could not save the launch suggestions: ${insertError.message}`)

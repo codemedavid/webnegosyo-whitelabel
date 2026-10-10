@@ -78,6 +78,8 @@ describe('applyLaunchBoost', () => {
 
     expect(result.awaitingApproval).toEqual([])
     expect(result.skipped.some((skip) => skip.reason === 'db down')).toBe(true)
+    // An error (unlike needs-edit) is surfaced as `failed` so the build step can retry.
+    expect(result.failed.some((failure) => failure.reason === 'db down')).toBe(true)
     expect(result.applied.length).toBeGreaterThan(0)
   })
 
@@ -94,6 +96,7 @@ describe('applyLaunchBoost', () => {
 
     expect(result.skipped[0]).toMatchObject({ reason: 'boom' })
     expect(result.skipped[1].reason).toMatch(/needs editing/)
+    expect(result.failed).toEqual([expect.objectContaining({ reason: 'boom' })])
     expect(result.applied.length).toBe(applyBoostIdea.mock.calls.length - 2)
   })
 

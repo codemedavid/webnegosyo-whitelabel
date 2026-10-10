@@ -35,6 +35,12 @@ export interface LaunchBoostResult {
   /** Filed for the owner's OK (combos), not live yet. */
   awaitingApproval: Array<{ kind: BoostIdea['kind']; ideaId: string; title: string }>
   skipped: Array<{ ideaId: string; reason: string }>
+  /**
+   * The subset of `skipped` that hit an error (a write threw, or the combos
+   * could not be filed) rather than a deliberate "needs editing". The build
+   * must treat these as a failed step so a retry can fill them in.
+   */
+  failed: Array<{ ideaId: string; reason: string }>
 }
 
 export interface LaunchBoostOptions {
@@ -174,7 +180,8 @@ async function fileCombos(
     return { ...result, awaitingApproval: ideas.map((idea) => ({ kind: idea.kind, ideaId: idea.id, title: idea.title })) }
   } catch (error) {
     console.error('[onboarding/boost] combos not filed for approval:', describeError(error))
-    return { ...result, skipped: [...result.skipped, ...ideas.map((idea) => ({ ideaId: idea.id, reason: describeError(error) }))] }
+    const failures = ideas.map((idea) => ({ ideaId: idea.id, reason: describeError(error) }))
+    return { ...result, skipped: [...result.skipped, ...failures], failed: [...result.failed, ...failures] }
   }
 }
 
@@ -206,7 +213,7 @@ export async function applyLaunchBoost(
   const selected = selectLaunchIdeas(ideas, opts.limits)
   const file = opts.fileForApproval
     ?? (async (combos: readonly BoostIdea[]) => { await fileLaunchProposals(ctx.client as unknown as SupabaseClient, tenantId, combos) })
-  const result: LaunchBoostResult = { applied: [], awaitingApproval: [], skipped: [] }
+  const result: LaunchBoostResult = { applied: [], awaitingApproval: [], skipped: [], failed: [] }
   // One at a time: each offer is its own set of writes, and a failure on one
   // must not leave another half-written beside it.
   for (const idea of selected.filter((candidate) => !needsApproval(candidate))) {
@@ -219,7 +226,9 @@ export async function applyLaunchBoost(
       result.applied.push({ kind: idea.kind, ideaId: idea.id, title: idea.title, ref: outcome.ref })
     } catch (error) {
       console.error('[onboarding/boost] offer not applied:', idea.id, describeError(error))
-      result.skipped.push({ ideaId: idea.id, reason: describeError(error) })
+      const failure = { ideaId: idea.id, reason: describeError(error) }
+      result.skipped.push(failure)
+      result.failed.push(failure)
     }
   }
   return fileCombos(selected.filter(needsApproval), file, result)

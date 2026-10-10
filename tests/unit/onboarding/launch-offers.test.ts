@@ -128,3 +128,25 @@ describe('decideLaunchCombo', () => {
     expect(await decideLaunchCombo(fakeAdmin(), { id: 't1', slug: 'kape' }, 'p1', 'keep')).toBe('needs-edit')
   })
 })
+
+describe('decideLaunchCombo — double tap on Keep', () => {
+  it('answers kept when the losing tap threw but the winner already applied the combo', async () => {
+    const { decideLaunchCombo } = await load()
+    getBoostAiProposal
+      .mockResolvedValueOnce(proposal({ status: 'approved' }))
+      .mockResolvedValueOnce(proposal({ status: 'applied' }))
+    createBoostAiProposalNow.mockRejectedValue(new Error('This suggestion was just applied'))
+
+    const outcome = await decideLaunchCombo(fakeAdmin(), { id: 't1', slug: 'kape' }, 'p1', 'keep')
+
+    expect(outcome).toBe('kept')
+  })
+
+  it('still throws when the combo did not end up applied', async () => {
+    const { decideLaunchCombo } = await load()
+    getBoostAiProposal.mockResolvedValue(proposal({ status: 'approved' }))
+    createBoostAiProposalNow.mockRejectedValue(new Error('db down'))
+
+    await expect(decideLaunchCombo(fakeAdmin(), { id: 't1', slug: 'kape' }, 'p1', 'keep')).rejects.toThrow('db down')
+  })
+})

@@ -125,6 +125,15 @@ export async function decideLaunchCombo(
   if (proposal.status === 'applied') return 'kept'
   const ctx = { client: admin as never }
   const menu = await loadLaunchMenu(ctx, tenant.id)
-  const outcome = await createBoostAiProposalNow(tenant, ownerId, proposalId, ctx, { items: menu.items, lastCall: menu.lastCall })
-  return outcome === 'applied' ? 'kept' : 'needs-edit'
+  try {
+    const outcome = await createBoostAiProposalNow(tenant, ownerId, proposalId, ctx, { items: menu.items, lastCall: menu.lastCall })
+    return outcome === 'applied' ? 'kept' : 'needs-edit'
+  } catch (error) {
+    // A double tap (or a Keep racing the first approve) makes the loser throw
+    // "just applied / someone else changed this" although the combo is live.
+    // Re-read: if the winner already applied it, that is a success.
+    const current = await getBoostAiProposal(tenant.id, proposalId).catch(() => null)
+    if (current?.status === 'applied') return 'kept'
+    throw error
+  }
 }
