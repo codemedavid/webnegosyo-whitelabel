@@ -232,6 +232,7 @@ export type ConsolePathRequirement = PlatformPermission | 'superadmin' | null
 const CONSOLE_PATH_RULES: ReadonlyArray<readonly [string, ConsolePathRequirement]> = [
   ['/superadmin/checkout-leads/payment-methods', 'payment_methods.view'],
   ['/superadmin/checkout-leads', 'checkout_leads.view'],
+  ['/superadmin/pipeline', 'checkout_leads.view'],
   ['/superadmin/tenants/new', 'tenants.create'],
   ['/superadmin/tenants', 'tenants.view'],
   ['/superadmin/restaurants', 'tenants.view'],
