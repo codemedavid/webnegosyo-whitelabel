@@ -23,7 +23,9 @@ export async function setStartStepTickAction(
 ): Promise<StartHereResult> {
   if (!isPathStepId(stepId)) return { success: false, error: 'Unknown step.' }
   try {
-    await verifyTenantAdmin(tenantId, 'view')
+    const { userRole } = await verifyTenantAdmin(tenantId, 'view')
+    // The path is store-wide progress: a branch-locked account must not move it.
+    if (userRole.outlet_id) return { success: false, error: 'Only store-wide accounts can change this.' }
     const { user } = await getRequestCaller()
     const admin = createAdminClient()
     // The generated types predate this table.

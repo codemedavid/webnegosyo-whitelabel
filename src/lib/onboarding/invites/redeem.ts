@@ -2,11 +2,14 @@
  * Using a sign-up link: the customer's details become a PAID checkout lead at
  * the link's plan, and they get a set-up wizard like any other paid buyer.
  *
- * Order matters. The email check runs before the claim so a typo'd or taken
- * email never spends the link. The claim is one conditional UPDATE, so two
- * people on the same link get one store between them. Until the lead exists a
- * failure gives the use back; after it, the link stays spent (staff can always
- * re-issue the set-up link from the lead).
+ * Order matters. The link is claimed BEFORE the email is checked: the email
+ * check reveals whether an address has a login, so it must never run for a
+ * code that is unknown, used, turned off or expired (otherwise any well-formed
+ * random code would probe auth.users). A taken email gives the use straight
+ * back, so a typo'd or taken email still never spends the link. The claim is
+ * one conditional UPDATE, so two people on the same link get one store between
+ * them. Until the lead exists a failure gives the use back; after it, the link
+ * stays spent (staff can always re-issue the set-up link from the lead).
  */
 
 import type { CheckoutPaymentTerm } from '@/lib/checkout-leads/payment-terms'
@@ -54,17 +57,31 @@ async function createLeadOrRelease(invite: ClaimedInvite, form: JoinFormInput, d
   } catch (error) {
     console.error('[onboarding-invites] lead could not be saved', error instanceof Error ? error.message : error)
   }
-  await deps.releaseInvite(invite.id).catch((error: unknown) =>
-    console.error('[onboarding-invites] link could not be given back', { inviteId: invite.id, error: error instanceof Error ? error.message : error }),
-  )
+  await giveBackInvite(invite.id, deps)
   return null
 }
 
-export async function redeemInvite(codeHash: string, form: JoinFormInput, deps: RedeemDeps): Promise<RedeemResult> {
-  if (await deps.isEmailTaken(form.email)) return { kind: 'email_taken' }
+async function giveBackInvite(inviteId: string, deps: RedeemDeps): Promise<void> {
+  await deps.releaseInvite(inviteId).catch((error: unknown) =>
+    console.error('[onboarding-invites] link could not be given back', { inviteId, error: error instanceof Error ? error.message : error }),
+  )
+}
 
+export async function redeemInvite(codeHash: string, form: JoinFormInput, deps: RedeemDeps): Promise<RedeemResult> {
   const invite = await deps.claimInvite(codeHash)
   if (!invite) return { kind: 'unavailable' }
+
+  let isTaken: boolean
+  try {
+    isTaken = await deps.isEmailTaken(form.email)
+  } catch (error) {
+    await giveBackInvite(invite.id, deps)
+    throw error
+  }
+  if (isTaken) {
+    await giveBackInvite(invite.id, deps)
+    return { kind: 'email_taken' }
+  }
 
   const lead = await createLeadOrRelease(invite, form, deps)
   if (!lead) return { kind: 'failed' }

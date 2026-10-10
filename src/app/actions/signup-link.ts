@@ -43,7 +43,7 @@ export async function redeemSignupLinkAction(code: unknown, form: unknown): Prom
   const parsed = joinFormSchema.safeParse(form)
   if (!parsed.success) return { path: null, error: parsed.error.issues[0]?.message ?? 'Check your details.' }
 
-  const rate = await checkActionRateLimit('signup-link', SIGNUP_LINK_RATE_LIMIT)
+  const rate = await checkActionRateLimit('signup-link', { ...SIGNUP_LINK_RATE_LIMIT, onRedisFailure: 'instance' })
   if (!rate.allowed) return { path: null, error: `Too many tries. Please wait ${Math.ceil(rate.retryAfterSec / 60)} minute(s) and try again.` }
 
   let result: RedeemResult

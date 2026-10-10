@@ -36,13 +36,30 @@ describe('redeemInvite', () => {
     expect(d.releaseInvite).not.toHaveBeenCalled()
   })
 
-  test('an email that already has a login is refused BEFORE the link is spent', async () => {
+  test('an email that already has a login is refused and the link is given straight back', async () => {
     const d = deps({ isEmailTaken: jest.fn(async () => true) })
 
     const result = await redeemInvite('hash-1', FORM, d)
 
     expect(result.kind).toBe('email_taken')
-    expect(d.claimInvite).not.toHaveBeenCalled()
+    expect(d.releaseInvite).toHaveBeenCalledWith('inv-1')
+    expect(d.createPaidLead).not.toHaveBeenCalled()
+  })
+
+  test('an invalid code never reaches the email check (no account enumeration with random codes)', async () => {
+    const d = deps({ claimInvite: jest.fn(async () => null), isEmailTaken: jest.fn(async () => true) })
+
+    const result = await redeemInvite('random-hash', FORM, d)
+
+    expect(result.kind).toBe('unavailable')
+    expect(d.isEmailTaken).not.toHaveBeenCalled()
+  })
+
+  test('a failing email check gives the link back and rethrows', async () => {
+    const d = deps({ isEmailTaken: jest.fn(async () => { throw new Error('rpc down') }) })
+
+    await expect(redeemInvite('hash-1', FORM, d)).rejects.toThrow('rpc down')
+    expect(d.releaseInvite).toHaveBeenCalledWith('inv-1')
   })
 
   test('a link someone else already used (or expired / turned off) is refused', async () => {

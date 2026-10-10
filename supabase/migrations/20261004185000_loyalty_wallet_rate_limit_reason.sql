@@ -7,7 +7,7 @@
 -- up. "At least n events newer than now-window" is the same as "the n-th most
 -- recent event is newer than now-window", and that event ageing out is exactly
 -- when a request is allowed again. Same windows and limits as the issuer.
-create function public.loyalty_wallet_issuance_retry_at(
+create or replace function public.loyalty_wallet_issuance_retry_at(
   p_tenant_id uuid, p_phone_hash text, p_ip_hash text, p_now timestamptz
 ) returns timestamptz language sql stable security definer set search_path=public as $$
   select max(nth.created_at+limits.span)

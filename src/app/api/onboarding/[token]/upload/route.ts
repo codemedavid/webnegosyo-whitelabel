@@ -124,8 +124,16 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const ip = getClientIP(request)
+  if (ip) {
+    const rate = await checkRateLimit(`onboarding-upload-remove:${ip}`, UPLOAD_RATE_LIMIT)
+    if (!rate.allowed) return respond({ error: 'Too many changes. Please wait a moment.' }, 429)
+  }
+
   const found = await resolve(context).catch(() => null)
   if (!found) return respond({ error: 'This set-up link is not valid.' }, 404)
+  // Once the build starts it reads these URLs; removing one then would break it.
+  if (found.onboarding.status !== 'awaiting_details') return respond({ error: 'Your store is already being built.' }, 409)
 
   const body = (await request.json().catch(() => null)) as { kind?: unknown; index?: unknown } | null
   const menu = found.onboarding.assets.menuImageUrls ?? []
