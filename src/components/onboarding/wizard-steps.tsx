@@ -8,6 +8,7 @@ import { MAX_MENU_PHOTOS } from '@/lib/onboarding/answers'
 import type { OnboardingAssets } from '@/lib/onboarding/repository'
 import { ACCENT, ACCENT_SOFT, Field, FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, PhotoSlot, StepHeading } from './onboarding-ui'
 import { ColorPicker } from './color-picker'
+import { MenuPhotoGrid } from './menu-photo-grid'
 import type { WizardDraft } from './wizard-draft'
 
 export interface StepProps {
@@ -247,26 +248,17 @@ const RANK_PLACEHOLDERS = ['e.g. Chicken Inasal', 'e.g. Sisig', 'e.g. Halo-halo'
 
 export function MenuStep({ draft, update, assets, uploadPhoto, removePhoto }: StepProps & PhotoProps) {
   const [isTyping, setIsTyping] = useState(draft.menuText.trim().length > 0)
-  const slots = Array.from({ length: MAX_MENU_PHOTOS }, (_, index) => assets.menuImageUrls[index] ?? null)
-  const firstEmpty = slots.findIndex((url) => url === null)
 
   return (
     <div className="space-y-9">
-      <StepHeading title="Show us your menu" lede="Snap your menu board or a printed menu. We type every dish and price for you." />
+      <StepHeading title="Show us your menu" lede="Snap your menu board or a printed menu — pick every page at once. We type every dish and price for you." />
 
-      <div className="grid grid-cols-3 gap-3">
-        {slots.map((url, index) =>
-          url || index === firstEmpty ? (
-            <PhotoSlot
-              key={url ?? `empty-${index}`}
-              label={index === 0 ? 'Add photo' : 'Add page'}
-              imageUrl={url}
-              onUpload={(file) => uploadPhoto('menu', file)}
-              onRemove={() => removePhoto('menu', index)}
-            />
-          ) : null,
-        )}
-      </div>
+      <MenuPhotoGrid
+        urls={assets.menuImageUrls}
+        max={MAX_MENU_PHOTOS}
+        onUpload={(file) => uploadPhoto('menu', file)}
+        onRemove={(index) => removePhoto('menu', index)}
+      />
 
       <div>
         <button
