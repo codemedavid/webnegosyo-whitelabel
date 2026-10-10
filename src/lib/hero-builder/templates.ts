@@ -25,6 +25,7 @@ import {
   darkOverlay,
   design,
   heading,
+  highlightList,
   iconList,
   image,
   listItem,
@@ -37,6 +38,7 @@ import { buildLimitedDrop, buildLocationIndex, buildOrderWays, buildStoriesStack
 import { buildCardOnPhoto, buildChalkboard, buildFineDining, buildLateNightNeon } from './templates-dark'
 import { buildBakery, buildBigNumbers, buildEditorial, buildFreshHealthy, buildHowItWorks, buildPhotoMosaic } from './templates-light'
 import { buildManifestoDoors, buildMastheadPanorama, buildPressQuote, buildSeasonalZigzag, buildTriptych } from './templates-story'
+import { photoAt, type TemplateCopy } from './template-copy'
 import type { HeroDesignV5, NodeStyle, Section, Widget } from './types'
 
 export { SECTION_PRESETS } from './section-presets'
@@ -63,7 +65,7 @@ function photoButtons(): NodeStyle {
 }
 
 /** Centered white hero copy for photo / video backgrounds. */
-function photoHeroCopy(kicker: string, title: string, body: string): Widget[] {
+function photoHeroCopy(kicker: string, title: string, body: string, ctas: readonly [string, string] = ['Order now', 'View menu']): Widget[] {
   return [
     animate(badge(kicker, 'Star', { color: WHITE, accentColor: '#fbbf24', background: { type: 'color', color: WHITE_GLASS } }), 'fade'),
     animate(
@@ -73,14 +75,30 @@ function photoHeroCopy(kicker: string, title: string, body: string): Widget[] {
     ),
     animate(text(body, { ...LEAD, fontSize: 20, color: WHITE_SOFT, maxWidth: 640, textAlign: 'center' }, LEAD_MOBILE), 'slide-up', 200),
     animate(
-      buttons([button('Order now', MENU_ANCHOR, 'solid', 'ShoppingBag'), button('View menu', MENU_ANCHOR, 'outline')], photoButtons()),
+      buttons([button(ctas[0], MENU_ANCHOR, 'solid', 'ShoppingBag'), button(ctas[1], MENU_ANCHOR, 'outline')], photoButtons()),
       'slide-up',
       300,
     ),
   ]
 }
 
-function buildFullBleedPhoto(): HeroDesignV5 {
+export const FULL_BLEED_SAMPLE: TemplateCopy = {
+  kicker: 'Rated 4.9 by our regulars',
+  headline: 'A taste of home in every plate',
+  body: 'Classic Filipino comfort food, made the slow way. Order now for pickup or delivery around the city.',
+  highlights: [
+    { icon: 'Clock', label: 'Open daily 10 AM – 10 PM' },
+    { icon: 'Truck', label: 'Free delivery over ₱500' },
+    { icon: 'ShieldCheck', label: 'Pay on delivery' },
+  ],
+  primaryCta: 'Order now',
+  secondaryCta: 'View menu',
+  photos: [{ url: photo(PHOTOS.restaurantWarm, 2000), alt: '' }],
+}
+
+/** Uses one photo, as the background. */
+export function buildFullBleedPhoto(copy: TemplateCopy = FULL_BLEED_SAMPLE): HeroDesignV5 {
+  const backdrop = photoAt(copy, FULL_BLEED_SAMPLE, 0)
   const hero = section({
     label: 'Hero — full-bleed photo',
     widths: [100],
@@ -91,7 +109,7 @@ function buildFullBleedPhoto(): HeroDesignV5 {
       background: {
         type: 'image',
         color: '#1c1917',
-        image: { url: photo(PHOTOS.restaurantWarm, 2000), size: 'cover', position: 'center' },
+        image: { url: backdrop.url, size: 'cover', position: 'center' },
         overlay: darkOverlay(50),
       },
     },
@@ -100,13 +118,9 @@ function buildFullBleedPhoto(): HeroDesignV5 {
       {
         style: { gap: 22, textAlign: 'center' },
         widgets: [
-          ...photoHeroCopy(
-            'Rated 4.9 by our regulars',
-            'A taste of home in every plate',
-            'Classic Filipino comfort food, made the slow way. Order now for pickup or delivery around the city.',
-          ),
-          iconList(
-            [listItem('Clock', 'Open daily 10 AM – 10 PM'), listItem('Truck', 'Free delivery over ₱500'), listItem('ShieldCheck', 'Pay on delivery')],
+          ...photoHeroCopy(copy.kicker, copy.headline, copy.body, [copy.primaryCta, copy.secondaryCta]),
+          ...highlightList(
+            copy.highlights,
             'inline',
             { fontSize: 14, color: WHITE_SOFT, accentColor: WHITE, textAlign: 'center', margin: box(20, 0, 0, 0) },
             { fontSize: 13 },
@@ -194,8 +208,24 @@ function buildPromoCountdown(): HeroDesignV5 {
   return design([hero])
 }
 
-function buildCafeMinimal(): HeroDesignV5 {
+export const CAFE_MINIMAL_SAMPLE: TemplateCopy = {
+  kicker: 'Est. 2019 · Maginhawa, Quezon City',
+  headline: 'Slow coffee, warm bread, good mornings.',
+  body: 'A small neighborhood café pouring local beans and baking every morning. Order ahead and skip the line.',
+  highlights: [
+    { icon: 'Coffee', label: 'Benguet & Sagada single-origin beans' },
+    { icon: 'Croissant', label: 'Pastries baked fresh at 6 AM' },
+    { icon: 'Leaf', label: 'Oat & soy milk at no extra cost' },
+  ],
+  primaryCta: 'Order ahead',
+  secondaryCta: 'See the menu',
+  photos: [{ url: photo(PHOTOS.coffeeCup), alt: 'A freshly poured cup of coffee' }],
+}
+
+/** Uses one portrait photo. */
+export function buildCafeMinimal(copy: TemplateCopy = CAFE_MINIMAL_SAMPLE): HeroDesignV5 {
   const serif: NodeStyle = { fontFamily: 'playfair-display', fontWeight: 500, fontSize: 66, lineHeight: 1.08, letterSpacing: -1 }
+  const picture = photoAt(copy, CAFE_MINIMAL_SAMPLE, 0)
   const hero = section({
     label: 'Hero — café minimal',
     widths: [55, 45],
@@ -207,25 +237,21 @@ function buildCafeMinimal(): HeroDesignV5 {
         style: { gap: 24 },
         mobile: { textAlign: 'center', gap: 18 },
         widgets: [
-          text('Est. 2019 · Maginhawa, Quezon City', { fontSize: 13, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', color: '@primary' }, { fontSize: 12, letterSpacing: 2 }),
-          animate(heading('Slow coffee, warm bread, good mornings.', 'h1', serif, { fontSize: 38, letterSpacing: -0.5 }), 'fade', 80),
-          text('A small neighborhood café pouring local beans and baking every morning. Order ahead and skip the line.', { ...LEAD, maxWidth: 480 }, LEAD_MOBILE),
-          iconList(
-            [
-              listItem('Coffee', 'Benguet & Sagada single-origin beans'),
-              listItem('Croissant', 'Pastries baked fresh at 6 AM'),
-              listItem('Leaf', 'Oat & soy milk at no extra cost'),
-            ],
+          text(copy.kicker, { fontSize: 13, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', color: '@primary' }, { fontSize: 12, letterSpacing: 2 }),
+          animate(heading(copy.headline, 'h1', serif, { fontSize: 38, letterSpacing: -0.5 }), 'fade', 80),
+          text(copy.body, { ...LEAD, maxWidth: 480 }, LEAD_MOBILE),
+          ...highlightList(
+            copy.highlights,
             'vertical',
             { fontSize: 16, gap: 12, color: '@text', accentColor: '@primary', margin: box(4, 0, 8, 0) },
             { fontSize: 15, textAlign: 'left' },
           ),
-          buttons([button('Order ahead', MENU_ANCHOR, 'solid', 'Coffee'), button('See the menu', MENU_ANCHOR, 'ghost', 'ArrowRight')], { radius: 999 }),
+          buttons([button(copy.primaryCta, MENU_ANCHOR, 'solid', 'Coffee'), button(copy.secondaryCta, MENU_ANCHOR, 'ghost', 'ArrowRight')], { radius: 999 }),
         ],
       },
       {
         widgets: [
-          image(photo(PHOTOS.coffeeCup), 'A freshly poured cup of coffee', { radius: 6, aspectRatio: '3/4' }, { radius: 6, aspectRatio: '4/3' }),
+          image(picture.url, picture.alt, { radius: 6, aspectRatio: '3/4' }, { radius: 6, aspectRatio: '4/3' }),
         ],
       },
     ],
@@ -292,8 +318,8 @@ function buildBoldPoster(): HeroDesignV5 {
   return design([hero, strip])
 }
 
-function buildSplitPhoto(): HeroDesignV5 {
-  return design([buildHeroSplit()])
+export function buildSplitPhoto(copy?: TemplateCopy): HeroDesignV5 {
+  return design([buildHeroSplit(copy)])
 }
 
 function buildFeaturesStrip(): HeroDesignV5 {
@@ -308,14 +334,14 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     name: 'Split with photo',
     description: 'Headline, pitch and two order buttons beside a big food photo. A proven all-rounder.',
     category: 'restaurant',
-    build: buildSplitPhoto,
+    build: () => buildSplitPhoto(),
   },
   {
     id: 'full-bleed-photo',
     name: 'Full-screen photo',
     description: 'Your best photo fills the screen under a dark tint, with centered white copy and buttons.',
     category: 'restaurant',
-    build: buildFullBleedPhoto,
+    build: () => buildFullBleedPhoto(),
   },
   {
     id: 'video-hero',
@@ -336,7 +362,7 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     name: 'Café minimal',
     description: 'Serif headline, generous whitespace and a short list of highlights — calm and premium.',
     category: 'cafe',
-    build: buildCafeMinimal,
+    build: () => buildCafeMinimal(),
   },
   {
     id: 'bold-poster',
@@ -364,7 +390,7 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     name: 'Card on photo',
     description: 'Your dining room fills the screen with the pitch on a floating card; phones show the photo above it.',
     category: 'restaurant',
-    build: buildCardOnPhoto,
+    build: () => buildCardOnPhoto(),
   },
   {
     id: 'photo-mosaic',
@@ -378,21 +404,21 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     name: 'Fine dining',
     description: 'Full-screen dining-room photo, elegant serif type and gold details for an upscale feel.',
     category: 'restaurant',
-    build: buildFineDining,
+    build: () => buildFineDining(),
   },
   {
     id: 'chalkboard',
     name: 'Chalkboard specials',
     description: 'Hand-lettered specials board with prices, a framed photo and chalk-yellow buttons.',
     category: 'restaurant',
-    build: buildChalkboard,
+    build: () => buildChalkboard(),
   },
   {
     id: 'bakery',
     name: 'Bakery',
     description: 'Warm cream background, script greeting and a round framed photo of fresh bakes.',
     category: 'cafe',
-    build: buildBakery,
+    build: () => buildBakery(),
   },
   {
     id: 'fresh-healthy',
@@ -413,7 +439,7 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     name: 'How it works',
     description: 'Brand-gradient hero with one order button, then three numbered steps from cart to doorstep.',
     category: 'promo',
-    build: buildHowItWorks,
+    build: () => buildHowItWorks(),
   },
   {
     id: 'big-numbers',
@@ -427,7 +453,7 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     name: 'Masthead + panorama',
     description: 'Your name set huge in lowercase serif, a wide edge-to-edge photo band, then address and hours.',
     category: 'restaurant',
-    build: buildMastheadPanorama,
+    build: () => buildMastheadPanorama(),
   },
   {
     id: 'manifesto-doors',
@@ -448,7 +474,7 @@ export const HERO_TEMPLATES: readonly HeroTemplate[] = [
     name: 'Press quote',
     description: 'One glowing review in big italic serif on deep oxblood, with a strip of three photos below.',
     category: 'restaurant',
-    build: buildPressQuote,
+    build: () => buildPressQuote(),
   },
   {
     id: 'location-index',

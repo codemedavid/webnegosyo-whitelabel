@@ -36,7 +36,9 @@ export function CartOfferRow({ title, subtitle, items, addedIds, theme, onAdd }:
         <h3 className="text-[15px] font-semibold leading-snug">{title}</h3>
         {subtitle && <p className="mt-0.5 text-sm" style={{ color: theme.muted }}>{subtitle}</p>}
       </div>
-      <div className="flex snap-x gap-3 overflow-x-auto px-4 pt-3 [scrollbar-width:none]">
+      {/* contain: the cards must not set the cart column's min width — on a
+          phone they widened the whole cart page past the screen. */}
+      <div className="flex snap-x gap-3 overflow-x-auto px-4 pt-3 [scrollbar-width:none]" style={{ contain: 'inline-size' }}>
         {items.map((item) => (
           <OfferProductCard
             key={item.id}

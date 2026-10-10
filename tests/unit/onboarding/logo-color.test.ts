@@ -49,9 +49,22 @@ describe('pickBrandColor', () => {
     expect(b).toBeGreaterThan(r)
   })
 
-  it('returns null for a greyscale logo', async () => {
+  it("returns a black-and-white logo's dark ink so the store keeps its monochrome brand", async () => {
     const { pickBrandColor } = await load()
-    expect(pickBrandColor(pixels([[128, 128, 128, 255, 500], [250, 250, 250, 255, 500], [10, 10, 10, 255, 500]]), 4)).toBeNull()
+    const result = pickBrandColor(pixels([[255, 255, 255, 255, 3000], [24, 24, 24, 255, 600], [140, 140, 140, 255, 40]]), 4)
+    expect(result).toBe('#181818')
+  })
+
+  it('returns null for a pale greyscale logo with no dark ink', async () => {
+    const { pickBrandColor } = await load()
+    expect(pickBrandColor(pixels([[255, 255, 255, 255, 3000], [180, 180, 180, 255, 600]]), 4)).toBeNull()
+  })
+
+  it('prefers a real brand color over black ink, even when the ink covers more of the logo', async () => {
+    const { pickBrandColor } = await load()
+    const result = pickBrandColor(pixels([[255, 255, 255, 255, 2000], [10, 10, 10, 255, 900], [30, 90, 200, 255, 100]]), 4)
+    const b = parseInt(result!.slice(5, 7), 16)
+    expect(b).toBeGreaterThan(150)
   })
 
   it('returns null when only a sliver of the logo is colored', async () => {

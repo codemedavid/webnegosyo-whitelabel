@@ -48,6 +48,7 @@ import { motion } from 'framer-motion'
 import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 import { describeAddedToCart } from '@/lib/senior-mode'
 import { ItemOffers, combosContainingItem } from '@/components/customer/offers/item-offers'
+import { postAddOffers } from '@/lib/boost/offer-items'
 import { cartOfferThemeFromBranding, offerThemeFromBranding } from '@/components/customer/offers/offer-theme'
 import { CartOfferRow } from '@/components/customer/offers/cart-offer-row'
 
@@ -94,6 +95,8 @@ interface ProductDetailContentProps {
      */
     mode?: 'page' | 'sheet'
     onClose?: () => void
+    /** Sheet mode: the back arrow — the previous dish, else close. Defaults to onClose. */
+    onBack?: () => void
     onNavigateToItem?: (item: MenuItem, opts?: { fromUpgrade?: boolean }) => void
     /**
      * Sheet mode: true while the per-item upsell data is still being fetched.
@@ -152,6 +155,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     isBrandAdmin = false,
     mode = 'page',
     onClose,
+    onBack,
     onNavigateToItem,
     upsellsPending = false,
 }: ProductDetailContentProps) {
@@ -188,9 +192,14 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     const mainContentRef = useRef<HTMLElement | null>(null)
     const [isPageTransitioning, setIsPageTransitioning] = useState(false)
     const pendingNavigationRef = useRef<string | null>(null)
-    // Sheet mode: set when Add-to-Cart fires before upsell data has loaded, so
-    // the post-add decision is deferred until upsellsPending clears.
-    const pendingPostAddRef = useRef(false)
+    // Sheet mode: set (to the cart from before the add) when Add-to-Cart fires
+    // before upsell data has loaded, so the post-add decision is deferred
+    // until upsellsPending clears.
+    const pendingPostAddRef = useRef<readonly string[] | null>(null)
+    // The pairings the "Added" sheet shows, frozen at the moment of the add:
+    // what the diner already ordered is left out, and nothing jumps once a
+    // suggestion inside the sheet joins the cart.
+    const [addedSheetOffers, setAddedSheetOffers] = useState<MenuItem[]>([])
     const [customizationDraft, setCustomizationDraft] = useState<Partial<ProductDetailSettings> | null>(null)
 
     const {
@@ -454,11 +463,12 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // Memoized event handlers
     const handleGoBack = useCallback(() => {
         if (isSheet) {
-            onClose?.()
+            const back = onBack ?? onClose
+            back?.()
             return
         }
         router.back()
-    }, [isSheet, onClose, router])
+    }, [isSheet, onBack, onClose, router])
 
     const handleGoHome = useCallback(() => {
         router.push(`/${tenant.slug}`)
@@ -503,8 +513,13 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         return parts.length > 0 ? parts.join(', ') : themeColors.footerEmptySummaryText
     }, [useGroups, mg.groups, mg.selection, useNewVariations, item.variation_types, selectedVariations, selectedVariation, selectedAddons, themeColors.footerEmptySummaryText])
 
+    // The "added" toast, so the "Added" sheet can take over from it when the
+    // pairings arrive after the add (a fast tap while they were still loading).
+    const addedToastRef = useRef<string | number | null>(null)
+
     // Helper to add the current item to cart with current selections
-    const addCurrentItemToCart = useCallback((): boolean => {
+    // `announce: false` when the "Added" sheet confirms the add instead of a toast.
+    const addCurrentItemToCart = useCallback(({ announce = true }: { announce?: boolean } = {}): boolean => {
         const presell = isPresell && presellDate ? presellDate : undefined
         const result = useGroups
             ? addItem({ ...item, modifier_groups: mg.groups }, mg.cartFormat.selectedVariations, mg.cartFormat.selectedAddons, mg.quantity, undefined, undefined, undefined, presell)
@@ -513,15 +528,16 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             toast.error(`Your cart is already for ${formatPresellDateLabel(result.committedDate)}. Pre-orders are placed one date at a time.`)
             return false
         }
+        if (!announce) return true
         if (isSeniorMode) {
             // Senior mode: a larger worded confirmation (styled by .senior-toast
             // in SeniorModeProvider), shown at the TOP so it never covers the
             // bottom "View cart" bar that is the customer's next tap.
             const message = describeAddedToCart(item.name, useGroups ? mg.quantity : quantity, presell ? formatPresellDateLabel(presell) : undefined)
-            toast.success(message.title, { description: message.description, duration: SENIOR_ADDED_TOAST_MS, position: 'top-center', className: 'senior-toast' })
+            addedToastRef.current = toast.success(message.title, { description: message.description, duration: SENIOR_ADDED_TOAST_MS, position: 'top-center', className: 'senior-toast' })
             return true
         }
-        toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
+        addedToastRef.current = toast.success(presell ? `Added ${item.name} for ${formatPresellDateLabel(presell)}` : `Added ${item.name} to cart`)
         return true
     }, [useGroups, mg.cartFormat, mg.groups, mg.quantity, useNewVariations, item, selectedVariations, selectedVariation, selectedAddons, quantity, addItem, isPresell, presellDate, isSeniorMode])
 
@@ -530,6 +546,20 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         () => (bundlesEnabled ? combosContainingItem(upsellBundles ?? [], item.id) : []),
         [bundlesEnabled, upsellBundles, item.id]
     )
+
+    /** Pairings for "Added — goes well with…", given the cart BEFORE this add. */
+    const pairingsToOffer = useCallback((cartItemIds: readonly string[]): MenuItem[] => {
+        if (!menuEngineeringEnabled && !pairingRulesEnabled) return []
+        return postAddOffers(complementaryUpsells, { addedItemId: item.id, cartItemIds })
+    }, [menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, item.id])
+
+    const openAddedSheet = useCallback((offers: MenuItem[]) => {
+        // The sheet says "Added to your order" itself; the toast would sit on its buttons.
+        if (addedToastRef.current !== null) toast.dismiss(addedToastRef.current)
+        addedToastRef.current = null
+        setAddedSheetOffers(offers)
+        setIsPostAddUpsellOpen(true)
+    }, [setIsPostAddUpsellOpen])
 
     const handleAddToCart = useCallback((skipNavigation = false) => {
         /*
@@ -584,14 +614,16 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         }
 
         // Add the item to cart
-        if (!addCurrentItemToCart()) return
-
+        // Read before the add: this render's cart is the order so far.
+        const cartBeforeAdd = cartItems.map((line) => line.menu_item.id)
         // Pairings only. Combos are offered on the item page, BEFORE the add —
         // offering one after left the dish in the cart twice.
-        const hasSuggestions = (menuEngineeringEnabled || pairingRulesEnabled) && complementaryUpsells && complementaryUpsells.length > 0
+        const offers = skipNavigation ? [] : pairingsToOffer(cartBeforeAdd)
+        // The sheet says "Added to your order" itself; a toast would sit on its buttons.
+        if (!addCurrentItemToCart({ announce: offers.length === 0 })) return
 
-        if (!skipNavigation && hasSuggestions) {
-            setIsPostAddUpsellOpen(true)
+        if (offers.length > 0) {
+            openAddedSheet(offers)
             return
         }
 
@@ -599,7 +631,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
         // decision (the deferred-decision effect re-runs once it resolves) so a
         // fast Add-to-Cart tap doesn't skip the upsell screen.
         if (!skipNavigation && isSheet && upsellsPending) {
-            pendingPostAddRef.current = true
+            pendingPostAddRef.current = cartBeforeAdd
             return
         }
 
@@ -615,7 +647,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 router.back()
             }
         }
-    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, router, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, tenant.slug, buyNowIntentRef, setIsPostAddUpsellOpen, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, isOrderable, isPresell, presellDate, effectiveQuantity, addableQuantity])
+    }, [useGroups, mg, useNewVariations, item, selectedVariations, addCurrentItemToCart, cartItems, router, pairingsToOffer, openAddedSheet, tenant.slug, buyNowIntentRef, isSheet, onClose, upsellsPending, openStatus.isOrderingBlocked, openStatus.nextOpenLabel, isOrderable, isPresell, presellDate, effectiveQuantity, addableQuantity])
 
     const handleBuyNow = useCallback(() => {
         buyNowIntentRef.current = true
@@ -641,17 +673,18 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // close the sheet (or go to cart for buy-now).
     useEffect(() => {
         if (!isSheet || upsellsPending || !pendingPostAddRef.current) return
-        pendingPostAddRef.current = false
-        const hasSuggestions = (menuEngineeringEnabled || pairingRulesEnabled) && complementaryUpsells.length > 0
-        if (hasSuggestions) {
-            setIsPostAddUpsellOpen(true)
+        const cartBeforeAdd = pendingPostAddRef.current
+        pendingPostAddRef.current = null
+        const offers = pairingsToOffer(cartBeforeAdd)
+        if (offers.length > 0) {
+            openAddedSheet(offers)
         } else if (buyNowIntentRef.current) {
             buyNowIntentRef.current = false
             router.push(`/${tenant.slug}/cart`)
         } else {
             onClose?.()
         }
-    }, [isSheet, upsellsPending, menuEngineeringEnabled, pairingRulesEnabled, complementaryUpsells, router, tenant.slug, onClose, buyNowIntentRef, setIsPostAddUpsellOpen])
+    }, [isSheet, upsellsPending, pairingsToOffer, openAddedSheet, router, tenant.slug, onClose, buyNowIntentRef])
 
     return (
         <UpsellOrchestratorProvider>
@@ -992,7 +1025,7 @@ export const ProductDetailContent = memo(function ProductDetailContent({
             <AddedSheet
                 open={isPostAddUpsellOpen}
                 addedItem={item}
-                suggestions={complementaryUpsells ?? []}
+                suggestions={addedSheetOffers}
                 theme={offerTheme}
                 tenantId={tenant.id}
                 hideCurrencySymbol={hideCurrencySymbol}

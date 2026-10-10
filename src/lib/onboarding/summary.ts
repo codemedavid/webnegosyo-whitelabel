@@ -6,7 +6,7 @@
 import type { BoostIdeaKind } from '@/lib/boost/ideas'
 import type { DesignSource } from './design-step'
 import type { StoreLook } from './store-type'
-import type { LaunchHeroChoice } from './launch-heroes'
+import type { LaunchHero } from './launch-heroes'
 
 export interface LaunchBuildSummary {
   brandColor: string | null
@@ -20,7 +20,7 @@ export interface LaunchBuildSummary {
   /** Ready-made texts saved as drafts; absent on builds from before campaigns. */
   campaigns?: { drafted: number } | null
   /** The launch look, hero and why; absent on builds from before the design step. */
-  design?: { look: StoreLook; hero?: LaunchHeroChoice; reason: string; source: DesignSource } | null
+  design?: { look: StoreLook; hero?: LaunchHero; reason: string; source: DesignSource } | null
   /** Things the owner should look at, in plain words. */
   warnings: string[]
 }

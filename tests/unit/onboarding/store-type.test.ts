@@ -79,6 +79,21 @@ describe('buildLaunchBranding', () => {
     }
   })
 
+  it('never produces the menu board card, whatever the type, photos, look or legacy saved look', () => {
+    const looks: Array<StoreLook | null> = [null, ...STORE_LOOK_IDS, ...['board', 'chapters', 'tiles', 'cards'].map(toStoreLook)]
+    for (const storeType of TYPES) {
+      for (const hasItemPhotos of [true, false]) {
+        for (const look of looks) {
+          const patch = buildLaunchBranding({ storeType, storeName: 'X', brandColor: null, hasItemPhotos, look })
+          expect(patch.card_template).not.toBe('menuboard')
+        }
+      }
+      for (const look of STORE_LOOK_IDS) {
+        expect(buildLaunchDesign(storeType, { look }).card_template).not.toBe('menuboard')
+      }
+    }
+  })
+
   it('switches the branded loading screen on, named and colored for the store', () => {
     const patch = buildLaunchBranding({ storeType: 'cafe', storeName: '  Kape ni Juan ', brandColor: '#2a6fdb', hasItemPhotos: false, tagline: 'Brewed slow' })
     expect(patch).toMatchObject({

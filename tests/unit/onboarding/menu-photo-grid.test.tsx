@@ -97,6 +97,17 @@ describe('MenuPhotoGrid', () => {
     expect(screen.queryByLabelText(/choose menu photos/i)).not.toBeInTheDocument()
   })
 
+  it('clears the cap note once a photo is removed', async () => {
+    const user = userEvent.setup()
+    await renderGrid({ initial: ['https://img.test/1.jpg', 'https://img.test/2.jpg'] })
+    await user.upload(picker(), [photo('a.jpg'), photo('b.jpg')])
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/1 photo was not added/i))
+
+    await user.click(screen.getAllByRole('button', { name: /remove/i })[0])
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+
   it('removes a photo', async () => {
     const user = userEvent.setup()
     await renderGrid({ initial: ['https://img.test/1.jpg', 'https://img.test/2.jpg'] })

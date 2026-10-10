@@ -223,7 +223,7 @@ async function designStep(build: BuildContext): Promise<StepOutcome> {
     const choice = await chooseLaunchDesign(build.answers, facts)
     const result = await saveBrandingWithClient(build.admin, build.tenantId, buildLaunchDesign(build.answers.storeType, choice))
     if (!result.success) throw new Error(result.error ?? 'Design could not be saved')
-    const isHeroSaved = await applyLaunchHero(build.admin, build.tenantId, choice.hero, launchHeroInput(build.answers, facts)).then(
+    const isHeroSaved = await applyLaunchHero(build.admin, build.tenantId, choice.hero, launchHeroInput(build.answers, facts), choice.copy).then(
       () => true,
       (error: unknown) => {
         console.error('[onboarding] launch hero not saved', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })

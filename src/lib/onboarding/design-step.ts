@@ -1,12 +1,13 @@
 /**
  * The build's design step: choose the store's launch look and hero from the
- * menu it just read, then save them.
+ * menu it just read, write the hero's words, then save them.
  *
- * The owner's own look pick in the wizard always wins. Otherwise the AI
- * chooses from the look and hero catalogs; if it cannot (no key, timeout, an
- * off-catalog answer) the menu-shape rules choose. Choosing never fails the
- * build: only the reads or the saves can, and build.ts keeps the starting look
- * when they do.
+ * The owner's own look pick in the wizard always wins; the AI still picks the
+ * hero template and writes its words. Otherwise the AI chooses from the look
+ * and hero catalogs; if it cannot (no key, timeout, an off-catalog answer) the
+ * menu-shape rules choose and the hero gets honest store-type copy. Choosing
+ * never fails the build: only the reads or the saves can, and build.ts keeps
+ * the starting look when they do.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -24,27 +25,32 @@ import {
   summarizeMenuShape,
   type MenuShape,
 } from './design-pick'
-import { availableLaunchHeroes, buildLaunchHero, type LaunchHeroChoice, type LaunchHeroInput } from './launch-heroes'
+import { cleanLaunchCopy, fallbackLaunchCopy, type LaunchCopy } from './launch-copy'
+import { availableLaunchHeroes, buildLaunchHero, launchHeroHeader, type LaunchHero, type LaunchHeroInput } from './launch-heroes'
 import { buildPaymentMethods } from './plan'
-import { STORE_TYPES, toStoreLook, type LaunchFontPair, type StoreLook } from './store-type'
+import { toStoreLook, type LaunchFontPair, type StoreLook } from './store-type'
 
 type AdminClient = SupabaseClient<Database>
 
 export const DESIGN_AI_MODEL = process.env.ONBOARDING_DESIGN_MODEL || BOOST_AI_MODEL
 const DESIGN_AI_TIMEOUT_MS = 30_000
-const DESIGN_AI_MAX_TOKENS = 300
+const DESIGN_AI_MAX_TOKENS = 700
 /** A fresh store's menu is small; this only bounds the read. */
 const MAX_MENU_ROWS = 1000
 const MAX_FAVORITES = 3
 const FALLBACK_BUTTON_COLOR = '#111111'
 const OWNER_PICK_REASON = 'The layout you picked.'
+/** Below this spread between RGB channels (0..1) a brand color reads as black, white or grey. */
+const NEUTRAL_CHROMA = 0.15
 
 export type DesignSource = 'owner' | 'ai' | 'rules'
 
 export interface DesignChoice {
   look: StoreLook
   fontPair: LaunchFontPair | null
-  hero: LaunchHeroChoice
+  hero: LaunchHero
+  /** The hero's words: the AI's where they passed the checks, else store-type copy. */
+  copy: LaunchCopy
   reason: string
   source: DesignSource
 }
@@ -108,12 +114,43 @@ export async function readStoreFacts(admin: AdminClient, tenantId: string): Prom
   return { shape: summarizeMenuShape(rows), favorites, buttonColor: buttonColor || FALLBACK_BUTTON_COLOR }
 }
 
+/** True for black, white and grey: such a brand gets its color from the hero. */
+export function isNeutralColor(hex: string): boolean {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!match) return false
+  const value = parseInt(match[1], 16)
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+  return (Math.max(...channels) - Math.min(...channels)) / 255 < NEUTRAL_CHROMA
+}
+
+export function launchHeroInput(answers: OnboardingAnswers, facts: StoreFacts): LaunchHeroInput {
+  return {
+    storeName: answers.storeName,
+    storeType: answers.storeType,
+    orderTypes: answers.orderTypes,
+    paymentNames: buildPaymentMethods(answers.payments).map((method) => method.name),
+    hours: answers.hours,
+    favorites: facts.favorites,
+    menuCategories: facts.shape.categories.map((category) => category.name),
+    buttonColor: facts.buttonColor,
+  }
+}
+
+interface ModelPick {
+  look: StoreLook
+  hero: LaunchHero | null
+  fontPair: LaunchFontPair | null
+  reason: string
+  copy: unknown
+}
+
 async function askModel(
   answers: OnboardingAnswers,
   facts: StoreFacts,
-  heroes: readonly LaunchHeroChoice[],
+  heroes: readonly LaunchHero[],
+  fixedLook: StoreLook | null,
   model: DesignModel,
-): Promise<DesignChoice | null> {
+): Promise<ModelPick | null> {
   try {
     const content = await model(buildDesignPrompt({
       storeName: answers.storeName,
@@ -122,13 +159,15 @@ async function askModel(
       orderTypes: answers.orderTypes,
       shape: facts.shape,
       heroes,
+      isNeutralBrand: isNeutralColor(facts.buttonColor),
+      fixedLook,
     }))
     const answer = parseDesignAnswer(content, heroes)
     if (!answer) {
       console.warn('[onboarding] design AI answered off-catalog; using the menu rules')
       return null
     }
-    return { ...answer, hero: answer.hero ?? pickHeroByRules(answer.look, heroes), source: 'ai' }
+    return answer
   } catch (error) {
     console.warn('[onboarding] design AI unavailable; using the menu rules', error instanceof Error ? error.message : error)
     return null
@@ -136,50 +175,40 @@ async function askModel(
 }
 
 /**
- * The look and hero this store launches with. A store without a menu is
- * designed for its store type, without asking the AI.
+ * The look, hero and hero words this store launches with. A store without a
+ * menu is designed for its store type, without asking the AI.
  */
 export async function chooseLaunchDesign(
   answers: OnboardingAnswers,
   facts: StoreFacts,
   model: DesignModel = defaultModel,
 ): Promise<DesignChoice> {
-  const heroes = availableLaunchHeroes({ orderTypes: answers.orderTypes, favorites: facts.favorites })
+  const input = launchHeroInput(answers, facts)
+  const heroes = availableLaunchHeroes(input)
   const ownerLook = toStoreLook(answers.look)
-  if (ownerLook) {
-    return { look: ownerLook, fontPair: null, hero: pickHeroByRules(ownerLook, heroes), reason: OWNER_PICK_REASON, source: 'owner' }
-  }
+  const fallbackCopy = fallbackLaunchCopy({ storeName: answers.storeName, storeType: answers.storeType, tagline: answers.tagline })
+  const fromModel = facts.shape.itemCount > 0 ? await askModel(answers, facts, heroes, ownerLook, model) : null
 
-  const fromModel = facts.shape.itemCount > 0 ? await askModel(answers, facts, heroes, model) : null
-  if (fromModel) return fromModel
-  const look = pickLookByRules(answers.storeType, facts.shape)
-  return { look, fontPair: null, hero: pickHeroByRules(look, heroes), reason: RULE_REASONS[look], source: 'rules' }
-}
-
-export function launchHeroInput(answers: OnboardingAnswers, facts: StoreFacts): LaunchHeroInput {
-  return {
-    storeName: answers.storeName,
-    line: answers.tagline?.trim() || STORE_TYPES[answers.storeType].heroLine,
-    orderTypes: answers.orderTypes,
-    paymentNames: buildPaymentMethods(answers.payments).map((method) => method.name),
-    hours: answers.hours,
-    favorites: facts.favorites,
-    buttonColor: facts.buttonColor,
-  }
+  const look = ownerLook ?? fromModel?.look ?? pickLookByRules(answers.storeType, facts.shape)
+  const { copy, usedAi } = cleanLaunchCopy(fromModel?.copy, fallbackCopy)
+  // The press quote needs a line of its own: the store name quoted and signed by itself reads oddly.
+  const usable = usedAi ? heroes : heroes.filter((candidate) => candidate !== 'press-quote')
+  const modelHero = fromModel?.hero && usable.includes(fromModel.hero) ? fromModel.hero : null
+  const hero = modelHero ?? pickHeroByRules({ look, storeType: answers.storeType, available: usable, isNeutralBrand: isNeutralColor(facts.buttonColor) })
+  if (ownerLook) return { look, fontPair: null, hero, copy, reason: OWNER_PICK_REASON, source: 'owner' }
+  if (fromModel) return { look, fontPair: fromModel.fontPair, hero, copy, reason: fromModel.reason, source: 'ai' }
+  return { look, fontPair: null, hero, copy, reason: RULE_REASONS[look], source: 'rules' }
 }
 
 /**
  * Save the hero the way Hero Builder's publish does: a validated v5 design,
- * `hero_preset = 'custom'`, hero on. "none" switches the hero off and keeps
- * the look's text hero for when the owner turns it back on.
+ * `hero_preset = 'custom'`, hero on. A hero with its own top band also paints
+ * the storefront header to match, in the same write.
  */
-export async function applyLaunchHero(admin: AdminClient, tenantId: string, hero: LaunchHeroChoice, input: LaunchHeroInput): Promise<void> {
-  let patch: Record<string, unknown> = { hero_section_enabled: false }
-  if (hero !== 'none') {
-    const parsed = heroDesignV5Schema.safeParse(buildLaunchHero(hero, input))
-    if (!parsed.success) throw new Error(`Launch hero "${hero}" failed the design check: ${parsed.error.issues[0]?.message ?? 'invalid'}`)
-    patch = { hero_design: JSON.stringify(parsed.data), hero_preset: 'custom', hero_section_enabled: true }
-  }
+export async function applyLaunchHero(admin: AdminClient, tenantId: string, hero: LaunchHero, input: LaunchHeroInput, copy: LaunchCopy): Promise<void> {
+  const parsed = heroDesignV5Schema.safeParse(buildLaunchHero(hero, input, copy))
+  if (!parsed.success) throw new Error(`Launch hero "${hero}" failed the design check: ${parsed.error.issues[0]?.message ?? 'invalid'}`)
+  const patch = { hero_design: JSON.stringify(parsed.data), hero_preset: 'custom', hero_section_enabled: true, ...launchHeroHeader(hero) }
   const { data, error } = await admin.from('tenants').update(patch as never).eq('id', tenantId).select('id')
   if (error) throw new Error(`Hero could not be saved: ${error.message}`)
   if (!data || data.length !== 1) throw new Error('Hero could not be saved: store not found')

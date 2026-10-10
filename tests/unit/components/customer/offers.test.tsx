@@ -78,6 +78,48 @@ describe('AddedSheet', () => {
   })
 })
 
+describe('offer layering', () => {
+  it('opens the "Added" sheet above the item sheet it is launched from', async () => {
+    const { AddedSheet } = await import('@/components/customer/offers/added-sheet')
+    const { STOREFRONT_LAYERS } = await import('@/components/customer/overlay-layers')
+    render(
+      <AddedSheet
+        open
+        addedItem={dish('bbq', 'Pork BBQ')}
+        suggestions={[dish('lumpia', 'Lumpia')]}
+        theme={NEUTRAL_OFFER_THEME}
+        tenantId="t1"
+        primaryLabel="View cart"
+        onAdd={jest.fn()}
+        onCustomize={jest.fn()}
+        onPrimary={jest.fn()}
+        onClose={jest.fn()}
+      />
+    )
+    const sheet = screen.getByRole('dialog', { name: 'Added to your order' })
+    expect(Number(sheet.style.zIndex)).toBeGreaterThan(STOREFRONT_LAYERS.itemSheet)
+  })
+})
+
+describe('CartOfferRow', () => {
+  it('scrolls inside its own box instead of widening the cart page', async () => {
+    const { CartOfferRow } = await import('@/components/customer/offers/cart-offer-row')
+    render(
+      <CartOfferRow
+        title="Before you go"
+        items={['a', 'b', 'c', 'd'].map((id) => ({ id, name: id, priceLabel: '₱1' }))}
+        addedIds={new Set()}
+        theme={NEUTRAL_OFFER_THEME}
+        onAdd={jest.fn()}
+      />
+    )
+    // A horizontal scroller's cards otherwise set the min-content width of
+    // the cart's grid column, pushing the whole page sideways on phones.
+    const scroller = screen.getByRole('button', { name: 'Add a' }).parentElement as HTMLElement
+    expect(scroller.style.contain).toBe('inline-size')
+  })
+})
+
 describe('CartOffersSection', () => {
   const baseProps = {
     maxItems: 4,
