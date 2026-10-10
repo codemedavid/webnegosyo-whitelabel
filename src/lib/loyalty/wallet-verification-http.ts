@@ -39,6 +39,23 @@ function settingsClient(database: ReturnType<typeof createAdminClient>): StoreSe
   return database as unknown as StoreSettingsClient
 }
 
+function waitPhrase(seconds: number): string {
+  if (seconds < 90) return `${seconds} seconds`
+  const minutes = Math.ceil(seconds / 60)
+  if (minutes < 90) return `${minutes} minutes`
+  return `${Math.ceil(minutes / 60)} hours`
+}
+
+async function rateLimited(start: number, retryAfterSeconds: number): Promise<NextResponse> {
+  const response = await paced(start, {
+    error: `Too many codes requested for this number. Please wait ${waitPhrase(retryAfterSeconds)} and try again.`,
+    reason: 'rate_limited',
+    retryAfterSeconds,
+  }, 429)
+  response.headers.set('Retry-After', String(retryAfterSeconds))
+  return response
+}
+
 export async function handleWalletCodeRequest(request: NextRequest): Promise<NextResponse> {
   const prepared = preparation(request)
   if (!prepared) return respond({ error: WALLET_NO_SENDER, reason: 'no_sender' }, 503)
@@ -68,6 +85,7 @@ export async function handleWalletCodeRequest(request: NextRequest): Promise<Nex
     const result = await issueWalletChallenge({ ...parsed.data, trustedIp: prepared.trustedIp }, {
       crypto: prepared.crypto, database,
     })
+    if (!result.ok && result.error === 'rate_limited') return rateLimited(start, result.retryAfterSeconds)
     if (result.ok) {
       challengeId = result.challengeId
       if (routing.sender === 'semaphore' && routing.semaphore) {

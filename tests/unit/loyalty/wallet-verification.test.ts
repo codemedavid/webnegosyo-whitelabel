@@ -54,6 +54,20 @@ describe('issueWalletChallenge', () => {
     expect(untouched.rpc).not.toHaveBeenCalled()
   })
 
+  test('a rate limit comes back with how long to wait, so the page can say so', async () => {
+    const db = database({ issue_loyalty_wallet_challenge: [{ data: { ok: false, error: 'rate_limited', retryAfterSeconds: 412 }, error: null }] })
+    expect(await issueWalletChallenge({ tenantId: tenant, phone: '09171234567', trustedIp: ip }, { crypto, database: db }))
+      .toEqual({ ok: false, error: 'rate_limited', retryAfterSeconds: 412 })
+  })
+
+  test('a rate limit with a missing or absurd wait is clamped to something sane', async () => {
+    for (const [given, expected] of [[undefined, 60], [-5, 1], [12.2, 13], [999999, 86400]] as const) {
+      const db = database({ issue_loyalty_wallet_challenge: [{ data: { ok: false, error: 'rate_limited', retryAfterSeconds: given }, error: null }] })
+      expect(await issueWalletChallenge({ tenantId: tenant, phone: '09171234567', trustedIp: ip }, { crypto, database: db }))
+        .toEqual({ ok: false, error: 'rate_limited', retryAfterSeconds: expected })
+    }
+  })
+
   test('a reply for another challenge is not trusted', async () => {
     const db = database({ issue_loyalty_wallet_challenge: [{ data: { ok: true, challengeId: challenge, expiresAt: 'x' }, error: null }] })
     expect(await issueWalletChallenge({ tenantId: tenant, phone: '09171234567', trustedIp: ip }, { crypto, database: db }))

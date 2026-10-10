@@ -34,6 +34,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export type WalletIssueResult =
   | { ok: true; challengeId: string; expiresAt: string }
   | { ok: false; error: 'request_denied' | 'unavailable' }
+  | { ok: false; error: 'rate_limited'; retryAfterSeconds: number }
+
+/** Every rate window is at most a day; an unreadable wait means "a minute". */
+const DEFAULT_RETRY_SECONDS = 60
+const MAX_RETRY_SECONDS = 86_400
+
+function retrySeconds(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_RETRY_SECONDS
+  return Math.min(MAX_RETRY_SECONDS, Math.max(1, Math.ceil(value)))
+}
 
 export async function issueWalletChallenge(
   input: { tenantId: string; phone: string; trustedIp: string },
@@ -65,6 +75,11 @@ export async function issueWalletChallenge(
       const { data, error } = await database.rpc('issue_loyalty_wallet_challenge', args)
       if (error) continue
       if (!isRecord(data)) return { ok: false, error: 'unavailable' }
+      // Rate events are written for members and strangers alike before the
+      // membership check, so "slow down" says nothing about who has rewards.
+      if (data.ok === false && data.error === 'rate_limited') {
+        return { ok: false, error: 'rate_limited', retryAfterSeconds: retrySeconds(data.retryAfterSeconds) }
+      }
       if (data.ok === false) return { ok: false, error: 'request_denied' }
       if (data.ok !== true || data.challengeId !== args.p_challenge_id || typeof data.expiresAt !== 'string') {
         return { ok: false, error: 'unavailable' }
