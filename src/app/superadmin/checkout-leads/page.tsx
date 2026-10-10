@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { Settings2 } from 'lucide-react'
+import { Link2, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/superadmin/ui/primitives'
 import { getCheckoutLeadStats } from '@/lib/checkout-leads/checkout-leads-analytics'
@@ -29,6 +29,12 @@ export default async function CheckoutLeadsPage() {
         actions={
           <div className="flex items-center gap-2">
             <InvitePaidCustomer />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/superadmin/checkout-leads/invites">
+                <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                Sign-up links
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm">
               <Link href="/superadmin/checkout-leads/payment-methods">
                 <Settings2 className="mr-1.5 h-3.5 w-3.5" />

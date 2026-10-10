@@ -408,6 +408,7 @@ export type Database = {
           id: string
           model: string | null
           orders_analyzed: number
+          source: string
           status: string
           summary: string | null
           tenant_id: string
@@ -421,6 +422,7 @@ export type Database = {
           id?: string
           model?: string | null
           orders_analyzed?: number
+          source?: string
           status?: string
           summary?: string | null
           tenant_id: string
@@ -434,6 +436,7 @@ export type Database = {
           id?: string
           model?: string | null
           orders_analyzed?: number
+          source?: string
           status?: string
           summary?: string | null
           tenant_id?: string
@@ -768,8 +771,10 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          live_at: string | null
           name: string
           notes: string | null
+          paid_at: string | null
           payment_proof_uploaded_at: string | null
           payment_proof_url: string | null
           payment_term: string | null
@@ -786,8 +791,10 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          live_at?: string | null
           name: string
           notes?: string | null
+          paid_at?: string | null
           payment_proof_uploaded_at?: string | null
           payment_proof_url?: string | null
           payment_term?: string | null
@@ -804,8 +811,10 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          live_at?: string | null
           name?: string
           notes?: string | null
+          paid_at?: string | null
           payment_proof_uploaded_at?: string | null
           payment_proof_url?: string | null
           payment_term?: string | null
@@ -3646,6 +3655,82 @@ export type Database = {
           },
         ]
       }
+      onboarding_events: {
+        Row: {
+          created_at: string
+          event: string
+          onboarding_id: string
+        }
+        Insert: {
+          created_at?: string
+          event: string
+          onboarding_id: string
+        }
+        Update: {
+          created_at?: string
+          event?: string
+          onboarding_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_events_onboarding_id_fkey"
+            columns: ["onboarding_id"]
+            isOneToOne: false
+            referencedRelation: "store_onboardings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_invites: {
+        Row: {
+          checkout_lead_id: string | null
+          claimed_at: string | null
+          code_hash: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          label: string
+          notes: string | null
+          payment_term: string
+          revoked_at: string | null
+        }
+        Insert: {
+          checkout_lead_id?: string | null
+          claimed_at?: string | null
+          code_hash: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          label: string
+          notes?: string | null
+          payment_term: string
+          revoked_at?: string | null
+        }
+        Update: {
+          checkout_lead_id?: string | null
+          claimed_at?: string | null
+          code_hash?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          label?: string
+          notes?: string | null
+          payment_term?: string
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_invites_checkout_lead_id_fkey"
+            columns: ["checkout_lead_id"]
+            isOneToOne: true
+            referencedRelation: "checkout_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_deletion_archive: {
         Row: {
           deletion_id: string
@@ -4624,6 +4709,35 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "outlets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_path_ticks: {
+        Row: {
+          step_id: string
+          tenant_id: string
+          ticked_at: string
+          ticked_by: string | null
+        }
+        Insert: {
+          step_id: string
+          tenant_id: string
+          ticked_at?: string
+          ticked_by?: string | null
+        }
+        Update: {
+          step_id?: string
+          tenant_id?: string
+          ticked_at?: string
+          ticked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_path_ticks_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -6552,6 +6666,32 @@ export type Database = {
           },
         ]
       }
+      storefront_visits: {
+        Row: {
+          day: string
+          tenant_id: string
+          visits: number
+        }
+        Insert: {
+          day: string
+          tenant_id: string
+          visits?: number
+        }
+        Update: {
+          day?: string
+          tenant_id?: string
+          visits?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storefront_visits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_payments: {
         Row: {
           amount_php: number
@@ -7718,6 +7858,42 @@ export type Database = {
         }
         Relationships: []
       }
+      university_lesson_progress: {
+        Row: {
+          lesson_id: string
+          tenant_id: string | null
+          user_id: string
+          watched_at: string
+        }
+        Insert: {
+          lesson_id: string
+          tenant_id?: string | null
+          user_id: string
+          watched_at?: string
+        }
+        Update: {
+          lesson_id?: string
+          tenant_id?: string | null
+          user_id?: string
+          watched_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "university_lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "university_lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "university_lesson_progress_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       university_lessons: {
         Row: {
           blocks: Json
@@ -8497,6 +8673,7 @@ export type Database = {
         Args: { p_order_date: string; p_tenant_id: string }
         Returns: number
       }
+      onboarding_email_taken: { Args: { p_email: string }; Returns: boolean }
       order_accepts_anon_items: {
         Args: { p_order_id: string }
         Returns: boolean
@@ -8545,6 +8722,10 @@ export type Database = {
       }
       record_assistant_usage: {
         Args: { p_cost_usd: number; p_tenant_id: string; p_tokens: number }
+        Returns: undefined
+      }
+      record_storefront_visit: {
+        Args: { p_tenant_id: string }
         Returns: undefined
       }
       recover_loyalty_sms_ack: {
