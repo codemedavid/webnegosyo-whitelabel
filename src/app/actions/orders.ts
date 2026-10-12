@@ -43,6 +43,7 @@ import { resolveOrderSchedule } from '@/lib/checkout/order-schedule'
 import { runOrderFollowUps } from '@/lib/checkout/order-follow-ups'
 import { loadAndPriceOrderLines } from '@/lib/checkout/load-line-pricing'
 import { computeServiceCharge } from '@/lib/order-service-charge'
+import { applyCheckoutGovernment } from '@/lib/gov-discount-checkout/apply-checkout-government'
 import { getClosedOrderError, type StoreHoursSource } from '@/lib/store-open-status'
 
 const INVALID_DELIVERY_FEE_MESSAGE =
@@ -176,7 +177,13 @@ export async function createOrderAction(
    * delivery order must carry a quotation and is billed the SIGNED price;
    * without a valid signature it is refused. See delivery-quote-signature.ts.
    */
-  lalamoveQuoteSignature?: string
+  lalamoveQuoteSignature?: string,
+  /**
+   * A Senior Citizen / PWD claim: WHO is claiming (kind, name, ID number),
+   * never an amount. Priced here against the server's own lines; the ID is
+   * checked when the order is handed over. See gov-discount-checkout.
+   */
+  governmentClaim?: unknown
 ) {
   // Declared OUTSIDE the try so the catch below can reach them. Presell stock
   // is claimed mid-flight, and a throw after that point used to walk past every
@@ -579,7 +586,7 @@ export async function createOrderAction(
       customerData: effectiveCustomerData,
     })
 
-    const pricing = await priceOrderWithVouchers({
+    const voucherPricing = await priceOrderWithVouchers({
       tenantId,
       items,
       deliveryFee: effectiveDeliveryFee,
@@ -593,6 +600,20 @@ export async function createOrderAction(
       customerKey,
     })
 
+    // ---- Senior / PWD ----------------------------------------------------
+    // The government discount OR the vouchers, whichever saves more — never
+    // both (RA 9994 §4). Unpriceable claims fall back to the vouchers.
+    const checkoutGovernment = await applyCheckoutGovernment({
+      db: supabaseAdmin,
+      tenantId,
+      claim: governmentClaim,
+      items,
+      serviceCharge,
+      deliveryFee: effectiveDeliveryFee ?? 0,
+      voucherPricing,
+    })
+    const pricing = checkoutGovernment.pricing
+
     // The breakdown rides in customerData so it reaches Convex tenants too,
     // whose schema is deployed per tenant and would not have a new column.
     // `total` is already net of the discount on every backend; this is the
@@ -605,6 +626,8 @@ export async function createOrderAction(
 
     /** Burns the uses once an order row exists. Never before. */
     const burnFor = async (orderId: string) => {
+      // The Senior/PWD sales book, written as the order is (any backend).
+      await checkoutGovernment.recordFor(orderId, resolveOrderBackend(tenantConfig))
       const outcome = await burnRedemptions(supabaseAdmin, {
         tenantId,
         orderId,

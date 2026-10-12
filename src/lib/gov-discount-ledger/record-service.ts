@@ -25,7 +25,8 @@ const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export interface LedgerActor {
-  userId: string
+  /** Null for an online order — no staff member granted it. */
+  userId: string | null
   name: string
 }
 
@@ -162,7 +163,7 @@ export async function recordGovDiscount(
     store.loadTaxProfile(request.tenantId),
     store.loadExcludedMenuItemIds(request.tenantId, menuItemIds),
     store.loadSavedLines(request),
-    request.approvalId
+    request.approvalId && actor.userId
       ? store.consumeApproval({
           approvalId: request.approvalId,
           tenantId: request.tenantId,

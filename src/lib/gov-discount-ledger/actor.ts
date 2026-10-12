@@ -12,7 +12,7 @@ export async function resolveLedgerActor(
   db: SupabaseClient<Database>,
   tenantId: string,
   user: User,
-): Promise<LedgerActor> {
+): Promise<LedgerActor & { userId: string }> {
   const { data } = await db
     .from('app_users')
     .select('display_name')

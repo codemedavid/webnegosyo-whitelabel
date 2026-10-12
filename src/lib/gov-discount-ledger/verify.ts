@@ -95,7 +95,9 @@ function orderLevelFlags(input: VerifyGrantInput, linesDiffer: boolean): GovFlag
   if (request.revision > 0) flags.push('edited')
 
   const reduction = government?.claimants.reduce((sum, claimant) => sum + claimant.reduction, 0) ?? 0
-  if (profile && needsManagerApproval(profile, reduction) && !input.isApproved) {
+  // Online orders are not approved by a PIN: the ID is checked at handover.
+  const isPinApproved = request.source === 'pos'
+  if (isPinApproved && profile && needsManagerApproval(profile, reduction) && !input.isApproved) {
     flags.push(request.approvalSkippedOffline ? 'unapproved_offline' : 'approval_missing')
   }
   if (input.isApproved && input.isSelfApproved) flags.push('self_approved')

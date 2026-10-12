@@ -21,6 +21,7 @@ import { formatPrice } from '@/lib/cart-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { CartItem } from '@/types/database'
+import { GovClaimField } from './gov-claim-field'
 import { VoucherField } from './voucher-field'
 
 export type OrderSummaryVariant = 'default' | 'classic'
@@ -206,6 +207,7 @@ export function OrderSummaryLines({
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, freeDeliveryRemaining,
     customerData, serviceChargeAmount, grandTotal,
     voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode,
+    govLines,
   } = checkout
 
   const { accent, text, mutedText } = getCheckoutPalette(checkout.tenant, checkout.branding)
@@ -217,7 +219,8 @@ export function OrderSummaryLines({
   const feeMatches = deliveryFee !== null && deliveryFeeAddress === customerData.delivery_address
   const showDeliveryRow = deliveryFee !== null || isFetchingDeliveryFee
   const showDeliveryError = Boolean(deliveryFeeError) && !isFetchingDeliveryFee && deliveryFee === null
-  const hasDiscount = (voucherPreview?.accepted.length ?? 0) > 0
+  // A Senior/PWD discount replaces the vouchers when it saves more (never both).
+  const hasDiscount = !govLines && (voucherPreview?.accepted.length ?? 0) > 0
 
   // Classic themes every row from the tenant palette; the other designs only
   // theme the subtotal and the total, and are left exactly as they were.
@@ -320,6 +323,19 @@ export function OrderSummaryLines({
         onRemove={removeVoucherCode}
         formatPrice={formatPrice}
       />
+
+      <GovClaimField state={checkout} formatPrice={formatPrice} accent={accent} />
+
+      {govLines && govLines.map((line, index) => (
+        <SummaryRow
+          key={`${line.label}-${index}`}
+          label={line.label}
+          value={`−${formatPrice(line.amount)}`}
+          skin={skin}
+          valueClassName={skin.discountValue}
+          labelStyle={rowLabelStyle}
+        />
+      ))}
 
       {hasDiscount && (
         <>
