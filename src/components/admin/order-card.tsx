@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatPrice } from '@/lib/cart-utils'
 import { orderSummaryRows } from '@/lib/order-summary-rows'
 import { readOrderDiscount } from '@/lib/order-discount'
+import { GovDiscountSummary } from '@/components/admin/gov-discount-summary'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import type { OrderWithItems } from '@/lib/orders-service'
 import { displayCustomerName } from '@/lib/order-display-name'
@@ -182,6 +183,8 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               </span>
             </div>
           ))}
+          {/* Who the Senior/PWD discount above was for; silent on other orders. */}
+          <GovDiscountSummary discount={readOrderDiscount(order)} variant="compact" />
         </div>
       </CardContent>
     </Card>

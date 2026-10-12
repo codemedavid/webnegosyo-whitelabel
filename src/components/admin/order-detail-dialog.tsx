@@ -41,6 +41,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatPrice } from '@/lib/cart-utils'
 import { OrderItemsDisplay } from '@/components/admin/order-items-display'
+import { GovDiscountSummary } from '@/components/admin/gov-discount-summary'
 import { OrderStatusManagement } from '@/components/admin/order-status-management'
 import { getOrderScheduledLabel } from '@/lib/advance-order-utils'
 import { getOrderOutletLabel } from '@/lib/outlets/order-outlet-display'
@@ -122,6 +123,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
         order,
         context?.storeName ?? tenantSlug,
         context?.receiptLayout ?? null,
+        context?.tax ?? null,
       )
       if (!openReceiptPrintWindow(segments)) {
         toast.error('Allow pop-ups to print the receipt')
@@ -331,6 +333,9 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                         </div>
                       ),
                     )}
+                  </div>
+                  <div className="mt-4 empty:hidden">
+                    <GovDiscountSummary discount={readOrderDiscount(order)} />
                   </div>
                 </div>
               </TabsContent>

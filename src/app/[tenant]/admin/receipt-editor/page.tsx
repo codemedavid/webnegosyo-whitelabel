@@ -1,5 +1,6 @@
 import { ReceiptEditor } from '@/components/admin/receipt-editor/receipt-editor'
 import { getCachedTenantBySlug } from '@/lib/cache'
+import { readReceiptTaxIdentity } from '@/lib/receipt-tax-server'
 
 /**
  * Receipt Studio — design the thermal receipt: pick a format or stack custom
@@ -18,6 +19,10 @@ export default async function ReceiptEditorPage({
     return <div>Tenant not found</div>
   }
 
+  // The preview shows the TIN header, VAT block and footer the store's
+  // receipts carry once Tax & discounts is set up (the admin layout gated us).
+  const tax = await readReceiptTaxIdentity(tenant.id)
+
   return (
     <ReceiptEditor
       tenantId={tenant.id}
@@ -25,6 +30,7 @@ export default async function ReceiptEditorPage({
       storeName={tenant.name}
       logoUrl={tenant.logo_url ?? null}
       initialLayout={tenant.receipt_layout ?? null}
+      tax={tax}
     />
   )
 }

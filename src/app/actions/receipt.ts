@@ -2,10 +2,14 @@
 
 import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { ReceiptTaxIdentity } from '@/lib/receipt-tax'
+import { readReceiptTaxIdentity } from '@/lib/receipt-tax-server'
 
 interface ReceiptContext {
   storeName: string
   receiptLayout: unknown
+  /** TIN header, VAT block and footer; null when the store has no Tax & discounts profile. */
+  tax: ReceiptTaxIdentity | null
 }
 
 /**
@@ -53,15 +57,14 @@ export async function getReceiptContext(tenantId: string): Promise<ReceiptContex
     await verifyTenantAdmin(tenantId, 'view')
 
     const admin = createAdminClient()
-    const { data } = await admin
-      .from('tenants')
-      .select('name, receipt_layout')
-      .eq('id', tenantId)
-      .maybeSingle()
+    const [{ data }, tax] = await Promise.all([
+      admin.from('tenants').select('name, receipt_layout').eq('id', tenantId).maybeSingle(),
+      readReceiptTaxIdentity(tenantId),
+    ])
 
     const row = data as { name?: string; receipt_layout?: unknown } | null
     if (!row?.name) return null
-    return { storeName: row.name, receiptLayout: row.receipt_layout ?? null }
+    return { storeName: row.name, receiptLayout: row.receipt_layout ?? null, tax }
   } catch {
     return null
   }

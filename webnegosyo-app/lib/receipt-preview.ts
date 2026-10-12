@@ -6,6 +6,7 @@ import {
   type ReceiptLayout,
   type ReceiptOrder,
   type ReceiptSegment,
+  type ReceiptTaxIdentity,
 } from "./receipt-layout";
 import { blockLabel, type DraftBlock } from "./receipt-editor";
 
@@ -56,6 +57,8 @@ export interface PreviewConfig {
   logoUrl: string | null;
   /** Text columns of the paper being previewed — 32 on 58mm, 48 on 80mm. */
   columns: number;
+  /** The store's tax registration, so the editor shows the TIN header and footer it will print. */
+  tax?: ReceiptTaxIdentity;
 }
 
 export interface PreviewBlock {
@@ -73,6 +76,7 @@ function receiptConfig(config: PreviewConfig): ReceiptConfig {
     width: config.columns,
     trackingUrl: SAMPLE_TRACKING_URL,
     ...(config.logoUrl ? { logoUrl: config.logoUrl } : {}),
+    ...(config.tax ? { tax: config.tax } : {}),
   };
 }
 

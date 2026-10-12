@@ -61,6 +61,7 @@ import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
+import { GovDiscountCard } from "../../../components/order/GovDiscountCard";
 import { OfflineOrdersNotice } from "../../../components/OfflineOrdersNotice";
 import {
   recallOrder,
@@ -953,6 +954,9 @@ export default function OrderDetailScreen() {
           </View>
         ))}
       </Card>
+
+      {/* Who the Senior/PWD discount above was for; silent on every other order. */}
+      <GovDiscountCard discount={readOrderDiscount(order)} style={styles.section} />
 
       {/* A fee without an address is a real case now — a POS delivery the
           rider already knows — and hiding the card made the fee invisible. */}

@@ -22,7 +22,7 @@ import {
 import { useState } from "react";
 import { getReceiptContext } from "@/app/actions/receipt";
 import { renderReceiptSegments, resolveReceiptLayout, type ReceiptOrder } from "@/lib/receipt-layout";
-import { openReceiptPrintWindow } from "@/lib/receipt-web";
+import { adminReceiptConfig, openReceiptPrintWindow } from "@/lib/receipt-web";
 import {
   Sheet,
   SheetContent,
@@ -55,6 +55,7 @@ import { visibleCustomerFields } from "@/lib/admin/order-customer-fields";
 import { releasePresellForCancelledConvexOrderAction } from "@/app/actions/presell";
 import { orderSummaryRows } from "@/lib/order-summary-rows";
 import { readOrderDiscount } from "@/lib/order-discount";
+import { GovDiscountSummary } from "@/components/admin/gov-discount-summary";
 import { displayCustomerName } from '@/lib/order-display-name'
 import { ConvexLalamovePanel } from "@/components/admin/convex-lalamove-panel";
 import { shouldShowLalamoveControls } from "@/lib/lalamove-order-visibility";
@@ -168,7 +169,7 @@ export function ConvexOrderSheet({
       const context = await getReceiptContext(tenantId);
       const segments = renderReceiptSegments(
         order as unknown as ReceiptOrder,
-        { storeName: context?.storeName ?? "Store" },
+        adminReceiptConfig(context?.storeName ?? "Store", context?.tax),
         resolveReceiptLayout(context?.receiptLayout ?? null),
       );
       openReceiptPrintWindow(segments);
@@ -383,6 +384,7 @@ export function ConvexOrderSheet({
                     </div>
                   ),
                 )}
+                <GovDiscountSummary discount={readOrderDiscount(order)} />
               </CardContent>
             </Card>
 

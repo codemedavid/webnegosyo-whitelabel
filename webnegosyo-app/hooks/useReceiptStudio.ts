@@ -22,6 +22,8 @@ import {
   type StudioAction,
 } from "../lib/receipt-studio";
 import type { ReceiptPresetName } from "../lib/receipt-layout";
+import { receiptTaxIdentity } from "../lib/receipt-tax";
+import { useTaxProfile } from "../lib/query/use-tax-profile";
 
 /**
  * The Receipt editor's behaviour: the draft (a pure reducer in
@@ -79,10 +81,13 @@ export function useReceiptStudio() {
   const isReadable = isSavedLayoutReadable(published);
   const layout = useMemo(() => layoutOf(state.draft), [state.draft]);
   const columns = charsForPaperWidth(paperWidth);
-  const preview: PreviewConfig = useMemo(
-    () => ({ storeName: tenantName ?? "Your store", logoUrl, columns }),
-    [tenantName, logoUrl, columns],
-  );
+  // The editor shows the TIN header, VAT block and footer the store's receipts
+  // will carry; a store without Tax & discounts set up previews without them.
+  const taxProfile = useTaxProfile(isDemo ? null : tenantId).data ?? null;
+  const preview: PreviewConfig = useMemo(() => {
+    const tax = receiptTaxIdentity(taxProfile);
+    return { storeName: tenantName ?? "Your store", logoUrl, columns, ...(tax ? { tax } : {}) };
+  }, [tenantName, logoUrl, columns, taxProfile]);
   const previewBlocks = useMemo(
     () => buildPreviewBlocks(state.draft.drafts, layout, preview),
     [state.draft.drafts, layout, preview],
