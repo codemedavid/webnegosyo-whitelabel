@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowRight, Check } from 'lucide-react'
+import { Owl } from '@/components/mascot/owl'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { shareHint } from '@/lib/onboarding/goals'
 import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB, PrimaryLink, SecondaryLink, TextButton } from './onboarding-ui'
@@ -51,6 +52,7 @@ function Peak({ view, token, isLive, storeUrl, choiceCount, onNext, onRefresh, o
   return (
     <div className="relative space-y-8">
       {isLive && <Celebration />}
+      <Owl state={isLive ? 'celebrating' : 'waiting'} size={150} className="mx-auto" />
       <div className="flex h-24 items-center justify-center gap-3 rounded-3xl px-6 text-center text-[22px] font-extrabold tracking-tight" style={{ backgroundColor: ACCENT, color: ACCENT_INK }}>
         {view.assets.logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -97,6 +99,7 @@ function Done({ view, keptCombos }: { view: OnboardingView; keptCombos: number |
   ].filter((line): line is string => line !== null)
   return (
     <div className="space-y-7">
+      <Owl state="happy" size={120} />
       <div>
         <h1 tabIndex={-1} className="text-balance text-[2.25rem] font-extrabold leading-[1.05] tracking-[-0.03em] outline-none" style={{ color: OB.ink }}>
           You&apos;re all set
