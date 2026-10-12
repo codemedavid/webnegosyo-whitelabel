@@ -26,6 +26,15 @@ import { isKnownCategoryIcon, isValidCategoryIconColor } from '@/lib/category-ic
 // Types & Schemas
 // ============================================
 
+/**
+ * Senior/PWD discount eligibility (item AND category, see the gov-discounts
+ * migration). Deliberately NO default: the column defaults to true on insert,
+ * and a full-record save from an editor that does not know the field (the
+ * Category Studio, older clients) must leave an owner's "not covered" alone
+ * rather than silently switch the discount back on.
+ */
+const govDiscountEligibleSchema = z.boolean().optional()
+
 export const categorySchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().optional(),
@@ -45,6 +54,7 @@ export const categorySchema = z.object({
     name: z.string().min(1, 'Add-on name is required'),
     price: z.number().min(0, 'Price must be non-negative'),
   })).optional().default([]),
+  gov_discount_eligible: govDiscountEligibleSchema,
 })
 
 /**
@@ -68,6 +78,7 @@ export const categoryPatchSchema = z.object({
     name: z.string().min(1, 'Add-on name is required'),
     price: z.number().min(0, 'Price must be non-negative'),
   })).optional(),
+  gov_discount_eligible: govDiscountEligibleSchema,
 })
 export type CategoryPatch = z.infer<typeof categoryPatchSchema>
 
@@ -156,6 +167,7 @@ export const menuItemSchema = z.object({
   show_in_checkout_upsell: z.boolean().default(false),
   // Presell: customers must pick an allocated date (migration 20260830120000)
   presell_enabled: z.boolean().default(false),
+  gov_discount_eligible: govDiscountEligibleSchema,
   // Position within the category (shared by the storefront and the register).
   // Omitted = a new dish goes to the end of its category; an edit keeps its
   // place. Arranging is `reorderMenuItems`' job, not the dish form's.
@@ -194,6 +206,7 @@ export const menuItemUpdateSchema = z.object({
   badge_text: z.string().nullable(),
   show_in_checkout_upsell: z.boolean(),
   presell_enabled: z.boolean(),
+  gov_discount_eligible: z.boolean(),
   order: z.number().int().min(0),
 }).partial()
 

@@ -383,6 +383,8 @@ export interface Category {
   /** Per-category card template override; null/undefined inherits the tenant's card_template. */
   card_template?: string | null;
   default_addons?: Addon[];
+  /** False excludes every item in the category from Senior/PWD discounts (default true). */
+  gov_discount_eligible?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -641,6 +643,8 @@ export interface MenuItem {
   boost_priority?: number;
   /** Customers must pick a presell date with remaining allocation (migration 20260830120000). */
   presell_enabled?: boolean;
+  /** False excludes the item from Senior/PWD discounts, e.g. retail merchandise (default true). */
+  gov_discount_eligible?: boolean;
   order: number;
   created_at: string;
   updated_at: string;

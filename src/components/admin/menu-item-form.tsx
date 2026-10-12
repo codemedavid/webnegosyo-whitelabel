@@ -169,6 +169,7 @@ function DishEditor({
   const [isAvailable, setIsAvailable] = useState(item?.is_available ?? true)
   const [isFeatured, setIsFeatured] = useState(item?.is_featured ?? false)
   const [isPresellOn, setIsPresellOn] = useState(item?.presell_enabled ?? false)
+  const [isGovDiscountEligible, setIsGovDiscountEligible] = useState(item?.gov_discount_eligible !== false)
   const [boosts, setBoosts] = useState<DishBoosts>({
     show_in_checkout_upsell: item?.show_in_checkout_upsell ?? false,
     bcg_classification: (item?.bcg_classification || 'unclassified') as BcgClassification,
@@ -206,6 +207,7 @@ function DishEditor({
     isAvailable,
     isFeatured,
     isPresellOn,
+    isGovDiscountEligible,
     boosts,
     modifierGroups,
     presellDraft,
@@ -267,6 +269,7 @@ function DishEditor({
       is_available: isAvailable,
       is_featured: isFeatured,
       show_in_checkout_upsell: boosts.show_in_checkout_upsell,
+      gov_discount_eligible: isGovDiscountEligible,
       ...(menuEngineeringEnabled ? {
         bcg_classification: boosts.bcg_classification,
         badge_text: boosts.badge_text || null,
@@ -504,6 +507,12 @@ function DishEditor({
             menuEngineeringEnabled={menuEngineeringEnabled}
             boosts={boosts}
             onBoostsChange={setBoosts}
+            govDiscount={{
+              isEligible: isGovDiscountEligible,
+              onChange: setIsGovDiscountEligible,
+              isCategoryExcluded: categories.find((category) => category.id === basics.category_id)
+                ?.gov_discount_eligible === false,
+            }}
             branchesSlot={branchesPanel}
           />
 

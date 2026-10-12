@@ -8,7 +8,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { CalendarDays, CookingPot, Sparkles, Wallet } from 'lucide-react'
+import { BadgePercent, CalendarDays, CookingPot, Sparkles, Wallet } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -38,6 +38,14 @@ export interface DishBoosts {
   badge_text: string
 }
 
+/** Whether Senior/PWD discounts cover this dish (item AND its category). */
+export interface DishGovDiscount {
+  isEligible: boolean
+  onChange: (isEligible: boolean) => void
+  /** The dish's section is excluded, so the dish is not covered whatever this says. */
+  isCategoryExcluded: boolean
+}
+
 interface DishMoreOptionsProps {
   itemId?: string
   tenantId: string
@@ -60,6 +68,7 @@ interface DishMoreOptionsProps {
   menuEngineeringEnabled: boolean
   boosts: DishBoosts
   onBoostsChange: (next: DishBoosts) => void
+  govDiscount: DishGovDiscount
   /** Per-branch prices and stock; rendered by the page because it saves on its own. */
   branchesSlot?: ReactNode
 }
@@ -72,6 +81,7 @@ export function DishMoreOptions(props: DishMoreOptionsProps) {
       {inventoryEnabled && <IngredientsRow {...props} />}
       {presell && <PresellRow presell={presell} />}
       <BoostsRow {...props} />
+      <GovDiscountRow govDiscount={props.govDiscount} />
       {branchesSlot}
     </OptionalSectionList>
   )
@@ -230,6 +240,36 @@ function BoostsRow({ itemId, tenantId, tenantSlug, menuEngineeringEnabled, boost
           </div>
           <TagManager itemId={itemId ?? null} tenantId={tenantId} tenantSlug={tenantSlug} />
         </>
+      )}
+    </OptionalSection>
+  )
+}
+
+function GovDiscountRow({ govDiscount }: { govDiscount: DishGovDiscount }) {
+  const { isEligible, onChange, isCategoryExcluded } = govDiscount
+  const isCovered = isEligible && !isCategoryExcluded
+  return (
+    <OptionalSection
+      icon={BadgePercent}
+      title="Senior/PWD discount"
+      hint="Whether the 20% Senior Citizen and PWD discount covers this dish"
+      summary={isCovered ? 'Applies' : 'Not covered'}
+      summaryTone={isCovered ? 'good' : 'muted'}
+    >
+      <div className="rounded-lg border bg-background">
+        <SettingSwitch
+          id="gov_discount_eligible"
+          label="Senior/PWD discount applies"
+          description="Turn off for items the law does not cover, like retail merchandise or gift cards."
+          checked={isEligible}
+          onCheckedChange={onChange}
+        />
+      </div>
+      {isCategoryExcluded && (
+        <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          This dish’s category is set to “not covered”, so the discount does not apply to anything in it.
+          Change it on the category.
+        </p>
       )}
     </OptionalSection>
   )
