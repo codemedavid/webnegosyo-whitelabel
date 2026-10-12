@@ -46,6 +46,9 @@ describe('staff permission registry', () => {
       'tables',
       'loyalty_manage',
       'loyalty_redeem',
+      // Approving large Senior/PWD discounts and reviewing the sales book.
+      // Giving the discount itself needs no grant.
+      'discount_review',
     ])
   })
 

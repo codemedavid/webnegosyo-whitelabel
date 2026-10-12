@@ -30,6 +30,10 @@ export const STAFF_PERMISSION_KEYS = [
   // stamp card. Attaching a customer at the register needs no grant.
   'loyalty_manage',
   'loyalty_redeem',
+  // Approving Senior/PWD discounts with a PIN and reviewing every grant in the
+  // sales book. Giving the discount needs no grant (refusing one is a crime);
+  // vouching for a large one and auditing the ledger is a manager's job.
+  'discount_review',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -97,6 +101,10 @@ export const STAFF_PERMISSION_LABELS: Record<
   loyalty_redeem: {
     label: 'Redeem Loyalty Rewards',
     description: 'Apply verified customer rewards at POS without access to customer history',
+  },
+  discount_review: {
+    label: 'Approve & Review Discounts',
+    description: 'Approve Senior/PWD discounts with a PIN and review the sales book — for managers',
   },
 }
 
@@ -220,6 +228,8 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   customers: 'customers',
   vouchers: 'vouchers',
   loyalty: 'loyalty_manage',
+  // The Senior/PWD sales book, its flags and the BIR exports.
+  'gov-discounts': 'discount_review',
   // The roster plus who confirmed, cancelled and rang what: the owner's, or a
   // branch admin's for their own branch.
   staff: 'branch_staff',

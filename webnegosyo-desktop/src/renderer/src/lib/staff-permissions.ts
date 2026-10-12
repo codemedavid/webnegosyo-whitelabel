@@ -33,7 +33,11 @@ export const STAFF_PERMISSION_KEYS = [
   // who may retire a promo code should not be able to rewrite every regular's
   // stamp card. Attaching a customer at the register needs no grant.
   'loyalty_manage',
-  'loyalty_redeem'
+  'loyalty_redeem',
+  // Approving Senior/PWD discounts with a PIN and reviewing every grant in the
+  // sales book. Giving the discount needs no grant (refusing one is a crime);
+  // vouching for a large one and auditing the ledger is a manager's job.
+  'discount_review'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
