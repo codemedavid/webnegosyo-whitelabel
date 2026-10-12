@@ -1,6 +1,6 @@
 'use client'
 
-import { Bike, Check, MessageCircle, MessageSquareText, PackagePlus, Repeat, ShoppingBag, Sparkles, Store, Zap } from 'lucide-react'
+import { Bike, MessageCircle, MessageSquareText, PackagePlus, Repeat, ShoppingBag, Sparkles, Store, Zap } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
   CHANNEL_IDS,
@@ -43,45 +43,6 @@ const CHANNEL_ICONS: Record<ChannelId, LucideIcon> = {
 }
 
 const ICON_CLASS = 'h-5 w-5'
-
-interface WelcomeProps {
-  firstName: string
-  businessName: string
-  isPaid: boolean
-}
-
-const HAVE_READY = ['A photo of your menu', 'Your logo, if you have one', 'Your GCash or Maya number'] as const
-
-export function WelcomeStep({ firstName, businessName, isPaid }: WelcomeProps) {
-  const greeting = firstName ? `Mabuhay, ${firstName}!` : 'Mabuhay!'
-  return (
-    <div>
-      {isPaid && (
-        <p className="mb-6 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-bold" style={{ backgroundColor: OB.wash, color: OB.ink }}>
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white" aria-hidden><Check className="h-3 w-3" strokeWidth={3.5} /></span>
-          Payment received. Salamat!
-        </p>
-      )}
-      <h1 tabIndex={-1} className="text-balance text-[2.5rem] font-extrabold leading-[1.04] tracking-[-0.035em] sm:text-[3.25rem]" style={{ color: OB.ink }}>
-        {greeting} Let&apos;s open {businessName || 'your store'}.
-      </h1>
-      <p className="mt-4 max-w-[30rem] text-[17px] leading-relaxed" style={{ color: OB.muted }}>
-        About 5 minutes, mostly taps. You tell us what you want, we set up your store around it.
-      </p>
-      <div className="mt-9 rounded-2xl border-2 p-5" style={{ borderColor: OB.line }}>
-        <p className="text-[13px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>Have these ready</p>
-        <ul className="mt-3 space-y-2.5">
-          {HAVE_READY.map((item) => (
-            <li key={item} className="flex items-center gap-3 text-[15px] font-semibold" style={{ color: OB.ink }}>
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: OB.lineStrong }} aria-hidden />
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  )
-}
 
 interface AboutStepProps extends StepProps {
   eyebrow: string

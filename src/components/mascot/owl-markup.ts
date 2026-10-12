@@ -13,6 +13,11 @@ export const OWL_STATES = [
 
 export type OwlState = (typeof OWL_STATES)[number]
 
+/** Where the owl holds his gaze (screen directions), e.g. up at a headline or down at the answers. */
+export const OWL_LOOKS = ['up', 'down', 'left', 'right'] as const
+
+export type OwlLook = (typeof OWL_LOOKS)[number]
+
 /** Rigged parts the state styles animate (each is `class="o-<part>"` in the art). */
 export const OWL_PARTS = [
   'owl-figure', 'owl-upper', 'head', 'hat', 'hat-knob', 'tuft-left', 'tuft-right',

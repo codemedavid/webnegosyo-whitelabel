@@ -15,10 +15,12 @@
  *   Your store puts the question left and the phone right. On phones the
  *   question fills the screen and a fixed bar carries Back / Continue.
  * FORM: canon (user-pinned): Duolingo's one-tap questions and chapter progress,
- *   Airbnb host flow, Stripe restraint. No mascots, no confetti walls.
+ *   Airbnb host flow, Stripe restraint. Character-led (owner, 2026-10-12): Owl
+ *   is the Welcome hero, asks each question from a speech bubble and hops when
+ *   an answer is tapped. He is the only character; still no confetti walls.
  */
 
-import { useRef, useState } from 'react'
+import { createContext, useContext, useRef, useState } from 'react'
 import { Camera, Check, Loader2, X } from 'lucide-react'
 import { shrinkPhoto } from './shrink-photo'
 
@@ -218,14 +220,32 @@ export function TapCard({ isSelected, onClick, title, description, icon, isMulti
 }
 
 /** Eyebrow ("About you · 2 of 5"), the question, and one line under it. */
+/**
+ * Inside the wizard Owl asks the questions: QuestionHeading becomes his speech
+ * bubble, its tail pointing up at him. Elsewhere (the reveal's quick choices)
+ * it stays a plain heading.
+ */
+export const OwlSpeaksContext = createContext(false)
+
 export function QuestionHeading({ eyebrow, title, lede }: { eyebrow?: string; title: React.ReactNode; lede?: React.ReactNode }) {
+  const isSpoken = useContext(OwlSpeaksContext)
+  const eyebrowLine = eyebrow && <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>{eyebrow}</p>
+  const heading = (
+    <h1 tabIndex={-1} className={`text-balance font-extrabold tracking-[-0.025em] ${isSpoken ? 'text-[1.5rem] leading-[1.15] sm:text-[1.875rem]' : 'text-[1.75rem] leading-[1.1] sm:text-[2.25rem]'}`} style={{ color: OB.ink }}>
+      {title}
+    </h1>
+  )
+  const ledeLine = lede && <p className={`max-w-[34rem] text-pretty text-base leading-relaxed ${isSpoken ? 'mt-3.5 px-1' : 'mt-2.5'}`} style={{ color: OB.muted }}>{lede}</p>
+  if (!isSpoken) return <div>{eyebrowLine}{heading}{ledeLine}</div>
   return (
     <div>
-      {eyebrow && <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>{eyebrow}</p>}
-      <h1 tabIndex={-1} className="text-balance text-[1.75rem] font-extrabold leading-[1.1] tracking-[-0.025em] sm:text-[2.25rem]" style={{ color: OB.ink }}>
-        {title}
-      </h1>
-      {lede && <p className="mt-2.5 max-w-[34rem] text-pretty text-base leading-relaxed" style={{ color: OB.muted }}>{lede}</p>}
+      <div className="relative rounded-[1.375rem] border-2 bg-white px-5 pb-4 pt-3.5 [box-shadow:0_4px_0_#E9E5E0]" style={{ borderColor: OB.line }}>
+        {/* The tail: a rotated square sharing the bubble's border, under Owl's beak. */}
+        <span aria-hidden className="absolute -top-[9px] left-[22px] h-4 w-4 rotate-45 rounded-tl-[3px] border-l-2 border-t-2 bg-white" style={{ borderColor: OB.line }} />
+        {eyebrowLine}
+        {heading}
+      </div>
+      {ledeLine}
     </div>
   )
 }

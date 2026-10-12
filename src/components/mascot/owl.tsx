@@ -3,10 +3,10 @@
 import { useId, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { OWL_VIEWBOX } from './owl-art.generated'
-import { owlMarkup, type OwlState } from './owl-markup'
+import { owlMarkup, type OwlLook, type OwlState } from './owl-markup'
 import styles from './owl.module.css'
 
-export { OWL_STATES, type OwlState } from './owl-markup'
+export { OWL_LOOKS, OWL_STATES, type OwlLook, type OwlState } from './owl-markup'
 
 /** Whole owl, or head and shoulders in a square (avatars, the assistant button). */
 const FRAMES = {
@@ -21,6 +21,8 @@ const LITE_BELOW_PX = 120
 
 interface OwlProps {
   state?: OwlState
+  /** Hold the gaze one way. Without it the state moves the eyes; states with closed or "^ ^" eyes hide it. */
+  look?: OwlLook
   /** Rendered width in px; the height follows the framing. */
   size?: number
   framing?: OwlFraming
@@ -33,7 +35,7 @@ interface OwlProps {
  * Owl, the SmartMenu mascot, animated by state (see owl.module.css).
  * Merchant-facing surfaces only: storefronts are white-labeled as the store's own brand.
  */
-export function Owl({ state = 'idle', size = 160, framing = 'full', label, className }: OwlProps) {
+export function Owl({ state = 'idle', look, size = 160, framing = 'full', label, className }: OwlProps) {
   const prefix = `owl${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const isLite = size < LITE_BELOW_PX
   const markup = useMemo(() => owlMarkup({ prefix, isLite }), [prefix, isLite])
@@ -46,6 +48,7 @@ export function Owl({ state = 'idle', size = 160, framing = 'full', label, class
       width={size}
       height={Math.round((size * frame.height) / frame.width)}
       data-state={state}
+      data-look={look}
       className={cn(styles.owl, className)}
       role={label ? 'img' : undefined}
       aria-label={label}

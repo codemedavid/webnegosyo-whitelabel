@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { render } from '@testing-library/react'
-import { Owl, OWL_STATES } from '@/components/mascot/owl'
+import { Owl, OWL_LOOKS, OWL_STATES } from '@/components/mascot/owl'
 
 describe('<Owl>', () => {
   it('renders the requested state on the svg', () => {
@@ -64,5 +64,29 @@ describe('owl state styles', () => {
 
   it('stops all motion for people who ask for reduced motion', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none/)
+  })
+})
+
+describe('<Owl look>', () => {
+  it('leaves the eyes to the state by default', () => {
+    const { container } = render(<Owl />)
+    expect(container.querySelector('svg')?.hasAttribute('data-look')).toBe(false)
+  })
+
+  it.each(OWL_LOOKS)('points the eyes %s', (look) => {
+    const { container } = render(<Owl look={look} />)
+    expect(container.querySelector('svg')?.getAttribute('data-look')).toBe(look)
+  })
+})
+
+describe('owl look styles', () => {
+  const css = readFileSync(join(process.cwd(), 'src/components/mascot/owl.module.css'), 'utf8')
+
+  it.each(OWL_LOOKS)('styles the %s look', (look) => {
+    expect(css).toContain(`[data-look='${look}']`)
+  })
+
+  it('holds the gaze still instead of letting the idle glance wander off', () => {
+    expect(css).toMatch(/\[data-look\][^{]*\{[^}]*animation: none/)
   })
 })

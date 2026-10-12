@@ -43,7 +43,7 @@
 
 /* Beak: closed */
 .owl:is([data-state='thinking'], [data-state='waiting'], [data-state='sorry'], [data-state='sleeping']) :global(.o-beak-lower) {
-  transform: translateY(-26px);
+  transform: translateY(-18px) scale(0.78);
 }
 .owl:is([data-state='thinking'], [data-state='waiting'], [data-state='sorry'], [data-state='sleeping']) :global(.o-mouth) {
   transform: scaleY(0.05);
@@ -230,6 +230,29 @@
 .owl[data-state='sleeping'] :global(.o-fx-zz) {
   opacity: 1;
   animation: zz 3s ease-out infinite;
+}
+
+/* ------------------------------------------------------------ look */
+
+/*
+ * A held gaze (data-look) beats the state's own eye moves: it comes after the
+ * states with the same specificity, and stops the idle glance / waiting
+ * look-around, whose animation would otherwise override a static transform.
+ */
+.owl[data-look] :global(:is(.o-iris-left, .o-iris-right)) {
+  animation: none;
+}
+.owl[data-look='up'] :global(:is(.o-iris-left, .o-iris-right)) {
+  transform: translate(0, -13px);
+}
+.owl[data-look='down'] :global(:is(.o-iris-left, .o-iris-right)) {
+  transform: translate(0, 11px);
+}
+.owl[data-look='left'] :global(:is(.o-iris-left, .o-iris-right)) {
+  transform: translate(-11px, -2px);
+}
+.owl[data-look='right'] :global(:is(.o-iris-left, .o-iris-right)) {
+  transform: translate(11px, -2px);
 }
 
 /* ------------------------------------------------------------ reduced motion */

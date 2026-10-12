@@ -3,23 +3,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, Eye, Loader2, X } from 'lucide-react'
-import { Owl } from '@/components/mascot/owl'
 import { MIN_OWNER_PASSWORD } from '@/lib/onboarding/answers'
 import { STORE_TYPES } from '@/lib/onboarding/store-type'
 import type { PublicOnboardingAssets } from '@/lib/onboarding/repository'
 import type { MenuReadView } from '@/lib/onboarding/menu-read'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { removeOnboardingPhoto, signInNewOwner, submitOnboarding, trackOnboardingEvent, uploadOnboardingPhoto } from './onboarding-api'
-import { ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, PrimaryButton, TextButton } from './onboarding-ui'
+import { ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, OwlSpeaksContext, PrimaryButton, TextButton } from './onboarding-ui'
 import { accentStyle, resolveBrandColor } from './onboarding-theme'
 import { StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
 import { previewMenuRows, type PreviewMenuRow } from './preview-menu'
-import { ChannelsStep, DailyOrdersStep, GoalsStep, PlanStep, TypicalOrderStep, WelcomeStep } from './wizard-about'
+import { ChannelsStep, DailyOrdersStep, GoalsStep, PlanStep, TypicalOrderStep } from './wizard-about'
+import { WelcomeHero } from './welcome-hero'
 import { BrandStep, MenuStep, StoreStep } from './wizard-steps'
 import { AccountStep, HoursStep, OrderingStep, PaymentsStep } from './wizard-steps-setup'
 import { BestSellersStep } from './wizard-bestsellers'
 import { ChapterProgress } from './wizard-progress'
-import { guideOwlState } from './guide-owl'
+import { GUIDE_BEAT_MS, guideOwlLook, guideOwlState, isTapAnswer, reactionLine } from './guide-owl'
+import { GuideOwl } from './guide-owl-figure'
+import { useOwlBeat } from './use-owl-beat'
 import { useMenuRead } from './use-menu-read'
 import {
   AUTO_ADVANCE_STEPS,
@@ -43,6 +45,8 @@ const MENU_STEP_INDEX = WIZARD_STEPS.indexOf('menu')
 const PREVIEW_STEPS: ReadonlySet<WizardStep> = new Set(['brand', 'menu'])
 const ABOUT_STEPS: ReadonlySet<WizardStep> = new Set(['welcome', 'goals', 'channels', 'daily', 'typical', 'plan'])
 const PREVIEW_ROWS = 6
+/** On Welcome the bar floats over Owl's ink stage: no bar, and a white Let's go button. */
+const WELCOME_BAR_STYLE = { '--ob-accent': '#FFFFFF', '--ob-accent-ink': OB.ink } as React.CSSProperties
 
 const draftKey = (token: string) => `onboarding-draft:${token.slice(0, 12)}`
 const stepKey = (token: string) => `onboarding-step:${token.slice(0, 12)}`
@@ -195,6 +199,9 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const headingRef = useRef<HTMLDivElement>(null)
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isReducedMotion = useReducedMotion()
+  // Owl's "he noticed" beat, and the step it belongs to (his line never follows the owner to the next question).
+  const owlBeat = useOwlBeat(GUIDE_BEAT_MS)
+  const [reactedStep, setReactedStep] = useState<WizardStep | null>(null)
 
   // Restore after mount (never during render: localStorage is browser-only).
   // Once per token: a refreshed view must not restore the saved draft over live edits.
@@ -227,6 +234,10 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
       return next
     })
     setError(null)
+    if (isTapAnswer(patch)) {
+      owlBeat.react()
+      setReactedStep(step)
+    }
   }
 
   async function uploadPhoto(kind: 'logo' | 'menu', file: File): Promise<string | null> {
@@ -310,6 +321,12 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
     trackOnboardingEvent(token, stepIndex === 0 ? 'opened' : `screen:${WIZARD_STEPS[stepIndex]}`)
   }, [token, stepIndex, isRestored])
 
+  // Owl greets with a hop whenever Welcome shows, then settles and looks up at the greeting.
+  const greet = owlBeat.react
+  useEffect(() => {
+    if (isRestored && isWelcome) greet()
+  }, [isRestored, isWelcome, greet])
+
   // Move focus to the new question so screen readers announce it.
   useEffect(() => {
     if (stepIndex > 0) headingRef.current?.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true })
@@ -325,7 +342,9 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const shift = isReducedMotion ? 0 : STEP_SHIFT_PX * direction
   const hasPreviewButton = PREVIEW_STEPS.has(step)
   // Owl guides the set-up: he stays put while the questions slide, so he can react.
-  const owlState = guideOwlState(step, { isSubmitting, isUploadingMenu })
+  const owlState = guideOwlState(step, { isSubmitting, isUploadingMenu, isReacting: owlBeat.isReacting })
+  const owlLook = guideOwlLook(step, owlState)
+  const owlReaction = owlBeat.isReacting && reactedStep === step ? reactionLine(owlBeat.count - 1) : null
 
   const question = (
     <AnimatePresence mode="wait" initial={false} custom={direction}>
@@ -338,7 +357,6 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
         transition={{ duration: 0.26, ease: STEP_EASE }}
         className="[&_h1]:outline-none"
       >
-        {step === 'welcome' && <WelcomeStep firstName={view.ownerFirstName} businessName={view.businessName} isPaid={view.isPaymentConfirmed} />}
         {step === 'goals' && <GoalsStep {...stepProps} eyebrow={eyebrow} storeName={storeName} />}
         {step === 'channels' && <ChannelsStep {...stepProps} eyebrow={eyebrow} storeName={storeName} />}
         {step === 'daily' && <DailyOrdersStep {...stepProps} eyebrow={eyebrow} storeName={storeName} onAnswered={advanceAfterAnswer} />}
@@ -363,17 +381,26 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
       style={accentStyle(isAboutChapter ? null : brand, draft.storeType)}
       className={isAboutChapter ? '' : 'lg:grid lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'}
     >
-      <div className={`min-w-0 px-5 pb-40 pt-4 sm:px-8 ${isAboutChapter ? '' : 'lg:flex lg:items-start lg:justify-center lg:px-12 lg:pb-36 lg:pt-8'}`}>
-        <div className={`mx-auto w-full ${isAboutChapter ? 'max-w-[36rem]' : 'max-w-[34rem]'}`}>
-          {!isWelcome && <div className="mb-8"><ChapterProgress step={step} /></div>}
-          {isWelcome && <div className="h-2 sm:h-6" aria-hidden />}
-          {isWelcome
-            ? <Owl state={owlState} size={132} className="mb-4" />
-            : <Owl state={owlState} framing="bust" size={56} className="mb-3" />}
-          {question}
-          {error && <div className="mt-6"><ErrorNote>{error}</ErrorNote></div>}
+      {isWelcome ? (
+        <WelcomeHero
+          firstName={view.ownerFirstName}
+          businessName={view.businessName}
+          isPaid={view.isPaymentConfirmed}
+          owlState={owlState}
+          owlLook={owlLook}
+        >
+          {error && <ErrorNote>{error}</ErrorNote>}
+        </WelcomeHero>
+      ) : (
+        <div className={`min-w-0 px-5 pb-40 pt-4 sm:px-8 ${isAboutChapter ? '' : 'lg:flex lg:items-start lg:justify-center lg:px-12 lg:pb-36 lg:pt-8'}`}>
+          <div className={`mx-auto w-full ${isAboutChapter ? 'max-w-[36rem]' : 'max-w-[34rem]'}`}>
+            <div className="mb-6"><ChapterProgress step={step} /></div>
+            <GuideOwl state={owlState} look={owlLook} reaction={owlReaction} />
+            <OwlSpeaksContext.Provider value>{question}</OwlSpeaksContext.Provider>
+            {error && <div className="mt-6"><ErrorNote>{error}</ErrorNote></div>}
+          </div>
         </div>
-      </div>
+      )}
 
       {!isAboutChapter && (
         <aside className="hidden lg:block lg:p-4 lg:pb-28" aria-label="Preview of your store">
@@ -383,10 +410,14 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
         </aside>
       )}
 
-      <footer className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur" style={{ borderColor: OB.line }}>
+      <footer
+        className={`fixed inset-x-0 bottom-0 z-40 ${isWelcome ? '' : 'border-t bg-white/95 backdrop-blur'}`}
+        style={isWelcome ? WELCOME_BAR_STYLE : { borderColor: OB.line }}
+      >
         <div className="mx-auto flex h-[4.75rem] max-w-5xl items-center gap-3 px-5 sm:px-8">
-          {stepIndex > 0 ? <TextButton onClick={() => goTo(stepIndex - 1)} isDisabled={isUploadingMenu}>Back</TextButton> : <span />}
-          <div className={`ml-auto flex items-center gap-2 ${isWelcome ? 'w-full sm:w-auto [&>button]:w-full sm:[&>button]:w-auto' : ''}`}>
+          {stepIndex > 0 && <TextButton onClick={() => goTo(stepIndex - 1)} isDisabled={isUploadingMenu}>Back</TextButton>}
+          {/* Welcome centres its one button over Owl; every other step keeps Continue on the right. */}
+          <div className={`flex items-center gap-2 ${isWelcome ? 'mx-auto w-full sm:w-auto [&>button]:w-full sm:[&>button]:min-w-[18rem]' : 'ml-auto'}`}>
             {hasPreviewButton && (
               <button type="button" onClick={() => setIsPreviewOpen(true)}
                 className={`inline-flex min-h-12 items-center gap-2 rounded-xl border px-4 text-[15px] font-semibold lg:hidden ${FOCUS_RING}`}
