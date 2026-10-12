@@ -18,6 +18,10 @@
 -- English summary.title. Updates have no natural idempotency key, so their
 -- event_key ends in a random uuid (a trigger fires once per row change).
 
+
+-- Triggers are attached to hot tables: never queue behind a long transaction.
+set lock_timeout = '3s';
+
 -- ============================================
 -- Helpers
 -- ============================================
@@ -123,10 +127,13 @@ begin
 end;
 $$;
 
--- Records one settings.changed row when anything in p_keys changed.
+-- Records one settings.changed row when anything in p_keys changed. Keys in
+-- p_redact (payment account numbers, QR codes) are listed in changedKeys but
+-- their values are never stored.
 create or replace function public.store_activity_record_settings(
   p_tenant_id uuid, p_outlet_id uuid, p_old jsonb, p_new jsonb, p_keys text[],
-  p_source_table text, p_source_id text, p_subject_ref text, p_subject_label text
+  p_source_table text, p_source_id text, p_subject_ref text, p_subject_label text,
+  p_redact text[] default '{}'::text[]
 )
 returns void
 language plpgsql
@@ -140,14 +147,14 @@ begin
   if v_diff.o_after = '{}'::jsonb and p_old is not null and p_new is not null then
     return;
   end if;
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => p_tenant_id, p_kind => 'settings.changed',
     p_event_key => p_source_table || ':' || p_source_id || ':settings:' || gen_random_uuid(),
     p_source_table => p_source_table, p_source_id => p_source_id, p_occurred_at => now(),
     p_outlet_id => p_outlet_id, p_actor_user_id => public.store_activity_actor(),
     p_subject_type => 'setting', p_subject_ref => p_subject_ref,
-    p_before => case when p_old is null then null else v_diff.o_before end,
-    p_after => case when p_new is null then null else v_diff.o_after end,
+    p_before => case when p_old is null then null else v_diff.o_before - p_redact end,
+    p_after => case when p_new is null then null else v_diff.o_after - p_redact end,
     p_summary => jsonb_build_object('title', case
       when p_old is null then coalesce(p_subject_label, 'Setting') || ' added'
       when p_new is null then coalesce(p_subject_label, 'Setting') || ' removed'
@@ -174,7 +181,7 @@ declare
   v_where text := case when p_outlet_id is not null then ' at this branch' else '' end;
 begin
   if p_old_price is distinct from p_new_price or p_old_sale is distinct from p_new_sale then
-    perform public.store_activity_record(
+    perform public.store_activity_write(
       p_tenant_id => p_tenant_id, p_kind => 'menu.price_changed',
       p_event_key => p_source_table || ':' || p_source_id || ':price:' || gen_random_uuid(),
       p_source_table => p_source_table, p_source_id => p_source_id, p_occurred_at => now(),
@@ -195,7 +202,7 @@ begin
 
   if coalesce(p_old_available, true) is distinct from coalesce(p_new_available, true)
      or coalesce(p_old_listed, true) is distinct from coalesce(p_new_listed, true) then
-    perform public.store_activity_record(
+    perform public.store_activity_write(
       p_tenant_id => p_tenant_id, p_kind => 'menu.availability_changed',
       p_event_key => p_source_table || ':' || p_source_id || ':availability:' || gen_random_uuid(),
       p_source_table => p_source_table, p_source_id => p_source_id, p_occurred_at => now(),
@@ -227,7 +234,7 @@ declare
   v_row public.menu_items := case when tg_op = 'DELETE' then old else new end;
 begin
   if tg_op in ('INSERT', 'DELETE') then
-    perform public.store_activity_record(
+    perform public.store_activity_write(
       p_tenant_id => v_row.tenant_id,
       p_kind => case when tg_op = 'INSERT' then 'menu.item_added' else 'menu.item_removed' end,
       p_event_key => 'menu_items:' || v_row.id || ':' || lower(tg_op),
@@ -349,7 +356,7 @@ begin
     return null;
   end if;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => v_tenant, p_kind => v_kind,
     p_event_key => 'app_users:' || v_row.user_id || ':' || v_kind || ':' || gen_random_uuid(),
     p_source_table => 'app_users', p_source_id => v_row.user_id::text, p_occurred_at => now(),
@@ -375,197 +382,311 @@ create trigger store_activity_app_users
 -- ============================================
 -- tenants / outlets / order_types / payment_methods (curated settings)
 -- ============================================
-create or replace function public.store_activity_on_settings()
+-- One small function per table that builds jsonb from the WHITELISTED columns
+-- only (never to_jsonb of the whole row: tenants carries large design TEXT),
+-- and update triggers that fire only when a whitelisted column changes
+-- (AFTER UPDATE OF <list> + WHEN row-distinct).
+create or replace function public.store_activity_on_tenants_settings()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_old jsonb := case when tg_op = 'INSERT' then null else to_jsonb(old) end;
-  v_new jsonb := case when tg_op = 'DELETE' then null else to_jsonb(new) end;
-  v_row jsonb := coalesce(v_new, v_old);
-  v_keys text[];
-  v_tenant uuid;
-  v_outlet uuid;
-  v_label text;
+  v_row public.tenants := case when tg_op = 'DELETE' then old else new end;
 begin
-  case tg_table_name
-    when 'tenants' then
-      v_keys := array['is_active', 'operating_hours', 'timezone', 'enforce_operating_hours', 'enable_order_management',
-        'is_prelaunch', 'distance_delivery_enabled', 'delivery_price_per_km', 'delivery_min_fee', 'delivery_radius_km',
-        'free_delivery_min_order', 'lalamove_enabled', 'inventory_enabled', 'low_stock_alerts_enabled', 'auto_86_enabled',
-        'pickup_scan_enabled', 'qr_handoff_enabled', 'messenger_redirect_enabled', 'outlet_selection_timing',
-        'loyalty_enabled', 'presell_enabled', 'checkout_upsell_enabled', 'menu_engineering_enabled', 'bundles_enabled'];
-      v_tenant := (v_row ->> 'id')::uuid;
-      v_label := null;
-    when 'outlets' then
-      v_keys := array['is_active', 'operating_hours', 'timezone', 'supports_pickup', 'supports_delivery',
-        'supports_dine_in', 'delivery_radius_km'];
-      v_tenant := (v_row ->> 'tenant_id')::uuid;
-      v_outlet := (v_row ->> 'id')::uuid;
-      v_label := 'Branch ' || coalesce(v_row ->> 'name', '');
-    when 'order_types' then
-      v_keys := array['is_enabled', 'minimum_order_amount', 'service_charge_enabled', 'service_charge_type',
-        'service_charge_value', 'pos_markup_percent', 'available_on_web', 'available_on_pos',
-        'after_billing_payment_enabled', 'advance_order_enabled'];
-      v_tenant := (v_row ->> 'tenant_id')::uuid;
-      v_label := coalesce(nullif(v_row ->> 'name', ''), v_row ->> 'type', 'Order type');
-    when 'payment_methods' then
-      v_keys := array['name', 'details', 'qr_code_url', 'is_active', 'require_payment_proof', 'skip_payment_details'];
-      v_tenant := (v_row ->> 'tenant_id')::uuid;
-      v_label := 'Payment method ' || coalesce(v_row ->> 'name', '');
-  end case;
-
   perform public.store_activity_record_settings(
-    v_tenant, v_outlet, v_old, v_new, v_keys,
-    tg_table_name, v_row ->> 'id', tg_table_name || ':' || (v_row ->> 'id'), v_label);
+    v_row.id, null,
+    case when tg_op = 'INSERT' then null else jsonb_build_object('is_active', old.is_active, 'operating_hours', old.operating_hours, 'timezone', old.timezone, 'enforce_operating_hours', old.enforce_operating_hours, 'enable_order_management', old.enable_order_management, 'is_prelaunch', old.is_prelaunch, 'distance_delivery_enabled', old.distance_delivery_enabled, 'delivery_price_per_km', old.delivery_price_per_km, 'delivery_min_fee', old.delivery_min_fee, 'delivery_radius_km', old.delivery_radius_km, 'free_delivery_min_order', old.free_delivery_min_order, 'lalamove_enabled', old.lalamove_enabled, 'inventory_enabled', old.inventory_enabled, 'low_stock_alerts_enabled', old.low_stock_alerts_enabled, 'auto_86_enabled', old.auto_86_enabled, 'pickup_scan_enabled', old.pickup_scan_enabled, 'qr_handoff_enabled', old.qr_handoff_enabled, 'messenger_redirect_enabled', old.messenger_redirect_enabled, 'outlet_selection_timing', old.outlet_selection_timing, 'loyalty_enabled', old.loyalty_enabled, 'presell_enabled', old.presell_enabled, 'checkout_upsell_enabled', old.checkout_upsell_enabled, 'menu_engineering_enabled', old.menu_engineering_enabled, 'bundles_enabled', old.bundles_enabled) end,
+    case when tg_op = 'DELETE' then null else jsonb_build_object('is_active', new.is_active, 'operating_hours', new.operating_hours, 'timezone', new.timezone, 'enforce_operating_hours', new.enforce_operating_hours, 'enable_order_management', new.enable_order_management, 'is_prelaunch', new.is_prelaunch, 'distance_delivery_enabled', new.distance_delivery_enabled, 'delivery_price_per_km', new.delivery_price_per_km, 'delivery_min_fee', new.delivery_min_fee, 'delivery_radius_km', new.delivery_radius_km, 'free_delivery_min_order', new.free_delivery_min_order, 'lalamove_enabled', new.lalamove_enabled, 'inventory_enabled', new.inventory_enabled, 'low_stock_alerts_enabled', new.low_stock_alerts_enabled, 'auto_86_enabled', new.auto_86_enabled, 'pickup_scan_enabled', new.pickup_scan_enabled, 'qr_handoff_enabled', new.qr_handoff_enabled, 'messenger_redirect_enabled', new.messenger_redirect_enabled, 'outlet_selection_timing', new.outlet_selection_timing, 'loyalty_enabled', new.loyalty_enabled, 'presell_enabled', new.presell_enabled, 'checkout_upsell_enabled', new.checkout_upsell_enabled, 'menu_engineering_enabled', new.menu_engineering_enabled, 'bundles_enabled', new.bundles_enabled) end,
+    array['is_active', 'operating_hours', 'timezone', 'enforce_operating_hours', 'enable_order_management', 'is_prelaunch', 'distance_delivery_enabled', 'delivery_price_per_km', 'delivery_min_fee', 'delivery_radius_km', 'free_delivery_min_order', 'lalamove_enabled', 'inventory_enabled', 'low_stock_alerts_enabled', 'auto_86_enabled', 'pickup_scan_enabled', 'qr_handoff_enabled', 'messenger_redirect_enabled', 'outlet_selection_timing', 'loyalty_enabled', 'presell_enabled', 'checkout_upsell_enabled', 'menu_engineering_enabled', 'bundles_enabled'],
+    'tenants', v_row.id::text, 'tenants:' || v_row.id, null, '{}'::text[]);
   return null;
 exception when others then
-  raise warning 'store_activity_on_settings(%) failed: % (%)', tg_table_name, sqlerrm, sqlstate;
+  raise warning 'store_activity trigger (tenants settings) failed: % (%)', sqlerrm, sqlstate;
+  return null;
+end;
+$$;
+create or replace function public.store_activity_on_outlets_settings()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.outlets := case when tg_op = 'DELETE' then old else new end;
+begin
+  perform public.store_activity_record_settings(
+    v_row.tenant_id, v_row.id,
+    case when tg_op = 'INSERT' then null else jsonb_build_object('is_active', old.is_active, 'operating_hours', old.operating_hours, 'timezone', old.timezone, 'supports_pickup', old.supports_pickup, 'supports_delivery', old.supports_delivery, 'supports_dine_in', old.supports_dine_in, 'delivery_radius_km', old.delivery_radius_km) end,
+    case when tg_op = 'DELETE' then null else jsonb_build_object('is_active', new.is_active, 'operating_hours', new.operating_hours, 'timezone', new.timezone, 'supports_pickup', new.supports_pickup, 'supports_delivery', new.supports_delivery, 'supports_dine_in', new.supports_dine_in, 'delivery_radius_km', new.delivery_radius_km) end,
+    array['is_active', 'operating_hours', 'timezone', 'supports_pickup', 'supports_delivery', 'supports_dine_in', 'delivery_radius_km'],
+    'outlets', v_row.id::text, 'outlets:' || v_row.id, 'Branch ' || coalesce(v_row.name, ''), '{}'::text[]);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (outlets settings) failed: % (%)', sqlerrm, sqlstate;
+  return null;
+end;
+$$;
+create or replace function public.store_activity_on_order_types_settings()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.order_types := case when tg_op = 'DELETE' then old else new end;
+begin
+  perform public.store_activity_record_settings(
+    v_row.tenant_id, null,
+    case when tg_op = 'INSERT' then null else jsonb_build_object('is_enabled', old.is_enabled, 'minimum_order_amount', old.minimum_order_amount, 'service_charge_enabled', old.service_charge_enabled, 'service_charge_type', old.service_charge_type, 'service_charge_value', old.service_charge_value, 'pos_markup_percent', old.pos_markup_percent, 'available_on_web', old.available_on_web, 'available_on_pos', old.available_on_pos, 'after_billing_payment_enabled', old.after_billing_payment_enabled, 'advance_order_enabled', old.advance_order_enabled) end,
+    case when tg_op = 'DELETE' then null else jsonb_build_object('is_enabled', new.is_enabled, 'minimum_order_amount', new.minimum_order_amount, 'service_charge_enabled', new.service_charge_enabled, 'service_charge_type', new.service_charge_type, 'service_charge_value', new.service_charge_value, 'pos_markup_percent', new.pos_markup_percent, 'available_on_web', new.available_on_web, 'available_on_pos', new.available_on_pos, 'after_billing_payment_enabled', new.after_billing_payment_enabled, 'advance_order_enabled', new.advance_order_enabled) end,
+    array['is_enabled', 'minimum_order_amount', 'service_charge_enabled', 'service_charge_type', 'service_charge_value', 'pos_markup_percent', 'available_on_web', 'available_on_pos', 'after_billing_payment_enabled', 'advance_order_enabled'],
+    'order_types', v_row.id::text, 'order_types:' || v_row.id, coalesce(nullif(v_row.name, ''), v_row.type, 'Order type'), '{}'::text[]);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (order_types settings) failed: % (%)', sqlerrm, sqlstate;
+  return null;
+end;
+$$;
+create or replace function public.store_activity_on_payment_methods_settings()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.payment_methods := case when tg_op = 'DELETE' then old else new end;
+begin
+  perform public.store_activity_record_settings(
+    v_row.tenant_id, null,
+    case when tg_op = 'INSERT' then null else jsonb_build_object('name', old.name, 'details', old.details, 'qr_code_url', old.qr_code_url, 'is_active', old.is_active, 'require_payment_proof', old.require_payment_proof, 'skip_payment_details', old.skip_payment_details) end,
+    case when tg_op = 'DELETE' then null else jsonb_build_object('name', new.name, 'details', new.details, 'qr_code_url', new.qr_code_url, 'is_active', new.is_active, 'require_payment_proof', new.require_payment_proof, 'skip_payment_details', new.skip_payment_details) end,
+    array['name', 'details', 'qr_code_url', 'is_active', 'require_payment_proof', 'skip_payment_details'],
+    'payment_methods', v_row.id::text, 'payment_methods:' || v_row.id, 'Payment method ' || coalesce(v_row.name, ''), array['details', 'qr_code_url']);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (payment_methods settings) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
 
 drop trigger if exists store_activity_tenants_settings on public.tenants;
 create trigger store_activity_tenants_settings
-  after update on public.tenants
-  for each row execute function public.store_activity_on_settings();
+  after update of is_active, operating_hours, timezone, enforce_operating_hours, enable_order_management, is_prelaunch, distance_delivery_enabled, delivery_price_per_km, delivery_min_fee, delivery_radius_km, free_delivery_min_order, lalamove_enabled, inventory_enabled, low_stock_alerts_enabled, auto_86_enabled, pickup_scan_enabled, qr_handoff_enabled, messenger_redirect_enabled, outlet_selection_timing, loyalty_enabled, presell_enabled, checkout_upsell_enabled, menu_engineering_enabled, bundles_enabled on public.tenants
+  for each row when ((old.is_active, old.operating_hours, old.timezone, old.enforce_operating_hours, old.enable_order_management, old.is_prelaunch, old.distance_delivery_enabled, old.delivery_price_per_km, old.delivery_min_fee, old.delivery_radius_km, old.free_delivery_min_order, old.lalamove_enabled, old.inventory_enabled, old.low_stock_alerts_enabled, old.auto_86_enabled, old.pickup_scan_enabled, old.qr_handoff_enabled, old.messenger_redirect_enabled, old.outlet_selection_timing, old.loyalty_enabled, old.presell_enabled, old.checkout_upsell_enabled, old.menu_engineering_enabled, old.bundles_enabled) is distinct from (new.is_active, new.operating_hours, new.timezone, new.enforce_operating_hours, new.enable_order_management, new.is_prelaunch, new.distance_delivery_enabled, new.delivery_price_per_km, new.delivery_min_fee, new.delivery_radius_km, new.free_delivery_min_order, new.lalamove_enabled, new.inventory_enabled, new.low_stock_alerts_enabled, new.auto_86_enabled, new.pickup_scan_enabled, new.qr_handoff_enabled, new.messenger_redirect_enabled, new.outlet_selection_timing, new.loyalty_enabled, new.presell_enabled, new.checkout_upsell_enabled, new.menu_engineering_enabled, new.bundles_enabled))
+  execute function public.store_activity_on_tenants_settings();
 
 drop trigger if exists store_activity_outlets_settings on public.outlets;
 create trigger store_activity_outlets_settings
-  after update on public.outlets
-  for each row execute function public.store_activity_on_settings();
+  after update of is_active, operating_hours, timezone, supports_pickup, supports_delivery, supports_dine_in, delivery_radius_km on public.outlets
+  for each row when ((old.is_active, old.operating_hours, old.timezone, old.supports_pickup, old.supports_delivery, old.supports_dine_in, old.delivery_radius_km) is distinct from (new.is_active, new.operating_hours, new.timezone, new.supports_pickup, new.supports_delivery, new.supports_dine_in, new.delivery_radius_km))
+  execute function public.store_activity_on_outlets_settings();
 
 -- order_types: no INSERT capture — a new store's defaults are created by trigger.
 drop trigger if exists store_activity_order_types_settings on public.order_types;
 create trigger store_activity_order_types_settings
-  after update or delete on public.order_types
-  for each row execute function public.store_activity_on_settings();
+  after update of is_enabled, minimum_order_amount, service_charge_enabled, service_charge_type, service_charge_value, pos_markup_percent, available_on_web, available_on_pos, after_billing_payment_enabled, advance_order_enabled on public.order_types
+  for each row when ((old.is_enabled, old.minimum_order_amount, old.service_charge_enabled, old.service_charge_type, old.service_charge_value, old.pos_markup_percent, old.available_on_web, old.available_on_pos, old.after_billing_payment_enabled, old.advance_order_enabled) is distinct from (new.is_enabled, new.minimum_order_amount, new.service_charge_enabled, new.service_charge_type, new.service_charge_value, new.pos_markup_percent, new.available_on_web, new.available_on_pos, new.after_billing_payment_enabled, new.advance_order_enabled))
+  execute function public.store_activity_on_order_types_settings();
+drop trigger if exists store_activity_order_types_removed on public.order_types;
+create trigger store_activity_order_types_removed
+  after delete on public.order_types
+  for each row execute function public.store_activity_on_order_types_settings();
 
 drop trigger if exists store_activity_payment_methods_settings on public.payment_methods;
 create trigger store_activity_payment_methods_settings
-  after insert or update or delete on public.payment_methods
-  for each row execute function public.store_activity_on_settings();
+  after update of name, details, qr_code_url, is_active, require_payment_proof, skip_payment_details on public.payment_methods
+  for each row when ((old.name, old.details, old.qr_code_url, old.is_active, old.require_payment_proof, old.skip_payment_details) is distinct from (new.name, new.details, new.qr_code_url, new.is_active, new.require_payment_proof, new.skip_payment_details))
+  execute function public.store_activity_on_payment_methods_settings();
+drop trigger if exists store_activity_payment_methods_added_removed on public.payment_methods;
+create trigger store_activity_payment_methods_added_removed
+  after insert or delete on public.payment_methods
+  for each row execute function public.store_activity_on_payment_methods_settings();
 
 -- ============================================
 -- vouchers / loyalty_programs / sms_campaigns / assistant_actions
 -- ============================================
-create or replace function public.store_activity_on_marketing()
+-- Same rule: whitelisted columns only. vouchers.used_count (bumped by
+-- sync_voucher_used_count on every redemption) is NOT in the list, so a
+-- redemption never fires the voucher trigger.
+create or replace function public.store_activity_record_marketing(
+  p_tenant_id uuid, p_kind text, p_table text, p_id text, p_op text,
+  p_old jsonb, p_new jsonb, p_keys text[], p_name text, p_subject text, p_outlet_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_diff record;
+  v_title text;
+begin
+  select * into v_diff from public.store_activity_diff(p_old, p_new, p_keys);
+  if p_op = 'UPDATE' and v_diff.o_after = '{}'::jsonb then
+    return;
+  end if;
+  v_title := case
+    when p_op = 'INSERT' then p_name || ' created' || coalesce(' (' || (p_new ->> 'status') || ')', '')
+    when p_op = 'DELETE' then p_name || ' deleted'
+    when v_diff.o_after ? 'status' then p_name || ' ' || coalesce(p_old ->> 'status', '?') || ' → ' || (p_new ->> 'status')
+    when v_diff.o_after ? 'is_active' then p_name || case when (p_new ->> 'is_active')::boolean then ' turned on' else ' turned off' end
+    else p_name || ' changed' end;
+  perform public.store_activity_write(
+    p_tenant_id => p_tenant_id, p_kind => p_kind,
+    p_event_key => p_table || ':' || p_id || ':' || lower(p_op) || ':' || gen_random_uuid(),
+    p_source_table => p_table, p_source_id => p_id, p_occurred_at => now(),
+    p_outlet_id => p_outlet_id, p_actor_user_id => public.store_activity_actor(),
+    p_subject_type => p_subject, p_subject_ref => p_id,
+    p_before => case when p_op = 'UPDATE' then v_diff.o_before end,
+    p_after => case when p_op = 'UPDATE' then v_diff.o_after end,
+    p_summary => jsonb_strip_nulls(jsonb_build_object('title', v_title, 'name', p_name,
+      'status', coalesce(p_new ->> 'status', case when p_new ? 'is_active' then
+        case when (p_new ->> 'is_active')::boolean then 'active' else 'inactive' end end))));
+end;
+$$;
+
+create or replace function public.store_activity_on_vouchers()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_old jsonb := case when tg_op = 'INSERT' then null else to_jsonb(old) end;
-  v_new jsonb := case when tg_op = 'DELETE' then null else to_jsonb(new) end;
-  v_row jsonb := coalesce(v_new, v_old);
-  v_kind text;
-  v_keys text[];
-  v_diff record;
-  v_title text;
-  v_name text;
-  v_subject text;
-  v_actor uuid := public.store_activity_actor();
+  v_row public.vouchers := case when tg_op = 'DELETE' then old else new end;
 begin
-  case tg_table_name
-    when 'vouchers' then
-      v_kind := 'voucher.status_changed';
-      v_subject := 'voucher';
-      v_keys := array['is_active', 'discount_type', 'discount_value', 'max_discount_amount', 'starts_at', 'ends_at', 'usage_limit_total'];
-      v_name := 'Voucher ' || coalesce(v_row ->> 'code', v_row ->> 'name', '');
-    when 'loyalty_programs' then
-      v_kind := 'loyalty.program_changed';
-      v_subject := 'setting';
-      v_keys := array['status', 'name', 'ends_at'];
-      v_name := coalesce(nullif(v_row ->> 'name', ''), 'Loyalty program');
-    when 'sms_campaigns' then
-      v_kind := 'campaign.status_changed';
-      v_subject := 'setting';
-      v_keys := array['status'];
-      v_name := 'Text campaign ' || coalesce(v_row ->> 'name', '');
-      -- Drafts (incl. onboarding's launch drafts) text no one; only real moves count.
-      if tg_op = 'INSERT' and coalesce(v_row ->> 'status', 'draft') = 'draft' then
-        return null;
-      end if;
-    when 'assistant_actions' then
-      if tg_op <> 'UPDATE' or v_row ->> 'status' <> 'applied' or (v_old ->> 'status') = 'applied' then
-        return null;
-      end if;
-      perform public.store_activity_record(
-        p_tenant_id => (v_row ->> 'tenant_id')::uuid, p_kind => 'assistant.action_confirmed',
-        p_event_key => 'assistant_actions:' || (v_row ->> 'id') || ':applied',
-        p_source_table => 'assistant_actions', p_source_id => v_row ->> 'id',
-        p_occurred_at => coalesce(nullif(v_row ->> 'decided_at', '')::timestamptz, now()),
-        p_actor_user_id => coalesce(nullif(v_row ->> 'decided_by', '')::uuid, v_actor),
-        p_subject_type => 'setting', p_subject_ref => 'assistant_actions:' || (v_row ->> 'id'),
-        p_summary => jsonb_strip_nulls(jsonb_build_object(
-          'title', 'Owl assistant change applied' || coalesce(': ' || left(nullif(btrim(v_row ->> 'summary'), ''), 140), ''),
-          'actionKind', v_row ->> 'kind')));
-      return null;
-  end case;
-
-  select * into v_diff from public.store_activity_diff(v_old, v_new, v_keys);
-  if tg_op = 'UPDATE' and v_diff.o_after = '{}'::jsonb then
-    return null;
-  end if;
-  v_title := case
-    when tg_op = 'INSERT' then v_name || ' created' || coalesce(' (' || (v_row ->> 'status') || ')', '')
-    when tg_op = 'DELETE' then v_name || ' deleted'
-    when v_diff.o_after ? 'status' then v_name || ' ' || coalesce(v_old ->> 'status', '?') || ' → ' || (v_new ->> 'status')
-    when v_diff.o_after ? 'is_active' then v_name || case when (v_new ->> 'is_active')::boolean then ' turned on' else ' turned off' end
-    else v_name || ' changed' end;
-
-  perform public.store_activity_record(
-    p_tenant_id => (v_row ->> 'tenant_id')::uuid, p_kind => v_kind,
-    p_event_key => tg_table_name || ':' || (v_row ->> 'id') || ':' || lower(tg_op) || ':' || gen_random_uuid(),
-    p_source_table => tg_table_name, p_source_id => v_row ->> 'id', p_occurred_at => now(),
-    p_outlet_id => case when tg_table_name = 'loyalty_programs' then nullif(v_row ->> 'outlet_id', '')::uuid end,
-    p_actor_user_id => v_actor,
-    p_subject_type => v_subject, p_subject_ref => v_row ->> 'id',
-    p_before => case when tg_op = 'UPDATE' then v_diff.o_before end,
-    p_after => case when tg_op = 'UPDATE' then v_diff.o_after end,
-    p_summary => jsonb_strip_nulls(jsonb_build_object('title', v_title, 'name', v_name,
-      'status', coalesce(v_new ->> 'status', case when v_new ? 'is_active' then
-        case when (v_new ->> 'is_active')::boolean then 'active' else 'inactive' end end))));
+  perform public.store_activity_record_marketing(
+    v_row.tenant_id, 'voucher.status_changed', 'vouchers', v_row.id::text, tg_op,
+    case when tg_op = 'INSERT' then null else jsonb_build_object('is_active', old.is_active, 'discount_type', old.discount_type, 'discount_value', old.discount_value, 'max_discount_amount', old.max_discount_amount, 'starts_at', old.starts_at, 'ends_at', old.ends_at, 'usage_limit_total', old.usage_limit_total) end,
+    case when tg_op = 'DELETE' then null else jsonb_build_object('is_active', new.is_active, 'discount_type', new.discount_type, 'discount_value', new.discount_value, 'max_discount_amount', new.max_discount_amount, 'starts_at', new.starts_at, 'ends_at', new.ends_at, 'usage_limit_total', new.usage_limit_total) end,
+    array['is_active', 'discount_type', 'discount_value', 'max_discount_amount', 'starts_at', 'ends_at', 'usage_limit_total'],
+    'Voucher ' || coalesce(v_row.code, v_row.name, ''), 'voucher', null);
   return null;
 exception when others then
-  raise warning 'store_activity_on_marketing(%) failed: % (%)', tg_table_name, sqlerrm, sqlstate;
+  raise warning 'store_activity trigger (vouchers) failed: % (%)', sqlerrm, sqlstate;
+  return null;
+end;
+$$;
+
+create or replace function public.store_activity_on_loyalty_programs()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.store_activity_record_marketing(
+    new.tenant_id, 'loyalty.program_changed', 'loyalty_programs', new.id::text, tg_op,
+    case when tg_op = 'INSERT' then null else jsonb_build_object('status', old.status, 'name', old.name, 'ends_at', old.ends_at) end,
+    jsonb_build_object('status', new.status, 'name', new.name, 'ends_at', new.ends_at),
+    array['status', 'name', 'ends_at'],
+    coalesce(nullif(new.name, ''), 'Loyalty program'), 'setting', new.outlet_id);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (loyalty_programs) failed: % (%)', sqlerrm, sqlstate;
+  return null;
+end;
+$$;
+
+-- Drafts (incl. onboarding's launch drafts) text no one: an INSERT is only
+-- recorded when the campaign starts life outside 'draft'.
+create or replace function public.store_activity_on_sms_campaigns()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' and coalesce(new.status, 'draft') = 'draft' then
+    return null;
+  end if;
+  perform public.store_activity_record_marketing(
+    new.tenant_id, 'campaign.status_changed', 'sms_campaigns', new.id::text, tg_op,
+    case when tg_op = 'INSERT' then null else jsonb_build_object('status', old.status, 'name', old.name) end,
+    jsonb_build_object('status', new.status, 'name', new.name),
+    array['status', 'name'],
+    'Text campaign ' || coalesce(new.name, ''), 'setting', null);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (sms_campaigns) failed: % (%)', sqlerrm, sqlstate;
+  return null;
+end;
+$$;
+
+create or replace function public.store_activity_on_assistant_actions()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.store_activity_write(
+    p_tenant_id => new.tenant_id, p_kind => 'assistant.action_confirmed',
+    p_event_key => 'assistant_actions:' || new.id || ':applied',
+    p_source_table => 'assistant_actions', p_source_id => new.id::text,
+    p_occurred_at => coalesce(new.decided_at, now()),
+    p_actor_user_id => coalesce(public.store_activity_actor(), new.decided_by),
+    p_subject_type => 'setting', p_subject_ref => 'assistant_actions:' || new.id,
+    p_summary => jsonb_strip_nulls(jsonb_build_object(
+      'title', 'Owl assistant change applied' || coalesce(': ' || left(nullif(btrim(new.summary), ''), 140), ''),
+      'actionKind', new.kind)));
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (assistant_actions) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
 
 drop trigger if exists store_activity_vouchers on public.vouchers;
-create trigger store_activity_vouchers
-  after insert or update or delete on public.vouchers
-  for each row execute function public.store_activity_on_marketing();
+drop trigger if exists store_activity_vouchers_change on public.vouchers;
+create trigger store_activity_vouchers_change
+  after update of is_active, discount_type, discount_value, max_discount_amount, starts_at, ends_at, usage_limit_total on public.vouchers
+  for each row when ((old.is_active, old.discount_type, old.discount_value, old.max_discount_amount, old.starts_at, old.ends_at, old.usage_limit_total) is distinct from (new.is_active, new.discount_type, new.discount_value, new.max_discount_amount, new.starts_at, new.ends_at, new.usage_limit_total))
+  execute function public.store_activity_on_vouchers();
+drop trigger if exists store_activity_vouchers_added_removed on public.vouchers;
+create trigger store_activity_vouchers_added_removed
+  after insert or delete on public.vouchers
+  for each row execute function public.store_activity_on_vouchers();
 
 drop trigger if exists store_activity_loyalty_programs on public.loyalty_programs;
 create trigger store_activity_loyalty_programs
   after insert or update of status, name, ends_at on public.loyalty_programs
-  for each row execute function public.store_activity_on_marketing();
+  for each row execute function public.store_activity_on_loyalty_programs();
 
 drop trigger if exists store_activity_sms_campaigns on public.sms_campaigns;
 create trigger store_activity_sms_campaigns
-  after insert or update of status on public.sms_campaigns
-  for each row execute function public.store_activity_on_marketing();
+  after insert or update of status, name on public.sms_campaigns
+  for each row execute function public.store_activity_on_sms_campaigns();
 
 drop trigger if exists store_activity_assistant_actions on public.assistant_actions;
 create trigger store_activity_assistant_actions
   after update of status on public.assistant_actions
-  for each row execute function public.store_activity_on_marketing();
+  for each row when (new.status = 'applied' and old.status is distinct from 'applied')
+  execute function public.store_activity_on_assistant_actions();
 
 -- ============================================
 -- Lock down
 -- ============================================
-revoke all on function public.store_activity_record_settings(uuid, uuid, jsonb, jsonb, text[], text, text, text, text) from public, anon, authenticated;
+revoke all on function public.store_activity_record_settings(uuid, uuid, jsonb, jsonb, text[], text, text, text, text, text[]) from public, anon, authenticated;
+revoke all on function public.store_activity_record_marketing(uuid, text, text, text, text, jsonb, jsonb, text[], text, text, uuid) from public, anon, authenticated;
+revoke all on function public.store_activity_diff(jsonb, jsonb, text[]) from public, anon, authenticated;
+revoke all on function public.store_activity_setting_label(text) from public, anon, authenticated;
+revoke all on function public.store_activity_settings_title(text, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.store_activity_record_menu_change(uuid, uuid, uuid, text, numeric, numeric, numeric, numeric, boolean, boolean, boolean, boolean, boolean, text, text) from public, anon, authenticated;
 revoke all on function public.store_activity_on_menu_items() from public, anon, authenticated;
 revoke all on function public.store_activity_on_outlet_menu_items() from public, anon, authenticated;
 revoke all on function public.store_activity_on_app_users() from public, anon, authenticated;
-revoke all on function public.store_activity_on_settings() from public, anon, authenticated;
-revoke all on function public.store_activity_on_marketing() from public, anon, authenticated;
+revoke all on function public.store_activity_on_tenants_settings() from public, anon, authenticated;
+revoke all on function public.store_activity_on_outlets_settings() from public, anon, authenticated;
+revoke all on function public.store_activity_on_order_types_settings() from public, anon, authenticated;
+revoke all on function public.store_activity_on_payment_methods_settings() from public, anon, authenticated;
+revoke all on function public.store_activity_on_vouchers() from public, anon, authenticated;
+revoke all on function public.store_activity_on_loyalty_programs() from public, anon, authenticated;
+revoke all on function public.store_activity_on_sms_campaigns() from public, anon, authenticated;
+revoke all on function public.store_activity_on_assistant_actions() from public, anon, authenticated;
+
+reset lock_timeout;
 
 -- ============================================
 -- Rollback
@@ -573,8 +694,11 @@ revoke all on function public.store_activity_on_marketing() from public, anon, a
 -- drop trigger if exists store_activity_assistant_actions on public.assistant_actions;
 -- drop trigger if exists store_activity_sms_campaigns on public.sms_campaigns;
 -- drop trigger if exists store_activity_loyalty_programs on public.loyalty_programs;
--- drop trigger if exists store_activity_vouchers on public.vouchers;
+-- drop trigger if exists store_activity_vouchers_added_removed on public.vouchers;
+-- drop trigger if exists store_activity_vouchers_change on public.vouchers;
+-- drop trigger if exists store_activity_payment_methods_added_removed on public.payment_methods;
 -- drop trigger if exists store_activity_payment_methods_settings on public.payment_methods;
+-- drop trigger if exists store_activity_order_types_removed on public.order_types;
 -- drop trigger if exists store_activity_order_types_settings on public.order_types;
 -- drop trigger if exists store_activity_outlets_settings on public.outlets;
 -- drop trigger if exists store_activity_tenants_settings on public.tenants;
@@ -582,13 +706,20 @@ revoke all on function public.store_activity_on_marketing() from public, anon, a
 -- drop trigger if exists store_activity_outlet_menu_items on public.outlet_menu_items;
 -- drop trigger if exists store_activity_menu_items_add_remove on public.menu_items;
 -- drop trigger if exists store_activity_menu_items_change on public.menu_items;
--- drop function if exists public.store_activity_on_marketing();
--- drop function if exists public.store_activity_on_settings();
+-- drop function if exists public.store_activity_on_assistant_actions();
+-- drop function if exists public.store_activity_on_sms_campaigns();
+-- drop function if exists public.store_activity_on_loyalty_programs();
+-- drop function if exists public.store_activity_on_vouchers();
+-- drop function if exists public.store_activity_on_payment_methods_settings();
+-- drop function if exists public.store_activity_on_order_types_settings();
+-- drop function if exists public.store_activity_on_outlets_settings();
+-- drop function if exists public.store_activity_on_tenants_settings();
+-- drop function if exists public.store_activity_record_marketing(uuid, text, text, text, text, jsonb, jsonb, text[], text, text, uuid);
 -- drop function if exists public.store_activity_on_app_users();
 -- drop function if exists public.store_activity_on_outlet_menu_items();
 -- drop function if exists public.store_activity_on_menu_items();
 -- drop function if exists public.store_activity_record_menu_change(uuid, uuid, uuid, text, numeric, numeric, numeric, numeric, boolean, boolean, boolean, boolean, boolean, text, text);
--- drop function if exists public.store_activity_record_settings(uuid, uuid, jsonb, jsonb, text[], text, text, text, text);
+-- drop function if exists public.store_activity_record_settings(uuid, uuid, jsonb, jsonb, text[], text, text, text, text, text[]);
 -- drop function if exists public.store_activity_settings_title(text, jsonb, jsonb);
 -- drop function if exists public.store_activity_setting_label(text);
 -- drop function if exists public.store_activity_diff(jsonb, jsonb, text[]);

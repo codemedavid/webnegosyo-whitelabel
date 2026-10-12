@@ -55,5 +55,9 @@ export const RAW_SUMMARY = {
   ],
   byActor: [{ actorUserId: '31140db3-eb9f-45c2-b0af-c94763106b67', actorName: 'Ana Reyes', kind: 'refund.issued', count: 2, amount: -370 }],
   byDay: [{ day: '2026-10-12', kind: 'refund.issued', count: 2, amount: -370 }],
+  routine: [
+    { kind: 'order.placed', count: '41', amount: '12850.50' },
+    { kind: 'order.teleported', count: 1, amount: null },
+  ],
   flaggedOpen: 3,
 }

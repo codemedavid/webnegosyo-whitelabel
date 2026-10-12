@@ -21,7 +21,12 @@
 -- live outside this database) produce activity from that table.
 --
 -- Every trigger body is wrapped so an activity failure can never refuse the
--- business write (the writer, store_activity_record, also never raises).
+-- business write: each trigger has exactly ONE exception block around its
+-- whole body; the capture functions and store_activity_write have none.
+
+
+-- Triggers are attached to hot tables: never queue behind a long transaction.
+set lock_timeout = '3s';
 
 -- ============================================
 -- Shared helpers
@@ -111,7 +116,7 @@ begin
 
   v_delta := coalesce(v_new.manual, 0) - coalesce(v_old.manual, 0);
   if v_delta > 0 then
-    perform public.store_activity_record(
+    perform public.store_activity_write(
       p_tenant_id => p_new.tenant_id, p_kind => 'discount.applied',
       p_event_key => 'orders:' || p_new.id || ':discount:manual:' || p_stamp,
       p_source_table => 'orders', p_source_id => p_new.id::text, p_occurred_at => now(),
@@ -130,7 +135,7 @@ begin
         into v_has_claim using p_new.tenant_id, p_new.id::text;
     end if;
     if not v_has_claim then
-      perform public.store_activity_record(
+      perform public.store_activity_write(
         p_tenant_id => p_new.tenant_id, p_kind => 'discount.applied',
         p_event_key => 'orders:' || p_new.id || ':discount:statutory:' || p_stamp,
         p_source_table => 'orders', p_source_id => p_new.id::text, p_occurred_at => now(),
@@ -199,7 +204,7 @@ declare
   v_pay_kind text;
 begin
   if tg_op = 'INSERT' then
-    perform public.store_activity_record(
+    perform public.store_activity_write(
       p_tenant_id => new.tenant_id, p_kind => 'order.placed',
       p_event_key => 'orders:' || new.id || ':placed',
       p_source_table => 'orders', p_source_id => new.id::text, p_occurred_at => new.created_at,
@@ -227,7 +232,7 @@ begin
         v_flags := v_flags || 'repeat_cancels'::text;
       end if;
     end if;
-    perform public.store_activity_record(
+    perform public.store_activity_write(
       p_tenant_id => new.tenant_id, p_kind => v_kind,
       p_event_key => 'orders:' || new.id || ':status:' || new.status || ':' || v_stamp,
       p_source_table => 'orders', p_source_id => new.id::text, p_occurred_at => now(),
@@ -268,7 +273,7 @@ begin
       v_pay_kind := null;
     end if;
     if v_pay_kind is not null then
-      perform public.store_activity_record(
+      perform public.store_activity_write(
         p_tenant_id => new.tenant_id, p_kind => v_pay_kind,
         p_event_key => 'orders:' || new.id || ':payment:' || new.payment_status || ':' || v_stamp,
         p_source_table => 'orders', p_source_id => new.id::text, p_occurred_at => now(),
@@ -352,7 +357,7 @@ begin
     v_flags := v_flags || 'repeat_cancels'::text;
   end if;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => v_kind,
     p_event_key => 'order_status_events:' || r.id,
     p_source_table => 'order_status_events', p_source_id => r.id::text, p_occurred_at => r.occurred_at,
@@ -374,9 +379,6 @@ begin
       'source', r.source)),
     p_flags => v_flags);
   return;
-exception when others then
-  raise warning 'store_activity_capture_order_status_events failed: % (%)', sqlerrm, sqlstate;
-  return;
 end;
 $$;
 
@@ -388,6 +390,9 @@ set search_path = ''
 as $$
 begin
   perform public.store_activity_capture_order_status_events(new);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (order_status_events) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -431,7 +436,7 @@ begin
     v_kind := 'payment.recorded';
   end if;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => v_kind,
     p_event_key => 'order_payments:' || r.id,
     p_source_table => 'order_payments', p_source_id => r.id::text, p_occurred_at => r.created_at,
@@ -450,9 +455,6 @@ begin
       'orderTotal', v_order.total)),
     p_flags => v_flags);
   return;
-exception when others then
-  raise warning 'store_activity_capture_order_payments failed: % (%)', sqlerrm, sqlstate;
-  return;
 end;
 $$;
 
@@ -464,6 +466,9 @@ set search_path = ''
 as $$
 begin
   perform public.store_activity_capture_order_payments(new);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (order_payments) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -522,7 +527,7 @@ begin
     v_flags := v_flags || 'removed_after_kitchen'::text;
   end if;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => 'order.edited',
     p_event_key => 'order_revisions:' || r.id,
     p_source_table => 'order_revisions', p_source_id => r.id::text, p_occurred_at => r.created_at,
@@ -541,9 +546,6 @@ begin
       'orderStatus', v_order.status)),
     p_flags => v_flags);
   return;
-exception when others then
-  raise warning 'store_activity_capture_order_revisions failed: % (%)', sqlerrm, sqlstate;
-  return;
 end;
 $$;
 
@@ -555,6 +557,9 @@ set search_path = ''
 as $$
 begin
   perform public.store_activity_capture_order_revisions(new);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (order_revisions) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -581,7 +586,7 @@ begin
   select v.code into v_code from public.vouchers v where v.id = v_row.voucher_id;
   v_label := public.store_activity_platform_order_label(v_row.tenant_id, v_row.order_id);
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => v_row.tenant_id,
     p_kind => case when v_released then 'voucher.released' else 'voucher.redeemed' end,
     p_event_key => 'voucher_redemptions:' || v_row.id || case when v_released then ':released' else '' end,
@@ -598,9 +603,6 @@ begin
         else 'Voucher ' || coalesce(v_code, '') || ' used on ' || coalesce(v_label, 'an order') end,
       'code', v_code, 'channel', v_row.channel, 'orderRef', v_row.order_id)));
   return;
-exception when others then
-  raise warning 'store_activity_capture_voucher_redemption failed: % (%)', sqlerrm, sqlstate;
-  return;
 end;
 $$;
 
@@ -616,6 +618,9 @@ begin
   else
     perform public.store_activity_capture_voucher_redemption(new, false);
   end if;
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (voucher_redemptions) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -646,7 +651,7 @@ begin
     when 'purged' then nullif(r.detail ->> 'orders', '')::numeric
     else nullif(r.detail ->> 'restored', '')::numeric
   end;
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id,
     p_kind => case when r.action = 'restored' then 'order.reopened' else 'order.deleted' end,
     p_event_key => 'order_deletion_audit:' || r.id,
@@ -661,9 +666,6 @@ begin
         else 'Restored ' || coalesce(v_count::text, 'some') || ' deleted orders' end,
       'action', r.action, 'scope', r.detail -> 'scope')));
   return;
-exception when others then
-  raise warning 'store_activity_capture_order_deletion_audit failed: % (%)', sqlerrm, sqlstate;
-  return;
 end;
 $$;
 
@@ -675,6 +677,9 @@ set search_path = ''
 as $$
 begin
   perform public.store_activity_capture_order_deletion_audit(new);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (order_deletion_audit) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -690,6 +695,11 @@ create trigger store_activity_order_deletion_audit
 -- The table ships from another migration track and may be absent where this
 -- file runs, so the trigger function reads NEW as jsonb and the trigger is
 -- only created when the table exists. Never copies claimant_name / id_number.
+-- NOTE for the gov-discounts migration track: if gov_discount_claims is created
+-- (or re-created) AFTER this file ran, that migration must attach the trigger:
+--   create trigger store_activity_gov_discount_claims after insert on public.gov_discount_claims
+--     for each row execute function public.store_activity_on_gov_discount_claims();
+-- (live today: the table exists, so the DO block below attaches it).
 create or replace function public.store_activity_on_gov_discount_claims()
 returns trigger
 language plpgsql
@@ -720,7 +730,7 @@ begin
     return null;
   end if;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => v_tenant, p_kind => 'discount.applied',
     p_event_key => 'gov_discount_claims:' || (v ->> 'id'),
     p_source_table => 'gov_discount_claims', p_source_id => v ->> 'id',
@@ -769,6 +779,8 @@ revoke all on function public.store_activity_on_order_deletion_audit() from publ
 revoke all on function public.store_activity_capture_order_deletion_audit(public.order_deletion_audit) from public, anon, authenticated;
 revoke all on function public.store_activity_on_gov_discount_claims() from public, anon, authenticated;
 revoke all on function public.store_activity_platform_order_label(uuid, text) from public, anon, authenticated;
+
+reset lock_timeout;
 
 -- ============================================
 -- Rollback

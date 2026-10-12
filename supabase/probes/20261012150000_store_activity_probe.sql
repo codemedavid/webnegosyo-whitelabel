@@ -16,7 +16,10 @@
 --      incl. the platform cancel dedupe against a platform order_status_events row;
 --  (b) visibility: branch-locked staff without activity_view sees ONLY own rows with
 --      flags stripped and nothing for p_flagged_only; owner sees all; anon is refused;
---  (c) UPDATE / DELETE on store_activity are refused (outside mark_store_activity_reviewed).
+--  (c) UPDATE / DELETE on store_activity are refused (outside mark_store_activity_reviewed);
+--  plus: free-text scrub, one routine stock row per order, JWT-wins actors and the
+--  client actor stamp (M1), a non-owner cannot review their own row (H3), and one
+--  batch of store_activity_backfill_batch.
 
 begin;
 
@@ -112,11 +115,14 @@ begin
   if n <> 1 then raise exception 'probe: expected 1 order.reopened, got %', n; end if;
 
   -- Cash refund on a GCash-paid order → cash_refund_noncash_order (+ refund amount negative).
-  insert into public.order_payments (tenant_id, order_id, kind, amount, payment_method_name, recorded_by, outlet_id)
-  values (t, o1, 'refund', 185, 'Cash', staff, branch);
+  insert into public.order_payments (tenant_id, order_id, kind, amount, payment_method_name, recorded_by, outlet_id, note)
+  values (t, o1, 'refund', 185, 'Cash', staff, branch, 'sent to 0917 123 4567 / lara@example.com');
   select * into r from public.store_activity where kind = 'refund.issued' and subject_ref = o1::text;
   if r.id is null or r.amount <> -185 or not ('cash_refund_noncash_order' = any (r.flags)) then
     raise exception 'probe: refund row wrong: %', to_jsonb(r);
+  end if;
+  if r.note is distinct from 'sent to ••• / •••' then
+    raise exception 'probe: free-text note not scrubbed: %', r.note;
   end if;
 
   -- Revision removing an item while the kitchen has it → removed_after_kitchen.
@@ -152,12 +158,22 @@ begin
   if r.id is null or r.amount <> -100 or r.quantity <> -2 then raise exception 'probe: stock.wasted wrong: %', to_jsonb(r); end if;
 
   -- inventory audit: duplicate → one row + flag; nothing_to_deduct → nothing.
-  insert into public.inventory_audit_log (tenant_id, event, outcome, source, order_id, outlet_id, actor_user_id)
-  values (t, 'order_sale', 'duplicate', 'pos', o3::text, branch, staff),
-         (t, 'order_sale', 'nothing_to_deduct', 'pos', o2::text, branch, staff);
+  insert into public.inventory_audit_log (tenant_id, event, outcome, source, order_id, outlet_id, actor_user_id, lines)
+  values (t, 'order_sale', 'duplicate', 'pos', o3::text, branch, staff, '[]'::jsonb),
+         (t, 'order_sale', 'nothing_to_deduct', 'pos', o2::text, branch, staff, '[]'::jsonb),
+         (t, 'order_sale', 'applied', 'pos', o1::text, branch, staff,
+          '[{"name":"Rice","quantityDelta":-0.4},{"name":"Pork","quantityDelta":-0.25},{"name":"Egg","quantityDelta":-2}]'::jsonb);
   select count(*) into n from public.store_activity where source_table = 'inventory_audit_log' and occurred_at >= (c ->> 't0')::timestamptz
     and subject_ref in (o2::text, o3::text);
   if n <> 1 then raise exception 'probe: audit-log noise filter expected 1 row, got %', n; end if;
+  -- One routine row per order application (not one per ingredient line).
+  select * into r from public.store_activity where kind = 'stock.sale' and subject_ref = o1::text;
+  if r.id is null or not r.is_routine or (r.summary ->> 'lineCount')::integer <> 3
+     or (r.summary -> 'lines' -> 0 ->> 'name') <> 'Egg' then
+    raise exception 'probe: per-order stock.sale row wrong: %', to_jsonb(r);
+  end if;
+  select count(*) into n from public.store_activity where kind = 'stock.sale' and subject_ref = o1::text;
+  if n <> 1 then raise exception 'probe: expected exactly 1 stock.sale row for o1, got %', n; end if;
   if not exists (select 1 from public.store_activity where kind = 'stock.duplicate_blocked' and subject_ref = o3::text
                  and 'duplicate_deduction' = any (flags)) then
     raise exception 'probe: duplicate_deduction flag missing';
@@ -166,11 +182,15 @@ begin
   -- Drawer: open, close ₱150 short → drawer_variance.
   insert into public.staff_shifts (id, tenant_id, outlet_id, staff_user_id, staff_name, opening_float)
   values (v_shift, t, branch, staff, 'Probe Staff', 1000);
+  -- The client claims the OWNER closed it; the JWT (staff) must win.
   update public.staff_shifts set status = 'closed', closed_at = now(), expected_cash = 1500, closing_count = 1350,
-    closed_by = staff, closed_by_name = 'Probe Staff' where id = v_shift;
+    closed_by = (c ->> 'owner')::uuid, closed_by_name = 'Owner' where id = v_shift;
   select * into r from public.store_activity where kind = 'shift.closed' and subject_ref = v_shift::text;
   if r.id is null or r.amount <> -150 or not ('drawer_variance' = any (r.flags)) then
     raise exception 'probe: shift.closed wrong: %', to_jsonb(r);
+  end if;
+  if r.actor_user_id <> staff then
+    raise exception 'probe: client-asserted closed_by beat the JWT actor: %', r.actor_user_id;
   end if;
   select count(*) into n from public.store_activity where kind = 'shift.opened' and subject_ref = v_shift::text;
   if n <> 1 then raise exception 'probe: shift.opened expected 1, got %', n; end if;
@@ -202,6 +222,55 @@ begin
     p_event_key => 'probe:bad-kind', p_source_table => 'probe', p_source_id => 'probe');
   if exists (select 1 from public.store_activity where event_key = 'probe:bad-kind') then
     raise exception 'probe: unknown kind was accepted';
+  end if;
+end;
+$$;
+
+-- ---------------------------------------------------------------- (a2) scrub, client stamp, backfill batch
+do $$
+declare
+  v record;
+  n integer;
+begin
+  if public.store_activity_scrub('call +63 917 123 4567 or 09171234567, mail a.b@x.ph') <> 'call ••• or •••, mail •••' then
+    raise exception 'probe: scrub wrong: %', public.store_activity_scrub('call +63 917 123 4567 or 09171234567, mail a.b@x.ph');
+  end if;
+  if public.store_activity_scrub('Order #14 · 2 pcs · ₱185') <> 'Order #14 · 2 pcs · ₱185' then
+    raise exception 'probe: scrub touched harmless text';
+  end if;
+
+  -- Batched backfill: one bounded batch inside this rolled-back transaction.
+  select * into v from public.store_activity_backfill_batch('order_payments', null, null, 5);
+  if v.rows_scanned < 1 or v.rows_scanned > 5 or v.next_id is null then
+    raise exception 'probe: backfill batch returned %', to_jsonb(v);
+  end if;
+  select * into v from public.store_activity_backfill_batch('order_payments', v.next_ts, v.next_id, 5);
+  if v.rows_scanned < 0 then raise exception 'probe: second backfill batch failed'; end if;
+  if coalesce(current_setting('app.store_activity_backfill', true), '') = 'on' then
+    raise exception 'probe: backfill flag left on after the batch';
+  end if;
+  begin
+    perform public.store_activity_backfill_batch('nope');
+    raise exception 'probe: unknown backfill source accepted';
+  exception when others then
+    if sqlerrm not like '%Unknown backfill source%' then raise; end if;
+  end;
+end;
+$$;
+
+-- Client-written actor columns are stamped from the JWT (M1).
+create temp table probe_stamp (id int, closed_by uuid) on commit drop;
+grant all on probe_stamp to authenticated;
+create trigger probe_stamp before insert or update on probe_stamp
+  for each row execute function public.store_activity_stamp_client_actor('closed_by');
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', (select v from probe_ctx where k = 'staff'), 'role', 'authenticated')::text, true);
+insert into probe_stamp values (1, (select v from probe_ctx where k = 'owner')::uuid);
+reset role;
+do $$
+begin
+  if (select closed_by from probe_stamp where id = 1) <> (select v from probe_ctx where k = 'staff')::uuid then
+    raise exception 'probe: client-asserted closed_by was not stamped from the JWT';
   end if;
 end;
 $$;
@@ -283,6 +352,12 @@ begin
   -- Summary: statutory split + flaggedOpen.
   v_summary := public.get_store_activity_summary(t, t0 - interval '1 minute', now() + interval '1 minute');
   if (v_summary ->> 'flaggedOpen')::integer < 6 then raise exception 'probe: owner flaggedOpen too low: %', v_summary ->> 'flaggedOpen'; end if;
+  if exists (select 1 from jsonb_array_elements(v_summary -> 'byKind') e where e ->> 'kind' in ('order.placed', 'payment.charged', 'stock.sale')) then
+    raise exception 'probe: routine kinds leaked into byKind';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(v_summary -> 'routine') e where e ->> 'kind' = 'order.placed') then
+    raise exception 'probe: routine roll-up missing order.placed';
+  end if;
   if not exists (select 1 from jsonb_array_elements(v_summary -> 'byKind') e
                  where e ->> 'kind' = 'discount.applied' and (e ->> 'statutory')::boolean) then
     raise exception 'probe: summary did not split statutory discounts';
@@ -297,6 +372,30 @@ begin
     perform public.get_store_activity_summary(t, now() - interval '200 days', now());
     raise exception 'probe: summary accepted a 200-day window';
   exception when invalid_parameter_value then null;
+  end;
+end;
+$$;
+
+-- H3: a non-owner with the full view still cannot review their OWN row.
+reset role;
+update public.app_users set permissions = array_append(permissions, 'activity_view')
+ where user_id = (select v from probe_ctx where k = 'staff')::uuid;
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', (select v from probe_ctx where k = 'staff'), 'role', 'authenticated')::text, true);
+do $$
+declare
+  t uuid := (select v from probe_ctx where k = 'tenant')::uuid;
+  t0 timestamptz := (select v from probe_ctx where k = 't0')::timestamptz;
+  staff uuid := (select v from probe_ctx where k = 'staff')::uuid;
+  v_id uuid;
+begin
+  select id into v_id from public.get_store_activity(p_tenant_id => t, p_since => t0, p_flagged_only => true)
+   where actor_user_id = staff and reviewed_at is null limit 1;
+  if v_id is null then raise exception 'probe: no open flagged own row to test H3 with'; end if;
+  begin
+    perform public.mark_store_activity_reviewed(v_id);
+    raise exception 'probe: staff reviewed their own flagged row';
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;

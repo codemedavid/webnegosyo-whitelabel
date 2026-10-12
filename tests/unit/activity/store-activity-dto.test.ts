@@ -73,6 +73,13 @@ describe('parseStoreActivitySummary', () => {
       actorUserId: '31140db3-eb9f-45c2-b0af-c94763106b67', actorName: 'Ana Reyes', kind: 'refund.issued', count: 2, amount: -370,
     })
     expect(summary.byDay).toEqual([{ day: '2026-10-12', kind: 'refund.issued', count: 2, amount: -370 }])
+    expect(summary.routine).toEqual([{ kind: 'order.placed', count: 41, amount: 12850.5 }])
+  })
+
+  it('treats a missing routine roll-up as empty', () => {
+    const { routine, ...older } = RAW_SUMMARY
+    expect(routine).toBeDefined()
+    expect(parseStoreActivitySummary(older).routine).toEqual([])
   })
 
   it('fails loudly on a malformed summary', () => {

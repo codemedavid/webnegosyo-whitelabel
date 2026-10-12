@@ -66,10 +66,19 @@ export interface StoreActivityDayTotal {
   amount: number | null
 }
 
+/** One roll-up line per routine kind (orders placed, stock used, …). */
+export interface StoreActivityRoutineTotal {
+  kind: ActivityKind
+  count: number
+  amount: number | null
+}
+
 export interface StoreActivitySummary {
+  /** Non-routine kinds only (routine kinds are in `routine`). */
   byKind: readonly StoreActivityKindTotal[]
   byActor: readonly StoreActivityActorTotal[]
   byDay: readonly StoreActivityDayTotal[]
+  routine: readonly StoreActivityRoutineTotal[]
   /** Open (unreviewed) flagged rows; 0 for callers who cannot see flags. */
   flaggedOpen: number
 }

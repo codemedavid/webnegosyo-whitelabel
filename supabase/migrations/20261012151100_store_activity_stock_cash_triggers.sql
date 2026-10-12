@@ -1,7 +1,8 @@
 -- Store activity — stock, cash drawer and loyalty triggers
 --
---   stock_movements      → stock.received / stock.wasted / stock.adjusted (ad-hoc set),
---                          stock.sale / stock.restored (routine). Count-session lines and
+--   stock_movements      → stock.received / stock.wasted / stock.adjusted (ad-hoc set). Sale /
+--                          void lines are NOT rows (one per ingredient line was the noise); the
+--                          order's application is one routine row from inventory_audit_log. Count-session lines and
 --                          transfer legs are NOT rows of their own: the count close and the
 --                          transfer status rows summarise them (no double-reporting).
 --   inventory_counts     → stock.counted on close (count_variance flag)
@@ -9,7 +10,9 @@
 --   stock_alerts         → stock.alert (new alert, or escalation low → out)
 --   inventory_audit_log  → NOISE-FILTERED: only rows that say something the movements
 --                          don't. outcome 'duplicate' → stock.duplicate_blocked
---                          (duplicate_deduction flag); 'failed' → stock.alert "stock wasn't
+--                          (duplicate_deduction flag); applied order_sale / order_redeplete /
+--                          order_restore → ONE routine stock.sale / stock.restored per order (top
+--                          lines + count in summary); 'failed' → stock.alert "stock wasn't
 --                          deducted"; applied + is_suspected_duplicate → stock.alert. The
 --                          ~82% 'nothing_to_deduct' rows, 'applied' (the movements already
 --                          say it) and 'cancelled_first' are ignored.
@@ -17,7 +20,66 @@
 --   shift_cash_movements → cash.pay_in / cash.pay_out / cash.collected
 --   loyalty_activity     → loyalty.* (that table is already a trigger-fed read model;
 --                          customer_key is a phone and is never copied — subject_ref
---                          is an opaque md5 slice so one member's rows still group).
+--                          is the member's loyalty_balances.id, never phone-derived).
+
+
+-- Triggers are attached to hot tables: never queue behind a long transaction.
+set lock_timeout = '3s';
+
+-- ============================================
+-- Actor columns a client writes are stamped from the JWT
+-- ============================================
+-- staff_shifts / inventory_counts / stock_transfers are written directly by
+-- the apps under RLS, so closed_by / sent_by / received_by were whatever the
+-- client sent. On a client role (anon / authenticated) any actor column named
+-- in TG_ARGV that is being set is overwritten with auth.uid(). Unlike Phase
+-- 0's stamp_client_actor this does NOT touch created_at (these tables carry
+-- business timestamps the client legitimately supplies, e.g. closed_at).
+-- SECURITY INVOKER on purpose: current_user must be the role doing the write.
+create or replace function public.store_activity_stamp_client_actor()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_col text;
+  v_new jsonb;
+  v_old jsonb;
+  v_patch jsonb := '{}'::jsonb;
+begin
+  if current_user not in ('anon', 'authenticated') then
+    return new;
+  end if;
+  v_new := to_jsonb(new);
+  v_old := case when tg_op = 'UPDATE' then to_jsonb(old) else '{}'::jsonb end;
+  foreach v_col in array tg_argv loop
+    if (v_new ->> v_col) is not null and (v_new -> v_col) is distinct from (v_old -> v_col) then
+      v_patch := v_patch || jsonb_build_object(v_col, auth.uid());
+    end if;
+  end loop;
+  if v_patch <> '{}'::jsonb then
+    new := jsonb_populate_record(new, v_patch);
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.store_activity_stamp_client_actor() from public, anon, authenticated;
+
+drop trigger if exists store_activity_stamp_actor on public.staff_shifts;
+create trigger store_activity_stamp_actor
+  before insert or update of closed_by on public.staff_shifts
+  for each row execute function public.store_activity_stamp_client_actor('closed_by');
+
+drop trigger if exists store_activity_stamp_actor on public.inventory_counts;
+create trigger store_activity_stamp_actor
+  before insert or update of started_by, closed_by on public.inventory_counts
+  for each row execute function public.store_activity_stamp_client_actor('started_by', 'closed_by');
+
+drop trigger if exists store_activity_stamp_actor on public.stock_transfers;
+create trigger store_activity_stamp_actor
+  before insert or update of created_by, sent_by, received_by on public.stock_transfers
+  for each row execute function public.store_activity_stamp_client_actor('created_by', 'sent_by', 'received_by');
 
 -- ============================================
 -- Helpers
@@ -57,8 +119,6 @@ begin
     when r.reason = 'receive' then 'stock.received'
     when r.reason = 'waste' then 'stock.wasted'
     when r.reason = 'stocktake' and r.inventory_count_id is null then 'stock.adjusted'
-    when r.reason = 'sale' then 'stock.sale'
-    when r.reason = 'void' then 'stock.restored'
   end;
   if v_kind is null then
     return;
@@ -77,11 +137,11 @@ begin
     else 'Returned ' || v_qty_text || ' ' || coalesce(v_item.o_name, 'stock') || coalesce(' from ' || v_label, '')
   end;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => v_kind,
     p_event_key => 'stock_movements:' || r.id,
     p_source_table => 'stock_movements', p_source_id => r.id::text, p_occurred_at => r.created_at,
-    p_outlet_id => r.outlet_id, p_actor_user_id => coalesce(r.created_by, public.store_activity_actor()),
+    p_outlet_id => r.outlet_id, p_actor_user_id => coalesce(public.store_activity_actor(), r.created_by),
     p_amount => case v_kind
       when 'stock.received' then -v_cost
       when 'stock.wasted' then -v_cost
@@ -95,9 +155,6 @@ begin
     p_summary => jsonb_strip_nulls(jsonb_build_object('title', v_title, 'itemName', v_item.o_name,
       'costPerUnit', coalesce(r.unit_cost, v_item.o_cost))));
   return;
-exception when others then
-  raise warning 'store_activity_capture_stock_movements failed: % (%)', sqlerrm, sqlstate;
-  return;
 end;
 $$;
 
@@ -110,13 +167,19 @@ as $$
 begin
   perform public.store_activity_capture_stock_movements(new);
   return null;
+exception when others then
+  raise warning 'store_activity trigger (stock_movements) failed: % (%)', sqlerrm, sqlstate;
+  return null;
 end;
 $$;
 
 drop trigger if exists store_activity_stock_movements on public.stock_movements;
+-- sale / void lines are reported once per order by inventory_audit_log.
 create trigger store_activity_stock_movements
   after insert on public.stock_movements
-  for each row execute function public.store_activity_on_stock_movements();
+  for each row
+  when (new.reason in ('receive', 'waste') or (new.reason = 'stocktake' and new.inventory_count_id is null))
+  execute function public.store_activity_on_stock_movements();
 
 -- ============================================
 -- inventory_counts (close = one row for the whole count)
@@ -148,21 +211,18 @@ begin
     v_flags := v_flags || 'count_variance'::text;
   end if;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => 'stock.counted',
     p_event_key => 'inventory_counts:' || r.id || ':closed',
     p_source_table => 'inventory_counts', p_source_id => r.id::text,
     p_occurred_at => coalesce(r.closed_at, now()), p_outlet_id => r.outlet_id,
-    p_actor_user_id => coalesce(r.closed_by, public.store_activity_actor()),
+    p_actor_user_id => coalesce(public.store_activity_actor(), r.closed_by),
     p_amount => v_value, p_quantity => v_lines, p_unit => 'items', p_note => r.note,
     p_subject_type => 'count', p_subject_ref => r.id::text,
     p_summary => jsonb_build_object(
       'title', 'Stock count closed · ' || v_lines || ' items, ' || v_off || ' off',
       'lines', v_lines, 'linesOff', v_off, 'varianceValue', v_value, 'businessDay', r.business_day),
     p_flags => v_flags);
-  return;
-exception when others then
-  raise warning 'store_activity_capture_inventory_count failed: % (%)', sqlerrm, sqlstate;
   return;
 end;
 $$;
@@ -177,6 +237,9 @@ begin
   if new.status = 'closed' and old.status is distinct from 'closed' then
     perform public.store_activity_capture_inventory_count(new);
   end if;
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (inventory_counts) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -216,13 +279,13 @@ begin
   select o.name into v_from from public.outlets o where o.id = new.from_outlet_id;
   select o.name into v_to from public.outlets o where o.id = new.to_outlet_id;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => new.tenant_id, p_kind => v_kind,
     p_event_key => 'stock_transfers:' || new.id || ':' || new.status,
     p_source_table => 'stock_transfers', p_source_id => new.id::text,
     p_occurred_at => coalesce(case when new.status = 'sent' then new.sent_at else new.received_at end, now()),
     p_outlet_id => case when new.status = 'sent' then new.from_outlet_id else new.to_outlet_id end,
-    p_actor_user_id => coalesce(case when new.status = 'sent' then new.sent_by else new.received_by end, public.store_activity_actor()),
+    p_actor_user_id => coalesce(public.store_activity_actor(), case when new.status = 'sent' then new.sent_by else new.received_by end),
     p_amount => v_value, p_quantity => v_lines, p_unit => 'items', p_note => new.note,
     p_subject_type => 'transfer', p_subject_ref => new.id::text,
     p_summary => jsonb_strip_nulls(jsonb_build_object(
@@ -256,7 +319,7 @@ declare
   v_item record;
 begin
   select * into v_item from public.store_activity_ingredient(r.inventory_item_id);
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => 'stock.alert',
     p_event_key => 'stock_alerts:' || r.id || ':' || coalesce(r.level, 'alert'),
     p_source_table => 'stock_alerts', p_source_id => r.id::text,
@@ -266,9 +329,6 @@ begin
     p_summary => jsonb_strip_nulls(jsonb_build_object(
       'title', coalesce(v_item.o_name, 'An ingredient') || case when r.level = 'out' then ' ran out' else ' is running low' end,
       'itemName', v_item.o_name, 'level', r.level, 'reorderLevel', r.reorder_level)));
-  return;
-exception when others then
-  raise warning 'store_activity_capture_stock_alert failed: % (%)', sqlerrm, sqlstate;
   return;
 end;
 $$;
@@ -286,6 +346,9 @@ begin
     perform public.store_activity_capture_stock_alert(new, true);
   end if;
   return null;
+exception when others then
+  raise warning 'store_activity trigger (stock_alerts) failed: % (%)', sqlerrm, sqlstate;
+  return null;
 end;
 $$;
 
@@ -298,6 +361,26 @@ create trigger store_activity_stock_alerts
 -- inventory_audit_log (noise-filtered, see header)
 -- ============================================
 -- Shared by the trigger and the backfill (20261012152000).
+-- The biggest lines of an inventory application: [{name, quantity}] (≤ p_max).
+create or replace function public.store_activity_top_lines(p_lines jsonb, p_max integer)
+returns jsonb
+language sql
+immutable
+set search_path = ''
+as $$
+  select case when jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then null else (
+    select jsonb_agg(jsonb_build_object('name', t.name, 'quantity', t.qty) order by t.weight desc, t.name)
+    from (
+      select coalesce(nullif(l ->> 'name', ''), 'Item') as name,
+             case when (l ->> 'quantityDelta') ~ '^-?[0-9]+(\.[0-9]+)?$' then (l ->> 'quantityDelta')::numeric end as qty,
+             case when (l ->> 'quantityDelta') ~ '^-?[0-9]+(\.[0-9]+)?$' then abs((l ->> 'quantityDelta')::numeric) else 0 end as weight
+      from jsonb_array_elements(p_lines) l
+      order by 3 desc
+      limit greatest(p_max, 0)
+    ) t
+  ) end
+$$;
+
 create or replace function public.store_activity_capture_inventory_audit_log(r public.inventory_audit_log)
 returns void
 language plpgsql
@@ -319,6 +402,13 @@ begin
   elsif r.outcome = 'applied' and coalesce(r.is_suspected_duplicate, false) then
     v_kind := 'stock.alert';
     v_title := 'Possible double stock entry' || coalesce(' for ' || v_label, '');
+  elsif r.outcome = 'applied' and r.event in ('order_sale', 'order_redeplete') then
+    -- ONE routine row per order application (not one per ingredient line).
+    v_kind := 'stock.sale';
+    v_title := 'Stock used' || coalesce(' for ' || v_label, '');
+  elsif r.outcome = 'applied' and r.event = 'order_restore' then
+    v_kind := 'stock.restored';
+    v_title := 'Stock returned' || coalesce(' from ' || v_label, '');
   else
     return;
   end if;
@@ -326,20 +416,20 @@ begin
     v_flags := v_flags || 'duplicate_deduction'::text;
   end if;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => v_kind,
     p_event_key => 'inventory_audit_log:' || r.id,
     p_source_table => 'inventory_audit_log', p_source_id => r.id::text, p_occurred_at => r.created_at,
-    p_outlet_id => r.outlet_id, p_actor_user_id => r.actor_user_id,
-    p_quantity => r.movement_count, p_note => left(r.detail, 1000),
+    p_outlet_id => r.outlet_id, p_actor_user_id => coalesce(public.store_activity_actor(), r.actor_user_id),
+    p_quantity => r.movement_count,
+    p_note => case when v_kind in ('stock.sale', 'stock.restored') then null else left(r.detail, 1000) end,
     p_subject_type => case when r.order_id is not null then 'order' end, p_subject_ref => r.order_id,
     p_order_number => v_label, p_external_order_id => r.order_id,
     p_summary => jsonb_strip_nulls(jsonb_build_object('title', v_title, 'event', r.event,
-      'outcome', r.outcome, 'source', r.source)),
+      'outcome', r.outcome, 'source', r.source,
+      'lineCount', case when jsonb_typeof(r.lines) = 'array' then jsonb_array_length(r.lines) end,
+      'lines', public.store_activity_top_lines(r.lines, 5))),
     p_flags => v_flags);
-  return;
-exception when others then
-  raise warning 'store_activity_capture_inventory_audit_log failed: % (%)', sqlerrm, sqlstate;
   return;
 end;
 $$;
@@ -353,6 +443,9 @@ as $$
 begin
   perform public.store_activity_capture_inventory_audit_log(new);
   return null;
+exception when others then
+  raise warning 'store_activity trigger (inventory_audit_log) failed: % (%)', sqlerrm, sqlstate;
+  return null;
 end;
 $$;
 
@@ -360,7 +453,8 @@ drop trigger if exists store_activity_inventory_audit_log on public.inventory_au
 create trigger store_activity_inventory_audit_log
   after insert on public.inventory_audit_log
   for each row
-  when (new.outcome in ('duplicate', 'failed') or (new.outcome = 'applied' and new.is_suspected_duplicate))
+  when (new.outcome in ('duplicate', 'failed')
+     or (new.outcome = 'applied' and (new.is_suspected_duplicate or new.event in ('order_sale', 'order_redeplete', 'order_restore'))))
   execute function public.store_activity_on_inventory_audit_log();
 
 -- ============================================
@@ -378,11 +472,11 @@ declare
   v_flags text[] := '{}'::text[];
 begin
   if p_event = 'opened' then
-    perform public.store_activity_record(
+    perform public.store_activity_write(
       p_tenant_id => r.tenant_id, p_kind => 'shift.opened',
       p_event_key => 'staff_shifts:' || r.id || ':opened',
       p_source_table => 'staff_shifts', p_source_id => r.id::text, p_occurred_at => r.opened_at,
-      p_outlet_id => r.outlet_id, p_actor_user_id => r.staff_user_id, p_actor_name => r.staff_name,
+      p_outlet_id => r.outlet_id, p_actor_user_id => coalesce(public.store_activity_actor(), r.staff_user_id), p_actor_name => r.staff_name,
       p_subject_type => 'shift', p_subject_ref => r.id::text,
       p_after => jsonb_build_object('openingFloat', r.opening_float),
       p_summary => jsonb_strip_nulls(jsonb_build_object(
@@ -399,12 +493,12 @@ begin
   if public.store_activity_flag_drawer_variance(r.closing_count, r.expected_cash) then
     v_flags := v_flags || 'drawer_variance'::text;
   end if;
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => 'shift.closed',
     p_event_key => 'staff_shifts:' || r.id || ':closed',
     p_source_table => 'staff_shifts', p_source_id => r.id::text, p_occurred_at => coalesce(r.closed_at, now()),
     p_outlet_id => r.outlet_id,
-    p_actor_user_id => coalesce(r.closed_by, r.staff_user_id),
+    p_actor_user_id => coalesce(public.store_activity_actor(), r.closed_by, r.staff_user_id),
     p_actor_name => coalesce(r.closed_by_name, r.staff_name),
     p_amount => v_variance, p_note => r.note,
     p_subject_type => 'shift', p_subject_ref => r.id::text,
@@ -418,9 +512,6 @@ begin
       'drawerName', r.drawer_name, 'staffName', r.staff_name,
       'expectedCash', r.expected_cash, 'closingCount', r.closing_count, 'openingFloat', r.opening_float)),
     p_flags => v_flags);
-  return;
-exception when others then
-  raise warning 'store_activity_capture_staff_shift failed: % (%)', sqlerrm, sqlstate;
   return;
 end;
 $$;
@@ -437,6 +528,9 @@ begin
   elsif new.status = 'closed' and old.status is distinct from 'closed' then
     perform public.store_activity_capture_staff_shift(new, 'closed');
   end if;
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (staff_shifts) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -469,11 +563,11 @@ begin
   if v_kind is null then
     return;
   end if;
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => v_kind,
     p_event_key => 'shift_cash_movements:' || r.id,
     p_source_table => 'shift_cash_movements', p_source_id => r.id::text, p_occurred_at => r.created_at,
-    p_outlet_id => r.outlet_id, p_actor_user_id => r.recorded_by, p_actor_name => r.recorded_by_name,
+    p_outlet_id => r.outlet_id, p_actor_user_id => coalesce(public.store_activity_actor(), r.recorded_by), p_actor_name => r.recorded_by_name,
     p_amount => case when r.kind = 'pay_in' then r.amount else -r.amount end,
     p_reason => r.reason,
     p_subject_type => 'shift', p_subject_ref => r.shift_id::text,
@@ -481,9 +575,6 @@ begin
       when 'pay_in' then 'Added ' || public.store_activity_peso(r.amount) || ' to the drawer'
       when 'pay_out' then 'Took ' || public.store_activity_peso(r.amount) || ' out of the drawer'
       else 'Collected ' || public.store_activity_peso(r.amount) || ' from the drawer' end));
-  return;
-exception when others then
-  raise warning 'store_activity_capture_shift_cash_movements failed: % (%)', sqlerrm, sqlstate;
   return;
 end;
 $$;
@@ -496,6 +587,9 @@ set search_path = ''
 as $$
 begin
   perform public.store_activity_capture_shift_cash_movements(new);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (shift_cash_movements) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -557,6 +651,7 @@ declare
   v_kind text := public.store_activity_loyalty_kind(r.kind);
   v_unit text;
   v_unit_word text;
+  v_member uuid;
   v_label text;
   v_reward text := public.store_activity_reward_label(r.reward_terms -> 'reward');
 begin
@@ -566,19 +661,24 @@ begin
   select case when p.earn_mode = 'points' then 'points' else 'stamps' end into v_unit
   from public.loyalty_programs p where p.id = r.program_id;
   v_unit := coalesce(v_unit, 'stamps');
+  select b.id into v_member from public.loyalty_balances b
+  where b.program_id = r.program_id and b.customer_key = r.customer_key and b.tenant_id = r.tenant_id;
   v_unit_word := case when abs(coalesce(r.delta, 0)) = 1 then rtrim(v_unit, 's') else v_unit end;
   v_label := case
     when r.external_order_id is null then null
     when r.order_backend = 'platform_supabase' then public.store_activity_platform_order_label(r.tenant_id, r.external_order_id)
     else public.store_activity_order_label(null, r.external_order_id) end;
 
-  perform public.store_activity_record(
+  perform public.store_activity_write(
     p_tenant_id => r.tenant_id, p_kind => v_kind,
     p_event_key => 'loyalty_activity:' || r.id,
     p_source_table => 'loyalty_activity', p_source_id => r.id::text, p_occurred_at => r.occurred_at,
-    p_outlet_id => r.outlet_id, p_actor_user_id => r.actor_id,
+    p_outlet_id => r.outlet_id, p_actor_user_id => coalesce(public.store_activity_actor(), r.actor_id),
     p_quantity => r.delta, p_unit => coalesce(v_unit, 'stamps'), p_note => r.note,
-    p_subject_type => 'member', p_subject_ref => left(md5(r.tenant_id::text || ':' || coalesce(r.customer_key, '')), 16),
+    -- The member's loyalty_balances row id: groups one member's rows without
+    -- carrying anything derived from their phone (an unsalted hash of a phone
+    -- is reversible by enumeration). No balance row yet → no subject.
+    p_subject_type => case when v_member is not null then 'member' end, p_subject_ref => v_member::text,
     p_order_number => v_label,
     p_backend => public.store_activity_backend_of(r.order_backend), p_external_order_id => r.external_order_id,
     p_summary => jsonb_strip_nulls(jsonb_build_object(
@@ -591,9 +691,6 @@ begin
         else 'Reward voided' || coalesce(': ' || v_reward, '') end,
       'programName', r.program_name, 'reward', v_reward, 'loyaltyKind', r.kind)));
   return;
-exception when others then
-  raise warning 'store_activity_capture_loyalty_activity failed: % (%)', sqlerrm, sqlstate;
-  return;
 end;
 $$;
 
@@ -605,6 +702,9 @@ set search_path = ''
 as $$
 begin
   perform public.store_activity_capture_loyalty_activity(new);
+  return null;
+exception when others then
+  raise warning 'store_activity trigger (loyalty_activity) failed: % (%)', sqlerrm, sqlstate;
   return null;
 end;
 $$;
@@ -634,9 +734,15 @@ revoke all on function public.store_activity_capture_shift_cash_movements(public
 revoke all on function public.store_activity_on_loyalty_activity() from public, anon, authenticated;
 revoke all on function public.store_activity_capture_loyalty_activity(public.loyalty_activity) from public, anon, authenticated;
 
+reset lock_timeout;
+
 -- ============================================
 -- Rollback
 -- ============================================
+-- drop trigger if exists store_activity_stamp_actor on public.stock_transfers;
+-- drop trigger if exists store_activity_stamp_actor on public.inventory_counts;
+-- drop trigger if exists store_activity_stamp_actor on public.staff_shifts;
+-- drop function if exists public.store_activity_stamp_client_actor();
 -- drop trigger if exists store_activity_loyalty_activity on public.loyalty_activity;
 -- drop trigger if exists store_activity_shift_cash_movements on public.shift_cash_movements;
 -- drop trigger if exists store_activity_staff_shifts_close on public.staff_shifts;
@@ -662,5 +768,6 @@ revoke all on function public.store_activity_capture_loyalty_activity(public.loy
 -- drop function if exists public.store_activity_on_inventory_counts();
 -- drop function if exists public.store_activity_capture_inventory_count(public.inventory_counts);
 -- drop function if exists public.store_activity_on_stock_movements();
+-- drop function if exists public.store_activity_top_lines(jsonb, integer);
 -- drop function if exists public.store_activity_capture_stock_movements(public.stock_movements);
 -- drop function if exists public.store_activity_ingredient(uuid);

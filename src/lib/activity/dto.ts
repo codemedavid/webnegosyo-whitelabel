@@ -16,6 +16,7 @@ import type {
   StoreActivityDayTotal,
   StoreActivityEvent,
   StoreActivityKindTotal,
+  StoreActivityRoutineTotal,
   StoreActivitySummary,
 } from './store-event'
 import { categoryOfKind, isActivityFlag, isActivityKind, isActivitySubjectType } from './taxonomy'
@@ -130,17 +131,23 @@ const dayTotalSchema = z.object({
   count: numeric,
   amount: numeric,
 })
+const routineTotalSchema = z.object({
+  kind: z.string(),
+  count: numeric,
+  amount: numeric,
+})
 const summarySchema = z.object({
   byKind: z.array(kindTotalSchema),
   byActor: z.array(actorTotalSchema),
   byDay: z.array(dayTotalSchema),
+  routine: z.array(routineTotalSchema).optional(),
   flaggedOpen: numeric,
 })
 
 export function parseStoreActivitySummary(data: unknown): StoreActivitySummary {
   const parsed = summarySchema.safeParse(data)
   if (!parsed.success) fail('summary', parsed.error)
-  const { byKind, byActor, byDay, flaggedOpen } = parsed.data
+  const { byKind, byActor, byDay, routine, flaggedOpen } = parsed.data
   return {
     byKind: byKind.flatMap((entry): StoreActivityKindTotal[] =>
       isActivityKind(entry.kind)
@@ -154,6 +161,9 @@ export function parseStoreActivitySummary(data: unknown): StoreActivitySummary {
     ),
     byDay: byDay.flatMap((entry): StoreActivityDayTotal[] =>
       isActivityKind(entry.kind) ? [{ day: entry.day, kind: entry.kind, count: entry.count ?? 0, amount: entry.amount }] : [],
+    ),
+    routine: (routine ?? []).flatMap((entry): StoreActivityRoutineTotal[] =>
+      isActivityKind(entry.kind) ? [{ kind: entry.kind, count: entry.count ?? 0, amount: entry.amount }] : [],
     ),
     flaggedOpen: flaggedOpen ?? 0,
   }

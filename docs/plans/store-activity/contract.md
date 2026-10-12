@@ -98,15 +98,16 @@ Manila day. TS mirror holds the copy/explanations.
    p_search matches order_number / summary->>'title' / reason (ILIKE, bounded).
 2. `get_store_activity_summary(p_tenant_id, p_since, p_until, p_outlet_id default null)` returns jsonb:
    { byKind: [{kind, statutory, count, amount, quantity}], byActor: [{actorUserId, actorName, kind, count, amount}],
-     byDay: [{day (Asia/Manila date), kind, count, amount}], flaggedOpen: int } — same visibility rules.
-3. `mark_store_activity_reviewed(p_id uuid)` — needs activity_view/owner + reach; only sets reviewed_*; idempotent. Returns `timestamptz` (the reviewed_at; a repeat call returns the first review's time).
+     byDay: [{day (Asia/Manila date), kind, count, amount}], routine: [{kind, count, amount}], flaggedOpen: int } —
+   same visibility rules. byKind/byActor/byDay cover NON-routine kinds; routine kinds appear only as `routine` roll-ups.
+3. `mark_store_activity_reviewed(p_id uuid)` — needs activity_view/owner + reach; only sets reviewed_*; idempotent; a non-owner can never review a row they are the actor of. Returns `timestamptz` (the reviewed_at; a repeat call returns the first review's time).
 
 ### Phase 1 implementation notes (2026-10-12, Phase 1 builder)
 
 - Migrations: 20261012150000 (table, vocab functions, writer `store_activity_record`, flag rules,
   `orders.cancel_reason`, `order_status_events.reason/note`), 151000 (order & money triggers),
   151100 (stock / cash / loyalty), 151200 (menu / team / settings gaps), 151500 (RPCs), 152000 (backfill).
-  Probe: supabase/probes/20261012150000_store_activity_probe.sql.
+  150500 validates the NOT VALID length CHECKs separately. Probe: supabase/probes/20261012150000_store_activity_probe.sql.
 - Order-status dedupe is by PARTITION, not by key: platform stores are captured from `orders`
   (AFTER UPDATE OF status/payment_status/discount_*, actor = auth.uid()); `order_status_events` rows with
   backend `platform_supabase` are ignored live; Convex / tenant-Supabase rows come only from that table.
@@ -117,8 +118,16 @@ Manila day. TS mirror holds the copy/explanations.
 - Statutory discounts: summary.statutory = true from `gov_discount_claims` (trigger created only when that
   table exists) or from order discount lines labelled Senior/PWD/SC/athlete/medal of valor; voucher lines
   are excluded from discount.applied (voucher.redeemed reports them).
+- Free text (reason, note, summary.title) is scrubbed in the writer: PH mobile numbers and emails → '•••'.
+- History is replayed by `store_activity_backfill_batch(p_source, p_after_ts, p_after_id, p_limit)` (service role,
+  resumable, keyset; run loop in 20261012152000's header) — the migration itself writes no rows.
+- Stock used by an order is ONE routine `stock.sale` / `stock.restored` row per order application (from
+  inventory_audit_log, top lines in summary.lines), not one row per ingredient line.
+- Client-written actor columns (staff_shifts.closed_by, inventory_counts.started_by/closed_by,
+  stock_transfers.created_by/sent_by/received_by) are stamped from the JWT; triggers prefer the JWT actor.
 - `flags` thresholds as above; `after_hours` only for stores with `enforce_operating_hours` (branch hours
-  win); `duplicate_deduction` only for a BLOCKED duplicate (spec copy says "was blocked").
+  win; never on backfilled rows); `duplicate_deduction` only for a BLOCKED duplicate (spec copy says "was blocked").
+- Loyalty rows' subject_ref is the member's loyalty_balances.id (never phone-derived).
 
 ## App / web DTO (TS, camelCase) — `StoreActivityEvent`
 

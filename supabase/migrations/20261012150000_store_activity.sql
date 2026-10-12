@@ -24,6 +24,10 @@
 -- Also here (additive): orders.cancel_reason, order_status_events.reason/note.
 -- Rollback at end.
 
+-- Hot tables (orders, order_status_events) are altered below: never queue
+-- behind a long transaction holding them.
+set lock_timeout = '3s';
+
 -- ============================================
 -- Vocabulary (the single source the CHECKs and TS mirror read)
 -- ============================================
@@ -142,6 +146,9 @@ create index if not exists store_activity_open_flags_idx
 -- The cancel-streak flag and the repeat lookups ask "this actor's cancels today".
 create index if not exists store_activity_tenant_kind_time_idx
   on public.store_activity (tenant_id, kind, occurred_at desc);
+-- Per-subject history (one order's timeline, one ingredient's log).
+create index if not exists store_activity_tenant_subject_time_idx
+  on public.store_activity (tenant_id, subject_type, subject_ref, occurred_at desc);
 
 alter table public.store_activity enable row level security;
 revoke all on public.store_activity from public, anon, authenticated;
@@ -451,6 +458,7 @@ $$;
 
 -- Is minute-of-day p_min inside one day's opening window? p_spill = asking
 -- about the previous day's overnight tail. Day shape: {open, close, closed}.
+-- Exception-free (guards, no casts that can throw): it runs inside hot triggers.
 create or replace function public.store_activity_in_window(p_day jsonb, p_min integer, p_spill boolean)
 returns boolean
 language plpgsql
@@ -461,7 +469,14 @@ declare
   v_open integer;
   v_close integer;
 begin
-  if p_day is null or jsonb_typeof(p_day) <> 'object' or coalesce((p_day ->> 'closed')::boolean, false) then
+  if p_day is null or jsonb_typeof(p_day) <> 'object' then
+    return false;
+  end if;
+  if jsonb_typeof(p_day -> 'closed') = 'boolean' and (p_day -> 'closed') = 'true'::jsonb then
+    return false;
+  end if;
+  if coalesce(p_day ->> 'open', '') !~ '^([01]?[0-9]|2[0-4]):[0-5][0-9]$'
+     or coalesce(p_day ->> 'close', '') !~ '^([01]?[0-9]|2[0-4]):[0-5][0-9]$' then
     return false;
   end if;
   v_open := split_part(p_day ->> 'open', ':', 1)::integer * 60 + split_part(p_day ->> 'open', ':', 2)::integer;
@@ -471,13 +486,12 @@ begin
     return case when p_spill then p_min < v_close else p_min >= v_open end;
   end if;
   return not p_spill and p_min >= v_open and p_min < v_close;
-exception when others then
-  return false;
 end;
 $$;
 
 -- after_hours: only for stores that ENFORCE their hours (owner-affirmed);
 -- a branch's own hours win over the store's. Unknown/malformed → false.
+-- Exception-free: an unknown time zone is checked before it is used.
 create or replace function public.store_activity_is_after_hours(p_tenant_id uuid, p_outlet_id uuid, p_at timestamptz)
 returns boolean
 language plpgsql
@@ -506,6 +520,10 @@ begin
   if v_hours is null or jsonb_typeof(v_hours) <> 'object' then
     return false;
   end if;
+  -- Every live store is Asia/Manila; anything else is looked up once.
+  if v_tz <> 'Asia/Manila' and not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = v_tz) then
+    return false;
+  end if;
   v_local := p_at at time zone v_tz;
   v_dow := extract(dow from v_local)::integer;
   v_min := extract(hour from v_local)::integer * 60 + extract(minute from v_local)::integer;
@@ -517,23 +535,127 @@ begin
     return false;
   end if;
   return true;
-exception when others then
-  return false;
 end;
 $$;
 
 -- ============================================
--- The one writer
+-- Free-text scrub
 -- ============================================
--- Every trigger and the backfill insert through here: category and routine
--- are derived from the kind, the actor's name is snapshotted, after_hours is
--- added for sensitive kinds, and a replay is ignored (ON CONFLICT event_key).
---
--- NEVER raises. The source write (a cancel, a refund, a checkout) has already
--- happened; refusing it because the activity row failed would turn a gap in a
--- report into a stuck counter. Failures go to the Postgres log as WARNINGs —
--- the probe (supabase/probes/20261012150000_store_activity_probe.sql) is what
--- proves the happy paths.
+-- Reasons, notes and titles can be typed by staff or customers ("refund to
+-- 0917 123 4567"). Phone numbers (PH mobile +63 / 63 / 09, any spacing) and
+-- email addresses are replaced with '•••' before anything is stored.
+-- The two patterns are also exercised by tests/unit/activity/store-activity-scrub.test.ts.
+create or replace function public.store_activity_scrub(p_text text)
+returns text
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+  select regexp_replace(
+    regexp_replace(
+      p_text,
+      -- scrub:email
+      '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '•••', 'g'),
+    -- scrub:phone
+    '(\+?63|0)[ .-]?9[0-9]{2}[ .-]?[0-9]{3}[ .-]?[0-9]{4}', '•••', 'g')
+$$;
+
+-- ============================================
+-- The writers
+-- ============================================
+-- store_activity_write: THE insert. Category and routine derive from the kind,
+-- the actor's name is snapshotted, free text is scrubbed, after_hours is added
+-- for sensitive kinds (not during the backfill: app.store_activity_backfill =
+-- 'on', today's hours say nothing about last month), and a replay is ignored
+-- (ON CONFLICT event_key). Returns whether a row was written.
+-- It has NO exception handler: each trigger wraps its whole body in exactly
+-- one, and the backfill batch catches once per batch.
+create or replace function public.store_activity_write(
+  p_tenant_id uuid,
+  p_kind text,
+  p_event_key text,
+  p_source_table text,
+  p_source_id text,
+  p_occurred_at timestamptz default null,
+  p_outlet_id uuid default null,
+  p_actor_user_id uuid default null,
+  p_actor_name text default null,
+  p_amount numeric default null,
+  p_quantity numeric default null,
+  p_unit text default null,
+  p_reason text default null,
+  p_note text default null,
+  p_subject_type text default null,
+  p_subject_ref text default null,
+  p_order_number text default null,
+  p_backend text default null,
+  p_external_order_id text default null,
+  p_before jsonb default null,
+  p_after jsonb default null,
+  p_summary jsonb default '{}'::jsonb,
+  p_flags text[] default '{}'::text[]
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_at timestamptz := coalesce(p_occurred_at, now());
+  v_flags text[] := coalesce(p_flags, '{}'::text[]);
+  v_summary jsonb := coalesce(p_summary, '{}'::jsonb);
+  v_backfill boolean := coalesce(current_setting('app.store_activity_backfill', true), '') = 'on';
+  v_written integer;
+  v_sensitive constant text[] := array[
+    'order.cancelled', 'order.reopened', 'order.edited', 'order.deleted',
+    'refund.issued', 'payment.recorded', 'payment.marked_paid', 'discount.applied',
+    'cash.pay_out', 'cash.collected', 'stock.wasted', 'stock.adjusted', 'menu.price_changed'
+  ];
+begin
+  if v_backfill then
+    v_flags := array_remove(v_flags, 'after_hours');
+  elsif p_kind = any (v_sensitive)
+     and not ('after_hours' = any (v_flags))
+     and public.store_activity_is_after_hours(p_tenant_id, p_outlet_id, v_at) then
+    v_flags := v_flags || 'after_hours'::text;
+  end if;
+  if jsonb_typeof(v_summary -> 'title') = 'string' then
+    v_summary := jsonb_set(v_summary, '{title}', to_jsonb(public.store_activity_scrub(v_summary ->> 'title')));
+  end if;
+
+  insert into public.store_activity (
+    tenant_id, outlet_id, occurred_at, category, kind, is_routine,
+    actor_user_id, actor_name, amount, quantity, unit, reason, note,
+    subject_type, subject_ref, order_number, backend, external_order_id,
+    before, after, summary, flags, source_table, source_id, event_key
+  ) values (
+    p_tenant_id, p_outlet_id, v_at, public.store_activity_category_of(p_kind), p_kind,
+    public.store_activity_is_routine(p_kind),
+    p_actor_user_id,
+    coalesce(public.store_activity_actor_name(p_actor_user_id), nullif(btrim(p_actor_name), '')),
+    round(p_amount, 2), p_quantity, p_unit,
+    left(public.store_activity_scrub(nullif(btrim(p_reason), '')), 500),
+    left(public.store_activity_scrub(nullif(btrim(p_note), '')), 1000),
+    p_subject_type, p_subject_ref, p_order_number, p_backend, p_external_order_id,
+    p_before, p_after, v_summary,
+    array(select distinct f from unnest(v_flags) f order by f),
+    p_source_table, p_source_id, p_event_key
+  )
+  on conflict (event_key) do nothing;
+  get diagnostics v_written = row_count;
+  if v_backfill and v_written > 0 then
+    -- The backfill batch reports how many rows it actually wrote.
+    perform set_config('app.store_activity_written',
+      (coalesce(nullif(current_setting('app.store_activity_written', true), ''), '0')::integer + v_written)::text, true);
+  end if;
+  return v_written > 0;
+end;
+$$;
+
+-- store_activity_record: the SAFE variant for one-off server writers (never
+-- raises; failures become a Postgres WARNING). Triggers do not use it — their
+-- single exception block already covers the write.
 create or replace function public.store_activity_record(
   p_tenant_id uuid,
   p_kind text,
@@ -564,38 +686,11 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare
-  v_at timestamptz := coalesce(p_occurred_at, now());
-  v_flags text[] := coalesce(p_flags, '{}'::text[]);
-  v_sensitive constant text[] := array[
-    'order.cancelled', 'order.reopened', 'order.edited', 'order.deleted',
-    'refund.issued', 'payment.recorded', 'payment.marked_paid', 'discount.applied',
-    'cash.pay_out', 'cash.collected', 'stock.wasted', 'stock.adjusted', 'menu.price_changed'
-  ];
 begin
-  if p_kind = any (v_sensitive)
-     and not ('after_hours' = any (v_flags))
-     and public.store_activity_is_after_hours(p_tenant_id, p_outlet_id, v_at) then
-    v_flags := v_flags || 'after_hours'::text;
-  end if;
-
-  insert into public.store_activity (
-    tenant_id, outlet_id, occurred_at, category, kind, is_routine,
-    actor_user_id, actor_name, amount, quantity, unit, reason, note,
-    subject_type, subject_ref, order_number, backend, external_order_id,
-    before, after, summary, flags, source_table, source_id, event_key
-  ) values (
-    p_tenant_id, p_outlet_id, v_at, public.store_activity_category_of(p_kind), p_kind,
-    public.store_activity_is_routine(p_kind),
-    p_actor_user_id,
-    coalesce(public.store_activity_actor_name(p_actor_user_id), nullif(btrim(p_actor_name), '')),
-    round(p_amount, 2), p_quantity, p_unit, left(nullif(btrim(p_reason), ''), 500), left(nullif(btrim(p_note), ''), 1000),
-    p_subject_type, p_subject_ref, p_order_number, p_backend, p_external_order_id,
-    p_before, p_after, coalesce(p_summary, '{}'::jsonb),
-    array(select distinct f from unnest(v_flags) f order by f),
-    p_source_table, p_source_id, p_event_key
-  )
-  on conflict (event_key) do nothing;
+  perform public.store_activity_write(
+    p_tenant_id, p_kind, p_event_key, p_source_table, p_source_id, p_occurred_at, p_outlet_id,
+    p_actor_user_id, p_actor_name, p_amount, p_quantity, p_unit, p_reason, p_note, p_subject_type,
+    p_subject_ref, p_order_number, p_backend, p_external_order_id, p_before, p_after, p_summary, p_flags);
 exception when others then
   raise warning 'store_activity_record(%, %) failed: % (%)', p_kind, p_event_key, sqlerrm, sqlstate;
 end;
@@ -604,13 +699,16 @@ $$;
 -- ============================================
 -- Additive source columns: why an order was cancelled
 -- ============================================
--- Optional now; Phase 2 makes the cancel UI require a reason.
+-- Optional now; Phase 2 makes the cancel UI require a reason. Both new
+-- columns are nullable without a default (metadata-only). The length CHECKs
+-- are added NOT VALID here (no table scan under ACCESS EXCLUSIVE) and
+-- validated in 20261012150500, a separate statement / transaction.
 alter table public.orders
   add column if not exists cancel_reason text;
 alter table public.orders
   drop constraint if exists orders_cancel_reason_len_ck;
 alter table public.orders
-  add constraint orders_cancel_reason_len_ck check (cancel_reason is null or length(cancel_reason) <= 500);
+  add constraint orders_cancel_reason_len_ck check (cancel_reason is null or length(cancel_reason) <= 500) not valid;
 comment on column public.orders.cancel_reason is 'Why the order was cancelled (optional; read by the store_activity orders trigger).';
 
 alter table public.order_status_events
@@ -619,23 +717,42 @@ alter table public.order_status_events
 alter table public.order_status_events
   drop constraint if exists order_status_events_reason_len_ck;
 alter table public.order_status_events
-  add constraint order_status_events_reason_len_ck check (reason is null or length(reason) <= 500);
+  add constraint order_status_events_reason_len_ck check (reason is null or length(reason) <= 500) not valid;
 alter table public.order_status_events
   drop constraint if exists order_status_events_note_len_ck;
 alter table public.order_status_events
-  add constraint order_status_events_note_len_ck check (note is null or length(note) <= 1000);
+  add constraint order_status_events_note_len_ck check (note is null or length(note) <= 1000) not valid;
 
 -- ============================================
 -- Lock the internals: nothing here is callable by clients
 -- ============================================
+revoke all on function public.store_activity_write(uuid, text, text, text, text, timestamptz, uuid, uuid, text, numeric, numeric, text, text, text, text, text, text, text, text, jsonb, jsonb, jsonb, text[]) from public, anon, authenticated;
 revoke all on function public.store_activity_record(uuid, text, text, text, text, timestamptz, uuid, uuid, text, numeric, numeric, text, text, text, text, text, text, text, text, jsonb, jsonb, jsonb, text[]) from public, anon, authenticated;
 revoke all on function public.store_activity_actor() from public, anon, authenticated;
 revoke all on function public.store_activity_actor_name(uuid) from public, anon, authenticated;
 revoke all on function public.store_activity_flag_repeat_cancels(uuid, uuid, timestamptz) from public, anon, authenticated;
 revoke all on function public.store_activity_flag_count_variance(uuid) from public, anon, authenticated;
 revoke all on function public.store_activity_flag_cash_refund_noncash(uuid, text, uuid) from public, anon, authenticated;
+revoke all on function public.store_activity_flag_drawer_variance(numeric, numeric) from public, anon, authenticated;
+revoke all on function public.store_activity_flag_paid_then_cancelled(numeric, text) from public, anon, authenticated;
+revoke all on function public.store_activity_flag_removed_after_kitchen(jsonb, text) from public, anon, authenticated;
+revoke all on function public.store_activity_flag_duplicate_deduction(text) from public, anon, authenticated;
 revoke all on function public.store_activity_is_after_hours(uuid, uuid, timestamptz) from public, anon, authenticated;
+revoke all on function public.store_activity_in_window(jsonb, integer, boolean) from public, anon, authenticated;
 revoke all on function public.store_activity_guard() from public, anon, authenticated;
+revoke all on function public.store_activity_category_of(text) from public, anon, authenticated;
+revoke all on function public.store_activity_is_routine(text) from public, anon, authenticated;
+revoke all on function public.store_activity_peso(numeric) from public, anon, authenticated;
+revoke all on function public.store_activity_qty(numeric) from public, anon, authenticated;
+revoke all on function public.store_activity_mask_name(text) from public, anon, authenticated;
+revoke all on function public.store_activity_mask_phone(text) from public, anon, authenticated;
+revoke all on function public.store_activity_order_label(integer, text) from public, anon, authenticated;
+revoke all on function public.store_activity_try_uuid(text) from public, anon, authenticated;
+revoke all on function public.store_activity_backend_of(text) from public, anon, authenticated;
+revoke all on function public.store_activity_manila_day_start(timestamptz) from public, anon, authenticated;
+revoke all on function public.store_activity_scrub(text) from public, anon, authenticated;
+
+reset lock_timeout;
 
 -- ============================================
 -- Rollback
@@ -647,6 +764,8 @@ revoke all on function public.store_activity_guard() from public, anon, authenti
 -- alter table public.orders drop column if exists cancel_reason;
 -- drop table if exists public.store_activity;
 -- drop function if exists public.store_activity_record(uuid, text, text, text, text, timestamptz, uuid, uuid, text, numeric, numeric, text, text, text, text, text, text, text, text, jsonb, jsonb, jsonb, text[]);
+-- drop function if exists public.store_activity_write(uuid, text, text, text, text, timestamptz, uuid, uuid, text, numeric, numeric, text, text, text, text, text, text, text, text, jsonb, jsonb, jsonb, text[]);
+-- drop function if exists public.store_activity_scrub(text);
 -- drop function if exists public.store_activity_is_after_hours(uuid, uuid, timestamptz);
 -- drop function if exists public.store_activity_in_window(jsonb, integer, boolean);
 -- drop function if exists public.store_activity_flag_duplicate_deduction(text);

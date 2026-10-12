@@ -10,6 +10,7 @@
 --   * other rows need owner / superadmin / activity_view / approve_requests, and a
 --     branch-locked account sees only its branch + store-wide (NULL outlet) rows;
 --   * category 'team' is owner / superadmin only;
+--   * the predicates are written out (no per-row function) so indexes apply;
 --   * flags are PRIVATE: a caller without the full view gets flags = '{}' and no
 --     reviewed_* on their own rows; p_flagged_only returns nothing for them;
 --   * p_outlet_id only ever NARROWS.
@@ -51,23 +52,6 @@ begin
 end;
 $$;
 
--- The visibility rule, once (used by both read RPCs).
-create or replace function public.store_activity_row_visible(
-  p_category text, p_actor uuid, p_outlet uuid,
-  p_uid uuid, p_owner boolean, p_full boolean, p_branch uuid
-)
-returns boolean
-language sql
-immutable
-parallel safe
-set search_path = ''
-as $$
-  select (p_category <> 'team' or p_owner)
-    and (
-      p_actor is not distinct from p_uid
-      or (p_full and (p_branch is null or p_outlet is null or p_outlet = p_branch))
-    )
-$$;
 
 -- ============================================
 -- get_store_activity
@@ -128,7 +112,11 @@ begin
   from public.store_activity a
   left join public.outlets o on o.id = a.outlet_id
   where a.tenant_id = p_tenant_id
-    and public.store_activity_row_visible(a.category, a.actor_user_id, a.outlet_id, s.o_uid, s.o_owner, s.o_full, s.o_branch)
+    and (a.category <> 'team' or s.o_owner)
+    -- Explicit (not a per-row function) so the actor / outlet indexes apply:
+    -- an own-only caller is exactly `actor_user_id = uid`.
+    and (s.o_full or a.actor_user_id = s.o_uid)
+    and (not s.o_full or s.o_branch is null or a.outlet_id is null or a.outlet_id = s.o_branch or a.actor_user_id = s.o_uid)
     and (p_before_occurred_at is null
          or a.occurred_at < p_before_occurred_at
          or (p_before_id is not null and a.occurred_at = p_before_occurred_at and a.id < p_before_id))
@@ -153,9 +141,10 @@ $$;
 -- ============================================
 -- get_store_activity_summary
 -- ============================================
--- { byKind:  [{kind, statutory, count, amount, quantity}],
---   byActor: [{actorUserId, actorName, kind, count, amount}],
---   byDay:   [{day, kind, count, amount}],          -- day = Asia/Manila date
+-- { byKind:  [{kind, statutory, count, amount, quantity}],   -- non-routine kinds
+--   byActor: [{actorUserId, actorName, kind, count, amount}],  -- non-routine kinds
+--   byDay:   [{day, kind, count, amount}],                     -- non-routine; day = Asia/Manila date
+--   routine: [{kind, count, amount}],                          -- routine kinds, one roll-up each
 --   flaggedOpen: int }
 -- discount.applied is split by `statutory` (Senior/PWD) so no reader counts a
 -- legal discount as money that didn't stay. flaggedOpen is 0 without the full view.
@@ -185,30 +174,39 @@ begin
   end if;
 
   with visible as (
-    select a.kind, a.actor_user_id, a.actor_name, a.amount, a.quantity, a.occurred_at, a.flags, a.reviewed_at,
+    select a.kind, a.is_routine, a.actor_user_id, a.actor_name, a.amount, a.quantity, a.occurred_at, a.flags, a.reviewed_at,
            (a.kind = 'discount.applied' and coalesce(a.summary ->> 'statutory', 'false') = 'true') as statutory
     from public.store_activity a
     where a.tenant_id = p_tenant_id
       and a.occurred_at >= p_since and a.occurred_at < v_until
       and (p_outlet_id is null or a.outlet_id = p_outlet_id)
-      and public.store_activity_row_visible(a.category, a.actor_user_id, a.outlet_id, s.o_uid, s.o_owner, s.o_full, s.o_branch)
+      and (a.category <> 'team' or s.o_owner)
+      -- Explicit (not a per-row function) so the actor / outlet indexes apply:
+      -- an own-only caller is exactly `actor_user_id = uid`.
+      and (s.o_full or a.actor_user_id = s.o_uid)
+      and (not s.o_full or s.o_branch is null or a.outlet_id is null or a.outlet_id = s.o_branch or a.actor_user_id = s.o_uid)
   )
   select jsonb_build_object(
     'byKind', coalesce((
       select jsonb_agg(jsonb_build_object('kind', k.kind, 'statutory', k.statutory, 'count', k.n,
                'amount', k.amount, 'quantity', k.quantity) order by k.kind, k.statutory)
       from (select v.kind, v.statutory, count(*) n, sum(v.amount) amount, sum(v.quantity) quantity
-            from visible v group by v.kind, v.statutory) k), '[]'::jsonb),
+            from visible v where not v.is_routine group by v.kind, v.statutory) k), '[]'::jsonb),
     'byActor', coalesce((
       select jsonb_agg(jsonb_build_object('actorUserId', b.actor_user_id, 'actorName', b.actor_name,
                'kind', b.kind, 'count', b.n, 'amount', b.amount) order by b.actor_name nulls last, b.kind)
       from (select v.actor_user_id, max(v.actor_name) actor_name, v.kind, count(*) n, sum(v.amount) amount
-            from visible v group by v.actor_user_id, v.kind) b), '[]'::jsonb),
+            from visible v where not v.is_routine group by v.actor_user_id, v.kind) b), '[]'::jsonb),
     'byDay', coalesce((
       select jsonb_agg(jsonb_build_object('day', d.day, 'kind', d.kind, 'count', d.n, 'amount', d.amount)
                order by d.day, d.kind)
       from (select (v.occurred_at at time zone 'Asia/Manila')::date as day, v.kind, count(*) n, sum(v.amount) amount
-            from visible v group by 1, 2) d), '[]'::jsonb),
+            from visible v where not v.is_routine group by 1, 2) d), '[]'::jsonb),
+    -- Routine kinds only as one roll-up line each (orders placed, stock used…).
+    'routine', coalesce((
+      select jsonb_agg(jsonb_build_object('kind', r.kind, 'count', r.n, 'amount', r.amount) order by r.kind)
+      from (select v.kind, count(*) n, sum(v.amount) amount
+            from visible v where v.is_routine group by v.kind) r), '[]'::jsonb),
     'flaggedOpen', case when s.o_full then
       (select count(*) from visible v where v.flags <> '{}'::text[] and v.reviewed_at is null)::integer
       else 0 end
@@ -221,7 +219,8 @@ $$;
 -- mark_store_activity_reviewed
 -- ============================================
 -- Needs the full view (owner / activity_view / approve_requests) AND reach to the
--- row's branch; 'team' rows are owner-only. Only reviewed_* change, once —
+-- row's branch; 'team' rows are owner-only; a non-owner can never review a row
+-- they are the actor of. Only reviewed_* change, once —
 -- a second call returns the first review's time.
 create or replace function public.mark_store_activity_reviewed(p_id uuid)
 returns timestamptz
@@ -235,7 +234,7 @@ declare
   s record;
   v_at timestamptz;
 begin
-  select a.id, a.tenant_id, a.category, a.outlet_id, a.reviewed_at
+  select a.id, a.tenant_id, a.category, a.outlet_id, a.reviewed_at, a.actor_user_id
     into v_row from public.store_activity a where a.id = p_id;
   if v_row.id is null then
     raise exception 'Not found' using errcode = 'P0002';
@@ -243,7 +242,9 @@ begin
   select * into s from public.store_activity_caller_scope(v_row.tenant_id);
   if not s.o_full
      or (v_row.category = 'team' and not s.o_owner)
-     or (s.o_branch is not null and v_row.outlet_id is not null and v_row.outlet_id <> s.o_branch) then
+     or (s.o_branch is not null and v_row.outlet_id is not null and v_row.outlet_id <> s.o_branch)
+     -- Nobody but the owner closes the review of their own act.
+     or (v_row.actor_user_id = s.o_uid and not s.o_owner) then
     raise exception 'Not allowed' using errcode = '42501';
   end if;
   if v_row.reviewed_at is not null then
@@ -284,5 +285,4 @@ grant execute on function public.mark_store_activity_reviewed(uuid) to authentic
 -- drop function if exists public.mark_store_activity_reviewed(uuid);
 -- drop function if exists public.get_store_activity_summary(uuid, timestamptz, timestamptz, uuid);
 -- drop function if exists public.get_store_activity(uuid, integer, timestamptz, uuid, timestamptz, timestamptz, text[], uuid, uuid, boolean, boolean, text, text, text);
--- drop function if exists public.store_activity_row_visible(text, uuid, uuid, uuid, boolean, boolean, uuid);
 -- drop function if exists public.store_activity_caller_scope(uuid);

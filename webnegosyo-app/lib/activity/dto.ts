@@ -16,6 +16,7 @@ import type {
   StoreActivityDayTotal,
   StoreActivityEvent,
   StoreActivityKindTotal,
+  StoreActivityRoutineTotal,
   StoreActivitySummary,
 } from './store-event'
 import { categoryOfKind, isActivityFlag, isActivityKind, isActivitySubjectType } from './taxonomy'
@@ -184,5 +185,12 @@ export function parseStoreActivitySummary(data: unknown): StoreActivitySummary {
       ? [{ day, kind, count: numericOrNull(entry, 'count', 'summary', `byDay.${i}`) ?? 0, amount: numericOrNull(entry, 'amount', 'summary', `byDay.${i}`) }]
       : []
   })
-  return { byKind, byActor, byDay, flaggedOpen: numericOrNull(data, 'flaggedOpen', 'summary', 'flaggedOpen') ?? 0 }
+  // `routine` is optional (older servers did not send it).
+  const routine = (data.routine === undefined ? [] : list(data, 'routine')).flatMap((entry, i): StoreActivityRoutineTotal[] => {
+    const kind = requiredText(entry, 'kind', 'summary', `routine.${i}`)
+    return isActivityKind(kind)
+      ? [{ kind, count: numericOrNull(entry, 'count', 'summary', `routine.${i}`) ?? 0, amount: numericOrNull(entry, 'amount', 'summary', `routine.${i}`) }]
+      : []
+  })
+  return { byKind, byActor, byDay, routine, flaggedOpen: numericOrNull(data, 'flaggedOpen', 'summary', 'flaggedOpen') ?? 0 }
 }
