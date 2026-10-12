@@ -32,6 +32,8 @@ export interface ManagedCategory {
   /** What the storefront sorts categories by. */
   order: number;
   is_active: boolean;
+  /** Whether Senior/PWD discounts cover this section's items (default true). */
+  gov_discount_eligible?: boolean | null;
 }
 
 /** The editable fields, as the form holds them. */
@@ -41,6 +43,12 @@ export interface CategoryInput {
   icon: string;
   icon_color: string;
   is_active: boolean;
+  /**
+   * "Senior/PWD discount applies". Present only when it was read from the row
+   * (or the merchant touched the switch), so a save that never loaded it can
+   * never reset an exclusion set on the web.
+   */
+  gov_discount_eligible?: boolean;
 }
 
 export interface ValidationResult {
@@ -90,6 +98,9 @@ export function buildCategoryEditorState(
       icon: loaded.icon ?? "",
       icon_color: loaded.icon_color ?? "",
       is_active: loaded.is_active ?? true,
+      ...(typeof loaded.gov_discount_eligible === "boolean"
+        ? { gov_discount_eligible: loaded.gov_discount_eligible }
+        : {}),
     },
   };
 }
@@ -146,14 +157,18 @@ export function moveCategory(
   return reindex(reordered);
 }
 
-const MANAGED_COLUMNS = "id, tenant_id, name, description, icon, icon_color, \"order\", is_active";
+const MANAGED_COLUMNS =
+  "id, tenant_id, name, description, icon, icon_color, \"order\", is_active, gov_discount_eligible";
 
 /** Blank text is stored as NULL, so "nothing set" is one value rather than two. */
 function blankToNull(value: string): string | null {
   return value.trim() || null;
 }
 
-/** The row payload for a field edit — the five columns this app's form owns. */
+/**
+ * The row payload for a field edit — the five columns this app's form owns,
+ * plus the Senior/PWD switch when the form carries it (never as a default).
+ */
 function toRow(input: CategoryInput): Record<string, unknown> {
   return {
     name: input.name.trim(),
@@ -161,6 +176,9 @@ function toRow(input: CategoryInput): Record<string, unknown> {
     icon: blankToNull(input.icon),
     icon_color: blankToNull(input.icon_color),
     is_active: input.is_active,
+    ...(typeof input.gov_discount_eligible === "boolean"
+      ? { gov_discount_eligible: input.gov_discount_eligible }
+      : {}),
   };
 }
 

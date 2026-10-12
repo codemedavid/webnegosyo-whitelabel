@@ -453,3 +453,27 @@ describe("getCategory", () => {
     expect(await getCategory("gone", "tenant-1")).toBeNull();
   });
 });
+
+describe("Senior/PWD eligibility switch", () => {
+  it("reads the switch with the rest of the managed columns", async () => {
+    queued = [{ data: category(), error: null }];
+    await getCategory("cat-1", "tenant-1");
+    expect(String(argsFor("select")[0][0])).toContain("gov_discount_eligible");
+  });
+
+  it("loads the switch only when the row carries it", () => {
+    expect(buildCategoryEditorState(category({ gov_discount_eligible: false })).form.gov_discount_eligible).toBe(false);
+    expect(buildCategoryEditorState(category()).form).not.toHaveProperty("gov_discount_eligible");
+  });
+
+  it("writes it only when the form carries it", async () => {
+    queued = [{ data: category(), error: null }];
+    await updateCategory("cat-1", "tenant-1", VALID_INPUT);
+    expect(argsFor("update")[0][0]).not.toHaveProperty("gov_discount_eligible");
+
+    calls.length = 0;
+    queued = [{ data: category(), error: null }];
+    await updateCategory("cat-1", "tenant-1", { ...VALID_INPUT, gov_discount_eligible: false });
+    expect(argsFor("update")[0][0]).toMatchObject({ gov_discount_eligible: false });
+  });
+});

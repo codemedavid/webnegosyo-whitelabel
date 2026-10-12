@@ -28,6 +28,13 @@ export interface Product {
   order: number;
   /** Set when auto-86 hid this item; NULL means the merchant chose to. */
   auto_disabled_at?: string | null;
+  /**
+   * Whether Senior/PWD discounts cover this item (default true). The register
+   * also honours its category's switch — see `excludedMenuItemIds`.
+   */
+  gov_discount_eligible?: boolean | null;
+  /** The joined category, when the read embeds it (`category:categories(*)`). */
+  category?: { gov_discount_eligible?: boolean | null } | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -54,6 +61,12 @@ export interface ProductInput {
   // Unified variations + add-ons. Optional so callers that never touch options
   // (e.g. the availability toggle) stay untouched and backward compatible.
   modifier_groups?: ModifierGroup[];
+  /**
+   * "Senior/PWD discount applies". Present only when the form loaded it from
+   * the row (or the merchant touched the switch), so a save that never showed
+   * the switch can never reset an exclusion the owner set on the web.
+   */
+  gov_discount_eligible?: boolean;
 }
 
 /** Pristine form values for adding a new product. */
@@ -111,6 +124,9 @@ export function buildEditorFormState(
     category_id: loaded.category_id ?? "",
     is_available: loaded.is_available ?? true,
     is_featured: loaded.is_featured ?? false,
+    ...(typeof loaded.gov_discount_eligible === "boolean"
+      ? { gov_discount_eligible: loaded.gov_discount_eligible }
+      : {}),
   };
 
   return {
@@ -203,9 +219,13 @@ function assertValid(input: ProductInput): void {
  * update can never wipe a product's options.
  */
 function toMenuItemRow(input: ProductInput): Record<string, unknown> {
-  if (!input.modifier_groups) return { ...input };
+  // An absent switch is "not part of this form", never "false": dropping the
+  // key (rather than sending undefined) keeps the column out of the write.
+  const { gov_discount_eligible: govEligible, ...rest } = input;
+  const base = typeof govEligible === "boolean" ? { ...rest, gov_discount_eligible: govEligible } : rest;
+  if (!input.modifier_groups) return { ...base };
 
-  return { ...input, ...splitGroupsToLegacyColumns(input.modifier_groups) };
+  return { ...base, ...splitGroupsToLegacyColumns(input.modifier_groups) };
 }
 
 /**

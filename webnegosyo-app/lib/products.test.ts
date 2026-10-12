@@ -554,3 +554,40 @@ describe("listCategories", () => {
     expect(result).toEqual([{ id: "cat-1", name: "Coffee" }]);
   });
 });
+
+describe("Senior/PWD eligibility switch", () => {
+  function mockUpdate() {
+    const chain: Record<string, jest.Mock> = {};
+    ["update", "eq", "select"].forEach((m) => {
+      chain[m] = jest.fn(() => chain);
+    });
+    chain.single = jest.fn(() => Promise.resolve({ data: { id: "1" }, error: null }));
+    (supabase.from as jest.Mock).mockReturnValueOnce(chain);
+    return chain;
+  }
+
+  it("loads the switch from the row only when the row carries it", () => {
+    expect(buildEditorFormState({ name: "Tote bag", gov_discount_eligible: false }).form.gov_discount_eligible).toBe(false);
+    expect(buildEditorFormState({ name: "Adobo" }).form).not.toHaveProperty("gov_discount_eligible");
+    expect(buildEditorFormState({ name: "Adobo", gov_discount_eligible: null }).form).not.toHaveProperty(
+      "gov_discount_eligible",
+    );
+    expect(buildEditorFormState(null).form).not.toHaveProperty("gov_discount_eligible");
+  });
+
+  it("never writes the column when the form does not carry it", async () => {
+    const chain = mockUpdate();
+    await updateProduct("1", "tenant-1", validInput);
+    expect(chain.update.mock.calls[0][0]).not.toHaveProperty("gov_discount_eligible");
+  });
+
+  it("writes an exclusion the merchant set, with or without options", async () => {
+    const plain = mockUpdate();
+    await updateProduct("1", "tenant-1", { ...validInput, gov_discount_eligible: false });
+    expect(plain.update.mock.calls[0][0]).toMatchObject({ gov_discount_eligible: false });
+
+    const withOptions = mockUpdate();
+    await updateProduct("1", "tenant-1", { ...validInput, gov_discount_eligible: true, modifier_groups: [] });
+    expect(withOptions.update.mock.calls[0][0]).toMatchObject({ gov_discount_eligible: true, addons: [] });
+  });
+});

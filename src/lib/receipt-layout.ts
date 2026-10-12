@@ -3,9 +3,16 @@ import {
   buildCustomerDetailRows,
   type CustomerDetailRow,
 } from "./customer-details";
+import type { StoredGovDiscount } from "./gov-discount/payload";
+import { NOT_AN_INVOICE_NOTICE } from "./gov-discount/tax-profile";
+import type { VatBreakdown } from "./gov-discount/types";
 import { readOrderDiscount } from "./order-discount";
+import { govClaimantRows, orderVatBreakdown, vatRows } from "./order-gov-summary";
 import { orderSummaryRows, type OrderSummaryRowKind } from "./order-summary-rows";
 import { TABLE_NUMBER_FIELD_NAME, getOrderTableNumber } from "./order-table-number";
+import type { ReceiptTaxIdentity } from "./receipt-tax";
+
+export type { ReceiptTaxIdentity } from "./receipt-tax";
 
 /**
  * Block-based receipt rendering.
@@ -104,6 +111,14 @@ export interface ReceiptConfig {
   trackingUrl?: string;
   /** Store logo image URL; the `logo` block is silent without it. */
   logoUrl?: string;
+  /**
+   * The store's tax registration (Settings → Tax & discounts). Absent for a
+   * store that never set it up, and every receipt then prints as before.
+   * Present, it adds the registered name and TIN under the business name, the
+   * VAT block under the totals and the supplementary-document notice (or the
+   * POS permit lines) at the foot.
+   */
+  tax?: ReceiptTaxIdentity;
 }
 
 export type ReceiptTextAlign = "left" | "center" | "right";
@@ -386,9 +401,13 @@ interface RenderContext {
   bundles: Map<string, BundleGroup>;
   subtotal: number;
   discount: ReturnType<typeof readOrderDiscount>;
+  /** The Senior/PWD block, when the sale carries one. */
+  government: StoredGovDiscount | null;
+  /** The VAT block to print, or null (non-VAT store, or no tax set up). */
+  vat: VatBreakdown | null;
 }
 
-function buildContext(order: ReceiptOrder): RenderContext {
+function buildContext(order: ReceiptOrder, config: ReceiptConfig): RenderContext {
   const regularItems: ReceiptOrderItem[] = [];
   const bundles = new Map<string, BundleGroup>();
   let subtotal = 0;
@@ -412,7 +431,14 @@ function buildContext(order: ReceiptOrder): RenderContext {
     }
   }
 
-  return { regularItems, bundles, subtotal, discount: readOrderDiscount(order) };
+  const discount = readOrderDiscount(order);
+  const government = discount?.government ?? null;
+  const vat = orderVatBreakdown({
+    government,
+    storeVatStatus: config.tax?.vatStatus ?? null,
+    total: order.total,
+  });
+  return { regularItems, bundles, subtotal, discount, government, vat };
 }
 
 // ---------------------------------------------------------------------------
@@ -638,7 +664,7 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
       // The label is merchant-authored (a voucher name), so it is clipped to
       // leave room for the amount rather than trusted to fit.
       const amount = `-P${row.amount.toFixed(2)}`;
-      lines.push(leftRight(truncate(row.label, Math.max(0, w - amount.length - 1)), amount, w));
+      lines.push(leftRight(fitDiscountLabel(row.label, Math.max(0, w - amount.length - 1)), amount, w));
       continue;
     }
     lines.push(leftRight(RECEIPT_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w));
@@ -670,8 +696,72 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
     lines.push(leftRight(CLASSIC_SETTLEMENT_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w));
   }
   lines.push(...billRefLines(order, w));
+  lines.push(...taxSectionLines(ctx, w, false));
 
   return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Tax: the VAT block and the Senior/PWD claimants, under the totals
+//
+// Both are silent for an order with no government discount at a store with no
+// VAT registration on file, so every other receipt prints exactly as before.
+// ---------------------------------------------------------------------------
+
+const LABEL_QUALIFIER = " · ";
+
+/**
+ * A discount label clipped to `max`. A label too long that reads
+ * "what · who" ("SC 20% · J. Dela Cruz") drops the qualifier whole rather
+ * than printing half a name — the claimant block below names them in full.
+ */
+function fitDiscountLabel(label: string, max: number): string {
+  if (label.length <= max) return label;
+  const qualifierAt = label.indexOf(LABEL_QUALIFIER);
+  return qualifierAt > 0 && qualifierAt <= max ? label.slice(0, qualifierAt) : truncate(label, max);
+}
+
+/** A row aligned like the totals above it; the label gives way to the amount. */
+function amountRow(label: string, amount: string, w: number): string {
+  return leftRight(truncate(label, Math.max(0, w - amount.length - 1)), amount, w);
+}
+
+/**
+ * VATable / VAT / VAT-Exempt / Zero-Rated, then "Less: SC/PWD Discount".
+ * RR 7-2024 §6(B.13): a VAT store's paper breaks the sale down this way.
+ */
+function vatBlockLines(ctx: RenderContext, w: number, isModern: boolean): string[] {
+  if (!ctx.vat) return [];
+  const rows = vatRows(ctx.vat, ctx.government?.claimants ?? []);
+  return [
+    rule("-", w),
+    ...rows.map((row) => {
+      const amount = `${row.kind === "lessDiscount" ? "-" : ""}P${row.amount.toFixed(2)}`;
+      return amountRow(isModern ? row.label : `${row.label}:`, amount, w);
+    }),
+  ];
+}
+
+/**
+ * Each claimant's name, FULL ID number and a line to sign on — the paper must
+ * carry all three for the discount (and its input VAT) to be allowed.
+ */
+function claimantBlockLines(ctx: RenderContext, w: number): string[] {
+  const claimants = govClaimantRows(ctx.government);
+  if (claimants.length === 0) return [];
+  return [
+    rule("-", w),
+    ...claimants.flatMap((claimant, index) => [
+      ...(index > 0 ? [""] : []),
+      ...detailLines(`${claimant.code} Name`, claimant.name, w),
+      ...detailLines(`${claimant.code} ID No`, claimant.idNumber, w),
+      fillInLine("Signature", w),
+    ]),
+  ];
+}
+
+function taxSectionLines(ctx: RenderContext, w: number, isModern: boolean): string[] {
+  return [...vatBlockLines(ctx, w, isModern), ...claimantBlockLines(ctx, w)];
 }
 
 // ---------------------------------------------------------------------------
@@ -905,7 +995,7 @@ function renderModernTotals(order: ReceiptOrder, ctx: RenderContext, w: number):
   for (const row of summaryRows.filter((r) => r.kind !== "total")) {
     if (row.kind === "discount") {
       const amount = `-P${row.amount.toFixed(2)}`;
-      lines.push(leftRight(truncate(row.label, Math.max(0, w - amount.length - 1)), amount, w));
+      lines.push(leftRight(fitDiscountLabel(row.label, Math.max(0, w - amount.length - 1)), amount, w));
       continue;
     }
     lines.push(leftRight(MODERN_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w));
@@ -934,6 +1024,7 @@ function renderModernTotals(order: ReceiptOrder, ctx: RenderContext, w: number):
     lines.push(row.kind === "paid" ? line : `<B>${line}</B>`);
   }
   lines.push(...billRefLines(order, w));
+  lines.push(...taxSectionLines(ctx, w, true));
   return lines;
 }
 
@@ -1111,6 +1202,10 @@ interface BlockEnv {
   detailRows: CustomerDetailRow[];
   address: CustomerDetailRow | null;
   covered: Set<string>;
+  /** What the storeAddress block prints: the config's address, else the registered one. */
+  storeAddress: string | undefined;
+  /** The block the tax footer rides on (the last one that is not a blank line), or -1. */
+  footerIndex: number;
 }
 
 function buildEnv(order: ReceiptOrder, config: ReceiptConfig, layout: ReceiptLayout): BlockEnv {
@@ -1123,11 +1218,20 @@ function buildEnv(order: ReceiptOrder, config: ReceiptConfig, layout: ReceiptLay
     layout,
     w: layout.width ?? config.width ?? 32,
     isModern,
-    ctx: buildContext(order),
+    ctx: buildContext(order, config),
     detailRows,
     address,
     covered: coveredDetailKeys(layout, isModern, address?.key ?? null),
+    storeAddress: config.storeAddress || config.tax?.businessAddress || undefined,
+    footerIndex: config.tax ? lastPrintingBlockIndex(layout) : -1,
   };
+}
+
+function lastPrintingBlockIndex(layout: ReceiptLayout): number {
+  for (let index = layout.blocks.length - 1; index >= 0; index -= 1) {
+    if (layout.blocks[index]!.kind !== "feed") return index;
+  }
+  return layout.blocks.length - 1;
 }
 
 function hasBlock(layout: ReceiptLayout, ...kinds: ReceiptBlockKind[]): boolean {
@@ -1151,8 +1255,8 @@ function renderPlainBlockLines(block: ReceiptBlock, env: BlockEnv): string[] {
           : center(truncate(config.storeName.toUpperCase(), w), w),
       ];
     case "storeAddress":
-      if (!config.storeAddress) return [];
-      return [isModern ? centered(config.storeAddress, w) : center(truncate(config.storeAddress, w), w)];
+      if (!env.storeAddress) return [];
+      return [isModern ? centered(env.storeAddress, w) : center(truncate(env.storeAddress, w), w)];
     case "text":
       return isModern ? renderModernText(block, w) : renderText(block, w);
     case "orderMeta":
@@ -1226,7 +1330,7 @@ function styledContent(block: ReceiptBlock, env: BlockEnv): string[] {
     case "businessName":
       return [config.storeName.toUpperCase()];
     case "storeAddress":
-      return config.storeAddress ? [config.storeAddress] : [];
+      return env.storeAddress ? [env.storeAddress] : [];
     case "text":
       return [block.text];
     case "orderNumber":
@@ -1296,8 +1400,79 @@ function renderStyledBlockLines(
     .map((line) => styleLine(line, resolved));
 }
 
+// ---------------------------------------------------------------------------
+// Tax identity: the header lines under the business name, and the footer
+// ---------------------------------------------------------------------------
+
+/** Never "Official Receipt": RR 7-2024 retired it, and a supplementary paper must not pose as one. */
+const NOT_AN_INVOICE_NOTE = "This is not a sales invoice.";
+
+function sameName(a: string, b: string): boolean {
+  const fold = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+  return fold(a) === fold(b);
+}
+
+/** Centred, and wrapped rather than clipped — a TIN cut short is a wrong TIN. */
+function centredLines(text: string, env: BlockEnv): string[] {
+  return wrapText(text, env.w, env.w).map((line) =>
+    env.isModern ? centered(line, env.w) : center(line, env.w),
+  );
+}
+
+/**
+ * Registered name, address and TIN, in that order, under whichever header
+ * blocks the layout has: the name rides on `businessName`, the TIN on
+ * `storeAddress` (after the address), and a layout without one of the two
+ * gets everything on the other.
+ */
+function taxHeaderLines(block: ReceiptBlock, env: BlockEnv): string[] {
+  const tax = env.config.tax;
+  if (!tax || (block.kind !== "businessName" && block.kind !== "storeAddress")) return [];
+  const hasName = hasBlock(env.layout, "businessName");
+  const hasAddress = hasBlock(env.layout, "storeAddress");
+  const registeredName =
+    tax.registeredName && !sameName(tax.registeredName, env.config.storeName)
+      ? tax.registeredName
+      : null;
+
+  const texts: (string | null | undefined)[] =
+    block.kind === "businessName"
+      ? [registeredName, ...(hasAddress ? [] : [env.storeAddress, tax.tinLine])]
+      : [...(hasName ? [] : [registeredName]), tax.tinLine];
+  return texts
+    .filter((text): text is string => Boolean(text))
+    .flatMap((text) => centredLines(text, env));
+}
+
+/**
+ * The foot of a taxed receipt. Without a Permit To Use the paper is a
+ * supplementary document and must say so in bold (RR 7-2024 §6(B.15)); with
+ * one it carries the machine's MIN, serial and permit numbers.
+ */
+function taxFooterLines(env: BlockEnv): string[] {
+  const tax = env.config.tax;
+  if (!tax) return [];
+  const { w, isModern } = env;
+
+  if (tax.isBirRegisteredPos) {
+    const permit: [string, string | null | undefined][] = [
+      ["MIN", tax.posMin],
+      ["S/N", tax.posSerialNo],
+      ["PTU No", tax.posPtuNo],
+    ];
+    return permit.flatMap(([label, value]) => (value ? centredLines(`${label}: ${value}`, env) : []));
+  }
+  return [
+    "",
+    ...wrapText(NOT_AN_INVOICE_NOTICE, w, w).map((line) =>
+      isModern ? `<C><B>${line}</B></C>` : `<B>${center(line, w)}</B>`,
+    ),
+    ...centredLines(NOT_AN_INVOICE_NOTE, env),
+  ];
+}
+
 /** One block as printer pieces: a text piece per line, or an image / QR. */
-function renderBlock(block: ReceiptBlock, env: BlockEnv): ReceiptSegment[] {
+function renderBlock(block: ReceiptBlock, env: BlockEnv, index: number): ReceiptSegment[] {
   const pieces: ReceiptSegment[] = [];
 
   if (block.kind === "logo") {
@@ -1316,6 +1491,11 @@ function renderBlock(block: ReceiptBlock, env: BlockEnv): ReceiptSegment[] {
         ? renderStyledBlockLines(block, block.style, support, env)
         : renderPlainBlockLines(block, env);
     for (const text of lines) pieces.push({ type: "text", text });
+    // Plain whatever the block's style: a TIN printed double width wraps.
+    for (const text of taxHeaderLines(block, env)) pieces.push({ type: "text", text });
+  }
+  if (index === env.footerIndex) {
+    for (const text of taxFooterLines(env)) pieces.push({ type: "text", text });
   }
 
   if (!env.layout.bold) return pieces;
@@ -1351,7 +1531,7 @@ export function renderReceiptSegments(
   layout: ReceiptLayout,
 ): ReceiptSegment[] {
   const env = buildEnv(order, config, layout);
-  return collapseSegments(layout.blocks.flatMap((block) => renderBlock(block, env)));
+  return collapseSegments(layout.blocks.flatMap((block, index) => renderBlock(block, env, index)));
 }
 
 /**
@@ -1366,7 +1546,7 @@ export function renderReceiptBlocks(
   const env = buildEnv(order, config, layout);
   return layout.blocks.map((block, index) => ({
     index,
-    segments: collapseSegments(renderBlock(block, env)),
+    segments: collapseSegments(renderBlock(block, env, index)),
   }));
 }
 
