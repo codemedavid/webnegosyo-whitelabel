@@ -82,9 +82,46 @@ function piecesOf(order: BillOrder): Piece[] {
   });
 }
 
+/**
+ * A Senior/PWD discount belongs to the claimant's own dishes, so on a split
+ * bill it rides on THOSE pieces — whoever takes the senior's plate takes the
+ * senior's discount — instead of being spread over the whole table. Read from
+ * the order's per-line allocations (`line-<index>`); any part not tied to a
+ * line (VAT taken off a service-charge share) is spread like every other
+ * charge. Null for an order without a Senior/PWD discount.
+ */
+function governmentPieceCents(order: BillOrder, pieces: readonly Piece[]): number[] | null {
+  const discount = readOrderDiscount(order);
+  if (!discount?.government || discount.total <= 0) return null;
+
+  const perPiece = pieces.map(() => 0);
+  const byLine = new Map<number, number[]>();
+  pieces.forEach((piece, index) => byLine.set(piece.lineIndex, [...(byLine.get(piece.lineIndex) ?? []), index]));
+  for (const [lineIndex, indexes] of byLine) {
+    const allocated = toCents(discount.allocationsByLine[`line-${lineIndex}`] ?? 0);
+    const shares = allocateCents(allocated, indexes.map((index) => pieces[index].cents));
+    indexes.forEach((index, position) => {
+      perPiece[index] = shares[position];
+    });
+  }
+
+  const unallocated = toCents(discount.total) - perPiece.reduce((sum, cents) => sum + cents, 0);
+  if (unallocated > 0) {
+    const spread = allocateCents(unallocated, pieces.map((piece) => piece.cents));
+    spread.forEach((cents, index) => {
+      perPiece[index] += cents;
+    });
+  }
+  return perPiece;
+}
+
+const GOVERNMENT_LABEL = "Senior/PWD discount";
+
 function unitsOfOrder(order: BillOrder): BillUnit[] {
   const pieces = piecesOf(order);
   const weights = pieces.map((piece) => piece.cents);
+  const government = governmentPieceCents(order, pieces);
+  if (government) return governmentUnits(order, pieces, government);
   const totals = allocateCents(toCents(order.total), weights);
   const delivery = allocateCents(toCents(order.deliveryFee ?? 0), weights);
   const service = allocateCents(toCents(order.serviceCharge ?? 0), weights);
@@ -104,6 +141,28 @@ function unitsOfOrder(order: BillOrder): BillUnit[] {
       .map((line) => ({ label: line.label, cents: line.shares[index] }))
       .filter((line) => line.cents > 0),
     totalCents: totals[index],
+  }));
+}
+
+function governmentUnits(order: BillOrder, pieces: readonly Piece[], government: readonly number[]): BillUnit[] {
+  const weights = pieces.map((piece) => piece.cents);
+  const discountCents = government.reduce((sum, cents) => sum + cents, 0);
+  // The bill before the discount, spread like any charge; each piece then
+  // gives back exactly its own Senior/PWD share — so the parts still add up
+  // to the order's total, to the centavo.
+  const gross = allocateCents(toCents(order.total) + discountCents, weights);
+  const delivery = allocateCents(toCents(order.deliveryFee ?? 0), weights);
+  const service = allocateCents(toCents(order.serviceCharge ?? 0), weights);
+
+  return pieces.map((piece, index) => ({
+    id: `${order._id}:${piece.lineIndex}:${piece.piece}`,
+    orderId: order._id,
+    item: piece.item,
+    itemCents: piece.cents,
+    deliveryCents: delivery[index],
+    serviceCents: service[index],
+    discountLines: government[index] > 0 ? [{ label: GOVERNMENT_LABEL, cents: government[index] }] : [],
+    totalCents: gross[index] - government[index],
   }));
 }
 

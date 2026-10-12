@@ -8,7 +8,9 @@ import {
 } from "./pos-discount-session";
 import {
   EMPTY_GOV_SESSION,
-  allocationsByOrderLine,
+  fromOrderLineKeys,
+  orderLineAllocations,
+  toOrderLineKeys,
   allowsSharedTable,
   govApprovalPending,
   govSessionAfterCartChange,
@@ -229,8 +231,30 @@ describe("storing and re-reading the discount", () => {
     });
   });
 
-  it("maps per-cart-key reductions onto the order's line indexes", () => {
-    expect(allocationsByOrderLine([line("rice", 50), line("sisig", 560)], { sisig: 160 })).toEqual({ "line-1": 160 });
+  it("stores line references by position and maps them back for an edit", () => {
+    const cart = [line("rice", 50), line("sisig", 560)];
+    const session = withClaimant(EMPTY_GOV_SESSION, senior());
+    const state = priceGovSession({ session, cart, context: VAT_CONTEXT, serviceCharge: 0, deliveryFee: 0 });
+    if (state.status !== "priced") throw new Error("expected priced");
+    const stored = storedGovDiscount({
+      session,
+      pricing: state.pricing,
+      profile: defaultTaxProfile("vat"),
+      itemsTotal: 610,
+      serviceCharge: 0,
+      deliveryFee: 0,
+    });
+
+    const byPosition = toOrderLineKeys(stored, cart);
+    expect(byPosition.claimants[0].allocation).toEqual({ mode: "items", units: { "line-1": 1 } });
+    expect(orderLineAllocations(byPosition)).toEqual({ "line-1": 160 });
+
+    // A later edit hydrates the same line under a different key.
+    const hydrated = [line("rice", 50), { ...line("sisig", 560), key: "hydrated-sisig" }];
+    expect(fromOrderLineKeys(byPosition, hydrated).claimants[0].allocation).toEqual({
+      mode: "items",
+      units: { "hydrated-sisig": 1 },
+    });
   });
 });
 

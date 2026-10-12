@@ -14,9 +14,9 @@
  * caller supplies `clientOrderId` so the idempotency key survives a retry.
  */
 
-import { cartTotals, round2, type PosCartLine, type ServiceCharge } from "./pos-cart";
+import { cartTotals, type PosCartLine, type ServiceCharge } from "./pos-cart";
 import type { StoredGovDiscount } from "./gov-discount";
-import { allocationsByOrderLine } from "./pos-gov-discount";
+import { orderLineAllocations } from "./pos-gov-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { computeChange } from "./pos-cash";
 import { withOrderOutlet, type OrderOutletContext } from "./order-outlet";
@@ -106,7 +106,8 @@ export interface PosOrderContext {
    * The Senior/PWD record for this sale (see `pos-gov-discount.ts`), when its
    * lines are the `discounts` above. Stored beside them so receipts, reports
    * and an edit can read who claimed what; its per-line reductions become the
-   * order's `allocationsByLine`.
+   * order's `allocationsByLine`. Its line references are `line-<index>` (see
+   * `toOrderLineKeys`), matching this sale's items in order.
    */
   government?: StoredGovDiscount | null;
 }
@@ -177,7 +178,6 @@ export interface PosOrderArgs {
 function discountBlob(
   discounts: readonly OrderDiscountLine[] | undefined,
   discountTotal: number,
-  cart: readonly PosCartLine[],
   government: StoredGovDiscount | null | undefined,
 ): Record<string, unknown> {
   if (!discounts || discounts.length === 0 || discountTotal <= 0) return {};
@@ -191,24 +191,13 @@ function discountBlob(
       // Only a Senior/PWD discount is allocated to lines: it belongs to the
       // claimant's own items, and the BIR record and a split bill both need to
       // know which. Vouchers at a counter are refunded whole.
-      allocationsByLine: government ? governmentAllocations(cart, government) : {},
+      allocationsByLine: government ? orderLineAllocations(government) : {},
       ...(government ? { government } : {}),
     },
   };
 }
 
-function governmentAllocations(
-  cart: readonly PosCartLine[],
-  government: StoredGovDiscount,
-): Record<string, number> {
-  const byKey: Record<string, number> = {};
-  for (const claimant of government.claimants) {
-    for (const [key, amount] of Object.entries(claimant.lineReductions)) {
-      byKey[key] = round2((byKey[key] ?? 0) + amount);
-    }
-  }
-  return allocationsByOrderLine(cart, byKey);
-}
+
 
 /** Drop undefined keys so the blob stays readable in the Convex dashboard. */
 function compact(payload: PosPaymentPayload): PosPaymentPayload {
@@ -297,7 +286,7 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
       ...tableCustomerData(context.table),
       // Spread before `pos` so a discount can never displace the payment
       // payload — both live in this blob and both are needed to settle a sale.
-      ...discountBlob(context.discounts, discountTotal, cart, context.government),
+      ...discountBlob(context.discounts, discountTotal, context.government),
       pos: paymentPayload(tender, context.cashierId),
     },
     total,

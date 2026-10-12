@@ -53,6 +53,62 @@ describe("bill units", () => {
     expect(tea.totalCents + bun.totalCents).toBe(9000);
   });
 
+  it("puts a Senior/PWD discount on the claimant's own dish, not across the table", () => {
+    // A senior's ₱560 sisig at a VAT store (₱160 off) beside a companion's
+    // ₱200 tea. Whoever takes the sisig takes the discount.
+    const seniorTable = billOrder({
+      _id: "s",
+      total: 600,
+      customerData: {
+        discount: {
+          total: 160,
+          deliveryDiscount: 0,
+          lines: [
+            { label: "SC VAT exemption · J. Dela Cruz", amount: 60 },
+            { label: "SC 20% · J. Dela Cruz", amount: 100 },
+          ],
+          allocationsByLine: { "line-0": 160 },
+          government: {
+            version: 1,
+            vatStatus: "vat",
+            serviceChargeMode: "full",
+            diners: null,
+            vat: null,
+            claimants: [
+              {
+                id: "c1",
+                kind: "senior",
+                name: "Juan Dela Cruz",
+                idNumber: "12345",
+                allocation: { mode: "items", units: { "line-0": 1 } },
+                grossShare: 560,
+                vatExemptSales: 500,
+                vatRemoved: 60,
+                discount: 100,
+                netDue: 400,
+                serviceChargeShare: 0,
+                serviceChargeVatRemoved: 0,
+                reduction: 160,
+                lineReductions: { "line-0": 160 },
+              },
+            ],
+          },
+        },
+      },
+      items: [
+        { orderId: "s", menuItemName: "Sisig", quantity: 1, subtotal: 560 },
+        { orderId: "s", menuItemName: "Tea", quantity: 1, subtotal: 200 },
+      ],
+    });
+
+    const [sisig, tea] = billUnits([seniorTable]);
+
+    expect(sisig.totalCents).toBe(40000);
+    expect(sisig.discountLines).toEqual([{ label: "Senior/PWD discount", cents: 16000 }]);
+    expect(tea.totalCents).toBe(20000);
+    expect(tea.discountLines).toEqual([]);
+  });
+
   it("keeps an order with no lines payable as one unit of charges", () => {
     const feeOnly = billOrder({ _id: "f", total: 60, deliveryFee: 60 });
 

@@ -50,8 +50,10 @@ import {
 import type { ManualDiscount } from "../lib/pos-discount";
 import {
   allowsSharedTable,
+  fromOrderLineKeys,
   govSessionFromStored,
   storedGovDiscount,
+  toOrderLineKeys,
   type PosGovContext,
   type PosGovSession,
 } from "../lib/pos-gov-discount";
@@ -349,7 +351,16 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       ...clearedSaleTable(),
       discount: setSessionGovernment(
         EMPTY_POS_DISCOUNT_SESSION,
-        govSessionFromStored(entered.context.storedDiscount?.government),
+        govSessionFromStored(
+          entered.context.storedDiscount?.government
+            ? fromOrderLineKeys(
+                entered.context.storedDiscount.government,
+                // An append rings only the new round; the claimants refer to
+                // the placed lines, which the context holds.
+                entered.context.mode === "append" ? entered.context.appendBaseCart : entered.cart,
+              )
+            : null,
+        ),
       ),
       ...clearedSaleAnswers(),
     }),
@@ -448,18 +459,19 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
     const profile = govContextOf(state).profile;
     if (!pricing || !profile) return null;
     const editContext = state.editContext;
-    return storedGovDiscount({
+    const cart = editContext ? effectiveEditCart(state.lines, editContext) : state.lines;
+    const record = storedGovDiscount({
       session: state.discount.government ?? govSessionFromStored(null),
       pricing,
       profile,
-      itemsTotal: cartTotals(
-        editContext ? effectiveEditCart(state.lines, editContext) : state.lines,
-      ).subtotal,
+      itemsTotal: cartTotals(cart).subtotal,
       serviceCharge: editContext
         ? editContext.serviceCharge
         : cartTotals(state.lines, state.serviceCharge).serviceCharge,
       deliveryFee: editContext ? editContext.deliveryFee : chargeableDeliveryFee(state.delivery),
     });
+    // Stored by line position, the order's own convention.
+    return toOrderLineKeys(record, cart);
   },
 
   /**

@@ -266,21 +266,71 @@ export function storedGovDiscount(args: {
   };
 }
 
-/**
- * Per-line allocations in the order's own convention (`line-<index>`, the
- * index of the line in the order's items), from the engine's per-cart-key
- * reductions.
- */
-export function allocationsByOrderLine(
-  cart: readonly PosCartLine[],
-  lineReductions: Readonly<Record<string, number>>,
+// --- stored line keys -------------------------------------------------------
+//
+// The register keys lines by a hash of item + options, which a later edit may
+// not reproduce exactly (a hydrated line carries names, not option ids). So
+// the order STORES every line reference as `line-<index>` — the order's own
+// convention, the one checkout's allocations use — and the register maps it
+// to and from its cart keys at the edges.
+
+function remapKeys(
+  record: Readonly<Record<string, number>>,
+  map: (key: string) => string | null,
 ): Record<string, number> {
-  return Object.fromEntries(
-    cart.flatMap((line, index) => {
-      const amount = lineReductions[line.key];
-      return amount && amount > 0 ? [[`line-${index}`, amount]] : [];
-    }),
-  );
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(record)) {
+    const mapped = map(key);
+    if (mapped !== null) out[mapped] = (out[mapped] ?? 0) + value;
+  }
+  return out;
+}
+
+function remapStored(stored: StoredGovDiscount, map: (key: string) => string | null): StoredGovDiscount {
+  return {
+    ...stored,
+    claimants: stored.claimants.map((claimant) => ({
+      ...claimant,
+      allocation:
+        claimant.allocation.mode === "items"
+          ? { mode: "items", units: remapKeys(claimant.allocation.units, map) }
+          : claimant.allocation,
+      lineReductions: remapKeys(claimant.lineReductions, map),
+    })),
+  };
+}
+
+export function orderLineKey(index: number): string {
+  return `line-${index}`;
+}
+
+/** Cart keys → `line-<index>`, for storing on the order and the sales book. */
+export function toOrderLineKeys(stored: StoredGovDiscount, cart: readonly PosCartLine[]): StoredGovDiscount {
+  const indexByKey = new Map(cart.map((line, index) => [line.key, index]));
+  return remapStored(stored, (key) => {
+    const index = indexByKey.get(key);
+    return index === undefined ? null : orderLineKey(index);
+  });
+}
+
+/** `line-<index>` → the cart keys of the order as loaded for an edit. */
+export function fromOrderLineKeys(stored: StoredGovDiscount, cart: readonly PosCartLine[]): StoredGovDiscount {
+  return remapStored(stored, (key) => {
+    const match = /^line-(\d+)$/.exec(key);
+    const line = match ? cart[Number(match[1])] : undefined;
+    return line ? line.key : null;
+  });
+}
+
+/** Each order line's share of the Senior/PWD reduction (`allocationsByLine`). */
+export function orderLineAllocations(stored: StoredGovDiscount): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const claimant of stored.claimants) {
+    for (const [key, amount] of Object.entries(claimant.lineReductions)) {
+      out[key] = Math.round(((out[key] ?? 0) + amount) * 100) / 100;
+    }
+  }
+  return out;
 }
 
 /** Rebuild the session an edited order was placed with. */

@@ -15,6 +15,7 @@ import type {
 } from "../gov-discount";
 import type { OrderBackend } from "../order-backend";
 import type { PosCartLine } from "../pos-cart";
+import { orderLineKey } from "../pos-gov-discount";
 
 /** Everything but the ids. */
 export type GovRecordDraft = Omit<RecordGovDiscountRequest, "tenantId" | "backend" | "externalOrderId">;
@@ -29,9 +30,10 @@ export function ledgerBackendOf(backend: OrderBackend): GovLedgerBackend {
   return LEDGER_BACKEND[backend];
 }
 
+/** Keyed `line-<index>`, the same references the stored government block uses. */
 export function ledgerLinesOf(cart: readonly PosCartLine[]): GovLedgerLine[] {
-  return cart.map((line) => ({
-    key: line.key,
+  return cart.map((line, index) => ({
+    key: orderLineKey(index),
     menuItemId: line.menuItemId || null,
     name: line.name,
     quantity: line.quantity,
