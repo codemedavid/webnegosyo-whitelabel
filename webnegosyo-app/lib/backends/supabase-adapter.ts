@@ -738,11 +738,12 @@ async function reviseOrder(
     total: number | null;
     revision_number: number | null;
     status: string | null;
+    customer_data: Record<string, unknown> | null;
   } | null>(
     scopeToBranch(
       client
         .from("orders")
-        .select("total, revision_number, status")
+        .select("total, revision_number, status, customer_data")
         .eq("id", orderId)
         .eq("tenant_id", tenantId),
       scope
@@ -758,6 +759,7 @@ async function reviseOrder(
     revisionNumber: current.revision_number ?? 0,
     status: current.status ?? undefined,
     total: current.total ?? 0,
+    customerData: current.customer_data,
     items: (currentItems ?? []).map((row) => ({
       menuItemId: row.menu_item_id ?? "",
       menuItemName: row.menu_item_name ?? "",

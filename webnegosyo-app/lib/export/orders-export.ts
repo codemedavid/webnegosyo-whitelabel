@@ -13,6 +13,7 @@ import { toCsv } from "./csv";
 import { formatExportDateTime } from "./dates";
 import { DEFAULT_TZ_OFFSET_MS } from "../product-daily-analytics";
 import type { DateWindow } from "../product-analytics-filters";
+import { readOrderDiscount, type OrderDiscountPayload } from "../order-discount";
 
 export interface ExportOrderInput {
   _id: string;
@@ -27,7 +28,10 @@ export interface ExportOrderInput {
   paymentStatus?: string;
   paymentMethod?: string;
   deliveryFee?: number;
+  serviceCharge?: number;
   amountPaid?: number;
+  /** Carries the discount breakdown on every backend (`customerData.discount`). */
+  customerData?: Record<string, unknown> | null;
 }
 
 export interface ExportOrderItemInput {
@@ -97,9 +101,20 @@ const ORDER_HEADERS = [
   "Payment Method",
   "Payment Status",
   "Delivery Fee",
+  "Service Charge",
+  "Discount",
+  "Discount Detail",
   "Total",
   "Amount Paid",
 ] as const;
+
+/** "Senior 20% — J. Cruz (30); LATTE10 (10)" — one cell naming every discount. */
+function describeDiscountLines(discount: OrderDiscountPayload | null): string {
+  if (!discount) return "";
+  return discount.lines
+    .map((line) => `${line.label} (${line.amount})`)
+    .join("; ");
+}
 
 /** One CSV row per order, newest first. */
 export function buildOrdersCsv(
@@ -110,6 +125,7 @@ export function buildOrdersCsv(
   const sorted = [...orders].sort((a, b) => b._creationTime - a._creationTime);
   const rows = sorted.map((order) => {
     const [date, time] = formatExportDateTime(order._creationTime, offsetMs).split(" ");
+    const discount = readOrderDiscount(order);
     return [
       order._id,
       date,
@@ -124,6 +140,9 @@ export function buildOrdersCsv(
       order.paymentMethod,
       order.paymentStatus,
       order.deliveryFee,
+      order.serviceCharge,
+      discount && discount.total > 0 ? discount.total : undefined,
+      describeDiscountLines(discount),
       order.total,
       order.amountPaid,
     ];

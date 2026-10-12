@@ -21,6 +21,8 @@
 import { ORDER_OUTLET_ID_KEY } from "../order-outlet";
 import { toAddonColumn } from "./addon-columns";
 import { isUuid, toUuidOrNull } from "../uuid";
+import type { OrderDiscountPayload } from "../order-discount";
+import { discountColumnsForCreate, lineDiscountAmounts } from "./order-discount-columns";
 
 /** A full ISO 8601 instant, the only form `created_at` is ever handed. */
 function isIsoTimestamp(value: unknown): value is string {
@@ -721,6 +723,9 @@ export interface OrderInsert {
   client_order_id: string | null;
   has_upsell_items: boolean;
   has_bundle_items: boolean;
+  /** Mirrors `customer_data.discount`; what reports aggregate. 0 when none. */
+  discount_total: number;
+  discount_data: OrderDiscountPayload | null;
 }
 
 export interface OrderItemInsert {
@@ -740,6 +745,8 @@ export interface OrderItemInsert {
   bundle_id: string | null;
   bundle_name: string | null;
   slot_name: string | null;
+  /** This line's share of the order's discount (0 when none). */
+  discount_amount: number;
 }
 
 /**
@@ -790,6 +797,8 @@ export function buildCreateOrderRows(
   tenantId: string,
   args: CreateOrderArgs
 ): { order: OrderInsert; items: OrderItemInsert[] } {
+  const discount = discountColumnsForCreate(args.customerData);
+  const lineDiscounts = lineDiscountAmounts(discount.discount_data, args.items.length);
   const order: OrderInsert = {
     // Spread so an absent id/time sends the exact row shape every deployed
     // reader has always seen; PostgREST would refuse an explicit `undefined`.
@@ -820,9 +829,10 @@ export function buildCreateOrderRows(
     client_order_id: args.clientOrderId ?? null,
     has_upsell_items: args.items.some((item) => item.isUpsellItem === true),
     has_bundle_items: args.items.some((item) => item.isBundleItem === true),
+    ...discount,
   };
 
-  const items: OrderItemInsert[] = args.items.map((item) => ({
+  const items: OrderItemInsert[] = args.items.map((item, index) => ({
     // The order row is committed BEFORE these are inserted and there is no
     // transaction around the two, so a `''` or a Convex-shaped id here is not a
     // rejected sale — it is a committed, printable sale with no line items.
@@ -840,6 +850,7 @@ export function buildCreateOrderRows(
     bundle_id: item.bundleId ?? null,
     bundle_name: item.bundleName ?? null,
     slot_name: item.slotName ?? null,
+    discount_amount: lineDiscounts[index],
   }));
 
   return { order, items };

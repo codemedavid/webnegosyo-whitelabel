@@ -474,16 +474,31 @@ function addedDiscountsOf(
   added: readonly OrderDiscountLine[],
   carried: readonly OrderDiscountLine[],
 ): number {
+  return round2(
+    countedAddedLines(added, carried).reduce((sum, line) => sum + line.amount, 0),
+  );
+}
+
+/**
+ * The lines this edit adds that actually come off the bill: coded ones not
+ * already on it, and manual ones. The ONE filter behind both the amount
+ * charged and the lines stored, so the stored breakdown always sums to the
+ * stored total — a manual line counted in one and missing from the other
+ * reprinted as an anonymous "Discount" row with its reason gone.
+ */
+function countedAddedLines(
+  added: readonly OrderDiscountLine[],
+  carried: readonly OrderDiscountLine[],
+): OrderDiscountLine[] {
   const alreadyOn = new Set(
     carried.map((line) => line.code).filter((code): code is string => code != null),
   );
 
-  return round2(
-    added.reduce((sum, line) => {
-      if (!Number.isFinite(line.amount) || line.amount <= 0) return sum;
-      if (line.code != null && alreadyOn.has(line.code)) return sum;
-      return sum + line.amount;
-    }, 0),
+  return added.filter(
+    (line) =>
+      Number.isFinite(line.amount) &&
+      line.amount > 0 &&
+      (line.code == null || !alreadyOn.has(line.code)),
   );
 }
 
@@ -614,7 +629,7 @@ export function editModeTotals(
 
   const settledLines = [
     ...discount.lines,
-    ...newDiscountLines(addedDiscountLines, discount.lines),
+    ...countedAddedLines(addedDiscountLines, discount.lines),
   ];
   const settledDiscount = settledDiscountOf(
     settledLines,

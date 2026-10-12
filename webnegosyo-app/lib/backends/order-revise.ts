@@ -20,6 +20,7 @@ import type { OrderDiscountPayload } from "../order-discount";
 import type { OrderAddon, OrderVariationSelection } from "./supabase-orders";
 import { toAddonColumn } from "./addon-columns";
 import { toUuidOrNull } from "../uuid";
+import { lineDiscountAmounts, revisionDiscountFields } from "./order-discount-columns";
 
 /** An item as the edit screen submits it. */
 export interface ReviseOrderItem {
@@ -99,6 +100,11 @@ export interface PreviousOrderState {
   status?: string;
   total: number;
   items: ReviseOrderItem[];
+  /**
+   * The order's blob as stored, so a settled discount can replace the copy
+   * inside it. Absent in callers that predate it: the blob is then left alone.
+   */
+  customerData?: Record<string, unknown> | null;
 }
 
 /**
@@ -142,6 +148,10 @@ export interface OrderRevisionPatch {
   edited_by: string | null;
   /** Present only when the edit settled a discount — see ReviseOrderArgs. */
   discount_data?: OrderDiscountPayload | null;
+  /** Written with `discount_data`, never without it. */
+  discount_total?: number;
+  /** The stored blob with its `discount` replaced, so every reader agrees. */
+  customer_data?: Record<string, unknown>;
 }
 
 export interface OrderItemRow {
@@ -167,6 +177,8 @@ export interface OrderItemRow {
   bundle_id: string | null;
   bundle_name: string | null;
   slot_name: string | null;
+  /** This line's share of the settled discount (0 when none). */
+  discount_amount?: number;
 }
 
 export interface OrderRevisionRow {
@@ -272,7 +284,11 @@ export function buildRevisionRows(
     throw new Error("An order cannot be emptied by editing. Cancel it instead.");
   }
 
-  const itemRows = args.items.map(toItemRow);
+  const lineDiscounts = lineDiscountAmounts(args.discount ?? null, args.items.length);
+  const itemRows = args.items.map((item, index) => ({
+    ...toItemRow(item),
+    discount_amount: lineDiscounts[index],
+  }));
 
   const itemsTotal = itemRows.reduce((sum, row) => sum + row.subtotal, 0);
   // Shared with the was/now header the cashier just confirmed. `carriedCharges`
@@ -307,7 +323,7 @@ export function buildRevisionRows(
       // Spread rather than set: the key must be ABSENT when the edit did not
       // settle a discount, so the update leaves the stored one alone. Writing
       // `undefined` would serialise as a blanking on some clients.
-      ...(args.discount !== undefined ? { discount_data: args.discount } : {}),
+      ...revisionDiscountFields(args.discount, previous.customerData),
     },
     itemRows,
     revision: {
