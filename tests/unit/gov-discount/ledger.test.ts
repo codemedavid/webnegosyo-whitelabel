@@ -212,6 +212,7 @@ describe('recordGovDiscount', () => {
     expect(edit).toMatchObject({ granted: 1, reversed: 1 })
     expect(rows.map((row) => `${row.revision}:${row.event}`)).toEqual(['0:granted', '0:reversed', '1:granted'])
     expect(rows[2].flags).toContain('edited')
+    expect(rows[1]).toMatchObject({ granted_by_name: 'Ana', reversed_by_name: 'Ana' })
   })
 
   it('reverses everything when the discount is removed or the order cancelled', async () => {

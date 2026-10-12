@@ -1415,6 +1415,8 @@ export type Database = {
           order_total: number | null
           outlet_id: string | null
           reduction: number
+          reversed_by: string | null
+          reversed_by_name: string | null
           revision: number
           server_reduction: number | null
           source: string
@@ -1451,6 +1453,8 @@ export type Database = {
           order_total?: number | null
           outlet_id?: string | null
           reduction: number
+          reversed_by?: string | null
+          reversed_by_name?: string | null
           revision?: number
           server_reduction?: number | null
           source?: string
@@ -1487,6 +1491,8 @@ export type Database = {
           order_total?: number | null
           outlet_id?: string | null
           reduction?: number
+          reversed_by?: string | null
+          reversed_by_name?: string | null
           revision?: number
           server_reduction?: number | null
           source?: string
@@ -3803,6 +3809,109 @@ export type Database = {
           variations?: Json | null
         }
         Relationships: []
+      }
+      merchant_notification_seen: {
+        Row: {
+          seen_at: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          seen_at?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          seen_at?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_notification_seen_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_notifications: {
+        Row: {
+          created_at: string
+          id: string
+          inventory_item_id: string | null
+          item_name: string
+          kind: string
+          outlet_id: string | null
+          outlet_name: string | null
+          push_claimed_at: string | null
+          quantity: number | null
+          reorder_level: number | null
+          stock_alert_id: string | null
+          tenant_id: string
+          unit: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inventory_item_id?: string | null
+          item_name: string
+          kind: string
+          outlet_id?: string | null
+          outlet_name?: string | null
+          push_claimed_at?: string | null
+          quantity?: number | null
+          reorder_level?: number | null
+          stock_alert_id?: string | null
+          tenant_id: string
+          unit?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inventory_item_id?: string | null
+          item_name?: string
+          kind?: string
+          outlet_id?: string | null
+          outlet_name?: string | null
+          push_claimed_at?: string | null
+          quantity?: number | null
+          reorder_level?: number | null
+          stock_alert_id?: string | null
+          tenant_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_notifications_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_stock_alert_id_fkey"
+            columns: ["stock_alert_id"]
+            isOneToOne: false
+            referencedRelation: "stock_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       messenger_sessions: {
         Row: {
@@ -8683,6 +8792,10 @@ export type Database = {
         Returns: boolean
       }
       app_user_may_reach_branch: {
+        Args: { target_outlet_id: string; target_tenant_id: string }
+        Returns: boolean
+      }
+      app_user_may_read_merchant_notifications: {
         Args: { target_outlet_id: string; target_tenant_id: string }
         Returns: boolean
       }

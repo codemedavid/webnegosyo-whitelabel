@@ -73,6 +73,9 @@ export interface ClaimRow {
   approval_id: string | null
   approved_by: string | null
   approved_by_name: string | null
+  /** Set on a reversed row only: who took the discount back. */
+  reversed_by?: string | null
+  reversed_by_name?: string | null
   source: 'pos' | 'online'
   occurred_at: string
 }
@@ -118,13 +121,17 @@ function orderRef(request: RecordGovDiscountRequest): string {
   return `${request.backend}:${request.externalOrderId}#${request.revision}`
 }
 
+/**
+ * The row that cancels an earlier grant. It keeps the ORIGINAL granter (the
+ * sales book still says whose discount it was) and names who took it back.
+ */
 function reversalOf(grant: ActiveGrant, actor: LedgerActor, occurredAt: string): ClaimRow {
   return {
     ...grant.row,
     event: 'reversed',
     flags: [],
-    granted_by: actor.userId,
-    granted_by_name: actor.name,
+    reversed_by: actor.userId,
+    reversed_by_name: actor.name,
     occurred_at: occurredAt,
   }
 }
