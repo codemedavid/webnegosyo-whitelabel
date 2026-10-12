@@ -75,6 +75,12 @@ Manila day. TS mirror holds the copy/explanations.
 - Other rows need `activity_view` (or `approve_requests`, or owner); branch from the ACCOUNT's outlet_id
   (branch-locked → that outlet + store-wide NULL rows). A client p_outlet_id can only NARROW.
 - category 'team' → owner/superadmin only.
+- Flags are PRIVATE (design-spec P8 / §5): a caller WITHOUT activity_view/approve_requests/owner gets
+  `flags = '{}'`, `reviewed_*` null on their own rows, and p_flagged_only returns nothing for them.
+- Statutory discounts (Senior Citizen / PWD, RA 9994 / RA 10754) are recorded as discount.applied with
+  summary.statutory = true; readers never count them as "money that didn't stay" and approvals never
+  gate them. Summary RPC returns them separately (byKind entry kind 'discount.applied' split via
+  `statutory` boolean field).
 
 ### RPCs (all SECURITY DEFINER, search_path '', revoke anon/public, grant authenticated)
 
@@ -100,6 +106,15 @@ before, after, summary, flags, reviewedAt, reviewedByName }.
 Pure TS modules (web `src/lib/activity/`, app `webnegosyo-app/lib/activity/`, kept in parity by a test):
 taxonomy.ts (categories, kinds, routine set, flags), describe.ts (event → {title, subtitle, amountLabel,
 tone, icon}) — sentences like "Ana refunded #14 · R-0042".
+
+## Design spec
+
+docs/plans/store-activity/design-spec.md (2026-10-12) governs UI/copy. Where it and this contract
+disagree, this contract wins; spec items marked [contract?] were folded in above where accepted.
+Accepted from the spec: textMuted #6E685E token for meta text, formatSignedPeso ("−₱185", U+2212),
+primary buttons ink or #B23E1B (never white-on-coral), push Approve uses opensAppToForeground:true on
+both platforms (+ isAuthenticationRequired on iOS) with a 4-second Undo before sending, server only
+targets the `approvals` Android channel on devices that registered it.
 
 ## Approvals (Phase 3 — contract reserved)
 
