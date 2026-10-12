@@ -185,19 +185,45 @@ describe('security floor migration (store activity phase 0)', () => {
     })
   })
 
-  describe('cancelling an order', () => {
+  describe('order status moves that undo the past', () => {
     test('a guard fires on every status update of orders', () => {
       expect(sql).toMatch(
-        /create\s+trigger\s+orders_client_cancel_guard\s+before\s+update\s+of\s+status\s+on\s+public\.orders\s+for\s+each\s+row\s+execute\s+function\s+public\.orders_client_cancel_guard\(\)/i
+        /create\s+trigger\s+orders_client_status_guard\s+before\s+update\s+of\s+status\s+on\s+public\.orders\s+for\s+each\s+row\s+execute\s+function\s+public\.orders_client_status_guard\(\)/i
       )
     })
 
-    test('clients need the orders grant and can never cancel a delivered order', () => {
-      const body = functionStatement(sql, 'orders_client_cancel_guard')
-      expect(body).toMatch(/current_user\s+not\s+in\s*\(\s*'anon'\s*,\s*'authenticated'\s*\)/i)
-      expect(body).toMatch(/old\.status\s*=\s*'delivered'/i)
-      expect(body).toMatch(/public\.app_user_has_permission\(new\.tenant_id,\s*'orders'\)/i)
-      expect(body).not.toMatch(/security\s+definer/i)
+    test('the never-applied cancel-only draft is removed, not left beside it', () => {
+      expect(sql).toMatch(/drop\s+trigger\s+if\s+exists\s+orders_client_cancel_guard\s+on\s+public\.orders/i)
+      expect(sql).toMatch(/drop\s+function\s+if\s+exists\s+public\.orders_client_cancel_guard\(\)/i)
+      expect(functionStatement(sql, 'orders_client_cancel_guard')).toBe('')
+    })
+
+    const body = (): string => functionStatement(sql, 'orders_client_status_guard')
+
+    test('runs for client roles only, as the caller', () => {
+      expect(body()).toMatch(/current_user\s+not\s+in\s*\(\s*'anon'\s*,\s*'authenticated'\s*\)/i)
+      expect(body()).not.toMatch(/security\s+definer/i)
+    })
+
+    test('never cancels a delivered order from a client', () => {
+      expect(body()).toMatch(/old\.status\s*=\s*'delivered'\s+and\s+new\.status\s*=\s*'cancelled'/i)
+    })
+
+    test('moving an order OUT of delivered needs order_edit, so cancel cannot be reached by cycling', () => {
+      expect(body()).toMatch(
+        /if\s+old\.status\s*=\s*'delivered'\s+then\s+if\s+not\s+public\.app_user_has_permission\(new\.tenant_id,\s*'order_edit'\)/i
+      )
+    })
+
+    test('cancelling and reopening a cancelled order need orders', () => {
+      expect(body()).toMatch(
+        /\(old\.status\s*=\s*'cancelled'\s+or\s+new\.status\s*=\s*'cancelled'\)\s+and\s+not\s+public\.app_user_has_permission\(new\.tenant_id,\s*'orders'\)/i
+      )
+    })
+
+    test('documents the audited client flows in the migration header of 4b', () => {
+      expect(raw).toMatch(/order-status-management\.tsx/)
+      expect(raw).toMatch(/Residual, by design/)
     })
   })
 
@@ -254,7 +280,7 @@ describe('security floor migration (store activity phase 0)', () => {
   })
 
   test('trigger functions are not callable through the API', () => {
-    for (const fn of ['order_ledger_append_only()', 'stamp_client_actor()', 'orders_client_cancel_guard()']) {
+    for (const fn of ['order_ledger_append_only()', 'stamp_client_actor()', 'orders_client_status_guard()']) {
       const escaped = fn.replace(/[()]/g, '\\$&')
       expect(sql).toMatch(new RegExp(`revoke\\s+all\\s+on\\s+function\\s+public\\.${escaped}\\s+from\\s+public\\s*,\\s*anon\\s*,\\s*authenticated`, 'i'))
     }

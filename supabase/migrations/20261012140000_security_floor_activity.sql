@@ -57,9 +57,11 @@
 --    * order_payments: a refund row needs order_refund.
 --    * orders: a client cancelling needs orders; nobody on a client role can
 --      cancel an order that was already delivered (the customer has the
---      food). No anon/customer path updates orders (no anon UPDATE policy);
---      the web admin's updateOrderStatus runs as the caller and already
---      checks 'orders', so only its delivered → cancelled now fails, loudly.
+--      food). Moving an order OUT of delivered needs order_edit and out of
+--      cancelled needs orders, so the cancel rule cannot be sidestepped by
+--      cycling the status (see 4b for the audited flows). No anon/customer
+--      path updates orders (no anon UPDATE policy); the web admin's
+--      updateOrderStatus runs as the caller and already checks 'orders'.
 --    * vouchers / voucher_targets: writes need vouchers (reads stay open to
 --      every account of the store — the register applies vouchers).
 --    * voucher_redemptions: no client writes at all. Redemptions are made
@@ -72,7 +74,7 @@
 --    platform_staff_* policies; the cancel guard honours stores.edit for them.
 --
 -- Rollback (manual, in order):
---   drop trigger if exists orders_client_cancel_guard on public.orders;
+--   drop trigger if exists orders_client_status_guard on public.orders;
 --   drop trigger if exists order_payments_append_only on public.order_payments;
 --   drop trigger if exists order_revisions_append_only on public.order_revisions;
 --   drop trigger if exists order_payments_stamp_actor on public.order_payments;
@@ -231,12 +233,41 @@ create policy order_payments_insert_admin on public.order_payments
   );
 
 -- ============================================
--- 4b. Cancelling an order
+-- 4b. Order status moves that undo the past (cancel, un-deliver, reopen)
 -- ============================================
 
+-- One guard for every client status change that takes something back. A
+-- cancel-only guard was sidestepped by cycling (security review M2): set a
+-- delivered order back to 'pending', then cancel it. So the moves OUT of the
+-- two terminal states are gated too:
+--
+--   anything -> cancelled     needs orders; never from 'delivered'
+--   delivered -> anything     needs order_edit (owners hold it; so does
+--                             legacy full access) — "marked delivered by
+--                             mistake" is a correction to a settled sale
+--   cancelled -> anything     needs orders (reopen; the web admin re-deducts
+--                             stock for it in updateOrderStatus)
+--
+-- Legitimate client flows, audited 2026-10-12:
+--   * web admin status dropdown (src/components/admin/order-status-management.tsx,
+--     a free select) -> updateOrderStatus (src/lib/orders-service.ts), which
+--     runs as the caller and already requires orders. Its un-deliver now also
+--     needs order_edit; its reopen keeps working for orders holders.
+--   * merchant app: only forward moves (order/[orderId].tsx NEXT_STATUS,
+--     orders.tsx list advance, scan.tsx pickup -> delivered, pos-sales.tsx
+--     confirm), kitchen bump -> ready and recall -> preparing (kitchen.tsx),
+--     cancel (supabase-adapter.ts cancelOrder, already skips delivered).
+--     The app never moves an order out of delivered or cancelled; a kitchen
+--     recall racing a handover is now refused, which is correct.
+--   * no register "void a sale" flow writes status on the platform DB.
+-- Residual, by design: a holder of BOTH order_edit and orders can still
+-- un-deliver and then cancel — two deliberate moves by trusted grants, each
+-- recorded in order_status_events / store_activity.
+--
 -- SECURITY INVOKER for the same reason as stamp_client_actor: the rule is
 -- about client roles; the service role and definer functions are the server.
-create or replace function public.orders_client_cancel_guard()
+-- Platform staff with stores.edit keep the reach their policies give them.
+create or replace function public.orders_client_status_guard()
 returns trigger
 language plpgsql
 set search_path = ''
@@ -245,38 +276,49 @@ begin
   if current_user not in ('anon', 'authenticated') then
     return new;
   end if;
-  if new.status is distinct from 'cancelled' or old.status is not distinct from 'cancelled' then
+  if new.status is not distinct from old.status then
     return new;
   end if;
-  if old.status = 'delivered' then
+  if old.status = 'delivered' and new.status = 'cancelled' then
     raise exception 'This order was already delivered, so it can no longer be cancelled.'
       using errcode = 'P0001';
   end if;
   -- No anon path updates orders today (no anon UPDATE policy); should one
-  -- appear, a customer still may not cancel through it. Checked before the
-  -- helpers, which anon may not execute.
+  -- appear, a customer still may not move an order through it. Checked before
+  -- the helpers, which anon may not execute.
   if current_user = 'anon' then
-    raise exception 'Cancelling an order needs a signed-in staff account.'
+    raise exception 'Changing an order needs a signed-in staff account.'
       using errcode = '42501';
   end if;
-  if not (
-    public.app_user_has_permission(new.tenant_id, 'orders')
-    or public.app_user_platform_can(array['stores.edit'])
-  ) then
-    raise exception 'Cancelling an order needs the Orders permission. Ask the owner or a manager.'
+  if public.app_user_platform_can(array['stores.edit']) then
+    return new;
+  end if;
+  if old.status = 'delivered' then
+    if not public.app_user_has_permission(new.tenant_id, 'order_edit') then
+      raise exception 'This order was already delivered. Moving it back needs the Edit Orders permission.'
+        using errcode = '42501';
+    end if;
+    return new;
+  end if;
+  if (old.status = 'cancelled' or new.status = 'cancelled')
+     and not public.app_user_has_permission(new.tenant_id, 'orders') then
+    raise exception 'Cancelling or reopening an order needs the Orders permission. Ask the owner or a manager.'
       using errcode = '42501';
   end if;
   return new;
 end;
 $$;
 
-comment on function public.orders_client_cancel_guard() is
-  'BEFORE UPDATE OF status on orders: a client role cancelling needs the orders permission (or platform stores.edit); a delivered order is never cancelled from a client. Phase 0 security floor.';
+comment on function public.orders_client_status_guard() is
+  'BEFORE UPDATE OF status on orders, client roles only: ->cancelled needs orders and never from delivered; delivered-> needs order_edit; cancelled-> needs orders. Platform stores.edit exempt. Phase 0 security floor (review M2).';
 
-revoke all on function public.orders_client_cancel_guard() from public, anon, authenticated;
+revoke all on function public.orders_client_status_guard() from public, anon, authenticated;
 
+-- The first draft of this file (never applied) named it orders_client_cancel_guard.
 drop trigger if exists orders_client_cancel_guard on public.orders;
-create trigger orders_client_cancel_guard before update of status on public.orders for each row execute function public.orders_client_cancel_guard();
+drop function if exists public.orders_client_cancel_guard();
+drop trigger if exists orders_client_status_guard on public.orders;
+create trigger orders_client_status_guard before update of status on public.orders for each row execute function public.orders_client_status_guard();
 
 -- ============================================
 -- 4c. Vouchers and their targets: writes need vouchers

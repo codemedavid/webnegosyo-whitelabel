@@ -38,12 +38,13 @@ select tablename, policyname, cmd from pg_policies
 select policyname, cmd from pg_policies
  where schemaname = 'public' and tablename = 'voucher_redemptions' and cmd <> 'SELECT';
 
--- Expect 6 rows, all enabled ('O').
+-- Expect 6 rows, all enabled ('O'). (No orders_client_cancel_guard: that was
+-- the never-applied first draft.)
 select c.relname, t.tgname, t.tgenabled from pg_trigger t join pg_class c on c.oid = t.tgrelid
  where not t.tgisinternal and t.tgname in (
    'order_payments_append_only', 'order_revisions_append_only',
    'order_payments_stamp_actor', 'order_revisions_stamp_actor', 'stock_movements_stamp_actor',
-   'orders_client_cancel_guard')
+   'orders_client_status_guard')
  order by 1, 2;
 
 -- Expect app_user_has_permission: prosecdef = true, proconfig = {search_path=""};
@@ -51,7 +52,8 @@ select c.relname, t.tgname, t.tgenabled from pg_trigger t join pg_class c on c.o
 select p.proname, p.prosecdef, p.proconfig, p.proacl::text
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public'
-   and p.proname in ('app_user_has_permission', 'order_ledger_append_only', 'stamp_client_actor', 'orders_client_cancel_guard');
+   and p.proname in ('app_user_has_permission', 'order_ledger_append_only', 'stamp_client_actor', 'orders_client_status_guard', 'orders_client_cancel_guard');
+-- (orders_client_cancel_guard must NOT appear.)
 
 -- Expect false / false (UPDATE revoked on both ledgers) and false x3 (redemptions).
 select has_table_privilege('authenticated', 'public.order_payments', 'UPDATE') as payments_update,
@@ -82,7 +84,8 @@ declare
   c_tenant_c constant uuid := 'acccced5-a00e-4141-b5c2-ef53d5f74ad1';  -- sorpresso
   c_staff_c  constant uuid := '1f0986c9-b791-4c66-8ef2-84ac0e6b825d';
 
-  v_order_a uuid; v_order_a_delivered uuid; v_order_b uuid; v_order_c uuid;
+  v_order_a uuid; v_order_a_delivered uuid; v_order_b uuid; v_order_b_cancelled uuid;
+  v_order_c uuid; v_order_c_delivered uuid;
   v_ledger_order_c uuid; v_payment_c uuid; v_revision_c uuid;
   v_item_a uuid; v_item_c uuid; v_voucher_a uuid;
   v_id uuid; v_by uuid; v_at timestamptz; v_n integer; v_msg text; v_rev integer;
@@ -92,7 +95,11 @@ begin
   select id into v_order_a_delivered from public.orders
    where tenant_id = c_tenant_a and id <> v_order_a order by created_at desc limit 1;
   select id into v_order_b from public.orders where tenant_id = c_tenant_b order by created_at desc limit 1;
+  select id into v_order_b_cancelled from public.orders
+   where tenant_id = c_tenant_b and id <> v_order_b order by created_at desc limit 1;
   select id into v_order_c from public.orders where tenant_id = c_tenant_c order by created_at desc limit 1;
+  select id into v_order_c_delivered from public.orders
+   where tenant_id = c_tenant_c and id <> v_order_c order by created_at desc limit 1;
   -- An order of C's with a payment AND a revision, not loyalty-settled (FK NO ACTION).
   select o.id into v_ledger_order_c from public.orders o
    where o.tenant_id = c_tenant_c
@@ -107,13 +114,15 @@ begin
   select id into v_voucher_a from public.vouchers where tenant_id = c_tenant_a limit 1;
 
   if v_order_a is null or v_order_a_delivered is null or v_order_b is null or v_order_c is null
+     or v_order_b_cancelled is null or v_order_c_delivered is null
      or v_ledger_order_c is null or v_item_a is null or v_item_c is null or v_voucher_a is null then
     raise exception 'PROBE SETUP: a fixture is missing — re-pick the accounts (see header)';
   end if;
 
   -- Deterministic starting states (owner writes; the guard ignores the owner).
   update public.orders set status = 'pending'   where id in (v_order_a, v_order_b, v_order_c);
-  update public.orders set status = 'delivered' where id = v_order_a_delivered;
+  update public.orders set status = 'delivered' where id in (v_order_a_delivered, v_order_c_delivered);
+  update public.orders set status = 'cancelled' where id = v_order_b_cancelled;
 
   -- ================= Staff A: no order_refund / vouchers / menu =================
   perform set_config('request.jwt.claims', json_build_object('sub', c_staff_a, 'role', 'authenticated')::text, true);
@@ -205,10 +214,27 @@ begin
     if v_msg not like '%already delivered%' then raise exception 'PROBE INCONCLUSIVE A7: %', v_msg; end if;
   end;
 
+  -- A7b review M2: the cancel rule cannot be sidestepped by cycling the
+  -- status. A holds orders but NOT order_edit: delivered -> pending refused.
+  begin
+    update public.orders set status = 'pending' where id = v_order_a_delivered;
+    raise exception 'PROBE FAIL A7b: staff without order_edit moved a delivered order back to pending';
+  exception when insufficient_privilege then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg not like '%needs the Edit Orders permission%' then raise exception 'PROBE INCONCLUSIVE A7b: %', v_msg; end if;
+  end;
+  select status into v_msg from public.orders where id = v_order_a_delivered;
+  if v_msg <> 'delivered' then raise exception 'PROBE FAIL A7b: delivered order now reads %', v_msg; end if;
+
   -- A8 an orders holder can still cancel a live order
   update public.orders set status = 'cancelled' where id = v_order_a;
   get diagnostics v_n = row_count;
   if v_n <> 1 then raise exception 'PROBE FAIL A8: orders holder could not cancel a pending order'; end if;
+
+  -- A9 ...and reopen it (web admin dropdown: cancelled -> pending)
+  update public.orders set status = 'pending' where id = v_order_a;
+  get diagnostics v_n = row_count;
+  if v_n <> 1 then raise exception 'PROBE FAIL A9: orders holder could not reopen a cancelled order'; end if;
 
   reset role;
 
@@ -229,6 +255,15 @@ begin
   update public.orders set status = 'confirmed' where id = v_order_b;
   get diagnostics v_n = row_count;
   if v_n <> 1 then raise exception 'PROBE FAIL B2: pos staff can no longer confirm an order'; end if;
+
+  -- B2b reopening a cancelled order needs orders
+  begin
+    update public.orders set status = 'pending' where id = v_order_b_cancelled;
+    raise exception 'PROBE FAIL B2b: staff without orders reopened a cancelled order';
+  exception when insufficient_privilege then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg not like '%needs the Orders permission%' then raise exception 'PROBE INCONCLUSIVE B2b: %', v_msg; end if;
+  end;
 
   -- B3 a charge from the register still lands
   insert into public.order_payments (tenant_id, order_id, kind, amount, note)
@@ -255,6 +290,11 @@ begin
     raise exception 'PROBE FAIL C2: client updated an existing revision';
   exception when insufficient_privilege then null;
   end;
+
+  -- C2b an order_edit holder may correct "delivered by mistake"...
+  update public.orders set status = 'ready' where id = v_order_c_delivered;
+  get diagnostics v_n = row_count;
+  if v_n <> 1 then raise exception 'PROBE FAIL C2b: order_edit holder could not move a delivered order back'; end if;
 
   -- C3 stock movement allowed with menu; created_by stamped
   insert into public.stock_movements (tenant_id, inventory_item_id, reason, quantity_delta, created_by, note)

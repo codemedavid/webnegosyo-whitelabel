@@ -119,7 +119,7 @@ export default function OrdersScreen() {
   );
   const [sort, setSort] = useState<SortOrder>("newest");
   // Cancelling is the `orders` grant's authority; the database refuses it for
-  // anyone else (orders_client_cancel_guard), so the rows must not offer it.
+  // anyone else (orders_client_status_guard), so the rows must not offer it.
   const mayCancelOrders = useAuthStore((s) =>
     hasPermission({ role: s.role, isOwner: s.isOwner, permissions: s.permissions }, "orders"),
   );

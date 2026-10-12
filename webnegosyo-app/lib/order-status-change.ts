@@ -51,7 +51,7 @@ export function canCancelOrder(status: string): boolean {
  * Cancelling takes the sale out of revenue and puts its stock back, so it is
  * the `orders` grant's authority — `kitchen`, `tables` and `pos` are carved
  * out of the queue precisely without it. The database refuses the write for
- * anyone else (orders_client_cancel_guard); hiding the button keeps a cashier
+ * anyone else (orders_client_status_guard); hiding the button keeps a cashier
  * from meeting that refusal. Phase 3 adds "Ask a manager" in its place.
  */
 export function canUserCancelOrder(user: StaffPermissionHolder, status: string): boolean {

@@ -1121,7 +1121,7 @@ export default function OrderDetailScreen() {
             </TouchableOpacity>
           )}
           {/* Staff without `orders` get no Cancel: the database refuses it
-              (orders_client_cancel_guard); Phase 3 puts "Ask a manager" here. */}
+              (orders_client_status_guard); Phase 3 puts "Ask a manager" here. */}
           {canUserCancelOrder({ role, isOwner, permissions }, order.status) && (
             <TouchableOpacity
               onPress={() => {
