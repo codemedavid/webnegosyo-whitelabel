@@ -30,6 +30,12 @@ export const STAFF_PERMISSION_KEYS = [
   // stamp card. Attaching a customer at the register needs no grant.
   'loyalty_manage',
   'loyalty_redeem',
+  // Store activity & approvals. Both are OPT-IN (see OPT_IN_PERMISSION_KEYS):
+  // reading what every colleague did, and approving another person's refund
+  // or cancellation, are trust an owner hands out by name — never something a
+  // legacy full-access account (`permissions: null`) inherits silently.
+  'activity_view',
+  'approve_requests',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -98,6 +104,14 @@ export const STAFF_PERMISSION_LABELS: Record<
     label: 'Redeem Loyalty Rewards',
     description: 'Apply verified customer rewards at POS without access to customer history',
   },
+  activity_view: {
+    label: 'See store activity',
+    description: "See refunds, cancellations, stock changes and drawer moves by everyone — not just their own",
+  },
+  approve_requests: {
+    label: 'Approve requests',
+    description: "Approve or decline a colleague's refund, cancellation, discount or write-off — grant sparingly",
+  },
 }
 
 export const MAX_STAFF_PER_TENANT = 3
@@ -124,6 +138,23 @@ export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermis
   tables: 'orders',
 }
 
+/**
+ * Keys that full access (`permissions: null`) does NOT grant. Owners and
+ * superadmins still hold them; everyone else needs them ticked by name.
+ *
+ * `null` predates staff management and means "everything that existed then".
+ * Watching every colleague's refunds and approving another person's money
+ * moves are new kinds of trust, so a legacy account must not wake up holding
+ * them. Mirrored in SQL by `public.app_user_has_permission` and in the three
+ * other registry copies (staff-permissions-parity.test.ts pins all of them).
+ */
+export const OPT_IN_PERMISSION_KEYS = ['activity_view', 'approve_requests'] as const satisfies readonly StaffPermissionKey[]
+
+/** Whether full access (`permissions: null`) grants `key`. */
+export function isGrantedByFullAccess(key: string): boolean {
+  return !(OPT_IN_PERMISSION_KEYS as readonly string[]).includes(key)
+}
+
 /** Whether `permissions` grants `key` outright or through its containing grant. */
 function listGrants(permissions: readonly string[], key: StaffPermissionKey): boolean {
   if (permissions.includes(key)) return true
@@ -140,11 +171,12 @@ export interface PermissionHolder {
 /**
  * Whether a user may access a feature area. Owners and superadmins always
  * may; `permissions: null` means full access (backward compatibility with
- * admins created before staff management existed).
+ * admins created before staff management existed) — except for the opt-in
+ * keys, which must be granted by name.
  */
 export function hasPermission(user: PermissionHolder, key: StaffPermissionKey): boolean {
   if (user.role === 'superadmin' || user.is_owner) return true
-  if (user.permissions == null) return true
+  if (user.permissions == null) return isGrantedByFullAccess(key)
   return listGrants(user.permissions, key)
 }
 

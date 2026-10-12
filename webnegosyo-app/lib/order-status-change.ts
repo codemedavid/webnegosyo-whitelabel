@@ -17,6 +17,7 @@
  */
 
 import { isHandoverSettlement, isSettledStatus } from "./order-paid-state";
+import { hasPermission, type StaffPermissionHolder } from "./staff-permissions";
 
 /** Statuses from which there is nothing left to cancel. */
 const UNCANCELLABLE_STATUSES: readonly string[] = ["delivered", "cancelled"];
@@ -42,6 +43,19 @@ export interface StatusChangePlan {
 
 export function canCancelOrder(status: string): boolean {
   return !UNCANCELLABLE_STATUSES.includes(status);
+}
+
+/**
+ * Whether THIS account may be offered Cancel on an order in `status`.
+ *
+ * Cancelling takes the sale out of revenue and puts its stock back, so it is
+ * the `orders` grant's authority — `kitchen`, `tables` and `pos` are carved
+ * out of the queue precisely without it. The database refuses the write for
+ * anyone else (orders_client_cancel_guard); hiding the button keeps a cashier
+ * from meeting that refusal. Phase 3 adds "Ask a manager" in its place.
+ */
+export function canUserCancelOrder(user: StaffPermissionHolder, status: string): boolean {
+  return canCancelOrder(status) && hasPermission(user, "orders");
 }
 
 export function planOrderStatusChange(

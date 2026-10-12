@@ -39,6 +39,7 @@ import {
   markPaidAfterHandover,
   planOrderStatusChange,
 } from "../../lib/order-status-change";
+import { hasPermission } from "../../lib/staff-permissions";
 import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { IconButton } from "../../components/IconButton";
@@ -117,6 +118,11 @@ export default function OrdersScreen() {
     STATUS_FILTERS.includes(params.status as FilterKey) ? (params.status as FilterKey) : "all"
   );
   const [sort, setSort] = useState<SortOrder>("newest");
+  // Cancelling is the `orders` grant's authority; the database refuses it for
+  // anyone else (orders_client_cancel_guard), so the rows must not offer it.
+  const mayCancelOrders = useAuthStore((s) =>
+    hasPermission({ role: s.role, isOwner: s.isOwner, permissions: s.permissions }, "orders"),
+  );
   const [branchFilter, setBranchFilter] = useState<string>(ORDER_BRANCH_FILTER_ALL);
   const [search, setSearch] = useState("");
   // Absent means the live queue — the tab's normal job. A selection turns the
@@ -466,13 +472,14 @@ export default function OrdersScreen() {
           nextStatusLabel={nextStatus ? capitalize(nextStatus) : undefined}
           isBusy={busyIds.has(order._id)}
           customerBadge={customerBadges.get(order._id)}
+          mayCancelOrders={mayCancelOrders}
           onOpen={handleOpen}
           onAdvance={handleAdvance}
           onCancel={confirmCancel}
         />
       );
     },
-    [busyIds, customerBadges, handleOpen, handleAdvance, confirmCancel],
+    [busyIds, customerBadges, mayCancelOrders, handleOpen, handleAdvance, confirmCancel],
   );
 
   const listEmpty = error ? (

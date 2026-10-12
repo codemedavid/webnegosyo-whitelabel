@@ -32,7 +32,7 @@ import { useTenderPaymentMethods } from "../../../lib/query/use-tender-payment-m
 import { isCashMethod } from "../../../lib/pos-payment-methods";
 import { isPosPayLater } from "../../../lib/pos-order";
 import {
-  canCancelOrder,
+  canUserCancelOrder,
   markPaidAfterHandover,
   planOrderStatusChange,
 } from "../../../lib/order-status-change";
@@ -1120,7 +1120,9 @@ export default function OrderDetailScreen() {
               <Text style={styles.billLinkText}>Split or combine bill</Text>
             </TouchableOpacity>
           )}
-          {canCancelOrder(order.status) && (
+          {/* Staff without `orders` get no Cancel: the database refuses it
+              (orders_client_cancel_guard); Phase 3 puts "Ask a manager" here. */}
+          {canUserCancelOrder({ role, isOwner, permissions }, order.status) && (
             <TouchableOpacity
               onPress={() => {
                 Alert.alert("Cancel Order", "Are you sure?", [
