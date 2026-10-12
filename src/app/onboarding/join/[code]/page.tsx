@@ -56,7 +56,7 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
 
   return (
     <OnboardingShell>
-      {state.kind === 'form' ? <JoinForm code={code} /> : <OnboardingNotice {...NOTICES[state.kind]} />}
+      {state.kind === 'form' ? <JoinForm code={code} rootDomain={process.env.PLATFORM_ROOT_DOMAIN ?? ''} /> : <OnboardingNotice {...NOTICES[state.kind]} />}
     </OnboardingShell>
   )
 }
