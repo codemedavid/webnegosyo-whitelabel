@@ -26,6 +26,8 @@ export interface StoredDiscountLine {
   amount: number;
   voucherId?: string;
   code?: string;
+  /** A Senior/PWD (government-mandated) line; its detail is in `government`. */
+  isGovernment?: boolean;
 }
 
 export interface OrderDiscountPayload {

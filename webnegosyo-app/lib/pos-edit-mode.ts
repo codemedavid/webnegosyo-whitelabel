@@ -33,6 +33,7 @@ import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
 import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { repriceEditDiscount } from "./pos-edit-discount";
+import type { StoredGovDiscount } from "./gov-discount";
 import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
 import type { OrderBackend } from "./order-backend";
@@ -577,23 +578,22 @@ export function withEditDeliveryFee(
  * The single place the carried fees are re-applied, so there is one answer to
  * "what does this order cost now" rather than one per screen.
  */
-export function editModeTotals(
-  registerCart: readonly PosCartLine[],
+/**
+ * The placed bill's discount, re-priced against the edited cart.
+ *
+ * A Senior/PWD discount is never carried as a fixed amount: the register's
+ * government session re-prices it and hands it in with `addedDiscountLines`.
+ * Carrying the placed lines as well would take it off twice. (A stored
+ * government block means every stored line is one — government and store
+ * discounts never combine.)
+ */
+function carriedEditDiscount(
   context: OrderEditContext,
-  addedDiscountLines: readonly OrderDiscountLine[] = [],
-): EditModeTotals {
-  // Everything below prices the ORDER, not the register. While appending those
-  // are different lists, and using the register's would bill the table for the
-  // second round while forgetting the first.
-  const cart = effectiveEditCart(registerCart, context);
-  const itemsTotal = itemsTotalOf(cart);
+  cart: readonly PosCartLine[],
+): { lines: readonly OrderDiscountLine[]; total: number } {
+  if (context.storedDiscount?.government) return { lines: [], total: 0 };
 
-  // Re-priced against the edited cart, per the owner's decision: remove the
-  // item a voucher qualified for and the discount goes with it. Until the
-  // lookup returns, `discountVouchers` is null and the bill as placed is
-  // carried — showing full price for a moment and then dropping would read as
-  // a price that changed itself.
-  const discount = repriceEditDiscount({
+  return repriceEditDiscount({
     stored: context.storedDiscount,
     vouchers: context.discountVouchers,
     cart,
@@ -606,6 +606,31 @@ export function editModeTotals(
     deliveryFee: context.deliveryFee,
     now: new Date(),
   });
+}
+
+export function editModeTotals(
+  registerCart: readonly PosCartLine[],
+  context: OrderEditContext,
+  addedDiscountLines: readonly OrderDiscountLine[] = [],
+  /**
+   * The Senior/PWD block the edit now carries (re-priced by the register's
+   * government session), or null when it has none. Its money arrives in
+   * `addedDiscountLines`; this is the record stored beside it.
+   */
+  government: StoredGovDiscount | null = null,
+): EditModeTotals {
+  // Everything below prices the ORDER, not the register. While appending those
+  // are different lists, and using the register's would bill the table for the
+  // second round while forgetting the first.
+  const cart = effectiveEditCart(registerCart, context);
+  const itemsTotal = itemsTotalOf(cart);
+
+  // Re-priced against the edited cart, per the owner's decision: remove the
+  // item a voucher qualified for and the discount goes with it. Until the
+  // lookup returns, `discountVouchers` is null and the bill as placed is
+  // carried — showing full price for a moment and then dropping would read as
+  // a price that changed itself.
+  const discount = carriedEditDiscount(context, cart);
 
   // A code the cashier applied during THIS edit, on top of whatever the order
   // already carried. Capped against the two together rather than separately:
@@ -635,6 +660,7 @@ export function editModeTotals(
     settledLines,
     discountTotal,
     context.storedDiscount,
+    government,
   );
   const newTotal = revisedOrderTotal(
     itemsTotal,
@@ -703,6 +729,7 @@ function settledDiscountOf(
   lines: readonly OrderDiscountLine[],
   total: number,
   stored: OrderDiscountPayload | null,
+  government: StoredGovDiscount | null,
 ): OrderDiscountPayload | null | undefined {
   if (lines.length === 0) return stored ? null : undefined;
 
@@ -719,5 +746,6 @@ function settledDiscountOf(
     })),
     // Per-line allocation is the checkout's; the register has no equivalent.
     allocationsByLine: {},
+    ...(government ? { government } : {}),
   };
 }

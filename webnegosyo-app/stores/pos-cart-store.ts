@@ -26,6 +26,7 @@ import {
 } from "../lib/pos-cart";
 import {
   editModeTotals,
+  effectiveEditCart,
   withEditDeliveryFee,
   withEditVouchers,
   type EditModeTotals,
@@ -35,6 +36,8 @@ import {
 import { useAuthStore } from "./auth-store";
 import {
   EMPTY_POS_DISCOUNT_SESSION,
+  appliedGovernment,
+  setSessionGovernment,
   addSessionVoucher,
   clearSessionManualDiscount,
   discountAfterCartChange,
@@ -45,6 +48,16 @@ import {
   type PosSessionDiscount,
 } from "../lib/pos-discount-session";
 import type { ManualDiscount } from "../lib/pos-discount";
+import {
+  allowsSharedTable,
+  govSessionFromStored,
+  storedGovDiscount,
+  type PosGovContext,
+  type PosGovSession,
+} from "../lib/pos-gov-discount";
+import type { StoredGovDiscount } from "../lib/gov-discount";
+import { useGovDiscountContextStore } from "./gov-discount-context-store";
+import { govRecordDraft, type GovRecordDraft } from "../lib/gov-ledger/record-request";
 import { previewSessionVoucher, type VoucherEntryVerdict } from "../lib/pos-voucher-entry";
 import type { StaffPermissionHolder } from "../lib/staff-permissions";
 import type { Voucher } from "../lib/vouchers/types";
@@ -165,6 +178,21 @@ interface PosCartState {
   sessionDiscount: () => PosSessionDiscount;
   /** Judges a code against this sale before it is accepted. */
   checkVoucher: (voucher: Voucher) => VoucherEntryVerdict;
+  /** Replace this sale's Senior/PWD claimants (and approval). */
+  setGovernment: (government: PosGovSession) => void;
+  /** The store's Senior/PWD rules as they apply to THIS sale. */
+  govContext: () => PosGovContext;
+  /**
+   * The Senior/PWD block to store on the order, or null when the sale has
+   * none (or a bigger store promo outranked it).
+   */
+  governmentRecord: () => StoredGovDiscount | null;
+  /**
+   * The sales-book record this sale (or this edit) owes, or null when there
+   * is nothing to record. An edit that REMOVED a placed Senior/PWD discount
+   * still records — with `government: null`, which reverses the old grant.
+   */
+  governmentLedgerDraft: (args: { occurredAt: Date; orderTotal: number }) => GovRecordDraft | null;
 
   /**
    * What the order being edited is now worth, codes applied during the edit
@@ -218,6 +246,21 @@ function discountBasis(state: PosCartState): { charge: number; deliveryFee: numb
   return {
     charge: round2(cartTotals(lines, serviceCharge).serviceCharge + fee),
     deliveryFee: fee,
+  };
+}
+
+/**
+ * The Senior/PWD rules for this sale: the store's profile and exclusions, and
+ * whether a shared table may be split (never for take-out or delivery). An
+ * edited order keeps whatever its claimants already used.
+ */
+function govContextOf(state: PosCartState): PosGovContext {
+  const { profile, excludedMenuItemIds } = useGovDiscountContextStore.getState();
+  return {
+    profile,
+    excludedMenuItemIds,
+    allowShared: allowsSharedTable(profile, state.editContext ? null : state.orderTypeKind),
+    ...(state.editContext ? { pricingCart: effectiveEditCart(state.lines, state.editContext) } : {}),
   };
 }
 
@@ -293,6 +336,8 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   // The discount goes too. A voucher held for the abandoned counter sale would
   // otherwise price itself onto somebody else's already-placed order and show
   // the cashier a discount row nobody gave.
+  // A Senior/PWD discount comes back as live claimants rather than a fixed
+  // amount, so editing the order re-prices it (see `editModeTotals`).
   beginEdit: (entered) =>
     set({
       lines: entered.cart,
@@ -302,7 +347,10 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       // An edit's fee lives on editContext; a counter fee would double-bill.
       ...clearedSaleDelivery(),
       ...clearedSaleTable(),
-      discount: EMPTY_POS_DISCOUNT_SESSION,
+      discount: setSessionGovernment(
+        EMPTY_POS_DISCOUNT_SESSION,
+        govSessionFromStored(entered.context.storedDiscount?.government),
+      ),
       ...clearedSaleAnswers(),
     }),
 
@@ -363,6 +411,56 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   setManualDiscount: (manual, user) =>
     set((s) => ({ discount: setSessionManualDiscount(s.discount, manual, user) })),
   clearManualDiscount: () => set((s) => ({ discount: clearSessionManualDiscount(s.discount) })),
+  governmentLedgerDraft: ({ occurredAt, orderTotal }) => {
+    const state = get();
+    const record = state.governmentRecord();
+    const editContext = state.editContext;
+    const hadGovernment = Boolean(editContext?.storedDiscount?.government);
+    if (!record && !hadGovernment) return null;
+
+    const session = state.discount.government;
+    const cart = editContext ? effectiveEditCart(state.lines, editContext) : state.lines;
+    return govRecordDraft({
+      cart,
+      government: record,
+      outletId: editContext ? editContext.outletId ?? null : state.saleOutlet?.id ?? null,
+      // An edit is recorded under the revision it is about to write.
+      revision: editContext ? editContext.expectedRevisionNumber + 1 : 0,
+      occurredAt,
+      orderTotal,
+      serviceCharge: editContext
+        ? editContext.serviceCharge
+        : cartTotals(state.lines, state.serviceCharge).serviceCharge,
+      deliveryFee: editContext ? editContext.deliveryFee : chargeableDeliveryFee(state.delivery),
+      allowShared: govContextOf(state).allowShared,
+      approvalId: record ? session?.approval?.approvalId ?? null : null,
+      approvalSkippedOffline: record ? session?.approvalSkippedOffline === true : false,
+    });
+  },
+
+  setGovernment: (government) =>
+    set((s) => ({ discount: setSessionGovernment(s.discount, government) })),
+  govContext: () => govContextOf(get()),
+
+  governmentRecord: () => {
+    const state = get();
+    const pricing = appliedGovernment(state.sessionDiscount());
+    const profile = govContextOf(state).profile;
+    if (!pricing || !profile) return null;
+    const editContext = state.editContext;
+    return storedGovDiscount({
+      session: state.discount.government ?? govSessionFromStored(null),
+      pricing,
+      profile,
+      itemsTotal: cartTotals(
+        editContext ? effectiveEditCart(state.lines, editContext) : state.lines,
+      ).subtotal,
+      serviceCharge: editContext
+        ? editContext.serviceCharge
+        : cartTotals(state.lines, state.serviceCharge).serviceCharge,
+      deliveryFee: editContext ? editContext.deliveryFee : chargeableDeliveryFee(state.delivery),
+    });
+  },
 
   /**
    * Prices this sale's discounts against the cart as it currently stands.
@@ -379,7 +477,15 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
     const outletId = get().editContext
       ? get().editContext?.outletId ?? null
       : get().saleOutlet?.id ?? null;
-    return sessionDiscount(discount, lines, charge, new Date(), outletId, deliveryFee);
+    return sessionDiscount(
+      discount,
+      lines,
+      charge,
+      new Date(),
+      outletId,
+      deliveryFee,
+      govContextOf(get()),
+    );
   },
 
   checkVoucher: (voucher) => {
@@ -399,7 +505,12 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   editTotals: () => {
     const { lines, editContext } = get();
     if (!editContext) return null;
-    return editModeTotals(lines, editContext, get().sessionDiscount().lines);
+    return editModeTotals(
+      lines,
+      editContext,
+      get().sessionDiscount().lines,
+      get().governmentRecord(),
+    );
   },
 
   setAttachedCustomer: (attachedCustomer) => set({ attachedCustomer }),

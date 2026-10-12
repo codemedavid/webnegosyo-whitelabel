@@ -10,6 +10,16 @@ import {
 } from "./pos-discount";
 import type { RejectedVoucher } from "./vouchers/stacking";
 import type { Voucher } from "./vouchers/types";
+import { chooseDiscountRegime, type RegimeChoice } from "./gov-discount";
+import {
+  EMPTY_GOV_SESSION,
+  govSessionAfterCartChange,
+  priceGovSession,
+  type PosGovContext,
+  type PosGovPricing,
+  type PosGovSession,
+  type PosGovState,
+} from "./pos-gov-discount";
 
 /**
  * What the register is holding while a sale is being rung.
@@ -36,6 +46,11 @@ export interface PosDiscountSession {
   vouchers: readonly Voucher[];
   /** The cashier's open discount, if one was given. */
   manual: ManualDiscount | null;
+  /**
+   * Senior Citizen / PWD claimants for this sale — see `pos-gov-discount.ts`.
+   * Absent is the same as none.
+   */
+  government?: PosGovSession;
 }
 
 export interface PosSessionDiscount {
@@ -43,11 +58,20 @@ export interface PosSessionDiscount {
   total: number;
   /** Why a presented voucher was refused, so the cashier can say. */
   rejected: readonly RejectedVoucher[];
+  /** The Senior/PWD side of the sale, whether or not it won. */
+  government: PosGovState;
+  /**
+   * Which side the sale uses when both a government discount and the store's
+   * own (vouchers / manual) are present — never both (RA 9994 §4). Null when
+   * only one side exists.
+   */
+  regime: RegimeChoice | null;
 }
 
 export const EMPTY_POS_DISCOUNT_SESSION: PosDiscountSession = {
   vouchers: [],
   manual: null,
+  government: EMPTY_GOV_SESSION,
 };
 
 /**
@@ -82,8 +106,17 @@ export function discountAfterCartChange(
   session: PosDiscountSession,
   cart: readonly PosCartLine[],
 ): PosDiscountSession {
-  if (cart.length > 0) return session;
-  return EMPTY_POS_DISCOUNT_SESSION;
+  if (cart.length === 0) return EMPTY_POS_DISCOUNT_SESSION;
+  if (!session.government) return session;
+  const government = govSessionAfterCartChange(session.government, cart);
+  return government === session.government ? session : { ...session, government };
+}
+
+export function setSessionGovernment(
+  session: PosDiscountSession,
+  government: PosGovSession,
+): PosDiscountSession {
+  return { ...session, government };
 }
 
 export function removeSessionVoucher(
@@ -149,6 +182,8 @@ export function sessionDiscount(
    * cap and let a discount exceed the bill.
    */
   deliveryFee = 0,
+  /** What the store's Senior/PWD rules need; absent = no government pricing. */
+  govContext?: PosGovContext,
 ): PosSessionDiscount {
   const context = posDiscountContext(cart, serviceCharge, now, outletId, deliveryFee);
   const application = applyPosVouchers(session.vouchers, context);
@@ -170,10 +205,54 @@ export function sessionDiscount(
     if (line) lines.push(line);
   }
 
+  const government: PosGovState = govContext
+    ? priceGovSession({
+        session: session.government ?? EMPTY_GOV_SESSION,
+        cart,
+        context: govContext,
+        serviceCharge: Math.max(0, round2(serviceCharge - deliveryFee)),
+        deliveryFee,
+      })
+    : { status: "none" };
+
+  const chosen = chooseRegime(lines, government);
   const total = Math.min(
-    round2(lines.reduce((sum, line) => sum + line.amount, 0)),
+    round2(chosen.lines.reduce((sum, line) => sum + line.amount, 0)),
     chargeable,
   );
 
-  return { lines, total, rejected: application.rejected };
+  return {
+    lines: chosen.lines,
+    total,
+    rejected: application.rejected,
+    government,
+    regime: chosen.regime,
+  };
+}
+
+/**
+ * The government discount the sale actually USES — priced, and not outranked
+ * by a bigger store promo. Null otherwise.
+ */
+export function appliedGovernment(discount: PosSessionDiscount): PosGovPricing | null {
+  if (discount.government.status !== "priced") return null;
+  if (discount.regime?.regime === "other") return null;
+  return discount.government.pricing;
+}
+
+/**
+ * The store's own discounts or the government one — whichever saves the
+ * customer more (RA 9994 §4: the higher of the two, never both).
+ */
+function chooseRegime(
+  otherLines: readonly OrderDiscountLine[],
+  government: PosGovState,
+): { lines: readonly OrderDiscountLine[]; regime: RegimeChoice | null } {
+  if (government.status !== "priced") return { lines: otherLines, regime: null };
+  const governmentLines = government.pricing.lines;
+  if (otherLines.length === 0) return { lines: governmentLines, regime: null };
+
+  const otherTotal = round2(otherLines.reduce((sum, line) => sum + line.amount, 0));
+  const regime = chooseDiscountRegime(government.pricing.result.totalReduction, otherTotal);
+  return { lines: regime.regime === "government" ? governmentLines : otherLines, regime };
 }

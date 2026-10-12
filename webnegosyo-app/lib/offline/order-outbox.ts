@@ -19,6 +19,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { GovRecordDraft } from "../gov-ledger/record-request";
 import type { OrderBackend } from "../order-backend";
 import type { OrderDiscountLine } from "../order-totals";
 import type { PosStockItem } from "../pos-stock";
@@ -39,6 +40,11 @@ export interface QueuedSaleBookkeeping {
   customerData: Record<string, unknown>;
   channel: string | null;
   captureItems: CaptureItem[];
+  /**
+   * The Senior/PWD sales-book record, when the sale carried one. Absent on
+   * every other sale (and on sales queued before the field existed).
+   */
+  govRecord?: GovRecordDraft | null;
 }
 
 export interface QueuedSale {

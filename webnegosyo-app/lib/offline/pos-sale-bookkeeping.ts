@@ -19,6 +19,8 @@ import type { burnPosRedemptions } from "../voucher-service";
 import type { notifyPosSaleActivity } from "../staff-activity/report-pos-sale";
 import type { notifyCustomerCapture } from "../customers/capture";
 import type { QueuedSaleBookkeeping } from "./order-outbox";
+import type { recordGovGrant } from "../gov-ledger/live-ledger";
+import { completeGovRecord } from "../gov-ledger/record-request";
 
 export interface PosSaleBookkeepingFacts {
   tenantId: string;
@@ -36,6 +38,7 @@ export interface PosSaleBookkeepingDeps {
   vouchers: typeof burnPosRedemptions;
   activity: typeof notifyPosSaleActivity;
   capture: typeof notifyCustomerCapture;
+  government: typeof recordGovGrant;
 }
 
 /**
@@ -45,12 +48,13 @@ export interface PosSaleBookkeepingDeps {
  * imports this file. Tests pass their own deps and never trigger the load.
  */
 async function liveDeps(): Promise<PosSaleBookkeepingDeps> {
-  const [stock, loyverse, vouchers, activity, capture] = await Promise.all([
+  const [stock, loyverse, vouchers, activity, capture, government] = await Promise.all([
     import("../pos-stock-notify"),
     import("../loyverse-notify"),
     import("../voucher-service"),
     import("../staff-activity/report-pos-sale"),
     import("../customers/capture"),
+    import("../gov-ledger/live-ledger"),
   ]);
   return {
     stock: stock.notifyPosStockDepletion,
@@ -58,6 +62,7 @@ async function liveDeps(): Promise<PosSaleBookkeepingDeps> {
     vouchers: vouchers.burnPosRedemptions,
     activity: activity.notifyPosSaleActivity,
     capture: capture.notifyCustomerCapture,
+    government: government.recordGovGrant,
   };
 }
 
@@ -93,5 +98,10 @@ export async function runPosSaleBookkeeping(
       channel: bookkeeping.channel,
       items: bookkeeping.captureItems,
     }),
+    // The Senior/PWD sales book. Durable (saved on the device until the
+    // platform takes it), unlike the best-effort reports above.
+    bookkeeping.govRecord
+      ? deps.government(completeGovRecord(bookkeeping.govRecord, { tenantId, backend, orderId }))
+      : Promise.resolve(),
   ]);
 }

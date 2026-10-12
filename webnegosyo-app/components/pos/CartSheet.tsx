@@ -34,6 +34,12 @@ interface CartSheetProps {
   discountLines?: readonly OrderDiscountLine[];
   /** Opens discount entry. Absent hides the entry point entirely. */
   onAddDiscount?: () => void;
+  /**
+   * Opens the Senior / PWD flow. Its own button, never folded into "+
+   * Discount": it is legally owed, asked for many times a day, and a cashier
+   * must never have to hunt for it.
+   */
+  onSeniorPwd?: () => void;
   /** Removes one applied discount by its label. */
   onRemoveDiscount?: (line: OrderDiscountLine) => void;
   /** Opens delivery details entry. Absent (e.g. editing) hides it entirely. */
@@ -98,6 +104,7 @@ export function CartSheet({
   blockedReason,
   discountLines = [],
   onAddDiscount,
+  onSeniorPwd,
   onRemoveDiscount,
   onEditDelivery,
   onEditTable,
@@ -189,7 +196,7 @@ export function CartSheet({
         rides here too — a collapsed cart otherwise shows a total that does not
         match its items with nothing explaining the difference.
       */}
-      {hasItems && !showDetail && (onAddDiscount || discountLines.length > 0) ? (
+      {hasItems && !showDetail && (onAddDiscount || onSeniorPwd || discountLines.length > 0) ? (
         <View style={styles.collapsedDiscount}>
           {discountLines.length > 0 ? (
             <Text style={styles.collapsedDiscountText} numberOfLines={1}>
@@ -208,6 +215,19 @@ export function CartSheet({
             >
               <Text style={styles.collapsedDiscountAction}>
                 {discountLines.length > 0 ? "Change" : "+ Discount"}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {onSeniorPwd && (
+            <TouchableOpacity
+              onPress={onSeniorPwd}
+              hitSlop={10}
+              style={styles.seniorChip}
+              accessibilityRole="button"
+              accessibilityLabel="Senior or PWD discount"
+            >
+              <Text style={styles.seniorChipText}>
+                {discountLines.some((line) => line.isGovernment) ? "Senior/PWD ✓" : "Senior/PWD"}
               </Text>
             </TouchableOpacity>
           )}
@@ -351,6 +371,19 @@ export function CartSheet({
               </TouchableOpacity>
             ))}
 
+            {onSeniorPwd && (
+              <TouchableOpacity
+                style={styles.addDiscount}
+                onPress={onSeniorPwd}
+                accessibilityRole="button"
+              >
+                <Text style={styles.addDiscountText}>
+                  {discountLines.some((line) => line.isGovernment)
+                    ? "Senior / PWD — change"
+                    : "+ Senior / PWD discount"}
+                </Text>
+              </TouchableOpacity>
+            )}
             {onAddDiscount && (
               <TouchableOpacity
                 style={styles.addDiscount}
@@ -557,6 +590,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   addDiscount: { paddingTop: spacing.xs },
+  seniorChip: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  seniorChipText: { ...typography.caption, fontWeight: "700", color: colors.primary },
   addDiscountText: { ...typography.caption, fontWeight: "600", color: colors.primary },
   typeRow: { gap: spacing.sm, paddingVertical: spacing.sm },
   typeRowWrap: { flexDirection: "row", flexWrap: "wrap" },

@@ -52,6 +52,8 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ModifierSheet } from "../../components/pos/ModifierSheet";
 import { CartSheet } from "../../components/pos/CartSheet";
 import { DiscountSheet } from "../../components/pos/DiscountSheet";
+import { RegisterGovDiscount } from "../../components/pos/gov-discount/RegisterGovDiscount";
+import { useGovDiscountRegister } from "../../lib/use-gov-discount-register";
 import { DeliverySheet } from "../../components/pos/DeliverySheet";
 import { PosTablePickerSheet } from "../../components/pos/PosTablePickerSheet";
 import { useDiningTables } from "../../lib/tables/use-dining-tables";
@@ -133,6 +135,7 @@ export default function PosScreen() {
   // The floor, for the dine-in table picker; empty for a store without one.
   const floor = useDiningTables();
   const [isDiscountOpen, setIsDiscountOpen] = useState(false);
+  const [isGovDiscountOpen, setIsGovDiscountOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
   const [isTableOpen, setIsTableOpen] = useState(false);
 
@@ -195,6 +198,8 @@ export default function PosScreen() {
   const pricing = useRegisterPricing(tenantId);
 
   const items = catalog.data?.items ?? NO_ITEMS;
+  // Senior/PWD rules (VAT status, exclusions) where the cart prices from.
+  useGovDiscountRegister(tenantId, items);
   const categories = catalog.data?.categories ?? NO_CATEGORIES;
   const orderTypes = pricing.data?.orderTypes ?? NO_ORDER_TYPES;
   const priceIndex = pricing.data?.priceIndex ?? EMPTY_PRICE_INDEX;
@@ -600,11 +605,22 @@ export default function PosScreen() {
       // who produces a voucher after ordering no longer needs the order
       // cancelled and re-rung.
       onAddDiscount={() => setIsDiscountOpen(true)}
+      // Not offered on an edit whose placed bill already carries a voucher:
+      // the two never combine, and the placed voucher cannot be taken off here.
+      onSeniorPwd={
+        editContext?.storedDiscount?.lines.some((line) => line.code) &&
+        !editContext.storedDiscount.government
+          ? undefined
+          : () => setIsGovDiscountOpen(true)
+      }
       onEditDelivery={() => setIsDeliveryOpen(true)}
       onEditTable={edit ? undefined : () => setIsTableOpen(true)}
       tableLabel={saleTable.label}
       onRemoveDiscount={(line) => {
-        if (line.code) removeVoucher(line.code);
+        // A Senior/PWD row belongs to a person: change it in its own sheet,
+        // never with a single tap that could drop someone's legal discount.
+        if (line.isGovernment) setIsGovDiscountOpen(true);
+        else if (line.code) removeVoucher(line.code);
         else clearManualDiscount();
       }}
       chargeLabel={
@@ -720,6 +736,8 @@ export default function PosScreen() {
         onRemoveVoucher={removeVoucher}
         onRemoveManual={clearManualDiscount}
       />
+
+      <RegisterGovDiscount visible={isGovDiscountOpen} onClose={() => setIsGovDiscountOpen(false)} />
 
       <PosTablePickerSheet
         visible={isTableOpen}

@@ -7,6 +7,7 @@ describe("runPosSaleBookkeeping", () => {
     vouchers: jest.fn().mockResolvedValue(undefined),
     activity: jest.fn().mockResolvedValue(undefined),
     capture: jest.fn().mockResolvedValue(undefined),
+    government: jest.fn().mockResolvedValue(undefined),
   };
 
   it("reports the sale to every ledger with the id it was written under and the time it was taken", async () => {
@@ -55,5 +56,80 @@ describe("runPosSaleBookkeeping", () => {
 
   it("uses the same short Loyverse reference the tender screen always did", () => {
     expect(loyverseOrderNumber("k17abcxyz")).toBe("ABCXYZ");
+  });
+
+  it("files the Senior/PWD record under the id the order was written with", async () => {
+    deps.government.mockClear();
+    const draft = {
+      orderLabel: null,
+      outletId: null,
+      revision: 0,
+      occurredAt: "2026-10-12T04:00:00.000Z",
+      orderTotal: 400,
+      source: "pos" as const,
+      lines: [],
+      serviceCharge: 0,
+      deliveryFee: 0,
+      allowShared: true,
+      government: null,
+      approvalId: null,
+      approvalSkippedOffline: false,
+    };
+
+    await runPosSaleBookkeeping(
+      {
+        tenantId: "t",
+        orderId: "server-id",
+        backend: "platform",
+        createdAt: 0,
+        bookkeeping: {
+          stockItems: [],
+          loyverseLines: [],
+          discountLines: [],
+          outletId: null,
+          total: 400,
+          customerName: "",
+          customerContact: "",
+          customerData: {},
+          channel: null,
+          captureItems: [],
+          govRecord: draft,
+        },
+      },
+      deps
+    );
+
+    expect(deps.government).toHaveBeenCalledWith({
+      ...draft,
+      tenantId: "t",
+      backend: "platform_supabase",
+      externalOrderId: "server-id",
+    });
+  });
+
+  it("files nothing for a sale without a Senior/PWD discount", async () => {
+    deps.government.mockClear();
+    await runPosSaleBookkeeping(
+      {
+        tenantId: "t",
+        orderId: "o",
+        backend: "convex",
+        createdAt: 0,
+        bookkeeping: {
+          stockItems: [],
+          loyverseLines: [],
+          discountLines: [],
+          outletId: null,
+          total: 1,
+          customerName: "",
+          customerContact: "",
+          customerData: {},
+          channel: null,
+          captureItems: [],
+        },
+      },
+      deps
+    );
+    expect(deps.government).not.toHaveBeenCalled();
   });
 });

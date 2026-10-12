@@ -21,4 +21,6 @@ export interface OrderDiscountLine {
   /** Set when the line came from a voucher rather than a manual discount. */
   voucherId?: string
   code?: string
+  /** A Senior/PWD (government-mandated) line; its detail is in `government`. */
+  isGovernment?: boolean
 }

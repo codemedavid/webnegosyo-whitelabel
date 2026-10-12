@@ -21,6 +21,7 @@ jest.mock("../tables/tables-service", () => ({
   fetchDiningTables: jest.fn(),
 }));
 jest.mock("../products", () => ({ listProducts: jest.fn(), listCategories: jest.fn() }));
+jest.mock("../tax-profile-service", () => ({ fetchTaxProfile: jest.fn() }));
 jest.mock("../supabase", () => ({ supabase: {} }));
 
 import { fetchPosCatalog, posCatalogKey } from "../query/use-pos-catalog";
@@ -31,6 +32,8 @@ import { fetchOutlets } from "../use-outlets";
 import { fetchCheckoutSetup } from "../pos-checkout-fields";
 import { checkoutSetupKey } from "../query/use-checkout-setup";
 import { fetchDiningTables } from "../tables/tables-service";
+import { fetchTaxProfile } from "../tax-profile-service";
+import { taxProfileKey } from "../query/use-tax-profile";
 import { registerPackParts, registerPackThumbnails, summarizeRegisterPack } from "./register-pack";
 
 const SCOPE = { tenantId: "t1", paymentTenantId: "t1", outletId: "o-north" };
@@ -51,8 +54,11 @@ describe("registerPackParts", () => {
     // The storefront's checkout questions are saved too, but never hold the
     // download back: the register sells without them.
     expect(byLabel.get("checkout questions")?.key).toEqual(checkoutSetupKey("t1"));
+    // Senior/PWD rules: optional, but the register prices them offline too.
+    expect(byLabel.get("tax settings")?.key).toEqual(taxProfileKey("t1"));
     expect(parts.filter((part) => !part.isRequired).map((part) => part.label)).toEqual([
       "checkout questions",
+      "tax settings",
       "branches",
       "tables",
     ]);
@@ -68,6 +74,7 @@ describe("registerPackParts", () => {
     expect(fetchCheckoutSetup).toHaveBeenCalledWith("t1");
     expect(fetchOutlets).toHaveBeenCalledWith("t1");
     expect(fetchDiningTables).toHaveBeenCalledWith("t1");
+    expect(fetchTaxProfile).toHaveBeenCalledWith("t1");
   });
 });
 

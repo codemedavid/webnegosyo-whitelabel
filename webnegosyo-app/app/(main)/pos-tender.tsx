@@ -40,6 +40,7 @@ import { burnPosRedemptions } from "../../lib/voucher-service";
 import { placeCounterSale } from "../../lib/offline/place-sale";
 import { newLocalOrderId } from "../../lib/offline/local-id";
 import { runPosSaleBookkeeping } from "../../lib/offline/pos-sale-bookkeeping";
+import { completeGovRecord } from "../../lib/gov-ledger/record-request";
 import { isOffline } from "../../lib/offline/connectivity";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
@@ -74,6 +75,7 @@ import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
 import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
+import { TenderGovApproval, useTenderGovApproval } from "../../components/pos/gov-discount/TenderGovApproval";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
@@ -205,7 +207,9 @@ export default function PosTenderScreen() {
   // price here after a voucher was applied on the register.
   // Editing a placed order: `edit` is what it is now worth, and what still has
   // to move. Every part of that judgement lives in `pos-edit-mode.ts`.
-  const { totals, discountLines: shownDiscountLines, edit } = usePosSaleTotals();
+  const { totals, discountLines: shownDiscountLines, edit, discount: saleDiscount } = usePosSaleTotals();
+  // A large Senior/PWD discount waits for a manager's PIN (or an offline skip).
+  const govApproval = useTenderGovApproval(saleDiscount);
 
   // The storefront's checkout questions for this order type. Optional at the
   // counter: a failed read just means none are shown.
@@ -288,7 +292,9 @@ export default function PosTenderScreen() {
       isProofOutstanding(method, { reference, hasProof: proof !== null }),
   });
   const blockedReason =
-    paymentBlockedReason ?? (phoneProblem ? "Fix the phone number or clear it" : undefined);
+    paymentBlockedReason ??
+    (phoneProblem ? "Fix the phone number or clear it" : undefined) ??
+    (govApproval.isPending ? "A manager must approve the Senior/PWD discount" : undefined);
 
   /**
    * Save an edited order and settle the difference.
@@ -411,6 +417,23 @@ export default function PosTenderScreen() {
         );
       }
 
+      // The sales book follows the edit: a re-priced Senior/PWD discount is
+      // recorded under the new revision and the old grant reversed (or only
+      // reversed, when the edit removed it). Saved on the device until sent.
+      const govDraft = usePosCartStore
+        .getState()
+        .governmentLedgerDraft({ occurredAt: new Date(), orderTotal: saved.newTotal });
+      if (tenantId && govDraft) {
+        const { recordGovGrant } = await import("../../lib/gov-ledger/live-ledger");
+        await recordGovGrant(
+          completeGovRecord(govDraft, {
+            tenantId,
+            backend: resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl }),
+            orderId: editContext.orderId,
+          }),
+        );
+      }
+
       endEdit();
       router.back();
     } catch (err) {
@@ -437,6 +460,8 @@ export default function PosTenderScreen() {
     reviseOrder,
     recordPayment,
     endEdit,
+    orderBackend,
+    convexUrl,
   ]);
 
   const handleComplete = useCallback(async () => {
@@ -496,7 +521,11 @@ export default function PosTenderScreen() {
       // reflected in what the customer is actually charged.
       const discountLines = usePosCartStore.getState().sessionDiscount().lines;
 
+      // The Senior/PWD record travels with the order (receipt, reports, edits).
+      const government = usePosCartStore.getState().governmentRecord();
+
       const args = buildPosOrder({
+        government,
         cart: lines,
         tender,
         clientOrderId,
@@ -563,6 +592,10 @@ export default function PosTenderScreen() {
         customerData: args.customerData,
         channel: args.orderType ?? null,
         captureItems: lines.map((line) => ({ name: line.name, quantity: line.quantity })),
+        // The Senior/PWD sales-book record; ids are added when it is written.
+        govRecord: usePosCartStore
+          .getState()
+          .governmentLedgerDraft({ occurredAt: new Date(createdAt), orderTotal: args.total }),
       };
 
       // The platform register does not wait on the server: the id is minted
@@ -735,8 +768,8 @@ export default function PosTenderScreen() {
         */}
         {!edit && shownDiscountLines.length > 0 && (
           <View style={styles.discounts} accessibilityLabel="Discounts applied">
-            {shownDiscountLines.map((line) => (
-              <View key={line.code ?? line.label} style={styles.discountRow}>
+            {shownDiscountLines.map((line, index) => (
+              <View key={`${line.code ?? line.label}-${index}`} style={styles.discountRow}>
                 <Text style={styles.discountLabel} numberOfLines={1}>
                   {line.code && line.code !== line.label ? `${line.label} (${line.code})` : line.label}
                 </Text>
@@ -985,6 +1018,8 @@ export default function PosTenderScreen() {
         </>
         )}
       </ScrollView>
+
+      <TenderGovApproval approval={govApproval} />
 
       <View style={styles.footer}>
         {isCompleting ? (
