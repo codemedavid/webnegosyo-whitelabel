@@ -48,6 +48,7 @@ import { LoadingState } from "../../../components/LoadingState";
 import { BackHeader } from "../../../components/BackHeader";
 import { CategoryIcon } from "../../../components/CategoryIcon";
 import { CategoryIconPicker } from "../../../components/CategoryIconPicker";
+import { GovEligibleSwitch } from "../../../components/menu/GovEligibleSwitch";
 
 const PREVIEW_ICON_SIZE = 26;
 
@@ -218,6 +219,12 @@ export default function CategoryEditorScreen() {
               trackColor={{ false: colors.separator, true: colors.success }}
             />
           </View>
+
+          <GovEligibleSwitch
+            subject="section"
+            value={form.gov_discount_eligible}
+            onChange={(v) => updateField("gov_discount_eligible", v)}
+          />
         </Card>
 
         <Card title="Icon" style={styles.card}>

@@ -11,6 +11,8 @@ import { tabPresentation } from "../../lib/workspace-presentation";
 import { canOpenTeam } from "../../lib/staff-service";
 import { canManageCash } from "../../lib/cash-drawers";
 import { hasPermission } from "../../lib/staff-permissions";
+import { canOpenTaxSettings } from "../../lib/tax-settings/access";
+import { TAX_SETTINGS_ROUTE } from "../../lib/gov-ledger/routes";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
 import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
 import { useTutorialChapters, useTutorialProgress } from "../../lib/tutorial/use-tutorial";
@@ -47,6 +49,7 @@ export default function ManageScreen() {
   const showTeam = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
   const canDesignReceipt = hasPermission({ role, isOwner, permissions }, "store_setup");
   const showCashDrawers = !isDemo && canManageCash({ role, isOwner, permissions });
+  const showTaxSettings = canOpenTaxSettings({ role, isOwner, permissions, isDemo });
   const chapters = useTutorialChapters();
   const { progress: tutorialProgress } = useTutorialProgress();
   const tour = progressSummary(tutorialProgress, chapters.map((c) => c.id));
@@ -157,6 +160,15 @@ export default function ManageScreen() {
               }
               grouped
             />
+            {showTaxSettings ? (
+              <ListRow
+                icon="voucher"
+                title="Tax & discounts"
+                subtitle="VAT, BIR details and Senior/PWD rules"
+                onPress={() => router.push(TAX_SETTINGS_ROUTE)}
+                grouped
+              />
+            ) : null}
             {canDesignReceipt ? (
               <ListRow
                 icon="report"

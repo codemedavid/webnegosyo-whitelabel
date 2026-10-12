@@ -56,6 +56,9 @@ export const colors = {
   /** A saving shown on the ink surface (e.g. the Senior/PWD preview). */
   heroInkPositive: "#7FD3B0",
 
+  /** The dimmed ground behind a bottom sheet. */
+  scrim: "rgba(29,24,21,0.45)",
+
   // Urgency signal for the age of an active order (drives the card accent dot)
   urgencyFresh: "#047857",
   urgencyWarning: "#F59E0B",

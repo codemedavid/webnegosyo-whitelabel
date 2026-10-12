@@ -217,6 +217,10 @@ export default function MainLayout() {
         <Tabs.Screen name="team" options={{ href: null, title: "Team" }} />
         {/* Tills (Cashier 1, Cashier 2, zero-balance) — pushed from Manage or the Drawer. */}
         <Tabs.Screen name="cash-drawers" options={{ href: null, title: "Cash drawers" }} />
+        {/* VAT status, BIR details, Senior/PWD rules — pushed from Manage or the register. */}
+        <Tabs.Screen name="tax-settings" options={{ href: null, title: "Tax & discounts" }} />
+        {/* The Senior/PWD sales book and its reviews — pushed from Reports or Tax & discounts. */}
+        <Tabs.Screen name="gov-discounts" options={{ href: null, title: "Senior & PWD" }} />
         {/* Owner-only order deletion — pushed from Account. */}
         <Tabs.Screen name="delete-orders" options={{ href: null, title: "Delete orders" }} />
         {/* One colleague's shifts, activity and access — pushed from Team. */}

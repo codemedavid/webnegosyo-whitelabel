@@ -266,6 +266,18 @@ function govContextOf(state: PosCartState): PosGovContext {
   };
 }
 
+/**
+ * The Senior/PWD claimants a placed order was rung with, as live inputs keyed
+ * to the cart the edit loaded. An append rings only the new round, so the
+ * claimants refer to the placed lines the context holds.
+ */
+function placedGovernmentSession(entered: EnteredEditMode): PosGovSession {
+  const stored = entered.context.storedDiscount?.government;
+  if (!stored) return govSessionFromStored(null);
+  const placedCart = entered.context.mode === "append" ? entered.context.appendBaseCart : entered.cart;
+  return govSessionFromStored(fromOrderLineKeys(stored, placedCart));
+}
+
 export const usePosCartStore = create<PosCartState>((set, get) => ({
   lines: [],
   saleOutlet: null,
@@ -349,19 +361,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       // An edit's fee lives on editContext; a counter fee would double-bill.
       ...clearedSaleDelivery(),
       ...clearedSaleTable(),
-      discount: setSessionGovernment(
-        EMPTY_POS_DISCOUNT_SESSION,
-        govSessionFromStored(
-          entered.context.storedDiscount?.government
-            ? fromOrderLineKeys(
-                entered.context.storedDiscount.government,
-                // An append rings only the new round; the claimants refer to
-                // the placed lines, which the context holds.
-                entered.context.mode === "append" ? entered.context.appendBaseCart : entered.cart,
-              )
-            : null,
-        ),
-      ),
+      discount: { ...EMPTY_POS_DISCOUNT_SESSION, government: placedGovernmentSession(entered) },
       ...clearedSaleAnswers(),
     }),
 

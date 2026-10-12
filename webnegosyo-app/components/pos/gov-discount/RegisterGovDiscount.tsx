@@ -37,7 +37,8 @@ export function RegisterGovDiscount({ visible, onClose }: Props) {
     ? state.editContext.serviceCharge
     : cartTotals(state.lines, state.serviceCharge).serviceCharge;
   const deliveryFee = state.editContext ? state.editContext.deliveryFee : chargeableDeliveryFee(state.delivery);
-  const saleGross = cartTotals(cart).subtotal + serviceCharge + deliveryFee;
+  // `cartTotals` owns the sum (the money-wiring guardrail), not this file.
+  const saleGross = cartTotals(cart, { type: "fixed", value: serviceCharge }, [], deliveryFee).total;
 
   const sessionDiscount = state.sessionDiscount();
   const otherDiscountTotal =

@@ -32,6 +32,7 @@ import {
   type ModifierGroup,
 } from "../../../lib/modifier-groups";
 import { ModifierGroupsEditor } from "../../../components/ModifierGroupsEditor";
+import { GovEligibleSwitch } from "../../../components/menu/GovEligibleSwitch";
 import { supabase } from "../../../lib/supabase";
 import { uploadProductImage } from "../../../lib/product-image-upload";
 import { notifyMenuRevalidate } from "../../../lib/menu-revalidate";
@@ -373,6 +374,11 @@ export default function ProductEditorScreen() {
             trackColor={{ false: colors.separator, true: colors.primary }}
           />
         </View>
+        <GovEligibleSwitch
+          subject="item"
+          value={form.gov_discount_eligible}
+          onChange={(v) => updateField("gov_discount_eligible", v)}
+        />
       </Card>
 
       <Card title="Variations & Add-ons" style={styles.card}>
