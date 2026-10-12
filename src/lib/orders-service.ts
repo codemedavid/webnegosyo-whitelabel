@@ -346,6 +346,18 @@ export async function updateOrderStatus(
   // service's own order+direction guard is the second line of defence).
   const previousStatus = (existingOrder as unknown as Order | null)?.status
   if (status === 'cancelled' && previousStatus !== 'cancelled') {
+    // The Senior/PWD sales book takes the discount back too (append-only).
+    if (actor?.id) {
+      const [{ createAdminClient }, { reverseGovGrantsBestEffort }] = await Promise.all([
+        import('@/lib/supabase/admin'),
+        import('@/lib/gov-discount-ledger/reverse-on-cancel'),
+      ])
+      await reverseGovGrantsBestEffort(
+        createAdminClient(),
+        { tenantId, backend: 'platform_supabase', externalOrderId: orderId },
+        { userId: actor.id, name: actor.email ?? 'Staff' },
+      )
+    }
     await restoreStockForCancelledOrder(orderId, tenantId, actor?.id ?? null)
     await releasePresellForCancelledOrder(existingOrder, tenantId)
   }

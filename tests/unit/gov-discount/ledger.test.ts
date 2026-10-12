@@ -27,6 +27,7 @@ import {
   type ApproverRecord,
 } from '@/lib/gov-discount-ledger/approval-service'
 import { parseRecordRequest, isWeakPin } from '@/lib/gov-discount-ledger/request-schemas'
+import { reverseGovGrants } from '@/lib/gov-discount-ledger/reverse-on-cancel'
 
 const TENANT = '11111111-1111-4111-8111-111111111111'
 const ORDER = '22222222-2222-4222-8222-222222222222'
@@ -343,5 +344,19 @@ describe('manager approval', () => {
     expect(await setOwnApprovalPin(store, TENANT, 'u-cash', '8642')).toMatchObject({ ok: false, status: 403 })
     expect(await setOwnApprovalPin(store, TENANT, 'u-mgr', '8642')).toEqual({ ok: true })
     expect(pins).toEqual(['8642'])
+  })
+})
+
+describe('reverseGovGrants (a cancelled order)', () => {
+  it('reverses every standing grant once, keeping the original granter', async () => {
+    const { store, rows } = memoryStore()
+    await recordGovDiscount(store, request(), ACTOR, NOW)
+    const order = { tenantId: TENANT, backend: 'platform_supabase' as const, externalOrderId: ORDER }
+
+    const first = await reverseGovGrants(store, order, { userId: 'mgr', name: 'Mara' }, NOW.toISOString())
+    const again = await reverseGovGrants(store, order, { userId: 'mgr', name: 'Mara' }, NOW.toISOString())
+
+    expect([first, again]).toEqual([1, 0])
+    expect(rows[1]).toMatchObject({ event: 'reversed', granted_by_name: 'Ana', reversed_by_name: 'Mara' })
   })
 })

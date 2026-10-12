@@ -124,6 +124,7 @@ function orderRef(request: RecordGovDiscountRequest): string {
 /**
  * The row that cancels an earlier grant. It keeps the ORIGINAL granter (the
  * sales book still says whose discount it was) and names who took it back.
+ * (`reverse-on-cancel.ts` builds the same row for a cancelled order.)
  */
 function reversalOf(grant: ActiveGrant, actor: LedgerActor, occurredAt: string): ClaimRow {
   return {

@@ -83,6 +83,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     })
   }
 
+  // A cancelled order's Senior/PWD discount comes out of the sales book (any
+  // backend — the book lives on the platform). Idempotent and best-effort.
+  if (event.status === 'cancelled') {
+    const { reverseGovGrantsBestEffort } = await import('@/lib/gov-discount-ledger/reverse-on-cancel')
+    await reverseGovGrantsBestEffort(
+      admin,
+      { tenantId: event.tenantId, backend: event.backend, externalOrderId: event.externalOrderId },
+      { userId: user.id, name: user.email ?? 'Staff' },
+    )
+  }
+
   const result = await syncOrderLifecycle(event, createSupabaseLifecycleDeps(admin))
 
   // Loyalty runs on every event the ledger knows about — including a replay
