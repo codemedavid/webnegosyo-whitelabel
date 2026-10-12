@@ -14,6 +14,7 @@
  */
 
 import type { VoucherApplication } from './vouchers/stacking'
+import { readStoredGovDiscount, type StoredGovDiscount } from './gov-discount/payload'
 
 /** One deducted line as stored. Mirrors `OrderDiscountLine` plus its origin. */
 export interface StoredDiscountLine {
@@ -31,6 +32,12 @@ export interface OrderDiscountPayload {
   lines: StoredDiscountLine[]
   /** Per cart line, so a partial refund can be computed later. */
   allocationsByLine: Record<string, number>
+  /**
+   * Senior/PWD (and other government) discounts: who claimed, their ID, how
+   * their share was allocated and the VAT breakdown. Absent on every other
+   * order. Its money is ALSO in `lines`, so older readers still add up.
+   */
+  government?: StoredGovDiscount
 }
 
 /**
@@ -75,6 +82,7 @@ function asPayload(value: unknown): OrderDiscountPayload | null {
 
   const candidate = value as Partial<OrderDiscountPayload>
   if (typeof candidate.total !== 'number' || !Number.isFinite(candidate.total)) return null
+  const government = readStoredGovDiscount(candidate.government)
 
   return {
     total: candidate.total,
@@ -84,6 +92,7 @@ function asPayload(value: unknown): OrderDiscountPayload | null {
       typeof candidate.allocationsByLine === 'object' && candidate.allocationsByLine !== null
         ? candidate.allocationsByLine
         : {},
+    ...(government ? { government } : {}),
   }
 }
 

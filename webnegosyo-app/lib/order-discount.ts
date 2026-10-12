@@ -18,6 +18,8 @@
  * never the source of the amount charged. Nothing may subtract it again.
  */
 
+import { readStoredGovDiscount, type StoredGovDiscount } from "./gov-discount/payload";
+
 /** One deducted line as stored. */
 export interface StoredDiscountLine {
   label: string;
@@ -34,6 +36,11 @@ export interface OrderDiscountPayload {
   lines: StoredDiscountLine[];
   /** Per cart line, so a partial refund can be computed later. */
   allocationsByLine: Record<string, number>;
+  /**
+   * Senior/PWD (and other government) discounts — see the web copy. Its money
+   * is ALSO in `lines`, so older readers still add up.
+   */
+  government?: StoredGovDiscount;
 }
 
 /** Shape-checks an untyped blob before trusting it. */
@@ -42,6 +49,7 @@ function asPayload(value: unknown): OrderDiscountPayload | null {
 
   const candidate = value as Partial<OrderDiscountPayload>;
   if (typeof candidate.total !== "number" || !Number.isFinite(candidate.total)) return null;
+  const government = readStoredGovDiscount(candidate.government);
 
   return {
     total: candidate.total,
@@ -52,6 +60,7 @@ function asPayload(value: unknown): OrderDiscountPayload | null {
       typeof candidate.allocationsByLine === "object" && candidate.allocationsByLine !== null
         ? candidate.allocationsByLine
         : {},
+    ...(government ? { government } : {}),
   };
 }
 

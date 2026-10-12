@@ -46,6 +46,40 @@ const CASES: ReadonlyArray<readonly [string, unknown]> = [
   ['a null order', null],
   ['a string order', 'not an order'],
   ['an order that is an array', []],
+  [
+    'a Senior discount with its government block',
+    {
+      discount_data: {
+        ...payload,
+        government: {
+          version: 1,
+          vatStatus: 'vat',
+          serviceChargeMode: 'full',
+          diners: 4,
+          vat: null,
+          claimants: [
+            {
+              id: 'c1',
+              kind: 'senior',
+              name: 'Juan Dela Cruz',
+              idNumber: '12345',
+              allocation: { mode: 'shared' },
+              grossShare: 500,
+              vatExemptSales: 446.43,
+              vatRemoved: 53.57,
+              discount: 89.29,
+              netDue: 357.14,
+              serviceChargeShare: 0,
+              serviceChargeVatRemoved: 0,
+              reduction: 142.86,
+              lineReductions: { 'line-0': 142.86 },
+            },
+          ],
+        },
+      },
+    },
+  ],
+  ['a government block that is junk', { discount_data: { ...payload, government: { version: 9 } } }],
 ]
 
 describe('order discount reader parity — web vs merchant app', () => {
