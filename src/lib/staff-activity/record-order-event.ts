@@ -101,7 +101,11 @@ export function createSupabaseOrderEventStore(db: Db): OrderEventStore {
         actor_user_id: draft.actorUserId,
         actor_name: draft.actorName,
         ...(draft.occurredAt ? { occurred_at: draft.occurredAt } : {}),
-      })
+        // Only when present: an absent key keeps this insert valid against a
+        // database that has not applied 20261012150000 (reason/note columns).
+        ...(draft.reason ? { reason: draft.reason } : {}),
+        ...(draft.note ? { note: draft.note } : {}),
+      } as Database['public']['Tables']['order_status_events']['Insert'])
       if (error) throw new Error(error.message)
     },
 

@@ -80,6 +80,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       orderTotal: sentTotal ?? facts?.orderTotal ?? null,
       actorUserId: user.id,
       actorName: user.email ?? 'Staff',
+      reason: event.reason,
+      note: event.note,
     })
   }
 

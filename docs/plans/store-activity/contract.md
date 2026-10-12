@@ -19,12 +19,15 @@ Decisions taken (user approved all defaults 2026-10-12):
 
 ## SQL permission helper (Phase 0 owns it)
 
-`public.app_user_has_permission(p_tenant_id uuid, p_key text) returns boolean` — SECURITY DEFINER,
+`public.app_user_has_permission(p_tenant_id uuid, p_permission text) returns boolean` — SECURITY DEFINER,
 `search_path = ''`, STABLE, caller = auth.uid(). Mirrors `hasPermission` in src/lib/staff-permissions.ts:
 superadmin / owner → true; `permissions IS NULL` → true EXCEPT for keys in the opt-in set
 (`activity_view`, `approve_requests`); IMPLIED_BY (`kitchen`,`tables` ← `orders`). Granted to
-authenticated, revoked from anon/public. Companion: `public.app_user_reaches_outlet(p_tenant_id, p_outlet_id)`
-may reuse existing `app_user_may_reach_branch`.
+authenticated + service_role, revoked from anon/public. Shipped in 20261012140000_security_floor_activity.sql.
+(Edited by Phase 0: the parameter is `p_permission`, not `p_key` — the function already existed live,
+created by the gov-discounts branch, and its gov_discount_* policies block the DROP a rename needs.
+Call it positionally.) TS: `OPT_IN_PERMISSION_KEYS` + `isGrantedByFullAccess()` in every registry copy.
+No `app_user_reaches_outlet` was created: use the existing `app_user_may_reach_branch(tenant, outlet)`.
 
 ## store_activity (Phase 1 owns it)
 
@@ -94,9 +97,28 @@ Manila day. TS mirror holds the copy/explanations.
    before, after, summary, flags, reviewed_at, reviewed_by_name. Keyset order (occurred_at desc, id desc).
    p_search matches order_number / summary->>'title' / reason (ILIKE, bounded).
 2. `get_store_activity_summary(p_tenant_id, p_since, p_until, p_outlet_id default null)` returns jsonb:
-   { byKind: [{kind, count, amount, quantity}], byActor: [{actorUserId, actorName, kind, count, amount}],
+   { byKind: [{kind, statutory, count, amount, quantity}], byActor: [{actorUserId, actorName, kind, count, amount}],
      byDay: [{day (Asia/Manila date), kind, count, amount}], flaggedOpen: int } — same visibility rules.
-3. `mark_store_activity_reviewed(p_id uuid)` — needs activity_view/owner + reach; only sets reviewed_*; idempotent.
+3. `mark_store_activity_reviewed(p_id uuid)` — needs activity_view/owner + reach; only sets reviewed_*; idempotent. Returns `timestamptz` (the reviewed_at; a repeat call returns the first review's time).
+
+### Phase 1 implementation notes (2026-10-12, Phase 1 builder)
+
+- Migrations: 20261012150000 (table, vocab functions, writer `store_activity_record`, flag rules,
+  `orders.cancel_reason`, `order_status_events.reason/note`), 151000 (order & money triggers),
+  151100 (stock / cash / loyalty), 151200 (menu / team / settings gaps), 151500 (RPCs), 152000 (backfill).
+  Probe: supabase/probes/20261012150000_store_activity_probe.sql.
+- Order-status dedupe is by PARTITION, not by key: platform stores are captured from `orders`
+  (AFTER UPDATE OF status/payment_status/discount_*, actor = auth.uid()); `order_status_events` rows with
+  backend `platform_supabase` are ignored live; Convex / tenant-Supabase rows come only from that table.
+- Actor: `store_activity_actor()` = auth.uid() if it is a store account (app_users admin/superadmin), else
+  the transaction GUC `app.actor_user_id` a service-role writer may set
+  (`select set_config('app.actor_user_id', '<uuid>', true)` — manage-staff should adopt it), else NULL.
+  A signed-in customer is never an actor.
+- Statutory discounts: summary.statutory = true from `gov_discount_claims` (trigger created only when that
+  table exists) or from order discount lines labelled Senior/PWD/SC/athlete/medal of valor; voucher lines
+  are excluded from discount.applied (voucher.redeemed reports them).
+- `flags` thresholds as above; `after_hours` only for stores with `enforce_operating_hours` (branch hours
+  win); `duplicate_deduction` only for a BLOCKED duplicate (spec copy says "was blocked").
 
 ## App / web DTO (TS, camelCase) — `StoreActivityEvent`
 

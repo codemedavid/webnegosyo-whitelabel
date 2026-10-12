@@ -9,6 +9,7 @@ import {
   createOrder,
   createOrderConvex,
 } from '@/lib/orders-service'
+import type { OrderStatusChangeOptions } from '@/lib/orders-service'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTenantOrderWriteClient } from '@/lib/supabase/tenant-order-client'
 import { createOrderTenantSupabase } from '@/lib/tenant-supabase-orders'
@@ -70,10 +71,11 @@ export async function updateOrderStatusAction(
   orderId: string,
   tenantId: string,
   tenantSlug: string,
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
+  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled',
+  options: OrderStatusChangeOptions = {}
 ) {
   try {
-    const order = await updateOrderStatus(orderId, tenantId, status)
+    const order = await updateOrderStatus(orderId, tenantId, status, options)
     revalidatePath(`/${tenantSlug}/admin/orders`)
     revalidatePath(`/${tenantSlug}/admin`)
     return { success: true, data: order }

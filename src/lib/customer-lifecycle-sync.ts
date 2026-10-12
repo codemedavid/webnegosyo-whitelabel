@@ -19,6 +19,7 @@ import {
   type OrderLifecycleState,
   type OrderLifecycleWrite,
 } from '@/lib/customer-order-lifecycle'
+import { parseOrderEventReason } from '@/lib/staff-activity/order-event-reason'
 
 /** Backends with a row in the customer ledger. */
 export type LifecycleBackend = 'convex' | 'tenant_supabase'
@@ -39,6 +40,9 @@ export interface LifecycleSyncEvent {
   source: OrderLifecycleSource | null
   outletId: string | null
   updatedAt: string
+  /** Why the order moved (a cancel's reason). Optional; Phase 2 makes cancels send it. */
+  reason?: string | null
+  note?: string | null
 }
 
 export type LifecycleSyncParse =
@@ -83,6 +87,9 @@ export function parseLifecycleSyncRequest(body: unknown): LifecycleSyncParse {
     return { ok: false, error: 'At least one of status or paymentStatus is required.' }
   }
 
+  const why = parseOrderEventReason({ reason: input.reason, note: input.note })
+  if (!why.ok) return { ok: false, error: why.error }
+
   const updatedAt = text(input.updatedAt)
   if (!updatedAt || Number.isNaN(new Date(updatedAt).getTime())) {
     return { ok: false, error: 'A valid ISO updatedAt is required.' }
@@ -101,6 +108,8 @@ export function parseLifecycleSyncRequest(body: unknown): LifecycleSyncParse {
       source: !text(input.source) ? null : text(input.source) === 'pos' ? 'pos' : 'online',
       outletId: text(input.outletId) || null,
       updatedAt,
+      reason: why.value.reason,
+      note: why.value.note,
     },
   }
 }

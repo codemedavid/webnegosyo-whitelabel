@@ -48,6 +48,10 @@ export interface OrderEventDraft {
   actorUserId: string | null
   actorName: string
   occurredAt?: string
+  /** Why (a cancel's reason). Optional; written only when present. */
+  reason?: string | null
+  /** Free-text note beside the reason. Optional; written only when present. */
+  note?: string | null
 }
 
 /**
