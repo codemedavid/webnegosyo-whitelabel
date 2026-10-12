@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
   Flag,
   GraduationCap,
+  IdCard,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -360,6 +361,8 @@ export const adminSidebarItems: SidebarEntry[] = [
   { label: 'Customers', href: '/admin/customers', icon: Users, section: 'Grow' },
   { label: 'Loyalty', href: '/admin/loyalty', icon: Gift, section: 'Grow' },
   { label: 'Vouchers', href: '/admin/vouchers', icon: Ticket, section: 'Grow' },
+  // The Senior/PWD sales book: its flags, its reviews and the BIR exports.
+  { label: 'Senior & PWD', href: '/admin/gov-discounts', icon: IdCard, section: 'Grow' },
   {
     label: 'Analytics',
     icon: BarChart3,
