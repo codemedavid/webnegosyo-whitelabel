@@ -44,6 +44,16 @@ describe("GovDiscountCard", () => {
     expect(screen.getByText("ID OSCA-12345 · Shared table · 4 diners")).toBeTruthy();
   });
 
+  it("asks staff to check the original ID on an online order still to hand over", () => {
+    render(<GovDiscountCard discount={platterDiscount()} needsIdCheck />);
+    expect(screen.getByText("Check the ID at handover")).toBeTruthy();
+  });
+
+  it("does not nag on a counter sale, where the ID was seen at the till", () => {
+    render(<GovDiscountCard discount={platterDiscount()} />);
+    expect(screen.queryByText("Check the ID at handover")).toBeNull();
+  });
+
   it("shows the VAT block a VAT store prints", () => {
     render(<GovDiscountCard discount={platterDiscount()} />);
 

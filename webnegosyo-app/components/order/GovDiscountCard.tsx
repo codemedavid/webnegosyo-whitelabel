@@ -16,18 +16,32 @@ import { govOrderSummary } from "../../lib/order-gov-summary";
  */
 interface GovDiscountCardProps {
   discount: OrderDiscountPayload | null;
+  /**
+   * An online order still to be handed over: the claimant only declared their
+   * ID (JMC 01-2022), so the card asks staff to check the original now.
+   */
+  needsIdCheck?: boolean;
   style?: React.ComponentProps<typeof Card>["style"];
 }
 
 const peso = (amount: number) => `₱${amount.toFixed(2)}`;
 
-export function GovDiscountCard({ discount, style }: GovDiscountCardProps) {
+export function GovDiscountCard({ discount, needsIdCheck = false, style }: GovDiscountCardProps) {
   const [isIdShown, setIsIdShown] = useState(false);
   const summary = govOrderSummary(discount?.government);
   if (!summary) return null;
 
   return (
     <Card title="Senior / PWD" style={style}>
+      {needsIdCheck ? (
+        <View style={styles.idCheck} accessibilityRole="alert">
+          <Text style={styles.idCheckTitle}>Check the ID at handover</Text>
+          <Text style={styles.idCheckBody}>
+            Ordered online — ask for the original card and match the name and number below. No valid
+            ID? Edit the order and remove the Senior/PWD discount; the customer pays the regular price.
+          </Text>
+        </View>
+      ) : null}
       {summary.claimants.map((claimant, index) => (
         <View
           key={claimant.id}
@@ -117,4 +131,13 @@ const styles = StyleSheet.create({
   vatLabel: { ...typography.caption, color: colors.textSecondary },
   vatValue: { ...typography.caption, color: colors.textPrimary, fontVariant: ["tabular-nums"] },
   approval: { ...typography.small, color: colors.textSecondary, marginTop: spacing.sm },
+  idCheck: {
+    backgroundColor: colors.warningLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    gap: 2,
+  },
+  idCheckTitle: { ...typography.body, fontWeight: "700", color: colors.textPrimary },
+  idCheckBody: { ...typography.caption, color: colors.textPrimary },
 });

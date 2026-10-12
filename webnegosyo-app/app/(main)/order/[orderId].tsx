@@ -956,7 +956,12 @@ export default function OrderDetailScreen() {
       </Card>
 
       {/* Who the Senior/PWD discount above was for; silent on every other order. */}
-      <GovDiscountCard discount={readOrderDiscount(order)} style={styles.section} />
+      <GovDiscountCard
+        discount={readOrderDiscount(order)}
+        // An online claim is only declared; the card asks for the card itself.
+        needsIdCheck={order.source !== "pos" && !["delivered", "cancelled"].includes(order.status)}
+        style={styles.section}
+      />
 
       {/* A fee without an address is a real case now — a POS delivery the
           rider already knows — and hiding the card made the fee invisible. */}
