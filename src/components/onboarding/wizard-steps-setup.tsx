@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Banknote, Bike, Eye, EyeOff, Mail, PauseCircle, ShoppingBag, UtensilsCrossed } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { MAX_OWNER_PASSWORD, MIN_OWNER_PASSWORD, type OnboardingOrderType } from '@/lib/onboarding/answers'
 import { ACCENT, Chip, Field, FOCUS_RING, GroupLabel, INPUT_CLASS, OB, OptionTile, QuestionHeading, Switch } from './onboarding-ui'
 import type { StepProps } from './wizard-steps'
 import type { WizardDraft } from './wizard-draft'
+import { Stagger } from './motion/parts'
 
 const ORDER_TYPES: Record<OnboardingOrderType, { icon: LucideIcon; title: string; description: string }> = {
   pickup: { icon: ShoppingBag, title: 'Pickup', description: 'They order ahead and collect.' },
@@ -24,6 +26,44 @@ const HOUR_PRESETS: ReadonlyArray<{ label: string; open: string; close: string; 
   { label: '11am – 11pm daily', open: '11:00', close: '23:00', closedDays: [] },
   { label: 'Mon–Sat, 10am – 10pm', open: '10:00', close: '22:00', closedDays: [0] },
 ]
+
+/** "09:00" → "9 AM", "21:30" → "9:30 PM". */
+function clockLabel(value: string): string {
+  const [hours, minutes] = value.split(':').map(Number)
+  if (!Number.isFinite(hours)) return value
+  const suffix = hours >= 12 ? 'PM' : 'AM'
+  const hour = hours % 12 === 0 ? 12 : hours % 12
+  return minutes ? `${hour}:${String(minutes).padStart(2, '0')} ${suffix}` : `${hour} ${suffix}`
+}
+
+function daysLabel(closedDays: readonly number[]): string {
+  if (closedDays.length === 0) return 'Every day'
+  if (closedDays.length === 7) return 'Closed all week'
+  return `Closed ${WEEK_FROM_MONDAY.filter((day) => closedDays.includes(day)).map((day) => DAY_LABELS[day]).join(', ')}`
+}
+
+/** The door sign customers will see: it flips over each time the hours change. */
+function OpenSign({ open, close, closedDays }: { open: string; close: string; closedDays: readonly number[] }) {
+  const hours = `${clockLabel(open)} – ${clockLabel(close)}`
+  const days = daysLabel(closedDays)
+  return (
+    <div className="flex justify-center [perspective:600px]" aria-live="polite">
+      <motion.div
+        key={`${hours}|${days}`}
+        initial={{ rotateX: -90, opacity: 0 }}
+        animate={{ rotateX: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+        className="relative rounded-2xl border-[3px] px-7 pb-4 pt-5 text-center"
+        style={{ borderColor: ACCENT, backgroundColor: OB.canvas, boxShadow: '0 6px 0 var(--ob-accent, #17130F)' }}
+      >
+        <span className="absolute -top-3 left-1/2 h-3 w-16 -translate-x-1/2 rounded-t-full border-[3px] border-b-0" style={{ borderColor: ACCENT }} aria-hidden />
+        <p className="text-[26px] font-black leading-none tracking-[0.12em]" style={{ color: ACCENT }}>BUKAS</p>
+        <p className="mt-2 text-[15px] font-bold tabular-nums" style={{ color: OB.ink }}>{hours}</p>
+        <p className="text-[12.5px] font-semibold" style={{ color: OB.muted }}>{days}</p>
+      </motion.div>
+    </div>
+  )
+}
 
 function toggle<T>(list: readonly T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
@@ -56,7 +96,14 @@ function PaymentRow({ icon, title, description, isOn, onChange, children }: {
         </span>
         <Switch isOn={isOn} label={`Accept ${title}`} onChange={onChange} />
       </div>
-      {isOn && children && <div className="grid gap-2.5 border-t px-4 py-4 sm:grid-cols-2" style={{ borderColor: OB.line }}>{children}</div>}
+      <AnimatePresence initial={false}>
+        {isOn && children && (
+          <motion.div className="overflow-hidden" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}>
+            <div className="grid gap-2.5 border-t px-4 py-4 sm:grid-cols-2" style={{ borderColor: OB.line }}>{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -99,7 +146,7 @@ export function OrderingStep({ draft, update, eyebrow }: EyebrowProps) {
   return (
     <div className="space-y-9">
       <QuestionHeading eyebrow={eyebrow} title="How do customers get their order?" lede="Pick every way you serve. You can turn any of them off later." />
-      <div role="group" aria-label="How customers get their order" className="grid grid-cols-2 gap-3 sm:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
+      <Stagger itemClassName="h-full" role="group" aria-label="How customers get their order" className="grid grid-cols-2 gap-3 sm:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
         {(Object.keys(ORDER_TYPES) as OnboardingOrderType[]).map((type) => {
           const { icon: Icon, title, description } = ORDER_TYPES[type]
           return (
@@ -107,7 +154,7 @@ export function OrderingStep({ draft, update, eyebrow }: EyebrowProps) {
               isSelected={draft.orderTypes.includes(type)} onClick={() => update({ orderTypes: toggle(draft.orderTypes, type) })} />
           )
         })}
-      </div>
+      </Stagger>
     </div>
   )
 }
@@ -116,7 +163,7 @@ export function PaymentsStep({ draft, update, eyebrow }: EyebrowProps) {
   return (
     <div className="space-y-9">
       <QuestionHeading eyebrow={eyebrow} title="How do they pay you?" lede="Money goes straight to you. E-wallet customers send a screenshot of their payment." />
-      <div className="space-y-3">
+      <Stagger className="space-y-3">
         <WalletRow wallet="gcash" draft={draft} update={update} />
         <WalletRow wallet="maya" draft={draft} update={update} />
         <PaymentRow
@@ -126,7 +173,7 @@ export function PaymentsStep({ draft, update, eyebrow }: EyebrowProps) {
           isOn={draft.acceptsCash}
           onChange={(next) => update({ acceptsCash: next })}
         />
-      </div>
+      </Stagger>
     </div>
   )
 }
@@ -137,6 +184,8 @@ export function HoursStep({ draft, update, eyebrow }: EyebrowProps) {
   return (
     <div className="space-y-9">
       <QuestionHeading eyebrow={eyebrow} title="When are you open?" lede="Customers see your hours, and orders can pause while you're closed." />
+
+      <OpenSign open={draft.open} close={draft.close} closedDays={draft.closedDays} />
 
       <div className="flex flex-wrap gap-2">
         {HOUR_PRESETS.map((preset) => (

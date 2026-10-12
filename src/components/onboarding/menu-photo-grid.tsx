@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Loader2 } from 'lucide-react'
+import { ScanLine } from './motion/parts'
 import { FOCUS_RING, OB, PhotoSlot } from './onboarding-ui'
 import { shrinkPhoto } from './shrink-photo'
 
@@ -81,8 +82,10 @@ export function MenuPhotoGrid({ urls, max, onUpload, onRemove, onUploadingChange
           />
         ))}
         {Array.from({ length: pendingCount }, (_, index) => (
-          <div key={`pending-${index}`} className={TILE_CLASS} style={{ borderColor: OB.line, backgroundColor: OB.wash }}>
+          <div key={`pending-${index}`} className={`${TILE_CLASS} relative flex-col gap-1.5 overflow-hidden`} style={{ borderColor: OB.line, backgroundColor: OB.wash }}>
+            <ScanLine />
             <Loader2 className="h-6 w-6 animate-spin" style={{ color: OB.ink }} aria-label="Uploading" />
+            <span className="text-[12px] font-semibold" style={{ color: OB.muted }} aria-hidden>Scanning…</span>
           </div>
         ))}
         {canAdd && (

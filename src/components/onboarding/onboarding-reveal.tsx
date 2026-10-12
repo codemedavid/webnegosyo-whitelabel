@@ -8,6 +8,8 @@ import { shareHint } from '@/lib/onboarding/goals'
 import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB, PrimaryLink, SecondaryLink, TextButton } from './onboarding-ui'
 import { LiveStoreFrame } from './store-preview-phone'
 import { Celebration } from './celebration'
+import { SHUTTER_OPEN_S, ShutterReveal } from './motion/shutter-reveal'
+import { motion } from 'framer-motion'
 import { OpenStorePanel, RetryFailedSteps, ShareLink, useOrigin } from './reveal-peak'
 import { ComboChoice, StampChoice, TextsChoice, type ChoiceId } from './reveal-choices'
 import { fetchLaunchCombos, trackOnboardingEvent } from './onboarding-api'
@@ -51,15 +53,17 @@ function Peak({ view, token, isLive, storeUrl, choiceCount, onNext, onRefresh, o
 
   return (
     <div className="relative space-y-8">
-      {isLive && <Celebration />}
+      {isLive && <Celebration delayS={SHUTTER_OPEN_S} />}
       <Owl state={isLive ? 'celebrating' : 'waiting'} size={150} className="mx-auto" />
-      <div className="flex h-24 items-center justify-center gap-3 rounded-3xl px-6 text-center text-[22px] font-extrabold tracking-tight" style={{ backgroundColor: ACCENT, color: ACCENT_INK }}>
-        {view.assets.logoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={view.assets.logoUrl} alt="" className="h-12 w-12 shrink-0 rounded-full bg-white object-contain p-1" />
-        )}
-        <span className="min-w-0 truncate">{store.name}</span>
-      </div>
+      <ShutterReveal isOpen={isLive}>
+        <div className="flex h-28 items-center justify-center gap-3 px-6 text-center text-[22px] font-extrabold tracking-tight" style={{ backgroundColor: ACCENT, color: ACCENT_INK }}>
+          {view.assets.logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={view.assets.logoUrl} alt="" className="h-12 w-12 shrink-0 rounded-full bg-white object-contain p-1" />
+          )}
+          <span className="min-w-0 truncate">{store.name}</span>
+        </div>
+      </ShutterReveal>
       <div>
         <h1 tabIndex={-1} className="text-balance text-[2.25rem] font-extrabold leading-[1.05] tracking-[-0.03em] outline-none sm:text-[2.75rem]" style={{ color: OB.ink }}>
           {isLive ? `Bukas na ang ${store.name}!` : `Halos bukas na ang ${store.name}`}
@@ -70,7 +74,11 @@ function Peak({ view, token, isLive, storeUrl, choiceCount, onNext, onRefresh, o
       <RetryFailedSteps token={token} view={view} onRetried={onRefresh} />
 
       {isLive
-        ? storeUrl && <ShareLink token={token} storeUrl={storeUrl} storeName={store.name} />
+        ? storeUrl && (
+          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: SHUTTER_OPEN_S + 0.2, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
+            <ShareLink token={token} storeUrl={storeUrl} storeName={store.name} />
+          </motion.div>
+        )
         : <OpenStorePanel token={token} view={view} onLaunched={onLaunched} />}
 
       {choiceCount > 0 ? (

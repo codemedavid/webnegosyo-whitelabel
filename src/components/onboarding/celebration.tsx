@@ -7,7 +7,7 @@
 
 /** The owner's brand leads; ink and a warm gold keep it from reading as a toy. */
 const COLORS = ['var(--ob-accent, #17130F)', 'var(--ob-accent, #17130F)', '#17130F', '#E8B23A', '#D3CCC4']
-const PIECE_COUNT = 28
+const PIECE_COUNT = 44
 
 const PIECES = Array.from({ length: PIECE_COUNT }, (_, index) => ({
   left: (index * 37) % 100,
@@ -22,14 +22,15 @@ const KEYFRAMES = `
 @keyframes ob-confetti-fall {
   0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
   10% { opacity: 1; }
-  100% { transform: translateY(260px) rotate(540deg); opacity: 0; }
+  100% { transform: translateY(420px) rotate(720deg); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .ob-confetti { display: none; } }
 `
 
-export function Celebration() {
+/** `delayS` holds the fall back for a moment (the shutter rolling up). */
+export function Celebration({ delayS = 0 }: { delayS?: number }) {
   return (
-    <div className="ob-confetti pointer-events-none absolute inset-x-0 -top-6 h-64 overflow-hidden" aria-hidden>
+    <div className="ob-confetti pointer-events-none absolute inset-x-0 -top-6 h-[26rem] overflow-hidden" aria-hidden>
       <style>{KEYFRAMES}</style>
       {PIECES.map((piece, index) => (
         <span
@@ -40,7 +41,7 @@ export function Celebration() {
             backgroundColor: piece.color,
             transform: `rotate(${piece.rotate}deg)`,
             opacity: 0,
-            animation: `ob-confetti-fall ${piece.duration}s ease-in ${piece.delay}s 1 forwards`,
+            animation: `ob-confetti-fall ${piece.duration}s ease-in ${piece.delay + delayS}s 1 forwards`,
           }}
         />
       ))}

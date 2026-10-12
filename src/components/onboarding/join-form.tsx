@@ -16,12 +16,14 @@ function LinkPreview({ businessName, rootDomain }: { businessName: string; rootD
   const link = previewStoreLink(businessName, rootDomain)
   const hasName = businessName.trim().length > 0
   return (
-    <div className="rounded-3xl p-5 text-white shadow-[0_20px_50px_-20px_rgba(23,19,15,0.6)]" style={{ background: 'linear-gradient(135deg, #17130F 0%, #3A2E24 100%)' }} aria-live="polite">
+    <div className="rounded-3xl p-5 text-white shadow-[0_20px_50px_-20px_rgba(23,19,15,0.6)]" style={{ background: 'linear-gradient(135deg, #17130F 0%, #3A2E24 100%)' }}>
       <p className="text-[12px] font-bold uppercase tracking-[0.1em] text-white/60">{hasName ? 'Your store link' : 'Your store, online today'}</p>
-      <p className="mt-2 break-all font-mono text-[17px] font-bold leading-snug sm:text-[19px]">
-        <span className="text-white/50">https://</span>
+      <p className="mt-2 font-mono text-[17px] font-bold leading-snug [overflow-wrap:anywhere] sm:text-[19px]">
+        <span className="sr-only">{link}</span>
+        <span className="hidden text-white/50 sm:inline" aria-hidden>https://</span>
         {link.split('').map((char, index) => (
           <motion.span
+            aria-hidden
             key={`${index}-${char}`}
             initial={isReducedMotion ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}

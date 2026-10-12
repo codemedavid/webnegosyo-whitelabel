@@ -1,5 +1,6 @@
 import Image from 'next/image'
 import { landingFontClass } from '@/components/landing/landing-fonts'
+import { MotionRoot } from './motion/motion-root'
 
 /** The set-up pages' frame (`/onboarding/...`): white ground, wordmark, a way to reach us. */
 
@@ -25,7 +26,7 @@ export function OnboardingShell({ children }: { children: React.ReactNode }) {
           Questions?
         </a>
       </header>
-      {children}
+      <MotionRoot>{children}</MotionRoot>
     </main>
   )
 }
