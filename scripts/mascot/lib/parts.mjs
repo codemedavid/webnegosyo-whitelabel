@@ -17,8 +17,9 @@ export function fluffEdge(leftHalf, { fromY, toY, step, len, w }) {
     // Side-facing points only: a ruff along the chin reads as a collar.
     .filter((p) => p.y >= fromY && p.y <= toY && p.x < AXIS - 30 && p.ny < 0.6)
     .flatMap((p, i) => {
-      const l = len * [1, 0.6, 0.85][i % 3]
-      const d = leaf(p.x - p.nx * 10, p.y - p.ny * 10, p.x + p.nx * l, p.y + p.ny * l + l * 0.55, w, 0.1)
+      const l = len * [1, 0.7, 0.85][i % 3]
+      // Swept down and out, like cheek fluff, so the row never reads as a zip.
+      const d = leaf(p.x - p.nx * 12, p.y - p.ny * 12, p.x + p.nx * l * 0.55, p.y + p.ny * l * 0.55 + l * 0.85, w, 0.05)
       return [d, mirror(d)]
     })
     .map((d) => `<path d="${d}" fill="url(#g-fluff)"/>`)

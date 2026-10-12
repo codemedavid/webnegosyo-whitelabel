@@ -9,12 +9,13 @@ export const MASK = symmetric(
   'M 345,264 C 336,246 322,222 300,208 C 268,192 218,197 189,216 C 158,236 132,272 127,320 ' +
   'C 120,372 134,416 172,442 C 212,461 286,466 345,466',
 )
+// Starts under the neckerchief, so red neck feathers (the torso) fill the V under the chin.
 export const JACKET = symmetric(
-  'M 345,474 C 270,474 205,488 174,522 C 150,550 144,612 150,668 C 156,720 200,756 260,764 ' +
+  'M 345,526 C 300,518 232,496 184,486 C 160,506 146,600 150,668 C 156,720 200,756 260,764 ' +
   'C 290,768 318,769 345,769',
 )
 export const TORSO = symmetric(
-  'M 345,470 C 260,470 180,500 160,560 C 140,630 160,710 205,750 C 245,770 300,772 345,772',
+  'M 345,450 C 250,450 168,470 158,560 C 140,630 160,710 205,750 C 245,770 300,772 345,772',
 )
 
 // Ear tuft = three feathers fanning up and out (drawn back to front).
@@ -28,13 +29,16 @@ export const TUFT_BASE_L = 'M 214,176 C 188,158 162,148 142,144 C 134,166 126,18
 
 export const BROW_L = 'M 182,232 C 188,204 234,186 268,191 C 287,194 299,207 297,219 C 296,228 287,231 280,227 C 262,214 226,213 200,236 C 192,243 180,242 182,232 Z'
 
+// Upper beak: a rounded hook between the eyes whose point overhangs the open mouth.
 export const BEAK_UPPER = symmetric(
-  'M 345,310 C 326,310 314,322 308,338 C 302,352 297,362 294,373 C 310,377 328,380 338,385 C 341,392 345,392 345,392',
+  'M 345,306 C 334,306 324,314 317,328 C 310,342 302,356 300,366 C 308,380 329,393 339,404 C 342,408 345,410 345,410',
 )
-// Starts up under the upper beak so no face shows between beak and mouth.
-export const MOUTH = symmetric('M 345,382 C 330,374 312,370 296,370 C 300,398 320,417 345,420')
+// The open smile. Its top edge hides under the upper beak; only the corners poke out.
+export const MOUTH = symmetric('M 345,386 C 328,382 310,376 291,372 C 297,404 318,428 345,431')
+// The lower beak is a crescent lip under the smile: inner edge (mouth side) out to the
+// corner, then the outer edge back to the axis.
 export const BEAK_LOWER = symmetric(
-  'M 345,418 C 324,417 309,402 302,385 C 300,378 297,374 294,377 C 296,410 316,447 345,448',
+  'M 345,426 C 322,425 304,404 296,378 C 294,372 288,372 288,378 C 294,414 316,442 345,443',
 )
 
 export const SCARF_BAND = symmetric(

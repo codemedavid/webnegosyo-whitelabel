@@ -69,6 +69,10 @@ export function defsMarkup(clips) {
       <stop offset="0" stop-color="${C.beak}"/>
       <stop offset="1" stop-color="${C.beakDeep}"/>
     </linearGradient>
+    <radialGradient id="g-mouth" cx="50%" cy="25%" r="80%">
+      <stop offset="0" stop-color="#160100"/>
+      <stop offset="1" stop-color="${C.mouth}"/>
+    </radialGradient>
     <radialGradient id="g-tongue" cx="50%" cy="30%" r="70%">
       <stop offset="0" stop-color="${C.tongueLit}"/>
       <stop offset="1" stop-color="${C.tongue}"/>
