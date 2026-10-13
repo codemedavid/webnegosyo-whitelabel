@@ -30,17 +30,21 @@ const SMS_PERMISSION_DENIED =
  * tapping Send. Removing the phone stops the gateway and revokes it for good.
  * Renders nothing off Android, for staff, or while the pilot gate is off.
  */
-export function LoyaltySmsDeviceCard() {
-  const tenantId = useAuthStore((s) => s.tenantId);
-  const userId = useAuthStore((s) => s.userId);
+/** Whether this device and account may enroll as the sending phone (the card renders only then). */
+export function useCanEnrollSmsDevice(): boolean {
   const isOwner = useAuthStore((s) => s.isOwner);
   const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
   const isDemo = useAuthStore((s) => s.isDemo);
+  return Platform.OS === "android" && isLoyaltySmsDeliveryEnabled() && !isDemo && (isOwner || isSuperadmin);
+}
+
+export function LoyaltySmsDeviceCard() {
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const userId = useAuthStore((s) => s.userId);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isShown =
-    Platform.OS === "android" && isLoyaltySmsDeliveryEnabled() && !isDemo && (isOwner || isSuperadmin);
+  const isShown = useCanEnrollSmsDevice();
 
   const enrollment = useDeviceEnrollment(tenantId, userId, isShown);
   const gateway = useSmsGateway(isShown);

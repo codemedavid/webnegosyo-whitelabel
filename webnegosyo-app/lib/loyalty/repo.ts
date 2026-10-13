@@ -33,7 +33,7 @@ export interface LoyaltyApiResponse {
 export async function callLoyaltyApi(
   path: string,
   method: "GET" | "POST",
-  input: { tenantId: string; query?: string; body?: Record<string, unknown> },
+  input: { tenantId: string; query?: string; body?: Record<string, unknown>; timeoutMs?: number },
 ): Promise<LoyaltyApiResponse> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -41,7 +41,7 @@ export async function callLoyaltyApi(
     timer = setTimeout(() => {
       controller.abort();
       reject(new Error("timeout"));
-    }, TIMEOUT_MS);
+    }, input.timeoutMs ?? TIMEOUT_MS);
   });
 
   try {

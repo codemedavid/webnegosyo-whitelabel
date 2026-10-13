@@ -11,8 +11,9 @@ import { isTabReachable } from "../../lib/tab-visibility";
 import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { tabPresentation } from "../../lib/workspace-presentation";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
-import { customerHref, newCampaignFromPresetHref } from "../../lib/navigation";
+import { automationHref, customerHref, newCampaignFromPresetHref } from "../../lib/navigation";
 import { isSmsCampaignsAvailable } from "../../lib/sms/availability";
+import { automationForPreset } from "../../lib/sms/campaign-presets";
 import {
   DASHBOARD_WINDOWS,
   selectDashboardWindow,
@@ -68,6 +69,7 @@ export default function ReportsScreen() {
   const canSeeCustomers = isTabReachable("customers", ctx);
   const canSeeRewards = isTabReachable("loyalty", ctx);
   const canSeeSales = isTabReachable("analytics", ctx);
+  const canSeeTexts = isTabReachable("texts", ctx);
   const sections = hubSections(REPORTS_SECTIONS, ctx);
   const isWide = useIsWideReports();
 
@@ -102,11 +104,15 @@ export default function ReportsScreen() {
 
   const handleAction = useCallback(
     (action: BringBackAction) => {
-      if (action.target.kind === "campaign") router.push(newCampaignFromPresetHref(action.target.preset));
+      // Win-backs, first-timer follow-ups and quiet regulars run by themselves
+      // in Texts, so those moves open the automation instead of a one-off campaign.
+      const automation = action.target.kind === "campaign" ? automationForPreset(action.target.preset) : null;
+      if (automation && canSeeTexts) router.push(automationHref(automation));
+      else if (action.target.kind === "campaign") router.push(newCampaignFromPresetHref(action.target.preset));
       else if (action.target.kind === "loyalty") open("loyalty");
       else open("customers");
     },
-    [open],
+    [open, canSeeTexts],
   );
 
   const { refetch: refetchDashboard, isRefetching } = dashboardQuery;

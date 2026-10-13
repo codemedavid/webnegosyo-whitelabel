@@ -15,6 +15,7 @@
 
 import { EMPTY_CAMPAIGN_DRAFT, type CampaignDraft } from "./campaign-form";
 import type { AudienceFilter, ScheduleKind } from "./types";
+import type { RecipeId } from "../sms-automations/api";
 
 export interface CampaignPreset {
   id: string;
@@ -119,6 +120,29 @@ const DEFINITIONS: readonly PresetDefinition[] = [
 export const CAMPAIGN_PRESETS: readonly CampaignPreset[] = DEFINITIONS.map(
   ({ id, title, description, tagline }) => ({ id, title, description, tagline })
 );
+
+/**
+ * Follow-ups Texts now runs by itself, by the automation that replaces each.
+ * Their presets stay buildable (old links, the Reports moves on a phone
+ * without Texts) but are not offered as goals where Texts is open: a one-off
+ * "win back" campaign next to an automatic one asks the owner to choose
+ * between two ways of doing the same thing.
+ */
+const AUTOMATED_FOLLOW_UPS: ReadonlyMap<string, RecipeId> = new Map<string, RecipeId>([
+  ["win_back", "win_back"],
+  ["slipping_regulars", "regulars_gone_quiet"],
+  ["second_visit", "first_visit_followup"],
+]);
+
+/** The automation (Texts recipe id) that does what this preset does, or null. */
+export function automationForPreset(presetId: string): RecipeId | null {
+  return AUTOMATED_FOLLOW_UPS.get(presetId) ?? null;
+}
+
+/** The goals to offer; without the automated follow-ups when the account can open Texts. */
+export function offeredCampaignPresets(canUseTexts: boolean): readonly CampaignPreset[] {
+  return canUseTexts ? CAMPAIGN_PRESETS.filter((preset) => !AUTOMATED_FOLLOW_UPS.has(preset.id)) : CAMPAIGN_PRESETS;
+}
 
 /** True for a real preset id, so a link can never open the editor on an unknown one. */
 export function isCampaignPresetId(value: unknown): value is string {

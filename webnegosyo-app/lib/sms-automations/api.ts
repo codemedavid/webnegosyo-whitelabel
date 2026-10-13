@@ -44,6 +44,8 @@ export interface AutomationStats {
   waiting: number;
   sent30d: number;
   skipped30d: number;
+  /** Texted guests who ordered after their text, last 30 days. */
+  cameBack30d: number;
   lastSentAt: string | null;
 }
 
@@ -148,8 +150,11 @@ export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: string; 
 const PATH = "/api/sms/automations";
 const OFFLINE = "Could not reach the server. Check your connection and try again.";
 
-async function call<T>(tenantId: string, body: Record<string, unknown>): Promise<ApiResult<T>> {
-  const response = await callLoyaltyApi(PATH, "POST", { tenantId, body });
+/** "Write it for me" waits on a model (the server allows it 20s). */
+const WRITE_TIMEOUT_MS = 30_000;
+
+async function call<T>(tenantId: string, body: Record<string, unknown>, timeoutMs?: number): Promise<ApiResult<T>> {
+  const response = await callLoyaltyApi(PATH, "POST", { tenantId, body, timeoutMs });
   if (response.status === 200 && response.body && response.body.success === true) {
     return { ok: true, value: response.body as unknown as T };
   }
@@ -171,6 +176,8 @@ export const automationsApi = {
     call<{ settings: TextingRules }>(tenantId, { action: "save_settings", settings }),
   cancelWaiting: (tenantId: string, automationId?: string) =>
     call<{ cancelled: number }>(tenantId, { action: "cancel_waiting", ...(automationId ? { automationId } : {}) }),
+  write: (tenantId: string, recipe: RecipeId, language: "en" | "tl") =>
+    call<{ messages: string[] }>(tenantId, { action: "write", recipe, language }, WRITE_TIMEOUT_MS),
   activity: (tenantId: string, query: { cursor?: string; status?: OutboxStatus; automationId?: string; limit?: number } = {}) =>
     call<ActivityPage>(tenantId, { action: "activity", ...query }),
 };

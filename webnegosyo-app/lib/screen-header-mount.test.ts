@@ -23,6 +23,7 @@ const DETAIL_SCREENS: string[][] = [
   ["team.tsx"],
   ["order", "[orderId].tsx"],
   ["voucher", "[voucherId].tsx"],
+  ["automation", "[recipe].tsx"],
 ];
 
 describe("tab screens", () => {

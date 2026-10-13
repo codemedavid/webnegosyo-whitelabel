@@ -139,3 +139,13 @@ export function ingredientHref(ingredientId: string): `/(main)/ingredient/${stri
 export function ingredientEditorHref(ingredientId: string): `/(main)/ingredient/edit/${string}` {
   return `/(main)/ingredient/edit/${encodeURIComponent(ingredientId)}`;
 }
+
+/** The Texts hub (automatic SMS automations), opened on one of its tabs. */
+export function textsHref(tab?: "automations" | "activity" | "rules"): `/(main)/texts${string}` {
+  return tab ? `/(main)/texts?tab=${tab}` : "/(main)/texts";
+}
+
+/** The automation editor for one recipe; a store has at most one per recipe. */
+export function automationHref(recipe: string): `/(main)/automation/${string}` {
+  return `/(main)/automation/${encodeURIComponent(recipe)}`;
+}

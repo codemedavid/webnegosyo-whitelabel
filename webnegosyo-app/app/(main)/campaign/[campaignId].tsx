@@ -21,7 +21,9 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { useAuthStore } from "../../../stores/auth-store";
 import { CustomersAccessGate } from "../../../components/customers/CustomersAccessGate";
-import { campaignHref } from "../../../lib/navigation";
+import { campaignHref, textsHref } from "../../../lib/navigation";
+import { isTabReachable } from "../../../lib/tab-visibility";
+import { useTabVisibilityContext } from "../../../lib/use-tab-visibility-context";
 import { isSmsCampaignsAvailable } from "../../../lib/sms/availability";
 import {
   dateFieldToDate,
@@ -53,9 +55,9 @@ import { consumesCampaign, decideSendNow, immediateRunAt } from "../../../lib/sm
 import { listCustomers, listRecentlyTextedPhones, listSuppressedPhones } from "../../../lib/sms/customers-repo";
 import { toManilaParts } from "../../../lib/sms/schedule";
 import {
-  CAMPAIGN_PRESETS,
   buildPresetDraft,
   isCampaignPresetId,
+  offeredCampaignPresets,
 } from "../../../lib/sms/campaign-presets";
 import {
   AUDIENCE_SEGMENTS,
@@ -136,6 +138,10 @@ function CampaignEditorScreen() {
   const tenantName = useAuthStore((s) => s.tenantName);
   const storeName = tenantName ?? STORE_FALLBACK;
   const isNew = campaignId === NEW_CAMPAIGN_ID;
+  // Follow-ups (win back, first-timers, quiet regulars) run by themselves in
+  // Texts; where Texts is open the goals are the one-off and weekly sends.
+  const canUseTexts = isTabReachable("texts", useTabVisibilityContext());
+  const presets = offeredCampaignPresets(canUseTexts);
   const insets = useSafeAreaInsets();
 
   const today = toManilaParts(new Date()).date;
@@ -203,12 +209,12 @@ function CampaignEditorScreen() {
   const reachByPreset = useMemo(
     () =>
       Object.fromEntries(
-        CAMPAIGN_PRESETS.map((candidate) => [
+        presets.map((candidate) => [
           candidate.id,
           reachFor(buildPresetDraft(candidate.id, today).audience).recipients.length,
         ])
       ),
-    [reachFor, today]
+    [reachFor, today, presets]
   );
 
   const sendNowDecision = useMemo(
@@ -648,7 +654,8 @@ function CampaignEditorScreen() {
         >
           {step === "goal" && (
             <GoalStep
-              presets={CAMPAIGN_PRESETS}
+              presets={presets}
+              onOpenAutomations={canUseTexts ? () => router.push(textsHref()) : undefined}
               reachById={reachByPreset}
               selectedId={goalId}
               onPick={pickGoal}

@@ -12,7 +12,7 @@
  * one.
  */
 
-import { CAMPAIGN_PRESETS, buildPresetDraft, isCampaignPresetId } from "./campaign-presets";
+import { CAMPAIGN_PRESETS, automationForPreset, buildPresetDraft, isCampaignPresetId, offeredCampaignPresets } from "./campaign-presets";
 import { validateCampaignDraft, describeCampaignCost } from "./campaign-form";
 import { validateTemplate } from "./message-template";
 
@@ -134,5 +134,20 @@ describe("presets the Reports dashboard opens", () => {
     expect(isCampaignPresetId("second_visit")).toBe(true);
     expect(isCampaignPresetId("drop_tables")).toBe(false);
     expect(isCampaignPresetId(undefined)).toBe(false);
+  });
+});
+
+describe("follow-ups that Texts runs by itself", () => {
+  it("maps each follow-up preset to the automation that replaces it", () => {
+    expect(automationForPreset("win_back")).toBe("win_back");
+    expect(automationForPreset("slipping_regulars")).toBe("regulars_gone_quiet");
+    expect(automationForPreset("second_visit")).toBe("first_visit_followup");
+    expect(automationForPreset("weekend_promo")).toBeNull();
+  });
+
+  it("offers them as campaign goals only where Texts is not open", () => {
+    const ids = (canUseTexts: boolean) => offeredCampaignPresets(canUseTexts).map((preset) => preset.id);
+    expect(ids(false)).toEqual(CAMPAIGN_PRESETS.map((preset) => preset.id));
+    expect(ids(true)).toEqual(["weekend_promo", "thank_regulars"]);
   });
 });

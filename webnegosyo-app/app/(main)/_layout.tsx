@@ -167,6 +167,7 @@ export default function MainLayout() {
         <Tabs.Screen name="growth" options={{ href: show("growth"), title: "Growth" }} />
         <Tabs.Screen name="customers" options={{ href: show("customers"), title: "Guest list" }} />
         <Tabs.Screen name="loyalty" options={{ href: show("loyalty"), title: "Rewards" }} />
+        <Tabs.Screen name="texts" options={{ href: show("texts"), title: "Texts" }} />
         <Tabs.Screen
           name="product-analytics"
           options={{ href: show("product-analytics"), title: "Performance" }}
@@ -196,6 +197,8 @@ export default function MainLayout() {
         <Tabs.Screen name="voucher/[voucherId]" options={{ href: null, title: "Voucher" }} />
         <Tabs.Screen name="category/[categoryId]" options={{ href: null, title: "Category" }} />
         <Tabs.Screen name="campaign/[campaignId]" options={{ href: null, title: "Campaign" }} />
+        {/* One automatic text's settings and message — pushed from Texts. */}
+        <Tabs.Screen name="automation/[recipe]" options={{ href: null, title: "Automation" }} />
         <Tabs.Screen name="scan" options={{ href: null, title: "Scan QR" }} />
         <Tabs.Screen name="order/[orderId]" options={{ href: null, title: "Order Detail" }} />
         {/* One table's party, its open orders and its scan-to-order code. */}
