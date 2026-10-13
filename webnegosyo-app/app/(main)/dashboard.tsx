@@ -30,6 +30,7 @@ import { StatusPipeline } from "../../components/StatusPipeline";
 import { OrderCard } from "../../components/OrderCard";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { SectionHeader } from "../../components/SectionHeader";
+import { HomeNeedsReview } from "../../components/approvals/NeedsReviewCard";
 import { IconButton } from "../../components/IconButton";
 import { ListRow } from "../../components/ListRow";
 import { ShiftStatusStrip } from "../../components/ShiftStatusStrip";
@@ -304,6 +305,9 @@ export default function DashboardScreen() {
               ]}
               onStagePress={(key) => router.push(`/(main)/orders?status=${key}`)}
             />
+
+            {/* Approvers: requests waiting for them, above the order queue's own attention list. */}
+            <HomeNeedsReview />
 
             <SectionHeader
               title="Needs attention"

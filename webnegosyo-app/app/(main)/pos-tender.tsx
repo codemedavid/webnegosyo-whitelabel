@@ -74,6 +74,7 @@ import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
 import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
+import { AskManagerRefund } from "../../components/approvals/AskManagerRefund";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
@@ -751,6 +752,16 @@ export default function PosTenderScreen() {
             This order was {formatPeso(editContext.originalTotal)} and is now{" "}
             {formatPeso(edit.newTotal)}.
           </Text>
+        )}
+
+        {/* No "Refunds" grant: ask a manager instead of a dead end (approvals). */}
+        {isRefund && !refundGate.allowed && editContext && (
+          <AskManagerRefund
+            orderId={editContext.orderId}
+            outletId={editContext.outletId ?? null}
+            amount={amountDue}
+            paidTotal={editContext.originalTotal}
+          />
         )}
 
         {/*

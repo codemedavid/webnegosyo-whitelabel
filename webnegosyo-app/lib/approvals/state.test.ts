@@ -70,6 +70,14 @@ describe("requesterCard (design-spec §3.9)", () => {
         subtitle: "R-0042 · refund slip printing", actions: ["print_again", "done"],
       });
   });
+  test("executed without a slip printer says only the R-number", () => {
+    expect(
+      requesterCard(view({ status: "executed", decidedByName: "Marco", refundLabel: "R-0042", result: { cashInvolved: true } }), {
+        ...ctx,
+        canPrintSlip: false,
+      }),
+    ).toMatchObject({ subtitle: "R-0042", actions: ["done"] });
+  });
   test("executed GCash refund does not mention the drawer", () => {
     expect(requesterCard(view({ status: "executed", decidedByName: "Marco", result: { cashInvolved: false } }), ctx).title)
       .toBe("Approved by Marco. ₱185 goes back the way they paid.");

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -12,6 +12,7 @@ import { ActivityFilterSheet } from "../../components/activity/ActivityFilterShe
 import { ApprovalsInboxSlot } from "../../components/activity/ApprovalsInboxSlot";
 import { SummaryView } from "../../components/activity/SummaryView";
 import { platformActivityClient } from "../../lib/activity/activity-client";
+import { useApprovalInbox } from "../../lib/approvals/use-approvals";
 import { filtersFromParams, paramsKey } from "../../lib/activity/activity-links";
 import { canReviewEvent } from "../../lib/activity/detail-facts";
 import {
@@ -68,7 +69,26 @@ export default function ActivityScreen() {
   const { status } = useConnectivity();
   const isOffline = status === "offline";
 
-  const [segment, setSegment] = useState<Segment>("activity");
+  const [segment, setSegmentState] = useState<Segment>("activity");
+  // The screen opens on "To review" while anything waits — until the
+  // merchant picks a segment themselves (spec §3.1).
+  const hasChosenSegment = useRef(false);
+  const setSegment = useCallback((next: Segment) => {
+    hasChosenSegment.current = true;
+    setSegmentState(next);
+  }, []);
+  const inbox = useApprovalInbox(tenantId, access.isApprover);
+  const pendingCount = inbox.data?.requests.length ?? 0;
+  useEffect(() => {
+    if (!hasChosenSegment.current && pendingCount > 0) setSegmentState("review");
+  }, [pendingCount]);
+  // "See all" on Home and a batched push land here asking for the inbox.
+  useEffect(() => {
+    if (params.tab !== "review") return;
+    if (access.isApprover) setSegment("review");
+    // Consumed, so the next "See all" (same params) lands here again.
+    router.setParams({ tab: undefined });
+  }, [params.tab, access.isApprover, setSegment]);
   const [filters, dispatch] = useReducer(activityFiltersReducer, DEFAULT_ACTIVITY_FILTERS);
   const [isSheetOpen, setSheetOpen] = useState(false);
   const [isSearching, setSearching] = useState(false);
@@ -119,7 +139,9 @@ export default function ActivityScreen() {
   const subtitle = [PERIOD_LABELS[filters.period], scopeName].filter(Boolean).join(" · ");
 
   const segments = [
-    ...(access.isApprover ? [{ label: "To review", value: "review" as Segment }] : []),
+    ...(access.isApprover
+      ? [{ label: pendingCount > 0 ? `To review · ${pendingCount}` : "To review", value: "review" as Segment }]
+      : []),
     { label: "Activity", value: "activity" as Segment },
     ...(access.isFullViewer ? [{ label: "Summary", value: "summary" as Segment }] : []),
   ];

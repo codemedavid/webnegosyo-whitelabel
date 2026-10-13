@@ -3,7 +3,7 @@
 // depend on the store's order backend, platform messages do not — every
 // signed-in merchant device should hear them, whatever serves their orders.
 
-import { platformDeviceRegistration } from "./platform-device-token";
+import { isMissingColumnError, platformDeviceRegistration, platformDeviceTokenRow } from "./platform-device-token";
 
 const live = {
   isAuthenticated: true,
@@ -41,5 +41,35 @@ describe("platformDeviceRegistration", () => {
         impersonatedTenantId: "t9",
       })
     ).toBeNull();
+  });
+});
+
+describe("platformDeviceTokenRow", () => {
+  const input = { token: "ExponentPushToken[x]", userId: "u1", tenantId: "t1" };
+
+  it("reports the Android channels this install created", () => {
+    expect(platformDeviceTokenRow({ ...input, channels: ["approvals"] }, "android", "2026-10-12T00:00:00.000Z", true)).toEqual({
+      token: "ExponentPushToken[x]",
+      user_id: "u1",
+      tenant_id: "t1",
+      platform: "android",
+      last_seen_at: "2026-10-12T00:00:00.000Z",
+      channels: ["approvals"],
+    });
+  });
+
+  it("leaves the column out for a database that does not have it yet", () => {
+    const row = platformDeviceTokenRow({ ...input, channels: ["approvals"] }, "ios", "2026-10-12T00:00:00.000Z", false);
+    expect(row).not.toHaveProperty("channels");
+    expect(row.platform).toBe("ios");
+  });
+});
+
+describe("isMissingColumnError", () => {
+  it("recognises PostgREST's unknown-column refusal and Postgres' undefined column", () => {
+    expect(isMissingColumnError({ code: "PGRST204", message: "Could not find the 'channels' column of 'platform_device_tokens' in the schema cache" }, "channels")).toBe(true);
+    expect(isMissingColumnError({ code: "42703", message: 'column "channels" of relation "platform_device_tokens" does not exist' }, "channels")).toBe(true);
+    expect(isMissingColumnError({ code: "42501", message: "permission denied" }, "channels")).toBe(false);
+    expect(isMissingColumnError(null, "channels")).toBe(false);
   });
 });

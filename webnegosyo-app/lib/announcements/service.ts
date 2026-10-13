@@ -10,6 +10,7 @@
 import { Platform } from "react-native";
 import { supabase } from "../supabase";
 import { parseAnnouncementBlocks, type AnnouncementBlock, type AnnouncementKind } from "./blocks";
+import { isMissingColumnError, platformDeviceTokenRow } from "../platform-device-token";
 
 export interface Announcement {
   id: string;
@@ -95,21 +96,29 @@ export async function markAnnouncementRead(announcementId: string, userId: strin
   if (error) throw new Error(error.message);
 }
 
-/** Files this device's token for platform pushes; the row is keyed by token. */
+/**
+ * Files this device's token for platform pushes; the row is keyed by token.
+ * `channels` reports the Android channels this install created (approvals
+ * pushes target them only then). A database the `channels` column has not
+ * reached yet refuses the column, so the row is filed again without it.
+ */
 export async function upsertPlatformDeviceToken(input: {
   token: string;
   userId: string;
   tenantId: string | null;
+  channels?: readonly string[];
 }): Promise<void> {
-  const { error } = await supabase.from("platform_device_tokens").upsert(
-    {
-      token: input.token,
-      user_id: input.userId,
-      tenant_id: input.tenantId,
-      platform: Platform.OS === "ios" ? "ios" : "android",
-      last_seen_at: new Date().toISOString(),
-    },
-    { onConflict: "token" }
-  );
-  if (error) throw new Error(error.message);
+  const platform = Platform.OS === "ios" ? "ios" : "android";
+  const tokenInput = { ...input, channels: input.channels ?? [] };
+  const nowIso = new Date().toISOString();
+  const upsert = (includeChannels: boolean) =>
+    supabase
+      .from("platform_device_tokens")
+      .upsert(platformDeviceTokenRow(tokenInput, platform, nowIso, includeChannels), { onConflict: "token" });
+
+  const first = await upsert(true);
+  if (!first.error) return;
+  if (!isMissingColumnError(first.error, "channels")) throw new Error(first.error.message);
+  const retry = await upsert(false);
+  if (retry.error) throw new Error(retry.error.message);
 }

@@ -115,6 +115,8 @@ export interface RequesterCardContext {
   /** The request is still being sent (no server answer yet). */
   isSending?: boolean;
   expiryMinutes?: number;
+  /** False where no refund slip is printed: the card must not promise one. Default true. */
+  canPrintSlip?: boolean;
 }
 
 function executedCopy(request: ApprovalRequestView): string {
@@ -173,12 +175,13 @@ export function requesterCard(request: ApprovalRequestView | null, context: Requ
       return { ...base, tone: "waiting", title: `Approved by ${firstName(request.decidedByName)} · finishing…`, showSpinner: true };
     case "executed": {
       const isMoney = request.kind === "refund" || request.kind === "cancel_paid";
+      const printsSlip = isMoney && context.canPrintSlip !== false;
       return {
         ...base,
         tone: "success",
         title: executedCopy(request),
-        subtitle: request.refundLabel ? `${request.refundLabel}${isMoney ? " · refund slip printing" : ""}` : null,
-        actions: isMoney ? ["print_again", "done"] : ["done"],
+        subtitle: request.refundLabel ? `${request.refundLabel}${printsSlip ? " · refund slip printing" : ""}` : null,
+        actions: printsSlip ? ["print_again", "done"] : ["done"],
       };
     }
     case "declined":

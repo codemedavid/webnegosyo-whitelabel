@@ -14,16 +14,18 @@ interface StaleBannerProps {
   dataUpdatedAt: number;
   isOffline: boolean;
   onRetry: () => void;
+  /** What the rows are, for "Showing activity up to …". */
+  subject?: string;
 }
 
 /**
  * Above the list when a refresh failed or the phone is offline. The rows stay;
  * the banner says how old they are (spec §3 shared states, §4 errors).
  */
-export function StaleBanner({ dataUpdatedAt, isOffline, onRetry }: StaleBannerProps) {
+export function StaleBanner({ dataUpdatedAt, isOffline, onRetry, subject = "activity" }: StaleBannerProps) {
   const at = dataUpdatedAt > 0 ? formatManilaTime(new Date(dataUpdatedAt).toISOString()) : null;
   const message = isOffline
-    ? `You're offline. Showing activity up to ${at ?? "the last refresh"}.`
+    ? `You're offline. Showing ${subject} up to ${at ?? "the last refresh"}.`
     : `Couldn't refresh. Showing what we had at ${at ?? "the last refresh"}.`;
   return (
     <View style={styles.banner} accessibilityRole="alert">

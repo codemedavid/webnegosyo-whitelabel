@@ -219,6 +219,10 @@ export default function MainLayout() {
         <Tabs.Screen name="team" options={{ href: null, title: "Team" }} />
         {/* One person's own Store activity — pushed from Account or the Drawer. */}
         <Tabs.Screen name="my-activity" options={{ href: null, title: "Your activity" }} />
+        {/* One refund / paid-cancel request to approve or read — from To review, Home, an order or a push. */}
+        <Tabs.Screen name="approval/[approvalId]" options={{ href: null, title: "Request" }} />
+        {/* Owner-only refund limits and who approves — pushed from Manage. */}
+        <Tabs.Screen name="approval-rules" options={{ href: null, title: "Approval rules" }} />
         {/* Tills (Cashier 1, Cashier 2, zero-balance) — pushed from Manage or the Drawer. */}
         <Tabs.Screen name="cash-drawers" options={{ href: null, title: "Cash drawers" }} />
         {/* Owner-only order deletion — pushed from Account. */}

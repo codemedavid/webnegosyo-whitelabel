@@ -63,6 +63,7 @@ import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
 import { CancelReasonSheet, type CancelReasonChoice } from "../../../components/order/CancelReasonSheet";
 import { OrderHistoryCard } from "../../../components/order/OrderHistoryCard";
+import { OrderApprovalsPanel } from "../../../components/approvals/OrderApprovalsPanel";
 import { withOrderEventReason, type OrderEventReason } from "../../../lib/order-cancel-reason";
 import { OfflineOrdersNotice } from "../../../components/OfflineOrdersNotice";
 import {
@@ -850,6 +851,24 @@ export default function OrderDetailScreen() {
         </View>
       )}
 
+      {/* Refunds and paid cancels (approvals): the live request card and the entries. */}
+      {!isFromDevice && (
+        <OrderApprovalsPanel
+          style={styles.section}
+          isUnpaid={isUnpaid}
+          order={{
+            id: String(order._id),
+            label: formatDailyOrderNumber(order.dailyNumber, order._id),
+            status: order.status,
+            refundable: collectedFromLedger !== undefined && collectedFromLedger > 0 ? collectedFromLedger : order.total,
+            paymentLabel: order.paymentMethod ?? null,
+            createdAt: new Date(order._creationTime).toISOString(),
+            outletId: order.outletId ?? order.outlet_id ?? null,
+            items: order.items ?? [],
+          }}
+        />
+      )}
+
       <Card title="Customer" style={styles.section}>
         <Text style={styles.value}>{displayCustomerName(order.customerName)}</Text>
         <Text style={styles.sub}>{order.customerContact}</Text>
@@ -1137,7 +1156,8 @@ export default function OrderDetailScreen() {
             </TouchableOpacity>
           )}
           {/* Staff without `orders` get no Cancel: the database refuses it
-              (orders_client_status_guard); Phase 3 puts "Ask a manager" here. */}
+              (orders_client_status_guard). On a paid order they get "Ask to
+              cancel" from the approvals panel near the top instead. */}
           {canUserCancelOrder({ role, isOwner, permissions }, order.status) && (
             <TouchableOpacity
               onPress={() => setCancelSheetOpen(true)}

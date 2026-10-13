@@ -73,10 +73,10 @@ bindSessionLossToAuth({
 });
 import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
-import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
+import { registerForPushNotifications, ensureOrdersChannel, deviceChannels } from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
 import { upsertPlatformDeviceToken } from "../lib/announcements/service";
-import { announcementRouteFromPushData } from "../lib/announcements/popup";
+import { routeFromPushResponse } from "../lib/approvals/push-route";
 import {
   shouldRegisterPushToken,
   pushRegistrationOutletId,
@@ -391,7 +391,9 @@ function usePushNotifications() {
       registerForPushNotifications().then(async (token) => {
         if (!token) return;
         if (deviceTarget) {
-          upsertPlatformDeviceToken({ token, ...deviceTarget }).catch((e) => {
+          // Reports the Android channels created above (approvals), so the
+          // server only targets a channel this phone actually has.
+          upsertPlatformDeviceToken({ token, ...deviceTarget, channels: deviceChannels() }).catch((e) => {
             console.warn("Failed to register platform device token:", e);
           });
         }
@@ -443,16 +445,34 @@ function usePushNotifications() {
   }, [isAuthenticated, convexUrl, orderBackend, isSuperadmin, impersonatedTenantId]);
 }
 
+/** Responses already routed this process, so a warm start's double report opens one screen. */
+const routedPushResponses = new Set<string>();
+
 /**
- * Opens the screen an announcement push points at when the merchant taps it —
- * both for a tap that wakes a running app and for the tap that launched it.
- * Order pushes carry no announcementId and are left to the order screens.
+ * The app's one push router: opens the screen a tapped push (or one of its
+ * action buttons) points at — approvals (review screen; Approve/Decline carry
+ * their intent) and announcements — both for a tap that wakes a running app
+ * and for the tap that launched it. Order pushes carry neither and are left
+ * to the order screens. A response is routed once, and an approval's is
+ * cleared so the next cold start never replays an Approve.
  */
-function useAnnouncementPushRouting() {
+function usePushResponseRouting() {
   useEffect(() => {
     const open = (response: Notifications.NotificationResponse | null) => {
-      const route = announcementRouteFromPushData(response?.notification.request.content.data);
-      if (route) router.push(route as never);
+      if (!response) return;
+      const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
+      if (routedPushResponses.has(key)) return;
+      const route = routeFromPushResponse(response.notification.request.content.data, response.actionIdentifier);
+      if (!route) return;
+      routedPushResponses.add(key);
+      if (route.startsWith("/(main)/approval/")) {
+        try {
+          Notifications.clearLastNotificationResponse();
+        } catch {
+          // An older binary without the native call: the routed-once set still guards this run.
+        }
+      }
+      router.push(route as never);
     };
     Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener(open);
@@ -467,7 +487,7 @@ function RootLayout() {
   useAuthInit();
   useAuthRedirect();
   usePushNotifications();
-  useAnnouncementPushRouting();
+  usePushResponseRouting();
 
   // Load saved device settings (printer config, register prefs) on app start
   useEffect(() => {
