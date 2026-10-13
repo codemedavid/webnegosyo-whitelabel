@@ -53,6 +53,18 @@ describe('buildVariables', () => {
     expect(vars.favoriteItem).toBe('favorites')
   })
 
+  it.each([
+    ['khyle santos', 'Khyle'],
+    ['Y', 'there'],
+    ['09171234567', 'there'],
+    ['.', 'there'],
+    ['MARIA', 'MARIA'],
+    ['Ñora', 'Ñora'],
+  ])('greets %p as %p', (name, expected) => {
+    const vars = buildVariables(candidate({ guest: { ...candidate().guest, name } }), STORE, { reviewUrl: null }, NOW)
+    expect(vars.firstName).toBe(expected)
+  })
+
   it('adds loyalty facts only when the candidate carries them', () => {
     const plain = buildVariables(candidate(), STORE, { reviewUrl: null }, NOW)
     expect(plain.rewardName).toBeUndefined()

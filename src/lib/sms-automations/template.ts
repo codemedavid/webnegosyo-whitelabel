@@ -53,9 +53,16 @@ export function toSmsSafe(value: string): string {
     .replace(/ /g, ' ')
 }
 
+/**
+ * The greeting name. Cashiers type "Y", a phone number or "khyle" into the
+ * name box; a text that opens "Hi Y," reads like spam, so anything with fewer
+ * than two letters falls back to "there", and an all-lowercase name gets a
+ * capital.
+ */
 function firstNameOf(name: string | null): string {
-  const trimmed = toSmsSafe(name ?? '').trim()
-  return trimmed === '' ? MISSING_NAME_FALLBACK : trimmed.split(/\s+/)[0]
+  const first = toSmsSafe(name ?? '').trim().split(/\s+/)[0] ?? ''
+  if ((first.match(/\p{L}/gu) ?? []).length < 2) return MISSING_NAME_FALLBACK
+  return first === first.toLowerCase() ? first.charAt(0).toUpperCase() + first.slice(1) : first
 }
 
 /** The placeholders a recipe may use. */

@@ -27,6 +27,8 @@ const HOUR_MS = 3_600_000
 /** A queued text that no phone sent within a week is stale, whatever its moment. */
 const MAX_QUEUE_DAYS = 7
 const SAMPLE_SIZE = 5
+/** The outbox's body limit (sms_outbox.body check). */
+export const MAX_BODY_CHARS = 1000
 
 export type PlanMode = 'fresh' | 'all'
 
@@ -125,6 +127,17 @@ function skipReasonFor(
   return null
 }
 
+/** The guest's text, or null when it cannot be filled or would not fit the outbox. */
+function renderOrNull(automation: AutomationRow, candidate: Candidate, input: PlanInput): string | null {
+  try {
+    const body = renderAutomationText(automation.message_template, candidate, input.store, input.settings, input.now)
+    return body.length > MAX_BODY_CHARS ? null : body
+  } catch (error) {
+    if (error instanceof AutomationTemplateError) return null
+    throw error
+  }
+}
+
 export function planTexts(input: PlanInput): PlanResult {
   const index = indexHistory(input.history, input.now, input.settings.guestCapDays)
   const reports = new Map<string, AutomationReport>()
@@ -151,13 +164,8 @@ export function planTexts(input: PlanInput): PlanResult {
     const reason = skipReasonFor(automation, candidate, input, index, chosenPhones)
     if (reason) { skip(reason); continue }
 
-    let body: string
-    try {
-      body = renderAutomationText(automation.message_template, candidate, input.store, input.settings, input.now)
-    } catch (error) {
-      if (error instanceof AutomationTemplateError) { skip('cannot_fill'); continue }
-      throw error
-    }
+    const body = renderOrNull(automation, candidate, input)
+    if (body === null) { skip('cannot_fill'); continue }
 
     const recipe = getRecipe(automation.recipe)
     const phone = candidate.guest.phone as string
