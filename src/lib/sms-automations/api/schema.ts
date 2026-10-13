@@ -131,6 +131,9 @@ function cleanReviewUrl(raw: string | null): { ok: true; value: string | null } 
 
 /** Same rules as the sms_settings checks, with messages an owner can act on. */
 export function normalizeSettings(input: SettingsInput): SettingsResult {
+  if (input.quietHoursStart === input.quietHoursEnd) {
+    return { ok: false, error: 'Quiet hours need a start and an end that differ.' }
+  }
   const review = cleanReviewUrl(input.reviewUrl)
   if (!review.ok) return { ok: false, error: 'Paste the full review link, starting with https://' }
   const optOutLine = input.optOutLine?.trim() || null

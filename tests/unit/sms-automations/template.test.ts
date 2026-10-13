@@ -65,6 +65,15 @@ describe('buildVariables', () => {
     expect(vars.firstName).toBe(expected)
   })
 
+  it('never lets a guest-typed name carry a link or a number into the store\'s text', () => {
+    const vars = (name: string) => buildVariables(candidate({ guest: { ...candidate().guest, name } }), STORE, { reviewUrl: null }, NOW)
+    expect(vars('Visit evil.example/win to claim 5000').name).toBe('Visit')
+    expect(vars('Maria Santos-Cruz').name).toBe('Maria Santos-Cruz')
+    expect(vars('Ma. Lourdes Reyes').name).toBe('Ma. Lourdes Reyes')
+    expect(vars('0917 123 4567').name).toBe('there')
+    expect(vars('Ana ' + 'B'.repeat(80)).name).toBe('Ana')
+  })
+
   it('adds loyalty facts only when the candidate carries them', () => {
     const plain = buildVariables(candidate(), STORE, { reviewUrl: null }, NOW)
     expect(plain.rewardName).toBeUndefined()

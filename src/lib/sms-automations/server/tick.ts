@@ -46,13 +46,17 @@ async function readDistinctTenants(
   }
 }
 
-/** Stores with at least one automatic automation on AND an enabled sender phone. */
+/**
+ * Stores with at least one automatic automation on AND an enabled sender
+ * phone. Both lists are paged and intersected here: an `in (...)` of every
+ * store id would outgrow the request URL as stores turn automations on.
+ */
 export async function storesDueForTick(client: SupabaseClient): Promise<string[]> {
   const withAutomations = await readDistinctTenants('automations', (from, to) => client.from('sms_automations')
     .select('tenant_id').eq('status', 'on').eq('run_mode', 'auto').order('tenant_id').range(from, to))
   if (withAutomations.size === 0) return []
   const withSender = await readDistinctTenants('sender phones', (from, to) => client.from('loyalty_sms_devices')
-    .select('tenant_id').eq('enabled', true).in('tenant_id', [...withAutomations]).order('tenant_id').range(from, to))
+    .select('tenant_id').eq('enabled', true).order('tenant_id').range(from, to))
   return [...withAutomations].filter((id) => withSender.has(id)).sort()
 }
 

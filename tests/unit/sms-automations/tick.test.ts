@@ -37,7 +37,8 @@ describe('storesDueForTick', () => {
     })
     expect(await storesDueForTick(client)).toEqual(['a', 'c'])
     expect(calls[0].filters).toEqual([['eq', 'status', 'on'], ['eq', 'run_mode', 'auto']])
-    expect(calls[1].filters).toEqual([['eq', 'enabled', true], ['in', 'tenant_id', ['b', 'a', 'c']]])
+    // No `in (...)` of every store: that list would outgrow the request URL.
+    expect(calls[1].filters).toEqual([['eq', 'enabled', true]])
   })
 
   it('reads no phones when nothing is switched on', async () => {

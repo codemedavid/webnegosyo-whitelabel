@@ -76,6 +76,10 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ ...base, optOutLine: 'Reply STOP 🙏' }).ok).toBe(false)
   })
 
+  it('keeps a real quiet window', () => {
+    expect(normalizeSettings({ ...base, quietHoursStart: '08:00', quietHoursEnd: '08:00' }).ok).toBe(false)
+  })
+
   it('treats blank text as "none"', () => {
     expect(normalizeSettings({ ...base, reviewUrl: '  ', optOutLine: '' })).toEqual({ ok: true, settings: base })
   })

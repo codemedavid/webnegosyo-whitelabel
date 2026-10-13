@@ -59,6 +59,26 @@ export function toSmsSafe(value: string): string {
  * than two letters falls back to "there", and an all-lowercase name gets a
  * capital.
  */
+const MAX_NAME_CHARS = 40
+/** Whole name-like words from the start: letters, ' and -, an abbreviation dot ("Ma."). */
+const NAME_PREFIX = /^(?:[\p{L}'-]+\.?(?:\s+|$))+/u
+
+/**
+ * The guest's full name as typed, cut at the first thing that is not a name
+ * ("Visit evil.example to claim" → "Visit"), so no guest can make the store's
+ * own number send a link or a number. Whole words only, up to 40 characters.
+ */
+function cleanFullName(name: string | null): string {
+  const prefix = NAME_PREFIX.exec(toSmsSafe(name ?? '').trim())?.[0] ?? ''
+  const words: string[] = []
+  for (const word of prefix.trim().split(/\s+/)) {
+    if ([...words, word].join(' ').length > MAX_NAME_CHARS) break
+    words.push(word)
+  }
+  const cleaned = words.join(' ')
+  return (cleaned.match(/\p{L}/gu) ?? []).length < 2 ? MISSING_NAME_FALLBACK : cleaned
+}
+
 function firstNameOf(name: string | null): string {
   const first = toSmsSafe(name ?? '').trim().split(/\s+/)[0] ?? ''
   if ((first.match(/\p{L}/gu) ?? []).length < 2) return MISSING_NAME_FALLBACK
@@ -85,7 +105,7 @@ export function buildVariables(
   const lastOrderMs = guest.lastOrderAt ? Date.parse(guest.lastOrderAt) : NaN
   const vars: Record<string, string> = {
     firstName: firstNameOf(guest.name),
-    name: toSmsSafe(guest.name ?? '').trim() || MISSING_NAME_FALLBACK,
+    name: cleanFullName(guest.name),
     storeName: toSmsSafe(store.storeName),
     orderCount: String(guest.orderCount),
     totalSpent: String(guest.totalSpent),

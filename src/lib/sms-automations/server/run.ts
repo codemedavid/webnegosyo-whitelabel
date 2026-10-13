@@ -55,7 +55,7 @@ async function insertDrafts(client: SupabaseClient, drafts: readonly OutboxDraft
 export async function runStore(client: SupabaseClient, tenantId: string, options: StoreRunOptions): Promise<StoreRunResult> {
   const now = options.now ?? new Date()
   const automations = (options.automations ?? await readAutomations(client, tenantId)).filter(options.pick)
-  const snapshot = await loadStoreSnapshot(client, tenantId, automations, now)
+  const snapshot = await loadStoreSnapshot(client, tenantId, automations, now, { textableOnly: options.enqueue })
 
   const { drafts, reports } = planSnapshot(snapshot, automations, options.mode, now)
   const queued = options.enqueue && drafts.length > 0 ? await insertDrafts(client, drafts) : 0

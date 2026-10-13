@@ -112,9 +112,11 @@ export async function readAutomations(client: SupabaseClient, tenantId: string):
   })
 }
 
-async function readGuests(client: SupabaseClient, tenantId: string): Promise<GuestProfile[]> {
-  const rows = await readAll<CustomerRow>('guests', (from, to) => client.from('customers').select(CUSTOMER_COLUMNS)
-    .eq('tenant_id', tenantId).not('phone_e164', 'is', null).order('id').range(from, to))
+async function readGuests(client: SupabaseClient, tenantId: string, textableOnly: boolean): Promise<GuestProfile[]> {
+  const rows = await readAll<CustomerRow>('guests', (from, to) => {
+    const query = client.from('customers').select(CUSTOMER_COLUMNS).eq('tenant_id', tenantId).not('phone_e164', 'is', null)
+    return (textableOnly ? query.eq('sms_consent', true).eq('sms_opt_out', false) : query).order('id').range(from, to)
+  })
   return rows.map(guestFromCustomerRow)
 }
 
@@ -179,9 +181,12 @@ async function readSuppressedPhones(client: SupabaseClient, tenantId: string): P
 /**
  * Read one store for these automations (already read with `readAutomations`);
  * their recipes decide which loyalty and order rows are worth reading.
+ * `textableOnly` skips guests who can never be texted (no consent, opted
+ * out): queueing does not need them, only a preview's "why not" counts do.
  */
 export async function loadStoreSnapshot(
   client: SupabaseClient, tenantId: string, automations: readonly AutomationRow[], now: Date,
+  { textableOnly = false }: { textableOnly?: boolean } = {},
 ): Promise<StoreSnapshot> {
   const tenant = await readTenant(client, tenantId)
   const store = storeContextOf(tenant)
@@ -192,7 +197,7 @@ export async function loadStoreSnapshot(
 
   const [settings, guests, orders, rewards, history, suppressedPhones] = await Promise.all([
     readSettings(client, tenantId),
-    readGuests(client, tenantId),
+    readGuests(client, tenantId, textableOnly),
     needsOrders ? readRecentOrders(client, tenantId, now) : Promise.resolve(null),
     needsRewards ? readClaimableRewards(client, tenantId, now) : Promise.resolve([]),
     readHistory(client, tenantId, now),
