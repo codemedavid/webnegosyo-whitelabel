@@ -25,7 +25,18 @@ function refuse(status: number, error: string): { ok: false; response: NextRespo
   }
 }
 
-export async function resolveApprovalsCaller(request: Request, tenantId: string): Promise<ApprovalsCallerResult> {
+/**
+ * `write` = file, decide, withdraw, change rules. A platform superadmin may
+ * READ a store's requests (support) but never moves a store's money: there is
+ * no documented need, and "approved by" must name someone who works there.
+ */
+export type ApprovalsAccessMode = 'read' | 'write'
+
+export async function resolveApprovalsCaller(
+  request: Request,
+  tenantId: string,
+  mode: ApprovalsAccessMode = 'read',
+): Promise<ApprovalsCallerResult> {
   const caller = await requireBearerStoreCaller(request, tenantId, 'edit')
   if (!caller.ok) {
     return refuse(caller.response.status, caller.response.status === 401 ? 'Sign in again.' : 'This is not your store.')
@@ -34,6 +45,10 @@ export async function resolveApprovalsCaller(request: Request, tenantId: string)
   const isStoreAccount =
     appUser?.role === 'superadmin' || (appUser?.role === 'admin' && appUser.tenant_id === tenantId)
   if (!appUser || !isStoreAccount) return refuse(403, 'This is not your store.')
+  if (mode === 'write' && appUser.role === 'superadmin') {
+    console.warn('[approvals] refused a superadmin write', { userId: caller.user.id, tenantId })
+    return refuse(403, "Platform accounts can read a store's requests but cannot file or answer them.")
+  }
 
   const burst = await checkRateLimit(`approvals:${caller.user.id}`, { ...APPROVALS_BURST_LIMIT, onRedisFailure: 'instance' })
   if (!burst.allowed) return refuse(429, 'One moment — try again shortly.')

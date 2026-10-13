@@ -8,6 +8,7 @@
  * outcome is recorded on the request (result.sideEffects), so a gap is
  * visible rather than silent.
  */
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ApprovalRequestRecord } from './types'
 
 export type SideEffectOutcome = 'done' | 'skipped' | 'not_needed' | `failed: ${string}`
@@ -27,6 +28,21 @@ export interface RestoreLine {
 
 export interface SideEffectDeps {
   restoreWholeOrderStock(tenantId: string, orderId: string, actorUserId: string): Promise<void>
+  /**
+   * Put back exactly these lines (a whole refund after earlier item refunds
+   * that were logged as waste: reversing the whole sale would hand back stock
+   * that was thrown away).
+   */
+  restoreLinesStock(input: {
+    tenantId: string
+    orderId: string
+    revision: number
+    lines: RestoreLine[]
+    outletId: string | null
+    actorUserId: string
+  }): Promise<void>
+  /** Whether an earlier item refund on this order kept its stock as waste. */
+  hasWastedItemRefunds(tenantId: string, orderId: string): Promise<boolean>
   restoreRevisionStock(input: {
     tenantId: string
     orderId: string
@@ -35,7 +51,13 @@ export interface SideEffectDeps {
     outletId: string | null
     actorUserId: string
   }): Promise<void>
-  loadOrder(tenantId: string, orderId: string): Promise<{ outletId: string | null; customerData: unknown; status: string } | null>
+  loadOrder(tenantId: string, orderId: string): Promise<{
+    outletId: string | null
+    customerData: unknown
+    status: string
+    revisionNumber: number
+    lines: RestoreLine[]
+  } | null>
   /** False when the order carries no pre-sell claim. */
   releasePresell(tenantId: string, customerData: unknown): Promise<boolean>
   runLoyalty(tenantId: string, orderId: string): Promise<void>
@@ -81,12 +103,43 @@ function restoreLines(result: RefundResult): RestoreLine[] {
     .map((line) => ({ menuItemId: line.menuItemId, quantity: line.quantity }))
 }
 
-/** Stock: "Put back in stock" returns the lines; otherwise they stay spent (logged as waste by the refund). */
-function stockEffect(record: ApprovalRequestRecord, result: RefundResult, deps: SideEffectDeps, outletId: string | null) {
+type LoadedOrder = Awaited<ReturnType<SideEffectDeps['loadOrder']>>
+
+/**
+ * Stock: "Put back in stock" returns the lines; otherwise they stay spent
+ * (logged as waste by the refund).
+ *
+ * A whole refund normally reverses the order's recorded movements, which is
+ * revision-aware: reverseOrderStockMovements nets EVERY movement of the order
+ * (sale + edit corrections), so an earlier restocked item refund is not
+ * returned twice. The one case it cannot see is an earlier item refund kept as
+ * WASTE (no movement was written), so then only the remaining lines go back.
+ */
+function stockEffect(
+  record: ApprovalRequestRecord,
+  result: RefundResult,
+  deps: SideEffectDeps,
+  outletId: string | null,
+  order: LoadedOrder,
+) {
   return attempt(async () => {
     if (!result.restock) return 'not_needed'
     const orderId = record.externalOrderId as string
     if (result.scope === 'whole') {
+      if (await deps.hasWastedItemRefunds(record.tenantId, orderId)) {
+        if (!order) return 'skipped'
+        if (order.lines.length === 0) return 'not_needed'
+        await deps.restoreLinesStock({
+          tenantId: record.tenantId,
+          orderId,
+          // One above the last edit: a fresh claim that cannot collide with any earlier revision.
+          revision: order.revisionNumber + 1,
+          lines: order.lines,
+          outletId,
+          actorUserId: record.requestedBy,
+        })
+        return 'done'
+      }
       await deps.restoreWholeOrderStock(record.tenantId, orderId, record.requestedBy)
       return 'done'
     }
@@ -123,7 +176,7 @@ export async function runApprovalSideEffects(
   const order = await deps.loadOrder(record.tenantId, orderId).catch(() => null)
   const outletId = order?.outletId ?? record.outletId
 
-  const stock = await stockEffect(record, result, deps, outletId)
+  const stock = await stockEffect(record, result, deps, outletId, order)
 
   const presell = await attempt(async () => {
     if (!result.statusChanged) return 'not_needed'
@@ -172,6 +225,23 @@ export async function defaultSideEffectDeps(): Promise<SideEffectDeps> {
   return {
     restoreWholeOrderStock: (tenantId, orderId, actorUserId) =>
       stockService.reverseOrderStockBestEffort(tenantId, orderId, { source: 'merchant_app', actorUserId }),
+    restoreLinesStock: ({ tenantId, orderId, revision, lines, outletId, actorUserId }) =>
+      stockService.applyOrderStockBestEffort(tenantId, orderId, lines, 'void', revision, outletId, {
+        context: { source: 'merchant_app', actorUserId },
+        event: 'order_restore',
+      }),
+    hasWastedItemRefunds: async (tenantId, orderId) => {
+      const { data, error } = await (admin as unknown as SupabaseClient)
+        .from('order_refunds')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('order_id', orderId)
+        .eq('scope', 'items')
+        .eq('restock', false)
+        .limit(1)
+      if (error) throw new Error(error.message)
+      return (data ?? []).length > 0
+    },
     restoreRevisionStock: ({ tenantId, orderId, revision, restore, outletId, actorUserId }) =>
       stockService.applyOrderRevisionStockBestEffort(tenantId, orderId, revision, [], restore, outletId, {
         source: 'merchant_app',
@@ -180,13 +250,28 @@ export async function defaultSideEffectDeps(): Promise<SideEffectDeps> {
     loadOrder: async (tenantId, orderId) => {
       const { data, error } = await admin
         .from('orders')
-        .select('outlet_id, customer_data, status')
+        .select('outlet_id, customer_data, status, revision_number, order_items(menu_item_id, quantity)')
         .eq('tenant_id', tenantId)
         .eq('id', orderId)
         .maybeSingle()
       if (error) throw new Error(error.message)
       if (!data) return null
-      return { outletId: data.outlet_id ?? null, customerData: data.customer_data, status: data.status }
+      const row = data as unknown as {
+        outlet_id: string | null
+        customer_data: unknown
+        status: string
+        revision_number: number | null
+        order_items: { menu_item_id: string | null; quantity: number }[] | null
+      }
+      return {
+        outletId: row.outlet_id ?? null,
+        customerData: row.customer_data,
+        status: row.status,
+        revisionNumber: row.revision_number ?? 0,
+        lines: (row.order_items ?? [])
+          .filter((line): line is { menu_item_id: string; quantity: number } => Boolean(line.menu_item_id) && line.quantity > 0)
+          .map((line) => ({ menuItemId: line.menu_item_id, quantity: line.quantity })),
+      }
     },
     releasePresell: async (tenantId, customerData) => {
       const claim = presellSchedule.readPresellClaim(customerData)

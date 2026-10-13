@@ -25,7 +25,7 @@ import {
   listRecentPending,
   type ApprovalsDb,
 } from './repository'
-import { reachesOutlet } from './rules'
+import { approverCapCentavos, reachesOutlet, toCentavos } from './rules'
 import type { ApprovalRequestRecord, ApprovalRules } from './types'
 
 export interface ApprovalNotice {
@@ -98,9 +98,12 @@ export async function notifyApprovers(
 
   const recipients = targets.map((target) => {
     const viewer = candidateById.get(target.userId)
+    const cap = viewer ? approverCapCentavos(viewer, rules) : -1
+    // L2: a summary counts only what THIS person could answer.
     const waiting = recent
       .filter((row) => row.requested_by !== target.userId)
       .filter((row) => (viewer ? reachesOutlet(viewer, typeof row.outlet_id === 'string' ? row.outlet_id : null) : false))
+      .filter((row) => cap === null || (cap >= 0 && toCentavos(Number(row.amount ?? 0)) <= cap))
       .map((row) => ({
         amount: Number(row.amount ?? 0),
         requestedByName: typeof row.requested_by_name === 'string' ? row.requested_by_name : null,

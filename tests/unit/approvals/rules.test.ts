@@ -103,6 +103,25 @@ describe('decideRoute — refunds', () => {
   })
 })
 
+describe('decideRoute — direct limits are cumulative (H2)', () => {
+  test('the order cap cannot be split into small refunds', () => {
+    expect(route({ actor: refunder, amountCentavos: 10000, orderRefundedCentavos: 20000 })).toEqual({ route: 'direct' })
+    expect(route({ actor: refunder, amountCentavos: 10001, orderRefundedCentavos: 20000 }).route).toBe('request')
+  })
+  test("a person's direct refunds today stop at the manager cap", () => {
+    expect(route({ actor: refunder, amountCentavos: 100, requesterDirectTodayCentavos: 99900 })).toEqual({ route: 'direct' })
+    expect(route({ actor: refunder, amountCentavos: 101, requesterDirectTodayCentavos: 99900 }).route).toBe('request')
+  })
+  test("an approver's direct refunds are bounded per ORDER by the manager cap", () => {
+    expect(route({ actor: manager, amountCentavos: 50000, orderRefundedCentavos: 50000 })).toEqual({ route: 'direct' })
+    expect(route({ actor: manager, amountCentavos: 50001, orderRefundedCentavos: 50000 })).toEqual({ route: 'request', approverNeeded: 'manager' })
+  })
+  test('the owner is never capped', () => {
+    expect(route({ actor: owner, amountCentavos: 1, orderRefundedCentavos: 99_999_999, requesterDirectTodayCentavos: 99_999_999 }))
+      .toEqual({ route: 'direct' })
+  })
+})
+
 describe('decideRoute — cancel paid', () => {
   test('needs orders AND order_refund to act directly', () => {
     const refundOnly = actor({ permissions: ['pos', 'order_refund'] })
@@ -131,6 +150,10 @@ describe('decideRoute — write-offs', () => {
     expect(route({ kind: 'stock_writeoff', actor: stockClerk, amountCentavos: 50000 })).toEqual({ route: 'direct' })
     expect(route({ kind: 'stock_writeoff', actor: stockClerk, amountCentavos: 50001 }).route).toBe('request')
   })
+  test('an ingredient with no cost on file is never written off directly (M1)', () => {
+    expect(route({ kind: 'stock_writeoff', actor: stockClerk, amountCentavos: 0, isCostUnknown: true }).route).toBe('request')
+    expect(route({ kind: 'stock_writeoff', actor: manager, amountCentavos: 0, isCostUnknown: true }).route).toBe('request')
+  })
   test('a cashier without menu asks even for a small write-off', () => {
     expect(route({ kind: 'stock_writeoff', actor: cashier, amountCentavos: 100 }).route).toBe('request')
   })
@@ -157,8 +180,13 @@ describe('checkCanDecide', () => {
     expect(checkCanDecide({ ...base, requestedBy: manager.userId, approver: manager })).toEqual({ ok: false, code: 'self_approval' })
     expect(checkCanDecide({ ...base, requestedBy: owner.userId, approver: owner })).toEqual({ ok: true })
   })
-  test('over the manager limit is refused', () => {
+  test('over the manager limit cannot be APPROVED, but can be declined (M6)', () => {
     expect(checkCanDecide({ ...base, amountCentavos: 100001, approver: manager })).toEqual({ ok: false, code: 'over_limit' })
+    expect(checkCanDecide({ ...base, decision: 'decline', amountCentavos: 100001, approver: manager })).toEqual({ ok: true })
+  })
+  test('declining still needs approver rights, reach and someone else', () => {
+    expect(checkCanDecide({ ...base, decision: 'decline', approver: refunder })).toEqual({ ok: false, code: 'not_approver' })
+    expect(checkCanDecide({ ...base, decision: 'decline', requestedBy: manager.userId, approver: manager })).toEqual({ ok: false, code: 'self_approval' })
   })
   test('a branch-locked manager cannot answer another branch', () => {
     const locked = actor({ userId: 'u-bgc', permissions: ['approve_requests'], outletId: 'o-bgc' })

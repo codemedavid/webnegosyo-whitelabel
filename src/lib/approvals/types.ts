@@ -80,7 +80,10 @@ export interface ApprovalRequestRecord {
 
 /** What one viewer may do with a request (computed per caller by the server). */
 export interface ApprovalViewerCapabilities {
+  /** May approve (within limit, in reach, not their own unless owner). */
   canDecide: boolean
+  /** May decline — also above their limit (the limit bounds yes, not no). */
+  canDecline: boolean
   canWithdraw: boolean
   /** True when the viewer approves requests but this one is above their limit. */
   isOverViewerLimit: boolean
@@ -101,3 +104,10 @@ export interface ApprovalRefusal {
   requestId?: string
   request?: Record<string, unknown>
 }
+
+/**
+ * The database's refusal when a register writes a refund row beyond the
+ * cashier's own limit (order_payments_refund_guard, 20261012170000). The app
+ * matches this exact text to offer "Ask a manager" instead of an error.
+ */
+export const REFUND_NEEDS_APPROVAL_MESSAGE = 'This refund needs approval. Ask a manager to approve it.'

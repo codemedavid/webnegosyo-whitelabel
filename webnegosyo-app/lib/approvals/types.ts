@@ -66,6 +66,8 @@ export interface ApprovalRequestView {
   updatedAt: string;
   refundLabel: string | null;
   canDecide: boolean;
+  /** May decline (also above their limit). Absent from servers before 2026-10-13. */
+  canDecline?: boolean;
   canWithdraw: boolean;
   isOverViewerLimit: boolean;
   /** Viewer's limit in pesos; null = no limit; absent = cannot approve. */
@@ -164,3 +166,10 @@ export const REASONS_BY_KIND: Readonly<Record<ApprovalKind, readonly ReasonOptio
   discount: DISCOUNT_REASONS,
   stock_writeoff: WRITEOFF_REASONS,
 };
+
+/**
+ * The database's refusal when a register refund row is beyond the cashier's
+ * own limit (order_payments_refund_guard). Match it to offer "Ask a manager".
+ * Pinned equal to the web copy and the SQL by tests/unit/approvals/app-parity.test.ts.
+ */
+export const REFUND_NEEDS_APPROVAL_MESSAGE = "This refund needs approval. Ask a manager to approve it.";

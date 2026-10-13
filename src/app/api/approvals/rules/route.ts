@@ -36,7 +36,7 @@ async function handleGet(request: NextRequest): Promise<NextResponse> {
 async function handlePut(request: NextRequest): Promise<NextResponse> {
   const parsed = rulesUpdateSchema.safeParse(await readJson(request))
   if (!parsed.success) return badRequest(firstIssue(parsed.error))
-  const caller = await resolveApprovalsCaller(request, parsed.data.tenantId)
+  const caller = await resolveApprovalsCaller(request, parsed.data.tenantId, 'write')
   if (!caller.ok) return caller.response
   try {
     return respond(await updateApprovalRules(buildApprovalsContext(caller.actor, caller.tenantId), parsed.data))

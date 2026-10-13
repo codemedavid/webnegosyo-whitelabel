@@ -18,7 +18,12 @@ function deps(overrides: Partial<SideEffectDeps> = {}): SideEffectDeps & Record<
   return {
     restoreWholeOrderStock: jest.fn().mockResolvedValue(undefined),
     restoreRevisionStock: jest.fn().mockResolvedValue(undefined),
-    loadOrder: jest.fn().mockResolvedValue({ outletId: 'o-1', customerData: { presell: true }, status: 'cancelled' }),
+    restoreLinesStock: jest.fn().mockResolvedValue(undefined),
+    hasWastedItemRefunds: jest.fn().mockResolvedValue(false),
+    loadOrder: jest.fn().mockResolvedValue({
+      outletId: 'o-1', customerData: { presell: true }, status: 'cancelled', revisionNumber: 2,
+      lines: [{ menuItemId: 'm-1', quantity: 1 }],
+    }),
     releasePresell: jest.fn().mockResolvedValue(true),
     runLoyalty: jest.fn().mockResolvedValue(undefined),
     recordCancelEvent: jest.fn().mockResolvedValue(undefined),
@@ -52,6 +57,19 @@ describe('runApprovalSideEffects', () => {
       revision: 3, restore: [{ menuItemId: 'm-1', quantity: 2 }], outletId: 'o-1',
     }))
     expect(report).toMatchObject({ stock: 'done', presell: 'not_needed', loyalty: 'not_needed', statusEvent: 'not_needed' })
+  })
+
+  test('a whole refund after an item refund kept as waste returns only the remaining lines (M5)', async () => {
+    const d = deps({ hasWastedItemRefunds: jest.fn().mockResolvedValue(true) })
+    const report = await runApprovalSideEffects(
+      record({ kind: 'cancel_paid', result: { scope: 'whole', restock: true, statusChanged: true } }),
+      d,
+    )
+    expect(report?.stock).toBe('done')
+    expect(d.restoreWholeOrderStock).not.toHaveBeenCalled()
+    expect(d.restoreLinesStock).toHaveBeenCalledWith(expect.objectContaining({
+      revision: 3, lines: [{ menuItemId: 'm-1', quantity: 1 }], actorUserId: 'u-ana',
+    }))
   })
 
   test('without restock the stock stays spent', async () => {

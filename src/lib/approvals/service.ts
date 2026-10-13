@@ -12,6 +12,7 @@ import { notifyApprovers, notifyRequester, type ApprovalNotifier } from './notif
 import { approverFirstNames, selectApprovalTargets } from './push'
 import { reasonLabel } from './reasons'
 import {
+  claimSideEffectsDue,
   createAndExecuteDirect,
   createPendingRequest,
   decideRequest,
@@ -79,16 +80,47 @@ function scheduleRequesterNotice(ctx: ApprovalsContext, record: ApprovalRequestR
   })
 }
 
+/**
+ * M5: follow-ups that never reported back (an after() lost to a cold
+ * shutdown) are re-run. The claim is atomic, and every follow-up is
+ * idempotent on its own (stock claims, pre-sell void, loyalty reconciler).
+ */
+export async function reconcileApprovalSideEffects(
+  db: ApprovalsDb,
+  deps: () => Promise<SideEffectDeps>,
+  tenantId: string | null,
+): Promise<number> {
+  const due = await claimSideEffectsDue(db, tenantId)
+  for (const row of due) {
+    const record = toApprovalRecord(row)
+    const report = await runApprovalSideEffects(record, await deps())
+    if (report) await recordSideEffects(db, record.tenantId, record.id, { ...report })
+  }
+  return due.length
+}
+
+function scheduleSideEffectSweep(ctx: ApprovalsContext): void {
+  ctx.schedule(async () => {
+    await reconcileApprovalSideEffects(ctx.db, ctx.sideEffectDeps, ctx.tenantId)
+  })
+}
+
 async function storeSupportsOrders(ctx: ApprovalsContext): Promise<boolean> {
   return (await loadTenantBackend(ctx.db, ctx.tenantId)) === 'platform'
 }
 
+export const DISCOUNT_NOT_SUPPORTED_MESSAGE = 'Discount approvals are coming soon.'
+
 export async function createApproval(ctx: ApprovalsContext, body: CreateApprovalBody): Promise<ApprovalsReply> {
+  // H3: the register does not redeem approval tokens yet, so an approved
+  // discount would authorise nothing. Refused here and in the database.
+  if (body.kind === 'discount') {
+    return body.payload.statutory
+      ? failReply(422, 'Senior and PWD discounts never need approval. Apply them at the register.', 'statutory_not_gated')
+      : failReply(422, DISCOUNT_NOT_SUPPORTED_MESSAGE, 'not_supported')
+  }
   if (body.kind !== 'stock_writeoff' && !(await storeSupportsOrders(ctx))) {
     return failReply(409, BACKEND_UNSUPPORTED_MESSAGE, 'backend_unsupported')
-  }
-  if (body.kind === 'discount' && body.payload.statutory) {
-    return failReply(422, 'Senior and PWD discounts never need approval. Apply them at the register.', 'statutory_not_gated')
   }
 
   const rules = await loadRules(ctx.db, ctx.tenantId)
@@ -107,8 +139,11 @@ export async function createApproval(ctx: ApprovalsContext, body: CreateApproval
     rules,
     now: ctx.now,
     orderCreatedAt,
+    orderRefundedCentavos: toCentavos(Number(quote.orderRefunded ?? 0)),
+    requesterDirectTodayCentavos: toCentavos(Number(quote.requesterDirectToday ?? 0)),
+    isCostUnknown: quote.costUnknown === true,
     // The database's own percent (amountOff ÷ order total), never the client's claim.
-    discountPct: body.kind === 'discount' && quote.pct !== undefined && quote.pct !== null ? Number(quote.pct) : null,
+    discountPct: quote.pct !== undefined && quote.pct !== null ? Number(quote.pct) : null,
   })
   if (route.route === 'refused') return failReply(statusForCode(route.code), route.message, route.code)
 
@@ -160,6 +195,7 @@ export async function decideApproval(ctx: ApprovalsContext, id: string, body: De
   if (!record) return failReply(404, 'This request could not be found.', 'not_found')
 
   const check = checkCanDecide({
+    decision: body.decision,
     approver: ctx.actor,
     requestedBy: record.requestedBy,
     outletId: record.outletId,
@@ -228,6 +264,7 @@ export async function listApprovals(
   status: 'pending' | 'mine' | 'recent',
 ): Promise<ApprovalsReply<{ requests: ApprovalRequestView[]; isApprover: boolean }>> {
   await expireDue(ctx.db, ctx.tenantId)
+  scheduleSideEffectSweep(ctx)
   const rules = await loadRules(ctx.db, ctx.tenantId)
   const isApprover = canApproveAtAll(ctx.actor, rules)
   const since = new Date(ctx.now.getTime() - RECENT_WINDOW_MS).toISOString()

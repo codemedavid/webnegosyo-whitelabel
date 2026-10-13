@@ -12,7 +12,20 @@ const MAX_LINES = 50
 
 const uuid = z.string().uuid()
 const note = z.string().trim().max(500).optional()
-const pesos = z.number().finite().positive().max(MAX_PESOS)
+/** Whole centavos only: 185.5 is fine, 185.555 is not (float-safe check). */
+const isWholeCentavos = (value: number): boolean => Math.abs(Math.round(value * 100) - value * 100) < 1e-6
+const pesos = z
+  .number()
+  .finite()
+  .positive()
+  .max(MAX_PESOS)
+  .refine(isWholeCentavos, { message: 'Amounts are in whole centavos.' })
+const pesosOrZero = z
+  .number()
+  .finite()
+  .min(0)
+  .max(MAX_PESOS)
+  .refine(isWholeCentavos, { message: 'Amounts are in whole centavos.' })
 
 const refundPayload = z.discriminatedUnion('scope', [
   z.object({
@@ -117,11 +130,11 @@ export const listQuerySchema = z.object({
 export const rulesUpdateSchema = z
   .object({
     tenantId: uuid,
-    directRefundCap: z.number().finite().min(0).max(MAX_PESOS).optional(),
-    managerApproveCap: z.number().finite().min(0).max(MAX_PESOS).optional(),
+    directRefundCap: pesosOrZero.optional(),
+    managerApproveCap: pesosOrZero.optional(),
     staffRefundWindow: z.enum(['same_day', 'any']).optional(),
     discountPctNeedsApproval: z.number().finite().min(0).max(100).optional(),
-    writeoffCostNeedsApproval: z.number().finite().min(0).max(MAX_PESOS).optional(),
+    writeoffCostNeedsApproval: pesosOrZero.optional(),
     expiryMinutes: z.number().int().min(5).max(240).optional(),
     maxPendingPerStaff: z.number().int().min(1).max(20).optional(),
   })

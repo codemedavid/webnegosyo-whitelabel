@@ -70,6 +70,13 @@ describe('createApprovalSchema', () => {
     expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'amount', amount: 2_000_000 } }).success).toBe(false)
     expect(createApprovalSchema.safeParse({ ...base, idempotencyKey: 'x', kind: 'refund', orderId: ORDER, payload: { scope: 'whole' } }).success).toBe(false)
   })
+  test('amounts are whole centavos (L4)', () => {
+    expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'amount', amount: 185.5 } }).success).toBe(true)
+    expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'amount', amount: 0.29 } }).success).toBe(true)
+    expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'amount', amount: 185.555 } }).success).toBe(false)
+    expect(decisionSchema.safeParse({ tenantId: TENANT, decision: 'approve', amountOverride: 10.001 }).success).toBe(false)
+    expect(rulesUpdateSchema.safeParse({ tenantId: TENANT, directRefundCap: 300.005 }).success).toBe(false)
+  })
   test('a write-off carries no order', () => {
     const parsed = createApprovalSchema.safeParse({
       ...base, reasonCode: 'spoiled', kind: 'stock_writeoff', payload: { inventoryItemId: ITEM, quantity: 2 },

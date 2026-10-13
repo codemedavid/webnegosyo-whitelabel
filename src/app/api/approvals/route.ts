@@ -47,7 +47,7 @@ async function handleCreate(request: NextRequest): Promise<NextResponse> {
   const parsed = createApprovalSchema.safeParse(await readJson(request))
   if (!parsed.success) return badRequest(firstIssue(parsed.error))
 
-  const caller = await resolveApprovalsCaller(request, parsed.data.tenantId)
+  const caller = await resolveApprovalsCaller(request, parsed.data.tenantId, 'write')
   if (!caller.ok) return caller.response
   try {
     return respond(await createApproval(buildApprovalsContext(caller.actor, caller.tenantId), parsed.data))

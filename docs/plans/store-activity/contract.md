@@ -185,3 +185,19 @@ push should feed THAT inbox once it lands on main, not build a second bell.
 - Server-side facts only: the discount percent is computed by approval_quote (amountOff ÷ order total);
   a requester must reach the order's branch (approval_user_reaches); an approver's cap applies to
   decline too (design-spec §3.7: over-limit requests are read-only, the owner answers them).
+
+### Approvals hardening (20261012170000, 2026-10-13)
+
+- Every `order_payments` refund row (any role) passes `order_payments_refund_guard`: order locked, refunds
+  never exceed what was charged (implicit ledger = paid-by-status total). Client roles also need the direct
+  limit (`approval_refund_within_own_limit`), else 42501 with EXACTLY
+  `This refund needs approval. Ask a manager to approve it.` (`REFUND_NEEDS_APPROVAL_MESSAGE`, web + app).
+- Direct limits are cumulative: the order's refunds so far + this ≤ the cap (₱300 staff, manager cap for
+  approvers); an order_refund holder's direct refunds today + this ≤ the manager cap.
+- Discount requests are refused (`not_supported`) until the register redeems tokens; tokens are stored as
+  sha256. A cost-unknown write-off is never direct. Replayed idempotency key with different details →
+  409 `idempotency_conflict`. Unknown implicit tender = cash. Item refunds are scaled by
+  orders.total ÷ Σ line net (round per line to the centavo).
+- Over-limit approvers may decline (`canDecline` on the request view); approving a cash refund needs the
+  requester's open drawer. Superadmins may read, not write. Lost follow-ups are re-run by
+  `claim_approval_side_effects` (swept from GET /api/approvals).

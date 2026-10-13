@@ -5,6 +5,7 @@ import {
   createApproval,
   decideApproval,
   listApprovals,
+  reconcileApprovalSideEffects,
   updateApprovalRules,
   withdrawApproval,
   type ApprovalsContext,
@@ -58,7 +59,8 @@ function context(db: ApprovalsDb, who: ApprovalActor) {
     notifier: { deliver },
     schedule: (work) => { scheduled.push(work) },
     sideEffectDeps: async () => ({
-      restoreWholeOrderStock: jest.fn(), restoreRevisionStock: jest.fn(), loadOrder: jest.fn().mockResolvedValue(null),
+      restoreWholeOrderStock: jest.fn(), restoreRevisionStock: jest.fn(), restoreLinesStock: jest.fn(),
+      hasWastedItemRefunds: jest.fn().mockResolvedValue(false), loadOrder: jest.fn().mockResolvedValue(null),
       releasePresell: jest.fn().mockResolvedValue(false), runLoyalty: jest.fn(), recordCancelEvent: jest.fn(), now: () => NOW,
     }),
   }
@@ -131,17 +133,41 @@ describe('createApproval', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  test('the discount percent comes from the database quote, not the client', async () => {
-    const { db, rpc } = fakeDb(
-      { approval_quote: { ...QUOTE_OK, amount: 192, pct: 40 }, create_approval_request: { ok: true, replayed: false, request: row({ kind: 'discount', amount: 192 }) } },
-      { ...PLATFORM_TENANT, app_users: [] },
-    )
+  test('discount approvals are refused until the register redeems them (H3)', async () => {
+    const { db, rpc } = fakeDb({}, PLATFORM_TENANT)
     const reply = await createApproval(context(db, actor()).ctx, {
       tenantId: TENANT, kind: 'discount', orderId: ORDER, reasonCode: 'make_up', idempotencyKey: 'sheet_12345678',
-      payload: { amountOff: 192, pct: 1 },
+      payload: { amountOff: 192, pct: 40 },
+    })
+    expect(reply.status).toBe(422)
+    expect(reply.body).toMatchObject({ code: 'not_supported', error: 'Discount approvals are coming soon.' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  test('the direct decision uses the order and day totals from the database (H2)', async () => {
+    // ₱100 by an order_refund holder, same day — but the order already gave back ₱250.
+    const { db, rpc } = fakeDb(
+      {
+        approval_quote: { ...QUOTE_OK, amount: 100, orderRefunded: 250, requesterDirectToday: 0 },
+        create_approval_request: { ok: true, replayed: false, request: row({ amount: 100 }) },
+      },
+      { ...PLATFORM_TENANT, app_users: [] },
+    )
+    const reply = await createApproval(context(db, actor({ permissions: ['pos', 'orders', 'order_refund'] })).ctx, {
+      ...refundBody, payload: { scope: 'amount', amount: 100 },
     })
     expect(reply.body.data).toMatchObject({ route: 'request' })
-    expect(rpc.mock.calls.map(([fn]) => fn)).toContain('create_approval_request')
+    expect(rpc.mock.calls.map(([fn]) => fn)).not.toContain('create_and_execute_approval')
+  })
+
+  test('a replayed key with different details comes back as a 409 conflict (M2)', async () => {
+    const { db } = fakeDb(
+      { approval_quote: QUOTE_OK, create_approval_request: { ok: false, code: 'idempotency_conflict', message: 'This request was already sent with different details.' } },
+      PLATFORM_TENANT,
+    )
+    const reply = await createApproval(context(db, actor()).ctx, refundBody)
+    expect(reply.status).toBe(409)
+    expect(reply.body.code).toBe('idempotency_conflict')
   })
 
   test('a replayed tap does not notify twice', async () => {
@@ -173,6 +199,25 @@ describe('decideApproval', () => {
     expect(reply.status).toBe(404)
   })
 
+  test('a manager may DECLINE a request above their limit (M6)', async () => {
+    const declined = row({ amount: 1450, status: 'declined', decided_by: 'u-marco', decision_reason_code: 'talk_first' })
+    const { db, rpc } = fakeDb({ decide_approval: { ok: true, request: declined } }, { approval_requests: [row({ amount: 1450 })] })
+    const reply = await decideApproval(
+      context(db, actor({ userId: 'u-marco', permissions: ['approve_requests'] })).ctx,
+      'req-1',
+      { tenantId: TENANT, decision: 'decline', reasonCode: 'talk_first' },
+    )
+    expect(reply.status).toBe(200)
+    expect(rpc.mock.calls.map(([fn]) => fn)).toContain('decide_approval')
+  })
+
+  test('…but not approve it', async () => {
+    const { db, rpc } = fakeDb({}, { approval_requests: [row({ amount: 1450 })] })
+    const reply = await decideApproval(context(db, actor({ userId: 'u-marco', permissions: ['approve_requests'] })).ctx, 'req-1', approve)
+    expect(reply.body.code).toBe('over_limit')
+    expect(rpc.mock.calls.map(([fn]) => fn)).not.toContain('decide_approval')
+  })
+
   test('approve → executed: follow-ups and the requester push are scheduled', async () => {
     const executed = row({ status: 'executed', decided_by: 'u-marco', decided_by_name: 'Marco', result: { refundLabel: 'R-0042', scope: 'amount' } })
     const { db } = fakeDb({ decide_approval: { ok: true, request: executed } }, { approval_requests: [row()] })
@@ -200,6 +245,29 @@ describe('decideApproval', () => {
     const reply = await decideApproval(context(db, actor({ userId: 'u-marco', permissions: ['approve_requests'] })).ctx, 'req-1', approve)
     expect(reply.status).toBe(409)
     expect(reply.body.error).toBe('That request was already answered by Lorna.')
+  })
+})
+
+describe('reconcileApprovalSideEffects (M5)', () => {
+  test('re-runs the follow-ups of claimed rows and records the report', async () => {
+    const stale = row({ status: 'executed', kind: 'cancel_paid', result: { scope: 'whole', restock: false, statusChanged: true } })
+    const { db, rpc } = fakeDb({ claim_approval_side_effects: [stale] })
+    const runLoyalty = jest.fn()
+    const count = await reconcileApprovalSideEffects(db, async () => ({
+      restoreWholeOrderStock: jest.fn(), restoreRevisionStock: jest.fn(), restoreLinesStock: jest.fn(),
+      hasWastedItemRefunds: jest.fn().mockResolvedValue(false), loadOrder: jest.fn().mockResolvedValue(null),
+      releasePresell: jest.fn().mockResolvedValue(false), runLoyalty, recordCancelEvent: jest.fn(), now: () => NOW,
+    }), TENANT)
+    expect(count).toBe(1)
+    expect(runLoyalty).toHaveBeenCalledWith(TENANT, ORDER)
+    expect(rpc).toHaveBeenCalledWith('record_approval_side_effects', expect.objectContaining({ p_id: 'req-1' }))
+  })
+
+  test('listing the inbox schedules the sweep', async () => {
+    const { db } = fakeDb({}, { approval_requests: [] })
+    const { ctx, scheduled } = context(db, actor())
+    await listApprovals(ctx, 'pending')
+    expect(scheduled).toHaveLength(1)
   })
 })
 

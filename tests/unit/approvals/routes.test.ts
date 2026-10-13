@@ -71,6 +71,14 @@ describe('POST /api/approvals', () => {
     expect((await POST(post(BODY))).status).toBe(403)
   })
 
+  test('refuses a superadmin WRITE (they may read, never move a store\'s money) (L3)', async () => {
+    await setCaller({ id: 'u-super' }, { role: 'superadmin', tenant_id: null, is_owner: false, permissions: null })
+    const { POST, GET } = await import('@/app/api/approvals/route')
+    expect((await POST(post(BODY))).status).toBe(403)
+    const read = await GET(new NextRequest(`http://localhost/api/approvals?tenantId=${TENANT}&status=pending`, { headers: { authorization: 'Bearer t' } }))
+    expect(read.status).toBe(200)
+  })
+
   test('rejects an invalid body with 400 before any auth work', async () => {
     await setCaller({ id: 'u-ana' }, { role: 'admin', tenant_id: TENANT })
     const { POST } = await import('@/app/api/approvals/route')

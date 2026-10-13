@@ -102,6 +102,14 @@ export function toApprovalView(
     amountCentavos: toCentavos(record.amount),
     rules,
   })
+  const decline = checkCanDecide({
+    decision: 'decline',
+    approver: viewer,
+    requestedBy: record.requestedBy,
+    outletId: record.outletId,
+    amountCentavos: toCentavos(record.amount),
+    rules,
+  })
   const refundLabel = typeof record.result?.refundLabel === 'string' ? record.result.refundLabel : null
   return {
     ...record,
@@ -109,6 +117,7 @@ export function toApprovalView(
     result: visibleResult(viewer, record),
     refundLabel,
     canDecide: status === 'pending' && decide.ok,
+    canDecline: status === 'pending' && decline.ok,
     canWithdraw: status === 'pending' && record.requestedBy === viewer.userId,
     isOverViewerLimit: status === 'pending' && !decide.ok && decide.code === 'over_limit',
     viewerCap: cap === -1 ? undefined : cap === null ? null : fromCentavos(cap),

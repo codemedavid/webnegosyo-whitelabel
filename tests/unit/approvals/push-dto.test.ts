@@ -127,9 +127,9 @@ describe('dto visibility', () => {
   })
   test('view computes what this viewer may do', () => {
     const managerView = toApprovalView(viewer({ userId: 'u-marco', permissions: ['approve_requests'] }), record({ amount: 1450 }), rules, NOW)
-    expect(managerView).toMatchObject({ canDecide: false, isOverViewerLimit: true, viewerCap: 1000, canWithdraw: false })
+    expect(managerView).toMatchObject({ canDecide: false, canDecline: true, isOverViewerLimit: true, viewerCap: 1000, canWithdraw: false })
     const anaView = toApprovalView(viewer({ userId: 'u-ana' }), record(), rules, NOW)
-    expect(anaView).toMatchObject({ canDecide: false, canWithdraw: true, viewerCap: undefined })
+    expect(anaView).toMatchObject({ canDecide: false, canDecline: false, canWithdraw: true, viewerCap: undefined })
   })
   test('an expired-but-unswept request is shown expired and cannot be decided', () => {
     const view = toApprovalView(viewer({ isOwner: true }), record({ expiresAt: '2026-10-12T05:00:00Z' }), rules, NOW)

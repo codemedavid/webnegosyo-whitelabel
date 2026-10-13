@@ -90,6 +90,12 @@ export interface RouteInput {
   discountPct?: number | null
   /** Senior Citizen / PWD (RA 9994 / RA 10754): never gated. */
   isStatutory?: boolean
+  /** What the order already gave back (refund / cancel_paid), centavos. */
+  orderRefundedCentavos?: number
+  /** What this person already refunded DIRECTLY today (Manila), centavos. */
+  requesterDirectTodayCentavos?: number
+  /** Write-off of an ingredient with no cost on file: never direct. */
+  isCostUnknown?: boolean
 }
 
 export type RouteDecision =
@@ -97,15 +103,29 @@ export type RouteDecision =
   | { route: 'request'; approverNeeded: 'manager' | 'owner' }
   | { route: 'refused'; code: 'statutory_not_gated' | 'forbidden'; message: string }
 
+/**
+ * Refund / cancel within the person's own limit — the TS twin of
+ * approval_refund_within_own_limit (20261012170000). Cumulative on purpose:
+ * the ORDER's refunds stay within the cap however they are split, and an
+ * order_refund holder's direct refunds today stay within the manager cap.
+ */
+export function refundWithinOwnLimit(input: RouteInput): boolean {
+  const { actor, kind, amountCentavos, rules } = input
+  if (isOwnerLike(actor)) return true
+  const orderTotal = (input.orderRefundedCentavos ?? 0) + amountCentavos
+  const cap = approverCapCentavos(actor, rules)
+  if (cap !== null && cap >= 0 && orderTotal <= cap) return true
+  if (!holds(actor, 'order_refund')) return false
+  if (kind === 'cancel_paid' && !holds(actor, 'orders')) return false
+  if (orderTotal > toCentavos(rules.directRefundCap)) return false
+  if ((input.requesterDirectTodayCentavos ?? 0) + amountCentavos > toCentavos(rules.managerApproveCap)) return false
+  if (rules.staffRefundWindow === 'any') return true
+  return input.orderCreatedAt != null && isSameManilaDay(input.orderCreatedAt, input.now)
+}
+
 function directWithinOwnLimit(input: RouteInput): boolean {
   const { actor, kind, amountCentavos, rules } = input
-  if (kind === 'refund' || kind === 'cancel_paid') {
-    if (!holds(actor, 'order_refund')) return false
-    if (kind === 'cancel_paid' && !holds(actor, 'orders')) return false
-    if (amountCentavos > toCentavos(rules.directRefundCap)) return false
-    if (rules.staffRefundWindow === 'any') return true
-    return input.orderCreatedAt != null && isSameManilaDay(input.orderCreatedAt, input.now)
-  }
+  if (kind === 'refund' || kind === 'cancel_paid') return refundWithinOwnLimit(input)
   if (kind === 'discount') {
     return input.discountPct != null && input.discountPct <= rules.discountPctNeedsApproval
   }
@@ -134,9 +154,12 @@ export function decideRoute(input: RouteInput): RouteDecision {
   }
   if (isOwnerLike(input.actor)) return { route: 'direct' }
 
+  const isRefund = input.kind === 'refund' || input.kind === 'cancel_paid'
+  const isNeverDirect = input.kind === 'stock_writeoff' && input.isCostUnknown === true
   const cap = approverCapCentavos(input.actor, input.rules)
-  if (cap !== null && cap >= 0 && input.amountCentavos <= cap) return { route: 'direct' }
-  if (directWithinOwnLimit(input)) return { route: 'direct' }
+  // Refunds use the cumulative rule (refundWithinOwnLimit) for approvers too.
+  const isWithinApproverCap = !isRefund && cap !== null && cap >= 0 && input.amountCentavos <= cap
+  if (!isNeverDirect && (isWithinApproverCap || directWithinOwnLimit(input))) return { route: 'direct' }
 
   return {
     route: 'request',
@@ -145,6 +168,8 @@ export function decideRoute(input: RouteInput): RouteDecision {
 }
 
 export interface DecideInput {
+  /** The limit bounds what one may say YES to; anyone who may answer may decline. */
+  decision?: 'approve' | 'decline'
   approver: ApprovalActor
   requestedBy: string
   outletId: string | null
@@ -164,7 +189,7 @@ export function checkCanDecide(input: DecideInput): DecideCheck {
   if (!reachesOutlet(approver, input.outletId)) return { ok: false, code: 'other_branch' }
   const cap = approverCapCentavos(approver, input.rules)
   if (cap === -1) return { ok: false, code: 'not_approver' }
-  if (cap !== null && input.amountCentavos > cap) return { ok: false, code: 'over_limit' }
+  if (cap !== null && input.amountCentavos > cap && input.decision !== 'decline') return { ok: false, code: 'over_limit' }
   return { ok: true }
 }
 

@@ -186,6 +186,23 @@ export async function listRequests(db: ApprovalsDb, tenantId: string, filter: Li
   return (data ?? []) as Record<string, unknown>[]
 }
 
+/**
+ * Executed refunds whose follow-ups (stock, pre-sell, loyalty) never reported
+ * back — claimed atomically (marked running) so two sweeps never both run them.
+ */
+export async function claimSideEffectsDue(
+  db: ApprovalsDb,
+  tenantId: string | null,
+  limit = 5,
+): Promise<Record<string, unknown>[]> {
+  const { data, error } = await db.rpc('claim_approval_side_effects', { p_tenant_id: tenantId, p_limit: limit })
+  if (error) {
+    console.error('[approvals] side-effect sweep failed', { tenantId, error: error.message })
+    return []
+  }
+  return Array.isArray(data) ? (data as Record<string, unknown>[]) : []
+}
+
 export async function getRequestRow(db: ApprovalsDb, tenantId: string, requestId: string): Promise<Record<string, unknown> | null> {
   const { data, error } = await db
     .from('approval_requests')

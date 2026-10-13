@@ -85,9 +85,12 @@ begin
   if not exists (select 1 from public.store_activity a where a.event_key = 'approval_requests:' || v_req || ':approval.requested') then
     raise exception 'PROBE FAIL 1: no approval.requested activity row';
   end if;
-  -- Same tap again returns the same request.
+  -- Same tap again (same request) returns the same request. (Since
+  -- 20261012170000 a replay with DIFFERENT details is idempotency_conflict.)
   v_out := public.create_approval_request(c_tenant, c_staff, 'refund', v_order::text,
-    jsonb_build_object('scope', 'whole'), 'wrong_item', null, 'probe_key_0001', false);
+    jsonb_build_object('scope', 'items', 'lines', jsonb_build_array(jsonb_build_object('orderItemId', v_item, 'quantity', 1)),
+                       'restock', false, 'reasonLabel', 'Wrong item served'),
+    'wrong_item', 'Probe note', 'probe_key_0001', false);
   if not coalesce((v_out ->> 'replayed')::boolean, false) or (v_out -> 'request' ->> 'id')::uuid <> v_req then
     raise exception 'PROBE FAIL 1: idempotency replay did not return the first request: %', v_out;
   end if;

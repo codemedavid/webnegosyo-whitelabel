@@ -53,6 +53,9 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   order_changed: 409,
   order_cancelled: 409,
   backend_unsupported: 409,
+  idempotency_conflict: 409,
+  cost_unknown: 409,
+  not_supported: 422,
   execution_error: 500,
 }
 

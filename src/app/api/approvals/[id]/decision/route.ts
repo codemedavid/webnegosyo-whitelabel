@@ -29,7 +29,7 @@ async function handle(request: NextRequest, { params }: { params: Promise<{ id: 
   if (!parsed.success) return badRequest(firstIssue(parsed.error))
   if (!z.string().uuid().safeParse(id).success) return badRequest('Invalid request.')
 
-  const caller = await resolveApprovalsCaller(request, parsed.data.tenantId)
+  const caller = await resolveApprovalsCaller(request, parsed.data.tenantId, 'write')
   if (!caller.ok) return caller.response
   try {
     return respond(await decideApproval(buildApprovalsContext(caller.actor, caller.tenantId), id, parsed.data))
