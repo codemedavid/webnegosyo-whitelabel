@@ -13,6 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createLogger } from '@/lib/logger'
 import type { AutomationRow } from '../types'
 import { runStore } from './run'
+import { alertWaitingTexts } from './waiting-alert'
 
 const log = createLogger('[SMS Automations]', 'DEBUG_SMS_AUTOMATIONS')
 const PAGE_SIZE = 1000
@@ -72,6 +73,10 @@ async function runOneStore(client: SupabaseClient, tenantId: string, now: Date):
   const { error } = await client.rpc('sweep_sms_outbox', { p_tenant_id: tenantId })
   if (error) throw new Error(`outbox sweep failed: ${error.message}`)
   const result = await runStore(client, tenantId, { mode: 'fresh', pick: isAutomaticAndOn, enqueue: true, now })
+  // Texts piling up behind a silent phone: tell the owner. A failed alert never fails the store's run.
+  await alertWaitingTexts(client, tenantId, now).catch((alertError: unknown) => {
+    log.error('waiting-texts alert failed', { tenantId, error: alertError instanceof Error ? alertError.message : String(alertError) })
+  })
   return result.queued
 }
 
