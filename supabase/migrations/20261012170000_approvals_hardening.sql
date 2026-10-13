@@ -32,6 +32,12 @@
 --     (stock, pre-sell, loyalty) never reported back are claimed for a re-run.
 -- M6  Over-limit approvers may DECLINE (the limit bounds yes, not no).
 -- L6  Approving a cash refund needs the requester's open drawer — refused before the CAS.
+-- B1  Refund scope 'balance': give back an OVERPAID balance (net paid − total,
+--     computed under the order lock) without touching the order's total or
+--     lines — e.g. a register edit lowered the total, then its refund row was
+--     refused by the H1 guard. Same direct-limit rules and totals as any refund;
+--     one refund.issued row; payment rows per original tender, recorded_by =
+--     the requester (cash → their open drawer).
 --
 -- Rollback at end.
 
@@ -43,6 +49,11 @@ set lock_timeout = '3s';
 alter table public.approval_requests add column if not exists payload_hash text;
 comment on column public.approval_requests.payload_hash is
   'sha256 of (kind, order, payload, reason, note, direct) as asked; a replayed idempotency key must match it.';
+
+-- B1: a refund may be of an overpaid balance.
+alter table public.order_refunds drop constraint if exists order_refunds_scope_ck;
+alter table public.order_refunds
+  add constraint order_refunds_scope_ck check (scope in ('items', 'amount', 'whole', 'balance'));
 
 create index if not exists approval_requests_side_effects_due_idx
   on public.approval_requests (executed_at)
@@ -581,7 +592,7 @@ begin
   if v_net <= 0 then
     return public.approval_refusal('nothing_to_refund', 'Nothing was paid on this order, so there is nothing to give back.');
   end if;
-  if v_scope in ('items', 'amount') and v_order.status = 'cancelled' then
+  if v_scope in ('items', 'amount', 'balance') and v_order.status = 'cancelled' then
     return public.approval_refusal('order_cancelled', 'This order was cancelled. Refund the whole order instead.');
   end if;
 
@@ -626,8 +637,29 @@ begin
     if v_amount <= 0 then
       return public.approval_refusal('invalid_lines', 'Those items were free, so there is nothing to refund.');
     end if;
+  elsif v_scope = 'balance' then
+    -- B1: only what was paid OVER the (already lowered) total.
+    if v_net - v_order.total <= 0 then
+      return public.approval_refusal('nothing_to_refund', 'This order is not overpaid, so there is no balance to give back.');
+    end if;
+    if p_payload ? 'amount' then
+      begin
+        v_amount := round((p_payload ->> 'amount')::numeric, 2);
+      exception when others then
+        return public.approval_refusal('invalid_payload', 'Enter the amount to give back.');
+      end;
+      if v_amount is null or v_amount <= 0 then
+        return public.approval_refusal('invalid_payload', 'Enter the amount to give back.');
+      end if;
+      if v_amount > v_net - v_order.total then
+        return public.approval_refusal('over_refund',
+          'That is more than the overpaid balance (' || public.store_activity_peso(v_net - v_order.total) || ').');
+      end if;
+    else
+      v_amount := v_net - v_order.total;
+    end if;
   else
-    return public.approval_refusal('invalid_payload', 'Choose items, an amount or the whole order.');
+    return public.approval_refusal('invalid_payload', 'Choose items, an amount, the balance or the whole order.');
   end if;
 
   if v_amount > v_net then
@@ -901,8 +933,8 @@ begin
 
   v_amount := coalesce(p_approved_amount, v_req.amount);
   if p_to = 'approved' and p_approved_amount is not null then
-    if v_req.kind <> 'refund' or coalesce(v_req.payload ->> 'scope', '') <> 'amount' then
-      return public.approval_refusal('amount_override_not_allowed', 'Only an amount refund can be approved for less.');
+    if v_req.kind <> 'refund' or coalesce(v_req.payload ->> 'scope', '') not in ('amount', 'balance') then
+      return public.approval_refusal('amount_override_not_allowed', 'Only an amount or balance refund can be approved for less.');
     end if;
     if round(p_approved_amount, 2) <= 0 or round(p_approved_amount, 2) > v_req.amount then
       return public.approval_refusal('amount_override_too_high', 'Approve between ₱0.01 and the amount asked.');
@@ -1036,7 +1068,7 @@ begin
       raise exception using errcode = 'P0001', message = 'order_changed',
         detail = 'The order changed since it was asked about. Nothing was refunded.';
     end if;
-    if v_scope in ('items', 'amount') and v_order.status = 'cancelled' then
+    if v_scope in ('items', 'amount', 'balance') and v_order.status = 'cancelled' then
       raise exception using errcode = 'P0001', message = 'order_changed',
         detail = 'The order was cancelled since it was asked about. Nothing was refunded.';
     end if;
@@ -1050,6 +1082,11 @@ begin
     if v_amount <= 0 or v_amount > v_net then
       raise exception using errcode = 'P0001', message = 'over_refund',
         detail = 'That is more than is left to refund on this order. Nothing was refunded.';
+    end if;
+    -- B1: a balance refund gives back only the overpayment, re-measured under the lock.
+    if v_scope = 'balance' and v_amount > v_net - v_order.total then
+      raise exception using errcode = 'P0001', message = 'over_refund',
+        detail = 'That is more than the overpaid balance on this order now. Nothing was refunded.';
     end if;
 
     v_alloc := public.approval_refund_allocation(v_ledger, v_amount);

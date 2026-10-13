@@ -20,7 +20,8 @@ export const APPROVAL_STATUSES = [
 ] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
-export type RefundScope = "items" | "amount" | "whole";
+/** `balance` = refund an OVERPAID balance; the order's total and lines stay as they are. */
+export type RefundScope = "items" | "amount" | "whole" | "balance";
 
 export interface ApprovalRules {
   directRefundCap: number;
@@ -77,7 +78,9 @@ export interface ApprovalRequestView {
 export type RefundPayload =
   | { scope: "items"; lines: { orderItemId: string; quantity: number }[]; restock?: boolean }
   | { scope: "amount"; amount: number; restock?: boolean }
-  | { scope: "whole"; restock?: boolean };
+  | { scope: "whole"; restock?: boolean }
+  /** Overpaid balance; omit `amount` for the whole overpayment. */
+  | { scope: "balance"; amount?: number };
 
 export type CreateApprovalInput =
   | { kind: "refund"; orderId: string; payload: RefundPayload; reasonCode: string; note?: string; idempotencyKey: string }

@@ -160,6 +160,24 @@ describe('createApproval', () => {
     expect(rpc.mock.calls.map(([fn]) => fn)).not.toContain('create_and_execute_approval')
   })
 
+  test('a balance refund within the cashier\'s own limit goes direct like any refund (B1)', async () => {
+    const { db, rpc } = fakeDb(
+      {
+        approval_quote: { ...QUOTE_OK, amount: 100, scope: 'balance', orderRefunded: 0, requesterDirectToday: 0 },
+        create_and_execute_approval: {
+          ok: true, request: row({ status: 'executed', is_direct: true, amount: 100, payload: { scope: 'balance' }, result: { scope: 'balance' } }),
+        },
+      },
+      PLATFORM_TENANT,
+    )
+    const { ctx, scheduled } = context(db, actor({ permissions: ['pos', 'orders', 'order_refund'] }))
+    const reply = await createApproval(ctx, { ...refundBody, payload: { scope: 'balance' } })
+    expect(reply.body.data).toMatchObject({ route: 'direct', request: { status: 'executed' } })
+    const call = rpc.mock.calls.find(([fn]) => fn === 'create_and_execute_approval') as unknown as [string, Record<string, unknown>]
+    expect((call[1].p_payload as Record<string, unknown>).scope).toBe('balance')
+    expect(scheduled).toHaveLength(1)
+  })
+
   test('a replayed key with different details comes back as a 409 conflict (M2)', async () => {
     const { db } = fakeDb(
       { approval_quote: QUOTE_OK, create_approval_request: { ok: false, code: 'idempotency_conflict', message: 'This request was already sent with different details.' } },

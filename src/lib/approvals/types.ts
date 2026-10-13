@@ -19,7 +19,11 @@ export const APPROVAL_STATUSES = [
 ] as const
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number]
 
-export const REFUND_SCOPES = ['items', 'amount', 'whole'] as const
+/**
+ * `balance` = give back an OVERPAID balance (paid − refunded − total) without
+ * touching the order's total or lines (e.g. after an edit lowered the total).
+ */
+export const REFUND_SCOPES = ['items', 'amount', 'whole', 'balance'] as const
 export type RefundScope = (typeof REFUND_SCOPES)[number]
 
 export type StaffRefundWindow = 'same_day' | 'any'

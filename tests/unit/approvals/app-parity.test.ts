@@ -42,6 +42,13 @@ describe('approvals hardening migration (20261012170000)', () => {
     expect(HARDENING).toContain("'tokenSha256', encode(sha256(convert_to(v_token, 'UTF8')), 'hex')")
     expect(HARDENING).not.toMatch(/'discountToken', replace\(/)
   })
+  test('balance refunds are a stored scope, capped at the overpayment, and never write a revision (B1)', () => {
+    expect(HARDENING).toContain("check (scope in ('items', 'amount', 'whole', 'balance'))")
+    expect(HARDENING).toContain("if v_amount > v_net - v_order.total then")
+    expect(HARDENING).toContain("if v_scope = 'balance' and v_amount > v_net - v_order.total then")
+    // The revision / total change is written only for items and amount scopes.
+    expect(HARDENING.match(/if v_scope in \('items', 'amount'\) then/g)).toHaveLength(2)
+  })
   test('the over-limit check applies only to approvals', () => {
     expect(HARDENING).toContain("if p_to = 'approved' and v_cap is not null and v_amount > v_cap then")
   })

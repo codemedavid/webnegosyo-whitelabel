@@ -72,6 +72,14 @@ describe('runApprovalSideEffects', () => {
     }))
   })
 
+  test('a balance refund moves no stock and touches no loyalty (B1)', async () => {
+    const d = deps()
+    const report = await runApprovalSideEffects(record({ result: { scope: 'balance', restock: true, statusChanged: false } }), d)
+    expect(report).toMatchObject({ stock: 'not_needed', presell: 'not_needed', loyalty: 'not_needed', statusEvent: 'not_needed' })
+    expect(d.restoreWholeOrderStock).not.toHaveBeenCalled()
+    expect(d.restoreRevisionStock).not.toHaveBeenCalled()
+  })
+
   test('without restock the stock stays spent', async () => {
     const d = deps()
     const report = await runApprovalSideEffects(record({ result: { scope: 'amount', restock: false } }), d)

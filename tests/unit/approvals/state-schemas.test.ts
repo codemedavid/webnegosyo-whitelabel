@@ -77,6 +77,12 @@ describe('createApprovalSchema', () => {
     expect(decisionSchema.safeParse({ tenantId: TENANT, decision: 'approve', amountOverride: 10.001 }).success).toBe(false)
     expect(rulesUpdateSchema.safeParse({ tenantId: TENANT, directRefundCap: 300.005 }).success).toBe(false)
   })
+  test('a balance refund needs no lines and an optional centavo amount (B1)', () => {
+    expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'balance' } }).success).toBe(true)
+    expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'balance', amount: 60 } }).success).toBe(true)
+    expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'balance', amount: 0 } }).success).toBe(false)
+    expect(createApprovalSchema.safeParse({ ...base, kind: 'refund', orderId: ORDER, payload: { scope: 'balance', amount: 60.005 } }).success).toBe(false)
+  })
   test('a write-off carries no order', () => {
     const parsed = createApprovalSchema.safeParse({
       ...base, reasonCode: 'spoiled', kind: 'stock_writeoff', payload: { inventoryItemId: ITEM, quantity: 2 },

@@ -201,3 +201,8 @@ push should feed THAT inbox once it lands on main, not build a second bell.
 - Over-limit approvers may decline (`canDecline` on the request view); approving a cash refund needs the
   requester's open drawer. Superadmins may read, not write. Lost follow-ups are re-run by
   `claim_approval_side_effects` (swept from GET /api/approvals).
+- Refund scope `balance` (B1): `{ scope: 'balance', amount? }` gives back an OVERPAID balance
+  (net paid − total, measured under the order lock; `amount` optional, ≤ the overpayment, else the whole
+  overpayment). No revision, no total/line change; payment rows per original tender (recorded_by =
+  requester, cash → open drawer); same direct rules and cumulative totals as any refund; one refund.issued.
+  `order_refunds.scope` allows 'balance'. Approvers may approve a balance refund for less (like `amount`).

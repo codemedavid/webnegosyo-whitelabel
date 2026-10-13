@@ -18,7 +18,8 @@
 -- (idempotency conflict), M3 (unknown implicit tender = cash), M4 (item
 -- value scaled by the order's discount), M5 (a fresh execution is not
 -- claimed by the sweep), M6 (over-limit manager declines, cannot approve),
--- L6 (approving a cash refund needs the requester's open drawer).
+-- L6 (approving a cash refund needs the requester's open drawer), B1 (refund
+-- of an overpaid balance: no revision, total untouched, capped at the overpayment).
 
 begin;
 
@@ -37,6 +38,8 @@ declare
   v_order2 uuid := gen_random_uuid();
   v_order3 uuid := gen_random_uuid();
   v_line uuid := gen_random_uuid();
+  v_order4 uuid := gen_random_uuid();
+  v_revisions integer;
   v_out jsonb;
   v_req uuid;
   v_state text;
@@ -216,6 +219,46 @@ begin
     raise exception 'PROBE FAIL M5: implicit-ledger refund should leave amount_paid 130';
   end if;
   raise notice 'PASS M5: the sweep leaves fresh executions alone';
+
+  -- B1 ------------------------------------------------------------------------
+  -- Order 4: ₱300 paid in cash, then an edit lowered the total to ₱200 (the
+  -- register's refund row having been refused) → ₱100 overpaid.
+  insert into public.orders (id, tenant_id, outlet_id, customer_name, total, status, payment_status, source, payment_method_name, created_at)
+  values (v_order4, c_tenant, v_branch, 'Probe Four', 300, 'delivered', 'paid', 'pos', 'Cash', now() - interval '5 minutes');
+  insert into public.order_items (order_id, menu_item_name, quantity, price, subtotal) values (v_order4, 'Probe Lechon', 1, 200, 200);
+  insert into public.order_payments (tenant_id, order_id, kind, amount, payment_method_name, recorded_by, created_at)
+  values (c_tenant, v_order4, 'charge', 300, 'Cash', c_staff, now() - interval '5 minutes');
+  if public.approval_quote(c_tenant, c_staff, 'refund', v_order4::text, jsonb_build_object('scope', 'balance')) ->> 'code'
+     <> 'nothing_to_refund' then
+    raise exception 'PROBE FAIL B1: a balance refund was quoted on an order that is not overpaid';
+  end if;
+  update public.orders set total = 200 where id = v_order4;
+  if public.approval_quote(c_tenant, c_staff, 'refund', v_order4::text, jsonb_build_object('scope', 'balance', 'amount', 100.01)) ->> 'code'
+     <> 'over_refund' then
+    raise exception 'PROBE FAIL B1: more than the overpaid balance was quoted';
+  end if;
+  select count(*) into v_revisions from public.order_revisions where order_id = v_order4;
+  v_out := public.create_and_execute_approval(c_tenant, c_staff, 'refund', v_order4::text,
+    jsonb_build_object('scope', 'balance'), 'charged_twice', null, 'probe_hard_0006');
+  if (v_out -> 'request' ->> 'status') <> 'executed' or (v_out -> 'result' ->> 'amount')::numeric <> 100
+     or (v_out -> 'result' ->> 'scope') <> 'balance' then
+    raise exception 'PROBE FAIL B1: balance refund did not execute for ₱100: %', v_out;
+  end if;
+  if (select total from public.orders where id = v_order4) <> 200
+     or (select amount_paid from public.orders where id = v_order4) <> 200
+     or (select revision_number from public.orders where id = v_order4) <> 0
+     or (select count(*) from public.order_revisions where order_id = v_order4) <> v_revisions then
+    raise exception 'PROBE FAIL B1: a balance refund changed the total / revision, or amount_paid is not 200';
+  end if;
+  if not exists (select 1 from public.order_refunds f
+                  where f.order_id = v_order4::text and f.scope = 'balance' and f.amount = 100 and f.revision_id is null)
+     or not exists (select 1 from public.order_payments p
+                     where p.order_id = v_order4 and p.kind = 'refund' and p.amount = 100 and p.recorded_by = c_staff)
+     or not exists (select 1 from public.store_activity a
+                     where a.event_key = 'order_refunds:' || (v_out -> 'result' ->> 'refundId') and a.kind = 'refund.issued') then
+    raise exception 'PROBE FAIL B1: balance refund records missing';
+  end if;
+  raise notice 'PASS B1: ₱100 overpaid balance refunded; total, lines and revision untouched; refund.issued written';
 end;
 $$;
 

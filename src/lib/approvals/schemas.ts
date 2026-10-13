@@ -41,6 +41,9 @@ const refundPayload = z.discriminatedUnion('scope', [
   }),
   z.object({ scope: z.literal('amount'), amount: pesos, restock: z.boolean().optional() }),
   z.object({ scope: z.literal('whole'), restock: z.boolean().optional() }),
+  // The overpaid balance; `amount` (≤ the overpayment, checked under the order
+  // lock) is optional — absent means the whole overpayment.
+  z.object({ scope: z.literal('balance'), amount: pesos.optional() }),
 ])
 
 const base = {
