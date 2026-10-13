@@ -165,6 +165,7 @@ export interface ActivityQuery {
   /** `<created_at>~<id>` of the last row already shown (validated by the schema). */
   cursor?: string
   status?: OutboxStatus
+  statuses?: OutboxStatus[]
   automationId?: string
   limit?: number
 }
@@ -180,6 +181,7 @@ export async function listActivity(db: SupabaseClient, tenantId: string, query: 
     request = request.or(`created_at.lt.${createdAt},and(created_at.eq.${createdAt},id.gt.${id})`)
   }
   if (query.status) request = request.eq('status', query.status)
+  if (query.statuses) request = request.in('status', query.statuses)
   if (query.automationId) request = request.eq('automation_id', query.automationId)
   const { data, error } = await request.order('created_at', { ascending: false }).order('id').limit(limit + 1)
   if (error) throw new ReadError(`activity: ${error.message}`)

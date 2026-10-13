@@ -23,7 +23,8 @@ import { isBlockedByDemo } from "./use-automation-switch";
 interface RulesPanelProps {
   tenantId: string | null;
   view: AutomationsView;
-  onSaved: () => void;
+  /** After the server accepted the rules, with the rules as it stored them. */
+  onSaved: (settings: TextingRules) => void;
   /** Where the Sending phone section sits, so the sender strip can scroll to it. */
   onPhoneSectionLayout: (y: number) => void;
 }
@@ -67,7 +68,7 @@ export function RulesPanel({ tenantId, view, onSaved, onPhoneSectionLayout }: Ru
       return;
     }
     setSavedNote(true);
-    onSaved();
+    onSaved(result.value.settings);
   };
 
   return (

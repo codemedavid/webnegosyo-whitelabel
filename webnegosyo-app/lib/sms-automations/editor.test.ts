@@ -9,8 +9,7 @@ import {
   messageProblem,
   minOrderOptions,
   stepKnob,
-  toApiDraft,
-} from "./editor";
+  toApiDraft, audienceKey } from "./editor";
 import type { Automation, RecipeInfo } from "./api";
 
 const WIN_BACK: RecipeInfo = {
@@ -105,5 +104,18 @@ describe("messageLanguage", () => {
     expect(messageLanguage(WIN_BACK.defaultMessage, WIN_BACK)).toBe("en");
     expect(messageLanguage(` ${WIN_BACK.defaultMessageTl} `, WIN_BACK)).toBe("tl");
     expect(messageLanguage("Hi there", WIN_BACK)).toBeNull();
+  });
+});
+
+describe("audienceKey", () => {
+  const base = { recipe: "win_back" as const, params: { inactiveDays: 30 }, messageTemplate: "Hi {{firstName}}, we miss you!", runMode: "auto" as const };
+
+  it("ignores typing that doesn't change who qualifies", () => {
+    expect(audienceKey({ ...base, messageTemplate: "Hello {{firstName}}! Come back soon." })).toBe(audienceKey(base));
+  });
+
+  it("changes with the knobs and with the guest details the message needs", () => {
+    expect(audienceKey({ ...base, params: { inactiveDays: 45 } })).not.toBe(audienceKey(base));
+    expect(audienceKey({ ...base, messageTemplate: "Hi {{firstName}}, your {{favorite}} misses you" })).not.toBe(audienceKey(base));
   });
 });

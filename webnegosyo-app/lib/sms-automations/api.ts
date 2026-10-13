@@ -178,6 +178,6 @@ export const automationsApi = {
     call<{ cancelled: number }>(tenantId, { action: "cancel_waiting", ...(automationId ? { automationId } : {}) }),
   write: (tenantId: string, recipe: RecipeId, language: "en" | "tl") =>
     call<{ messages: string[] }>(tenantId, { action: "write", recipe, language }, WRITE_TIMEOUT_MS),
-  activity: (tenantId: string, query: { cursor?: string; status?: OutboxStatus; automationId?: string; limit?: number } = {}) =>
+  activity: (tenantId: string, query: { cursor?: string; statuses?: OutboxStatus[]; automationId?: string; limit?: number } = {}) =>
     call<ActivityPage>(tenantId, { action: "activity", ...query }),
 };

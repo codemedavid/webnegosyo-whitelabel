@@ -25,7 +25,7 @@ interface ActivityPanelProps {
   /** Texts waiting right now, from the list read — decides the cancel button. */
   waiting: number;
   isActive: boolean;
-  /** Changes whenever the list was re-read; the feed starts over with it. */
+  /** Changes when the owner pulls to refresh; the feed starts over with it. */
   refreshKey: number;
   onChanged: () => void;
 }
@@ -48,10 +48,11 @@ export function ActivityPanel({ tenantId, waiting, isActive, refreshKey, onChang
         return;
       }
       onChanged();
+      void feed.reload();
     };
     Alert.alert(
       `Cancel ${waiting === 1 ? "the waiting text" : `all ${waiting} waiting texts`}?`,
-      "They won’t be sent. Your automations stay on and keep texting new guests.",
+      "They won’t be sent, and those guests won’t get these same texts later. Your automations stay on for new guests.",
       [
         { text: "Keep them", style: "cancel" },
         { text: "Cancel texts", style: "destructive", onPress: () => void run() },

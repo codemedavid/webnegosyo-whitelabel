@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, BackHandler, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -58,12 +58,14 @@ export default function AutomationEditorScreen() {
   const [draft, setDraft] = useState<{ key: string; initial: EditorDraft; form: EditorDraft } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [leaveOnClose, setLeaveOnClose] = useState(false);
   useFocusEffect(
     useCallback(
       () => () => {
         setDraft(null);
         setSaveError(null);
+        setSavedNote(null);
         setLeaveOnClose(false);
       },
       [],
@@ -78,10 +80,11 @@ export default function AutomationEditorScreen() {
   const update = (patch: Partial<EditorDraft>) => {
     setDraft((prev) => (prev ? { ...prev, form: { ...prev.form, ...patch } } : prev));
     setSaveError(null);
+    setSavedNote(null);
   };
 
   const onFix = useCallback((blocker: Blocker) => {
-    if (blocker.kind === "review_link") router.navigate(textsHref("rules"));
+    if (blocker.kind === "review_link") router.navigate(textsHref("rules", "review_request"));
     else goTo(router as TabAwareRouter<`/(main)/${string}`>, "/(main)/loyalty");
   }, []);
   const { invalidate } = query;
@@ -92,7 +95,7 @@ export default function AutomationEditorScreen() {
   const problem = form && info ? messageProblem(form.messageTemplate, info.variables) : null;
   const isDirty = draft && form ? isDraftDirty(draft.initial, form) : false;
 
-  const leave = () => {
+  const leave = useCallback(() => {
     if (!isDirty) {
       router.back();
       return;
@@ -101,7 +104,19 @@ export default function AutomationEditorScreen() {
       { text: "Keep editing", style: "cancel" },
       { text: "Discard", style: "destructive", onPress: () => router.back() },
     ]);
-  };
+  }, [isDirty]);
+
+  // Android's back button leaves through the same question as the header's.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (!isDirty) return false;
+        leave();
+        return true;
+      });
+      return () => sub.remove();
+    }, [isDirty, leave]),
+  );
 
   const save = async () => {
     if (!tenantId || !form || !info || !apiDraft || problem || isBlockedByDemo()) return;
@@ -116,6 +131,11 @@ export default function AutomationEditorScreen() {
     setDraft((prev) => (prev ? { ...prev, initial: prev.form } : prev));
     await invalidate();
     if (!result.value.created) {
+      // Saving an off automation doesn't start it; say so rather than leave.
+      if (saved?.status === "off") {
+        setSavedNote("Saved. It’s still off — turn it on to start sending.");
+        return;
+      }
       router.back();
       return;
     }
@@ -164,9 +184,13 @@ export default function AutomationEditorScreen() {
           <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>
             {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
             {problem ? <Text style={styles.error}>{problem}</Text> : null}
+            {savedNote ? <Text style={styles.note}>{savedNote}</Text> : null}
             <View style={styles.footerRow}>
               {saved && saved.status === "on" ? (
                 <Button label="Run now" tone="secondary" icon="send" onPress={() => flow.runNow(saved)} disabled={isDirty} style={styles.flex} fullWidth />
+              ) : null}
+              {saved && saved.status === "off" && !isDirty ? (
+                <Button label="Turn on" tone="secondary" onPress={() => flow.turnOn(saved)} style={styles.flex} fullWidth />
               ) : null}
               <Button
                 label={saved ? "Save changes" : "Save"}
@@ -209,4 +233,5 @@ const styles = StyleSheet.create({
   },
   footerRow: { flexDirection: "row", gap: spacing.md },
   error: { ...typography.caption, color: colors.danger, lineHeight: 18 },
+  note: { ...typography.caption, color: colors.textSecondary, lineHeight: 18 },
 });

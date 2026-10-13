@@ -16,7 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { resourceKey } from "../backends/query-keys";
 import { invalidateResource, useResource, type ResourceResult } from "../query/use-resource";
 import { automationsApi, type ActivityItem, type AutomationsView } from "./api";
-import { keepsStatus, serverStatusFor, type ActivityFilter } from "./activity";
+import { keepsStatus, serverStatusesFor, type ActivityFilter } from "./activity";
 
 export const AUTOMATIONS_RESOURCE = "sms-automations";
 const LIST_STALE_MS = 30_000;
@@ -62,8 +62,9 @@ interface FeedState {
 const EMPTY: FeedState = { items: [], cursor: null, isLoading: true, isLoadingMore: false, error: null };
 
 /**
- * Newest first; "Load more" appends the next page. A filter change, or a new
- * `refreshKey` (the list's last read time), starts over.
+ * Newest first; "Load more" appends the next page. A filter change, opening
+ * the tab, or a new `refreshKey` (the owner pulled to refresh) starts over —
+ * never a background re-read, which would snap a scrolled feed back to page 1.
  */
 export function useActivityFeed(
   tenantId: string | null,
@@ -77,11 +78,11 @@ export function useActivityFeed(
 
   const fetchPage = useCallback(
     async (cursor: string | null) => {
-      const status = serverStatusFor(filter);
+      const statuses = serverStatusesFor(filter);
       const result = await automationsApi.activity(tenantId ?? "", {
         limit: ACTIVITY_PAGE,
         ...(cursor ? { cursor } : {}),
-        ...(status ? { status } : {}),
+        ...(statuses ? { statuses } : {}),
       });
       if (!result.ok) return { ok: false as const, error: result.error };
       const items = result.value.items.filter((item) => keepsStatus(filter, item.status));

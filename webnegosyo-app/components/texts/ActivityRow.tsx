@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import type { ActivityItem } from "../../lib/sms-automations/api";
 import { showsReason, statusTone, type StatusTone } from "../../lib/sms-automations/activity";
-import { activityStatusLabel, phoneEndingText, skipReasonText, timeAgoText } from "../../lib/sms-automations/view";
+import { activityStatusLabel, phoneEndingText, queuedWhenText, skipReasonText, timeAgoText } from "../../lib/sms-automations/view";
 
 const CHIP: Record<StatusTone, { bg: string; fg: string }> = {
   good: { bg: colors.successLight, fg: colors.success },
@@ -23,7 +23,7 @@ interface ActivityRowProps {
 export function ActivityRow({ item, now, grouped }: ActivityRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const chip = CHIP[statusTone(item.status)];
-  const when = timeAgoText(item.sentAt ?? (item.status === "queued" ? item.notBefore : item.createdAt), now);
+  const when = item.status === "queued" ? queuedWhenText(item.notBefore, now) : timeAgoText(item.sentAt ?? item.createdAt, now);
   const who = `${item.guestName?.trim() || "Guest"}, ${phoneEndingText(item.phoneLast4)}`;
   const status = activityStatusLabel(item.status);
   return (

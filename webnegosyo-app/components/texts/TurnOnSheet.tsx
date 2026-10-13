@@ -49,8 +49,8 @@ interface TurnOnSheetProps {
 
 type Phase =
   | { kind: "checking" }
-  | { kind: "ask"; queued: number; outlook: DeliveryOutlook }
-  | { kind: "working"; queued: number; outlook: DeliveryOutlook }
+  | { kind: "ask"; queued: number; outlook: DeliveryOutlook; sample: string | null }
+  | { kind: "working"; queued: number; outlook: DeliveryOutlook; sample: string | null; chosen: string }
   | { kind: "done"; text: string }
   | { kind: "unreadable"; error: string };
 
@@ -64,49 +64,54 @@ type Phase =
  */
 export function TurnOnSheet({ tenantId, view, target, mode, blocker, onFix, onClose, onChanged }: TurnOnSheetProps) {
   const insets = useSafeAreaInsets();
-  const [phase, setPhase] = useState<Phase>({ kind: "checking" });
+  // Each phase belongs to the target it was read for, so reopening the sheet
+  // on another automation never flashes the previous one's answer.
+  const [current, setCurrent] = useState<{ target: SheetTarget | null; phase: Phase }>({ target: null, phase: { kind: "checking" } });
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
+  const phase: Phase = current.target === target ? current.phase : { kind: "checking" };
 
   useEffect(() => {
     if (!target || blocker || !tenantId) return;
     const mine = ++request.current;
-    setPhase({ kind: "checking" });
     setError(null);
     void automationsApi.preview(tenantId, target.draft).then((result) => {
       if (mine !== request.current) return;
       if (!result.ok) {
-        setPhase({ kind: "unreadable", error: result.error });
+        setCurrent({ target, phase: { kind: "unreadable", error: result.error } });
         return;
       }
-      setPhase({ kind: "ask", queued: result.value.now?.queued ?? 0, outlook: result.value.outlook });
+      const queued = result.value.now?.queued ?? 0;
+      setCurrent({ target, phase: { kind: "ask", queued, outlook: result.value.outlook, sample: result.value.sampleText } });
     });
   }, [target, blocker, tenantId]);
 
   if (!target) return null;
 
   const close = () => {
+    // Once the server is queueing texts, closing would only hide that it did.
+    if (phase.kind === "working") return;
     request.current += 1;
     onClose();
   };
 
   const choose = async (choice: SheetChoice) => {
-    if (!tenantId || (phase.kind !== "ask")) return;
-    const { queued, outlook } = phase;
-    setPhase({ kind: "working", queued, outlook });
+    if (!tenantId || phase.kind !== "ask") return;
+    const asked = phase;
+    setCurrent({ target, phase: { ...asked, kind: "working", chosen: choice.label } });
     setError(null);
     const result = mode === "run_now"
       ? await automationsApi.runNow(tenantId, target.automationId)
       : await automationsApi.setStatus(tenantId, target.automationId, "on", choice.sendBacklog);
     if (!result.ok) {
       setError(result.error);
-      setPhase({ kind: "ask", queued, outlook });
+      setCurrent({ target, phase: asked });
       return;
     }
     const backlog = "backlog" in result.value ? result.value.backlog : result.value;
     const sent = backlog?.queued ?? 0;
     const eta = backlog ? etaAfterQueueing(backlog.outlook, view.settings, 0, Date.now()) : "";
-    setPhase({ kind: "done", text: sheetDoneText(mode, sent, eta) });
+    setCurrent({ target, phase: { kind: "done", text: sheetDoneText(mode, sent, eta) } });
     onChanged();
   };
 
@@ -190,15 +195,27 @@ function Body({ phase, mode, view, target, error, onChoose, onClose }: BodyProps
     );
   }
 
-  const { queued, outlook } = phase;
+  const { queued, outlook, sample } = phase;
   const question = turnOnQuestion(queued);
-  const { choices, note } = sheetChoices({ mode, queued, hasSender: view.sender.enrolled > 0, runMode: target.runMode });
+  const { choices, note } = sheetChoices({
+    mode,
+    queued,
+    hasSender: view.sender.enrolled > 0,
+    isOnline: view.sender.online,
+    runMode: target.runMode,
+  });
   const isWorking = phase.kind === "working";
   const body = mode === "run_now" && queued > 0 ? "Send this text to them now?" : question.body;
   return (
     <>
       <Text style={styles.title}>{question.title}</Text>
       <Text style={styles.body}>{body}</Text>
+      {queued > 0 && sample ? (
+        <View style={styles.sample}>
+          <Text style={styles.sampleLabel}>They’ll get a text like</Text>
+          <Text style={styles.sampleText} numberOfLines={4}>{sample}</Text>
+        </View>
+      ) : null}
       {queued > 0 ? (
         <View style={styles.facts}>
           <Fact icon="clock" text={etaAfterQueueing(outlook, view.settings, queued, Date.now())} />
@@ -214,7 +231,7 @@ function Body({ phase, mode, view, target, error, onChoose, onClose }: BodyProps
             label={choice.label}
             tone={choice.tone}
             size="lg"
-            isLoading={isWorking && choice.tone === "primary"}
+            isLoading={phase.kind === "working" && phase.chosen === choice.label}
             disabled={isWorking}
             onPress={() => onChoose(choice)}
           />
@@ -251,6 +268,9 @@ const styles = StyleSheet.create({
   facts: { gap: spacing.sm, backgroundColor: colors.surfaceSubtle, borderRadius: radius.md, padding: spacing.md },
   fact: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   factText: { ...typography.caption, color: colors.textPrimary, flex: 1, lineHeight: 18 },
+  sample: { gap: 4, borderLeftWidth: 3, borderLeftColor: colors.separator, paddingLeft: spacing.md },
+  sampleLabel: { ...typography.caption, color: colors.textSecondary, fontWeight: "600" },
+  sampleText: { ...typography.body, color: colors.textPrimary, lineHeight: 21 },
   note: { ...typography.caption, color: colors.statusPending.text, lineHeight: 18 },
   error: { ...typography.caption, color: colors.danger, lineHeight: 18 },
   actions: { gap: spacing.sm, marginTop: spacing.xs },

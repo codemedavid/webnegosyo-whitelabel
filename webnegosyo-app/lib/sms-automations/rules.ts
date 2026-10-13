@@ -24,7 +24,7 @@ const DAILY_LIMITS = [25, 50, 100, 200] as const;
 
 export const RULE_WHY = {
   reviewUrl: "Your Google or Facebook review page. The review request text links to it.",
-  quietHours: "Texts that come due at night wait until morning. None are lost.",
+  quietHours: "Philippine time. Texts that come due at night wait until morning. None are lost.",
   guestCap: "However many automations want the same guest, they hear from you at most once in this time.",
   dailyLimit: "The most your phone sends in a day. Carriers can block a SIM that sends too many.",
 } as const;

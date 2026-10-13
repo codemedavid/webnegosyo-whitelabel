@@ -17,6 +17,7 @@ import {
   renderSampleText,
   senderLine,
   sheetChoices,
+  queuedWhenText,
   sheetDoneText,
   skipReasonText,
   sentenceFor,
@@ -54,7 +55,7 @@ describe("automationStatusLine", () => {
     expect(automationStatusLine(automation({ stats: { waiting: 3, sent30d: 12, skipped30d: 0, cameBack30d: 0, lastSentAt: null } }), view()))
       .toBe("On · 12 sent in 30 days · 3 waiting");
     expect(automationStatusLine(automation({ stats: { waiting: 0, sent30d: 12, skipped30d: 1, cameBack30d: 4, lastSentAt: null } }), view()))
-      .toBe("On · 12 sent in 30 days · 4 came back");
+      .toBe("On · 12 sent in 30 days · 4 ordered again");
     expect(automationStatusLine(automation({ runMode: "manual", stats: { waiting: 0, sent30d: 5, skipped30d: 0, cameBack30d: 0, lastSentAt: null } }), view()))
       .toBe("Runs when you tap Run now · 5 sent in 30 days");
     expect(automationStatusLine(automation({ runMode: "manual", status: "on" }), view())).toBe("Runs when you tap Run now");
@@ -178,10 +179,25 @@ describe("blockerFix", () => {
   });
 });
 
+describe("queuedWhenText", () => {
+  it("says when a waiting text goes, and when it is overdue", () => {
+    const now = Date.parse("2026-10-14T04:00:00Z"); // 12:00 Manila
+    expect(queuedWhenText("2026-10-14T00:30:00Z", now)).toMatch(/^Due 3 h ago$/);
+    expect(queuedWhenText("2026-10-14T06:00:00Z", now)).toMatch(/^Sends at /);
+  });
+});
+
 describe("sheetChoices", () => {
   it("offers both ways to turn on when guests already qualify", () => {
     expect(sheetChoices({ mode: "turn_on", queued: 12, hasSender: true, runMode: "auto" }).choices.map((c) => [c.label, c.sendBacklog]))
-      .toEqual([["Turn on and text 12 now", true], ["Turn on for new guests only", false]]);
+      .toEqual([["Turn on for new guests only", false], ["Turn on and text 12 now", true]]);
+  });
+
+  it("leads with the safe choice and warns when the phone is offline", () => {
+    const { choices, note } = sheetChoices({ mode: "turn_on", queued: 12, hasSender: true, isOnline: false, runMode: "auto" });
+    expect(choices.map((c) => c.tone)).toEqual(["primary", "secondary"]);
+    expect(note).toMatch(/offline/);
+    expect(sheetChoices({ mode: "turn_on", queued: 0, hasSender: false, runMode: "auto" }).note).toMatch(/sending phone/);
   });
 
   it("only turns on, and says why, without a sending phone", () => {

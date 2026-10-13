@@ -134,6 +134,16 @@ export function insertWord(text: string, selection: Selection, word: string): { 
   return { text: `${before}${token}${text.slice(end)}`, cursor: start + token.length };
 }
 
+/**
+ * What decides who gets the text: the knobs, and which guest details the
+ * message needs (a guest without a favourite can't get a {{favorite}} text).
+ * Typing words does not change it, so typing never re-reads the store.
+ */
+export function audienceKey(draft: AutomationDraft): string {
+  const words = [...new Set([...draft.messageTemplate.matchAll(PLACEHOLDER)].map((match) => match[1]))].sort();
+  return JSON.stringify([draft.recipe, draft.params ?? {}, draft.reentryDays ?? null, draft.runMode ?? "auto", words]);
+}
+
 /** Why this message cannot be saved, or null. */
 export function messageProblem(text: string, variables: readonly string[]): string | null {
   const trimmed = text.trim();
@@ -165,6 +175,6 @@ export const LANGUAGE_OPTIONS: readonly { label: string; value: MessageLanguage 
 ];
 
 export const RUN_MODE_OPTIONS: readonly { label: string; value: RunMode }[] = [
-  { label: "Send automatically", value: "auto" },
+  { label: "Send on its own", value: "auto" },
   { label: "Only when I tap Run now", value: "manual" },
 ];

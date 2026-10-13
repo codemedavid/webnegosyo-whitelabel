@@ -6,7 +6,7 @@ import {
   sameRules,
   withQuietHours,
 } from "./rules";
-import { keepsStatus, serverStatusFor, showsReason, statusTone } from "./activity";
+import { keepsStatus, serverStatusesFor, showsReason, statusTone } from "./activity";
 import type { TextingRules } from "./api";
 
 const RULES: TextingRules = {
@@ -44,10 +44,10 @@ describe("texting rule choices", () => {
 
 describe("activity filters", () => {
   it("asks the server for one status where it can", () => {
-    expect(serverStatusFor("waiting")).toBe("queued");
-    expect(serverStatusFor("sent")).toBe("sent");
-    expect(serverStatusFor("not_sent")).toBeUndefined();
-    expect(serverStatusFor("all")).toBeUndefined();
+    expect(serverStatusesFor("waiting")).toEqual(["queued", "claimed"]);
+    expect(serverStatusesFor("sent")).toEqual(["sent"]);
+    expect(serverStatusesFor("not_sent")).toEqual(["skipped", "failed", "cancelled", "expired"]);
+    expect(serverStatusesFor("all")).toBeUndefined();
   });
 
   it("keeps only texts that did not go out under Not sent", () => {

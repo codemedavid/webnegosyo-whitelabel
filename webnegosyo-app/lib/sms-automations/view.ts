@@ -72,7 +72,7 @@ export function automationStatusLine(automation: Automation, view: AutomationsVi
   const parts = [lead];
   if (sent30d > 0) parts.push(`${sent30d} sent in 30 days`);
   // The number an owner actually cares about: texted guests who ordered again.
-  if (cameBack30d > 0) parts.push(`${cameBack30d} came back`);
+  if (cameBack30d > 0) parts.push(`${cameBack30d} ordered again`);
   if (waiting > 0) parts.push(`${waiting} waiting`);
   return parts.join(" · ");
 }
@@ -238,7 +238,7 @@ export function skipReasonText(reason: string | null): string {
 /** "12 can get a text · 30 haven’t agreed to texts" for the editor's audience line. */
 export function audienceText(audience: { withPhone: number; textable: number }): string {
   const cannot = audience.withPhone - audience.textable;
-  const can = `${plural(audience.textable, "guest", "guests")} can get texts`;
+  const can = `${plural(audience.textable, "guest", "guests")} can get a text`;
   return cannot > 0 ? `${can} · ${cannot} haven’t agreed or opted out` : can;
 }
 
@@ -317,6 +317,13 @@ export function timeAgoText(iso: string, now: number): string {
   return dateText(at);
 }
 
+/** When a waiting text goes: "Sends at 8:00 AM" ahead of time, "Due 3 h ago" once it is late. */
+export function queuedWhenText(notBefore: string, now: number): string {
+  const at = Date.parse(notBefore);
+  if (!Number.isFinite(at)) return "";
+  return at > now ? `Sends ${timeAgoText(notBefore, now)}` : `Due ${timeAgoText(notBefore, now)}`;
+}
+
 /** The one-tap way out of a blocker, and why it is needed. */
 export function blockerFix(blocker: Blocker): { label: string; why: string } {
   if (blocker.kind === "review_link") {
@@ -339,24 +346,29 @@ export function sheetChoices(input: {
   mode: SheetMode;
   queued: number;
   hasSender: boolean;
+  /** The sending phone checked in recently; texts queued while it is off wait for it. */
+  isOnline?: boolean;
   runMode: Automation["runMode"];
 }): { choices: SheetChoice[]; note: string | null } {
-  const { mode, queued, hasSender, runMode } = input;
-  const noPhone = "To text them now, set up your sending phone first (Texts, Rules tab).";
+  const { mode, queued, hasSender, runMode, isOnline = true } = input;
+  const noPhone = "Nothing sends until you set up a sending phone (Texts, Rules tab).";
+  const offline = hasSender && !isOnline ? "Your sending phone is offline right now. Texts wait until it’s back on." : null;
   if (mode === "run_now") {
     if (queued <= 0) return { choices: [], note: null };
     if (!hasSender) return { choices: [], note: noPhone };
-    return { choices: [{ label: `Text ${plural(queued, "guest", "guests")} now`, sendBacklog: true, tone: "primary" }], note: null };
+    return { choices: [{ label: `Text ${plural(queued, "guest", "guests")} now`, sendBacklog: true, tone: "primary" }], note: offline };
   }
-  if (queued <= 0) return { choices: [{ label: "Turn it on", sendBacklog: false, tone: "primary" }], note: null };
+  if (queued <= 0) return { choices: [{ label: "Turn it on", sendBacklog: false, tone: "primary" }], note: hasSender ? null : noPhone };
   const later = runMode === "manual" ? "Turn on, text them later" : "Turn on for new guests only";
   if (!hasSender) return { choices: [{ label: later, sendBacklog: false, tone: "primary" }], note: noPhone };
+  // The safe choice leads: texting everyone who already qualifies is a real
+  // send to real people, so it is the one the owner reaches for on purpose.
   return {
     choices: [
-      { label: `Turn on and text ${queued} now`, sendBacklog: true, tone: "primary" },
-      { label: later, sendBacklog: false, tone: "secondary" },
+      { label: later, sendBacklog: false, tone: "primary" },
+      { label: `Turn on and text ${queued} now`, sendBacklog: true, tone: "secondary" },
     ],
-    note: null,
+    note: offline,
   };
 }
 

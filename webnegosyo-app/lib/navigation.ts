@@ -140,9 +140,17 @@ export function ingredientEditorHref(ingredientId: string): `/(main)/ingredient/
   return `/(main)/ingredient/edit/${encodeURIComponent(ingredientId)}`;
 }
 
-/** The Texts hub (automatic SMS automations), opened on one of its tabs. */
-export function textsHref(tab?: "automations" | "activity" | "rules"): `/(main)/texts${string}` {
-  return tab ? `/(main)/texts?tab=${tab}` : "/(main)/texts";
+/**
+ * The Texts hub (automatic SMS automations), opened on one of its tabs.
+ * `resume` names the automation a fix was made for (the review link), so the
+ * hub can offer the way back to it once the fix is saved.
+ */
+export function textsHref(
+  tab?: "automations" | "activity" | "rules",
+  resume?: "review_request",
+): `/(main)/texts${string}` {
+  if (!tab) return "/(main)/texts";
+  return resume ? `/(main)/texts?tab=${tab}&resume=${resume}` : `/(main)/texts?tab=${tab}`;
 }
 
 /** The automation editor for one recipe; a store has at most one per recipe. */

@@ -41,6 +41,12 @@ describe('parseAutomationRequest', () => {
   it('caps the activity page size', () => {
     expect(parseAutomationRequest({ action: 'activity', tenantId: TENANT, limit: 1000 }).success).toBe(false)
   })
+
+  it('filters activity by a set of real statuses only', () => {
+    expect(parseAutomationRequest({ action: 'activity', tenantId: TENANT, statuses: ['skipped', 'failed', 'cancelled', 'expired'] }).success).toBe(true)
+    expect(parseAutomationRequest({ action: 'activity', tenantId: TENANT, statuses: [] }).success).toBe(false)
+    expect(parseAutomationRequest({ action: 'activity', tenantId: TENANT, statuses: ['sent,status.neq.x'] }).success).toBe(false)
+  })
 })
 
 describe('normalizeDraft', () => {

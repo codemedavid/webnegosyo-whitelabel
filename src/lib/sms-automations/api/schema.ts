@@ -67,6 +67,8 @@ const requestSchema = z.discriminatedUnion('action', [
     /** The `nextCursor` of the previous page. */
     cursor: z.string().regex(ACTIVITY_CURSOR).optional(),
     status: z.enum(OUTBOX_STATUSES).optional(),
+    /** Any of these ("Not sent" = skipped, failed, cancelled, expired); combines with `status` as AND. */
+    statuses: z.array(z.enum(OUTBOX_STATUSES)).min(1).max(OUTBOX_STATUSES.length).optional(),
     automationId: z.uuid().optional(),
     limit: z.number().int().min(1).max(MAX_ACTIVITY_PAGE).optional(),
   }),

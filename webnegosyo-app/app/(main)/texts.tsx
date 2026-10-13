@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { useAuthStore } from "../../stores/auth-store";
@@ -12,7 +12,7 @@ import { useRefetchOnScreenFocus } from "../../lib/query/use-screen-focus";
 import { refreshWithMinSpinner } from "../../lib/query/pull-to-refresh";
 import { useAutomationsView } from "../../lib/sms-automations/use-automations";
 import { senderLine, type Blocker } from "../../lib/sms-automations/view";
-import type { RecipeId } from "../../lib/sms-automations/api";
+import type { RecipeId, TextingRules } from "../../lib/sms-automations/api";
 import { useNowMs } from "../../lib/use-now-ms";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -52,9 +52,13 @@ export default function TextsScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const ctx = useTabVisibilityContext();
   const isAllowed = isTabReachable("texts", ctx);
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; resume?: string }>();
+  // Set while the owner is adding the review link a review request waits for.
+  const [isResumingReview, setIsResumingReview] = useState(false);
   const [tab, setTab] = useState<TextsTab>("automations");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Bumped by pull-to-refresh only: the activity feed starts over on it.
+  const [activityRefresh, setActivityRefresh] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const phoneSectionY = useRef<number | null>(null);
   const now = useNowMs();
@@ -68,14 +72,27 @@ export default function TextsScreen() {
   useEffect(() => {
     if (!isTextsTab(params.tab)) return;
     setTab(params.tab);
-    router.setParams({ tab: undefined });
-  }, [params.tab]);
+    if (params.resume === "review_request") setIsResumingReview(true);
+    router.setParams({ tab: undefined, resume: undefined });
+  }, [params.tab, params.resume]);
 
   const onFix = useCallback((blocker: Blocker) => {
-    if (blocker.kind === "review_link") setTab("rules");
-    else goTo(router as TabAwareRouter<`/(main)/${string}`>, "/(main)/loyalty");
+    if (blocker.kind === "review_link") {
+      setTab("rules");
+      setIsResumingReview(true);
+    } else goTo(router as TabAwareRouter<`/(main)/${string}`>, "/(main)/loyalty");
   }, []);
   const onChanged = useCallback(() => void invalidate(), [invalidate]);
+  // The link was the one thing in the way: offer the way back to the text it unblocks.
+  const onRulesSaved = (settings: TextingRules) => {
+    void invalidate();
+    if (!isResumingReview || !settings.reviewUrl) return;
+    setIsResumingReview(false);
+    Alert.alert("Review link saved", "Your review request text can start now.", [
+      { text: "Later", style: "cancel" },
+      { text: "Open review request", onPress: () => router.push(automationHref("review_request")) },
+    ]);
+  };
   const flow = useAutomationSwitch({ tenantId, view, onChanged, onFix });
 
   const openEditor = (recipe: RecipeId) => router.push(automationHref(recipe));
@@ -120,7 +137,7 @@ export default function TextsScreen() {
               tenantId={tenantId}
               waiting={view.outlook.waiting}
               isActive={tab === "activity"}
-              refreshKey={dataUpdatedAt}
+              refreshKey={activityRefresh}
               onChanged={onChanged}
             />
           ) : null}
@@ -128,7 +145,7 @@ export default function TextsScreen() {
             <RulesPanel
               tenantId={tenantId}
               view={view}
-              onSaved={onChanged}
+              onSaved={onRulesSaved}
               onPhoneSectionLayout={(y) => {
                 phoneSectionY.current = y;
               }}
@@ -153,7 +170,10 @@ export default function TextsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => refreshWithMinSpinner([refetch], setIsRefreshing)}
+            onRefresh={() => {
+              setActivityRefresh((n) => n + 1);
+              void refreshWithMinSpinner([refetch], setIsRefreshing);
+            }}
             tintColor={colors.primary}
           />
         }

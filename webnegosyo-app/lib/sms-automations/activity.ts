@@ -1,10 +1,9 @@
 /**
  * The Activity tab's filters and how each text's status reads. Pure.
  *
- * The API filters by ONE outbox status, so "Waiting" and "Sent" ask the server
- * for exactly that, and "Not sent" (skipped, failed, cancelled, expired) reads
- * the unfiltered feed and keeps those rows — a page can then hold fewer rows
- * than it asked for, and "Load more" carries on from the same cursor.
+ * Each filter is a set of outbox statuses the SERVER filters by, so every page
+ * is full: "Not sent" (skipped, failed, cancelled, expired) on a store whose
+ * history is mostly sent texts still shows thirty failures, not an empty page.
  */
 
 import type { OutboxStatus } from "./api";
@@ -20,16 +19,19 @@ export const ACTIVITY_FILTERS: readonly { label: string; value: ActivityFilter }
 
 const NOT_SENT: readonly OutboxStatus[] = ["skipped", "failed", "cancelled", "expired"];
 
-/** The server-side status filter for this tab, if one status says it. */
-export function serverStatusFor(filter: ActivityFilter): OutboxStatus | undefined {
-  if (filter === "waiting") return "queued";
-  if (filter === "sent") return "sent";
+const WAITING: readonly OutboxStatus[] = ["queued", "claimed"];
+
+/** The statuses the server filters this tab by; undefined = every text. */
+export function serverStatusesFor(filter: ActivityFilter): OutboxStatus[] | undefined {
+  if (filter === "waiting") return [...WAITING];
+  if (filter === "sent") return ["sent"];
+  if (filter === "not_sent") return [...NOT_SENT];
   return undefined;
 }
 
 export function keepsStatus(filter: ActivityFilter, status: OutboxStatus): boolean {
   if (filter === "not_sent") return NOT_SENT.includes(status);
-  if (filter === "waiting") return status === "queued" || status === "claimed";
+  if (filter === "waiting") return WAITING.includes(status);
   if (filter === "sent") return status === "sent";
   return true;
 }

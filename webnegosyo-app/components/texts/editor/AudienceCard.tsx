@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { colors, radius, shadow, spacing, typography } from "../../../theme/colors";
 import { automationsApi, type AutomationDraft, type AutomationPreview } from "../../../lib/sms-automations/api";
 import { audienceText, topSkipReasons } from "../../../lib/sms-automations/view";
+import { audienceKey } from "../../../lib/sms-automations/editor";
 
 /** Long enough that a run of stepper taps is one preview, short enough to feel live. */
 const PREVIEW_DEBOUNCE_MS = 600;
@@ -18,26 +19,33 @@ interface AudienceCardProps {
 
 type State =
   | { kind: "loading" }
-  | { kind: "ready"; preview: AutomationPreview }
+  | { kind: "ready"; preview: AutomationPreview; key: string }
   | { kind: "failed"; error: string };
 
-/** Who this automation would text right now, re-asked a moment after every change. */
+/** Who this automation would text right now, re-asked a moment after a change that matters. */
 export function AudienceCard({ tenantId, draft, isMessageBroken }: AudienceCardProps) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const request = useRef(0);
-  const key = JSON.stringify(draft);
+  const latest = useRef(draft);
+  useEffect(() => {
+    latest.current = draft;
+  });
+  const key = audienceKey(draft);
 
   useEffect(() => {
     if (!tenantId || isMessageBroken) return;
     const mine = ++request.current;
     const timer = setTimeout(() => {
-      void automationsApi.preview(tenantId, JSON.parse(key) as AutomationDraft).then((result) => {
+      void automationsApi.preview(tenantId, latest.current).then((result) => {
         if (mine !== request.current) return;
-        setState(result.ok ? { kind: "ready", preview: result.value } : { kind: "failed", error: result.error });
+        setState(result.ok ? { kind: "ready", preview: result.value, key } : { kind: "failed", error: result.error });
       });
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [tenantId, key, isMessageBroken]);
+
+  // The last answer stays on screen, dimmed, while the new one is asked for.
+  const isStale = state.kind === "ready" && state.key !== key;
 
   return (
     <View style={styles.card}>
@@ -52,7 +60,9 @@ export function AudienceCard({ tenantId, draft, isMessageBroken }: AudienceCardP
       ) : state.kind === "failed" ? (
         <Text style={styles.error}>{state.error}</Text>
       ) : (
-        <Audience preview={state.preview} />
+        <View style={[styles.body, isStale && styles.stale]} accessibilityState={{ busy: isStale }}>
+          <Audience preview={state.preview} />
+        </View>
       )}
     </View>
   );
@@ -96,4 +106,6 @@ const styles = StyleSheet.create({
   reason: { ...typography.caption, color: colors.textPrimary, lineHeight: 18 },
   muted: { ...typography.caption, color: colors.textSecondary, lineHeight: 18 },
   error: { ...typography.caption, color: colors.danger, lineHeight: 18 },
+  body: { gap: spacing.sm },
+  stale: { opacity: 0.45 },
 });
