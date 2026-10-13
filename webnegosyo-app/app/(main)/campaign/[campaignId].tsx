@@ -50,7 +50,7 @@ import { computeCampaignDueStates } from "../../../lib/sms/due-runs";
 import { describeCampaignTiming } from "../../../lib/sms/campaign-summary";
 import { selectAudience } from "../../../lib/sms/audience";
 import { consumesCampaign, decideSendNow, immediateRunAt } from "../../../lib/sms/send-now";
-import { listCustomers, listSuppressedPhones } from "../../../lib/sms/customers-repo";
+import { listCustomers, listRecentlyTextedPhones, listSuppressedPhones } from "../../../lib/sms/customers-repo";
 import { toManilaParts } from "../../../lib/sms/schedule";
 import {
   CAMPAIGN_PRESETS,
@@ -158,6 +158,8 @@ function CampaignEditorScreen() {
   const [savedDraft, setSavedDraft] = useState<CampaignDraft | null>(null);
   const [customers, setCustomers] = useState<SmsCustomer[]>([]);
   const [suppressedPhones, setSuppressedPhones] = useState<string[]>([]);
+  // Texted by a campaign or an automation inside the store's per-guest window.
+  const [recentlyTextedPhones, setRecentlyTextedPhones] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dueAt, setDueAt] = useState<Date | null>(null);
@@ -180,8 +182,8 @@ function CampaignEditorScreen() {
 
   const reachFor = useCallback(
     (filter: AudienceFilter) =>
-      selectAudience(customers, filter, { now: new Date(), suppressedPhones }),
-    [customers, suppressedPhones]
+      selectAudience(customers, filter, { now: new Date(), suppressedPhones, recentlyTextedPhones }),
+    [customers, suppressedPhones, recentlyTextedPhones]
   );
 
   const audience = useMemo(() => reachFor(draft.audience), [reachFor, draft.audience]);
@@ -262,9 +264,10 @@ function CampaignEditorScreen() {
   const load = useCallback(async () => {
     if (!tenantId) return;
     try {
-      const [people, blocked, rows, lastRuns] = await Promise.all([
+      const [people, blocked, recent, rows, lastRuns] = await Promise.all([
         listCustomers(tenantId),
         listSuppressedPhones(tenantId),
+        listRecentlyTextedPhones(tenantId),
         isNew ? Promise.resolve([]) : listCampaignRows(tenantId),
         isNew
           ? Promise.resolve({} as Record<string, string>)
@@ -272,6 +275,7 @@ function CampaignEditorScreen() {
       ]);
       setCustomers(people);
       setSuppressedPhones(blocked);
+      setRecentlyTextedPhones([...recent]);
 
       if (!isNew) {
         const row = rows.find((r) => r.id === campaignId);

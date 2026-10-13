@@ -26,6 +26,7 @@ jest.mock("../supabase", () => {
       "upsert",
       "eq",
       "is",
+      "or",
       "in",
       "order",
       "limit",
@@ -80,10 +81,21 @@ describe("claimRun — only one device may work a run", () => {
 
     await claimRun("run-1", "device-A");
 
-    // The `is(claimed_by_device, null)` predicate IS the lock. Without it this
-    // becomes a read-then-write and both devices win.
-    expect(argsFor("is")).toContainEqual(["claimed_by_device", null]);
+    // The unclaimed-or-stale predicate IS the lock. Without it this becomes a
+    // read-then-write and both devices win.
+    const [filter] = argsFor("or")[0] as [string];
+    expect(filter).toMatch(/^claimed_by_device\.is\.null,claimed_at\.lt\.\d{4}-\d{2}-\d{2}T/);
     expect(argsFor("eq")).toContainEqual(["id", "run-1"]);
+  });
+
+  it("takes over a run whose device went quiet 30 minutes ago, never a fresh claim", async () => {
+    queued = [{ data: [{ id: "run-1" }], error: null }];
+    const before = Date.now();
+    await claimRun("run-1", "device-B");
+    const [filter] = argsFor("or")[0] as [string];
+    const cutoff = Date.parse(filter.split("claimed_at.lt.")[1]);
+    expect(before - cutoff).toBeGreaterThanOrEqual(30 * 60_000 - 1000);
+    expect(before - cutoff).toBeLessThan(31 * 60_000);
   });
 
   it("stamps the device and the time it took the run", async () => {

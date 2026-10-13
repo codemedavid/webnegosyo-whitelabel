@@ -188,8 +188,17 @@ export async function ensureRun(
   return rows[0]?.id ?? null;
 }
 
-/** Conditional claim; see the module comment. Fails closed. */
+/**
+ * A device that claimed a run and then stopped (app killed, phone died) never
+ * finishes it. After this long the run may be taken over; the new device skips
+ * everyone already texted (`listSentCustomerIds`), so nobody is texted twice.
+ * A run of 25 texts takes about a minute, so a live claim is never this old.
+ */
+const STALE_CLAIM_MS = 30 * 60_000;
+
+/** Conditional claim (unclaimed, or claimed and gone stale); see the module comment. Fails closed. */
 export async function claimRun(runId: string, deviceId: string): Promise<boolean> {
+  const staleBefore = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
   const { data, error } = await supabase
     .from("sms_campaign_runs")
     .update({
@@ -199,7 +208,7 @@ export async function claimRun(runId: string, deviceId: string): Promise<boolean
       started_at: new Date().toISOString(),
     })
     .eq("id", runId)
-    .is("claimed_by_device", null)
+    .or(`claimed_by_device.is.null,claimed_at.lt.${staleBefore}`)
     .select("id");
 
   if (error) return false;
