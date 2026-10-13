@@ -189,7 +189,21 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   loyalty: "loyalty_manage",
 };
 
+/**
+ * Tabs any ONE of several grants opens. Store activity (the store's view) is
+ * for the owner and holders of either opt-in key — `hasPermission` keeps them
+ * opt-in, so a legacy full-access admin does not get it. Everyone else reaches
+ * their own activity through the `my-activity` utility screen instead, so no
+ * staff tab bar changes. The server (get_store_activity) is the boundary either
+ * way: it returns a caller without these keys only their own rows.
+ */
+const TAB_ANY_OF: Readonly<Record<string, readonly StaffPermissionKey[]>> = {
+  activity: ["activity_view", "approve_requests"],
+};
+
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {
+  const anyOf = TAB_ANY_OF[tab];
+  if (anyOf) return anyOf.some((key) => hasPermission(user, key));
   const required = TAB_PERMISSIONS[tab];
   return required === undefined || hasPermission(user, required);
 }

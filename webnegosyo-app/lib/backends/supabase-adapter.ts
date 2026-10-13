@@ -53,6 +53,7 @@ import {
 import { isUuid, toUuidOrNull } from "../uuid";
 import { PartialOrderWriteError } from "../offline/network-error";
 import { DELIVERED_NOT_CANCELLABLE_MESSAGE } from "../order-status-change";
+import { cancelReasonColumn, readOrderEventReason, type OrderEventReason } from "../order-cancel-reason";
 import { isPlatformAnalyticsRef, runPlatformAnalyticsQuery } from "./supabase-analytics";
 import {
   isPlatformProductCostRef,
@@ -666,25 +667,43 @@ const ORDER_NOT_IN_BRANCH_MESSAGE =
  * between a check and the update. Only a refused write pays for a second read,
  * to tell "already delivered" apart from "not in your branch".
  */
+/** PostgREST's answer for a column the schema cache does not have (PGRST204). */
+function isMissingCancelReasonColumn(error: unknown): boolean {
+  return error instanceof Error && /cancel_reason/.test(error.message) && /column/i.test(error.message);
+}
+
 async function cancelOrder(
   client: PlatformClient,
   tenantId: string,
   orderId: unknown,
-  scope: BranchScope
+  scope: BranchScope,
+  why: OrderEventReason = { reason: null, note: null }
 ): Promise<string> {
   const id = requireOrderUuid(orderId);
 
-  const rows = await unwrap<{ id: string }[] | null>(
-    scopeToBranch(
-      client
-        .from("orders")
-        .update({ status: "cancelled" })
-        .eq("id", id)
-        .eq("tenant_id", tenantId)
-        .neq("status", "delivered"),
-      scope
-    ).select("id")
-  );
+  const write = (patch: Record<string, unknown>) =>
+    unwrap<{ id: string }[] | null>(
+      scopeToBranch(
+        client
+          .from("orders")
+          .update(patch)
+          .eq("id", id)
+          .eq("tenant_id", tenantId)
+          .neq("status", "delivered"),
+        scope
+      ).select("id")
+    );
+
+  // The reason lands in `orders.cancel_reason`, which the store_activity
+  // trigger records as the cancel's reason. A database still waiting for that
+  // migration refuses the unknown column; the cancel itself must still land.
+  const patch = why.reason
+    ? { status: "cancelled", cancel_reason: cancelReasonColumn({ reason: why.reason, note: why.note }) }
+    : { status: "cancelled" };
+  const rows = await write(patch).catch((error: unknown) => {
+    if (why.reason && isMissingCancelReasonColumn(error)) return write({ status: "cancelled" });
+    throw error;
+  });
   if (rows && rows.length > 0) return id;
 
   const current = await unwrap<{ status: string } | null>(
@@ -953,7 +972,7 @@ export async function runPlatformMutation(
       return createOrder(client, tenant, params);
     case "orders:updateOrderStatus":
       if (params.status === "cancelled") {
-        return cancelOrder(client, tenant, params.orderId, scope);
+        return cancelOrder(client, tenant, params.orderId, scope, readOrderEventReason(params));
       }
       return patchOrder(client, tenant, params.orderId, { status: params.status }, scope);
     case "orders:updatePaymentStatus":

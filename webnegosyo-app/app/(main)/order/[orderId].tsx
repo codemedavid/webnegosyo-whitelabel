@@ -61,6 +61,9 @@ import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
 import { OrderCustomerCard } from "../../../components/order/OrderCustomerCard";
+import { CancelReasonSheet, type CancelReasonChoice } from "../../../components/order/CancelReasonSheet";
+import { OrderHistoryCard } from "../../../components/order/OrderHistoryCard";
+import { withOrderEventReason, type OrderEventReason } from "../../../lib/order-cancel-reason";
 import { OfflineOrdersNotice } from "../../../components/OfflineOrdersNotice";
 import {
   recallOrder,
@@ -519,6 +522,10 @@ export default function OrderDetailScreen() {
     isCash: isCashMethod(method),
   }));
   const [isOpeningEdit, setIsOpeningEdit] = useState(false);
+  // Cancelling asks why first (Store Activity records the reason).
+  const [isCancelSheetOpen, setCancelSheetOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const activityTenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
 
   const gateRequest = order
     ? {
@@ -667,7 +674,7 @@ export default function OrderDetailScreen() {
   const customerDetailRows = buildCustomerDetailRows(order?.customerData);
 
   /** Resolves true once the new status is saved; every refusal is shown. */
-  const handleUpdateStatus = async (newStatus: OrderStatus): Promise<boolean> => {
+  const handleUpdateStatus = async (newStatus: OrderStatus, why?: OrderEventReason): Promise<boolean> => {
     if (!order) return false;
     if (useAuthStore.getState().isDemo) {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
@@ -682,7 +689,9 @@ export default function OrderDetailScreen() {
       // Confirmation receipts print from GlobalReceiptAutoPrint, which reacts
       // to the status transition itself — so a confirm from this screen, the
       // list, the Drawer or the web admin all print exactly once.
-      const written = await updateStatus({ orderId: order._id, status: newStatus });
+      const written = await updateStatus(
+        withOrderEventReason({ orderId: order._id, status: newStatus }, why ?? { reason: null, note: null }),
+      );
 
       // Handing the order over is taking the money for it.
       if (plan.shouldMarkPaid) {
@@ -1020,6 +1029,13 @@ export default function OrderDetailScreen() {
       <PaymentDecisionSheet {...paymentFlow.decisionSheet} />
 
       <RevisionHistoryCard revisions={revisions ?? []} />
+      {!isFromDevice && (
+        <OrderHistoryCard
+          tenantId={activityTenantId}
+          orderId={String(order._id)}
+          placedAt={new Date(order._creationTime).toISOString()}
+        />
+      )}
 
       {(nextStatus || (order.status !== "delivered" && order.status !== "cancelled")) && (
         <View style={styles.actions}>
@@ -1124,16 +1140,26 @@ export default function OrderDetailScreen() {
               (orders_client_status_guard); Phase 3 puts "Ask a manager" here. */}
           {canUserCancelOrder({ role, isOwner, permissions }, order.status) && (
             <TouchableOpacity
-              onPress={() => {
-                Alert.alert("Cancel Order", "Are you sure?", [
-                  { text: "No" },
-                  { text: "Yes", onPress: () => handleUpdateStatus("cancelled"), style: "destructive" },
-                ]);
-              }}
+              onPress={() => setCancelSheetOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel order"
+              style={styles.cancelHit}
             >
               <Text style={styles.cancelText}>Cancel Order</Text>
             </TouchableOpacity>
           )}
+          <CancelReasonSheet
+            visible={isCancelSheetOpen}
+            orderLabel={formatDailyOrderNumber(order.dailyNumber, order._id)}
+            isBusy={isCancelling}
+            onClose={() => setCancelSheetOpen(false)}
+            onConfirm={async (choice: CancelReasonChoice) => {
+              setIsCancelling(true);
+              const isDone = await handleUpdateStatus("cancelled", choice);
+              setIsCancelling(false);
+              if (isDone) setCancelSheetOpen(false);
+            }}
+          />
         </View>
       )}
       </ScrollView>
@@ -1168,6 +1194,7 @@ const styles = StyleSheet.create({
   primaryAction: { backgroundColor: colors.primary, borderRadius: radius.full, paddingVertical: 16, alignItems: "center" },
   primaryActionText: { color: colors.textOnDark, ...typography.heading },
   cancelText: { ...typography.body, color: colors.danger, textAlign: "center", paddingVertical: spacing.sm },
+  cancelHit: { minHeight: 48, justifyContent: "center" },
   editButton: {
     borderWidth: 1,
     borderColor: colors.textPrimary,

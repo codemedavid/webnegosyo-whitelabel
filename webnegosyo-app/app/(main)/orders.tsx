@@ -42,6 +42,9 @@ import {
 import { hasPermission } from "../../lib/staff-permissions";
 import { pushConfirmedOrderToLoyverse } from "../../lib/loyverse-confirm";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { CancelReasonSheet, type CancelReasonChoice } from "../../components/order/CancelReasonSheet";
+import { withOrderEventReason, type OrderEventReason } from "../../lib/order-cancel-reason";
+import { formatDailyOrderNumber } from "../../lib/order-number";
 import { IconButton } from "../../components/IconButton";
 import { SubScreenLinks } from "../../components/SubScreenLinks";
 import { ExportSheet } from "../../components/ExportSheet";
@@ -338,33 +341,35 @@ export default function OrdersScreen() {
   }, []);
 
   const handleUpdateStatus = useCallback(
-    async (order: ConvexOrder, newStatus: OrderStatus) => {
+    async (order: ConvexOrder, newStatus: OrderStatus, why?: OrderEventReason): Promise<boolean> => {
       const orderId = order._id;
       if (useAuthStore.getState().isDemo) {
         Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
-        return;
+        return false;
       }
       const plan = planOrderStatusChange(order, newStatus);
       if (!plan.allowed) {
         Alert.alert("Cannot update order", plan.reason ?? "This change is not allowed.");
-        return;
+        return false;
       }
 
       const claim = claimOrderBusy(busyRef.current, orderId);
-      if (!claim.isClaimed) return;
+      if (!claim.isClaimed) return false;
       setBusy(claim.busy);
 
       // The row moves at once; a failed write puts it back.
       const rollback = patchOrderStatus(orderId, newStatus);
       try {
-        const written = await updateStatus({ orderId, status: newStatus });
+        const written = await updateStatus(
+          withOrderEventReason({ orderId, status: newStatus }, why ?? { reason: null, note: null }),
+        );
         // Handing the order over is taking the money for it.
         if (plan.shouldMarkPaid) {
           await markPaidAfterHandover(updatePaymentStatus, orderId);
         }
         // Kept on the device: the replay restores stock and pushes to
         // Loyverse once the change reaches the server (sync-order-edits.ts).
-        if (isQueuedOrderWrite(written)) return;
+        if (isQueuedOrderWrite(written)) return true;
         // Put the ingredients back on a cancel — the same shared side-effect
         // the detail screen runs. Never throws, so a stock write cannot make an
         // order un-cancellable from the queue.
@@ -380,9 +385,11 @@ export default function OrdersScreen() {
         // The confirmation receipt prints from GlobalReceiptAutoPrint, which
         // watches the status transition and holds the line items this list
         // does not — no more "open the order to print it" detour.
+        return true;
       } catch (err) {
         rollback();
         Alert.alert("Error", err instanceof Error ? err.message : "Failed to update order status");
+        return false;
       } finally {
         setBusy(releaseOrderBusy(busyRef.current, orderId));
       }
@@ -445,22 +452,19 @@ export default function OrdersScreen() {
     [allOrders, handleUpdateStatus],
   );
 
-  const confirmCancel = useCallback(
-    (order: ConvexOrder) => {
-      Alert.alert(
-        "Cancel this order?",
-        "It will be removed from the active queue and excluded from revenue.",
-        [
-          { text: "Keep Order", style: "cancel" },
-          {
-            text: "Cancel Order",
-            onPress: () => handleUpdateStatus(order, "cancelled"),
-            style: "destructive",
-          },
-        ]
-      );
+  // Cancelling asks why first; the reason is what Store Activity shows.
+  const [cancelTarget, setCancelTarget] = useState<ConvexOrder | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const confirmCancel = useCallback((order: ConvexOrder) => setCancelTarget(order), []);
+  const handleCancelWithReason = useCallback(
+    async (choice: CancelReasonChoice) => {
+      if (!cancelTarget) return;
+      setIsCancelling(true);
+      const isDone = await handleUpdateStatus(cancelTarget, "cancelled", choice);
+      setIsCancelling(false);
+      if (isDone) setCancelTarget(null);
     },
-    [handleUpdateStatus],
+    [cancelTarget, handleUpdateStatus],
   );
 
   const renderItem = useCallback<ListRenderItem<ConvexOrder>>(
@@ -559,6 +563,14 @@ export default function OrdersScreen() {
         errorMessage={exportError}
         onExport={handleExport}
         onClose={() => setExportOpen(false)}
+      />
+
+      <CancelReasonSheet
+        visible={cancelTarget !== null}
+        orderLabel={cancelTarget ? formatDailyOrderNumber(cancelTarget.dailyNumber, cancelTarget._id) : null}
+        isBusy={isCancelling}
+        onConfirm={handleCancelWithReason}
+        onClose={() => setCancelTarget(null)}
       />
     </View>
   );

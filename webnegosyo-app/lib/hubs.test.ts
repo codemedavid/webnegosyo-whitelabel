@@ -56,6 +56,11 @@ describe("hubSections", () => {
     expect(store?.tabs).toEqual(["product-management", "categories", "inventory"]);
   });
 
+  it("lists Store activity only for the store view", () => {
+    const viewer = { ...owner, caller: { role: "admin", isOwner: false, permissions: ["activity_view"] } };
+    expect(hubSections(REPORTS_SECTIONS, viewer)).toEqual([{ title: "Store", tabs: ["activity"] }]);
+  });
+
   it("returns nothing for an account that may open no report", () => {
     const cashier = { ...owner, caller: { role: "admin", isOwner: false, permissions: ["pos"] } };
     expect(hubSections(REPORTS_SECTIONS, cashier)).toEqual([]);

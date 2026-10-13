@@ -8,6 +8,8 @@ import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
 import { SegmentedControl } from "../../../components/SegmentedControl";
 import { DayHistoryList } from "../../../components/staff/DayHistoryList";
+import { ListRow } from "../../../components/ListRow";
+import { activityHref } from "../../../lib/activity/activity-links";
 import { ShiftHistoryList } from "../../../components/staff/ShiftHistoryList";
 import { StaffAccessPanel } from "../../../components/staff/StaffAccessPanel";
 import { StaffAvatar } from "../../../components/staff/StaffAvatar";
@@ -314,7 +316,17 @@ export default function StaffProfileScreen() {
 
         <View style={styles.pad}>
           {view === "activity" ? (
-            <DayHistoryList days={days_} nowIso={nowIso} nowMs={nowMs} />
+            <>
+              <DayHistoryList days={days_} nowIso={nowIso} nowMs={nowMs} />
+              {/* Everything they did — refunds, stock, drawers — in Store activity. */}
+              <ListRow
+                icon="clock"
+                title="See all activity"
+                subtitle="Refunds, cancels, stock and drawer changes"
+                onPress={() => router.push(activityHref({ actor: { id: entry.userId, name: entry.name } }) as never)}
+                style={styles.allActivity}
+              />
+            </>
           ) : view === "shifts" ? (
             <ShiftHistoryList
               shifts={shifts}
@@ -399,6 +411,7 @@ export default function StaffProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  allActivity: { marginTop: spacing.md, borderRadius: radius.lg, overflow: "hidden" },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xxl, gap: spacing.md },
   pad: { paddingHorizontal: spacing.xl },

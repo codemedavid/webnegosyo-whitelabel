@@ -761,6 +761,49 @@ describe("runPlatformMutation — status updates", () => {
     expect(opsOf(calls, "neq")).toContainEqual(["status", "delivered"]);
   });
 
+  it("writes why the order was cancelled, so Store Activity can say it", async () => {
+    // Arrange
+    const { client, calls } = fakeClient({ orders: [{ data: [{ id: ORDER_ID }], error: null }] });
+
+    // Act
+    await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+      orderId: ORDER_ID,
+      status: "cancelled",
+      reason: "Other",
+      note: "Allergy",
+    });
+
+    // Assert
+    expect(opsOf(calls, "update")[0]).toEqual([{ status: "cancelled", cancel_reason: "Other: Allergy" }]);
+  });
+
+  it("still cancels on a database that has no cancel_reason column yet", async () => {
+    // Arrange — PostgREST refuses the unknown column; the retry drops it.
+    const { client, calls } = fakeClient({
+      orders: [
+        {
+          data: null,
+          error: { message: "Could not find the 'cancel_reason' column of 'orders' in the schema cache", code: "PGRST204" },
+        },
+        { data: [{ id: ORDER_ID }], error: null },
+      ],
+    });
+
+    // Act
+    const result = await runPlatformMutation(client, TENANT, "orders:updateOrderStatus", {
+      orderId: ORDER_ID,
+      status: "cancelled",
+      reason: "Customer left",
+    });
+
+    // Assert
+    expect(result).toBe(ORDER_ID);
+    expect(opsOf(calls, "update")).toEqual([
+      [{ status: "cancelled", cancel_reason: "Customer left" }],
+      [{ status: "cancelled" }],
+    ]);
+  });
+
   it("refuses to cancel a delivered order, and says why", async () => {
     // Arrange — the guarded write matches nothing; the order reads delivered.
     const { client } = fakeClient({

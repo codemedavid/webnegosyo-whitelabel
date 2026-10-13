@@ -30,6 +30,8 @@ import { colors, typography, spacing, radius, shadow } from "../../../theme/colo
 import { BackHeader } from "../../../components/BackHeader";
 import { IconButton } from "../../../components/IconButton";
 import { Icon, type IconName } from "../../../components/Icon";
+import { ListRow } from "../../../components/ListRow";
+import { activityHref } from "../../../lib/activity/activity-links";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { EmptyState } from "../../../components/EmptyState";
@@ -276,6 +278,16 @@ export default function IngredientScreen() {
           <Stat label="Last delivery" value={lastIn} isMuted={lastIn === "Never"} />
         </View>
 
+        {/* Who received, counted, wasted or adjusted it — with names — in Store activity. */}
+        <ListRow
+          icon="clock"
+          title="Who changed this stock"
+          subtitle="Deliveries, counts, waste and adjustments, with names"
+          onPress={() =>
+            router.push(activityHref({ subject: { type: "ingredient", ref: item.id, label: item.name } }) as never)
+          }
+          style={styles.activityLink}
+        />
         <View style={styles.historyHead}>
           <Text style={styles.sectionTitle}>History</Text>
           {movements.length > 0 && <Text style={styles.sectionCount}>{movements.length}</Text>}
@@ -397,6 +409,7 @@ function Stat({ label, value, isMuted, onPress }: StatProps) {
 }
 
 const styles = StyleSheet.create({
+  activityLink: { borderRadius: radius.lg, overflow: "hidden", marginTop: spacing.sm },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingTop: spacing.xs, gap: spacing.lg, paddingBottom: 48 },
 

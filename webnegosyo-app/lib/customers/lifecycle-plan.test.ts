@@ -63,6 +63,27 @@ describe("planLifecycleSync", () => {
     expect(plan?.source).toBeNull();
   });
 
+  it("carries a cancel's reason and note, so a Convex store's cancel is recorded with its why", () => {
+    const plan = planLifecycleSync({
+      ...BASE,
+      refName: "orders:updateOrderStatus",
+      args: { orderId: "order-1", status: "cancelled", reason: "Other", note: "Allergy" },
+    });
+
+    expect(plan).toMatchObject({ status: "cancelled", reason: "Other", note: "Allergy" });
+  });
+
+  it("adds no reason keys when the mutation carried none", () => {
+    const plan = planLifecycleSync({
+      ...BASE,
+      refName: "orders:updateOrderStatus",
+      args: { orderId: "order-1", status: "ready" },
+    });
+
+    expect(plan).not.toHaveProperty("reason");
+    expect(plan).not.toHaveProperty("note");
+  });
+
   it("plans a sync for setPrepTime, which writes a status alongside the promise", () => {
     const plan = planLifecycleSync({
       ...BASE,

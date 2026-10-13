@@ -18,6 +18,9 @@ export const colors = {
   // Text
   textPrimary: "#1D1815",
   textSecondary: "#8B857B",
+  // Meta lines that must stay readable: 5.52:1 on white, 4.68:1 on the canvas
+  // (textSecondary is 3.66:1 / 3.10:1 — fails AA at 13pt). Store activity spec §0.3.
+  textMuted: "#6E685E",
   textTertiary: "#B8B2A7",
   textOnDark: "#FFFFFF",
 

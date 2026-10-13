@@ -55,6 +55,8 @@ import { LoadingState } from "../../components/LoadingState";
 import { SectionHeader } from "../../components/SectionHeader";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { ListRow } from "../../components/ListRow";
+import { canOpenMyActivity, MY_ACTIVITY_HREF } from "../../lib/activity/my-activity";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -267,6 +269,12 @@ function JoinedLedger({
 }
 
 function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, savedAt, refetch }: DrawerRead) {
+  // The "Your activity today" door at the foot of the Drawer.
+  const activityViewer = {
+    userId: useAuthStore((s) => s.userId),
+    tenantId: useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId),
+    isDemo: useAuthStore((s) => s.isDemo),
+  };
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const includeOnlineOrders = useRegisterSettingsStore((s) => s.drawerIncludesOnlineOrders);
   const setIncludeOnlineOrders = useRegisterSettingsStore((s) => s.setDrawerIncludesOnlineOrders);
@@ -513,12 +521,24 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
             })}
           </View>
         )}
+
+        {/* The cashier's own refunds, cancels and stock changes (Store activity). */}
+        {canOpenMyActivity(activityViewer) ? (
+          <ListRow
+            icon="clock"
+            title="Your activity today"
+            subtitle="Refunds, cancels and stock changes you made"
+            onPress={() => router.push(MY_ACTIVITY_HREF as never)}
+            style={styles.myActivity}
+          />
+        ) : null}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  myActivity: { marginTop: spacing.lg, borderRadius: radius.lg, overflow: "hidden" },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,
