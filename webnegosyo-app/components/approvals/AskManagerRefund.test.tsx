@@ -47,6 +47,9 @@ describe("AskManagerRefund", () => {
   it("after a saved edit: one tap asks for the exact amount", () => {
     renderAsk("after_saved_edit");
     fireEvent.press(screen.getByRole("button", { name: "Ask a manager for ₱185" }));
-    expect(screen.getByText("Your edit is saved. This asks a manager to give back ₱185.")).toBeTruthy();
+    expect(
+      screen.getByText("Your edit is saved. This asks a manager to give back the ₱185 overpayment. The order's total stays as it is."),
+    ).toBeTruthy();
+    expect(screen.getByText("Overpayment to give back: ₱185")).toBeTruthy();
   });
 });

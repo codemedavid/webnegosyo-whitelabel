@@ -71,8 +71,9 @@ export function withRestock(draft: RequestDraft, restock: boolean): RequestDraft
   return { ...draft, restock, isRestockTouched: true };
 }
 
+/** A paid cancel is always whole; an overpayment refund stays an overpayment refund. */
 export function withScope(draft: RequestDraft, scope: RefundScope): RequestDraft {
-  return draft.kind === "cancel_paid" ? draft : { ...draft, scope };
+  return draft.kind === "cancel_paid" || draft.scope === "balance" ? draft : { ...draft, scope };
 }
 
 export function withQuantity(draft: RequestDraft, item: RequestOrderItem, quantity: number): RequestDraft {
@@ -108,7 +109,7 @@ function pickedLines(draft: RequestDraft, order: RequestOrder): { item: RequestO
 /** What the draft is worth in pesos (0 when nothing is picked yet). */
 export function draftAmount(draft: RequestDraft, order: RequestOrder): number {
   if (draft.kind === "cancel_paid" || draft.scope === "whole") return round2(order.refundable);
-  if (draft.scope === "amount") return parsePesos(draft.amountText) ?? 0;
+  if (draft.scope === "amount" || draft.scope === "balance") return parsePesos(draft.amountText) ?? 0;
   const total = pickedLines(draft, order).reduce(
     (sum, { item, quantity }) => sum + (item.quantity > 0 ? (item.lineTotal / item.quantity) * quantity : 0),
     0,
@@ -122,10 +123,14 @@ export type DraftCheck =
 
 function scopeProblem(draft: RequestDraft, order: RequestOrder): string | null {
   if (draft.kind === "cancel_paid" || draft.scope === "whole") return null;
-  if (draft.scope === "amount") {
+  if (draft.scope === "amount" || draft.scope === "balance") {
     const amount = parsePesos(draft.amountText);
     if (amount === null) return "Enter the amount to give back";
-    if (amount > round2(order.refundable)) return `That's more than was paid. ${formatPesoShort(order.refundable)} can be refunded.`;
+    if (amount > round2(order.refundable)) {
+      return draft.scope === "balance"
+        ? `That's more than was overpaid. ${formatPesoShort(order.refundable)} can be given back.`
+        : `That's more than was paid. ${formatPesoShort(order.refundable)} can be refunded.`;
+    }
     return null;
   }
   const lines = pickedLines(draft, order);
@@ -152,6 +157,9 @@ function buildInput(draft: RequestDraft, order: RequestOrder, idempotencyKey: st
   if (draft.kind === "cancel_paid") return { kind: "cancel_paid", ...common, payload: { restock: draft.restock } };
   if (draft.scope === "amount") {
     return { kind: "refund", ...common, payload: { scope: "amount", amount: parsePesos(draft.amountText) ?? 0 } };
+  }
+  if (draft.scope === "balance") {
+    return { kind: "refund", ...common, payload: { scope: "balance", amount: parsePesos(draft.amountText) ?? 0 } };
   }
   if (draft.scope === "whole") return { kind: "refund", ...common, payload: { scope: "whole", restock: draft.restock } };
   const lines = pickedLines(draft, order).map(({ item, quantity }) => ({ orderItemId: item.id, quantity }));
@@ -210,4 +218,16 @@ export interface KeyForSendInput {
 export function keyForSend(input: KeyForSendInput): string {
   if (input.failedSignature === null || input.failedSignature === input.signature) return input.currentKey;
   return input.mint();
+}
+
+/**
+ * The words for a refusal the server sends for an overpayment refund (scope
+ * 'balance'); every other refusal keeps the server's own message.
+ */
+export function refusalCopy(code: string | undefined, scope: RefundScope, serverMessage: string): string {
+  if (code === "no_open_shift") return "Open your shift first. Part of this refund is cash and comes out of your drawer.";
+  if (scope !== "balance") return serverMessage;
+  if (code === "nothing_to_refund") return "Nothing is overpaid on this order any more, so there is nothing to give back.";
+  if (code === "over_refund") return "That's more than was overpaid on this order. Check the order, then ask again.";
+  return serverMessage;
 }

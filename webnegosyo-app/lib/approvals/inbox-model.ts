@@ -2,7 +2,7 @@
  * What the approver's inbox and the Home card say — pure (design-spec §3.6,
  * §3.11). Pending requests arrive oldest first from the server.
  */
-import { firstName, formatManilaClock, formatPesoShort, kindTitle, timeAgo } from "./state";
+import { firstName, formatManilaClock, formatPesoShort, requestTitle, timeAgo } from "./state";
 import type { ApprovalRequestView } from "./types";
 
 /** "Approved 3 · Declined 1 · Expired 0" */
@@ -46,7 +46,7 @@ export function homeCardCopy(requests: readonly ApprovalRequestView[], now: Date
     const on = oldest.orderNumber ? ` on ${oldest.orderNumber}` : "";
     return {
       title: `${firstName(oldest.requestedByName)} is waiting`,
-      subtitle: `${kindTitle(oldest.kind)} ${formatPesoShort(oldest.amount)}${on} · ${timeAgo(oldest.createdAt, now)}`,
+      subtitle: `${requestTitle(oldest)} ${formatPesoShort(oldest.amount)}${on} · ${timeAgo(oldest.createdAt, now)}`,
     };
   }
   return {

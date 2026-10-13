@@ -149,7 +149,7 @@ export function ApprovalReview({ tenantId, approvalId, viewerUserId, isOffline, 
 
   return (
     <View style={styles.screen}>
-      <BackHeader title={reviewTitle(request.kind)} subtitle={reviewSubtitle(request, now)} />
+      <BackHeader title={reviewTitle(request.kind, request)} subtitle={reviewSubtitle(request, now)} />
       <ScrollView contentContainerStyle={styles.content}>
         <ReviewAmountCard request={request} approveAmount={approveAmount} />
         <ReviewWhoWhy request={request} now={now} />

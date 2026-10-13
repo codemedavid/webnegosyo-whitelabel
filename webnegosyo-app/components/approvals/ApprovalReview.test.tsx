@@ -114,4 +114,12 @@ describe("ApprovalReview", () => {
     expect(await screen.findByText("Approved by Lorna. Give ₱185 back from your drawer.")).toBeTruthy();
     expect(screen.queryByText("Lorna already approved this", { exact: false })).toBeNull();
   });
+
+  it("titles an overpayment refund and says the total stays", async () => {
+    const { api } = fakeApi(approvalRequest({ payload: { scope: "balance", amount: 185 } }));
+    renderReview(api, null);
+    expect(await screen.findByText("Overpayment refund")).toBeTruthy();
+    expect(screen.getByText("The order's total stays as it is")).toBeTruthy();
+    expect(screen.queryByText("Not put back in stock · logged as waste")).toBeNull();
+  });
 });

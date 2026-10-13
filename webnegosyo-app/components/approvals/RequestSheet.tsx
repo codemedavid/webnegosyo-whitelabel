@@ -8,6 +8,7 @@ import {
   draftAmount,
   draftSignature,
   keyForSend,
+  refusalCopy,
   initialDraft,
   sheetSubtitle,
   submitLabel,
@@ -18,6 +19,7 @@ import {
   type RequestOrder,
   type RequestSheetKind,
 } from "../../lib/approvals/request-draft";
+import { formatPesoShort } from "../../lib/approvals/state";
 import { REASONS_BY_KIND, type CreateApprovalResult, type RefundScope } from "../../lib/approvals/types";
 import { useApprovalRules, useInvalidateApprovals } from "../../lib/approvals/use-approvals";
 import type { StaffPermissionHolder } from "../../lib/staff-permissions";
@@ -86,7 +88,7 @@ export function RequestSheet(props: RequestSheetProps) {
       ? whoWillBeAsked({ approvers: rules.data.approvers, outletId: order.outletId, amount, rules: rules.data.rules, selfUserId: userId })
       : null;
   const hint = isOffline ? OFFLINE_MESSAGE : check.ok ? null : check.hint;
-  const hasItems = kind === "cancel_paid" || draft.scope !== "amount";
+  const hasItems = kind === "cancel_paid" || (draft.scope !== "amount" && draft.scope !== "balance");
 
   const send = async () => {
     if (!check.ok || isSending || isOffline) return;
@@ -110,7 +112,7 @@ export function RequestSheet(props: RequestSheetProps) {
         return;
       }
       failedSignature.current = signature;
-      setError(result.status === 0 ? OFFLINE_MESSAGE : result.error);
+      setError(result.status === 0 ? OFFLINE_MESSAGE : refusalCopy(result.code, draft.scope, result.error));
       return;
     }
     await invalidate();
@@ -120,7 +122,11 @@ export function RequestSheet(props: RequestSheetProps) {
   return (
     <DrawerSheet visible={visible} title={TITLES[kind]} subtitle={sheetSubtitle(order)} onClose={onClose} isBusy={isSending} closeLabel="Close">
       {contextNote ? <Text style={styles.contextNote}>{contextNote}</Text> : null}
-      {kind === "refund" ? <RefundScopePicker draft={draft} order={order} onChange={setDraft} /> : null}
+      {kind === "refund" && draft.scope === "balance" ? (
+        <Text style={styles.balance}>{`Overpayment to give back: ${formatPesoShort(amount)}`}</Text>
+      ) : kind === "refund" ? (
+        <RefundScopePicker draft={draft} order={order} onChange={setDraft} />
+      ) : null}
       <ReasonPicker
         reasons={REASONS_BY_KIND[kind]}
         reasonCode={draft.reasonCode}
@@ -161,6 +167,7 @@ export function RequestSheet(props: RequestSheetProps) {
 
 const styles = StyleSheet.create({
   contextNote: { ...typography.caption, color: colors.textMuted },
+  balance: { ...typography.heading, color: colors.textPrimary },
   callout: {
     flexDirection: "row",
     alignItems: "flex-start",

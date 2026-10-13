@@ -1,4 +1,6 @@
 import {
+  requestTitle,
+  requestHeadline,
   countdown,
   formatManilaClock,
   formatPesoShort,
@@ -120,5 +122,14 @@ describe("polling", () => {
     expect(shouldKeepPolling(view())).toBe(true);
     expect(shouldKeepPolling(view({ status: "executed" }))).toBe(false);
     expect(shouldKeepPolling(null)).toBe(false);
+  });
+});
+
+describe("overpayment refunds (scope 'balance')", () => {
+  test("read as Refund overpayment wherever a request is named", () => {
+    const balance = { kind: "refund" as const, amount: 185, approvedAmount: null, orderNumber: "#14", payload: { scope: "balance" } };
+    expect(requestHeadline(balance)).toBe("Refund overpayment ₱185 · #14");
+    expect(requestTitle(balance)).toBe("Refund overpayment");
+    expect(requestTitle({ kind: "refund", payload: { scope: "items" } })).toBe("Refund");
   });
 });

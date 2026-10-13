@@ -28,7 +28,8 @@ const TITLES: Readonly<Record<ApprovalKind, string>> = {
   stock_writeoff: "Write-off request",
 };
 
-export function reviewTitle(kind: ApprovalKind): string {
+export function reviewTitle(kind: ApprovalKind, request?: Pick<ApprovalRequestView, "payload">): string {
+  if (kind === "refund" && request?.payload.scope === "balance") return "Overpayment refund";
   return TITLES[kind];
 }
 
@@ -102,7 +103,7 @@ export function reviewItemLines(request: ApprovalRequestView): ReviewItemLine[] 
 /** What happens to the stock (null when no items move: an amount refund). */
 export function stockLine(request: ApprovalRequestView): string | null {
   if (request.kind !== "refund" && request.kind !== "cancel_paid") return null;
-  if (scope(request) === "amount") return null;
+  if (scope(request) === "amount" || scope(request) === "balance") return null;
   return request.payload.restock === true ? "Put back in stock" : "Not put back in stock · logged as waste";
 }
 
@@ -157,6 +158,7 @@ export function reviewSignals(request: ApprovalRequestView, now: Date): ReviewSi
   ];
   const cap = request.viewerCap;
   const oks: (string | null)[] = [
+    scope(request) === "balance" ? "The order's total stays as it is" : null,
     typeof cap === "number" && request.amount <= cap ? `Within your ${formatPesoShort(cap)} limit` : null,
   ];
   return [

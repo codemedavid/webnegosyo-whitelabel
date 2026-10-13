@@ -85,11 +85,19 @@ export function kindTitle(kind: ApprovalKind): string {
   return KIND_TITLE[kind];
 }
 
-/** "Refund ₱185 · #14" */
-export function requestHeadline(request: Pick<ApprovalRequestView, "kind" | "amount" | "approvedAmount" | "orderNumber">): string {
+/** "Refund", or "Refund overpayment" for a balance refund (the order's total stays). */
+export function requestTitle(request: Pick<ApprovalRequestView, "kind"> & { payload?: Record<string, unknown> | null }): string {
+  if (request.kind === "refund" && request.payload?.scope === "balance") return "Refund overpayment";
+  return KIND_TITLE[request.kind];
+}
+
+/** "Refund ₱185 · #14", "Refund overpayment ₱185 · #14" */
+export function requestHeadline(
+  request: Pick<ApprovalRequestView, "kind" | "amount" | "approvedAmount" | "orderNumber"> & { payload?: Record<string, unknown> | null },
+): string {
   const amount = formatPesoShort(request.approvedAmount ?? request.amount);
   const on = request.orderNumber ? ` · ${request.orderNumber}` : "";
-  return `${KIND_TITLE[request.kind]} ${amount}${on}`;
+  return `${requestTitle(request)} ${amount}${on}`;
 }
 
 export type RequesterCardAction = "withdraw" | "print_again" | "done" | "ask_again" | "ask_again_with_changes" | "ok";

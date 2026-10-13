@@ -81,4 +81,10 @@ describe("ApprovalsInbox", () => {
     renderInbox(query({ data: undefined, error: { message: "x", status: 0, code: "offline" } }));
     expect(screen.getByText("Couldn't load requests")).toBeTruthy();
   });
+
+  it("names an overpayment refund as such", () => {
+    renderInbox(query({ data: { requests: [approvalRequest({ payload: { scope: "balance", amount: 185 } })], isApprover: true } }));
+    expect(screen.getByText("Refund overpayment ₱185 · #14")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Review refund overpayment ₱185 from Ana" })).toBeTruthy();
+  });
 });

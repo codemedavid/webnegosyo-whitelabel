@@ -1,7 +1,7 @@
 import React, { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { firstName, formatPesoShort, inboxCardLines, kindTitle } from "../../lib/approvals/state";
+import { firstName, formatPesoShort, inboxCardLines, requestTitle } from "../../lib/approvals/state";
 import type { ApprovalRequestView } from "../../lib/approvals/types";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
@@ -23,7 +23,7 @@ interface ApprovalCardProps {
 function ApprovalCardBase({ request, now, onReview }: ApprovalCardProps) {
   const lines = inboxCardLines(request, now);
   const requester = request.requestedByName ?? "Staff";
-  const reviewLabel = `Review ${kindTitle(request.kind).toLowerCase()} ${formatPesoShort(request.amount)} from ${firstName(request.requestedByName)}`;
+  const reviewLabel = `Review ${requestTitle(request).toLowerCase()} ${formatPesoShort(request.amount)} from ${firstName(request.requestedByName)}`;
 
   return (
     <View style={[styles.card, lines.overLimitNote ? styles.cardMuted : null]}>

@@ -1,4 +1,5 @@
 import {
+  refusalCopy,
   checkDraft,
   draftSignature,
   keyForSend,
@@ -158,5 +159,39 @@ describe("retry keys (one request per intent, never one key for two bodies)", ()
     expect(draftSignature(amount, ORDER)).not.toBe(draftSignature(withAmountText(amount, "90"), ORDER));
     expect(draftSignature(items, ORDER)).not.toBe(draftSignature(withNote(items, "x"), ORDER));
     expect(draftSignature(items, ORDER)).not.toBe(draftSignature(items, { ...ORDER, orderId: "other" }));
+  });
+});
+
+describe("overpayment refund drafts (scope 'balance')", () => {
+  const overpaid = { ...ORDER, refundable: 185, items: [] };
+
+  test("sends the exact overpayment as a balance refund, no items, no stock switch", () => {
+    const draft = withReason(initialDraft("refund", { scope: "balance", amount: 185 }), "charged_twice");
+    expect(draftAmount(draft, overpaid)).toBe(185);
+    expect(checkDraft(draft, overpaid, KEY)).toEqual({
+      ok: true,
+      amount: 185,
+      input: { kind: "refund", orderId: ORDER.orderId, payload: { scope: "balance", amount: 185 }, reasonCode: "charged_twice", idempotencyKey: KEY },
+    });
+  });
+
+  test("never asks for more than was overpaid", () => {
+    const draft = withReason(withAmountText(initialDraft("refund", { scope: "balance", amount: 185 }), "200"), "charged_twice");
+    expect(checkDraft(draft, overpaid, KEY)).toEqual({ ok: false, hint: "That's more than was overpaid. ₱185 can be given back." });
+  });
+
+  test("the scope cannot be switched away from the overpayment", () => {
+    expect(withScope(initialDraft("refund", { scope: "balance", amount: 185 }), "items").scope).toBe("balance");
+  });
+});
+
+describe("refusalCopy", () => {
+  test("balance refusals in plain words; other refusals keep the server's", () => {
+    expect(refusalCopy("nothing_to_refund", "balance", "x")).toBe("Nothing is overpaid on this order any more, so there is nothing to give back.");
+    expect(refusalCopy("over_refund", "balance", "x")).toBe("That's more than was overpaid on this order. Check the order, then ask again.");
+    expect(refusalCopy("no_open_shift", "balance", "x")).toBe(
+      "Open your shift first. Part of this refund is cash and comes out of your drawer.",
+    );
+    expect(refusalCopy("over_refund", "amount", "That is more than was paid (₱480).")).toBe("That is more than was paid (₱480).");
   });
 });

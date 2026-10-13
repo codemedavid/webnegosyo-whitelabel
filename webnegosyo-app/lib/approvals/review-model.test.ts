@@ -173,3 +173,14 @@ describe("pushIntentStep (Approve / Decline tapped on a push)", () => {
     expect(pushIntentStep(approvalRequest(), { isFresh: true, isOffline: true })).toBe("drop");
   });
 });
+
+describe("overpayment refund (scope 'balance') on the review screen", () => {
+  const balance = approvalRequest({ payload: { scope: "balance", amount: 185, allocation: [{ methodName: "Cash", amount: 185, isCash: true }] } });
+
+  test("is titled as an overpayment, moves no items or stock, and says the total stays", () => {
+    expect(reviewTitle("refund", balance)).toBe("Overpayment refund");
+    expect(reviewItemLines(balance)).toEqual([]);
+    expect(stockLine(balance)).toBeNull();
+    expect(reviewSignals(balance, FIXTURE_NOW)).toContainEqual({ tone: "ok", text: "The order's total stays as it is" });
+  });
+});

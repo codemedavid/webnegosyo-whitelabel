@@ -50,14 +50,18 @@ function fakeApi(create: ApprovalsApi["create"]): ApprovalsApi {
   };
 }
 
-function renderSheet(api: ApprovalsApi, options: { isOffline?: boolean; permissions?: string[] } = {}) {
+function renderSheet(
+  api: ApprovalsApi,
+  options: { isOffline?: boolean; permissions?: string[]; seed?: { scope?: "balance" | "amount"; amount?: number }; refundable?: number } = {},
+) {
   const onSent = jest.fn();
   render(
     <QueryClientProvider client={client}>
       <RequestSheet
         visible
         kind="refund"
-        order={ORDER}
+        order={options.refundable !== undefined ? { ...ORDER, refundable: options.refundable, items: [] } : ORDER}
+        seed={options.seed}
         tenantId="t-1"
         user={{ role: "admin", isOwner: false, permissions: options.permissions ?? ["pos"] }}
         userId="u-ana"
@@ -163,5 +167,17 @@ describe("RequestSheet", () => {
     expect(await screen.findByText("This request was already sent with different details. Check the order for its status before sending again.")).toBeTruthy();
     await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱185" })));
     expect(create.mock.calls[1][1].idempotencyKey).not.toBe(create.mock.calls[0][1].idempotencyKey);
+  });
+
+  it("an overpayment refund shows the exact amount and explains its refusals plainly", async () => {
+    const create = jest.fn().mockResolvedValue({ ok: false, status: 422, error: "nothing_to_refund", code: "nothing_to_refund" });
+    renderSheet(fakeApi(create), { seed: { scope: "balance", amount: 60 }, refundable: 60 });
+    expect(screen.getByText("Overpayment to give back: ₱60")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Refund Items" })).toBeNull();
+    expect(screen.queryByLabelText("Put back in stock")).toBeNull();
+    fireEvent.press(screen.getByRole("radio", { name: "Reason Charged twice" }));
+    await act(async () => fireEvent.press(await screen.findByRole("button", { name: "Send for approval · ₱60" })));
+    expect(create.mock.calls[0][1]).toMatchObject({ payload: { scope: "balance", amount: 60 } });
+    expect(await screen.findByText("Nothing is overpaid on this order any more, so there is nothing to give back.")).toBeTruthy();
   });
 });

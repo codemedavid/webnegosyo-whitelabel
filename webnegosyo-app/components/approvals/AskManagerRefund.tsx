@@ -32,7 +32,8 @@ interface AskManagerRefundProps {
  * for the refund as an amount. Decided BEFORE the edit is saved (the edit is
  * then not saved — the approval itself gives the money back and lowers the
  * total), or, after a race where the database refused the refund row of a
- * saved edit, a one-tap ask for exactly that amount. Either way the register
+ * saved edit, a one-tap ask for exactly that overpayment (scope 'balance':
+ * no revision, the already-lowered total is left alone). Either way the register
  * is cleared and the order screen — where the answer arrives — opens.
  * Platform stores only.
  */
@@ -62,11 +63,20 @@ export function AskManagerRefund({ mode, orderId, outletId, amount, paidTotal }:
         <RequestSheet
           visible
           kind="refund"
-          order={{ orderId, orderLabel: null, refundable: paidTotal, paymentLabel: null, createdAt: null, outletId, items: [] }}
-          seed={{ scope: "amount", amount }}
+          order={{
+            orderId,
+            orderLabel: null,
+            // After a saved edit the order is OVERPAID by exactly `amount`: that is all that can go back.
+            refundable: mode === "after_saved_edit" ? amount : paidTotal,
+            paymentLabel: null,
+            createdAt: null,
+            outletId,
+            items: [],
+          }}
+          seed={{ scope: mode === "after_saved_edit" ? "balance" : "amount", amount }}
           contextNote={
             mode === "after_saved_edit"
-              ? `Your edit is saved. This asks a manager to give back ${formatPesoShort(amount)}.`
+              ? `Your edit is saved. This asks a manager to give back the ${formatPesoShort(amount)} overpayment. The order's total stays as it is.`
               : `Your item changes are not saved. When a manager approves, ${formatPesoShort(amount)} goes back and the order's total drops by the same amount.`
           }
           tenantId={tenantId}
