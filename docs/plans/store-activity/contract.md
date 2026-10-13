@@ -154,3 +154,34 @@ order_refunds (R-0001 per tenant), approval_rules (one row per tenant). Routes: 
 GET /api/approvals, POST /api/approvals/[id]/decision — bearer via withRequestBearer + requireBearerStoreCaller.
 Note: another session is building `merchant_notifications` (bell inbox + /api/push/notify-merchant) — Phase 3
 push should feed THAT inbox once it lands on main, not build a second bell.
+
+### Phase 3 implementation notes (2026-10-12, Phase 3 server builder)
+
+- Migration 20261012160000_approvals.sql; probe supabase/probes/20261012160000_approvals_probe.sql.
+  Tables approval_rules / approval_requests / order_refunds (+ order_refund_counters) have NO
+  INSERT/UPDATE grant for anon, authenticated or service_role: every write is a SECURITY DEFINER
+  function executable by service_role only, behind the /api/approvals/** routes. SELECT: requester +
+  approvers in reach (approval_requests, also in supabase_realtime); order viewers (order_refunds);
+  store accounts (approval_rules). A guard trigger enforces the state machine and identity columns.
+- Orders referenced by TEXT id, no FK (survive order deletion). Platform backend only for order kinds;
+  others get 409 "Refunds for this store type are coming soon." (code backend_unsupported).
+- Direct (within the caller's own limit) = request inserted `approved` + `is_direct` and executed in the
+  same transaction; approve = transition + execution in the same transaction. Business refusals come back
+  as {ok:false, code, message}; a failed execution leaves status `failed` with `error`.
+- Money: refunds split across the order's tenders newest-charge-first, one order_payments kind='refund'
+  row per tender, recorded_by = the REQUESTER. A cash part needs the requester's open shift at the
+  order's branch (else no_open_shift). An order paid by status with no ledger rows gets an opening charge
+  (at the sale's time, by the POS cashier) first. Items/amount scope reduce orders.total via an
+  order_revisions row; whole/cancel_paid cancel the order and release voucher redemptions.
+- Activity: ONE refund.issued per order_refunds row (actor = requester, approved_by = approver, key
+  order_refunds:<id>); approval.* rows keyed approval_requests:<id>:<kind> (direct actions write none);
+  rules.changed with before/after. store_activity_on_order_payments / _on_order_revisions (Phase 1
+  wrappers) now skip payment/revision rows that belong to an order_refunds row; a whole refund pre-writes
+  its order.cancelled row under the orders trigger's own event key (approver named, no
+  paid_then_cancelled flag). Writer approvals_activity() exists because store_activity_record has no
+  approved_by parameter.
+- platform_device_tokens.channels text[] (default '{}'): the app must write ['approvals'] once it creates
+  that Android channel; until then pushes use the default channel.
+- Server-side facts only: the discount percent is computed by approval_quote (amountOff ÷ order total);
+  a requester must reach the order's branch (approval_user_reaches); an approver's cap applies to
+  decline too (design-spec §3.7: over-limit requests are read-only, the owner answers them).
