@@ -1,4 +1,4 @@
-import { isRefundNeedsApprovalError, REFUND_NEEDS_APPROVAL_MESSAGE, refundGate } from "./refund-gate";
+import { isRefundNeedsApprovalError, ledgerRefunded, REFUND_NEEDS_APPROVAL_MESSAGE, refundGate } from "./refund-gate";
 import type { ApprovalRules } from "./types";
 
 const RULES: ApprovalRules = {
@@ -15,7 +15,8 @@ const TODAY = "2026-10-12T01:00:00.000Z";
 const refunder = { role: "admin", isOwner: false, permissions: ["pos", "orders", "order_refund"] };
 const cashier = { role: "admin", isOwner: false, permissions: ["pos"] };
 const owner = { role: "admin", isOwner: true, permissions: null };
-const base = { amount: 185, now: NOW, orderCreatedAt: TODAY, isApprovalsStore: true };
+const base = { amount: 185, orderRefunded: 0, now: NOW, orderCreatedAt: TODAY, isApprovalsStore: true };
+const manager = { role: "admin", isOwner: false, permissions: ["orders", "approve_requests"] };
 
 describe("refundGate (mirrors the server's direct-refund limit)", () => {
   test("within the staff cap on a same-day order: allowed", () => {
@@ -45,6 +46,29 @@ describe("refundGate (mirrors the server's direct-refund limit)", () => {
       allowed: false,
       reason: "You do not have permission to issue refunds.",
     });
+  });
+});
+
+describe("cumulative per order (mirrors refundWithinOwnLimit)", () => {
+  const known = { status: "known" as const, rules: RULES };
+
+  test("the order's earlier refunds count toward the staff cap", () => {
+    expect(refundGate({ ...base, amount: 150, orderRefunded: 100, user: refunder, rules: known })).toEqual({ allowed: true });
+    expect(refundGate({ ...base, amount: 150, orderRefunded: 200, user: refunder, rules: known })).toMatchObject({ needsApproval: true });
+  });
+
+  test("an approver acts up to the manager cap, counting the order's refunds, on any day", () => {
+    const old = "2026-10-01T03:00:00.000Z";
+    expect(refundGate({ ...base, amount: 600, orderRefunded: 400, orderCreatedAt: old, user: manager, rules: known })).toEqual({ allowed: true });
+    expect(refundGate({ ...base, amount: 600, orderRefunded: 401, orderCreatedAt: old, user: manager, rules: known })).toMatchObject({ needsApproval: true });
+  });
+
+  test("the order's refunds so far come from its ledger", () => {
+    expect(ledgerRefunded([{ kind: "charge", amount: 480 }, { kind: "refund", amount: 60.1 }, { kind: "refund", amount: 39.9 }])).toBe(100);
+  });
+
+  test("the shared message is the server's own", () => {
+    expect(REFUND_NEEDS_APPROVAL_MESSAGE).toBe("This refund needs approval. Ask a manager to approve it.");
   });
 });
 

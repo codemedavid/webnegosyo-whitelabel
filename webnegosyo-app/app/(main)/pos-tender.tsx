@@ -21,6 +21,7 @@ import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
 import { isApprovalsStore } from "../../lib/approvals/access";
 import {
   isRefundNeedsApprovalError,
+  ledgerRefunded,
   refundGate as decideRefundGate,
   REFUND_NEEDS_APPROVAL_MESSAGE,
   type RulesState,
@@ -93,6 +94,8 @@ const updatePaymentStatusRef =
   "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
 const reviseOrderRef = "orders:reviseOrder" as unknown as FunctionReference<"mutation">;
 const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
+
+const REFUND_SAVED_NEEDS_APPROVAL_TITLE = "The edit was saved but the refund needs approval";
 
 const TENDER_MODE_OPTIONS = [
   { label: "Pay now", value: "now" as TenderMode },
@@ -242,6 +245,7 @@ export default function PosTenderScreen() {
   const refundGate = decideRefundGate({
     user: { role, isOwner, permissions },
     amount: amountDue,
+    orderRefunded: ledgerRefunded(editContext?.payments ?? []),
     rules: rulesState,
     now: new Date(),
     orderCreatedAt: editContext?.orderCreatedAt ?? null,
@@ -249,10 +253,10 @@ export default function PosTenderScreen() {
   });
   // The server refused the refund row after the bill was saved (rules changed
   // or could not be checked): say so plainly instead of a generic error.
-  const [refundRefusedAfterSave, setRefundRefusedAfterSave] = useState(false);
+  const [refundRefusedAfterSave, setRefundRefusedAfterSave] = useState<{ amount: number } | null>(null);
   // This tab stays mounted between sales: a refusal belongs to one edit only.
   const editOrderId = editContext?.orderId ?? null;
-  useEffect(() => setRefundRefusedAfterSave(false), [editOrderId]);
+  useEffect(() => setRefundRefusedAfterSave(null), [editOrderId]);
 
   // Cached per order type and warmed by the register while items are still
   // being added, so Charge opens on the amount due rather than a spinner.
@@ -339,6 +343,13 @@ export default function PosTenderScreen() {
     }
     if (!hasOrderBackend) {
       Alert.alert("Not connected", "This store's order backend is not configured.");
+      return;
+    }
+    // Decided BEFORE the revision is saved: a refund beyond this person's own
+    // limit goes to a manager (AskManagerRefund) and the edit is not saved,
+    // never a lowered bill with no refund behind it.
+    if (edit.intent === "refund" && !refundGate.allowed) {
+      Alert.alert("Refund needs approval", refundGate.reason ?? REFUND_NEEDS_APPROVAL_MESSAGE);
       return;
     }
 
@@ -446,7 +457,7 @@ export default function PosTenderScreen() {
     } catch (err) {
       if (edit.intent === "refund" && isRefundNeedsApprovalError(err)) {
         // The bill is already rewritten; only the money did not move.
-        setRefundRefusedAfterSave(true);
+        setRefundRefusedAfterSave({ amount: Math.abs(edit.balance) });
         setIsCompleting(false);
         return;
       }
@@ -462,6 +473,8 @@ export default function PosTenderScreen() {
     edit,
     isCompleting,
     hasOrderBackend,
+    refundGate.allowed,
+    refundGate.reason,
     tenantId,
     lines,
     editReason,
@@ -789,24 +802,31 @@ export default function PosTenderScreen() {
           </Text>
         )}
 
-        {/* Over the cashier's own refund limit: ask a manager instead of a dead end (approvals). */}
+        {/* Over the cashier's own refund limit: ask a manager BEFORE saving (approvals). */}
         {isRefund && refundGate.needsApproval && !refundRefusedAfterSave && editContext && (
           <AskManagerRefund
+            mode="instead_of_edit"
             orderId={editContext.orderId}
             outletId={editContext.outletId ?? null}
             amount={amountDue}
             paidTotal={editContext.originalTotal}
           />
         )}
+        {/* A race: the edit saved, then the database refused its refund row. */}
         {refundRefusedAfterSave && editContext && (
           <View style={styles.refusedNotice} accessibilityRole="alert">
-            <Text style={styles.refusedTitle}>{REFUND_NEEDS_APPROVAL_MESSAGE}</Text>
-            <Text style={styles.editMeta}>
-              The order was updated, but no money was given back. A manager can finish the refund from the order.
-            </Text>
+            <Text style={styles.refusedTitle}>{REFUND_SAVED_NEEDS_APPROVAL_TITLE}</Text>
+            <Text style={styles.editMeta}>No money was given back yet. Ask a manager for the exact amount.</Text>
+            <AskManagerRefund
+              mode="after_saved_edit"
+              orderId={editContext.orderId}
+              outletId={editContext.outletId ?? null}
+              amount={refundRefusedAfterSave.amount}
+              paidTotal={editContext.originalTotal}
+            />
             <Button
               label="Open the order"
-              tone="secondary"
+              tone="ghost"
               onPress={() => {
                 const orderId = editContext.orderId;
                 endEdit();

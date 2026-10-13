@@ -69,6 +69,16 @@ describe("approval doors", () => {
     expect(tender).toMatch(/refundGate\.needsApproval/);
     expect(tender).toMatch(/isRefundNeedsApprovalError\(err\)/);
     expect(tender).not.toMatch(/canIssueRefund\(/);
+    // The order's refunds so far count toward the limit (refundWithinOwnLimit).
+    expect(tender).toMatch(/orderRefunded: ledgerRefunded\(/);
+    // Decided before the revision is saved…
+    const save = tender.slice(tender.indexOf("const handleSaveEdit"));
+    expect(save.indexOf('edit.intent === "refund" && !refundGate.allowed')).toBeGreaterThan(-1);
+    expect(save.indexOf('edit.intent === "refund" && !refundGate.allowed')).toBeLessThan(save.indexOf("await reviseOrder("));
+    // …and a refusal after a saved edit offers the exact-amount ask.
+    expect(tender).toMatch(/The edit was saved but the refund needs approval/);
+    expect(tender).toMatch(/mode="after_saved_edit"/);
+    expect(tender).toMatch(/mode="instead_of_edit"/);
   });
 
   it("pushes route through the one router and the device reports its channels", () => {

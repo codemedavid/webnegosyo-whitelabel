@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 
 import { canAskForApproval, isApprovalsStore } from "../../lib/approvals/access";
+import { formatPesoShort } from "../../lib/approvals/state";
 import { useConnectivity } from "../../lib/offline/use-connectivity";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { useAuthStore } from "../../stores/auth-store";
@@ -10,7 +11,14 @@ import { spacing } from "../../theme/colors";
 import { Button } from "../Button";
 import { RequestSheet } from "./RequestSheet";
 
+export type AskManagerRefundMode =
+  /** Decided before saving: the edit is NOT saved; the approval refunds the amount and lowers the total. */
+  | "instead_of_edit"
+  /** The edit was saved but the database refused the refund row: ask for exactly that amount. */
+  | "after_saved_edit";
+
 interface AskManagerRefundProps {
+  mode: AskManagerRefundMode;
   orderId: string;
   outletId: string | null;
   /** The refund the edit came to. */
@@ -20,12 +28,15 @@ interface AskManagerRefundProps {
 }
 
 /**
- * The register's refund-blocked state (no "Refunds" grant): instead of a
- * dead end, ask a manager. The request is for the difference as an amount;
- * the edit itself is not saved, so the register is cleared and the order
- * screen — where the answer arrives — opens. Platform stores only.
+ * The register's refund-blocked state: instead of a dead end, ask a manager
+ * for the refund as an amount. Decided BEFORE the edit is saved (the edit is
+ * then not saved — the approval itself gives the money back and lowers the
+ * total), or, after a race where the database refused the refund row of a
+ * saved edit, a one-tap ask for exactly that amount. Either way the register
+ * is cleared and the order screen — where the answer arrives — opens.
+ * Platform stores only.
  */
-export function AskManagerRefund({ orderId, outletId, amount, paidTotal }: AskManagerRefundProps) {
+export function AskManagerRefund({ mode, orderId, outletId, amount, paidTotal }: AskManagerRefundProps) {
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const userId = useAuthStore((s) => s.userId);
   const role = useAuthStore((s) => s.role);
@@ -41,14 +52,23 @@ export function AskManagerRefund({ orderId, outletId, amount, paidTotal }: AskMa
 
   return (
     <View style={styles.wrap}>
-      <Button label="Ask a manager to approve" icon="send" tone="secondary" onPress={() => setOpen(true)} />
+      <Button
+        label={mode === "after_saved_edit" ? `Ask a manager for ${formatPesoShort(amount)}` : "Ask a manager to approve"}
+        icon="send"
+        tone={mode === "after_saved_edit" ? "primary" : "secondary"}
+        onPress={() => setOpen(true)}
+      />
       {isOpen ? (
         <RequestSheet
           visible
           kind="refund"
           order={{ orderId, orderLabel: null, refundable: paidTotal, paymentLabel: null, createdAt: null, outletId, items: [] }}
           seed={{ scope: "amount", amount }}
-          contextNote="Your item changes are not saved. This asks for the money back as an amount; the order keeps its items."
+          contextNote={
+            mode === "after_saved_edit"
+              ? `Your edit is saved. This asks a manager to give back ${formatPesoShort(amount)}.`
+              : `Your item changes are not saved. When a manager approves, ${formatPesoShort(amount)} goes back and the order's total drops by the same amount.`
+          }
           tenantId={tenantId}
           user={user}
           userId={userId}
