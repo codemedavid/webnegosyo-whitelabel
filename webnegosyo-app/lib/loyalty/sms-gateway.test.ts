@@ -56,13 +56,13 @@ describe("runGatewayLoop", () => {
 
 describe("gatewayStatusText", () => {
   test("idle gateway says it is ready", () => {
-    expect(gatewayStatusText({ sentToday: 0, lastSentAt: null })).toBe("Ready to send reward codes");
+    expect(gatewayStatusText({ sentToday: 0, lastSentAt: null })).toBe("Ready to send texts");
   });
   test("counts codes with the last send time", () => {
     const at = new Date(2026, 9, 4, 15, 41).getTime();
-    expect(gatewayStatusText({ sentToday: 1, lastSentAt: at })).toBe("1 code sent today · last at 3:41 PM");
+    expect(gatewayStatusText({ sentToday: 1, lastSentAt: at })).toBe("1 text sent today · last at 3:41 PM");
     expect(gatewayStatusText({ sentToday: 3, lastSentAt: new Date(2026, 9, 4, 0, 5).getTime() }))
-      .toBe("3 codes sent today · last at 12:05 AM");
+      .toBe("3 texts sent today · last at 12:05 AM");
   });
 });
 

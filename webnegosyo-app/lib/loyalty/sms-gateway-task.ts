@@ -25,7 +25,7 @@ import {
 
 export const LOYALTY_SMS_GATEWAY_TASK = "LoyaltySmsGateway";
 /** Shown in the gateway notification once polls keep failing. */
-export const GATEWAY_TROUBLE_TEXT = "Having trouble sending codes — check signal, load and internet";
+export const GATEWAY_TROUBLE_TEXT = "Having trouble sending texts — check signal, load and internet";
 /** Consecutive failed polls before the notification says so (~1 minute at backoff). */
 const TROUBLE_AFTER_FAILURES = 3;
 const FAILED_RESULTS: ReadonlySet<WorkerRunResult> = new Set(["unavailable", "uncertain", "sent_unconfirmed", "recovery_required"]);

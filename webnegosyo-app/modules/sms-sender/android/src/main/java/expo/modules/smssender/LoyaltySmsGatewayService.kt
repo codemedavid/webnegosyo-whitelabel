@@ -15,7 +15,7 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
 
 /**
- * "Use this phone as an SMS gateway" for loyalty reward codes.
+ * "Use this phone as an SMS gateway" for reward codes and the store's automated texts.
  *
  * A foreground service, so Android keeps the process (and its network access
  * and partial wake lock) alive through screen-off and Doze, with the app
@@ -122,7 +122,7 @@ class LoyaltySmsGatewayService : HeadlessJsTaskService() {
       // LOW: visible and persistent, never a sound — the orders channel owns
       // the ringtone that means a customer is waiting.
       val channel = NotificationChannel(CHANNEL_ID, "SMS gateway", NotificationManager.IMPORTANCE_LOW).apply {
-        description = "Shown while this phone sends loyalty reward codes for the store."
+        description = "Shown while this phone sends the store's texts: reward codes and automated texts."
         setShowBadge(false)
       }
       manager.createNotificationChannel(channel)

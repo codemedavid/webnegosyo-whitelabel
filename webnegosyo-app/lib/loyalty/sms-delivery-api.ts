@@ -48,7 +48,8 @@ function deadline(ms: number) {
   return { promise, cancel: () => clearTimeout(timer) };
 }
 
-async function send(
+/** Bounded authenticated POST/DELETE to a web route; shared with the automated-texts port. */
+export async function send(
   deps: DeliveryTransportDeps,
   method: "POST" | "DELETE",
   path: string,

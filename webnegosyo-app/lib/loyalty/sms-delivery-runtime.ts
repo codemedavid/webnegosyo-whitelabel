@@ -20,6 +20,9 @@ import { createLoyaltySmsDeliveryApi, type DeliveryTransportDeps } from "./sms-d
 import { createLoyaltySmsTransport } from "./sms-transport";
 import { createSmsDeliveryJournal } from "./sms-journal";
 import { createLoyaltySmsWorker } from "./sms-worker";
+import { createCombinedSender } from "../sms-automations/combined-sender";
+import { createOutboxApi } from "../sms-automations/outbox-api";
+import { createOutboxWorker } from "../sms-automations/outbox-worker";
 import { resolveGatewayNative, type SmsGatewayNative } from "./sms-gateway";
 
 type Scope = { tenantId: string; actorId: string };
@@ -71,12 +74,18 @@ export function createDeliveryWorker(
     native: SmsSenderModule as SmsNativeClient | null,
     permissions: androidSmsPermissions,
   }, { allowPrompt });
-  const journal = createSmsDeliveryJournal(AsyncStorage, {
-    tenantId: scope.tenantId,
-    actorId: scope.actorId,
-    deviceId: enrollment.deviceId,
+  const journalScope = { tenantId: scope.tenantId, actorId: scope.actorId, deviceId: enrollment.deviceId };
+  const journal = createSmsDeliveryJournal(AsyncStorage, journalScope);
+  const codes = createLoyaltySmsWorker({ api, transport, journal, canSend, now: () => Date.now() });
+  // The same enrolled phone also sends the store's automated texts, after any waiting code.
+  const texts = createOutboxWorker({
+    api: createOutboxApi(deliveryTransportDeps(), { tenantId: scope.tenantId, device: enrollment }, { onRevoked }),
+    transport,
+    journal: createSmsDeliveryJournal(AsyncStorage, journalScope, "sms.outbox.ack.v1"),
+    canSend,
+    now: () => Date.now(),
   });
-  return createLoyaltySmsWorker({ api, transport, journal, canSend, now: () => Date.now() });
+  return createCombinedSender({ codes, texts, now: () => Date.now() });
 }
 
 /** The installed binary's SMS gateway service, or null (iOS, or an older APK). */
