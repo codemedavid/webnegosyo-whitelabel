@@ -144,6 +144,7 @@ possible follow-up.
 - **Quiet hours** 9pm–8am Manila: messages are **held** until morning.
 - **Daily limit** per store (default 100). Pacing is ~25 per 30 min, because Android limits a non-default SMS app to about 30 texts per 30 minutes per phone. Every backlog prompt shows an honest ETA.
 - **Opt-out line** "Reply STOP to stop texts" is appended to marketing recipes. Phase 5 makes a STOP reply actually opt the guest out; until then the line is off by default so we don't promise something we can't do.
+  - **Revised 2026-10-14:** a STOP *reply* needs Android's RECEIVE_SMS, which the app deliberately does not request (`webnegosyo-app/plugins/withSmsPermissions.js`: it makes the app a restricted-permission app on every channel). The opt-out is planned as a one-tap **"Stop texts" link** instead (short link → web page → suppression), which needs no permission and works on every phone. Needs the owner's OK before building.
 - **Review link:** a new store setting (Google review URL / Facebook page), offered on first use of the review recipe.
 
 ## 5. Architecture
@@ -231,7 +232,7 @@ customers / orders / loyalty ──► Planner ──► sms_outbox ──► cl
 | 2 | Sender: gateway second queue, decoupled enrollment, sender card | EAS binary |
 | 3 | Texts hub, automations list, sentence editor, backlog sheet, Activity, Texting rules, review-link setting, campaign cleanup | EAS binary |
 | 4 | AI: Owl tools, MCP, Write-it-for-me, onboarding automations | web deploy (+ app mirror) |
-| 5 | Results (sent / skipped / came back / ₱ ordered after) + short links with click counts; **inbound STOP** (native SMS receiver → suppression) | web + EAS binary |
+| 5 | Results (sent / skipped / came back / ₱ ordered after) + short links with click counts; opt-out **link** (revised from an inbound STOP receiver — see 4.5) | web |
 | 6 | (optional) Web admin `/admin/texts` with the same screens | web deploy |
 
 **QA after each phase:**
