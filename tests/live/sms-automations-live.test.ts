@@ -90,3 +90,74 @@ liveDescribe('SMS automations dry run (live platform DB, read-only)', () => {
     }
   })
 })
+
+/**
+ * LIVE round trip of the API handlers on a demo store (default: Sample Demo).
+ * Writes automations/settings and deletes everything it created afterwards.
+ *   SMS_AUTOMATIONS_LIVE=1 SMS_AUTOMATIONS_LIVE_DEMO=<tenant id> npx jest tests/live/sms-automations-live.test.ts
+ */
+jest.mock('server-only', () => ({}))
+
+liveDescribe('SMS automations API handlers (live platform DB, demo store)', () => {
+  jest.setTimeout(120_000)
+  const tenantId = process.env.SMS_AUTOMATIONS_LIVE_DEMO ?? '72a2d4c2-a1b7-4afe-a2a2-04ab74c094d2'
+
+  it('saves, previews, refuses what cannot run, and cleans up', async () => {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const reads = await import('@/lib/sms-automations/api/reads')
+    const writes = await import('@/lib/sms-automations/api/writes')
+    const { normalizeDraft } = await import('@/lib/sms-automations/api/schema')
+    const { getRecipe } = await import('@/lib/sms-automations/recipes')
+    const db = createAdminClient()
+
+    const { data: owner } = await db.from('app_users').select('user_id').eq('tenant_id', tenantId).eq('is_owner', true).limit(1).single()
+    const { data: before } = await db.from('sms_automations').select('id').eq('tenant_id', tenantId)
+    const { data: settingsBefore } = await db.from('sms_settings').select('tenant_id').eq('tenant_id', tenantId).maybeSingle()
+    expect(before ?? []).toEqual([]) // a clean demo store; never run this against a store that uses automations
+    const draftOf = (recipe: 'win_back' | 'review_request' | 'loyalty_reward_waiting') => {
+      const result = normalizeDraft({ recipe, messageTemplate: getRecipe(recipe).defaultMessage })
+      if (!result.ok) throw new Error(result.error)
+      return result.draft
+    }
+
+    try {
+      const saved = await writes.saveAutomation(db, tenantId, owner!.user_id, draftOf('win_back'))
+      expect(saved).toMatchObject({ ok: true, value: { created: true } })
+      const again = await writes.saveAutomation(db, tenantId, owner!.user_id, { ...draftOf('win_back'), params: { inactiveDays: 45 } })
+      expect(again).toMatchObject({ ok: true, value: { created: false } })
+      const id = saved.ok ? saved.value.id : ''
+
+      const view = await reads.listAutomationsView(db, tenantId)
+      expect(view.automations).toHaveLength(1)
+      expect(view.automations[0]).toMatchObject({ status: 'off', params: { inactiveDays: 45 }, description: 'Text guests who haven’t ordered in 45 days' })
+      expect(view.recipes).toHaveLength(7)
+      expect(view.sender.enrolled).toBe(0)
+
+      const preview = await writes.previewAutomation(db, tenantId, draftOf('win_back'))
+      expect(preview.audience.withPhone).toBeGreaterThanOrEqual(preview.audience.textable)
+
+      expect(await writes.setAutomationStatus(db, tenantId, id, 'on', true)).toMatchObject({ ok: false, code: 'no_sender' })
+      expect(await writes.runAutomationNow(db, tenantId, id)).toMatchObject({ ok: false, code: 'no_sender' })
+      expect(await writes.setAutomationStatus(db, tenantId, id, 'on', false)).toMatchObject({ ok: true, value: { status: 'on', backlog: null } })
+      expect(await writes.setAutomationStatus(db, tenantId, id, 'off', false)).toMatchObject({ ok: true })
+
+      const review = await writes.saveAutomation(db, tenantId, owner!.user_id, draftOf('review_request'))
+      const reviewId = review.ok ? review.value.id : ''
+      expect(await writes.setAutomationStatus(db, tenantId, reviewId, 'on', false)).toMatchObject({ ok: false, code: 'missing_review_link' })
+      const reward = await writes.saveAutomation(db, tenantId, owner!.user_id, draftOf('loyalty_reward_waiting'))
+      expect(await writes.setAutomationStatus(db, tenantId, reward.ok ? reward.value.id : '', 'on', false)).toMatchObject({ ok: false, code: 'loyalty_off' })
+
+      await writes.saveSettings(db, tenantId, {
+        quietHoursStart: '22:00', quietHoursEnd: '07:00', guestCapDays: 4, dailyLimit: 50, optOutLine: null, reviewUrl: 'https://g.page/r/demo',
+      })
+      expect(await reads.readSettings(db, tenantId)).toMatchObject({ quietHoursStart: '22:00', reviewUrl: 'https://g.page/r/demo' })
+      expect(await writes.setAutomationStatus(db, tenantId, reviewId, 'on', false)).toMatchObject({ ok: true })
+
+      expect((await reads.listActivity(db, tenantId, {})).items).toEqual([])
+      expect(await writes.cancelWaiting(db, tenantId)).toBe(0)
+    } finally {
+      await db.from('sms_automations').delete().eq('tenant_id', tenantId)
+      if (!settingsBefore) await db.from('sms_settings').delete().eq('tenant_id', tenantId)
+    }
+  })
+})

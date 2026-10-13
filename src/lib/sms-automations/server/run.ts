@@ -22,6 +22,8 @@ export interface StoreRunOptions {
   pick: (automation: AutomationRow) => boolean
   /** false = preview: plan and report, queue nothing. */
   enqueue: boolean
+  /** Plan these instead of the stored automations (the editor's unsaved draft). */
+  automations?: readonly AutomationRow[]
   now?: Date
 }
 
@@ -30,6 +32,8 @@ export interface StoreRunResult {
   reports: Map<string, AutomationReport>
   planned: number
   queued: number
+  /** The first planned text, for previews. */
+  sampleBody: string | null
 }
 
 async function insertDrafts(client: SupabaseClient, drafts: readonly OutboxDraft[]): Promise<number> {
@@ -50,19 +54,23 @@ async function insertDrafts(client: SupabaseClient, drafts: readonly OutboxDraft
 
 export async function runStore(client: SupabaseClient, tenantId: string, options: StoreRunOptions): Promise<StoreRunResult> {
   const now = options.now ?? new Date()
-  const automations = (await readAutomations(client, tenantId)).filter(options.pick)
+  const automations = (options.automations ?? await readAutomations(client, tenantId)).filter(options.pick)
   const snapshot = await loadStoreSnapshot(client, tenantId, automations, now)
 
-  const { drafts, reports } = planTexts({
+  const { drafts, reports } = planSnapshot(snapshot, automations, options.mode, now)
+  const queued = options.enqueue && drafts.length > 0 ? await insertDrafts(client, drafts) : 0
+  return { snapshot, reports, planned: drafts.length, queued, sampleBody: drafts[0]?.body ?? null }
+}
+
+/** Plan an already-loaded store (a preview plans one snapshot twice: backlog and fresh). */
+export function planSnapshot(snapshot: StoreSnapshot, automations: readonly AutomationRow[], mode: PlanMode, now: Date) {
+  return planTexts({
     now,
-    mode: options.mode,
+    mode,
     store: snapshot.store,
     settings: snapshot.settings,
     suppressedPhones: snapshot.suppressedPhones,
     history: snapshot.history,
     work: automations.map((automation) => ({ automation, candidates: candidatesFor(automation, snapshot.data, now) })),
   })
-
-  const queued = options.enqueue && drafts.length > 0 ? await insertDrafts(client, drafts) : 0
-  return { snapshot, reports, planned: drafts.length, queued }
 }
