@@ -15,6 +15,10 @@ import { loadStoreSnapshot } from '../server/snapshot'
 import type { AutomationRow, AutomationStatus } from '../types'
 import { readLoyaltyOn, readOutlook, readSender, readSettings } from './reads'
 import type { NormalizedDraft, NormalizedSettings } from './schema'
+import { openRouterChat } from '@/lib/ai/openrouter'
+import { BOOST_AI_FALLBACK_MODEL, BOOST_AI_MODEL } from '@/lib/boost/ai/prompt'
+import { acceptWrittenMessages, buildWritePrompt, type WriteLanguage } from '../write-copy'
+import type { RecipeId } from '../types'
 
 export type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; error: string; code?: string }
 
@@ -155,4 +159,28 @@ export async function cancelWaiting(db: SupabaseClient, tenantId: string, automa
   const { data, error } = await request.select('id')
   if (error) throw new Error(`waiting texts could not be cancelled: ${error.message}`)
   return data?.length ?? 0
+}
+
+const WRITE_TIMEOUT_MS = 20_000
+const WRITE_MAX_TOKENS = 600
+
+/** "Write it for me": up to three messages that passed the gate in write-copy.ts. */
+export async function writeMessages(
+  db: SupabaseClient, tenantId: string, recipe: RecipeId, language: WriteLanguage,
+): Promise<Outcome<{ messages: string[] }>> {
+  const { data, error } = await db.from('tenants').select('name').eq('id', tenantId).maybeSingle()
+  if (error) throw new Error(`store: ${error.message}`)
+  const storeName = (data as { name?: string } | null)?.name ?? 'our store'
+  const answer = await openRouterChat({
+    model: BOOST_AI_MODEL,
+    fallbackModel: BOOST_AI_FALLBACK_MODEL,
+    messages: buildWritePrompt({ recipe, language, storeName }),
+    maxTokens: WRITE_MAX_TOKENS,
+    temperature: 0.8,
+    timeoutMs: WRITE_TIMEOUT_MS,
+    title: 'SMS automation copy',
+  })
+  const messages = acceptWrittenMessages(answer.content, recipe)
+  if (messages.length === 0) return refuse(502, 'Couldn’t write one that fits the rules this time. Try again.', 'write_failed')
+  return { ok: true, value: { messages } }
 }

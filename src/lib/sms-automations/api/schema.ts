@@ -59,6 +59,7 @@ const requestSchema = z.discriminatedUnion('action', [
   }),
   z.strictObject({ action: z.literal('preview'), tenantId, automation: draftSchema }),
   z.strictObject({ action: z.literal('run_now'), tenantId, automationId: z.uuid() }),
+  z.strictObject({ action: z.literal('write'), tenantId, recipe: z.enum(RECIPE_IDS), language: z.enum(['en', 'tl']) }),
   z.strictObject({ action: z.literal('save_settings'), tenantId, settings: settingsSchema }),
   z.strictObject({ action: z.literal('cancel_waiting'), tenantId, automationId: z.uuid().optional() }),
   z.strictObject({

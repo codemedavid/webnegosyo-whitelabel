@@ -14,13 +14,15 @@ import { hasPermission } from '@/lib/staff-permissions'
 import { authenticateMerchant, readBody, respond, unavailable } from '@/lib/loyalty/merchant-http'
 import { listActivity, listAutomationsView } from './reads'
 import { normalizeDraft, normalizeSettings, parseAutomationRequest, type AutomationRequest } from './schema'
-import { cancelWaiting, previewAutomation, runAutomationNow, saveAutomation, saveSettings, setAutomationStatus, type Outcome } from './writes'
+import { cancelWaiting, previewAutomation, runAutomationNow, saveAutomation, saveSettings, setAutomationStatus, writeMessages, type Outcome } from './writes'
 
 const log = createLogger('[SMS Automations]', 'DEBUG_SMS_AUTOMATIONS')
 const UNAVAILABLE = 'Texts could not be loaded. Try again.'
 /** Previews and runs read a whole store; this is a per-instance brake, not a quota. */
 const HEAVY_ACTIONS = new Set(['preview', 'run_now', 'set_status'])
 const HEAVY_LIMIT = { maxRequests: 30, windowMs: 60_000 }
+/** Each "Write it for me" is a paid model call. */
+const WRITE_LIMIT = { maxRequests: 6, windowMs: 60_000 }
 
 type Db = ReturnType<typeof createAdminClient>
 
@@ -57,6 +59,8 @@ async function dispatch(db: Db, request: AutomationRequest, actorId: string): Pr
       await saveSettings(db, tenantId, settings.settings)
       return respond({ success: true, settings: settings.settings }, 200)
     }
+    case 'write':
+      return fromOutcome(await writeMessages(db, tenantId, request.recipe, request.language))
     case 'cancel_waiting':
       return respond({ success: true, cancelled: await cancelWaiting(db, tenantId, request.automationId) }, 200)
   }
@@ -75,6 +79,9 @@ export async function handleSmsAutomations(request: NextRequest): Promise<NextRe
   if (HEAVY_ACTIONS.has(parsed.data.action)
     && !checkRateLimit(`sms-automations:${auth.userId}`, HEAVY_LIMIT).allowed) {
     return respond({ error: 'Too many requests. Wait a minute and try again.' }, 429)
+  }
+  if (parsed.data.action === 'write' && !checkRateLimit(`sms-automations-write:${auth.userId}`, WRITE_LIMIT).allowed) {
+    return respond({ error: 'That’s a lot of drafts — wait a minute and try again.' }, 429)
   }
 
   try {

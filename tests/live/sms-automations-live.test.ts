@@ -161,3 +161,17 @@ liveDescribe('SMS automations API handlers (live platform DB, demo store)', () =
     }
   })
 })
+
+liveDescribe('SMS automations "Write it for me" (live OpenRouter)', () => {
+  jest.setTimeout(60_000)
+  it('returns messages that passed the gate', async () => {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { writeMessages } = await import('@/lib/sms-automations/api/writes')
+    const tenantId = process.env.SMS_AUTOMATIONS_LIVE_DEMO ?? '72a2d4c2-a1b7-4afe-a2a2-04ab74c094d2'
+    for (const [recipe, language] of [['win_back', 'tl'], ['review_request', 'en']] as const) {
+      const result = await writeMessages(createAdminClient(), tenantId, recipe, language)
+      process.stdout.write(`\n${recipe}/${language}: ${JSON.stringify(result)}\n`)
+      expect(result.ok).toBe(true)
+    }
+  })
+})
