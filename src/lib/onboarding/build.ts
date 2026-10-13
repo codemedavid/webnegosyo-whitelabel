@@ -26,6 +26,7 @@ import { applyLaunchHero, chooseLaunchDesign, launchHeroInput, readStoreFacts } 
 import { applyLaunchBoost } from './boost-autopilot'
 import { launchStarterLoyalty } from './launch-loyalty'
 import { draftLaunchCampaigns } from './launch-campaigns'
+import { draftLaunchAutomations } from './launch-automations'
 import { launchFromSetupLink } from './buyer-launch'
 import { menuReadKey, usableMenuRead } from './menu-read'
 import { recordOnboardingEvent } from './events'
@@ -338,11 +339,15 @@ async function loyaltyStep(build: BuildContext): Promise<StepOutcome> {
  */
 async function campaignsStep(build: BuildContext, summary: LaunchBuildSummary): Promise<StepOutcome> {
   try {
-    const result = await draftLaunchCampaigns(build.admin as unknown as SupabaseClient, build.tenantId, {
+    const admin = build.admin as unknown as SupabaseClient
+    // Automations first: the reveal lists LAUNCH_CAMPAIGNS in this order.
+    const automations = await draftLaunchAutomations(admin, build.tenantId, {
       rewardLabel: summary.loyalty?.rewardLabel ?? null,
       threshold: summary.loyalty?.threshold ?? null,
     })
-    return { status: 'done', detail: `${result.drafted} texts ready to turn on`, summary: { campaigns: { drafted: result.drafted } } }
+    const campaigns = await draftLaunchCampaigns(admin, build.tenantId)
+    const drafted = automations.drafted + campaigns.drafted
+    return { status: 'done', detail: `${drafted} texts ready to turn on`, summary: { campaigns: { drafted } } }
   } catch (error) {
     console.error('[onboarding] text campaigns not drafted', { tenantId: build.tenantId, message: error instanceof Error ? error.message : String(error) })
     return { status: 'skipped', detail: 'Add text campaigns from the app anytime', summary: {} }

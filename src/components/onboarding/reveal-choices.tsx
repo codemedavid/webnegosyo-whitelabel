@@ -203,7 +203,7 @@ export function TextsChoice({ eyebrow, drafted, onKeep }: { eyebrow: string; dra
       <QuestionHeading
         eyebrow={eyebrow}
         title={`${drafted} text messages, ready to go`}
-        lede="They bring customers back. They are saved as drafts, so nothing is sent until you turn one on in the SmartMenu app on an Android phone."
+        lede="They bring customers back. They are saved Off, so nothing is sent until you turn one on in the SmartMenu app (Reports, then Texts). The texts go out from an Android phone."
       />
       <ul className="divide-y rounded-2xl border-2" style={{ borderColor: OB.line }}>
         {LAUNCH_CAMPAIGNS.slice(0, drafted).map((text) => (
