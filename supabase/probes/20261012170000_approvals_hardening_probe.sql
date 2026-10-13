@@ -160,7 +160,9 @@ begin
   v_out := public.create_approval_request(c_tenant, c_staff, 'refund', v_order2::text,
     jsonb_build_object('scope', 'amount', 'amount', 50), 'took_too_long', null, 'probe_hard_0002', false);
   v_req := (v_out -> 'request' ->> 'id')::uuid;
-  update public.staff_shifts set status = 'closed', closed_at = now() where id = v_shift;
+  -- protect_staff_shift_custody: a close must carry expected + counted cash.
+  update public.staff_shifts set status = 'closed', closed_at = now(), expected_cash = 0, closing_count = 0
+   where id = v_shift;
   v_out := public.decide_approval(v_req, c_tenant, c_owner, 'approve');
   if v_out ->> 'code' <> 'no_open_shift' then
     raise exception 'PROBE FAIL L6: approving a cash refund without the requester''s drawer: %', v_out;
