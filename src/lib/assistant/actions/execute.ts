@@ -30,6 +30,9 @@ import type {
   MenuItemPayload,
   OfferChangePayload,
   OfferPayload,
+  SmsAutomationPayload,
+  SmsAutomationRunPayload,
+  SmsAutomationStatusPayload,
   StockPayload,
   VoucherStatusPayload,
 } from '@/lib/assistant/actions/kinds'
@@ -44,6 +47,7 @@ import {
   type StoreRef,
 } from '@/lib/assistant/actions/execute-manage'
 import { executeMenuImport } from '@/lib/assistant/actions/execute-menu-import'
+import { executeSmsAutomation, executeSmsAutomationRun, executeSmsAutomationStatus } from '@/lib/assistant/actions/execute-automation'
 
 const BOOST_TENANT_SELECT =
   'id, order_backend, convex_deployment_url, menu_engineering_enabled, checkout_upsell_enabled, checkout_upsell_title, checkout_upsell_subtitle, checkout_upsell_max_items'
@@ -150,6 +154,12 @@ export async function executeAction(action: StoredAction, store: StoreRef): Prom
         return await executeMenuItemChange(store, action.payload as MenuItemChangePayload)
       case 'menu_import':
         return await executeMenuImport(store, action.payload as MenuImportPayload)
+      case 'sms_automation':
+        return await executeSmsAutomation(store, action.payload as SmsAutomationPayload, action.createdBy)
+      case 'sms_automation_status':
+        return await executeSmsAutomationStatus(store, action.payload as SmsAutomationStatusPayload)
+      case 'sms_automation_run':
+        return await executeSmsAutomationRun(store, action.payload as SmsAutomationRunPayload)
       default:
         return { ok: false, error: 'This kind of change is not supported yet.' }
     }
