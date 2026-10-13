@@ -26,7 +26,7 @@ import {
 import { usePrinterStore } from "../stores/printer-store";
 import { useRegisterSettingsStore } from "../stores/register-settings-store";
 import { supabase } from "../lib/supabase";
-import { signOutThisDevice } from "../lib/sign-out";
+import { setBeforeSignOut, signOutThisDevice } from "../lib/sign-out";
 import {
   BOOTSTRAP_UNREACHABLE_MESSAGE,
   classifyLookup,
@@ -46,6 +46,10 @@ import {
 } from "../lib/session-loss";
 import { requeueSignedOutRefusals } from "../lib/offline/order-outbox";
 import { requeueSignedOutEditRefusals } from "../lib/offline/order-edits";
+
+// Every sign-out first deletes this device's platform push token row, so a
+// shared tablet stops receiving the previous person's approval pushes.
+setBeforeSignOut(forgetPlatformDeviceToken);
 
 // Bound once for the life of the process: a sign-out anywhere drops the
 // offline session snapshot, so the next launch cannot open the old store.
@@ -75,8 +79,9 @@ import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
 import { registerForPushNotifications, ensureOrdersChannel, deviceChannels } from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
-import { upsertPlatformDeviceToken } from "../lib/announcements/service";
-import { routeFromPushResponse } from "../lib/approvals/push-route";
+import { forgetPlatformDeviceToken, upsertPlatformDeviceToken } from "../lib/announcements/service";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { planPushRoute, readConsumed, rememberConsumed } from "../lib/approvals/push-consumed";
 import {
   shouldRegisterPushToken,
   pushRegistrationOutletId,
@@ -445,7 +450,7 @@ function usePushNotifications() {
   }, [isAuthenticated, convexUrl, orderBackend, isSuperadmin, impersonatedTenantId]);
 }
 
-/** Responses already routed this process, so a warm start's double report opens one screen. */
+/** Responses already claimed this process, so a warm start's double report opens one screen. */
 const routedPushResponses = new Set<string>();
 
 /**
@@ -453,29 +458,43 @@ const routedPushResponses = new Set<string>();
  * action buttons) points at — approvals (review screen; Approve/Decline carry
  * their intent) and announcements — both for a tap that wakes a running app
  * and for the tap that launched it. Order pushes carry neither and are left
- * to the order screens. A response is routed once, and an approval's is
- * cleared so the next cold start never replays an Approve.
+ * to the order screens.
+ *
+ * A response is acted on once EVER: handled keys are persisted for 7 days
+ * (lib/approvals/push-consumed.ts), so a kill and reopen after Undo cannot
+ * replay an Approve on binaries without `clearLastNotificationResponse`. An
+ * Approve older than two minutes, or one whose history cannot be read, opens
+ * the review screen without the approving countdown.
  */
 function usePushResponseRouting() {
   useEffect(() => {
-    const open = (response: Notifications.NotificationResponse | null) => {
+    const open = async (response: Notifications.NotificationResponse | null) => {
       if (!response) return;
       const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
       if (routedPushResponses.has(key)) return;
-      const route = routeFromPushResponse(response.notification.request.content.data, response.actionIdentifier);
-      if (!route) return;
       routedPushResponses.add(key);
+      const now = Date.now();
+      const route = planPushRoute({
+        data: response.notification.request.content.data,
+        actionIdentifier: response.actionIdentifier,
+        key,
+        notifiedAt: response.notification.date,
+        now,
+        consumed: await readConsumed(AsyncStorage, now),
+      });
+      if (!route) return;
+      await rememberConsumed(AsyncStorage, key, now);
       if (route.startsWith("/(main)/approval/")) {
         try {
           Notifications.clearLastNotificationResponse();
         } catch {
-          // An older binary without the native call: the routed-once set still guards this run.
+          // An older binary without the native call: the persisted list guards replays.
         }
       }
       router.push(route as never);
     };
     Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
-    const sub = Notifications.addNotificationResponseReceivedListener(open);
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => void open(response));
     return () => sub.remove();
   }, []);
 }

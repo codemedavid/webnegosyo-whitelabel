@@ -43,7 +43,7 @@ interface ApprovalReviewProps {
 
 function leave() {
   if (router.canGoBack()) router.back();
-  else router.replace("/(main)/dashboard");
+  else router.push("/(main)/dashboard");
 }
 
 /**

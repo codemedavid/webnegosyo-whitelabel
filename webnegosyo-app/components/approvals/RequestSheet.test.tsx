@@ -138,4 +138,30 @@ describe("RequestSheet", () => {
     await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱185" })));
     expect(await screen.findByText("Refunds for this store type are coming soon.")).toBeTruthy();
   });
+
+  it("an edit after a failed send goes out under a new retry key", async () => {
+    const create = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 0, error: "offline", code: "offline" })
+      .mockResolvedValueOnce({ ok: false, status: 0, error: "offline", code: "offline" });
+    renderSheet(fakeApi(create));
+    await pickOneSisigWrongItem();
+    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱185" })));
+    fireEvent.press(screen.getByRole("button", { name: "Add one Garlic Rice" }));
+    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱240" })));
+    expect(create.mock.calls[1][1].idempotencyKey).not.toBe(create.mock.calls[0][1].idempotencyKey);
+  });
+
+  it("explains an idempotency conflict and lets the next send go out fresh", async () => {
+    const create = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 409, error: "Key reused with a different body.", code: "idempotency_conflict" })
+      .mockResolvedValueOnce({ ok: false, status: 0, error: "offline", code: "offline" });
+    renderSheet(fakeApi(create));
+    await pickOneSisigWrongItem();
+    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱185" })));
+    expect(await screen.findByText("This request was already sent with different details. Check the order for its status before sending again.")).toBeTruthy();
+    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱185" })));
+    expect(create.mock.calls[1][1].idempotencyKey).not.toBe(create.mock.calls[0][1].idempotencyKey);
+  });
 });

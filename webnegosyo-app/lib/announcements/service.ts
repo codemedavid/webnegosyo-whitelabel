@@ -102,6 +102,9 @@ export async function markAnnouncementRead(announcementId: string, userId: strin
  * pushes target them only then). A database the `channels` column has not
  * reached yet refuses the column, so the row is filed again without it.
  */
+/** The token this device filed this session, so sign-out can take it back. */
+let filedToken: string | null = null;
+
 export async function upsertPlatformDeviceToken(input: {
   token: string;
   userId: string;
@@ -117,8 +120,30 @@ export async function upsertPlatformDeviceToken(input: {
       .upsert(platformDeviceTokenRow(tokenInput, platform, nowIso, includeChannels), { onConflict: "token" });
 
   const first = await upsert(true);
-  if (!first.error) return;
+  if (!first.error) {
+    filedToken = input.token;
+    return;
+  }
   if (!isMissingColumnError(first.error, "channels")) throw new Error(first.error.message);
   const retry = await upsert(false);
   if (retry.error) throw new Error(retry.error.message);
+  filedToken = input.token;
+}
+
+/**
+ * Deletes this device's platform token row before sign-out, so a shared
+ * tablet stops receiving the previous person's approval pushes (security
+ * review L1). Runs while the session exists (own-user RLS). Never throws: a
+ * failed delete must not stop the sign-out; the next sign-in re-files the row.
+ */
+export async function forgetPlatformDeviceToken(): Promise<void> {
+  const token = filedToken;
+  if (!token) return;
+  filedToken = null;
+  try {
+    const { error } = await supabase.from("platform_device_tokens").delete().eq("token", token);
+    if (error) console.warn("[device-token] could not forget this device:", error.message);
+  } catch (error: unknown) {
+    console.warn("[device-token] could not forget this device:", error instanceof Error ? error.message : error);
+  }
 }

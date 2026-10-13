@@ -628,6 +628,7 @@ export default function OrderDetailScreen() {
             total: order.total,
             revisionNumber: order.revisionNumber,
             deliveryFee: order.deliveryFee,
+            createdAt: new Date(order._creationTime).toISOString(),
             items: order.items ?? [],
             // Without this the edit sees no discount at all and would charge
             // the customer full price on any edit to a discounted order.

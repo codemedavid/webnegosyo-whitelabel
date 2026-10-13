@@ -4,7 +4,7 @@
 // server only through the bearer client in lib/approvals/api, and has its
 // doors: To review, Home, the order screen, the register and a push for the
 // review screen; Manage (owner only) for the rules.
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 const ROOT = join(__dirname, "..");
@@ -63,10 +63,40 @@ describe("approval doors", () => {
     expect(read("app", "(main)", "pos-tender.tsx")).toMatch(/<AskManagerRefund/);
   });
 
+  it("the register mirrors the refund limit and turns the server's refusal into the ask path (H1)", () => {
+    const tender = read("app", "(main)", "pos-tender.tsx");
+    expect(tender).toMatch(/decideRefundGate\(/);
+    expect(tender).toMatch(/refundGate\.needsApproval/);
+    expect(tender).toMatch(/isRefundNeedsApprovalError\(err\)/);
+    expect(tender).not.toMatch(/canIssueRefund\(/);
+  });
+
   it("pushes route through the one router and the device reports its channels", () => {
     const root = read("app", "_layout.tsx");
-    expect(root).toMatch(/routeFromPushResponse\(/);
+    expect(root).toMatch(/planPushRoute\(/);
+    // Consumed responses are persisted (a cold start never replays an Approve).
+    expect(root).toMatch(/readConsumed\(AsyncStorage/);
+    expect(root).toMatch(/rememberConsumed\(AsyncStorage/);
     expect(root).toMatch(/channels: deviceChannels\(\)/);
     expect(root).not.toMatch(/announcementRouteFromPushData/);
+  });
+});
+
+describe("no discount or write-off requests in the app (security review H3)", () => {
+  it("the request sheet only knows refunds and paid cancels", () => {
+    expect(read("lib", "approvals", "request-draft.ts")).toMatch(/export type RequestSheetKind = "refund" \| "cancel_paid";/);
+  });
+
+  it("no approvals component or screen files a discount or write-off request", () => {
+    const dir = join(ROOT, "components", "approvals");
+    const sources = [
+      ...readdirSync(dir).filter((name) => name.endsWith(".tsx") && !name.endsWith(".test.tsx")).map((name) => read("components", "approvals", name)),
+      read("app", "(main)", "order", "[orderId].tsx"),
+      read("app", "(main)", "pos-tender.tsx"),
+    ];
+    for (const source of sources) {
+      expect(source).not.toMatch(/kind[=:]\s*\{?["']discount["']/);
+      expect(source).not.toMatch(/kind[=:]\s*\{?["']stock_writeoff["']/);
+    }
   });
 });

@@ -6,6 +6,8 @@ import { approvalsApi, newIdempotencyKey, OFFLINE_MESSAGE, type ApprovalsApi } f
 import {
   checkDraft,
   draftAmount,
+  draftSignature,
+  keyForSend,
   initialDraft,
   sheetSubtitle,
   submitLabel,
@@ -25,6 +27,9 @@ import { DrawerSheet } from "../drawer/DrawerSheet";
 import { Icon } from "../Icon";
 import { ReasonPicker } from "./ReasonPicker";
 import { RefundScopePicker } from "./RefundScopePicker";
+
+export const IDEMPOTENCY_CONFLICT_MESSAGE =
+  "This request was already sent with different details. Check the order for its status before sending again.";
 
 const TITLES: Readonly<Record<RequestSheetKind, string>> = { refund: "Refund", cancel_paid: "Cancel a paid order" };
 
@@ -58,6 +63,8 @@ export function RequestSheet(props: RequestSheetProps) {
   const [isSending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const idempotencyKey = useRef(newIdempotencyKey());
+  // The body of the last send that failed: an edited draft gets a new key, a pure retry keeps it.
+  const failedSignature = useRef<string | null>(null);
   const rules = useApprovalRules(tenantId, visible, api);
   const invalidate = useInvalidateApprovals(tenantId);
 
@@ -67,6 +74,7 @@ export function RequestSheet(props: RequestSheetProps) {
     setDraft(initialDraft(kind, seed));
     setError(null);
     idempotencyKey.current = newIdempotencyKey();
+    failedSignature.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset once per opening, not on every seed identity
   }, [visible, kind]);
 
@@ -82,11 +90,26 @@ export function RequestSheet(props: RequestSheetProps) {
 
   const send = async () => {
     if (!check.ok || isSending || isOffline) return;
+    const signature = draftSignature(draft, order);
+    idempotencyKey.current = keyForSend({
+      currentKey: idempotencyKey.current,
+      failedSignature: failedSignature.current,
+      signature,
+      mint: newIdempotencyKey,
+    });
     setSending(true);
     setError(null);
-    const result = await api.create(tenantId, check.input);
+    const result = await api.create(tenantId, { ...check.input, idempotencyKey: idempotencyKey.current });
     setSending(false);
     if (!result.ok) {
+      if (result.code === "idempotency_conflict") {
+        // The key already belongs to another body: never reuse it.
+        idempotencyKey.current = newIdempotencyKey();
+        failedSignature.current = null;
+        setError(IDEMPOTENCY_CONFLICT_MESSAGE);
+        return;
+      }
+      failedSignature.current = signature;
       setError(result.status === 0 ? OFFLINE_MESSAGE : result.error);
       return;
     }

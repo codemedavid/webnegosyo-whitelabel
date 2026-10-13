@@ -1,5 +1,7 @@
 import {
   checkDraft,
+  draftSignature,
+  keyForSend,
   draftAmount,
   initialDraft,
   sheetSubtitle,
@@ -132,5 +134,29 @@ describe("sheet copy", () => {
   test("the subtitle names the order and how it was paid", () => {
     expect(sheetSubtitle(ORDER)).toBe("Order #14 · paid ₱480 cash");
     expect(sheetSubtitle({ ...ORDER, orderLabel: null, paymentLabel: null })).toBe("This order · paid ₱480");
+  });
+});
+
+describe("retry keys (one request per intent, never one key for two bodies)", () => {
+  const items = withReason(withQuantity(initialDraft("refund"), ORDER.items[0], 1), "wrong_item");
+
+  test("a pure retry after a failed send keeps the key", () => {
+    const signature = draftSignature(items, ORDER);
+    expect(keyForSend({ currentKey: "k1", failedSignature: signature, signature, mint: () => "k2" })).toBe("k1");
+    expect(keyForSend({ currentKey: "k1", failedSignature: null, signature, mint: () => "k2" })).toBe("k1");
+  });
+
+  test("an edit after a failed send gets a new key", () => {
+    const before = draftSignature(items, ORDER);
+    const after = draftSignature(withQuantity(items, ORDER.items[1], 1), ORDER);
+    expect(after).not.toBe(before);
+    expect(keyForSend({ currentKey: "k1", failedSignature: before, signature: after, mint: () => "k2" })).toBe("k2");
+  });
+
+  test("the signature covers kind, order, scope, amount, lines, reason and note", () => {
+    const amount = withAmountText(withScope(items, "amount"), "100");
+    expect(draftSignature(amount, ORDER)).not.toBe(draftSignature(withAmountText(amount, "90"), ORDER));
+    expect(draftSignature(items, ORDER)).not.toBe(draftSignature(withNote(items, "x"), ORDER));
+    expect(draftSignature(items, ORDER)).not.toBe(draftSignature(items, { ...ORDER, orderId: "other" }));
   });
 });

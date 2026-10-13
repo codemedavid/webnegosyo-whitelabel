@@ -18,7 +18,14 @@ import { useAuthStore } from "../../stores/auth-store";
 import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backend";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
-import { canIssueRefund } from "../../lib/order-edit-guards";
+import { isApprovalsStore } from "../../lib/approvals/access";
+import {
+  isRefundNeedsApprovalError,
+  refundGate as decideRefundGate,
+  REFUND_NEEDS_APPROVAL_MESSAGE,
+  type RulesState,
+} from "../../lib/approvals/refund-gate";
+import { useApprovalRules } from "../../lib/approvals/use-approvals";
 import { posCartToOrderItems } from "../../lib/order-edit-cart";
 import {
   isCashMethod,
@@ -74,6 +81,7 @@ import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
 import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
+import { Button } from "../../components/Button";
 import { AskManagerRefund } from "../../components/approvals/AskManagerRefund";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
@@ -221,10 +229,30 @@ export default function PosTenderScreen() {
   // The difference to settle when editing; the whole sale otherwise.
   const amountDue = edit ? Math.abs(edit.balance) : totals.total;
 
-  const refundGate = useMemo(
-    () => canIssueRefund({ role, isOwner, permissions }),
-    [role, isOwner, permissions],
-  );
+  // The refund gate mirrors the server's direct-refund limit (same day, up to
+  // the staff cap) once the store's rules are known, so a cashier over it sees
+  // "Ask a manager to approve" BEFORE the bill is rewritten (approvals, H1).
+  const isApprovals = isApprovalsStore({ orderBackend }) && !useAuthStore.getState().isDemo;
+  const rulesQuery = useApprovalRules(tenantId, isRefund && isApprovals && !isOwner && role !== "superadmin");
+  const rulesState: RulesState = rulesQuery.data
+    ? { status: "known", rules: rulesQuery.data.rules }
+    : rulesQuery.isLoading
+      ? { status: "loading" }
+      : { status: "unknown" };
+  const refundGate = decideRefundGate({
+    user: { role, isOwner, permissions },
+    amount: amountDue,
+    rules: rulesState,
+    now: new Date(),
+    orderCreatedAt: editContext?.orderCreatedAt ?? null,
+    isApprovalsStore: isApprovals,
+  });
+  // The server refused the refund row after the bill was saved (rules changed
+  // or could not be checked): say so plainly instead of a generic error.
+  const [refundRefusedAfterSave, setRefundRefusedAfterSave] = useState(false);
+  // This tab stays mounted between sales: a refusal belongs to one edit only.
+  const editOrderId = editContext?.orderId ?? null;
+  useEffect(() => setRefundRefusedAfterSave(false), [editOrderId]);
 
   // Cached per order type and warmed by the register while items are still
   // being added, so Charge opens on the amount due rather than a spinner.
@@ -288,8 +316,9 @@ export default function PosTenderScreen() {
       method !== null &&
       isProofOutstanding(method, { reference, hasProof: proof !== null }),
   });
-  const blockedReason =
-    paymentBlockedReason ?? (phoneProblem ? "Fix the phone number or clear it" : undefined);
+  const blockedReason = refundRefusedAfterSave
+    ? REFUND_NEEDS_APPROVAL_MESSAGE
+    : paymentBlockedReason ?? (phoneProblem ? "Fix the phone number or clear it" : undefined);
 
   /**
    * Save an edited order and settle the difference.
@@ -415,6 +444,12 @@ export default function PosTenderScreen() {
       endEdit();
       router.back();
     } catch (err) {
+      if (edit.intent === "refund" && isRefundNeedsApprovalError(err)) {
+        // The bill is already rewritten; only the money did not move.
+        setRefundRefusedAfterSave(true);
+        setIsCompleting(false);
+        return;
+      }
       Alert.alert(
         "Could not save the order",
         err instanceof Error ? err.message : "The edit was not saved.",
@@ -754,14 +789,31 @@ export default function PosTenderScreen() {
           </Text>
         )}
 
-        {/* No "Refunds" grant: ask a manager instead of a dead end (approvals). */}
-        {isRefund && !refundGate.allowed && editContext && (
+        {/* Over the cashier's own refund limit: ask a manager instead of a dead end (approvals). */}
+        {isRefund && refundGate.needsApproval && !refundRefusedAfterSave && editContext && (
           <AskManagerRefund
             orderId={editContext.orderId}
             outletId={editContext.outletId ?? null}
             amount={amountDue}
             paidTotal={editContext.originalTotal}
           />
+        )}
+        {refundRefusedAfterSave && editContext && (
+          <View style={styles.refusedNotice} accessibilityRole="alert">
+            <Text style={styles.refusedTitle}>{REFUND_NEEDS_APPROVAL_MESSAGE}</Text>
+            <Text style={styles.editMeta}>
+              The order was updated, but no money was given back. A manager can finish the refund from the order.
+            </Text>
+            <Button
+              label="Open the order"
+              tone="secondary"
+              onPress={() => {
+                const orderId = editContext.orderId;
+                endEdit();
+                router.push(`/(main)/order/${orderId}` as never);
+              }}
+            />
+          </View>
         )}
 
         {/*
@@ -1037,6 +1089,14 @@ const styles = StyleSheet.create({
   body: { padding: spacing.xl, paddingTop: 60, gap: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
   editMeta: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
+  refusedNotice: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.statusPending.bg,
+  },
+  refusedTitle: { ...typography.body, fontWeight: "700", color: colors.statusPending.text },
   discounts: { gap: spacing.xs, marginTop: spacing.xs },
   discountRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
   discountLabel: { ...typography.caption, color: colors.textSecondary, flexShrink: 1 },

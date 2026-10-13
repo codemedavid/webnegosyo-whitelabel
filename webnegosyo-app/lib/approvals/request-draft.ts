@@ -179,3 +179,35 @@ export function sheetSubtitle(order: RequestOrder): string {
   const how = order.paymentLabel ? ` ${order.paymentLabel}` : "";
   return `${which} · paid ${formatPesoShort(order.refundable)}${how}`;
 }
+
+/**
+ * What the sent body says (everything but the retry key). A retry key must
+ * never cover two different bodies (security review M2): after a failed send,
+ * an edited draft gets a new key, while a pure retry keeps the old one.
+ */
+export function draftSignature(draft: RequestDraft, order: RequestOrder): string {
+  const lines = pickedLines(draft, order).map(({ item, quantity }) => [item.id, quantity]);
+  return JSON.stringify([
+    draft.kind,
+    order.orderId,
+    draft.kind === "cancel_paid" ? "whole" : draft.scope,
+    draftAmount(draft, order),
+    draft.scope === "items" ? lines : [],
+    draft.restock,
+    draft.reasonCode,
+    draft.note.trim(),
+  ]);
+}
+
+export interface KeyForSendInput {
+  currentKey: string;
+  /** The body of the last send that failed, or null when none failed. */
+  failedSignature: string | null;
+  signature: string;
+  mint: () => string;
+}
+
+export function keyForSend(input: KeyForSendInput): string {
+  if (input.failedSignature === null || input.failedSignature === input.signature) return input.currentKey;
+  return input.mint();
+}
