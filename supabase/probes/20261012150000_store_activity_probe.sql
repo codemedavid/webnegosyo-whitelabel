@@ -155,7 +155,12 @@ begin
   values (t, (c ->> 'item')::uuid, 'waste', -2, 50, 'Dropped', staff, branch);
   select * into r from public.store_activity where kind = 'stock.wasted' and source_table = 'stock_movements'
     and subject_ref = c ->> 'item' and occurred_at >= (c ->> 't0')::timestamptz;
-  if r.id is null or r.amount <> -100 or r.quantity <> -2 then raise exception 'probe: stock.wasted wrong: %', to_jsonb(r); end if;
+  -- inventory_frozen_cost (2026-10-12) re-costs the movement at the item's frozen cost,
+  -- so the expected amount is read from the stored movement, not the 50 sent above.
+  if r.id is null or r.quantity <> -2
+     or r.amount <> round(-2 * (select m.unit_cost from public.stock_movements m where m.id::text = r.source_id), 2) then
+    raise exception 'probe: stock.wasted wrong: %', to_jsonb(r);
+  end if;
 
   -- inventory audit: duplicate → one row + flag; nothing_to_deduct → nothing.
   insert into public.inventory_audit_log (tenant_id, event, outcome, source, order_id, outlet_id, actor_user_id, lines)
