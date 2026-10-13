@@ -82,23 +82,31 @@ export interface AutomationStats {
   waiting: number
   sent30d: number
   skipped30d: number
+  /** Guests texted in the last 30 days who have ordered since the text. */
+  cameBack30d: number
   lastSentAt: string | null
 }
+
+const EMPTY_STATS: AutomationStats = { waiting: 0, sent30d: 0, skipped30d: 0, cameBack30d: 0, lastSentAt: null }
 
 async function readStats(db: SupabaseClient, tenantId: string, now: Date): Promise<Map<string, AutomationStats>> {
   const since = new Date(now.getTime() - STATS_DAYS * DAY_MS).toISOString()
   const stats = new Map<string, AutomationStats>()
   for (let from = 0; from < MAX_STATS_ROWS; from += PAGE_SIZE) {
-    const { data, error } = await db.from('sms_outbox').select('automation_id, status, sent_at')
+    const { data, error } = await db.from('sms_outbox').select('automation_id, status, sent_at, customers(last_order_at)')
       .eq('tenant_id', tenantId).not('automation_id', 'is', null).gte('created_at', since)
       .order('id').range(from, from + PAGE_SIZE - 1)
     if (error) throw new ReadError(`automation results: ${error.message}`)
-    for (const row of (data ?? []) as { automation_id: string; status: OutboxStatus; sent_at: string | null }[]) {
-      const entry = stats.get(row.automation_id) ?? { waiting: 0, sent30d: 0, skipped30d: 0, lastSentAt: null }
+    type Row = { automation_id: string; status: OutboxStatus; sent_at: string | null; customers: { last_order_at: string | null } | null }
+    for (const row of (data ?? []) as unknown as Row[]) {
+      const entry = stats.get(row.automation_id) ?? EMPTY_STATS
+      const lastOrder = row.customers?.last_order_at ?? null
+      const cameBack = row.status === 'sent' && row.sent_at !== null && lastOrder !== null && Date.parse(lastOrder) > Date.parse(row.sent_at)
       const next = {
         waiting: entry.waiting + (row.status === 'queued' || row.status === 'claimed' ? 1 : 0),
         sent30d: entry.sent30d + (row.status === 'sent' ? 1 : 0),
         skipped30d: entry.skipped30d + (row.status === 'skipped' || row.status === 'cancelled' ? 1 : 0),
+        cameBack30d: entry.cameBack30d + (cameBack ? 1 : 0),
         lastSentAt: row.sent_at && (!entry.lastSentAt || row.sent_at > entry.lastSentAt) ? row.sent_at : entry.lastSentAt,
       }
       stats.set(row.automation_id, next)
@@ -138,7 +146,7 @@ export async function listAutomationsView(db: SupabaseClient, tenantId: string, 
       status: a.status,
       source: a.source,
       updatedAt: a.updated_at,
-      stats: stats.get(a.id) ?? { waiting: 0, sent30d: 0, skipped30d: 0, lastSentAt: null },
+      stats: stats.get(a.id) ?? EMPTY_STATS,
     })),
     recipes: RECIPES.map((r) => ({
       id: r.id, moment: r.moment, title: r.title, pitch: r.pitch, defaults: r.defaults, limits: r.limits,

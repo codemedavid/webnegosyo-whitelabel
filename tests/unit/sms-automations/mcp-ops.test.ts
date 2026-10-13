@@ -4,6 +4,8 @@
  * and NEVER switches an automation on; listing says what blocks sending.
  */
 
+export {}
+
 jest.mock('server-only', () => ({}))
 const mockView = jest.fn()
 jest.mock('@/lib/sms-automations/api/reads', () => ({ listAutomationsView: () => mockView() }))
