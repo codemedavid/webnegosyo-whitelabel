@@ -30,7 +30,7 @@ async function readAutomation(db: SupabaseClient, tenantId: string, id: string):
 
 /** One automation per recipe per store: saving a recipe again edits it. */
 export async function saveAutomation(
-  db: SupabaseClient, tenantId: string, actorId: string, draft: NormalizedDraft, source: 'owner' | 'ai' | 'onboarding' = 'owner',
+  db: SupabaseClient, tenantId: string, actorId: string | null, draft: NormalizedDraft, source: 'owner' | 'ai' | 'onboarding' = 'owner',
 ): Promise<Outcome<{ id: string; created: boolean }>> {
   const fields = {
     name: draft.name,
