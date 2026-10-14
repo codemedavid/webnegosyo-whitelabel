@@ -164,7 +164,8 @@ describe('planTexts', () => {
   })
 
   it('refuses a text longer than the outbox accepts instead of failing the whole batch', () => {
-    const work = [{ automation: automation('win_back'), candidates: [candidate(guest('1', { name: 'A'.repeat(1000) }))] }]
+    const longFavorite = automation('win_back', { message_template: 'Hi {{firstName}}! Your {{favoriteItem}} awaits.' })
+    const work = [{ automation: longFavorite, candidates: [candidate(guest('1', { favoriteItem: 'A'.repeat(1000) }))] }]
     const result = planTexts(input({ work }))
     expect(result.drafts).toEqual([])
     expect(result.reports.get('a-win_back')?.skipped).toEqual({ cannot_fill: 1 })

@@ -74,6 +74,18 @@ describe('buildVariables', () => {
     expect(vars('Ana ' + 'B'.repeat(80)).name).toBe('Ana')
   })
 
+  it.each([
+    ['evil.example/win to claim', 'there'],
+    ['www.scam.ph Maria', 'there'],
+    ['Call09171234567 now', 'there'],
+    ['Maria@promo', 'there'],
+    ['Ma. Lourdes', 'Ma.'],
+    ['santos-cruz maria', 'Santos-cruz'],
+  ])('never lets the greeting %p carry a link or a number (got %p)', (name, expected) => {
+    const vars = buildVariables(candidate({ guest: { ...candidate().guest, name } }), STORE, { reviewUrl: null }, NOW)
+    expect(vars.firstName).toBe(expected)
+  })
+
   it('adds loyalty facts only when the candidate carries them', () => {
     const plain = buildVariables(candidate(), STORE, { reviewUrl: null }, NOW)
     expect(plain.rewardName).toBeUndefined()

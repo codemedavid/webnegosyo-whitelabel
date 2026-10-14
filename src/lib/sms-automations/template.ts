@@ -68,20 +68,27 @@ const NAME_PREFIX = /^(?:[\p{L}'-]+\.?(?:\s+|$))+/u
  * ("Visit evil.example to claim" → "Visit"), so no guest can make the store's
  * own number send a link or a number. Whole words only, up to 40 characters.
  */
-function cleanFullName(name: string | null): string {
+function nameWords(name: string | null): string {
   const prefix = NAME_PREFIX.exec(toSmsSafe(name ?? '').trim())?.[0] ?? ''
   const words: string[] = []
   for (const word of prefix.trim().split(/\s+/)) {
     if ([...words, word].join(' ').length > MAX_NAME_CHARS) break
     words.push(word)
   }
-  const cleaned = words.join(' ')
-  return (cleaned.match(/\p{L}/gu) ?? []).length < 2 ? MISSING_NAME_FALLBACK : cleaned
+  return words.join(' ')
 }
 
+const hasTwoLetters = (value: string) => (value.match(/\p{L}/gu) ?? []).length >= 2
+
+function cleanFullName(name: string | null): string {
+  const cleaned = nameWords(name)
+  return hasTwoLetters(cleaned) ? cleaned : MISSING_NAME_FALLBACK
+}
+
+/** The first name-like word of the guest's name, by the same rule as the full name. */
 function firstNameOf(name: string | null): string {
-  const first = toSmsSafe(name ?? '').trim().split(/\s+/)[0] ?? ''
-  if ((first.match(/\p{L}/gu) ?? []).length < 2) return MISSING_NAME_FALLBACK
+  const first = nameWords(name).split(/\s+/)[0] ?? ''
+  if (!hasTwoLetters(first)) return MISSING_NAME_FALLBACK
   return first === first.toLowerCase() ? first.charAt(0).toUpperCase() + first.slice(1) : first
 }
 
