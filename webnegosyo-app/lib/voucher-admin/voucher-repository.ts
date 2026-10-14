@@ -87,6 +87,7 @@ function toRow(tenantId: string, draft: VoucherDraft): Record<string, unknown> {
     discount_type: draft.discountType,
     discount_value: draft.discountType === "free_delivery" ? 0 : draft.discountValue,
     max_discount_amount: draft.maxDiscountAmount ?? null,
+    max_discounted_units: draft.discountType === "free_delivery" ? null : draft.maxDiscountedUnits ?? null,
     min_order_amount: draft.minOrderAmount ?? 0,
     scope: draft.scope,
     is_stackable: draft.isStackable,

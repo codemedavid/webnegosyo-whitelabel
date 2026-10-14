@@ -149,3 +149,23 @@ describe('validateVoucherDraft', () => {
     expect(errors.map((e) => e.field).sort()).toEqual(['code', 'discountValue', 'name'])
   })
 })
+
+describe('unit limit ("only discount N items")', () => {
+  const fieldsWithErrors = (overrides: Record<string, unknown>) =>
+    validateVoucherDraft(draft(overrides)).errors.map((issue) => issue.field)
+
+  it('accepts no limit and a whole number of units', () => {
+    expect(fieldsWithErrors({ maxDiscountedUnits: null })).toEqual([])
+    expect(fieldsWithErrors({ maxDiscountedUnits: 1 })).toEqual([])
+  })
+
+  it.each([0, -1, 1.5, Number.NaN])('refuses %p units', (units) => {
+    expect(fieldsWithErrors({ maxDiscountedUnits: units })).toEqual(['maxDiscountedUnits'])
+  })
+
+  it('refuses a unit limit on free delivery, which discounts the fee, not food', () => {
+    expect(fieldsWithErrors({ discountType: 'free_delivery', discountValue: 0, maxDiscountedUnits: 1 })).toEqual([
+      'maxDiscountedUnits',
+    ])
+  })
+})

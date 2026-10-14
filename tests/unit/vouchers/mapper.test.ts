@@ -143,3 +143,11 @@ describe('mapVoucherRow', () => {
     expect(typeof voucher.discountValue).toBe('number')
   })
 })
+
+describe('max_discounted_units', () => {
+  it('maps a unit limit and reads a missing column as "every unit"', () => {
+    const base = mapVoucherRow(makeRow({ max_discounted_units: 2 }))
+    expect(base.maxDiscountedUnits).toBe(2)
+    expect(mapVoucherRow(makeRow()).maxDiscountedUnits).toBeNull()
+  })
+})

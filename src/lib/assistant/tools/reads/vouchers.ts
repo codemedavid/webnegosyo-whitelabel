@@ -19,8 +19,10 @@ type Input = z.infer<typeof input>
 
 export function describeVoucherDiscount(voucher: Voucher): string {
   if (voucher.discountType === 'free_delivery') return 'Free delivery'
-  if (voucher.discountType === 'fixed') return `${formatPeso(voucher.discountValue)} off`
-  return `${voucher.discountValue}% off${voucher.maxDiscountAmount ? ` (up to ${formatPeso(voucher.maxDiscountAmount)})` : ''}`
+  const units = voucher.maxDiscountedUnits
+  const limit = units ? ` · ${units} item${units === 1 ? '' : 's'} per order` : ''
+  if (voucher.discountType === 'fixed') return `${formatPeso(voucher.discountValue)} off${units ? ' each' : ''}${limit}`
+  return `${voucher.discountValue}% off${voucher.maxDiscountAmount ? ` (up to ${formatPeso(voucher.maxDiscountAmount)})` : ''}${limit}`
 }
 
 /** On, off, scheduled, expired or used up — what the owner would call it today. */

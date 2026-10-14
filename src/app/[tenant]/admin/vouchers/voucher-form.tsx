@@ -60,6 +60,7 @@ function toDraft(voucher: Voucher | null): VoucherDraft {
     discountType: voucher.discountType,
     discountValue: voucher.discountValue,
     maxDiscountAmount: voucher.maxDiscountAmount ?? null,
+    maxDiscountedUnits: voucher.maxDiscountedUnits ?? null,
     minOrderAmount: voucher.minOrderAmount ?? null,
     scope: voucher.scope,
     targetIds: voucher.targetIds ?? [],
@@ -145,7 +146,11 @@ export function VoucherForm({ tenantId, voucher, onSaved, onCancel }: VoucherFor
             id="voucher-type"
             className="w-full h-10 rounded-md border border-gray-300 px-3 text-sm"
             value={draft.discountType}
-            onChange={(e) => update({ discountType: e.target.value as VoucherDiscountType })}
+            onChange={(e) => {
+              const discountType = e.target.value as VoucherDiscountType
+              // Free delivery has no items to limit; a hidden limit would block Save.
+              update(discountType === 'free_delivery' ? { discountType, maxDiscountedUnits: null } : { discountType })
+            }}
           >
             {DISCOUNT_TYPES.map((type) => (
               <option key={type.value} value={type.value}>
@@ -189,6 +194,29 @@ export function VoucherForm({ tenantId, voucher, onSaved, onCancel }: VoucherFor
                 {w.message}
               </p>
             ))}
+        </div>
+      )}
+
+      {draft.discountType !== 'free_delivery' && (
+        <div>
+          <Label htmlFor="voucher-units">Only discount this many items (optional)</Label>
+          <Input
+            id="voucher-units"
+            type="number"
+            min={1}
+            step={1}
+            placeholder="Every item"
+            value={draft.maxDiscountedUnits ?? ''}
+            onChange={(e) => update({ maxDiscountedUnits: toNullableNumber(e.target.value) })}
+          />
+          <p className="mt-1 text-sm text-gray-600">
+            {draft.discountType === 'fixed'
+              ? 'The amount comes off each of these items. '
+              : ''}
+            Example: 1 means a table with 5 fries gets the discount on one fries. The cheapest items get it,
+            unless the cashier or customer picks which.
+          </p>
+          <FieldError message={showError('maxDiscountedUnits')} />
         </div>
       )}
 

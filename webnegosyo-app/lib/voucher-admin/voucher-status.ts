@@ -113,14 +113,16 @@ export function filterVouchers(
   });
 }
 
-type DealFields = Pick<Voucher, "discountType" | "discountValue" | "maxDiscountAmount">;
+type DealFields = Pick<Voucher, "discountType" | "discountValue" | "maxDiscountAmount" | "maxDiscountedUnits">;
 
 /** "20% off, up to ₱100" — the shape of the deal, in one line. Same wording as the web card. */
 export function describeDiscount(voucher: DealFields): string {
   if (voucher.discountType === "free_delivery") return "Free delivery";
-  if (voucher.discountType === "fixed") return `${formatAmount(voucher.discountValue)} off`;
+  const units = voucher.maxDiscountedUnits;
+  const limit = units ? ` · ${units} item${units === 1 ? "" : "s"} per order` : "";
+  if (voucher.discountType === "fixed") return `${formatAmount(voucher.discountValue)} off${units ? " each" : ""}${limit}`;
   const cap = voucher.maxDiscountAmount ? `, up to ${formatAmount(voucher.maxDiscountAmount)}` : "";
-  return `${voucher.discountValue}% off${cap}`;
+  return `${voucher.discountValue}% off${cap}${limit}`;
 }
 
 /** The ticket stub: a big figure and a small word under it. */

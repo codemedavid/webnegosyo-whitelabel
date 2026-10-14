@@ -157,6 +157,7 @@ describe("saveVoucher", () => {
       discount_type: "percent",
       discount_value: 20,
       max_discount_amount: 100,
+      max_discounted_units: null,
       min_order_amount: 0,
       scope: "products",
       is_stackable: true,

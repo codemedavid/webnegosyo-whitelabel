@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { clientSupportsUnitLimits, VOUCHER_FEATURES_HEADER, vouchersForClient } from '@/lib/vouchers/client-features'
 import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { findActiveVouchers } from '@/lib/vouchers/repository'
@@ -35,7 +36,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // The authorized tenant and the queried tenant are the same value, so what
   // was authorized above is exactly what is read.
-  const vouchers = await findActiveVouchers(createAdminClient(), tenantId)
+  const found = await findActiveVouchers(createAdminClient(), tenantId)
+  // An older register would ignore a unit limit and discount every unit.
+  const vouchers = vouchersForClient(found, clientSupportsUnitLimits(request.headers.get(VOUCHER_FEATURES_HEADER)))
 
   return NextResponse.json({ vouchers })
 }

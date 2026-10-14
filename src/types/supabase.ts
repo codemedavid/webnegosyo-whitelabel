@@ -8744,6 +8744,7 @@ export type Database = {
           used_count?: number
         }
         Relationships: [
+          max_discounted_units: number | null
           {
             foreignKeyName: "vouchers_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -8768,6 +8769,7 @@ export type Database = {
         Returns: Json
       }
       allow_loyalty_verification_attempt: {
+          max_discounted_units?: number | null
         Args: { p_ip_hash: string; p_phone_hash: string; p_tenant_id: string }
         Returns: Json
       }
@@ -8792,6 +8794,7 @@ export type Database = {
         Returns: boolean
       }
       app_user_may_reach_branch: {
+          max_discounted_units?: number | null
         Args: { target_outlet_id: string; target_tenant_id: string }
         Returns: boolean
       }

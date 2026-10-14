@@ -89,6 +89,8 @@ export async function lookupVouchers(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          // This build prices unit-limited vouchers; older ones are not sent them.
+          "X-Voucher-Features": "units",
         },
         body: JSON.stringify({ tenantId, codes }),
       }),
@@ -144,6 +146,8 @@ export async function listVouchers(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          // This build prices unit-limited vouchers; older ones are not sent them.
+          "X-Voucher-Features": "units",
         },
         body: JSON.stringify({ tenantId }),
       }),

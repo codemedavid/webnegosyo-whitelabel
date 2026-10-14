@@ -17,6 +17,8 @@ export interface VoucherDraft {
   discountType: VoucherDiscountType
   discountValue: number
   maxDiscountAmount?: number | null
+  /** Only this many units get the discount; null = every unit. */
+  maxDiscountedUnits?: number | null
   minOrderAmount?: number | null
   scope: VoucherScope
   targetIds?: readonly string[]
@@ -71,6 +73,7 @@ export function validateVoucherDraft(draft: VoucherDraft): VoucherValidation {
   validateScope(draft, errors)
   validateWindow(draft, errors)
   validateLimits(draft, errors)
+  validateUnitLimit(draft, errors)
 
   // An empty channel list is a voucher that works nowhere. `undefined` is
   // different: it means "not specified", which the mapper reads as all three.
@@ -156,5 +159,22 @@ function validateLimits(draft: VoucherDraft, errors: VoucherIssue[]): void {
     if (value != null && (!Number.isFinite(value) || value < 0)) {
       errors.push({ field, message: 'This cannot be negative.' })
     }
+  }
+}
+
+function validateUnitLimit(draft: VoucherDraft, errors: VoucherIssue[]): void {
+  const units = draft.maxDiscountedUnits
+  if (units == null) return
+
+  if (draft.discountType === 'free_delivery') {
+    errors.push({
+      field: 'maxDiscountedUnits',
+      message: 'Free delivery takes the fee off, not food — leave the item limit empty.',
+    })
+    return
+  }
+
+  if (!Number.isInteger(units) || units < 1) {
+    errors.push({ field: 'maxDiscountedUnits', message: 'Enter a whole number of items, 1 or more.' })
   }
 }
