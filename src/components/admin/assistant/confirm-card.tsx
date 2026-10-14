@@ -16,6 +16,8 @@ interface ConfirmCardViewProps {
   tenantId: string
   adminBasePath: string
   onNavigate: () => void
+  /** Called once the owner's change went through. */
+  onApplied?: () => void
 }
 
 const CLOSED_TEXT: Record<string, string> = {
@@ -27,7 +29,7 @@ const CLOSED_TEXT: Record<string, string> = {
 }
 
 /** The only path from a proposal to a real change: the owner's own tap. */
-export function ConfirmCardView({ card, tenantId, adminBasePath, onNavigate }: ConfirmCardViewProps) {
+export function ConfirmCardView({ card, tenantId, adminBasePath, onNavigate, onApplied }: ConfirmCardViewProps) {
   const settled = card.status && card.status !== 'pending' ? card.status : null
   const isExpired = Date.parse(card.expiresAt) <= Date.now()
   const [state, setState] = useState<CardState>(() => {
@@ -46,6 +48,7 @@ export function ConfirmCardView({ card, tenantId, adminBasePath, onNavigate }: C
       const body = (await response.json().catch(() => ({}))) as { status?: string; message?: string; error?: string; link?: { label: string; path: string } | null }
       if (body.status === 'applied' && body.message) {
         setState({ phase: 'applied', message: body.message, link: body.link ?? null })
+        onApplied?.()
       } else {
         setState({ phase: 'closed', message: body.error ?? CLOSED_TEXT[body.status ?? ''] ?? 'Something went wrong. Nothing was changed.' })
       }

@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react'
 import { formatDistance } from 'date-fns'
-import { Users, Search, ShoppingBag, ChevronDown, TrendingUp } from 'lucide-react'
+import { Search, ShoppingBag, ChevronDown, TrendingUp } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Owl } from '@/components/mascot/owl'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { formatPrice } from '@/lib/cart-utils'
@@ -78,7 +79,7 @@ export function CustomersList({ customers }: CustomersListProps) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Users className="h-12 w-12 text-muted-foreground mb-4" />
+          <Owl state="waiting" size={120} className="mb-4" />
           <h3 className="text-lg font-semibold mb-2">No customers yet</h3>
           <p className="text-muted-foreground text-center">
             Customers are captured automatically from orders. As people order, your regulars will

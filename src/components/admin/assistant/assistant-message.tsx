@@ -99,9 +99,10 @@ interface AssistantMessageProps {
   tenantId: string
   adminBasePath: string
   onNavigate: () => void
+  onApplied?: () => void
 }
 
-export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate }: AssistantMessageProps) {
+export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate, onApplied }: AssistantMessageProps) {
   if (message.role === 'user') {
     const text = message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(' ')
     return (
@@ -142,7 +143,7 @@ export function AssistantMessage({ message, tenantId, adminBasePath, onNavigate 
         return (
           <div key={index} className="space-y-1.5">
             {result.card?.type === 'confirm' ? (
-              <ConfirmCardView card={result.card} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onNavigate} />
+              <ConfirmCardView card={result.card} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onNavigate} onApplied={onApplied} />
             ) : (
               <AssistantCardView card={result.card} />
             )}

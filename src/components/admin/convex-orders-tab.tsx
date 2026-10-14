@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Globe, Smartphone, Package, Loader2, CalendarClock, Store } from "lucide-react";
+import { Clock, Globe, Smartphone, Loader2, CalendarClock, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Owl } from "@/components/mascot/owl";
 import { useConvexOrders } from "@/hooks/use-convex-orders";
 import { scopeOrderRows } from "@/lib/outlets/branch-scope-query";
 import type { BranchScope } from "@/lib/outlets/branch-scope";
@@ -117,7 +118,7 @@ export function ConvexOrdersTab({ tenantId, scope, lalamoveEnabled }: ConvexOrde
       {/* Empty State */}
       {!isLoading && Array.isArray(orders) && orders.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
-          <Package className="size-12 stroke-1" />
+          <Owl state="waiting" size={120} />
           <p className="text-sm font-medium">No orders found</p>
         </div>
       )}
