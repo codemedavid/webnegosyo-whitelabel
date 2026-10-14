@@ -206,3 +206,13 @@ push should feed THAT inbox once it lands on main, not build a second bell.
   overpayment). No revision, no total/line change; payment rows per original tender (recorded_by =
   requester, cash → open drawer); same direct rules and cumulative totals as any refund; one refund.issued.
   `order_refunds.scope` allows 'balance'. Approvers may approve a balance refund for less (like `amount`).
+
+### Direct refunds serialized (20261012190000, 2026-10-15 review)
+
+- `create_and_execute_approval` takes a per-person advisory lock (`approval_direct_lock_key(tenant, user)`)
+  and the order row lock BEFORE it quotes a direct refund / cancel_paid, so cumulative limits cannot be
+  raced. The register's own refund rows (`order_refund_insert_check`) take the same person lock first.
+- `order_refund_insert_check` REFUSES (42501, one uniform message) a signed-in caller without
+  `order_refund` or outside `app_user_may_see_order` for the order — never a silent return.
+- Service role has no TRUNCATE on store_activity / order_payments / order_revisions (no UPDATE/DELETE on
+  store_activity). NOT yet applied: probe supabase/probes/20261012190000_approvals_direct_serialization_probe.sql.
