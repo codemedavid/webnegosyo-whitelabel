@@ -9,7 +9,7 @@ import 'server-only'
 import type { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createLogger } from '@/lib/logger'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { automationMeter, meterError } from '@/lib/texts/meters'
 import { hasPermission } from '@/lib/staff-permissions'
 import { authenticateMerchant, readBody, respond, unavailable } from '@/lib/loyalty/merchant-http'
 import { listActivity, listAutomationsView } from './reads'
@@ -18,11 +18,6 @@ import { cancelWaiting, previewAutomation, runAutomationNow, saveAutomation, sav
 
 const log = createLogger('[SMS Automations]', 'DEBUG_SMS_AUTOMATIONS')
 const UNAVAILABLE = 'Texts could not be loaded. Try again.'
-/** Previews and runs read a whole store; this is a per-instance brake, not a quota. */
-const HEAVY_ACTIONS = new Set(['preview', 'run_now', 'set_status'])
-const HEAVY_LIMIT = { maxRequests: 30, windowMs: 60_000 }
-/** Each "Write it for me" is a paid model call. */
-const WRITE_LIMIT = { maxRequests: 6, windowMs: 60_000 }
 
 type Db = ReturnType<typeof createAdminClient>
 
@@ -82,15 +77,10 @@ export async function dispatchAutomationRequest(db: Db, request: AutomationReque
   }
 }
 
-/** The per-person brake on expensive actions, or null when the request may run. */
-export function automationRateLimitError(action: AutomationRequest['action'], actorId: string): string | null {
-  if (HEAVY_ACTIONS.has(action) && !checkRateLimit(`sms-automations:${actorId}`, HEAVY_LIMIT).allowed) {
-    return 'Too many requests. Wait a minute and try again.'
-  }
-  if (action === 'write' && !checkRateLimit(`sms-automations-write:${actorId}`, WRITE_LIMIT).allowed) {
-    return 'That’s a lot of drafts — wait a minute and try again.'
-  }
-  return null
+/** The shared brake on expensive actions (same meters as the web), or null when the request may run. */
+export async function automationRateLimitError(action: AutomationRequest['action'], tenantId: string, actorId: string): Promise<string | null> {
+  const meter = automationMeter(action)
+  return meter ? meterError(meter, tenantId, actorId) : null
 }
 
 function toResponse(result: AutomationResult): NextResponse {
@@ -109,7 +99,7 @@ export async function handleSmsAutomations(request: NextRequest): Promise<NextRe
   const auth = await authenticateMerchant(request, tenantId)
   if (!auth.ok) return auth.response
   if (!hasPermission(auth.member, 'customers') || auth.member.outlet_id) return respond({ error: 'Forbidden' }, 403)
-  const limited = automationRateLimitError(parsed.data.action, auth.userId)
+  const limited = await automationRateLimitError(parsed.data.action, tenantId, auth.userId)
   if (limited) return respond({ error: limited }, 429)
 
   try {

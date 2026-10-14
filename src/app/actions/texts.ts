@@ -15,7 +15,6 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createLogger } from '@/lib/logger'
-import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Outcome } from '@/lib/sms-automations/api/writes'
 import { parseAutomationRequest } from '@/lib/sms-automations/api/schema'
@@ -23,6 +22,7 @@ import { dispatchAutomationRequest } from '@/lib/sms-automations/api/http'
 import { maskGuestName } from '@/lib/sms-automations/planner'
 import { campaignDraftInputSchema, audienceFilterSchema } from '@/lib/texts/campaign-schema'
 import { requireTextsAccess, type TextsCaller } from '@/lib/texts/gate'
+import { automationMeter, meterError, type Meter } from '@/lib/texts/meters'
 import { getCampaignReport, previewCampaignAudience } from '@/lib/texts/server/campaign-reads'
 import {
   archiveCampaign, deleteCampaignDraft, duplicateCampaign, pauseCampaign, resumeCampaign, saveCampaignDraft,
@@ -37,18 +37,6 @@ import {
 const log = createLogger('[Texts]', 'DEBUG_SMS_AUTOMATIONS')
 const TEXTS_PAGE = '/[tenant]/admin/texts'
 const ACTION_QUERY_TIMEOUT_MS = 15_000
-/** Previews read a whole store's guests. Shared across instances; an outage lets them through (logged). */
-const PREVIEW_LIMIT: RateLimitOptions = { limit: 30, windowSec: 60, onRedisFailure: 'open' }
-/** Each "Write it for me" is a paid model call: per person, refused while the limiter is down. */
-const WRITE_LIMIT: RateLimitOptions = { limit: 6, windowSec: 60, onRedisFailure: 'refuse' }
-/** "Write it for me" calls per store per (UTC) day — the cost ceiling. */
-const WRITE_DAILY_STORE_LIMIT = 60
-const WRITE_DAY_LIMIT: RateLimitOptions = { limit: WRITE_DAILY_STORE_LIMIT, windowSec: 86_400, onRedisFailure: 'refuse' }
-const PREVIEW_BUSY = 'Too many previews. Wait a minute and try again.'
-const WRITE_BUSY = 'That’s a lot of drafts — wait a minute and try again.'
-const WRITE_DAILY_BUSY = 'Write it for me has been used a lot today. Try again tomorrow, or write your own.'
-/** Automation requests that read a whole store (metered like a preview). */
-const HEAVY_AUTOMATION_ACTIONS: ReadonlySet<string> = new Set(['preview', 'run_now', 'set_status'])
 const AUTOMATION_WRITES: ReadonlySet<string> = new Set(['save', 'set_status', 'run_now', 'save_settings', 'cancel_waiting'])
 
 const tenantIdSchema = z.uuid()
@@ -68,17 +56,6 @@ interface Guard<I> {
   revalidate?: boolean
   /** Which shared rate limit the call counts against. */
   meter?: Meter
-}
-
-type Meter = 'preview' | 'write'
-
-/** The refusal for an over-limit call, or null. Shared across serverless instances (Upstash). */
-async function meterError(meter: Meter, tenantId: string, userId: string): Promise<string | null> {
-  if (meter === 'preview') {
-    return (await checkRateLimit(`texts-preview:${userId}`, PREVIEW_LIMIT)).allowed ? null : PREVIEW_BUSY
-  }
-  if (!(await checkRateLimit(`texts-write:${userId}`, WRITE_LIMIT)).allowed) return WRITE_BUSY
-  return (await checkRateLimit(`texts-write-day:${tenantId}`, WRITE_DAY_LIMIT)).allowed ? null : WRITE_DAILY_BUSY
 }
 
 type Work<I, T> = (db: Db, tenantId: string, caller: TextsCaller, input: I) => Promise<ActionResult<T>>
@@ -222,11 +199,6 @@ export async function disconnectPhoneAction(tenantId: string, deviceId: string):
 // ─── Automatic texts (the app's POST /api/sms/automations, cookie session) ───
 
 const automationRequestSchema = z.record(z.string(), z.unknown())
-
-function automationMeter(action: string): Meter | null {
-  if (action === 'write') return 'write'
-  return HEAVY_AUTOMATION_ACTIONS.has(action) ? 'preview' : null
-}
 
 /** The web feed names guests like the report does ("Maria S."); the app route keeps full names. */
 function withMaskedNames(value: Record<string, unknown>): Record<string, unknown> {

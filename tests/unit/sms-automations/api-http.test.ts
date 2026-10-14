@@ -10,6 +10,8 @@ import { NextRequest } from 'next/server'
 const authenticateMerchant = jest.fn()
 const listAutomationsView = jest.fn()
 const saveAutomation = jest.fn()
+const writeMessages = jest.fn()
+const checkRateLimit = jest.fn()
 
 jest.mock('server-only', () => ({}))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ fake: true }) }))
@@ -25,7 +27,9 @@ jest.mock('@/lib/sms-automations/api/writes', () => ({
   saveAutomation: (...args: unknown[]) => saveAutomation(...args),
   cancelWaiting: jest.fn(), previewAutomation: jest.fn(), runAutomationNow: jest.fn(),
   saveSettings: jest.fn(), setAutomationStatus: jest.fn(),
+  writeMessages: (...args: unknown[]) => writeMessages(...args),
 }))
+jest.mock('@/lib/distributed-rate-limit', () => ({ checkRateLimit: (...args: unknown[]) => checkRateLimit(...args) }))
 
 const TENANT = '0DD96B60-5232-4C79-922B-0BD9022D12BA'
 
@@ -47,6 +51,7 @@ async function handle(body: unknown) {
 beforeEach(() => {
   jest.clearAllMocks()
   listAutomationsView.mockResolvedValue({ automations: [] })
+  checkRateLimit.mockResolvedValue({ allowed: true, remaining: 5, retryAfterSec: 0 })
 })
 
 describe('POST /api/sms/automations', () => {
@@ -91,5 +96,40 @@ describe('POST /api/sms/automations', () => {
     expect(response.status).toBe(503)
     expect(JSON.stringify(await response.json())).not.toContain('secret')
     errorSpy.mockRestore()
+  })
+
+  describe('"Write it for me" is metered like the web: shared across instances, per person AND per store per day', () => {
+    const write = { action: 'write', tenantId: TENANT, recipe: 'win_back', language: 'en' }
+
+    it('checks the shared per-person and per-store-day limits, refusing while the limiter is down', async () => {
+      authenticateMerchant.mockResolvedValue(member())
+      writeMessages.mockResolvedValue({ ok: true, value: { messages: ['Hi'] } })
+      expect((await handle(write)).status).toBe(200)
+      const keys = checkRateLimit.mock.calls.map(([key]) => key)
+      expect(keys).toEqual([`texts-write:u1`, `texts-write-day:${TENANT.toLowerCase()}`])
+      expect(checkRateLimit.mock.calls.every(([, options]) => options.onRedisFailure === 'refuse')).toBe(true)
+    })
+
+    it('never calls the model once the store used its daily drafts', async () => {
+      authenticateMerchant.mockResolvedValue(member())
+      checkRateLimit.mockImplementation(async (key: string) => ({ allowed: !key.startsWith('texts-write-day:'), remaining: 0, retryAfterSec: 60 }))
+      const response = await handle(write)
+      expect(response.status).toBe(429)
+      expect(writeMessages).not.toHaveBeenCalled()
+    })
+  })
+
+  it('meters whole-store reads (preview, run now, switching) with the shared preview limit', async () => {
+    authenticateMerchant.mockResolvedValue(member())
+    checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 60 })
+    const response = await handle({ action: 'run_now', tenantId: TENANT, automationId: '6f1c2b8e-1d2a-4f3b-9c4d-5e6f7a8b9c0d' })
+    expect(response.status).toBe(429)
+    expect(checkRateLimit.mock.calls[0][0]).toBe('texts-preview:u1')
+  })
+
+  it('does not meter a plain list', async () => {
+    authenticateMerchant.mockResolvedValue(member())
+    await handle({ action: 'list', tenantId: TENANT })
+    expect(checkRateLimit).not.toHaveBeenCalled()
   })
 })
