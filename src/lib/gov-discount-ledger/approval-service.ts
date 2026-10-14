@@ -3,14 +3,17 @@
  *
  * The cashier's register shows who may approve; the manager types their PIN
  * on the cashier's device. The server checks the PIN (bcrypt, five tries then
- * a 15-minute lock — see the migration) and issues a ONE-TIME approval for
- * this reduction, which the sales book consumes when the sale is recorded.
+ * a lock that grows 15 min → 1 h → 24 h — see the PIN-hardening migration) and
+ * issues a ONE-TIME approval for this reduction and these claimants, which the
+ * sales book consumes when the sale is recorded. The branch is the CASHIER's
+ * (the route resolves it from their account), never the body's word.
  *
  * Who may approve: the owner, a full-access account, or anyone holding
  * `discount_review` — and a branch-locked approver only at their own branch.
  */
 
 import { hasPermission } from '@/lib/staff-permissions'
+import { approvalFingerprint } from './approval-binding'
 import { isWeakPin, type ApproveRequest } from './request-schemas'
 
 export interface ApproverRecord {
@@ -39,6 +42,8 @@ export interface ApprovalStore {
     cashierName: string
     approvedReduction: number
     summary: Record<string, unknown>
+    /** `approval-binding.ts`: the claimants + cashier this approval is for. */
+    saleFingerprint: string
   }): Promise<{ id: string; expiresAt: string }>
 }
 
@@ -58,7 +63,7 @@ export type ApprovalOutcome =
 
 const PIN_MESSAGES: Record<Exclude<PinVerdict, 'ok'>, { status: 400 | 423; error: string }> = {
   wrong: { status: 400, error: 'That PIN is not right. Try again.' },
-  locked: { status: 423, error: 'Too many wrong tries — this PIN is locked for 15 minutes.' },
+  locked: { status: 423, error: 'Too many wrong tries — this PIN is locked for now. Try again later or ask the owner.' },
   no_pin: { status: 400, error: 'This manager has not set an approval PIN yet.' },
 }
 
@@ -84,6 +89,7 @@ export async function approveGrant(
     cashierName: cashier.name,
     approvedReduction: request.reduction,
     summary: { claimants: request.claimants },
+    saleFingerprint: approvalFingerprint(request.claimants, cashier.userId),
   })
   return { ok: true, approvalId: approval.id, approverName: approver.name, expiresAt: approval.expiresAt }
 }

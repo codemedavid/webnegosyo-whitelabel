@@ -81,6 +81,7 @@ describe('toLedgerReview and toReversalStamp', () => {
       revision: 0,
       claimantRef: 'r1',
       occurredAt: '2026-10-05T04:00:00.000Z',
+      flags: expect.any(Array),
     })
   })
 })

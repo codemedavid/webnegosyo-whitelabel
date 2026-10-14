@@ -18,6 +18,12 @@ export type GovFlag =
   | 'id_reused_today'
   | 'unusual_id'
   | 'edited'
+  | 'unverified_order'
+  | 'reversal_unverified'
+  | 'clock_ahead'
+  | 'late_sync'
+  | 'recorded_after_cancel'
+  | 'superseded_late'
 
 export type GovFlagSeverity = 'high' | 'medium' | 'low'
 
@@ -49,6 +55,21 @@ export const GOV_FLAGS: Readonly<Record<GovFlag, GovFlagInfo>> = {
     explain: 'This discount needed a manager’s PIN and none was given.',
     severity: 'high',
   },
+  reversal_unverified: {
+    label: 'Take-back not confirmed',
+    explain: 'The discount was taken back, but the server could not confirm the order was really changed or cancelled.',
+    severity: 'high',
+  },
+  unverified_order: {
+    label: 'Order not checked',
+    explain: 'This order lives outside the platform, so the server could not compare it with the saved order.',
+    severity: 'medium',
+  },
+  clock_ahead: {
+    label: 'Register clock ahead',
+    explain: 'The register reported a time in the future, so the server’s time was recorded instead.',
+    severity: 'medium',
+  },
   id_reused_today: {
     label: 'ID used again today',
     explain: 'The same ID number was used on another order today — check it was the same person.',
@@ -77,6 +98,21 @@ export const GOV_FLAGS: Readonly<Record<GovFlag, GovFlagInfo>> = {
   unusual_id: {
     label: 'Unusual PWD ID',
     explain: 'The PWD ID does not follow the national format.',
+    severity: 'low',
+  },
+  late_sync: {
+    label: 'Sent late',
+    explain: 'The register sent this record late (it was offline); the time shown is the sale time it reported.',
+    severity: 'low',
+  },
+  recorded_after_cancel: {
+    label: 'Arrived after cancel',
+    explain: 'The order was already cancelled when this record arrived, so it was recorded and taken back at once.',
+    severity: 'low',
+  },
+  superseded_late: {
+    label: 'Older version',
+    explain: 'A newer change to this order was recorded first, so this older version was recorded and taken back at once.',
     severity: 'low',
   },
   edited: {

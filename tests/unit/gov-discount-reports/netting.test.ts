@@ -105,6 +105,14 @@ describe('grantsWithStatus', () => {
     expect(grants[0].reversedAt).toBeNull()
   })
 
+  it('carries an unconfirmed take-back onto its grant as a flag', () => {
+    const grant = claim()
+    const reversal = { ...reversalOf(grant), flags: ['reversal_unverified' as const] }
+    expect(grantsWithStatus([grant, reversal], [], [])[0].flags).toContain('reversal_unverified')
+    const later = { ...reversalOf(grant), occurredAt: '2026-11-02T00:00:00.000Z', flags: ['reversal_unverified' as const] }
+    expect(grantsWithStatus([grant], [later], [])[0].flags).toContain('reversal_unverified')
+  })
+
   it('sees a reversal recorded after the window', () => {
     const grant = claim()
     const later = { ...reversalOf(grant), occurredAt: '2026-11-02T00:00:00.000Z' }

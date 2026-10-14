@@ -61,6 +61,8 @@ export interface ReversalStamp {
   revision: number;
   claimantRef: string;
   occurredAt: string;
+  /** Set when the take-back itself needs a look (e.g. `reversal_unverified`). */
+  flags?: GovFlag[];
 }
 
 /** Signed sums over a set of rows, in pesos. `sales` = grants − reversals. */

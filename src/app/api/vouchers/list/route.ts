@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { clientSupportsUnitLimits, VOUCHER_FEATURES_HEADER, vouchersForClient } from '@/lib/vouchers/client-features'
 import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
+import { callerHasFeature } from '@/lib/gov-discount-ledger/caller-scope'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { findActiveVouchers } from '@/lib/vouchers/repository'
 
@@ -20,7 +21,8 @@ import { findActiveVouchers } from '@/lib/vouchers/repository'
  * Deliberately NOT gated on the `vouchers` staff permission, for the same
  * reason /api/vouchers/lookup is not: that permission governs a MANUAL
  * discount, where a cashier invents money off at will. Reading the codes the
- * merchant is advertising is ordinary counter work.
+ * merchant is advertising is ordinary COUNTER work — so it needs `pos`: a
+ * kitchen-only account has no reason to read every live code.
  */
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -33,6 +35,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const caller = await requireBearerStoreCaller(request, tenantId, 'view')
   if (!caller.ok) return caller.response
+  if (!callerHasFeature(caller.appUser, 'pos')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   // The authorized tenant and the queried tenant are the same value, so what
   // was authorized above is exactly what is read.

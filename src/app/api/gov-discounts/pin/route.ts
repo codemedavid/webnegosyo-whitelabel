@@ -1,23 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { parseSetPinRequest } from '@/lib/gov-discount-ledger/request-schemas'
+import { requireGovCaller } from '@/lib/gov-discount-ledger/route-guards'
+import { createLogger } from '@/lib/logger'
 
-const BURST = { maxRequests: 10, windowMs: 60_000 }
+/** Shared across instances; a Redis outage falls back to the per-instance limit. */
+const BURST: RateLimitOptions = { limit: 10, windowSec: 60, onRedisFailure: 'instance' }
+const log = createLogger('[gov-discounts/pin]', 'DEBUG_GOV_DISCOUNTS')
 
 /**
  * POST /api/gov-discounts/pin — the signed-in manager sets their OWN approval
- * PIN from the merchant app. Never anyone else's: the user is the token's.
+ * PIN from the merchant app. Never anyone else's: the user is the token's,
+ * and only someone who reviews discounts (`discount_review`) has a PIN.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json().catch(() => null)
   const parsed = parseSetPinRequest(body)
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
 
-  const caller = await requireBearerStoreCaller(request, parsed.value.tenantId, 'edit')
+  const caller = await requireGovCaller(request, parsed.value.tenantId, 'edit', 'discount_review')
   if (!caller.ok) return caller.response
 
-  if (!checkRateLimit(`gov-pin:${caller.user.id}`, BURST).allowed) {
+  if (!(await checkRateLimit(`gov-pin:${parsed.value.tenantId}:${caller.user.id}`, BURST)).allowed) {
     return NextResponse.json({ error: 'Too many tries. Wait a minute and try again.' }, { status: 429 })
   }
 
@@ -31,7 +35,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[gov-discounts/pin] failed', error instanceof Error ? error.message : error)
+    // Never the raw message: a Postgres error can echo the function's input.
+    log.error('failed', { tenantId: parsed.value.tenantId, error: error instanceof Error ? error.name : 'unknown' })
     return NextResponse.json({ error: 'Could not save the PIN. Try again.' }, { status: 500 })
   }
 }

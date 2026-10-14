@@ -1,7 +1,11 @@
 /**
  * Storing one optional Senior/PWD ID photo the register took.
  *
- * The caller is a verified member of the store (the route checks the token).
+ * The caller is a verified member of the store holding `pos` (the route checks
+ * the token and the permission). A branch-locked account may file a photo
+ * only on its own branch's grants, and a photo already on file is replaced
+ * only by whoever took it or by someone who reviews discounts — a cashier
+ * cannot overwrite a colleague's evidence.
  * The photo is accepted only when the store has photos switched on, it is
  * still inside the 90-day retention, and the sales book already holds a grant
  * for that order and claimant — so a photo can never be filed against an
@@ -39,21 +43,44 @@ export interface IdPhotoStore {
   loadPhotoMode(tenantId: string): Promise<IdPhotoMode>
   /** The grant this photo belongs to, or null when the sales book has none (yet). */
   findGrant(tenantId: string, backend: GovLedgerBackend, externalOrderId: string, claimantRef: string): Promise<{ outletId: string | null } | null>
-  findPhotoPath(tenantId: string, backend: GovLedgerBackend, externalOrderId: string, claimantRef: string): Promise<string | null>
+  findPhoto(
+    tenantId: string,
+    backend: GovLedgerBackend,
+    externalOrderId: string,
+    claimantRef: string,
+  ): Promise<{ path: string; uploadedBy: string | null } | null>
   putObject(path: string, bytes: Buffer, contentType: string): Promise<void>
   /** Insert, or replace the claimant's earlier photo (a retake). */
   savePhoto(row: IdPhotoRowWrite): Promise<void>
   removeObjects(paths: readonly string[]): Promise<void>
 }
 
-export type IdPhotoRefusalCode = 'photos_off' | 'expired' | 'invalid_photo' | 'too_large' | 'claim_pending'
+/** Who is uploading, as the route resolved them. */
+export interface IdPhotoUploader {
+  userId: string
+  /** The branch a branch-locked account is confined to; null = store-wide. */
+  branchOutletId: string | null
+  /** Holds `discount_review` (or is the owner): may replace anyone's photo. */
+  mayReplaceAny: boolean
+}
+
+export type IdPhotoRefusalCode =
+  | 'photos_off'
+  | 'expired'
+  | 'invalid_photo'
+  | 'too_large'
+  | 'claim_pending'
+  | 'wrong_branch'
+  | 'replace_refused'
+
+type RefusalStatus = 400 | 403 | 409 | 410 | 413
 
 export type IdPhotoUploadOutcome =
   | { ok: true; replaced: boolean }
-  | { ok: false; status: 400 | 409 | 410 | 413; code: IdPhotoRefusalCode; error: string }
+  | { ok: false; status: RefusalStatus; code: IdPhotoRefusalCode; error: string }
 
 function refuse(
-  status: 400 | 409 | 410 | 413,
+  status: RefusalStatus,
   code: IdPhotoRefusalCode,
   error: string,
 ): IdPhotoUploadOutcome {
@@ -63,7 +90,7 @@ function refuse(
 export async function uploadIdPhoto(
   store: IdPhotoStore,
   request: IdPhotoUploadRequest,
-  uploaderId: string,
+  uploader: IdPhotoUploader,
   now: Date,
   newPhotoId: () => string,
 ): Promise<IdPhotoUploadOutcome> {
@@ -84,8 +111,15 @@ export async function uploadIdPhoto(
   const { tenantId, backend, externalOrderId, claimantRef } = request
   const grant = await store.findGrant(tenantId, backend, externalOrderId, claimantRef)
   if (!grant) return refuse(409, 'claim_pending', 'The discount is not in the sales book yet. Try again shortly.')
+  if (uploader.branchOutletId !== null && grant.outletId !== uploader.branchOutletId) {
+    return refuse(403, 'wrong_branch', 'This discount was given at another branch.')
+  }
 
-  const previousPath = await store.findPhotoPath(tenantId, backend, externalOrderId, claimantRef)
+  const previous = await store.findPhoto(tenantId, backend, externalOrderId, claimantRef)
+  if (previous && previous.uploadedBy !== uploader.userId && !uploader.mayReplaceAny) {
+    return refuse(403, 'replace_refused', 'Another staff member already filed this ID photo.')
+  }
+  const previousPath = previous?.path ?? null
   const { photo } = decoded
   const path = idPhotoObjectPath(tenantId, newPhotoId(), photo.extension)
   await store.putObject(path, photo.bytes, photo.contentType)
@@ -99,7 +133,7 @@ export async function uploadIdPhoto(
       claimant_ref: claimantRef,
       object_path: path,
       captured_at: request.capturedAt,
-      uploaded_by: uploaderId,
+      uploaded_by: uploader.userId,
     })
   } catch (error) {
     // No row points at the new object: take it back out rather than leave an

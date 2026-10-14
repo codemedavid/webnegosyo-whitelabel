@@ -151,6 +151,13 @@ describe("needs a look", () => {
     expect(needsALook(grants).map((g) => g.id)).toEqual(["medium", "high"]);
   });
 
+  it("keeps a take-back nobody could confirm in front of the owner", () => {
+    const grant = claim({ id: "g" });
+    const grants = grantsWithStatus([grant], [{ ...reversalOf(grant, "2026-10-07T00:00:00.000Z"), flags: ["reversal_unverified"] }], []);
+    expect(grants[0].flags).toContain("reversal_unverified");
+    expect(needsALook(grants).map((g) => g.id)).toEqual(["g"]);
+  });
+
   it("explains each flag in words", () => {
     expect(visibleFlags(["approval_missing"])[0]).toMatchObject({ flag: "approval_missing", label: "No approval", severity: "high" });
   });
@@ -263,6 +270,7 @@ describe("rows", () => {
       revision: 3,
       claimantRef: "x",
       occurredAt: "t",
+      flags: [],
     });
   });
 });

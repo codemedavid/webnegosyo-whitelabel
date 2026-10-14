@@ -1337,6 +1337,7 @@ export type Database = {
           expires_at: string
           id: string
           outlet_id: string | null
+          sale_fingerprint: string | null
           summary: Json
           tenant_id: string
         }
@@ -1352,6 +1353,7 @@ export type Database = {
           expires_at?: string
           id?: string
           outlet_id?: string | null
+          sale_fingerprint?: string | null
           summary?: Json
           tenant_id: string
         }
@@ -1367,6 +1369,7 @@ export type Database = {
           expires_at?: string
           id?: string
           outlet_id?: string | null
+          sale_fingerprint?: string | null
           summary?: Json
           tenant_id?: string
         }
@@ -6639,6 +6642,7 @@ export type Database = {
       staff_approval_pins: {
         Row: {
           failed_attempts: number
+          lock_count: number
           locked_until: string | null
           pin_hash: string
           tenant_id: string
@@ -6647,6 +6651,7 @@ export type Database = {
         }
         Insert: {
           failed_attempts?: number
+          lock_count?: number
           locked_until?: string | null
           pin_hash: string
           tenant_id: string
@@ -6655,6 +6660,7 @@ export type Database = {
         }
         Update: {
           failed_attempts?: number
+          lock_count?: number
           locked_until?: string | null
           pin_hash?: string
           tenant_id?: string

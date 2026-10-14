@@ -8,7 +8,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { TAX_PROFILE_COLUMNS, taxProfileFromRow, type RecordGovDiscountRequest } from '@/lib/gov-discount'
-import type { ActiveGrant, ClaimRow, ConsumedApproval, LedgerStore } from './record-service'
+import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { readOrderDiscount } from '@/lib/order-discount'
+import type { ActiveGrant, ClaimRow, ConsumedApproval, LedgerOrderState, LedgerStore } from './record-service'
 import type { SavedOrderLine } from './verify'
 
 type Db = SupabaseClient<Database>
@@ -16,6 +18,21 @@ type Db = SupabaseClient<Database>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const APPROVAL_TOLERANCE = 0.01
 const LEDGER_CONFLICT_KEY = 'tenant_id,backend,external_order_id,revision,claimant_ref,event'
+const TENANT_BACKEND_COLUMNS = 'order_backend, convex_deployment_url'
+const APPROVAL_COLUMNS = 'id, approver_user_id, approver_name, approved_reduction, consumed_order, sale_fingerprint'
+
+interface ApprovalRow {
+  id: string
+  approver_user_id: string | null
+  approver_name: string
+  approved_reduction: number | string
+  consumed_order: string | null
+  sale_fingerprint: string | null
+}
+
+function toConsumed(row: ApprovalRow): ConsumedApproval {
+  return { approvalId: row.id, approverUserId: row.approver_user_id, approverName: row.approver_name }
+}
 
 /** A stored row as a row to insert again (a reversal): no id, no timestamp. */
 function withoutDatabaseKeys(row: ClaimRow & { id: string; created_at: string }): ClaimRow {
@@ -88,42 +105,75 @@ export function createSupabaseLedgerStore(db: Db): LedgerStore {
       )
     },
 
-    async consumeApproval({ approvalId, tenantId, cashierUserId, reduction, orderRef }) {
-      const select = 'id, approver_user_id, approver_name'
+    async loadOrderState(order): Promise<LedgerOrderState> {
+      // The tenant's REAL backend decides, never the body's claim: a platform
+      // store's order is always read, whatever backend the request names.
+      const { data: tenant, error: tenantError } = await db
+        .from('tenants')
+        .select(TENANT_BACKEND_COLUMNS)
+        .eq('id', order.tenantId)
+        .maybeSingle()
+      if (tenantError) fail('tenant backend', tenantError.message)
+      if (!tenant || resolveOrderBackend(tenant as OrderBackendTenantFields) !== 'platform') {
+        return { readable: false }
+      }
+      if (order.backend !== 'platform_supabase' || !UUID_RE.test(order.externalOrderId)) {
+        return { readable: true, exists: false }
+      }
+      const { data, error } = await db
+        .from('orders')
+        .select('status, discount_data, customer_data')
+        .eq('id', order.externalOrderId)
+        .eq('tenant_id', order.tenantId)
+        .maybeSingle()
+      if (error) fail('order state', error.message)
+      if (!data) return { readable: true, exists: false }
+      const government = readOrderDiscount(data)?.government
+      return {
+        readable: true,
+        exists: true,
+        cancelled: data.status === 'cancelled',
+        hasGovernment: (government?.claimants.length ?? 0) > 0,
+      }
+    },
+
+    async consumeApproval({ approvalId, tenantId, cashierUserId, reduction, orderRef, saleFingerprint }) {
       const { data, error } = await db
         .from('gov_discount_approvals')
         .update({ consumed_at: new Date().toISOString(), consumed_order: orderRef })
         .eq('id', approvalId)
         .eq('tenant_id', tenantId)
         .eq('cashier_user_id', cashierUserId)
+        .eq('sale_fingerprint', saleFingerprint)
         .is('consumed_at', null)
         .gt('expires_at', new Date().toISOString())
         .gte('approved_reduction', reduction - APPROVAL_TOLERANCE)
-        .select(select)
+        .select(APPROVAL_COLUMNS)
         .maybeSingle()
       if (error) fail('approval', error.message)
+      if (data) return toConsumed(data as ApprovalRow)
 
-      // A retry of the same order finds the approval it already consumed.
+      // A retry or a later revision of the SAME order finds the approval it
+      // already consumed — but only for the same claimants and never for a
+      // bigger discount than was approved. Compared in code, exactly: the
+      // order id never reaches a LIKE pattern.
+      const { data: earlier, error: earlierError } = await db
+        .from('gov_discount_approvals')
+        .select(APPROVAL_COLUMNS)
+        .eq('id', approvalId)
+        .eq('tenant_id', tenantId)
+        .eq('cashier_user_id', cashierUserId)
+        .maybeSingle()
+      if (earlierError) fail('approval', earlierError.message)
+      const row = earlier as ApprovalRow | null
       const sameOrder = orderRef.slice(0, orderRef.lastIndexOf('#') + 1)
-      const row =
-        data ??
-        (
-          await db
-            .from('gov_discount_approvals')
-            .select(select)
-            .eq('id', approvalId)
-            .eq('tenant_id', tenantId)
-            .eq('cashier_user_id', cashierUserId)
-            .like('consumed_order', `${sameOrder}%`)
-            .maybeSingle()
-        ).data
-      if (!row) return null
-      const approval: ConsumedApproval = {
-        approvalId: row.id,
-        approverUserId: row.approver_user_id,
-        approverName: row.approver_name,
-      }
-      return approval
+      const isSameSale =
+        row !== null &&
+        row.consumed_order !== null &&
+        row.consumed_order.startsWith(sameOrder) &&
+        row.sale_fingerprint === saleFingerprint &&
+        Number(row.approved_reduction) >= reduction - APPROVAL_TOLERANCE
+      return isSameSale ? toConsumed(row) : null
     },
 
     async idsUsedElsewhere({ tenantId, idNumbers, externalOrderId, sinceIso }) {
@@ -163,6 +213,20 @@ export function createSupabaseLedgerStore(db: Db): LedgerStore {
             row: withoutDatabaseKeys(row),
           }),
         )
+    },
+
+    async highestRevision(tenantId, backend, externalOrderId) {
+      const { data, error } = await db
+        .from('gov_discount_claims')
+        .select('revision')
+        .eq('tenant_id', tenantId)
+        .eq('backend', backend)
+        .eq('external_order_id', externalOrderId)
+        .order('revision', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) fail('highest revision', error.message)
+      return data ? Number(data.revision) : null
     },
 
     async insertClaims(rows) {

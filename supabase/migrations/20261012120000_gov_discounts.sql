@@ -31,6 +31,12 @@
 -- ============================================
 -- Same rule as staff-permissions.ts `hasPermission`: superadmin, the owner, or
 -- a full-access account (permissions NULL), or an explicit grant.
+--
+-- SUPERSEDED: later migrations (20261012140000_security_floor_activity,
+-- 20261013120000_staff_permission_keys) redefine this function with the
+-- implied grants and the keys a full-access account does NOT get. They sort
+-- after this file, so a replay ends on their body, which is what is live.
+-- Never copy this body; read the live one with pg_get_functiondef.
 CREATE OR REPLACE FUNCTION public.app_user_has_permission(p_tenant_id UUID, p_permission TEXT)
 RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public, pg_temp
 AS $$

@@ -10,9 +10,17 @@
 import { GOV_FLAGS, needsReview, type GovFlag, type GovFlagInfo } from "../gov-discount";
 import type { GrantEntry, ReviewVerdict } from "./types";
 
+/** A take-back nobody could confirm keeps the grant in front of the owner. */
+const UNCONFIRMED_TAKE_BACK: GovFlag = "reversal_unverified";
+
 export function needsALook(grants: readonly GrantEntry[]): GrantEntry[] {
   return grants
-    .filter((grant) => grant.reversedAt === null && grant.reviews.length === 0 && needsReview(grant.flags))
+    .filter(
+      (grant) =>
+        (grant.reversedAt === null || grant.flags.includes(UNCONFIRMED_TAKE_BACK)) &&
+        grant.reviews.length === 0 &&
+        needsReview(grant.flags),
+    )
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 }
 

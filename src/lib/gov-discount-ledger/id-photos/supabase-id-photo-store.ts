@@ -49,17 +49,17 @@ export function createSupabaseIdPhotoStore(db: Db): IdPhotoStore & IdPhotoPurgeS
       return row ? { outletId: row.outlet_id } : null
     },
 
-    async findPhotoPath(tenantId, backend, externalOrderId, claimantRef) {
+    async findPhoto(tenantId, backend, externalOrderId, claimantRef) {
       const { data, error } = await db
         .from('gov_discount_id_photos')
-        .select('object_path')
+        .select('object_path, uploaded_by')
         .eq('tenant_id', tenantId)
         .eq('backend', backend)
         .eq('external_order_id', externalOrderId)
         .eq('claimant_ref', claimantRef)
         .maybeSingle()
       if (error) fail('existing photo', error.message)
-      return data?.object_path ?? null
+      return data ? { path: data.object_path, uploadedBy: data.uploaded_by ?? null } : null
     },
 
     async putObject(path, bytes, contentType) {

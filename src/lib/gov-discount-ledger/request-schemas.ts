@@ -15,6 +15,11 @@ import { MAX_ID_PHOTO_DATA_URL_CHARS } from './id-photos/rules'
 import type { IdPhotoUploadRequest } from './id-photos/upload-service'
 
 const uuid = z.string().uuid()
+/**
+ * An order id from any backend: platform/tenant uuids, Convex ids, local ids.
+ * No wildcard or quote characters — the id is compared in queries.
+ */
+const orderId = z.string().regex(/^[A-Za-z0-9_:.-]{1,128}$/, 'not a valid order id')
 const money = z.number().finite().min(0).max(10_000_000)
 
 const lineSchema = z.object({
@@ -29,7 +34,7 @@ const recordSchema = z
   .object({
     tenantId: uuid,
     backend: z.enum(['convex', 'tenant_supabase', 'platform_supabase']),
-    externalOrderId: z.string().min(1).max(128),
+    externalOrderId: orderId,
     orderLabel: z.string().max(40).nullable().default(null),
     outletId: uuid.nullable().default(null),
     revision: z.number().int().min(0).max(10_000),
@@ -117,7 +122,7 @@ const idPhotoUploadSchema = z
   .object({
     tenantId: uuid,
     backend: z.enum(['convex', 'tenant_supabase', 'platform_supabase']),
-    externalOrderId: z.string().min(1).max(128),
+    externalOrderId: orderId,
     claimantRef: z.string().min(1).max(128),
     capturedAt: z.string().datetime({ offset: true }),
     // Checked byte-for-byte by `decodePhotoDataUrl`; this only bounds the parse.

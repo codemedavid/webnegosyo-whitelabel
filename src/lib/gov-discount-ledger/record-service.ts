@@ -14,15 +14,39 @@
  *      this revision's grants. Re-sending the same request is a no-op (the
  *      ledger's unique key), so the register can retry freely.
  *
+ * Integrity rules (security review 2026-10-15):
+ *
+ * - A take-back (`government: null`) is only believed when the order itself
+ *   agrees: a platform order must exist in this store and no longer carry a
+ *   Senior/PWD block (or be cancelled). An order the server cannot read
+ *   (Convex, a tenant's own Supabase) is still reversed — the register is the
+ *   only witness — but the reversal is flagged for the owner.
+ * - Records can arrive out of order (an offline register retries). A late
+ *   OLDER revision is written and immediately taken back, so the book keeps
+ *   the audit trail without counting the discount twice; a late take-back
+ *   never touches a newer revision. A grant that arrives after the order was
+ *   cancelled is likewise written and taken back.
+ * - The sale time is the register's, bounded by the server clock: a future
+ *   time is replaced (`clock_ahead`), an old one is kept but marked
+ *   `late_sync`. The device queue has no maximum age (a record is a tax
+ *   document), so old times are accepted rather than refused.
+ * - A manager approval is consumed only for the claimants it was given for
+ *   (`approval-binding.ts`).
+ *
  * The data access is injected (`LedgerStore`) so the whole flow is testable
  * without a database.
  */
 
 import { normalizeIdNumber, sortFlags, type GovFlag, type RecordGovDiscountRequest, type TaxProfile } from '@/lib/gov-discount'
+import { saleFingerprint } from './approval-binding'
 import { verifyGrant, type SavedOrderLine } from './verify'
 
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
+/** A register clock this far ahead is still believed (clock drift). */
+const FUTURE_TOLERANCE_MS = 2 * 60 * 1000
+/** Older than this, a record was queued offline — kept, but marked. */
+const LATE_AFTER_MS = 15 * 60 * 1000
 
 export interface LedgerActor {
   /** Null for an online order — no staff member granted it. */
@@ -81,17 +105,27 @@ export interface ClaimRow {
   occurred_at: string
 }
 
+/** What the server can see of the order a record is about. */
+export type LedgerOrderState =
+  /** A backend the server does not read (Convex, a tenant's own Supabase). */
+  | { readable: false }
+  | { readable: true; exists: false }
+  | { readable: true; exists: true; cancelled: boolean; hasGovernment: boolean }
+
 export interface LedgerStore {
   loadTaxProfile(tenantId: string): Promise<TaxProfile | null>
   loadExcludedMenuItemIds(tenantId: string, menuItemIds: readonly string[]): Promise<Set<string>>
   /** Null when the backend is not one the server reads, or the order is not found. */
   loadSavedLines(request: RecordGovDiscountRequest): Promise<SavedOrderLine[] | null>
+  loadOrderState(order: { tenantId: string; backend: string; externalOrderId: string }): Promise<LedgerOrderState>
   consumeApproval(args: {
     approvalId: string
     tenantId: string
     cashierUserId: string
     reduction: number
     orderRef: string
+    /** `approval-binding.ts` — the approval must have been given for these claimants. */
+    saleFingerprint: string
   }): Promise<ConsumedApproval | null>
   /** ID numbers (normalised) already granted on a DIFFERENT order since `sinceIso`. */
   idsUsedElsewhere(args: {
@@ -101,15 +135,31 @@ export interface LedgerStore {
     sinceIso: string
   }): Promise<Set<string>>
   listActiveGrants(tenantId: string, backend: string, externalOrderId: string): Promise<ActiveGrant[]>
+  /** The highest revision the book holds for this order (any event), or null. */
+  highestRevision(tenantId: string, backend: string, externalOrderId: string): Promise<number | null>
   /** Inserts, skipping rows the ledger already holds. Returns how many were new. */
   insertClaims(rows: readonly ClaimRow[]): Promise<number>
 }
+
+/** Why a take-back was not written (the route answers 409; the register retries). */
+export type RecordRefusal = 'order_not_found' | 'order_still_discounted'
 
 export interface RecordOutcome {
   granted: number
   reversed: number
   verification: 'verified' | 'mismatch' | 'payload_only' | 'none'
   flags: GovFlag[]
+  refused?: RecordRefusal
+}
+
+/** The sale time to record, and what the server thought of the register's clock. */
+export function ledgerTimestamp(reported: string, now: Date): { occurredAt: string; flags: GovFlag[] } {
+  const reportedMs = Date.parse(reported)
+  if (!Number.isFinite(reportedMs) || reportedMs > now.getTime() + FUTURE_TOLERANCE_MS) {
+    return { occurredAt: now.toISOString(), flags: ['clock_ahead'] }
+  }
+  if (reportedMs < now.getTime() - LATE_AFTER_MS) return { occurredAt: reported, flags: ['late_sync'] }
+  return { occurredAt: reported, flags: [] }
 }
 
 /** Midnight in Manila, as an ISO instant. */
@@ -127,15 +177,51 @@ function orderRef(request: RecordGovDiscountRequest): string {
  * sales book still says whose discount it was) and names who took it back.
  * (`reverse-on-cancel.ts` builds the same row for a cancelled order.)
  */
-function reversalOf(grant: ActiveGrant, actor: LedgerActor, occurredAt: string): ClaimRow {
+function reversalOf(grant: ActiveGrant, actor: LedgerActor, occurredAt: string, flags: GovFlag[] = []): ClaimRow {
   return {
     ...grant.row,
     event: 'reversed',
-    flags: [],
+    flags,
     reversed_by: actor.userId,
     reversed_by_name: actor.name,
     occurred_at: occurredAt,
   }
+}
+
+/**
+ * Whether a take-back may be written, judged against the order itself. Null =
+ * go ahead (with `flags` on the reversal rows); a refusal otherwise.
+ */
+function takeBackVerdict(state: LedgerOrderState): { refused: RecordRefusal } | { flags: GovFlag[] } {
+  if (!state.readable) return { flags: ['reversal_unverified'] }
+  if (!state.exists) return { refused: 'order_not_found' }
+  if (state.hasGovernment && !state.cancelled) return { refused: 'order_still_discounted' }
+  return { flags: [] }
+}
+
+async function recordTakeBack(
+  store: LedgerStore,
+  request: RecordGovDiscountRequest,
+  actor: LedgerActor,
+  occurredAt: string,
+): Promise<RecordOutcome> {
+  const empty: RecordOutcome = { granted: 0, reversed: 0, verification: 'none', flags: [] }
+  const active = await store.listActiveGrants(request.tenantId, request.backend, request.externalOrderId)
+  // A late take-back never reaches a revision newer than itself.
+  const superseded = active.filter((grant) => grant.revision <= request.revision)
+  if (superseded.length === 0) return empty
+
+  const verdict = takeBackVerdict(await store.loadOrderState(request))
+  if ('refused' in verdict) return { ...empty, refused: verdict.refused }
+
+  const reversed = await store.insertClaims(
+    superseded.map((grant) => reversalOf(grant, actor, occurredAt, verdict.flags)),
+  )
+  return { ...empty, reversed, flags: verdict.flags }
+}
+
+function totalReductionOf(government: NonNullable<RecordGovDiscountRequest['government']>): number {
+  return government.claimants.reduce((sum, claimant) => sum + claimant.reduction, 0)
 }
 
 export async function recordGovDiscount(
@@ -145,21 +231,20 @@ export async function recordGovDiscount(
   now: Date,
 ): Promise<RecordOutcome> {
   const government = request.government
-  const active = await store.listActiveGrants(request.tenantId, request.backend, request.externalOrderId)
-  const superseded = active.filter((grant) => grant.revision < request.revision || !government)
-  const reversals = superseded.map((grant) => reversalOf(grant, actor, request.occurredAt))
+  const time = ledgerTimestamp(request.occurredAt, now)
 
   if (!government || government.claimants.length === 0) {
-    const reversed = await store.insertClaims(reversals)
-    return { granted: 0, reversed, verification: 'none', flags: [] }
+    return recordTakeBack(store, request, actor, time.occurredAt)
   }
 
   const menuItemIds = request.lines
     .map((line) => line.menuItemId)
     .filter((id): id is string => typeof id === 'string' && id !== '')
-  const totalReduction = government.claimants.reduce((sum, claimant) => sum + claimant.reduction, 0)
 
-  const [profile, excluded, savedLines, approval] = await Promise.all([
+  const [active, highest, orderState, profile, excluded, savedLines, approval] = await Promise.all([
+    store.listActiveGrants(request.tenantId, request.backend, request.externalOrderId),
+    store.highestRevision(request.tenantId, request.backend, request.externalOrderId),
+    store.loadOrderState(request),
     store.loadTaxProfile(request.tenantId),
     store.loadExcludedMenuItemIds(request.tenantId, menuItemIds),
     store.loadSavedLines(request),
@@ -168,8 +253,9 @@ export async function recordGovDiscount(
           approvalId: request.approvalId,
           tenantId: request.tenantId,
           cashierUserId: actor.userId,
-          reduction: totalReduction,
+          reduction: totalReductionOf(government),
           orderRef: orderRef(request),
+          saleFingerprint: saleFingerprint(government.claimants, actor.userId),
         })
       : Promise.resolve(null),
   ])
@@ -190,11 +276,21 @@ export async function recordGovDiscount(
     sinceIso: manilaDayStart(now),
   })
 
+  const isSupersededLate = highest !== null && highest > request.revision
+  const isAfterCancel = orderState.readable && orderState.exists && orderState.cancelled
+  const recordFlags: GovFlag[] = [
+    ...time.flags,
+    ...(!orderState.readable ? (['unverified_order'] as const) : []),
+    ...(isSupersededLate ? (['superseded_late'] as const) : []),
+    ...(isAfterCancel ? (['recorded_after_cancel'] as const) : []),
+  ]
+
   const grants: ClaimRow[] = government.claimants.map((claimant) => {
     const claimantVerdict = verdict.claimants.find((entry) => entry.claimantRef === claimant.id)
     const idNumber = normalizeIdNumber(claimant.idNumber)
     const flags = sortFlags([
       ...verdict.orderFlags,
+      ...recordFlags,
       ...(claimantVerdict?.flags ?? []),
       ...(reused.has(idNumber) ? ['id_reused_today'] : []),
     ])
@@ -204,7 +300,7 @@ export async function recordGovDiscount(
       backend: request.backend,
       external_order_id: request.externalOrderId,
       order_label: request.orderLabel,
-      order_created_at: request.occurredAt,
+      order_created_at: time.occurredAt,
       revision: request.revision,
       event: 'granted',
       claimant_ref: claimant.id,
@@ -230,15 +326,28 @@ export async function recordGovDiscount(
       approved_by: approval?.approverUserId ?? null,
       approved_by_name: approval?.approverName ?? null,
       source: request.source,
-      occurred_at: request.occurredAt,
+      occurred_at: time.occurredAt,
     }
   })
 
-  const reversed = await store.insertClaims(reversals)
+  // Older revisions this one replaces — and, when this one is itself already
+  // out of date (a newer revision was recorded first, or the order is
+  // cancelled), this one too, at once: written for the audit trail, never
+  // counted.
+  const superseded = active.filter((grant) => grant.revision < request.revision)
+  const selfReversals: ActiveGrant[] =
+    isSupersededLate || isAfterCancel
+      ? grants.map((row) => ({ revision: row.revision, claimantRef: row.claimant_ref, row }))
+      : []
+
+  const reversed = await store.insertClaims(superseded.map((grant) => reversalOf(grant, actor, time.occurredAt)))
   const granted = await store.insertClaims(grants)
+  const selfReversed = await store.insertClaims(
+    selfReversals.map((grant) => reversalOf(grant, actor, time.occurredAt)),
+  )
   return {
     granted,
-    reversed,
+    reversed: reversed + selfReversed,
     verification: verdict.verification,
     flags: sortFlags(grants.flatMap((row) => row.flags)),
   }

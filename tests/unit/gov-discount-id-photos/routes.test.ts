@@ -75,7 +75,11 @@ function post(path: string, body: unknown, headers: Record<string, string> = {})
 beforeEach(() => {
   jest.clearAllMocks()
   jest.spyOn(console, 'error').mockImplementation(() => undefined)
-  mockRequireCaller.mockResolvedValue({ ok: true, user: { id: 'cashier-1' } })
+  mockRequireCaller.mockResolvedValue({
+    ok: true,
+    user: { id: 'cashier-1' },
+    appUser: { role: 'admin', tenant_id: TENANT, is_owner: false, permissions: ['pos'], outlet_id: null },
+  })
   mockUpload.mockResolvedValue({ ok: true, replaced: false })
   mockSign.mockResolvedValue({ data: { signedUrl: 'https://signed.example/id.jpg?token=x' }, error: null })
 })
@@ -93,7 +97,27 @@ describe('POST /api/gov-discounts/id-photos', () => {
     expect(response.status).toBe(200)
     expect(mockRequireCaller).toHaveBeenCalledWith(expect.anything(), TENANT, 'create')
     expect(mockUpload.mock.calls[0][1]).toEqual(uploadBody)
-    expect(mockUpload.mock.calls[0][2]).toBe('cashier-1')
+    expect(mockUpload.mock.calls[0][2]).toEqual({ userId: 'cashier-1', branchOutletId: null, mayReplaceAny: false })
+  })
+
+  it('refuses a member of the store who does not work the register', async () => {
+    mockRequireCaller.mockResolvedValue({
+      ok: true,
+      user: { id: 'cook-1' },
+      appUser: { role: 'admin', tenant_id: TENANT, is_owner: false, permissions: ['kitchen'], outlet_id: null },
+    })
+    expect((await upload(uploadBody)).status).toBe(403)
+    expect(mockUpload).not.toHaveBeenCalled()
+  })
+
+  it("passes a branch account's branch, and a reviewer's right to replace, to the upload rules", async () => {
+    mockRequireCaller.mockResolvedValue({
+      ok: true,
+      user: { id: 'mgr-1' },
+      appUser: { role: 'admin', tenant_id: TENANT, is_owner: false, permissions: ['pos', 'discount_review'], outlet_id: 'outlet-n' },
+    })
+    await upload(uploadBody)
+    expect(mockUpload.mock.calls[0][2]).toEqual({ userId: 'mgr-1', branchOutletId: 'outlet-n', mayReplaceAny: true })
   })
 
   it('refuses a caller who is not a member of the store, before storing anything', async () => {

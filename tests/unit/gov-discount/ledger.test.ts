@@ -84,6 +84,8 @@ function memoryStore(options: {
     loadTaxProfile: async () => (options.profile === undefined ? defaultTaxProfile('vat') : options.profile),
     loadExcludedMenuItemIds: async () => new Set(options.excluded ?? []),
     loadSavedLines: async () => (options.saved === undefined ? [{ menuItemId: 'm1', quantity: 1, amount: 560 }] : options.saved),
+    loadOrderState: async () => ({ readable: true, exists: true, cancelled: false, hasGovernment: false }),
+    highestRevision: async () => (rows.length === 0 ? null : Math.max(...rows.map((row) => row.revision))),
     consumeApproval: async () => options.approval ?? null,
     idsUsedElsewhere: async () => new Set(options.reusedIds ?? []),
     listActiveGrants: async (): Promise<ActiveGrant[]> => {

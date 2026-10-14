@@ -38,7 +38,7 @@ export const CLAIM_COLUMNS = [
   'occurred_at',
 ].join(', ')
 
-export const REVERSAL_COLUMNS = 'backend, external_order_id, revision, claimant_ref, occurred_at'
+export const REVERSAL_COLUMNS = 'backend, external_order_id, revision, claimant_ref, occurred_at, flags'
 
 export const REVIEW_COLUMNS = 'id, claim_id, verdict, note, reviewer_name, created_at'
 
@@ -111,6 +111,7 @@ export function toReversalStamp(row: Row): ReversalStamp {
     revision: Math.trunc(money(row.revision)),
     claimantRef: text(row.claimant_ref),
     occurredAt: text(row.occurred_at),
+    flags: sortFlags(Array.isArray(row.flags) ? row.flags : []),
   }
 }
 

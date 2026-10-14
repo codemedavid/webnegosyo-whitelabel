@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
+import { requireGovCaller } from '@/lib/gov-discount-ledger/route-guards'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -7,7 +7,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * GET /api/gov-discounts/approvers?tenantId=…&outletId=…
  *
  * Who may approve a Senior/PWD discount at this branch, for the register's
- * picker: names and whether each has set a PIN. Nothing else about them.
+ * picker: names and whether each has set a PIN. Nothing else about them —
+ * and only to someone who rings up sales (`pos`), since the list tells a
+ * reader whose PIN guards the discounts.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const tenantId = request.nextUrl.searchParams.get('tenantId') ?? ''
@@ -15,7 +17,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!UUID_RE.test(tenantId)) return NextResponse.json({ error: 'A valid tenantId is required.' }, { status: 400 })
   const outletId = outletParam && UUID_RE.test(outletParam) ? outletParam : null
 
-  const caller = await requireBearerStoreCaller(request, tenantId, 'view')
+  const caller = await requireGovCaller(request, tenantId, 'view', 'pos')
   if (!caller.ok) return caller.response
 
   const { createAdminClient, ADMIN_QUERY_TIMEOUT_MS } = await import('@/lib/supabase/admin')

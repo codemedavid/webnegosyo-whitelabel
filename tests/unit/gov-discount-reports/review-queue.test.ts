@@ -26,6 +26,14 @@ describe('needsALook', () => {
   })
 })
 
+describe('needsALook — take-backs nobody could confirm', () => {
+  it('keeps a reversed grant whose take-back was not confirmed, until reviewed', () => {
+    const unconfirmed = grantEntry({ flags: ['reversal_unverified'], reversedAt: '2026-10-05T00:00:00.000Z' })
+    const reviewed = { ...unconfirmed, id: 'reviewed', reviews: [review({ claimId: unconfirmed.id })] }
+    expect(needsALook([unconfirmed, reviewed]).map((grant) => grant.id)).toEqual([unconfirmed.id])
+  })
+})
+
 describe('visibleFlags', () => {
   it('gives each flag the engine’s label, explanation and severity', () => {
     expect(visibleFlags(['amount_mismatch'])).toEqual([

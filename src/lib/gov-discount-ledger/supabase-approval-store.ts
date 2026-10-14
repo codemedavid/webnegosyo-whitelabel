@@ -107,6 +107,7 @@ export function createSupabaseApprovalStore(db: Db): ApprovalStore {
           cashier_name: row.cashierName,
           approved_reduction: row.approvedReduction,
           summary: JSON.parse(JSON.stringify(row.summary)),
+          sale_fingerprint: row.saleFingerprint,
         })
         .select('id, expires_at')
         .single()

@@ -13,19 +13,13 @@ import type { Database } from '@/types/database'
 import { computeOrderTotals } from '@/lib/order-totals'
 import type { OrderBackend } from '@/lib/order-backend'
 import type { PricedOrder } from '@/lib/vouchers/order-pricing'
-import type { GovLedgerBackend } from '@/lib/gov-discount'
+import { LEDGER_BACKEND } from '@/lib/gov-discount-ledger/reverse-on-cancel'
 import {
   parseCheckoutGovClaim,
   priceCheckoutGovernment,
   type CheckoutGovItem,
   type CheckoutGovOutcome,
 } from './checkout-government'
-
-const LEDGER_BACKEND: Record<OrderBackend, GovLedgerBackend> = {
-  platform: 'platform_supabase',
-  convex: 'convex',
-  supabase: 'tenant_supabase',
-}
 
 export interface AppliedCheckoutGovernment {
   pricing: PricedOrder

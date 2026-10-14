@@ -96,7 +96,7 @@ function fakeStore(overrides: Partial<IdPhotoStore> = {}) {
   const store: jest.Mocked<IdPhotoStore> = {
     loadPhotoMode: jest.fn(async () => 'optional' as const),
     findGrant: jest.fn(async () => ({ outletId: 'outlet-1' })),
-    findPhotoPath: jest.fn(async () => null),
+    findPhoto: jest.fn(async () => null),
     putObject: jest.fn(async (path: string) => {
       calls.push(`put:${path}`)
     }),
@@ -110,6 +110,8 @@ function fakeStore(overrides: Partial<IdPhotoStore> = {}) {
   } as jest.Mocked<IdPhotoStore>
   return { store, calls }
 }
+
+const UPLOADER = { userId: 'user-1', branchOutletId: null, mayReplaceAny: false }
 
 const request = (overrides: Partial<IdPhotoUploadRequest> = {}): IdPhotoUploadRequest => ({
   tenantId: TENANT,
@@ -126,7 +128,7 @@ describe('uploadIdPhoto', () => {
 
   it('stores the photo under the store, against the grant’s branch, as the verified uploader', async () => {
     const { store } = fakeStore()
-    const outcome = await uploadIdPhoto(store, request(), 'user-1', NOW, newId)
+    const outcome = await uploadIdPhoto(store, request(), UPLOADER, NOW, newId)
 
     expect(outcome).toEqual({ ok: true, replaced: false })
     expect(store.findGrant).toHaveBeenCalledWith(TENANT, 'platform_supabase', 'order-1', 'claimant-1')
@@ -145,7 +147,7 @@ describe('uploadIdPhoto', () => {
 
   it('refuses when the store keeps no photos — before touching anything else', async () => {
     const { store } = fakeStore({ loadPhotoMode: jest.fn(async () => 'off' as const) })
-    const outcome = await uploadIdPhoto(store, request(), 'user-1', NOW, newId)
+    const outcome = await uploadIdPhoto(store, request(), UPLOADER, NOW, newId)
     expect(outcome).toMatchObject({ ok: false, status: 410, code: 'photos_off' })
     expect(store.findGrant).not.toHaveBeenCalled()
     expect(store.putObject).not.toHaveBeenCalled()
@@ -153,29 +155,50 @@ describe('uploadIdPhoto', () => {
 
   it('refuses a photo older than 90 days', async () => {
     const { store } = fakeStore()
-    const outcome = await uploadIdPhoto(store, request({ capturedAt: '2026-07-01T00:00:00.000Z' }), 'user-1', NOW, newId)
+    const outcome = await uploadIdPhoto(store, request({ capturedAt: '2026-07-01T00:00:00.000Z' }), UPLOADER, NOW, newId)
     expect(outcome).toMatchObject({ ok: false, status: 410, code: 'expired' })
     expect(store.putObject).not.toHaveBeenCalled()
   })
 
   it('refuses something that is not a photo', async () => {
     const { store } = fakeStore()
-    const outcome = await uploadIdPhoto(store, request({ photo: 'data:image/jpeg;base64,AAAA' }), 'user-1', NOW, newId)
+    const outcome = await uploadIdPhoto(store, request({ photo: 'data:image/jpeg;base64,AAAA' }), UPLOADER, NOW, newId)
     expect(outcome).toMatchObject({ ok: false, status: 400, code: 'invalid_photo' })
   })
 
   it('asks the register to retry while the grant is not in the sales book yet', async () => {
     const { store } = fakeStore({ findGrant: jest.fn(async () => null) })
-    const outcome = await uploadIdPhoto(store, request(), 'user-1', NOW, newId)
+    const outcome = await uploadIdPhoto(store, request(), UPLOADER, NOW, newId)
     expect(outcome).toMatchObject({ ok: false, status: 409, code: 'claim_pending' })
     expect(store.putObject).not.toHaveBeenCalled()
   })
 
   it('a retake replaces the row first, then deletes the old picture', async () => {
-    const { store, calls } = fakeStore({ findPhotoPath: jest.fn(async () => `${TENANT}/old.jpg`) })
-    const outcome = await uploadIdPhoto(store, request(), 'user-1', NOW, newId)
+    const { store, calls } = fakeStore({ findPhoto: jest.fn(async () => ({ path: `${TENANT}/old.jpg`, uploadedBy: 'user-1' })) })
+    const outcome = await uploadIdPhoto(store, request(), UPLOADER, NOW, newId)
     expect(outcome).toEqual({ ok: true, replaced: true })
     expect(calls).toEqual([`put:${TENANT}/photo-1.jpg`, 'save', `remove:${TENANT}/old.jpg`])
+  })
+
+  it("refuses a branch account filing a photo on another branch's grant", async () => {
+    const { store } = fakeStore()
+    const outcome = await uploadIdPhoto(store, request(), { ...UPLOADER, branchOutletId: 'outlet-2' }, NOW, newId)
+    expect(outcome).toMatchObject({ ok: false, status: 403, code: 'wrong_branch' })
+    expect(store.putObject).not.toHaveBeenCalled()
+  })
+
+  it("never lets one cashier overwrite another's photo — a reviewer may", async () => {
+    const existing = jest.fn(async () => ({ path: `${TENANT}/old.jpg`, uploadedBy: 'someone-else' }))
+    const refused = await uploadIdPhoto(fakeStore({ findPhoto: existing }).store, request(), UPLOADER, NOW, newId)
+    const reviewer = await uploadIdPhoto(
+      fakeStore({ findPhoto: existing }).store,
+      request(),
+      { ...UPLOADER, mayReplaceAny: true },
+      NOW,
+      newId,
+    )
+    expect(refused).toMatchObject({ ok: false, status: 403, code: 'replace_refused' })
+    expect(reviewer).toEqual({ ok: true, replaced: true })
   })
 
   it('takes the new object back out when its row cannot be written', async () => {
@@ -184,7 +207,7 @@ describe('uploadIdPhoto', () => {
         throw new Error('db down')
       }),
     })
-    await expect(uploadIdPhoto(store, request(), 'user-1', NOW, newId)).rejects.toThrow('db down')
+    await expect(uploadIdPhoto(store, request(), UPLOADER, NOW, newId)).rejects.toThrow('db down')
     expect(calls).toEqual([`put:${TENANT}/photo-1.jpg`, `remove:${TENANT}/photo-1.jpg`])
   })
 })

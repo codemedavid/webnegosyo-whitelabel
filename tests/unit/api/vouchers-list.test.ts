@@ -131,6 +131,18 @@ describe('POST /api/vouchers/list', () => {
     expect(res.status).toBe(200)
   })
 
+  test('refuses a store account that never works the register', async () => {
+    appUserSingleMock.mockResolvedValue({
+      data: { role: 'admin', tenant_id: 't1', permissions: ['kitchen'] },
+      error: null,
+    })
+    const { POST } = await import('@/app/api/vouchers/list/route')
+    const res = await POST(makeRequest({ tenantId: 't1' }, 'Bearer t'))
+
+    expect(res.status).toBe(403)
+    expect(findActiveVouchersMock).not.toHaveBeenCalled()
+  })
+
   test('serves a superadmin viewing a merchant', async () => {
     appUserSingleMock.mockResolvedValue({
       data: { role: 'superadmin', tenant_id: null },

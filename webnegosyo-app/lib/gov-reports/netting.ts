@@ -9,6 +9,7 @@
  * month of ₱0.01s cannot drift.
  */
 
+import { sortFlags, type GovFlag } from "../gov-discount";
 import type { GrantEntry, GroupTotals, LedgerClaim, LedgerReview, MoneyTotals, ReversalStamp } from "./types";
 
 const AMOUNT_FIELDS = ["grossShare", "vatRemoved", "vatExemptSales", "discount", "netDue", "reduction"] as const;
@@ -117,14 +118,23 @@ export function grantsWithStatus(
   const stamps: ReversalStamp[] = [...windowRows.filter((row) => row.event === "reversed"), ...laterReversals];
   // Built locally and never shared, so filling it in place copies nothing per row.
   const reversedAt = new Map<string, string>();
+  const reversalFlags = new Map<string, GovFlag[]>();
   for (const stamp of stamps) {
     const key = twinKey(stamp);
     const known = reversedAt.get(key);
     if (known === undefined || stamp.occurredAt < known) reversedAt.set(key, stamp.occurredAt);
+    if (stamp.flags && stamp.flags.length > 0) reversalFlags.set(key, [...(reversalFlags.get(key) ?? []), ...stamp.flags]);
   }
   const reviewMap = reviewsByClaim(reviews);
   return windowRows
     .filter((row) => row.event === "granted")
-    .map((row) => ({ ...row, reversedAt: reversedAt.get(twinKey(row)) ?? null, reviews: reviewMap.get(row.id) ?? [] }))
+    .map((row) => ({
+      ...row,
+      // A take-back the server could not confirm is the GRANT's problem: its
+      // flag rides on the grant so the review queue and the chips see it.
+      flags: sortFlags([...row.flags, ...(reversalFlags.get(twinKey(row)) ?? [])]),
+      reversedAt: reversedAt.get(twinKey(row)) ?? null,
+      reviews: reviewMap.get(row.id) ?? [],
+    }))
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.id.localeCompare(a.id));
 }
