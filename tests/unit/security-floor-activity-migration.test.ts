@@ -137,7 +137,13 @@ describe('security floor migration (store activity phase 0)', () => {
   })
 
   describe('app_user_has_permission mirrors hasPermission', () => {
-    const helper = functionStatement(sql, 'app_user_has_permission')
+    // Later migrations (staff_permission_keys) redefine the helper, so check the
+    // definition that survives the whole corpus, not only this file's.
+    const helper =
+      corpus()
+        .map((file) => functionStatement(stripComments(file), 'app_user_has_permission'))
+        .filter((statement) => statement !== '')
+        .at(-1) ?? ''
 
     test('keeps the live signature (renaming a parameter needs a DROP the gov-discount policies block)', () => {
       expect(helper).toMatch(/app_user_has_permission\s*\(\s*p_tenant_id\s+uuid\s*,\s*p_permission\s+text\s*\)/i)
@@ -162,12 +168,22 @@ describe('security floor migration (store activity phase 0)', () => {
     })
 
     test('honours the same containment as IMPLIED_BY', () => {
-      const parents = new Set(Object.values(IMPLIED_BY))
-      expect([...parents]).toEqual(['orders'])
-      const implied = /p_permission\s+in\s*\(([^)]*)\)\s+and\s+'orders'\s*=\s*any\s*\(au\.permissions\)/i.exec(helper)
-      expect(implied).not.toBeNull()
-      const keys = [...(implied?.[1] ?? '').matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort()
-      expect(keys).toEqual(Object.keys(IMPLIED_BY).sort())
+      const parents = [...new Set(Object.values(IMPLIED_BY))]
+      for (const parent of parents) {
+        const expected = Object.entries(IMPLIED_BY)
+          .filter(([, held]) => held === parent)
+          .map(([key]) => key)
+          .sort()
+        // Either `p_permission in ('a', 'b') and 'parent' = any(...)` or `p_permission = 'a' and ...`.
+        const implied = new RegExp(
+          `p_permission\\s*(?:in\\s*\\(([^)]*)\\)|=\\s*('[a-z_]+'))\\s+and\\s+'${parent}'\\s*=\\s*any\\s*\\(au\\.permissions\\)`,
+          'i',
+        ).exec(helper)
+        expect(implied).not.toBeNull()
+        const list = implied?.[1] ?? implied?.[2] ?? ''
+        const keys = [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort()
+        expect(keys).toEqual(expected)
+      }
     })
 
     test('keeps owners and superadmins unconditional', () => {
