@@ -55,8 +55,8 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
   if (state.kind === 'resume') redirect(`/onboarding/${state.token}`)
 
   return (
-    <OnboardingShell>
-      {state.kind === 'form' ? <JoinForm code={code} /> : <OnboardingNotice {...NOTICES[state.kind]} />}
+    <OnboardingShell tone={state.kind === 'form' ? 'night' : 'light'}>
+      {state.kind === 'form' ? <JoinForm code={code} rootDomain={process.env.PLATFORM_ROOT_DOMAIN ?? ''} /> : <OnboardingNotice {...NOTICES[state.kind]} />}
     </OnboardingShell>
   )
 }

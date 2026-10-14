@@ -83,6 +83,33 @@ describe('redeemSignupLinkAction', () => {
     expect(cookieSet).not.toHaveBeenCalled()
   })
 
+  test('a taken email points back at the email answer, so the sign-up can reopen it', async () => {
+    redeemInvite.mockResolvedValue({ kind: 'email_taken' })
+    const redeem = await loadAction()
+
+    const result = await redeem(CODE, FORM)
+
+    expect(result).toMatchObject({ path: null, field: 'email' })
+  })
+
+  test('an answer the server refuses names its own field', async () => {
+    const redeem = await loadAction()
+
+    const result = await redeem(CODE, { ...FORM, email: 'not-an-email' })
+
+    expect(result).toMatchObject({ path: null, field: 'email' })
+    expect(redeemInvite).not.toHaveBeenCalled()
+  })
+
+  test('a refusal about the link itself names no field', async () => {
+    redeemInvite.mockResolvedValue({ kind: 'unavailable' })
+    const redeem = await loadAction()
+
+    const result = await redeem(CODE, FORM)
+
+    expect(result).toMatchObject({ path: null, field: null })
+  })
+
   test('a thrown redeem reads as a retryable failure, never a crash', async () => {
     jest.spyOn(console, 'error').mockImplementationOnce(() => undefined)
     redeemInvite.mockRejectedValue(new Error('db down'))

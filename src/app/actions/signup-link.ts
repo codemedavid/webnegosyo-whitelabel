@@ -11,7 +11,7 @@ import { checkActionRateLimit } from '@/lib/action-rate-limit'
 import { createPaidCheckoutLead } from '@/lib/checkout-leads/checkout-leads-service'
 import { startStoreOnboarding } from '@/lib/onboarding/start'
 import { hashInviteCode, isWellFormedInviteCode } from '@/lib/onboarding/invites/code'
-import { joinFormSchema } from '@/lib/onboarding/invites/schema'
+import { joinFormSchema, type JoinFormInput, type JoinRefusalField } from '@/lib/onboarding/invites/schema'
 import { redeemInvite, type RedeemDeps, type RedeemResult } from '@/lib/onboarding/invites/redeem'
 import { JOIN_RESUME_COOKIE, JOIN_RESUME_MAX_AGE_SEC, joinCookiePath } from '@/lib/onboarding/invites/resume'
 import { attachInviteLead, claimInvite, isEmailTaken, releaseInvite } from '@/lib/onboarding/invites/repository'
@@ -38,22 +38,38 @@ function redeemDeps(): RedeemDeps {
   }
 }
 
-export async function redeemSignupLinkAction(code: unknown, form: unknown): Promise<{ path: string; error: null } | { path: null; error: string }> {
-  if (!isWellFormedInviteCode(code)) return { path: null, error: REFUSALS.unavailable }
+type RedeemActionResult = { path: string; error: null } | { path: null; error: string; field: JoinRefusalField }
+
+const JOIN_FIELDS: ReadonlySet<string> = new Set(Object.keys(joinFormSchema.shape))
+
+function refusal(error: string, field: JoinRefusalField = null): RedeemActionResult {
+  return { path: null, error, field }
+}
+
+function fieldOfIssue(path: readonly PropertyKey[] | undefined): JoinRefusalField {
+  const key = path?.[0]
+  return typeof key === 'string' && JOIN_FIELDS.has(key) ? (key as keyof JoinFormInput) : null
+}
+
+export async function redeemSignupLinkAction(code: unknown, form: unknown): Promise<RedeemActionResult> {
+  if (!isWellFormedInviteCode(code)) return refusal(REFUSALS.unavailable)
   const parsed = joinFormSchema.safeParse(form)
-  if (!parsed.success) return { path: null, error: parsed.error.issues[0]?.message ?? 'Check your details.' }
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return refusal(issue?.message ?? 'Check your details.', fieldOfIssue(issue?.path))
+  }
 
   const rate = await checkActionRateLimit('signup-link', { ...SIGNUP_LINK_RATE_LIMIT, onRedisFailure: 'instance' })
-  if (!rate.allowed) return { path: null, error: `Too many tries. Please wait ${Math.ceil(rate.retryAfterSec / 60)} minute(s) and try again.` }
+  if (!rate.allowed) return refusal(`Too many tries. Please wait ${Math.ceil(rate.retryAfterSec / 60)} minute(s) and try again.`)
 
   let result: RedeemResult
   try {
     result = await redeemInvite(hashInviteCode(code), parsed.data, redeemDeps())
   } catch (error) {
     console.error('[signup-link] redeem failed', error instanceof Error ? error.message : error)
-    return { path: null, error: REFUSALS.failed }
+    return refusal(REFUSALS.failed)
   }
-  if (result.kind !== 'started') return { path: null, error: REFUSALS[result.kind] }
+  if (result.kind !== 'started') return refusal(REFUSALS[result.kind], result.kind === 'email_taken' ? 'email' : null)
 
   // This browser can come back to its wizard through the (now used) link.
   ;(await cookies()).set(JOIN_RESUME_COOKIE, result.token, {
