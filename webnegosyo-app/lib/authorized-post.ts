@@ -26,6 +26,7 @@
 
 import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
+import { recordResponseStatus } from "./authorized-post-status";
 
 /**
  * How long a post-sale write waits before giving up.
@@ -107,6 +108,9 @@ export async function postAuthorized(
       expiry,
     ]);
 
+    // Kept for callers that must tell a permanent refusal from a transient
+    // one (the stock notifier) — see `authorized-post-status.ts`.
+    recordResponseStatus(body, response.status);
     return response.ok === true;
   } catch {
     // Best-effort by design — the sale is rung up and paid for by the time any

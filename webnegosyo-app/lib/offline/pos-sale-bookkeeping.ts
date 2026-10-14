@@ -10,10 +10,15 @@
  *
  * None of these can throw and none depends on another's answer; each is a
  * bounded, never-throwing POST (`lib/authorized-post.ts`).
+ *
+ * The stock call's answer IS reported back: it is the one piece a sale must
+ * not lose, and the only one the server makes idempotent (claimed per order),
+ * so a caller holding a durable queue keeps retrying it — see
+ * `sync-outbox.ts`. `skipReports` runs the stock call alone, for that retry.
  */
 
 import type { OrderBackend } from "../order-backend";
-import type { notifyPosStockDepletion } from "../pos-stock-notify";
+import type { notifyPosStockDepletion, StockPostOutcome } from "../pos-stock-notify";
 import type { notifyLoyversePosSale } from "../loyverse-notify";
 import type { burnPosRedemptions } from "../voucher-service";
 import type { notifyPosSaleActivity } from "../staff-activity/report-pos-sale";
@@ -28,6 +33,12 @@ export interface PosSaleBookkeepingFacts {
   /** When the sale was taken (epoch ms), not when it was written. */
   createdAt: number;
   bookkeeping: QueuedSaleBookkeeping;
+  /** The reports already ran for this sale; only the stock call is owed. */
+  skipReports?: boolean;
+}
+
+export interface PosSaleBookkeepingOutcome {
+  stock: StockPostOutcome;
 }
 
 export interface PosSaleBookkeepingDeps {
@@ -69,11 +80,21 @@ export function loyverseOrderNumber(orderId: string): string {
 export async function runPosSaleBookkeeping(
   facts: PosSaleBookkeepingFacts,
   injectedDeps?: PosSaleBookkeepingDeps
-): Promise<void> {
+): Promise<PosSaleBookkeepingOutcome> {
   const deps = injectedDeps ?? (await liveDeps());
+  const { tenantId, orderId, bookkeeping } = facts;
+  const [stock] = await Promise.all([
+    deps.stock(tenantId, orderId, bookkeeping.stockItems, "pos"),
+    facts.skipReports ? Promise.resolve() : runReports(facts, deps),
+  ]);
+  // An injected notifier that predates the outcome answers nothing: it ran.
+  return { stock: stock ?? "ok" };
+}
+
+/** Everything but stock — none of it is idempotent, so it runs once. */
+async function runReports(facts: PosSaleBookkeepingFacts, deps: PosSaleBookkeepingDeps): Promise<void> {
   const { tenantId, orderId, backend, bookkeeping } = facts;
   await Promise.all([
-    deps.stock(tenantId, orderId, bookkeeping.stockItems, "pos"),
     deps.loyverse(tenantId, loyverseOrderNumber(orderId), bookkeeping.loyverseLines),
     deps.vouchers(tenantId, orderId, bookkeeping.discountLines, bookkeeping.outletId),
     deps.activity(tenantId, {

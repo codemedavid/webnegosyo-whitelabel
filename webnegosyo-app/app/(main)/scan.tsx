@@ -21,7 +21,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { withOrderOutlet } from "../../lib/order-outlet";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
-import { notifyPosStockDepletion } from "../../lib/pos-stock-notify";
+import { notifyPosStockDepletion, withStockRetry } from "../../lib/pos-stock-notify";
 import { qrOrderStockItems } from "../../lib/qr-order-stock";
 import { priceComboHandoff } from "../../lib/scan-handoff-pricing";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
@@ -55,6 +55,7 @@ import {
   type HandoffBlockReason,
 } from "../../lib/scan-handoff-validate";
 import { markPaidAfterHandover, planOrderStatusChange } from "../../lib/order-status-change";
+import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updateOrderStatusRef =
@@ -409,7 +410,11 @@ export default function ScanScreen() {
       // invisible to the Regulars list as a counter sale was. Skips itself when
       // the payload names nobody, and never throws — the order is already in.
       if (tenantId) {
-        await notifyPosStockDepletion(tenantId, String(orderId), stockItems, "qr_scan");
+        // Retried in the background on a transient failure (the server's
+        // per-order claim makes a repeat a no-op); never holds the screen.
+        void withStockRetry(() =>
+          notifyPosStockDepletion(tenantId, String(orderId), stockItems, "qr_scan"),
+        );
         await notifyCustomerCapture(tenantId, {
           backend: writeBackend,
           orderId: String(orderId),
@@ -452,6 +457,13 @@ export default function ScanScreen() {
       await updateOrderStatus({
         orderId: ticket.orderId,
         status: COLLECTED_STATUS,
+      });
+      // A cancelled order is blocked before this screen, so this is a no-op in
+      // practice; it keeps the one stock rule identical on every status path.
+      void syncStockForStatusChange({
+        orderId: String(ticket.orderId),
+        newStatus: COLLECTED_STATUS,
+        previousStatus: order.status,
       });
       // The tracking API does not report payment, but a pickup is never a
       // table's tab: the customer walking out with it has paid for it.

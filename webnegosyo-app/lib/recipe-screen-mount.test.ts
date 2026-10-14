@@ -69,3 +69,18 @@ describe("product editor entry point", () => {
     expect(editor).toMatch(/recipeHref\(/);
   });
 });
+
+describe("choice recipes", () => {
+  it("aims the same editor at one choice through search params", () => {
+    expect(recipeHref("dish 1", { kind: "modifier_option", optionId: "opt-1" })).toBe(
+      "/(main)/product/recipe/dish%201?kind=modifier_option&option=opt-1",
+    );
+  });
+
+  it("lets the merchant reach every choice from the dish's recipe and explains what a choice recipe does", () => {
+    const screen = read("app", "(main)", "product", "recipe", "[productId].tsx");
+    expect(screen).toMatch(/DishChoicesSection/);
+    expect(screen).toMatch(/each time this choice is picked, on top of the dish's own recipe/);
+    expect(screen).toMatch(/recipeLineProblem|check:/);
+  });
+});

@@ -9,6 +9,8 @@
  * navigation already uses successfully.
  */
 
+import type { OptionTargetType } from "./recipe-target";
+
 /** Sentinel productId that puts the editor screen into create mode. */
 export const NEW_PRODUCT_ID = "new" as const;
 
@@ -41,8 +43,14 @@ export function productPerformanceHref(
  *
  * @param productId the menu item whose recipe is being edited.
  */
-export function recipeHref(productId: string): `/(main)/product/recipe/${string}` {
-  return `/(main)/product/recipe/${encodeURIComponent(productId)}`;
+export function recipeHref(
+  productId: string,
+  choice?: { kind: OptionTargetType; optionId: string },
+): `/(main)/product/recipe/${string}` {
+  const dish = `/(main)/product/recipe/${encodeURIComponent(productId)}` as const;
+  if (!choice) return dish;
+  // A choice's recipe opens the same editor, aimed at that choice's target.
+  return `${dish}?kind=${encodeURIComponent(choice.kind)}&option=${encodeURIComponent(choice.optionId)}`;
 }
 
 /** Sentinel methodId that puts the payment method editor into create mode. */

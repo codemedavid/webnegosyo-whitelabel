@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,32 +9,55 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../../../../stores/auth-store";
 import { hasPermission } from "../../../../lib/staff-permissions";
 import {
   addRecipeComponent,
-  ensureMenuItemRecipe,
-  loadDishName,
+  ensureRecipe,
+  loadDishRecipeChoices,
+  loadDishRecipeCoverage,
   loadIngredientOptions,
-  loadMenuItemRecipe,
+  loadRecipe,
   loadUnitOptions,
   removeRecipeComponent,
   updateRecipeComponent,
   type IngredientOption,
+  type LineCheck,
   type MenuItemRecipe,
   type RecipeComponentView,
   type UnitOption,
 } from "../../../../lib/recipe-service";
+import {
+  isOptionTargetType,
+  optionTarget,
+  type OptionRecipeChoice,
+  type OptionRecipeGroup,
+  type RecipeTarget,
+} from "../../../../lib/recipe-target";
+import { findChoice, summarizeChoiceCoverage } from "../../../../lib/recipe-editor";
+import { recipeHref } from "../../../../lib/navigation";
 import { colors, typography, spacing, radius, shadow } from "../../../../theme/colors";
 import { BackHeader } from "../../../../components/BackHeader";
 import { Button } from "../../../../components/Button";
-import { Icon, type IconName } from "../../../../components/Icon";
+import { Icon } from "../../../../components/Icon";
 import { LoadingState } from "../../../../components/LoadingState";
 import { ErrorState } from "../../../../components/ErrorState";
 import { RecipeLineRow } from "../../../../components/recipe/RecipeLineRow";
 import { AddIngredientSheet } from "../../../../components/recipe/AddIngredientSheet";
 import { UnitPickerSheet } from "../../../../components/recipe/UnitPickerSheet";
+import { RecipeStatusBanner } from "../../../../components/recipe/RecipeStatusBanner";
+import { DishChoicesSection } from "../../../../components/recipe/DishChoicesSection";
+
+/** What a choice's recipe means, said wherever one is edited. */
+const CHOICE_RECIPE_COPY =
+  "These ingredients are used each time this choice is picked, on top of the dish's own recipe.";
+
+/** The editor's target from its route: the dish, or one choice on it. */
+function targetFromParams(productId: string, kind?: string, option?: string): RecipeTarget {
+  if (option && isOptionTargetType(kind)) return optionTarget(productId, kind, option);
+  return { type: "menu_item", menuItemId: productId };
+}
 
 /**
  * The recipe (ingredients) editor for one dish.
@@ -44,12 +67,23 @@ import { UnitPickerSheet } from "../../../../components/recipe/UnitPickerSheet";
  * the app could show the shelf but never wire a dish to it. All data access
  * lives in lib/recipe-service.ts; this screen only arranges it.
  *
- * MVP scope: the BASE recipe of the menu item. Variation- and addon-level
- * recipes are a later iteration.
+ * Opened for the dish, it edits the dish's own recipe and lists every choice
+ * on it (flavours, sizes, add-ons); opened with `?kind=&option=` it edits one
+ * choice's recipe — spent each time that choice is picked, on top of the
+ * dish's own (see `recipeHref`).
  */
 export default function RecipeEditorScreen() {
-  const { productId } = useLocalSearchParams<{ productId: string }>();
-  const tenantId = useAuthStore((s) => s.tenantId);
+  const { productId, kind, option } = useLocalSearchParams<{
+    productId: string;
+    kind?: string;
+    option?: string;
+  }>();
+  const target = useMemo(
+    () => targetFromParams(productId ?? "", kind, option),
+    [productId, kind, option],
+  );
+  const isChoice = target.type !== "menu_item";
+  const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
   const permissions = useAuthStore((s) => s.permissions);
@@ -62,6 +96,8 @@ export default function RecipeEditorScreen() {
 
   const [recipe, setRecipe] = useState<MenuItemRecipe | null>(null);
   const [dishName, setDishName] = useState("");
+  const [choiceGroups, setChoiceGroups] = useState<OptionRecipeGroup[]>([]);
+  const [coverage, setCoverage] = useState<Record<string, number> | null>(null);
   const [ingredients, setIngredients] = useState<IngredientOption[]>([]);
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,33 +112,58 @@ export default function RecipeEditorScreen() {
   const load = useCallback(async () => {
     if (!tenantId || !productId) return;
     try {
-      const [loadedRecipe, options, unitCatalog, name] = await Promise.all([
-        loadMenuItemRecipe(tenantId, productId),
+      const [loadedRecipe, options, unitCatalog, dish, dishCoverage] = await Promise.all([
+        loadRecipe(tenantId, target),
         loadIngredientOptions(tenantId),
         loadUnitOptions(tenantId),
-        loadDishName(tenantId, productId),
+        loadDishRecipeChoices(tenantId, productId),
+        isChoice ? Promise.resolve(null) : loadDishRecipeCoverage(tenantId, productId),
       ]);
       setRecipe(loadedRecipe);
       setIngredients(options);
       setUnits(unitCatalog);
-      setDishName(name);
+      setDishName(dish.name);
+      setChoiceGroups(dish.groups);
+      setCoverage(dishCoverage);
       setError(null);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : "Could not load the recipe.");
     } finally {
       setIsLoading(false);
     }
-  }, [tenantId, productId]);
+  }, [tenantId, productId, target, isChoice]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // On focus, not just on mount: coming back from a choice's recipe must show
+  // its new ingredient count on the dish's list.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const components = useMemo(() => recipe?.components ?? [], [recipe]);
 
   const stockUnitByItem = useMemo(
-    () => new Map(ingredients.map((option) => [option.id, option.stockUnitId])),
+    () => new Map(ingredients.map((ingredient) => [ingredient.id, ingredient.stockUnitId])),
     [ingredients],
+  );
+
+  const choice = useMemo(
+    () => (isChoice ? findChoice(choiceGroups, target) : null),
+    [isChoice, choiceGroups, target],
+  );
+  const choiceSummary = useMemo(
+    () => summarizeChoiceCoverage(choiceGroups, coverage),
+    [choiceGroups, coverage],
+  );
+
+  /** What a line is judged against: its ingredient's stock unit and the catalogue. */
+  const lineCheck = useCallback(
+    (inventoryItemId: string, ingredientName: string): LineCheck => ({
+      ingredient: { name: ingredientName, stockUnitId: stockUnitByItem.get(inventoryItemId) ?? null },
+      units,
+    }),
+    [stockUnitByItem, units],
   );
 
   // Saves run one after another rather than being dropped while one is in
@@ -137,32 +198,41 @@ export default function RecipeEditorScreen() {
     [load],
   );
 
-  const handleAdd = (option: IngredientOption) => {
+  const handleAdd = (ingredient: IngredientOption) => {
     if (!tenantId || !productId) return;
     setIsPickerOpen(false);
-    setFocusItemId(option.id);
+    setFocusItemId(ingredient.id);
     void runSave(async () => {
-      const unitId = option.stockUnitId ?? units[0]?.id;
+      // The stock unit — always convertible to itself. An ingredient without
+      // one cannot be judged, so the first unit is a starting point.
+      const unitId = ingredient.stockUnitId ?? units[0]?.id;
       if (!unitId) {
         throw new Error("Set up a unit for this ingredient on the Inventory screen first.");
       }
       // `ensure` finds the row a save queued just before this one created.
-      const recipeId = recipe?.id ?? (await ensureMenuItemRecipe(tenantId, productId));
+      const recipeId = recipe?.id ?? (await ensureRecipe(tenantId, target));
       await addRecipeComponent(tenantId, {
         recipeId,
-        inventoryItemId: option.id,
+        inventoryItemId: ingredient.id,
         // 1 stock unit is a starting point the merchant is expected to edit,
         // not a guess at the real amount — but unlike zero it deducts.
         quantity: 1,
         unitId,
         sortOrder: components.length,
+        check: lineCheck(ingredient.id, ingredient.name),
       });
     });
   };
 
   const handleQuantityCommit = (line: RecipeComponentView, quantity: number) => {
     if (!tenantId) return;
-    void runSave(() => updateRecipeComponent(tenantId, line.id, { quantity, unitId: line.unitId }));
+    void runSave(() =>
+      updateRecipeComponent(tenantId, line.id, {
+        quantity,
+        unitId: line.unitId,
+        check: lineCheck(line.inventoryItemId, line.ingredientName),
+      }),
+    );
   };
 
   const handleUnitPick = (unitId: string) => {
@@ -170,8 +240,17 @@ export default function RecipeEditorScreen() {
     setUnitTarget(null);
     if (!tenantId || !line || unitId === line.unitId) return;
     void runSave(() =>
-      updateRecipeComponent(tenantId, line.id, { quantity: line.quantity, unitId }),
+      updateRecipeComponent(tenantId, line.id, {
+        quantity: line.quantity,
+        unitId,
+        check: lineCheck(line.inventoryItemId, line.ingredientName),
+      }),
     );
+  };
+
+  const openChoice = (picked: OptionRecipeChoice) => {
+    if (!productId || picked.target.type === "menu_item") return;
+    router.push(recipeHref(productId, { kind: picked.target.type, optionId: picked.optionId }));
   };
 
   const handleRemove = (line: RecipeComponentView) => {
@@ -189,8 +268,8 @@ export default function RecipeEditorScreen() {
 
   const header = (
     <BackHeader
-      title="Recipe"
-      subtitle={dishName || undefined}
+      title={isChoice ? choice?.name || "Choice recipe" : "Recipe"}
+      subtitle={(isChoice ? (dishName ? `Choice on ${dishName}` : "Choice") : dishName) || undefined}
       actions={
         isSaving ? (
           <View style={styles.saving} accessibilityLabel="Saving">
@@ -245,8 +324,15 @@ export default function RecipeEditorScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {hasLines ? (
-            <StatusBanner
+          {isChoice ? (
+            <RecipeStatusBanner
+              tone={hasLines ? "success" : "info"}
+              icon={hasLines ? "check" : "info"}
+              title={hasLines ? "Deducting stock every time it's picked" : "No ingredients for this choice yet"}
+              message={CHOICE_RECIPE_COPY}
+            />
+          ) : hasLines ? (
+            <RecipeStatusBanner
               tone="success"
               icon="check"
               title="Deducting stock on every sale"
@@ -255,7 +341,7 @@ export default function RecipeEditorScreen() {
               } off the shelf.`}
             />
           ) : (
-            <StatusBanner
+            <RecipeStatusBanner
               tone="warning"
               icon="warning"
               title="No recipe yet"
@@ -263,11 +349,24 @@ export default function RecipeEditorScreen() {
             />
           )}
 
+          {!isChoice && choiceSummary.isUncovered && (
+            <View style={styles.hint}>
+              <RecipeStatusBanner
+                tone="warning"
+                icon="warning"
+                title="Its choices deduct nothing yet"
+                message={`This dish has ${choiceSummary.total} ${
+                  choiceSummary.total === 1 ? "choice" : "choices"
+                } and none uses any ingredients, so every flavour, size or add-on picked sells without taking stock. Open a choice below to add what it uses.`}
+              />
+            </View>
+          )}
+
           {hasLines ? (
             <>
               <View style={styles.sectionHead}>
                 <Text style={styles.eyebrow}>Ingredients · {components.length}</Text>
-                <Text style={styles.sectionHint}>Amount per sale</Text>
+                <Text style={styles.sectionHint}>{isChoice ? "Amount per pick" : "Amount per sale"}</Text>
               </View>
               <View style={styles.list}>
                 {components.map((line, index) => (
@@ -294,12 +393,19 @@ export default function RecipeEditorScreen() {
               <View style={styles.emptyIcon}>
                 <Icon name="stock" size={22} color={colors.textSecondary} />
               </View>
-              <Text style={styles.emptyTitle}>What goes into one sale?</Text>
+              <Text style={styles.emptyTitle}>
+                {isChoice ? "What does picking it use?" : "What goes into one sale?"}
+              </Text>
               <Text style={styles.emptyText}>
-                List each ingredient and how much one order uses — for example 18 g coffee beans
-                and 200 ml milk for a latte.
+                {isChoice
+                  ? "List what one pick of this choice adds — for example 30 g beef bulgogi for a flavour, or 1 egg for an add-on."
+                  : "List each ingredient and how much one order uses — for example 18 g coffee beans and 200 ml milk for a latte."}
               </Text>
             </View>
+          )}
+
+          {!isChoice && (
+            <DishChoicesSection groups={choiceGroups} coverage={coverage} onOpen={openChoice} />
           )}
         </ScrollView>
 
@@ -333,34 +439,6 @@ export default function RecipeEditorScreen() {
   );
 }
 
-const BANNER_TONES = {
-  success: { bg: colors.successLight, fg: colors.success },
-  warning: { bg: colors.warningLight, fg: colors.statusPending.text },
-} as const;
-
-interface StatusBannerProps {
-  tone: keyof typeof BANNER_TONES;
-  icon: IconName;
-  title: string;
-  message: string;
-}
-
-/** Whether this dish moves stock when it sells — the one fact the screen exists for. */
-function StatusBanner({ tone, icon, title, message }: StatusBannerProps) {
-  const palette = BANNER_TONES[tone];
-  return (
-    <View style={[styles.banner, { backgroundColor: palette.bg }]}>
-      <View style={[styles.bannerIcon, { borderColor: palette.fg }]}>
-        <Icon name={icon} size={16} color={palette.fg} strokeWidth={2.25} />
-      </View>
-      <View style={styles.flex}>
-        <Text style={[styles.bannerTitle, { color: palette.fg }]}>{title}</Text>
-        <Text style={styles.bannerText}>{message}</Text>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
@@ -369,23 +447,7 @@ const styles = StyleSheet.create({
   blockedText: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
   saving: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   savingText: { ...typography.caption, color: colors.textSecondary },
-  banner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-  },
-  bannerIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bannerTitle: { fontSize: 15, fontWeight: "700" },
-  bannerText: { ...typography.caption, color: colors.textPrimary, marginTop: 2, lineHeight: 18 },
+  hint: { marginTop: spacing.md },
   sectionHead: {
     flexDirection: "row",
     justifyContent: "space-between",

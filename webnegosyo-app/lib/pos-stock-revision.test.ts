@@ -187,3 +187,28 @@ describe("posStockRevision", () => {
     expect(posStockRevision([latte(2)], [latte(3)]).hasMovement).toBe(true);
   });
 });
+
+describe("add-on portions", () => {
+  const sides = (quantity: number, portions?: number): PosStockItem => ({
+    menuItemId: "item-sides",
+    quantity,
+    optionIds: ["opt-kimchi"],
+    addonIds: ["opt-kimchi"],
+    ...(portions ? { addonQuantities: { "opt-kimchi": portions } } : {}),
+  });
+
+  it("restores every portion of a removed ×2 add-on line", () => {
+    const revision = posStockRevision([sides(1, 2)], []);
+    expect(revision.restore).toEqual([sides(1, 2)]);
+  });
+
+  it("moves stock when only the portion count changed", () => {
+    const revision = posStockRevision([sides(1, 2)], [sides(1)]);
+    expect(revision.restore).toEqual([sides(1, 2)]);
+    expect(revision.deplete).toEqual([sides(1)]);
+  });
+
+  it("nets an unchanged ×2 line to nothing", () => {
+    expect(posStockRevision([sides(1, 2)], [sides(1, 2)]).hasMovement).toBe(false);
+  });
+});

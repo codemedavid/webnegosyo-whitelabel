@@ -266,3 +266,24 @@ describe("findQueuedSale", () => {
     expect(findQueuedSale(sales, "nope")).toBeUndefined();
   });
 });
+
+/**
+ * A written sale that only owes its stock call can sit in the outbox for a
+ * while (no session, a 5xx). Its order is on the server, so it must never
+ * resurface as a ghost "confirmed" order or double its lines in a report.
+ */
+describe("a sale that owes only its stock call", () => {
+  type Row = { _id: string; _creationTime: number; status: string };
+  const owed = sale("local-1", { syncedOrderId: "s1", reportsDone: true, stockAttempts: 1, stockRetryAt: 9 });
+
+  it("is not shown in the open queue once the server row has left it", () => {
+    const empty: Record<string, Row[]> = { pending: [], confirmed: [], preparing: [], ready: [] };
+    const merged = mergeRealtimeQueue(empty, input({ sales: [owed] }));
+    expect(Object.values(merged ?? {}).flat()).toEqual([]);
+  });
+
+  it("is not added to an order list or its line items", () => {
+    expect(mergeOrderList<Row>([], input({ sales: [owed] }))).toEqual([]);
+    expect(localOrderItems(input({ sales: [owed] }))).toEqual([]);
+  });
+});

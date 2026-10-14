@@ -17,6 +17,8 @@ import {
   useOfflineOrderList,
   useOfflineOrderMutation,
 } from "../../lib/offline/use-offline-orders";
+import { isQueuedOrderWrite } from "../../lib/offline/write-order-change";
+import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { filterOrdersToScope } from "../../lib/branch-scope";
 import { useBranchScope } from "../../lib/use-branch-scope";
@@ -157,8 +159,16 @@ export default function KitchenScreen() {
         return;
       }
       const ticket = ticketsByIdRef.current.get(orderId);
+      const previousStatus = ticket?.order.status;
+      const newStatus = bumpTargetStatus(previousStatus ?? "");
       try {
-        await updateStatus({ orderId, status: bumpTargetStatus(ticket?.order.status ?? "") });
+        const written = await updateStatus({ orderId, status: newStatus }, { previousStatus });
+        // A ticket cancelled elsewhere and bumped from a stale board leaves
+        // `cancelled`: its stock is spent again. The replay does it for a
+        // change kept on the device. Background, never throws.
+        if (!isQueuedOrderWrite(written)) {
+          void syncStockForStatusChange({ orderId, newStatus, previousStatus });
+        }
         setLastBumped({ orderId, ref: orderId.slice(-4).toUpperCase() });
       } catch {
         Alert.alert("Error", "Failed to bump the order. Check your connection and try again.");
@@ -201,8 +211,15 @@ export default function KitchenScreen() {
       Alert.alert("Demo mode", DEMO_READONLY_MESSAGE);
       return;
     }
+    // The board's last word on the order, if it still shows it; a recall of a
+    // ticket cancelled since then re-spends its stock like any un-cancel.
+    const previousStatus = ticketsByIdRef.current.get(lastBumped.orderId)?.order.status;
+    const newStatus = recallTargetStatus();
     try {
-      await updateStatus({ orderId: lastBumped.orderId, status: recallTargetStatus() });
+      const written = await updateStatus({ orderId: lastBumped.orderId, status: newStatus }, { previousStatus });
+      if (!isQueuedOrderWrite(written)) {
+        void syncStockForStatusChange({ orderId: lastBumped.orderId, newStatus, previousStatus });
+      }
       setLastBumped(null);
     } catch {
       Alert.alert("Error", "Failed to recall the order. Check your connection and try again.");

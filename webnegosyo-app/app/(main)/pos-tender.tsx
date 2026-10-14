@@ -34,12 +34,13 @@ import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
 import { resolveRegisterOutlet } from "../../lib/register-outlet";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { buildPosStockItems } from "../../lib/pos-stock";
-import { notifyOrderStockRevision } from "../../lib/pos-stock-notify";
+import { notifyOrderStockRevision, withStockRetry } from "../../lib/pos-stock-notify";
 import { posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
 import { burnPosRedemptions } from "../../lib/voucher-service";
 import { placeCounterSale } from "../../lib/offline/place-sale";
 import { newLocalOrderId } from "../../lib/offline/local-id";
 import { runPosSaleBookkeeping } from "../../lib/offline/pos-sale-bookkeeping";
+import { keepOwedStock } from "../../lib/offline/owed-stock";
 import { isOffline } from "../../lib/offline/connectivity";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
@@ -386,12 +387,12 @@ export default function PosTenderScreen() {
       // no-op while the NEXT edit still moves stock. Never throws: the bill is
       // already rewritten and the money settled by this point.
       if (tenantId) {
-        await notifyOrderStockRevision(
-          tenantId,
-          editContext.orderId,
-          editContext.expectedRevisionNumber + 1,
-          posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems)),
-          "pos",
+        const movement = posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems));
+        const revision = editContext.expectedRevisionNumber + 1;
+        // Retried in the background on a transient failure — the revision
+        // claim makes a repeat a no-op — so the screen never waits on it.
+        void withStockRetry(() =>
+          notifyOrderStockRevision(tenantId, editContext.orderId, revision, movement, "pos"),
         );
       }
 
@@ -571,19 +572,20 @@ export default function PosTenderScreen() {
       // outage). Convex mints its own ids, so it is still written first and
       // only kept locally when the server cannot be reached. A refusal throws
       // to the alert below either way (lib/offline/place-sale.ts).
+      const sale = {
+        localId,
+        tenantId,
+        backend,
+        clientOrderId,
+        createdAt,
+        orderArgs,
+        bookkeeping,
+        paidAtTender: isPaidNow,
+      };
       const outcome = await placeCounterSale({
         createOrder,
         writeBehind: isPlatform,
-        sale: {
-          localId,
-          tenantId,
-          backend,
-          clientOrderId,
-          createdAt,
-          orderArgs,
-          bookkeeping,
-          paidAtTender: isPaidNow,
-        },
+        sale,
       });
       const orderId = outcome.kind === "written" ? outcome.orderId : outcome.localId;
       // Written behind on the platform, the row will exist under this id in a
@@ -641,7 +643,10 @@ export default function PosTenderScreen() {
           // Stock, Loyverse, voucher burns, the activity line, customer
           // capture — through the one runner the outbox replay also uses. A
           // queued sale owes it later, once the server holds the order.
-          await runPosSaleBookkeeping({ tenantId, orderId, backend, createdAt, bookkeeping });
+          const reported = await runPosSaleBookkeeping({ tenantId, orderId, backend, createdAt, bookkeeping });
+          // A stock call that did not land is handed to the outbox, which
+          // retries it alone (never the reports) until the platform has it.
+          await keepOwedStock({ outcome: reported, sale, orderId: String(orderId) });
         }
 
         // The print queue serialises against the kitchen chit, and a dead

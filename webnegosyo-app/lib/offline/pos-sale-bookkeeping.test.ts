@@ -56,4 +56,45 @@ describe("runPosSaleBookkeeping", () => {
   it("uses the same short Loyverse reference the tender screen always did", () => {
     expect(loyverseOrderNumber("k17abcxyz")).toBe("ABCXYZ");
   });
+
+  it("answers the stock outcome so a durable queue can retry it", async () => {
+    deps.stock.mockResolvedValueOnce("retry");
+    const outcome = await runPosSaleBookkeeping(facts(), deps);
+    expect(outcome).toEqual({ stock: "retry" });
+  });
+
+  it("runs only the stock call when the reports already ran", async () => {
+    jest.clearAllMocks();
+    deps.stock.mockResolvedValueOnce("ok");
+
+    const outcome = await runPosSaleBookkeeping({ ...facts(), skipReports: true }, deps);
+
+    expect(outcome).toEqual({ stock: "ok" });
+    expect(deps.stock).toHaveBeenCalledTimes(1);
+    expect(deps.loyverse).not.toHaveBeenCalled();
+    expect(deps.vouchers).not.toHaveBeenCalled();
+    expect(deps.activity).not.toHaveBeenCalled();
+    expect(deps.capture).not.toHaveBeenCalled();
+  });
 });
+
+function facts() {
+  return {
+    tenantId: "t",
+    orderId: "abcdef123456",
+    backend: "platform" as const,
+    createdAt: 0,
+    bookkeeping: {
+      stockItems: [{ menuItemId: "m", quantity: 1, optionIds: [], addonIds: [] }],
+      loyverseLines: [],
+      discountLines: [],
+      outletId: null,
+      total: 1,
+      customerName: "",
+      customerContact: "",
+      customerData: {},
+      channel: null,
+      captureItems: [],
+    },
+  };
+}
