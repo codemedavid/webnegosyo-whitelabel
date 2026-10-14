@@ -16,6 +16,11 @@ import {
   type VatStatus,
 } from '@/lib/gov-discount'
 import { parseCheckoutGovClaim, priceCheckoutGovernment } from '@/lib/gov-discount-checkout/checkout-government'
+import {
+  GOV_RATE_LIMITED_MESSAGE,
+  isGovPreviewAllowed,
+  isGovSetupAllowed,
+} from '@/lib/gov-discount-checkout/rate-limits'
 import type { OrderDiscountLine } from '@/lib/order-totals'
 
 const uuid = z.string().uuid()
@@ -45,6 +50,8 @@ async function loadRules() {
 /** Null when the store has not set up Tax & discounts (no field is shown). */
 export async function getCheckoutGovSetupAction(tenantId: string): Promise<CheckoutGovSetup | null> {
   if (!uuid.safeParse(tenantId).success) return null
+  // Over the limit reads as "not offered": the order still goes through.
+  if (!(await isGovSetupAllowed(tenantId))) return null
   try {
     const profile = await (await loadRules()).loadTaxProfile(tenantId)
     if (!profile) return null
@@ -93,6 +100,7 @@ export async function previewCheckoutGovAction(input: unknown): Promise<Checkout
   if (!parsed.success) return { status: 'refused', message: 'Check the details and try again.' }
   const claim = parseCheckoutGovClaim(parsed.data.claim)
   if (!claim) return { status: 'refused', message: 'Enter the name and ID number exactly as printed on the card.' }
+  if (!(await isGovPreviewAllowed(parsed.data.tenantId))) return { status: 'refused', message: GOV_RATE_LIMITED_MESSAGE }
 
   try {
     const store = await loadRules()

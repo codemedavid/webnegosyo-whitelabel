@@ -207,6 +207,12 @@ export async function createOrderAction(
       return { success: false, refused: true, error: 'Invalid tenant ID' }
     }
 
+    // A Senior/PWD claim is 20% + VAT off for anyone who types an ID, with no
+    // session: orders carrying one are limited per client IP (fail open).
+    const { govClaimLimitRefusal } = await import('@/lib/gov-discount-checkout/rate-limits')
+    const claimRefusal = await govClaimLimitRefusal(tenantId, governmentClaim)
+    if (claimRefusal) return { success: false, refused: true, error: claimRefusal }
+
     // ── Boundary validation (this is a public server action) ──
     // Shape only: a price that passes is still just a claim, floored below.
     // Nothing the web checkout builds can fail these, so a refusal here never
