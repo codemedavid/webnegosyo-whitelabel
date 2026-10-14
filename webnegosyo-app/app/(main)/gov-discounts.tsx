@@ -26,6 +26,9 @@ import {
 import { MAX_LEDGER_ROWS, submitGovReview } from "../../lib/gov-reports/service";
 import type { GrantEntry, ReviewVerdict } from "../../lib/gov-reports/types";
 import { useGovReport } from "../../lib/query/use-gov-report";
+import { useGovMissing } from "../../lib/query/use-gov-missing";
+import { recordMissingOrder } from "../../lib/gov-reports/missing";
+import { MissingFromBookCard } from "../../components/gov-reports/MissingFromBookCard";
 import { useTaxSettingsCache } from "../../lib/query/use-tax-settings-cache";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { BackHeader } from "../../components/BackHeader";
@@ -68,6 +71,7 @@ export default function GovDiscountsScreen() {
   const [openGrantId, setOpenGrantId] = useState<string | null>(null);
   const period = useMemo(() => resolveGovReportPeriod(periodKey, Date.now()), [periodKey]);
   const query = useGovReport(canReview ? tenantId : null, period);
+  const missing = useGovMissing(canReview ? tenantId : null, period);
   const report = query.data?.report ?? null;
   const openGrant = report?.grants.find((grant) => grant.id === openGrantId) ?? null;
 
@@ -82,6 +86,18 @@ export default function GovDiscountsScreen() {
     setOpenGrantId(null);
     await invalidateReport(tenantId);
   };
+
+  const handleRecordMissing = async (orderId: string): Promise<string | null> => {
+    if (!tenantId) return "Sign in again and retry.";
+    const result = await recordMissingOrder(tenantId, orderId);
+    if (!result.ok) return result.message;
+    await Promise.all([missing.refetch(), invalidateReport(tenantId)]);
+    return null;
+  };
+
+  const missingCard = (
+    <MissingFromBookCard orders={missing.data ?? []} onRecord={handleRecordMissing} />
+  );
 
   const header = (
     <BackHeader title="Senior & PWD" subtitle={canReview ? period.label : "Sales book"} />
@@ -113,12 +129,15 @@ export default function GovDiscountsScreen() {
     }
     if (report.grants.length === 0 && report.totals.sales === 0) {
       return (
-        <EmptyState
+        <>
+          {missingCard}
+          <EmptyState
           icon="report"
           title="No Senior or PWD discounts"
           message={`Nothing was recorded for ${period.label}. Discounts given on the register show up here.`}
           inset
-        />
+          />
+        </>
       );
     }
     const visible = report.grants.slice(0, shown);
@@ -132,6 +151,8 @@ export default function GovDiscountsScreen() {
             </Text>
           </View>
         ) : null}
+
+        {missingCard}
 
         <GovKpiGrid totals={report.totals} reversedCount={report.reversedCount} />
 
@@ -192,7 +213,12 @@ export default function GovDiscountsScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={query.isRefetching}
+            onRefresh={() => void Promise.all([query.refetch(), missing.refetch()])}
+          />
+        }
       >
         {body}
       </ScrollView>

@@ -30,7 +30,8 @@ export type ApprovalResult =
   | { status: "refused"; message: string }
   | { status: "offline" };
 
-async function call(
+/** A bounded, bearer-authenticated call to a web route; null = offline/timeout. */
+export async function callWebRoute(
   path: string,
   init: { method: "GET" | "POST"; body?: unknown },
 ): Promise<{ ok: boolean; status: number; json: Record<string, unknown> } | null> {
@@ -67,7 +68,7 @@ async function call(
   }
 }
 
-function messageOf(json: Record<string, unknown>, fallback: string): string {
+export function messageOf(json: Record<string, unknown>, fallback: string): string {
   return typeof json.error === "string" && json.error.trim() !== "" ? json.error : fallback;
 }
 
@@ -76,7 +77,7 @@ export async function fetchApprovers(
   outletId: string | null,
 ): Promise<ApproversResult> {
   const query = new URLSearchParams({ tenantId, ...(outletId ? { outletId } : {}) });
-  const response = await call(`/api/gov-discounts/approvers?${query.toString()}`, { method: "GET" });
+  const response = await callWebRoute(`/api/gov-discounts/approvers?${query.toString()}`, { method: "GET" });
   if (!response) return { status: "offline" };
   if (!response.ok) return { status: "error", message: messageOf(response.json, "Could not load managers.") };
   const approvers = Array.isArray(response.json.approvers) ? (response.json.approvers as ApproverChoice[]) : [];
@@ -93,7 +94,7 @@ export interface ApprovalAsk {
 }
 
 export async function requestApproval(ask: ApprovalAsk): Promise<ApprovalResult> {
-  const response = await call("/api/gov-discounts/approve", { method: "POST", body: ask });
+  const response = await callWebRoute("/api/gov-discounts/approve", { method: "POST", body: ask });
   if (!response) return { status: "offline" };
   if (!response.ok) {
     return { status: "refused", message: messageOf(response.json, "That PIN could not be checked.") };
@@ -109,7 +110,7 @@ export async function saveOwnApprovalPin(
   tenantId: string,
   pin: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const response = await call("/api/gov-discounts/pin", { method: "POST", body: { tenantId, pin } });
+  const response = await callWebRoute("/api/gov-discounts/pin", { method: "POST", body: { tenantId, pin } });
   if (!response) return { ok: false, message: "No connection. Try again when you are online." };
   if (!response.ok) return { ok: false, message: messageOf(response.json, "Could not save the PIN.") };
   return { ok: true };

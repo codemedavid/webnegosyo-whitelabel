@@ -3,6 +3,7 @@ import { Breadcrumbs } from '@/components/shared/breadcrumbs'
 import { GovBreakdown, GovOverview } from '@/components/admin/gov-discounts/gov-overview'
 import { GovEmptyState } from '@/components/admin/gov-discounts/gov-empty-state'
 import { GovExportsCard } from '@/components/admin/gov-discounts/gov-exports-card'
+import { GovMissingFromBook } from '@/components/admin/gov-discounts/gov-missing-from-book'
 import { GovLedgerWorkspace } from '@/components/admin/gov-discounts/gov-ledger-workspace'
 import { GovPeriodPicker } from '@/components/admin/gov-discounts/gov-period-picker'
 import { getCachedCurrentUserRole, getCachedTenantBySlug } from '@/lib/cache'
@@ -12,6 +13,22 @@ import { loadLedgerPageData, type LedgerPageData } from '@/lib/gov-discount-repo
 import { resolveReportPeriod } from '@/lib/gov-discount-reports/period'
 import { buildGovDiscountReport } from '@/lib/gov-discount-reports/report'
 import { photoIdsByGrant } from '@/lib/gov-discount-reports/id-photos'
+import type { MissingOrder } from '@/lib/gov-discount-ledger/missing-from-book'
+import { resolveBranchScope } from '@/lib/outlets/branch-scope'
+
+/** Never blocks the page: the sales book renders even if this check fails. */
+async function loadMissing(tenantId: string, period: { startIso: string; endIso: string }, scope: ReturnType<typeof resolveBranchScope>): Promise<MissingOrder[]> {
+  try {
+    const [{ createAdminClient, ADMIN_QUERY_TIMEOUT_MS }, { loadMissingFromBook }] = await Promise.all([
+      import('@/lib/supabase/admin'),
+      import('@/lib/gov-discount-ledger/missing-service'),
+    ])
+    return await loadMissingFromBook(createAdminClient({ timeoutMs: ADMIN_QUERY_TIMEOUT_MS }), tenantId, period, scope)
+  } catch (error) {
+    console.error('[gov-discounts] missing-from-book check failed', error instanceof Error ? error.name : 'unknown')
+    return []
+  }
+}
 
 interface GovDiscountsPageProps {
   params: Promise<{ tenant: string }>
@@ -54,12 +71,15 @@ export default async function GovDiscountsPage({ params, searchParams }: GovDisc
   const period = resolveReportPeriod(query, nowMs)
   const basePath = `/${tenantSlug}/admin/gov-discounts`
 
-  let data: LedgerPageData | null = null
-  try {
-    data = await loadLedgerPageData(await createClient(), tenant.id, period, nowMs)
-  } catch (error) {
-    console.error('[gov-discounts] ledger unavailable', error instanceof Error ? error.message : error)
-  }
+  const [data, missing] = await Promise.all([
+    loadLedgerPageData(await createClient(), tenant.id, period, nowMs).catch((error: unknown): LedgerPageData | null => {
+      console.error('[gov-discounts] ledger unavailable', error instanceof Error ? error.message : error)
+      return null
+    }),
+    loadMissing(tenant.id, period, resolveBranchScope(caller)),
+  ])
+  const missingCard =
+    missing.length > 0 ? <GovMissingFromBook tenantId={tenant.id} tenantSlug={tenantSlug} orders={missing} /> : null
 
   const header = (
     <>
@@ -90,6 +110,7 @@ export default async function GovDiscountsPage({ params, searchParams }: GovDisc
     return (
       <div className="space-y-6">
         {header}
+        {missingCard}
         <GovEmptyState tenantSlug={tenantSlug} />
       </div>
     )
@@ -108,6 +129,8 @@ export default async function GovDiscountsPage({ params, searchParams }: GovDisc
           shorter period.
         </p>
       )}
+
+      {missingCard}
 
       <div className="space-y-2">
         <h2 className="text-sm font-medium text-muted-foreground">{period.label}</h2>
