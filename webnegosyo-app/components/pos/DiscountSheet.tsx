@@ -13,7 +13,15 @@ import {
 import { Modal } from "../Modal";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { centeredDialog, useCenteredDialog } from "./dialog-layout";
-import { validateManualDiscount, type ManualDiscount } from "../../lib/pos-discount";
+import {
+  validateManualDiscount,
+  type ManualDiscount,
+  type ManualItemDiscount,
+} from "../../lib/pos-discount";
+import type { VoucherUnitChoice } from "../../lib/pos-discount-session";
+import type { UnitPicks } from "../../lib/vouchers/types";
+import { ItemDiscountForm, type DiscountableLine } from "./ItemDiscountForm";
+import { VoucherUnitPicker } from "./VoucherUnitPicker";
 import { buildVoucherChoices } from "../../lib/pos-voucher-picker";
 import { hasPermission, type StaffPermissionHolder } from "../../lib/staff-permissions";
 import { listVouchers, lookupVouchers } from "../../lib/voucher-service";
@@ -35,7 +43,17 @@ interface DiscountSheetProps {
   hasManualDiscount?: boolean;
   onRemoveVoucher?: (code: string) => void;
   onRemoveManual?: () => void;
+  /** The sale's dishes, for a discount on one item. */
+  cartLines?: readonly DiscountableLine[];
+  itemDiscounts?: readonly ManualItemDiscount[];
+  onApplyItemDiscount?: (discount: ManualItemDiscount) => void;
+  onRemoveItemDiscount?: (lineKey: string) => void;
+  /** Applied vouchers that only discount N items, and where each landed. */
+  unitChoices?: readonly VoucherUnitChoice[];
+  onSetUnitPicks?: (code: string, picks: UnitPicks) => void;
 }
+
+type ManualTarget = "order" | "item";
 
 /**
  * Taking money off a counter sale.
@@ -64,7 +82,14 @@ export function DiscountSheet({
   hasManualDiscount = false,
   onRemoveVoucher,
   onRemoveManual,
+  cartLines = [],
+  itemDiscounts = [],
+  onApplyItemDiscount,
+  onRemoveItemDiscount,
+  unitChoices = [],
+  onSetUnitPicks,
 }: DiscountSheetProps) {
+  const [manualTarget, setManualTarget] = useState<ManualTarget>("order");
   const [code, setCode] = useState("");
   const [isLooking, setIsLooking] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -294,6 +319,15 @@ export function DiscountSheet({
               </>
             )}
 
+            {unitChoices.length > 0 && onSetUnitPicks && (
+              <>
+                <Text style={[styles.sectionLabel, styles.offersLabel]}>Which item gets it</Text>
+                {unitChoices.map((choice) => (
+                  <VoucherUnitPicker key={choice.code} choice={choice} onSave={onSetUnitPicks} />
+                ))}
+              </>
+            )}
+
             {hasManualDiscount && onRemoveManual && (
               // A manual discount has no code to find in the list above, so it
               // needs its own way back off. Without one the only route was to
@@ -312,6 +346,37 @@ export function DiscountSheet({
               <>
                 <Text style={[styles.sectionLabel, styles.manualLabel]}>Manual discount</Text>
 
+                {onApplyItemDiscount && (
+                  <View style={styles.row}>
+                    {(["order", "item"] as const).map((target) => (
+                      <TouchableOpacity
+                        key={target}
+                        style={[styles.kindChip, styles.targetChip, manualTarget === target && styles.kindChipActive]}
+                        onPress={() => setManualTarget(target)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: manualTarget === target }}
+                      >
+                        <Text style={styles.kindText}>{target === "order" ? "Whole order" : "One item"}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {canDiscountManually && manualTarget === "item" && onApplyItemDiscount && (
+              <ItemDiscountForm
+                lines={cartLines}
+                user={user}
+                held={itemDiscounts}
+                onApply={onApplyItemDiscount}
+                onRemove={(lineKey) => onRemoveItemDiscount?.(lineKey)}
+                focusProps={manualFocusProps}
+              />
+            )}
+
+            {canDiscountManually && manualTarget === "order" && (
+              <>
                 <View style={styles.row}>
                   <TouchableOpacity
                     style={[styles.kindChip, kind === "fixed" && styles.kindChipActive]}
@@ -434,6 +499,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   kindChipActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  targetChip: { flex: 1, alignItems: "center" },
   browsing: { paddingVertical: spacing.md },
   offersLabel: { marginTop: spacing.md },
   offers: { maxHeight: 260 },

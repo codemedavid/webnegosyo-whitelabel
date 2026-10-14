@@ -127,6 +127,10 @@ export default function PosScreen() {
   const removeVoucher = usePosCartStore((s) => s.removeVoucher);
   const setManualDiscount = usePosCartStore((s) => s.setManualDiscount);
   const clearManualDiscount = usePosCartStore((s) => s.clearManualDiscount);
+  const setItemDiscount = usePosCartStore((s) => s.setItemDiscount);
+  const removeItemDiscount = usePosCartStore((s) => s.removeItemDiscount);
+  const setVoucherUnitPicks = usePosCartStore((s) => s.setVoucherUnitPicks);
+  const voucherUnitChoices = usePosCartStore((s) => s.voucherUnitChoices);
   const delivery = usePosCartStore((s) => s.delivery);
   const setDelivery = usePosCartStore((s) => s.setDelivery);
   const setEditDeliveryFee = usePosCartStore((s) => s.setEditDeliveryFee);
@@ -621,6 +625,8 @@ export default function PosScreen() {
         // never with a single tap that could drop someone's legal discount.
         if (line.isGovernment) setIsGovDiscountOpen(true);
         else if (line.code) removeVoucher(line.code);
+        // A cashier's one-item discount names its dish; remove just that one.
+        else if (line.items && line.items.length > 0) line.items.forEach((item) => removeItemDiscount(item.lineKey));
         else clearManualDiscount();
       }}
       chargeLabel={
@@ -735,6 +741,12 @@ export default function PosScreen() {
         hasManualDiscount={discount.manual !== null}
         onRemoveVoucher={removeVoucher}
         onRemoveManual={clearManualDiscount}
+        cartLines={lines.map((line) => ({ key: line.key, name: line.name, quantity: line.quantity }))}
+        itemDiscounts={discount.itemDiscounts ?? []}
+        onApplyItemDiscount={(itemDiscount) => setItemDiscount(itemDiscount, { role, isOwner, permissions })}
+        onRemoveItemDiscount={removeItemDiscount}
+        unitChoices={isDiscountOpen ? voucherUnitChoices() : []}
+        onSetUnitPicks={setVoucherUnitPicks}
       />
 
       <RegisterGovDiscount visible={isGovDiscountOpen} onClose={() => setIsGovDiscountOpen(false)} />

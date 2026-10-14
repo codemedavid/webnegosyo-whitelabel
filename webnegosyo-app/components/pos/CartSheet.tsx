@@ -362,8 +362,16 @@ export function CartSheet({
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ${line.label}`}
               >
-                <Text style={[styles.totalLabel, styles.discountLabel]} numberOfLines={1}>
+                <Text style={[styles.totalLabel, styles.discountLabel]} numberOfLines={2}>
                   {line.label}
+                  {line.items && line.items.length > 0 ? (
+                    <Text style={styles.discountDish}>
+                      {"  "}
+                      {line.items
+                        .map((item) => `${lines.find((entry) => entry.key === item.lineKey)?.name ?? "Item"} ×${item.units}`)
+                        .join(", ")}
+                    </Text>
+                  ) : null}
                 </Text>
                 <Text style={[styles.totalValue, styles.discountValue]}>
                   −{formatPeso(line.amount)}
@@ -568,6 +576,7 @@ const styles = StyleSheet.create({
   totalLabel: { ...typography.caption, color: colors.textSecondary },
   totalValue: { ...typography.caption, fontWeight: "600", color: colors.textPrimary },
   discountLabel: { flex: 1, marginRight: spacing.sm },
+  discountDish: { ...typography.caption, color: colors.textSecondary },
   discountValue: { color: colors.success },
   collapsedDiscount: {
     flexDirection: "row",

@@ -40,6 +40,11 @@ import {
   setSessionGovernment,
   addSessionVoucher,
   clearSessionManualDiscount,
+  removeSessionItemDiscount,
+  setSessionItemDiscount,
+  setSessionUnitPicks,
+  voucherUnitChoices,
+  type VoucherUnitChoice,
   discountAfterCartChange,
   removeSessionVoucher,
   sessionDiscount,
@@ -47,7 +52,8 @@ import {
   type PosDiscountSession,
   type PosSessionDiscount,
 } from "../lib/pos-discount-session";
-import type { ManualDiscount } from "../lib/pos-discount";
+import type { ManualDiscount, ManualItemDiscount } from "../lib/pos-discount";
+import type { UnitPicks } from "../lib/vouchers/types";
 import {
   allowsSharedTable,
   fromOrderLineKeys,
@@ -176,6 +182,13 @@ interface PosCartState {
   removeVoucher: (code: string) => void;
   setManualDiscount: (manual: ManualDiscount, user: StaffPermissionHolder) => void;
   clearManualDiscount: () => void;
+  /** A cashier's discount on one dish (replaces any on the same line). */
+  setItemDiscount: (discount: ManualItemDiscount, user: StaffPermissionHolder) => void;
+  removeItemDiscount: (lineKey: string) => void;
+  /** Which units a unit-limited voucher lands on; empty = the cheapest. */
+  setVoucherUnitPicks: (code: string, picks: UnitPicks) => void;
+  /** The unit-limited vouchers on this sale and the dishes each may hit. */
+  voucherUnitChoices: () => VoucherUnitChoice[];
   /** Priced against the cart as it stands, never a remembered figure. */
   sessionDiscount: () => PosSessionDiscount;
   /** Judges a code against this sale before it is accepted. */
@@ -422,6 +435,20 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
   setManualDiscount: (manual, user) =>
     set((s) => ({ discount: setSessionManualDiscount(s.discount, manual, user) })),
   clearManualDiscount: () => set((s) => ({ discount: clearSessionManualDiscount(s.discount) })),
+  setItemDiscount: (itemDiscount, user) =>
+    set((s) => ({ discount: setSessionItemDiscount(s.discount, itemDiscount, user) })),
+  removeItemDiscount: (lineKey) =>
+    set((s) => ({ discount: removeSessionItemDiscount(s.discount, lineKey) })),
+  setVoucherUnitPicks: (code, picks) =>
+    set((s) => ({ discount: setSessionUnitPicks(s.discount, code, picks) })),
+  voucherUnitChoices: () => {
+    const { lines, discount } = get();
+    const { charge, deliveryFee } = discountBasis(get());
+    const outletId = get().editContext
+      ? get().editContext?.outletId ?? null
+      : get().saleOutlet?.id ?? null;
+    return voucherUnitChoices(discount, lines, charge, new Date(), outletId, deliveryFee);
+  },
   governmentLedgerDraft: ({ occurredAt, orderTotal }) => {
     const state = get();
     const record = state.governmentRecord();
