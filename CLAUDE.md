@@ -125,6 +125,16 @@ Floating owl chat in the tenant admin (`src/components/admin/assistant/`, mounte
 - **Merchant app** (`webnegosyo-app/components/assistant/`, `lib/assistant/`): same floating owl + full-screen panel, mounted in `app/(main)/_layout.tsx`; shown when `assistantEnabled` (session reads `tenants.assistant_enabled`) on store-wide, non-demo accounts, hidden on POS/tender/kitchen/scan and `[param]` editor screens. It calls the SAME three routes with `Authorization: Bearer <access token>`: each route is wrapped in `withRequestBearer` (`src/lib/supabase/bearer-session.ts`), which makes `createClient()` act as that token's user for the whole request (tool calls mid-stream included), so access checks and writers are unchanged. The app parses the UI message stream itself (`ui-stream.ts`, fixture captured from the pinned `ai`) because `@ai-sdk/react`'s React peer range excludes RN's pinned React. Links map web admin paths to app screens (`links.ts`); Boost Sales opens the web. A new tool/link/label must be mirrored in `lib/assistant/presentation.ts` + `links.ts`.
 - **Tests**: `tests/unit/assistant/` (incl. a scripted-model route test); live checks are opt-in: `ASSISTANT_LIVE=1 ASSISTANT_LIVE_TENANT=… ASSISTANT_LIVE_USER=…` (`tests/live/assistant-live.test.ts`, real DB, proposes but never confirms) and `ASSISTANT_GOLDEN=1` (`tests/live/assistant-golden.test.ts`, routing accuracy over `tests/fixtures/assistant/golden.json`).
 
+### Owl mascot (animated, merchant-facing only)
+
+`<Owl state="idle|happy|thinking|waiting|sorry|celebrating|sleeping" size framing="full|bust" label? />` (`src/components/mascot/`). NEVER on diner storefronts — those are white-labeled as the store's brand.
+
+- **Art is generated**: `node scripts/mascot/build-owl-svg.mjs` writes `public/assistant/owl-mascot.svg` AND `src/components/mascot/owl-art.generated.ts` (never hand-edit either). Source modules in `scripts/mascot/lib/` (left side only, mirrored); traced from `scripts/mascot/reference-sheet.png`. `tests/unit/mascot/` fails if the two outputs drift.
+- **Rig**: every moving part is `<g class="o-<part>">` with an inline transform-origin and NO transform attribute (`lib/rig.mjs`); expression variants (happy/closed eyes, lids) and effects (`fx-*`) start at opacity 0.
+- **States** live only in `owl.module.css`: a state = face (static poses) + motion (animations); reduced motion keeps the face. New state → add to `OWL_STATES` + CSS (test-enforced).
+- Ids are prefixed per instance (`useId`); under 120px the blurred shading is dropped (`toLite`).
+- Used in: assistant launcher/header (`owl-mood.ts`: sorry > thinking > happy-after-Confirm > idle), onboarding wizard guide (`guide-owl.ts`), build screen, reveal, Start here, admin error boundary, empty orders/menu/customers.
+
 ### SMS automations (texts that send themselves)
 
 Owners switch on per-moment texts — review request, thank first-timers, almost-there, reward waiting/expiring, win-back, regulars gone quiet — in the merchant app (Reports → **Texts**). The SERVER decides who gets a text; the store's enrolled Android phone only delivers. Plan: `docs/plans/2026-10-12-sms-automations.md`.
@@ -146,6 +156,15 @@ A loyalty member can add their stamp card to Apple or Google Wallet from the ord
 - **Keeping cards current**: pg_net triggers on `loyalty_balances` / `loyalty_entitlements` / `loyalty_programs` post an id to `/api/loyalty/passes/sync` (ids only, everything re-read; gated by `X-Wallet-Sync-Secret` = Vault `wallet_pass_sync_secret` = env `WALLET_PASS_SYNC_SECRET`). Apple = APNs empty push with the pass certificate, device then pulls; Google = PATCH the object. Per-wallet watermarks (`apple_pushed_hash`, `google_synced_hash`); Google is only called for members who asked for a Google pass.
 - **Routes**: `GET /api/loyalty/passes/{apple,google}` (issue), `/api/loyalty/passes/apple-ws/v1/...` (device web service), `POST /api/loyalty/passes/sync`, `POST /api/loyalty/passes/identify` (bearer, same tenant + `pos`).
 - **Config** (`config.ts`) fails closed per wallet; see ENV_VARIABLES_NEEDED.txt. Swap the text buttons for Apple's/Google's official badge artwork before launch.
+
+### Merchant notifications (the app's bell)
+
+Header bell (Home + Manage, `components/notifications/NotificationBell.tsx`) with an unread count, list at `(main)/notifications`. First kind: low / out of stock.
+
+- **Source**: `stock_alerts` (raised by `stock-alerts-service.ts`, gated by `low_stock_alerts_enabled`) → statement triggers write `merchant_notifications` (snapshot of item/unit/branch/qty; a new alert = `stock_low`/`stock_out`, an open low alert updated to `out` = escalation `stock_out`) → statement trigger pg_net-POSTs the ids to `/api/push/notify-merchant` → claims `push_claimed_at` once → Expo push on Android channel `stock-alerts` (never the order ringtone). One stock_alerts statement = one push call per device.
+- **Who**: `app_user_may_read_merchant_notifications` = owner, full-access admins, staff with `menu` (who can open Stock), branch accounts only their branch (NULL outlet = everyone). The push recipient rule (`merchant-notification-push.ts`) and the app's `canSeeMerchantNotifications` mirror it — change all three together. Text is worded in BOTH `merchant-notification-push.ts` and the app's `merchant-notifications.ts`; `tests/unit/merchant-notification-parity.test.ts` fails when the wording or the store-wide visibility rule drifts.
+- **Unread** = not resolved, newer than `merchant_notification_seen.seen_at`, counted once per ingredient shelf (low + its escalation = 1). Opening the list stores the newest notice's SERVER `created_at` as `seen_at` (`nextSeenAt`), never the phone clock. The push route gives its claim back when nothing was sent (no automatic retry — pg_net fires once). Service-role writes only on `merchant_notifications`.
+- **Push taps**: `routeFromPushData` (`lib/merchant-notifications/push-route.ts`) is the app's one router — announcements, then stock alerts (single item → ingredient page, batch → list). A new kind needs: the `kind` check constraint, a trigger/writer, wording on both sides, a route.
 
 ### Bills: combine & split (merchant app)
 
