@@ -125,7 +125,7 @@ export default function ReportsScreen() {
   const digDeeper =
     sections.length > 0 ? (
       <>
-        <SectionHeader title="Dig deeper" hint="Sales, products and branches in detail" />
+        <SectionHeader title="Dig deeper" hint="Sales, products, branches and store activity" />
         <View style={styles.group}>
           {sections.flatMap((section) => section.tabs).map((tab, index, all) => {
             const p = tabPresentation(tab);

@@ -22,6 +22,8 @@ interface DrawerSheetProps {
   onClose: () => void;
   /** Closing is refused while a write is in flight. */
   isBusy?: boolean;
+  /** The dismiss word; "Cancel" reads wrong on a sheet whose action IS a cancel. */
+  closeLabel?: string;
   children: React.ReactNode;
 }
 
@@ -30,7 +32,7 @@ interface DrawerSheetProps {
  * till setup. Docked on a phone, centred on a tablet (the register's own
  * dialog rule), lifted above the keyboard, and never dismissed mid-write.
  */
-export function DrawerSheet({ visible, title, subtitle, onClose, isBusy = false, children }: DrawerSheetProps) {
+export function DrawerSheet({ visible, title, subtitle, onClose, isBusy = false, closeLabel = "Cancel", children }: DrawerSheetProps) {
   const isCentered = useCenteredDialog();
   const close = () => {
     if (!isBusy) onClose();
@@ -64,9 +66,9 @@ export function DrawerSheet({ visible, title, subtitle, onClose, isBusy = false,
                 disabled={isBusy}
                 style={styles.closeHit}
                 accessibilityRole="button"
-                accessibilityLabel="Cancel"
+                accessibilityLabel={closeLabel}
               >
-                <Text style={styles.close}>Cancel</Text>
+                <Text style={styles.close}>{closeLabel}</Text>
               </TouchableOpacity>
             </View>
             {children}

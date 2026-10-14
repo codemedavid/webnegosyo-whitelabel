@@ -74,6 +74,15 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
     label: "Tables",
     description: "The floor plan — seat parties, clear tables, see each table's bill",
   },
+  // Opt-in: a full-access account does not hold these until they are ticked.
+  activity_view: {
+    label: "See store activity",
+    description: "See refunds, cancellations, stock and drawer moves by everyone, not just their own",
+  },
+  approve_requests: {
+    label: "Approve requests",
+    description: "Approve or decline a colleague's refund, cancellation, discount or write-off — grant sparingly",
+  },
 };
 
 /** Every grantable permission, in registry order, labelled for the owner. */

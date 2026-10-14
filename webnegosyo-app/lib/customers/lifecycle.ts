@@ -35,6 +35,10 @@ export async function notifyLifecycleSync(plan: LifecycleSyncPlan): Promise<void
       ...(plan.paymentStatus ? { paymentStatus: plan.paymentStatus } : {}),
       source: plan.source,
       outletId: plan.outletId,
+      // A cancel's reason: the platform logs it on order_status_events, which
+      // is the only record a Convex or tenant-Supabase store's cancel has.
+      ...(plan.reason ? { reason: plan.reason } : {}),
+      ...(plan.note ? { note: plan.note } : {}),
     });
   } catch (error) {
     console.warn("[lifecycle-sync] could not report order lifecycle:", error);

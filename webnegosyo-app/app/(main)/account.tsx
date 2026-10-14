@@ -9,6 +9,7 @@ import { BackHeader } from "../../components/BackHeader";
 import { ListRow } from "../../components/ListRow";
 import { Button } from "../../components/Button";
 import { SectionHeader } from "../../components/SectionHeader";
+import { canOpenMyActivity, MY_ACTIVITY_HREF } from "../../lib/activity/my-activity";
 
 const SUPPORT_EMAIL = "support@webnegosyo.com";
 
@@ -25,6 +26,8 @@ export default function AccountScreen() {
   const isOwner = useAuthStore((s) => s.isOwner);
   const role = useAuthStore((s) => s.role);
   const clear = useAuthStore((s) => s.clear);
+  const userId = useAuthStore((s) => s.userId);
+  const activityTenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
 
   const [email, setEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -141,6 +144,18 @@ export default function AccountScreen() {
             accessibilityLabel={`${roleLabel}${outletName ? ` at ${outletName}` : ""}`}
           />
         </View>
+
+        {canOpenMyActivity({ userId, tenantId: activityTenantId, isDemo }) && (
+          <View style={styles.group}>
+            {/* Your own refunds, cancels and stock changes (Store activity). */}
+            <ListRow
+              icon="clock"
+              title="Your activity"
+              subtitle="Refunds, cancels and stock changes you made"
+              onPress={() => router.push(MY_ACTIVITY_HREF as never)}
+            />
+          </View>
+        )}
 
         <View style={styles.group}>
           <ListRow

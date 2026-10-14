@@ -1497,6 +1497,7 @@ export type Database = {
           expires_at: string
           id: string
           outlet_id: string | null
+          sale_fingerprint: string | null
           summary: Json
           tenant_id: string
         }
@@ -1512,6 +1513,7 @@ export type Database = {
           expires_at?: string
           id?: string
           outlet_id?: string | null
+          sale_fingerprint?: string | null
           summary?: Json
           tenant_id: string
         }
@@ -1527,6 +1529,7 @@ export type Database = {
           expires_at?: string
           id?: string
           outlet_id?: string | null
+          sale_fingerprint?: string | null
           summary?: Json
           tenant_id?: string
         }
@@ -1679,6 +1682,63 @@ export type Database = {
           },
           {
             foreignKeyName: "gov_discount_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gov_discount_id_photos: {
+        Row: {
+          backend: string
+          captured_at: string
+          claimant_ref: string
+          created_at: string
+          expires_at: string
+          external_order_id: string
+          id: string
+          object_path: string
+          outlet_id: string | null
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          backend: string
+          captured_at: string
+          claimant_ref: string
+          created_at?: string
+          expires_at: string
+          external_order_id: string
+          id?: string
+          object_path: string
+          outlet_id?: string | null
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          backend?: string
+          captured_at?: string
+          claimant_ref?: string
+          created_at?: string
+          expires_at?: string
+          external_order_id?: string
+          id?: string
+          object_path?: string
+          outlet_id?: string | null
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gov_discount_id_photos_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gov_discount_id_photos_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -7230,6 +7290,7 @@ export type Database = {
       staff_approval_pins: {
         Row: {
           failed_attempts: number
+          lock_count: number
           locked_until: string | null
           pin_hash: string
           tenant_id: string
@@ -7238,6 +7299,7 @@ export type Database = {
         }
         Insert: {
           failed_attempts?: number
+          lock_count?: number
           locked_until?: string | null
           pin_hash: string
           tenant_id: string
@@ -7246,6 +7308,7 @@ export type Database = {
         }
         Update: {
           failed_attempts?: number
+          lock_count?: number
           locked_until?: string | null
           pin_hash?: string
           tenant_id?: string
@@ -7864,6 +7927,7 @@ export type Database = {
           business_address: string | null
           created_at: string
           enabled_kinds: string[]
+          id_photo_mode: string
           is_bir_registered_pos: boolean
           pos_min: string | null
           pos_ptu_no: string | null
@@ -7884,6 +7948,7 @@ export type Database = {
           business_address?: string | null
           created_at?: string
           enabled_kinds?: string[]
+          id_photo_mode?: string
           is_bir_registered_pos?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
@@ -7904,6 +7969,7 @@ export type Database = {
           business_address?: string | null
           created_at?: string
           enabled_kinds?: string[]
+          id_photo_mode?: string
           is_bir_registered_pos?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
@@ -9445,6 +9511,7 @@ export type Database = {
           is_active: boolean
           is_stackable: boolean
           max_discount_amount: number | null
+          max_discounted_units: number | null
           min_order_amount: number
           name: string
           outlet_ids: string[] | null
@@ -9469,6 +9536,7 @@ export type Database = {
           is_active?: boolean
           is_stackable?: boolean
           max_discount_amount?: number | null
+          max_discounted_units?: number | null
           min_order_amount?: number
           name: string
           outlet_ids?: string[] | null
@@ -9493,6 +9561,7 @@ export type Database = {
           is_active?: boolean
           is_stackable?: boolean
           max_discount_amount?: number | null
+          max_discounted_units?: number | null
           min_order_amount?: number
           name?: string
           outlet_ids?: string[] | null

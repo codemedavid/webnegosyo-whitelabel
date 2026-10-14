@@ -80,6 +80,7 @@ describe("isTabInWorkspace", () => {
     expect(isTabInWorkspace("analytics", "insights")).toBe(true);
     expect(isTabInWorkspace("growth", "insights")).toBe(true);
     expect(isTabInWorkspace("trends", "insights")).toBe(true);
+    expect(isTabInWorkspace("activity", "insights")).toBe(true);
     expect(isTabInWorkspace("analytics", "operations")).toBe(false);
   });
 

@@ -17,6 +17,7 @@
  */
 
 import type { OrderBackend } from "../order-backend";
+import { readOrderEventReason } from "../order-cancel-reason";
 
 /** Mutations that move an order through its lifecycle. */
 const LIFECYCLE_REFS = new Set([
@@ -47,6 +48,9 @@ export interface LifecycleSyncPlan {
   paymentStatus: string | null;
   source: "pos" | "online" | null;
   outletId: string | null;
+  /** Why it moved (a cancel's reason chip); absent when the screen gave none. */
+  reason?: string;
+  note?: string;
 }
 
 export interface LifecyclePlanInput {
@@ -77,7 +81,11 @@ export function planLifecycleSync(input: LifecyclePlanInput): LifecycleSyncPlan 
   // A payment-only patch leaves the status alone; the server keeps what it has.
   if (!status && !paymentStatus) return null;
 
+  const why = readOrderEventReason(args);
+
   return {
+    ...(why.reason ? { reason: why.reason } : {}),
+    ...(why.note ? { note: why.note } : {}),
     tenantId: input.tenantId,
     backend,
     externalOrderId,

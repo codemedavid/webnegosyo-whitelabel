@@ -6,7 +6,11 @@
  * order could still be cancelled — pulling food the customer already has out
  * of revenue and putting its ingredients back on the shelf.
  */
-import { markPaidAfterHandover, planOrderStatusChange } from "./order-status-change";
+import {
+  canUserCancelOrder,
+  markPaidAfterHandover,
+  planOrderStatusChange,
+} from "./order-status-change";
 
 describe("planOrderStatusChange — cancelling", () => {
   it("refuses to cancel an order that was already delivered", () => {
@@ -104,5 +108,30 @@ describe("markPaidAfterHandover", () => {
     await expect(markPaidAfterHandover(write, "order-1")).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe("canUserCancelOrder — who may cancel", () => {
+  const cashier = { role: "admin", isOwner: false, permissions: ["pos"] };
+  const queueStaff = { role: "admin", isOwner: false, permissions: ["orders"] };
+  const kitchenOnly = { role: "admin", isOwner: false, permissions: ["kitchen", "tables"] };
+  const owner = { role: "admin", isOwner: true, permissions: ["pos"] };
+  const fullAccess = { role: "admin", isOwner: false, permissions: null };
+
+  it("hides Cancel from staff without the Orders permission", () => {
+    expect(canUserCancelOrder(cashier, "pending")).toBe(false);
+    // The pass and the floor are carved OUT of orders; they do not reach back.
+    expect(canUserCancelOrder(kitchenOnly, "confirmed")).toBe(false);
+  });
+
+  it("shows Cancel to Orders holders, owners and full-access accounts", () => {
+    expect(canUserCancelOrder(queueStaff, "pending")).toBe(true);
+    expect(canUserCancelOrder(owner, "ready")).toBe(true);
+    expect(canUserCancelOrder(fullAccess, "preparing")).toBe(true);
+  });
+
+  it("still refuses a delivered or cancelled order, whoever asks", () => {
+    expect(canUserCancelOrder(owner, "delivered")).toBe(false);
+    expect(canUserCancelOrder(owner, "cancelled")).toBe(false);
   });
 });

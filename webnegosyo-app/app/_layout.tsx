@@ -26,7 +26,7 @@ import {
 import { usePrinterStore } from "../stores/printer-store";
 import { useRegisterSettingsStore } from "../stores/register-settings-store";
 import { supabase } from "../lib/supabase";
-import { signOutThisDevice } from "../lib/sign-out";
+import { setBeforeSignOut, signOutThisDevice } from "../lib/sign-out";
 import {
   BOOTSTRAP_UNREACHABLE_MESSAGE,
   classifyLookup,
@@ -46,6 +46,10 @@ import {
 } from "../lib/session-loss";
 import { requeueSignedOutRefusals } from "../lib/offline/order-outbox";
 import { requeueSignedOutEditRefusals } from "../lib/offline/order-edits";
+
+// Every sign-out first deletes this device's platform push token row, so a
+// shared tablet stops receiving the previous person's approval pushes.
+setBeforeSignOut(forgetPlatformDeviceToken);
 
 // Bound once for the life of the process: a sign-out anywhere drops the
 // offline session snapshot, so the next launch cannot open the old store.
@@ -73,11 +77,11 @@ bindSessionLossToAuth({
 });
 import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
-import { registerForPushNotifications, ensureOrdersChannel, ensureStockAlertsChannel } from "../lib/notifications";
+import { registerForPushNotifications, ensureOrdersChannel, ensureStockAlertsChannel, deviceChannels } from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
-import { upsertPlatformDeviceToken } from "../lib/announcements/service";
-import { routeFromPushData } from "../lib/merchant-notifications/push-route";
-import { textingRouteFromPushData } from "../lib/sms-automations/push-route";
+import { forgetPlatformDeviceToken, upsertPlatformDeviceToken } from "../lib/announcements/service";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { planPushRoute, readConsumed, rememberConsumed } from "../lib/approvals/push-consumed";
 import {
   shouldRegisterPushToken,
   pushRegistrationOutletId,
@@ -393,7 +397,9 @@ function usePushNotifications() {
       registerForPushNotifications().then(async (token) => {
         if (!token) return;
         if (deviceTarget) {
-          upsertPlatformDeviceToken({ token, ...deviceTarget }).catch((e) => {
+          // Reports the Android channels created above (approvals), so the
+          // server only targets a channel this phone actually has.
+          upsertPlatformDeviceToken({ token, ...deviceTarget, channels: deviceChannels() }).catch((e) => {
             console.warn("Failed to register platform device token:", e);
           });
         }
@@ -445,22 +451,51 @@ function usePushNotifications() {
   }, [isAuthenticated, convexUrl, orderBackend, isSuperadmin, impersonatedTenantId]);
 }
 
+/** Responses already claimed this process, so a warm start's double report opens one screen. */
+const routedPushResponses = new Set<string>();
+
 /**
- * Opens the screen a push points at when the merchant taps it — both for a
- * tap that wakes a running app and for the tap that launched it. Handles
- * What's New posts and low-stock alerts, then texting notifications ("texts are
- * waiting", a campaign's send reminder) which open Texts or the campaign. Order
- * pushes match none of these and are left to the order screens.
+ * The app's one push router: opens the screen a tapped push (or one of its
+ * action buttons) points at — approvals (review screen; Approve/Decline carry
+ * their intent) and announcements — both for a tap that wakes a running app
+ * and for the tap that launched it. Order pushes carry neither and are left
+ * to the order screens.
+ *
+ * A response is acted on once EVER: handled keys are persisted for 7 days
+ * (lib/approvals/push-consumed.ts), so a kill and reopen after Undo cannot
+ * replay an Approve on binaries without `clearLastNotificationResponse`. An
+ * Approve older than two minutes, or one whose history cannot be read, opens
+ * the review screen without the approving countdown.
  */
-function usePushTapRouting() {
+function usePushResponseRouting() {
   useEffect(() => {
-    const open = (response: Notifications.NotificationResponse | null) => {
-      const data = response?.notification.request.content.data;
-      const route = routeFromPushData(data) ?? textingRouteFromPushData(data);
-      if (route) router.push(route as never);
+    const open = async (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
+      if (routedPushResponses.has(key)) return;
+      routedPushResponses.add(key);
+      const now = Date.now();
+      const route = planPushRoute({
+        data: response.notification.request.content.data,
+        actionIdentifier: response.actionIdentifier,
+        key,
+        notifiedAt: response.notification.date,
+        now,
+        consumed: await readConsumed(AsyncStorage, now),
+      });
+      if (!route) return;
+      await rememberConsumed(AsyncStorage, key, now);
+      if (route.startsWith("/(main)/approval/")) {
+        try {
+          Notifications.clearLastNotificationResponse();
+        } catch {
+          // An older binary without the native call: the persisted list guards replays.
+        }
+      }
+      router.push(route as never);
     };
     Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
-    const sub = Notifications.addNotificationResponseReceivedListener(open);
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => void open(response));
     return () => sub.remove();
   }, []);
 }
@@ -472,7 +507,7 @@ function RootLayout() {
   useAuthInit();
   useAuthRedirect();
   usePushNotifications();
-  usePushTapRouting();
+  usePushResponseRouting();
 
   // Load saved device settings (printer config, register prefs) on app start
   useEffect(() => {

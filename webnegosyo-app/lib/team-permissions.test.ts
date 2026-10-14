@@ -7,7 +7,11 @@
  * explicit first, then edited.
  */
 
-import { STAFF_PERMISSION_KEYS } from "./staff-permissions";
+import { OPT_IN_PERMISSION_KEYS, STAFF_PERMISSION_KEYS } from "./staff-permissions";
+
+const FULL_ACCESS_KEYS = STAFF_PERMISSION_KEYS.filter(
+  (key) => !(OPT_IN_PERMISSION_KEYS as readonly string[]).includes(key),
+);
 import {
   effectivePermissions,
   toggleEffectivePermission,
@@ -15,8 +19,20 @@ import {
 } from "./team-permissions";
 
 describe("effectivePermissions", () => {
-  it("expands null (full access) to every registry key, in registry order", () => {
-    expect(effectivePermissions(null)).toEqual([...STAFF_PERMISSION_KEYS]);
+  it("expands null (full access) to every registry key except the opt-in ones, in registry order", () => {
+    expect(effectivePermissions(null)).toEqual(FULL_ACCESS_KEYS);
+  });
+
+  it("never turns full access into an opt-in grant the owner did not tick", () => {
+    // Flipping Kitchen off on a full-access row must not quietly hand the
+    // account "See store activity" or "Approve requests".
+    const next = toggleEffectivePermission(null, "kitchen");
+    expect(next).not.toContain("activity_view");
+    expect(next).not.toContain("approve_requests");
+  });
+
+  it("lets an owner switch an opt-in key on for a full-access row", () => {
+    expect(toggleEffectivePermission(null, "activity_view")).toEqual([...FULL_ACCESS_KEYS, "activity_view"]);
   });
 
   it("returns a copy of an explicit list", () => {
@@ -42,14 +58,14 @@ describe("togglePermission", () => {
 describe("toggleEffectivePermission", () => {
   it("turning one switch off on a full-access account keeps every other grant", () => {
     // Arrange
-    const expected = STAFF_PERMISSION_KEYS.filter((key) => key !== "kitchen");
+    const expected = FULL_ACCESS_KEYS.filter((key) => key !== "kitchen");
 
     // Act
     const next = toggleEffectivePermission(null, "kitchen");
 
     // Assert — the whole list minus one, never `["kitchen"]`
     expect(next).toEqual(expected);
-    expect(next).toHaveLength(STAFF_PERMISSION_KEYS.length - 1);
+    expect(next).toHaveLength(FULL_ACCESS_KEYS.length - 1);
   });
 
   it("turning a switch on for an explicit list appends the key", () => {

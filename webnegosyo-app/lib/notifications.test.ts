@@ -13,6 +13,7 @@
  */
 const mockSetChannel = jest.fn().mockResolvedValue(undefined);
 const mockDeleteChannel = jest.fn().mockResolvedValue(undefined);
+const mockSetCategory = jest.fn().mockResolvedValue(null);
 
 jest.mock("expo-notifications", () => ({
   __esModule: true,
@@ -22,7 +23,8 @@ jest.mock("expo-notifications", () => ({
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
   getExpoPushTokenAsync: jest.fn(),
-  AndroidImportance: { MAX: 5 },
+  setNotificationCategoryAsync: (...args: unknown[]) => mockSetCategory(...args),
+  AndroidImportance: { MAX: 5, HIGH: 4 },
 }));
 
 jest.mock("expo-device", () => ({ __esModule: true, isDevice: true }));
@@ -71,5 +73,44 @@ describe("ensureOrdersChannel", () => {
     await ensureOrdersChannel();
 
     expect(mockSetChannel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("approvals channel and categories", () => {
+  beforeEach(() => {
+    jest.resetModules();
+    mockSetChannel.mockClear();
+    mockSetCategory.mockClear();
+  });
+
+  async function loadNotifications() {
+    return (await import("./notifications")) as typeof import("./notifications");
+  }
+
+  it("creates a HIGH approvals channel without the order ringtone, and reports it", async () => {
+    const { ensureApprovalsChannel, deviceChannels } = await loadNotifications();
+    expect(deviceChannels()).toEqual([]);
+    await expect(ensureApprovalsChannel()).resolves.toBe(true);
+
+    const [channelId, config] = mockSetChannel.mock.calls[0] as [string, Record<string, unknown>];
+    expect(channelId).toBe("approvals");
+    expect(config).toMatchObject({ importance: 4 });
+    expect(config.sound).not.toBe("ringtone.mp3");
+    expect(deviceChannels()).toEqual(["approvals"]);
+  });
+
+  it("does not report the channel when creating it failed", async () => {
+    mockSetChannel.mockRejectedValueOnce(new Error("no"));
+    const { ensureApprovalsChannel, deviceChannels } = await loadNotifications();
+    await expect(ensureApprovalsChannel()).resolves.toBe(false);
+    expect(deviceChannels()).toEqual([]);
+  });
+
+  it("registers the approval category with Approve and Decline", async () => {
+    const { ensureApprovalCategories } = await loadNotifications();
+    await ensureApprovalCategories();
+    const [identifier, actions] = mockSetCategory.mock.calls[0] as [string, { identifier: string }[]];
+    expect(identifier).toBe("approval_within_limit");
+    expect(actions.map((action) => action.identifier)).toEqual(["approve", "decline"]);
   });
 });

@@ -72,6 +72,11 @@ export const REPORT_TABS: readonly string[] = [
   "product-analytics",
   "daily-report",
   "branches",
+  // Store activity: what happened, who did it, what needs a look — the
+  // store's view, for owners and holders of activity_view / approve_requests
+  // (TAB_ANY_OF in staff-permissions). Other staff reach their own activity
+  // through the my-activity utility screen, so their bar does not change.
+  "activity",
 ];
 
 /**

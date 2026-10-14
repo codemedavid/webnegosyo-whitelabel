@@ -176,6 +176,8 @@ export default function MainLayout() {
         />
         <Tabs.Screen name="daily-report" options={{ href: show("daily-report"), title: "Stock report" }} />
         <Tabs.Screen name="branches" options={{ href: show("branches"), title: "Compare branches" }} />
+        {/* Store activity — the store's view (owners, activity_view, approve_requests). */}
+        <Tabs.Screen name="activity" options={{ href: show("activity"), title: "Activity" }} />
 
         {/* ── Manage ──────────────────────────────────────────────────── */}
         <Tabs.Screen
@@ -220,6 +222,12 @@ export default function MainLayout() {
         />
         <Tabs.Screen name="account" options={{ href: null, title: "Account" }} />
         <Tabs.Screen name="team" options={{ href: null, title: "Team" }} />
+        {/* One person's own Store activity — pushed from Account or the Drawer. */}
+        <Tabs.Screen name="my-activity" options={{ href: null, title: "Your activity" }} />
+        {/* One refund / paid-cancel request to approve or read — from To review, Home, an order or a push. */}
+        <Tabs.Screen name="approval/[approvalId]" options={{ href: null, title: "Request" }} />
+        {/* Owner-only refund limits and who approves — pushed from Manage. */}
+        <Tabs.Screen name="approval-rules" options={{ href: null, title: "Approval rules" }} />
         {/* Tills (Cashier 1, Cashier 2, zero-balance) — pushed from Manage or the Drawer. */}
         <Tabs.Screen name="cash-drawers" options={{ href: null, title: "Cash drawers" }} />
         {/* Owner-only order deletion — pushed from Account. */}

@@ -1,15 +1,18 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   View,
   StyleSheet,
   ActivityIndicator,
   Animated,
   PanResponder,
   Text,
+  type AccessibilityActionEvent,
   type LayoutChangeEvent,
 } from "react-native";
 import { colors, typography, shadow } from "../theme/colors";
 import { isSlideComplete } from "../lib/slide-gesture";
+import { Button } from "./Button";
 
 const SLIDE_HEIGHT = 60;
 const KNOB_SIZE = 52;
@@ -21,6 +24,29 @@ interface SlideActionProps {
   onComplete: () => void;
   /** Swaps the knob for a spinner and refuses further gestures. */
   isBusy?: boolean;
+  /** What a screen reader says, e.g. "Approve 185 pesos". Defaults to `label`. */
+  accessibilityLabel?: string;
+  /** The plain button shown instead while a screen reader is on, e.g. "Approve ₱185". */
+  fallbackLabel?: string;
+}
+
+/** Screen-reader users cannot drag, so the slide gives way to a button while one is on. */
+function useScreenReaderEnabled(): boolean {
+  const [isEnabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let isMounted = true;
+    AccessibilityInfo.isScreenReaderEnabled()
+      .then((value) => {
+        if (isMounted) setEnabled(value);
+      })
+      .catch(() => undefined);
+    const subscription = AccessibilityInfo.addEventListener("screenReaderChanged", setEnabled);
+    return () => {
+      isMounted = false;
+      subscription?.remove();
+    };
+  }, []);
+  return isEnabled;
 }
 
 /**
@@ -31,7 +57,8 @@ interface SlideActionProps {
  * something that is awkward to walk back, and both happen with a phone held
  * one-handed over a counter.
  */
-export function SlideAction({ label, onComplete, isBusy = false }: SlideActionProps) {
+export function SlideAction({ label, onComplete, isBusy = false, accessibilityLabel, fallbackLabel }: SlideActionProps) {
+  const isScreenReaderOn = useScreenReaderEnabled();
   const [trackWidth, setTrackWidth] = useState(0);
   const translateX = useRef(new Animated.Value(0)).current;
   const completedRef = useRef(false);
@@ -87,8 +114,35 @@ export function SlideAction({ label, onComplete, isBusy = false }: SlideActionPr
     extrapolate: "clamp",
   });
 
+  const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
+    if (event.nativeEvent.actionName !== "activate" || isBusy || completedRef.current) return;
+    completedRef.current = true;
+    onComplete();
+  };
+
+  if (isScreenReaderOn) {
+    return (
+      <Button
+        label={fallbackLabel ?? label}
+        accessibilityLabel={accessibilityLabel ?? fallbackLabel ?? label}
+        onPress={onComplete}
+        isLoading={isBusy}
+        size="lg"
+      />
+    );
+  }
+
   return (
-    <View style={styles.slideTrack} onLayout={handleLayout}>
+    <View
+      style={styles.slideTrack}
+      onLayout={handleLayout}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ busy: isBusy, disabled: isBusy }}
+      accessibilityActions={[{ name: "activate" }]}
+      onAccessibilityAction={handleAccessibilityAction}
+    >
       <Animated.View style={[styles.slideFill, { width: fillWidth }]} pointerEvents="none" />
       <Animated.Text
         style={[styles.slideLabel, { opacity: labelOpacity }]}

@@ -262,6 +262,8 @@ async function recordWebStatusEvent(input: {
   existingOrder: unknown
   actorUserId: string
   actorName: string
+  reason: string | null
+  note: string | null
 }): Promise<void> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const { createSupabaseOrderEventStore, recordOrderEventBestEffort } = await import(
@@ -280,14 +282,30 @@ async function recordWebStatusEvent(input: {
     orderTotal: typeof order?.total === 'number' ? order.total : null,
     actorUserId: input.actorUserId,
     actorName: input.actorName,
+    reason: input.reason,
+    note: input.note,
   })
+}
+
+/** Optional context for a status move. Phase 2 makes a cancel require `reason`. */
+export interface OrderStatusChangeOptions {
+  reason?: string | null
+  note?: string | null
 }
 
 export async function updateOrderStatus(
   orderId: string,
   tenantId: string,
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
+  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled',
+  options: OrderStatusChangeOptions = {}
 ) {
+  const { parseOrderEventReason } = await import('@/lib/staff-activity/order-event-reason')
+  const why = parseOrderEventReason(options)
+  if (!why.ok) throw new Error(why.error)
+  // A reason explains a cancel; it is not kept for any other move.
+  const reason = status === 'cancelled' ? why.value.reason : null
+  const note = status === 'cancelled' ? why.value.note : null
+
   const { user: actor } = await verifyTenantPermission(tenantId, 'orders')
 
   const supabase = await createClient()
@@ -303,8 +321,10 @@ export async function updateOrderStatus(
   const readStatus = (existingOrder as unknown as Order | null)?.status ?? null
   let query = supabase
     .from('orders')
+    // cancel_reason is sent only when present, so the update stays valid on a
+    // database without 20261012150000; the store_activity trigger reads it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .update({ status } as any)
+    .update({ status, ...(reason ? { cancel_reason: reason } : {}) } as any)
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
   // Compare-and-swap on the status this request read. The stock and loyalty
@@ -334,6 +354,8 @@ export async function updateOrderStatus(
       existingOrder,
       actorUserId: actor.id,
       actorName: actor.email ?? 'Staff',
+      reason,
+      note,
     })
   }
 

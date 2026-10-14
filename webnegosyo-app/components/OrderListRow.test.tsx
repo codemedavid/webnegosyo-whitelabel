@@ -45,7 +45,14 @@ const order: OrderListRowOrder = {
 function renderRow(props: Partial<React.ComponentProps<typeof OrderListRow>> = {}) {
   const handlers = { onOpen: jest.fn(), onAdvance: jest.fn(), onCancel: jest.fn() };
   const utils = render(
-    <OrderListRow order={order} nextStatusLabel="Confirmed" isBusy={false} {...handlers} {...props} />,
+    <OrderListRow
+      order={order}
+      nextStatusLabel="Confirmed"
+      isBusy={false}
+      mayCancelOrders
+      {...handlers}
+      {...props}
+    />,
   );
   return { ...utils, handlers };
 }
@@ -55,6 +62,13 @@ beforeEach(() => {
 });
 
 describe("OrderListRow", () => {
+  it("offers no Cancel to an account without the Orders permission", () => {
+    renderRow({ mayCancelOrders: false });
+
+    expect(screen.queryByTestId("cancel")).toBeNull();
+    expect(screen.getByTestId("advance")).toBeTruthy();
+  });
+
   it("routes taps to the id-based callbacks", () => {
     const { handlers } = renderRow();
 
@@ -72,14 +86,14 @@ describe("OrderListRow", () => {
     const { rerender } = render(
       <>
         <Text>first</Text>
-        <OrderListRow order={order} nextStatusLabel="Confirmed" isBusy={false} {...handlers} />
+        <OrderListRow order={order} nextStatusLabel="Confirmed" isBusy={false} mayCancelOrders {...handlers} />
       </>,
     );
 
     rerender(
       <>
         <Text>second</Text>
-        <OrderListRow order={order} nextStatusLabel="Confirmed" isBusy={false} {...handlers} />
+        <OrderListRow order={order} nextStatusLabel="Confirmed" isBusy={false} mayCancelOrders {...handlers} />
       </>,
     );
 
@@ -89,7 +103,7 @@ describe("OrderListRow", () => {
   it("re-renders when the order row itself changes", () => {
     const handlers = { onOpen: jest.fn(), onAdvance: jest.fn(), onCancel: jest.fn() };
     const { rerender } = render(
-      <OrderListRow order={order} nextStatusLabel="Confirmed" isBusy={false} {...handlers} />,
+      <OrderListRow order={order} nextStatusLabel="Confirmed" isBusy={false} mayCancelOrders {...handlers} />,
     );
 
     rerender(
@@ -97,6 +111,7 @@ describe("OrderListRow", () => {
         order={{ ...order, status: "confirmed" }}
         nextStatusLabel="Preparing"
         isBusy={false}
+        mayCancelOrders
         {...handlers}
       />,
     );

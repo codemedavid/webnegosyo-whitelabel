@@ -1,7 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { colors, typography, spacing, radius } from "../theme/colors";
-import type { ProductFilterChip } from "../lib/product-filter-summary";
 
 /**
  * A small drawn cross, not a "×" character.
@@ -19,9 +18,15 @@ function RemoveMark({ tint }: { tint: string }) {
   );
 }
 
-interface FilterChipsRowProps {
-  chips: readonly ProductFilterChip[];
-  onRemove: (chip: ProductFilterChip) => void;
+/** Anything with a stable id and a label: product filters, activity filters. */
+export interface RemovableChip {
+  id: string;
+  label: string;
+}
+
+interface FilterChipsRowProps<C extends RemovableChip> {
+  chips: readonly C[];
+  onRemove: (chip: C) => void;
   onClearAll: () => void;
 }
 
@@ -32,7 +37,7 @@ interface FilterChipsRowProps {
  * sight is a filter the merchant has stopped accounting for, which is the exact
  * failure this row exists to prevent.
  */
-export function FilterChipsRow({ chips, onRemove, onClearAll }: FilterChipsRowProps) {
+export function FilterChipsRow<C extends RemovableChip>({ chips, onRemove, onClearAll }: FilterChipsRowProps<C>) {
   if (chips.length === 0) return null;
 
   return (

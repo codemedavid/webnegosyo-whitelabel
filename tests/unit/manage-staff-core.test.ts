@@ -13,6 +13,7 @@ import { join } from 'path'
 import {
   STAFF_PERMISSION_KEYS as CORE_PERMISSION_KEYS,
   DEFAULT_SCREEN_PERMISSIONS,
+  canGrantPermissions as coreCanGrantPermissions,
   handleStaffAction,
   type StaffCaller,
   type StaffCoreStore,
@@ -525,6 +526,16 @@ const SUPERADMIN: StaffCaller = {
 }
 
 const GRANT_ERROR = 'You can only grant permissions you hold'
+
+describe('opt-in permission grants', () => {
+  it('stops a full-access, non-owner admin handing out keys it does not hold', () => {
+    const legacy = { user_id: 'u', tenant_id: 't', role: 'admin', is_owner: false, permissions: null }
+    expect(coreCanGrantPermissions(legacy, ['activity_view'])).toBe(false)
+    expect(coreCanGrantPermissions(legacy, ['approve_requests'])).toBe(false)
+    expect(coreCanGrantPermissions(legacy, ['orders'])).toBe(true)
+    expect(coreCanGrantPermissions({ ...legacy, is_owner: true }, ['activity_view'])).toBe(true)
+  })
+})
 
 describe('grant scope for a branch admin', () => {
   it('create refuses permissions the caller does not hold, with 403 and no auth user', async () => {

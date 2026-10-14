@@ -9,6 +9,7 @@ import { MANAGE_SECTIONS, hubSections } from "../../lib/hubs";
 import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { tabPresentation } from "../../lib/workspace-presentation";
 import { canOpenTeam } from "../../lib/staff-service";
+import { canEditApprovalRules } from "../../lib/approvals/access";
 import { canManageCash } from "../../lib/cash-drawers";
 import { hasPermission } from "../../lib/staff-permissions";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
@@ -46,6 +47,7 @@ export default function ManageScreen() {
   const ctx = useTabVisibilityContext();
   const sections = hubSections(MANAGE_SECTIONS, ctx);
   const showTeam = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
+  const showApprovalRules = !isDemo && canEditApprovalRules({ role, isOwner, permissions });
   const canDesignReceipt = hasPermission({ role, isOwner, permissions }, "store_setup");
   const showCashDrawers = !isDemo && canManageCash({ role, isOwner, permissions });
   const chapters = useTutorialChapters();
@@ -131,6 +133,15 @@ export default function ManageScreen() {
                 title="Team"
                 subtitle="Staff accounts and what each can do"
                 onPress={() => router.push("/(main)/team")}
+                grouped
+              />
+            ) : null}
+            {showApprovalRules ? (
+              <ListRow
+                icon="shield"
+                title="Approval rules"
+                subtitle="Refund limits, who approves, how long requests wait"
+                onPress={() => router.push("/(main)/approval-rules")}
                 grouped
               />
             ) : null}

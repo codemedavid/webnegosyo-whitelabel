@@ -45,6 +45,24 @@ describe('parseLifecycleSyncRequest', () => {
     expect(parsed.ok && parsed.value.status).toBeNull()
   })
 
+  it('carries an optional cancel reason and note, trimmed', () => {
+    const parsed = parseLifecycleSyncRequest({ ...VALID, status: 'cancelled', reason: ' Customer left ', note: 'Walked out' })
+    expect(parsed.ok && parsed.value.reason).toBe('Customer left')
+    expect(parsed.ok && parsed.value.note).toBe('Walked out')
+    const without = parseLifecycleSyncRequest(VALID)
+    expect(without.ok && without.value.reason).toBeNull()
+  })
+
+  it('keeps a reason only for a cancel, like the web status change', () => {
+    const parsed = parseLifecycleSyncRequest({ ...VALID, status: 'delivered', reason: 'x', note: 'y' })
+    expect(parsed.ok && parsed.value.reason).toBeNull()
+    expect(parsed.ok && parsed.value.note).toBeNull()
+  })
+
+  it('refuses a reason over 500 characters', () => {
+    expect(parseLifecycleSyncRequest({ ...VALID, reason: 'x'.repeat(501) }).ok).toBe(false)
+  })
+
   it('refuses a client-supplied customer id, which identity must decide server-side', () => {
     const parsed = parseLifecycleSyncRequest({ ...VALID, customerId: 'customer-b' })
     expect(parsed.ok).toBe(false)

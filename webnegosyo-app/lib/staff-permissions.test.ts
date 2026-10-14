@@ -1,4 +1,5 @@
 import {
+  OPT_IN_PERMISSION_KEYS,
   hasPermission,
   impliedPermissions,
   isTabAllowed,
@@ -154,5 +155,20 @@ describe("allowedWorkspaces", () => {
       "daily-report",
     ]);
     expect(products!.defaultTab).toBe("product-management");
+  });
+});
+
+describe("opt-in permissions", () => {
+  it("are not granted by full access, only by the owner or a tick", () => {
+    for (const key of OPT_IN_PERMISSION_KEYS) {
+      expect(hasPermission(legacyAdmin, key)).toBe(false);
+      expect(hasPermission(owner, key)).toBe(true);
+      expect(hasPermission({ role: "admin", isOwner: false, permissions: [key] }, key)).toBe(true);
+    }
+  });
+
+  it("leave every other key on full access, as before", () => {
+    expect(hasPermission(legacyAdmin, "orders")).toBe(true);
+    expect(hasPermission(legacyAdmin, "order_refund")).toBe(true);
   });
 });

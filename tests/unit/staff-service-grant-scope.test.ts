@@ -101,6 +101,16 @@ describe('canGrantPermissions', () => {
     expect(canGrantPermissions(actor, ['orders', 'analytics'])).toBe(false)
   })
 
+  it('keeps the opt-in keys out of reach of a full-access admin who is not the owner', () => {
+    // A legacy full-access account does not itself hold activity_view or
+    // approve_requests (they are opt-in), so it cannot hand them out either.
+    const legacy = { role: 'admin', is_owner: false, permissions: null }
+    expect(canGrantPermissions(legacy, ['activity_view'])).toBe(false)
+    expect(canGrantPermissions(legacy, ['orders', 'approve_requests'])).toBe(false)
+    expect(canGrantPermissions(legacy, ['orders', 'menu'])).toBe(true)
+    expect(canGrantPermissions({ role: 'admin', is_owner: true, permissions: null }, ['activity_view'])).toBe(true)
+  })
+
   it('treats a full-access request (null) as grantable only by full-access callers', () => {
     expect(canGrantPermissions({ role: 'admin', is_owner: false, permissions: ['branch_staff', 'orders'] }, null)).toBe(false)
   })

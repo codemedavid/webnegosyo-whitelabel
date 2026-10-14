@@ -65,7 +65,9 @@ export const WORKSPACES: readonly Workspace[] = [
     // in lib/subscreen-links.ts). Each sub-screen follows its own parent.
     // Texts (the automatic SMS automations) sits beside the guest list and the
     // reward cards it texts about: all three are how a store keeps guests.
-    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts"],
+    // Activity is the store's own log (refunds, cancels, stock, drawers): read
+    // beside the sales it explains.
+    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts", "activity"],
     defaultTab: "analytics",
   },
   {
