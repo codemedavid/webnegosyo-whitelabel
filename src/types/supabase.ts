@@ -10626,6 +10626,14 @@ export type Database = {
         }
         Returns: Json
       }
+      sms_campaign_run_progress: {
+        Args: { p_run_ids: string[]; p_tenant: string }
+        Returns: {
+          campaign_run_id: string
+          n: number
+          status: string
+        }[]
+      }
       sms_campaigns_is_trusted_writer: { Args: never; Returns: boolean }
       sms_is_quiet_at: {
         Args: { p_at: string; p_end: string; p_start: string }
@@ -10643,6 +10651,18 @@ export type Database = {
       sms_sender_clean_text: {
         Args: { p_max: number; p_value: string }
         Returns: string
+      }
+      sms_texts_came_back: {
+        Args: {
+          p_exact: boolean
+          p_since: string
+          p_tenant: string
+          p_window_days: number
+        }
+        Returns: {
+          came_back: number
+          sales: number
+        }[]
       }
       stock_movement_frozen_cost: {
         Args: {
