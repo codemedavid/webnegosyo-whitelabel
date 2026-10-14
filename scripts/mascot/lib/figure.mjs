@@ -94,18 +94,20 @@ export function figureMarkup() {
         </g>
 
         ${g('head-fluff')}
-          ${fluffEdge(HEAD_L, { fromY: 250, toY: 476, step: 14, len: 9, w: 14 })}
+          ${fluffEdge(HEAD_L, { fromY: 300, toY: 462, step: 32, len: 34, w: 20 })}
         </g>
         <path id="head-shape" d="${HEAD}" fill="url(#g-head)"/>
         ${innerShade('head', HEAD, { color: '#8A040A', width: 40, opacity: 0.35, blur: 'f-softer' })}
         ${g('head-feathers')}
+          <g clip-path="url(#clip-head)">
           ${headFeathers()}
+          </g>
         </g>
         <ellipse cx="345" cy="174" rx="165" ry="14" fill="${C.redShadow}" fill-opacity="0.55" filter="url(#f-soft)"/>
 
         <path id="face-mask" d="${MASK}" fill="url(#g-mask)"/>
         ${innerShade('mask', MASK, { color: '#C8968A', width: 20, opacity: 0.55 })}
-        <ellipse cx="345" cy="400" rx="62" ry="40" fill="#8A5A48" fill-opacity="0.22" filter="url(#f-soft)"/>
+        <ellipse cx="345" cy="412" rx="60" ry="40" fill="#8A5A48" fill-opacity="0.2" filter="url(#f-soft)"/>
         ${eye('left')}
         ${eye('right')}
 
@@ -118,18 +120,19 @@ export function figureMarkup() {
 
         ${g('beak')}
           ${g('mouth')}
-            <path d="${MOUTH}" fill="${C.mouth}"/>
+            <path d="${MOUTH}" fill="url(#g-mouth)"/>
             <g clip-path="url(#clip-mouth)">
-              <ellipse cx="346" cy="414" rx="24" ry="16" fill="url(#g-tongue)"/>
+              <ellipse cx="345" cy="427" rx="28" ry="15" fill="url(#g-tongue)"/>
             </g>
           </g>
           ${g('beak-lower')}
             <path d="${BEAK_LOWER}" fill="url(#g-beak-lower)"/>
-            ${innerShade('beak-lower', BEAK_LOWER, { color: '#B05000', width: 10, opacity: 0.5, blur: 'f-tiny' })}
+            ${innerShade('beak-lower', BEAK_LOWER, { color: '#B05000', width: 8, opacity: 0.45, blur: 'f-tiny' })}
           </g>
+          <path d="${BEAK_UPPER}" transform="translate(0 5)" fill="${C.mouth}" fill-opacity="0.35" filter="url(#f-tiny)"/>
           <path id="beak-upper" d="${BEAK_UPPER}" fill="url(#g-beak)"/>
-          ${innerShade('beak-upper', BEAK_UPPER, { color: '#C25A00', width: 12, opacity: 0.55, blur: 'f-tiny' })}
-          <path d="${leaf(339, 318, 341, 372, 16, 0.4)}" fill="#FFF3C0" fill-opacity="0.65" filter="url(#f-tiny)"/>
+          ${innerShade('beak-upper', BEAK_UPPER, { color: '#C25A00', width: 12, opacity: 0.5, blur: 'f-tiny' })}
+          <ellipse cx="332" cy="330" rx="9" ry="5.5" transform="rotate(-35 332 330)" fill="#FFE9A6" fill-opacity="0.6" filter="url(#f-tiny)"/>
         </g>
 
         <!-- ================= HAT (serving cloche) ================= -->

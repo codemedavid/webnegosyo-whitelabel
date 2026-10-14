@@ -43,7 +43,7 @@
 
 /* Beak: closed */
 .owl:is([data-state='thinking'], [data-state='waiting'], [data-state='sorry'], [data-state='sleeping']) :global(.o-beak-lower) {
-  transform: translateY(-26px);
+  transform: translateY(-18px) scale(0.78);
 }
 .owl:is([data-state='thinking'], [data-state='waiting'], [data-state='sorry'], [data-state='sleeping']) :global(.o-mouth) {
   transform: scaleY(0.05);
