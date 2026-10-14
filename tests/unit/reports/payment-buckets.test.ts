@@ -92,4 +92,75 @@ describe('bucketPayments', () => {
     ]
     expect(bucketPayments(orders).buckets[0]).toMatchObject({ key: 'id:g', label: 'GCash (main)', type: 'GCash' })
   })
+
+  test('two names at the same instant: the first in code-point order wins, whatever order the rows were read in', () => {
+    // The SQL report functions read rows in no particular order; the label
+    // must not depend on it (parity with report_payments).
+    const rows = [
+      payment({ methodName: 'Gcash', at: 5, methodId: 'g', amount: 10 }),
+      payment({ methodName: 'GCash', at: 5, methodId: 'g', amount: 10 }),
+    ]
+    const forward = bucketPayments([order({ total: 20, payments: rows })])
+    const backward = bucketPayments([order({ total: 20, payments: [...rows].reverse() })])
+    expect(forward.buckets[0].label).toBe('GCash')
+    expect(backward.buckets[0].label).toBe('GCash')
+  })
+
+  test('money settled beyond the ledger is named at the time the order was placed', () => {
+    const orders = [
+      order({ id: 'a', at: 10, paymentStatus: 'paid', methodId: 'g', methodName: 'GCash (old)', payments: [] }),
+      order({ id: 'b', at: 5, payments: [payment({ methodId: 'g', methodName: 'GCash', at: 8 })] }),
+    ]
+    expect(bucketPayments(orders).buckets[0]).toMatchObject({ key: 'id:g', label: 'GCash (old)', orders: 2 })
+  })
+})
+
+describe('one method, recorded by id on some orders and by name only on others', () => {
+  // Seen live (SeaCook, 2026-10-14): web orders store the Cash method's id,
+  // register orders only the word "Cash" — the report showed two "Cash" rows.
+  test('a name-only payment joins the one method with that name', () => {
+    const orders = [
+      order({ id: 'a', paymentStatus: 'paid', total: 100, methodId: 'm-cash', methodName: 'Cash' }),
+      order({ id: 'b', paymentStatus: 'paid', total: 50, methodId: null, methodName: ' cash ' }),
+    ]
+    expect(bucketPayments(orders).buckets).toEqual([
+      { key: 'id:m-cash', label: 'Cash', type: 'Cash', methodId: 'm-cash', cents: 15000, orders: 2 },
+    ])
+  })
+
+  test('two different methods with the same name stay apart, and the name-only money stays on its own', () => {
+    const orders = [
+      order({ id: 'a', paymentStatus: 'paid', total: 100, methodId: 'm-cash-1', methodName: 'Cash' }),
+      order({ id: 'b', paymentStatus: 'paid', total: 70, methodId: 'm-cash-2', methodName: 'Cash' }),
+      order({ id: 'c', paymentStatus: 'paid', total: 50, methodId: null, methodName: 'Cash' }),
+    ]
+    expect(bucketPayments(orders).buckets.map((bucket) => bucket.key)).toEqual(['id:m-cash-1', 'id:m-cash-2', 'name:cash'])
+  })
+
+  test('an order paid partly by id and partly by name is one slice, counted once', () => {
+    const orders = [
+      order({
+        id: 'a',
+        total: 100,
+        methodId: null,
+        methodName: 'GCash',
+        payments: [
+          payment({ amount: 100, methodId: 'm-gcash', methodName: 'GCash' }),
+          payment({ amount: 40, methodId: null, methodName: 'gcash' }),
+          payment({ kind: 'refund', amount: 40, methodId: 'm-gcash', methodName: 'GCash' }),
+        ],
+      }),
+    ]
+    expect(bucketPayments(orders).buckets).toEqual([
+      { key: 'id:m-gcash', label: 'GCash', type: 'GCash', methodId: 'm-gcash', cents: 10000, orders: 1 },
+    ])
+  })
+
+  test('an id used without any name gives no name to join', () => {
+    const orders = [
+      order({ id: 'a', total: 100, methodId: null, methodName: null, payments: [payment({ amount: 100, methodId: 'm-x', methodName: null })] }),
+      order({ id: 'b', paymentStatus: 'paid', total: 50, methodId: null, methodName: 'Not recorded' }),
+    ]
+    expect(bucketPayments(orders).buckets.map((bucket) => bucket.key).sort()).toEqual(['id:m-x', 'name:not recorded'])
+  })
 })

@@ -19,6 +19,10 @@ import {
   PanelLeftOpen,
   Flag,
   GraduationCap,
+  LineChart,
+  Package,
+  ArrowLeftRight,
+  History,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -351,21 +355,21 @@ export const adminSidebarItems: SidebarEntry[] = [
       { label: 'Menu Management', href: '/admin/menu' },
       { label: 'Categories', href: '/admin/categories' },
       { label: 'Add-ons', href: '/admin/addons' },
-      { label: 'Inventory', href: '/admin/inventory' },
-      { label: 'Transfers', href: '/admin/inventory/transfers' },
-      { label: 'Stock Log', href: '/admin/inventory/log' },
       { label: 'Boost Sales', href: '/admin/boost-sales' },
     ],
   },
+  // Reports (plan §3.1). Sales reads the platform database; a Convex store
+  // keeps Product Analytics here until its reports land (Phase 7), and on a
+  // platform store Product Analytics redirects into Sales → Items.
+  { label: 'Sales', href: '/admin/reports', icon: BarChart3, section: 'Reports' },
+  { label: 'Product Analytics', href: '/admin/product-analytics', icon: LineChart, section: 'Reports' },
+  // Stock left the Menu group: it is its own job (plan §3.1).
+  { label: 'Stock', href: '/admin/inventory', icon: Package, section: 'Stock' },
+  { label: 'Transfers', href: '/admin/inventory/transfers', icon: ArrowLeftRight, section: 'Stock' },
+  { label: 'Stock history', href: '/admin/inventory/log', icon: History, section: 'Stock' },
   { label: 'Customers', href: '/admin/customers', icon: Users, section: 'Grow' },
   { label: 'Loyalty', href: '/admin/loyalty', icon: Gift, section: 'Grow' },
   { label: 'Vouchers', href: '/admin/vouchers', icon: Ticket, section: 'Grow' },
-  {
-    label: 'Analytics',
-    icon: BarChart3,
-    section: 'Grow',
-    children: [{ label: 'Product Analytics', href: '/admin/product-analytics' }],
-  },
   {
     label: 'Store Setup',
     icon: Store,

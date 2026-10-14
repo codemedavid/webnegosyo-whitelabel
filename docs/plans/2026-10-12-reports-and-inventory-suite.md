@@ -599,6 +599,7 @@ Each phase ships on its own and is verified on platform before the next one star
 - Breakdowns: items (with the Menu matrix), categories, payments, channels, hours, branches.
 - Filter bar, date picker, compare.
 - Sidebar restructure. Product Analytics redirect, which also fixes its credential routing.
+- **BUILT 2026-10-14** — `docs/testing/reports-phase1-sales.tdd.md`. Functions APPLIED (110000, live as `report_sales_functions`, + the 130000/140000 performance fixes after the 06:52 UTC outage + 150000 payment name aliases); engine = SQL to the centavo (200-store property test + live gungjeon reconciliation). Deviations: native date inputs, no "Save view", no `day_ends_at`, VAT block waits for `vat_registered`, item/category 30-day ≈ 0.7 s (budget 0.6 s). Signed-in Playwright pass done on a local dev server against the live DB (SeaCook owner). Owed: the same pass on a production deploy, the 0d runbook (apply 120100 + 120200) and the app OTA for `allocateCents`.
 
 ### Phase 2: Transactions and export
 

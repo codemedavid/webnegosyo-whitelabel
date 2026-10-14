@@ -58,18 +58,30 @@ function sometimes<T>(arbitrary: fc.Arbitrary<T>, percent: number): fc.Arbitrary
   )
 }
 
+/** Menu prices repeat: equal subtotals make the allocation's tie-breaks matter. */
+const MENU_PRICES_CENTS = [4_500, 9_900, 12_000, 33_300] as const
+
 const lineDraft = fc.record({
   dish: fc.integer({ min: 0, max: 5 }),
+  /** The dish was deleted from the menu: no menu row, only its name. */
+  isDeleted: chance(10),
+  /** Sold under an older name, or typed with other spacing and case. */
+  nameVariant: fc.constantFrom(0, 0, 0, 0, 1, 2),
   category: sometimes(fc.integer({ min: 0, max: 2 }), 80),
+  categoryVariant: fc.constantFrom(0, 0, 0, 1),
   quantity: fc.integer({ min: 1, max: 3 }),
-  subtotalCents: fc.integer({ min: 0, max: 60_000 }),
+  subtotalCents: fc.oneof(fc.integer({ min: 0, max: 60_000 }), fc.constantFrom(...MENU_PRICES_CENTS)),
 })
 
 const paymentDraft = fc.record({
   isRefund: chance(15),
+  /** Paid, then handed straight back through the same method: a slice that nets to nothing. */
+  isReturnedInFull: chance(8),
   share: fc.double({ min: 0, max: 1, noNaN: true }),
   method: sometimes(fc.integer({ min: 0, max: 2 }), 70),
   methodName: sometimes(fc.integer({ min: 0, max: 2 }), 80),
+  /** The same method typed differently ("GCash", " gcash ", "G-Cash"). */
+  methodNameVariant: fc.constantFrom(0, 0, 0, 1, 2),
   offsetMs: fc.integer({ min: 0, max: 6 * 60 * 60 * 1000 }),
 })
 
@@ -80,11 +92,15 @@ const orderDraft = fc.record({
   /** Discount as basis points of the food, up to 30%. */
   discountBasisPoints: sometimes(fc.integer({ min: 1, max: 3_000 }), 30),
   discountTakesDelivery: fc.boolean(),
+  /** A garbled payload claiming more off the delivery than the fee. */
+  deliveryDiscountOverstated: chance(10),
   discountLabel: fc.constantFrom('Senior', 'PWD', 'Discount — x', 'Voucher SAVE10'),
   /** An edited order whose lines no longer add up to its bill. */
   driftCents: sometimes(fc.integer({ min: -2_500, max: 2_500 }), 10),
   payments: fc.array(paymentDraft, { maxLength: 2 }),
   status: fc.constantFrom(...ORDER_STATUSES),
+  /** Stored spellings vary ("Cancelled", " paid "); readers fold them. */
+  isOddlySpelled: chance(10),
   paymentStatus: fc.constantFrom(...PAYMENT_STATUSES),
   channel: fc.constantFrom(...CHANNELS),
   orderType: fc.constantFrom(...ORDER_TYPES),
@@ -103,11 +119,14 @@ function discountFor(draft: OrderDraft, foodCents: number): { payload: OrderDisc
   if (cents === 0) return { payload: null, cents: 0 }
   const deliveryDiscountCents =
     draft.discountTakesDelivery && draft.deliveryCents !== null ? Math.min(draft.deliveryCents, cents) : 0
+  // Overstated: the payload asks for more off the delivery than the fee (the
+  // readers cap it at the fee); the bill itself was charged correctly.
+  const storedDeliveryCents = draft.deliveryDiscountOverstated ? deliveryDiscountCents + 1_500 : deliveryDiscountCents
   return {
     cents,
     payload: {
       total: pesos(cents),
-      deliveryDiscount: pesos(deliveryDiscountCents),
+      deliveryDiscount: pesos(storedDeliveryCents),
       lines: [{ label: draft.discountLabel, amount: pesos(cents) }],
       allocationsByLine: {},
     },
@@ -119,9 +138,9 @@ function toOrder(draft: OrderDraft, index: number, window: OrderWindow): ReportO
   const at = window.start + Math.floor(draft.offsetFraction * (window.end - window.start))
   const lines: ReportLine[] = draft.lines.map((line, i) => ({
     id: `${id}-l${i}`,
-    menuItemId: `dish-${line.dish}`,
-    name: `Dish ${line.dish}`,
-    categoryName: line.category === null ? null : `cat-${line.category}`,
+    menuItemId: line.isDeleted ? null : `dish-${line.dish}`,
+    name: [`Dish ${line.dish}`, `Dish ${line.dish} (old)`, `dish  ${line.dish}`][line.nameVariant],
+    categoryName: line.category === null ? null : [`Cat ${line.category}`, `cat  ${line.category}`][line.categoryVariant],
     quantity: line.quantity,
     subtotal: pesos(line.subtotalCents),
   }))
@@ -131,19 +150,27 @@ function toOrder(draft: OrderDraft, index: number, window: OrderWindow): ReportO
     0,
     foodCents - discount.cents + (draft.serviceCents ?? 0) + (draft.deliveryCents ?? 0) + (draft.driftCents ?? 0),
   )
-  const payments: ReportPayment[] = draft.payments.map((payment) => ({
-    kind: payment.isRefund ? 'refund' : 'charge',
-    amount: pesos(Math.floor((totalCents * 0.8 + 100) * payment.share)),
-    methodId: payment.method === null ? null : `m-${payment.method}`,
-    methodName: payment.methodName === null ? null : `Method ${payment.methodName}`,
-    at: at + payment.offsetMs,
-  }))
+  const payments: ReportPayment[] = draft.payments.flatMap((payment) => {
+    const row: ReportPayment = {
+      kind: payment.isRefund ? 'refund' : 'charge',
+      amount: pesos(Math.floor((totalCents * 0.8 + 100) * payment.share)),
+      methodId: payment.method === null ? null : `m-${payment.method}`,
+      methodName:
+        payment.methodName === null
+          ? null
+          : [`Method ${payment.methodName}`, `  method ${payment.methodName} `, `METHOD-${payment.methodName}`][payment.methodNameVariant],
+      at: at + payment.offsetMs,
+    }
+    if (!payment.isReturnedInFull || payment.isRefund) return [row]
+    return [row, { ...row, kind: 'refund', at: row.at + 60_000 }]
+  })
+  const spell = (value: string) => (draft.isOddlySpelled ? ` ${value.charAt(0).toUpperCase()}${value.slice(1)} ` : value)
 
   return {
     id,
     at,
-    status: draft.status,
-    paymentStatus: draft.paymentStatus,
+    status: spell(draft.status),
+    paymentStatus: draft.paymentStatus === null ? null : spell(draft.paymentStatus),
     channel: draft.channel,
     orderType: draft.orderType,
     outletId: draft.outlet === null ? null : `b-${draft.outlet}`,

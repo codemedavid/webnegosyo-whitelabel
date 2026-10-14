@@ -1,8 +1,10 @@
 import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { getBoostMenu } from '@/lib/boost/workspace'
 import { PickedTogetherSection, PickedTogetherSkeleton } from '@/components/admin/boost/picked-together-section'
 import { ProductAnalyticsWrapper } from '@/components/admin/product-analytics-wrapper'
+import { resolveOrderBackend } from '@/lib/order-backend'
 
 interface ProductAnalyticsPageProps {
   params: Promise<{ tenant: string }>
@@ -18,6 +20,14 @@ export default async function ProductAnalyticsPage({ params }: ProductAnalyticsP
   // menu_engineering_enabled inside the content component, so we no longer
   // redirect away when the flag is off.
   if (!tenantData) return null
+
+  // Retired on platform stores (plan §2.2): Reports → Items is the one item
+  // total, and its Menu matrix view is this page's quadrant chart. A Convex
+  // store keeps this page until its sales reports land (Phase 7). Temporary
+  // (307), not permanent: the answer depends on the store's backend.
+  if (resolveOrderBackend(tenantData) === 'platform') {
+    redirect(`/${tenant}/admin/reports/items?view=matrix`)
+  }
 
   // "Picked together" reads whichever order backend the store uses, so every
   // store gets it — not only the ones with Convex.

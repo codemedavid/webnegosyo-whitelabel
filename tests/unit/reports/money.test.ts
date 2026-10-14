@@ -42,6 +42,15 @@ describe('allocateCents', () => {
     expect(allocateCents(300, [])).toEqual([])
   })
 
+  test('equal remainders are decided by position, exactly, however large the shares (float division once broke these ties)', () => {
+    // 3 × 2134/7206, 3 × 3737/7206, 3 × 1335/7206: the last two leave the SAME
+    // remainder (4005/7206), so the earlier one wins. Float division read the
+    // remainders as 0.5558… and 0.5558…+ε and gave the centavo to the last.
+    expect(allocateCents(3, [2134, 3737, 1335])).toEqual([1, 2, 0])
+    expect(allocateCents(8, [5723, 404, 2581])).toEqual([5, 1, 2])
+    expect(allocateCents(-6, [582, 808, 89])).toEqual([-3, -3, 0])
+  })
+
   test('negative or non-finite weights count as zero', () => {
     expect(allocateCents(100, [-5, 1, Number.NaN])).toEqual([0, 100, 0])
   })

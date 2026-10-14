@@ -28,11 +28,43 @@ export function fromCents(cents: number): number {
   return cents / 100
 }
 
+interface Remainders {
+  floors: number[]
+  /** Larger first wins a spare centavo; equal remainders go to the earlier share. */
+  compare: (a: number, b: number) => number
+}
+
+/**
+ * Integer weights (centavos, units) are split EXACTLY: share = ⌊whole·w / Σw⌋
+ * with remainder whole·w mod Σw, in BigInt so nothing rounds. Float division
+ * gave two equal remainders different last bits, so a spare centavo went to
+ * whichever share the rounding favoured, not the earlier one, and the SQL
+ * report functions (which divide exactly) disagreed by a centavo.
+ */
+function exactRemainders(whole: number, basis: readonly number[], basisSum: number): Remainders {
+  const total = BigInt(whole)
+  const divisor = BigInt(basisSum)
+  const scaled = basis.map((weight) => total * BigInt(weight))
+  const remainders = scaled.map((value) => value % divisor)
+  return {
+    floors: scaled.map((value) => Number(value / divisor)),
+    compare: (a, b) => (remainders[b] > remainders[a] ? 1 : remainders[b] < remainders[a] ? -1 : a - b),
+  }
+}
+
+/** Fractional weights: float division, as before (only bill splits by odd weights reach it). */
+function floatRemainders(whole: number, basis: readonly number[], basisSum: number): Remainders {
+  const exact = basis.map((weight) => (whole * weight) / basisSum)
+  const floors = exact.map(Math.floor)
+  return { floors, compare: (a, b) => exact[b] - floors[b] - (exact[a] - floors[a]) || a - b }
+}
+
 /**
  * Shares `totalCents` in proportion to `weights` so the shares always add up
  * to the total (largest remainder). Ties go to the earlier share, so a
  * three-way split of ₱10 is 3.34, 3.33, 3.33. Negative or non-finite weights
- * count as zero; all-zero weights split evenly.
+ * count as zero; all-zero weights split evenly. Mirrored by the SQL report
+ * functions (`supabase/migrations/*_report_sales_functions.sql`).
  */
 export function allocateCents(totalCents: number, weights: readonly number[]): number[] {
   if (weights.length === 0) return []
@@ -43,15 +75,14 @@ export function allocateCents(totalCents: number, weights: readonly number[]): n
   const basis = sum > 0 ? positive : weights.map(() => 1)
   const basisSum = sum > 0 ? sum : weights.length
 
-  const exact = basis.map((weight) => (whole * weight) / basisSum)
-  const floors = exact.map(Math.floor)
+  const isExact = Number.isSafeInteger(whole) && Number.isSafeInteger(basisSum) && basis.every(Number.isSafeInteger)
+  const { floors, compare } = (isExact ? exactRemainders : floatRemainders)(whole, basis, basisSum)
   const spare = whole - floors.reduce((a, b) => a + b, 0)
   const winners = new Set(
-    exact
-      .map((value, index) => ({ index, remainder: value - floors[index] }))
-      .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
-      .slice(0, spare)
-      .map(({ index }) => index),
+    floors
+      .map((_, index) => index)
+      .sort(compare)
+      .slice(0, spare),
   )
   return floors.map((share, index) => {
     const cents = share + (winners.has(index) ? 1 : 0)

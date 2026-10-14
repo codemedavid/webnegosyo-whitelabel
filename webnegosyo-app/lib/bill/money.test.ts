@@ -30,6 +30,11 @@ describe("money", () => {
     expect(allocateCents(-1000, [1, 1, 1])).toEqual([-334, -333, -333]);
   });
 
+  it("breaks equal remainders by position, exactly (float division once gave the centavo to the wrong share)", () => {
+    expect(allocateCents(3, [2134, 3737, 1335])).toEqual([1, 2, 0]);
+    expect(allocateCents(8, [5723, 404, 2581])).toEqual([5, 1, 2]);
+  });
+
   it("never hands back -0, which formats as -₱0.00", () => {
     // A one-centavo discount spread over three pieces: two of them get nothing.
     const shares = allocateCents(-1, [1, 1, 1]);
