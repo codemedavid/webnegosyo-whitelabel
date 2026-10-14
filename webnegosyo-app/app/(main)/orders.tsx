@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { View, StyleSheet, FlatList, Alert, RefreshControl, type ListRenderItem } from "react-native";
+import { View, StyleSheet, Alert, RefreshControl, type ListRenderItem, type TextInput } from "react-native";
 import { FunctionReference } from "convex/server";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeQuery } from "../../lib/hooks";
@@ -19,7 +19,14 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { EmptyState } from "../../components/EmptyState";
 import { OrderListRow, type OrderListRowOrder } from "../../components/OrderListRow";
-import { OrderFilterBar, type SortOrder, type StatusFilterOption } from "../../components/OrderFilterBar";
+import {
+  OrderSearchRow,
+  OrderStatusPills,
+  type SortOrder,
+  type StatusFilterOption,
+} from "../../components/OrderFilterBar";
+import { CollapsingHeaderList, DOCKED_SEARCH_CLEARANCE } from "../../components/CollapsingHeaderList";
+import { useScreenTopInset } from "../../lib/use-screen-top-inset";
 import { ReportPeriodBar } from "../../components/ReportPeriodBar";
 import { defaultSelection, selectionToQueryArgs, type ReportQueryArgs, type ReportSelection } from "../../lib/report-window";
 
@@ -119,6 +126,9 @@ export default function OrdersScreen() {
   const [sort, setSort] = useState<SortOrder>("newest");
   const [branchFilter, setBranchFilter] = useState<string>(ORDER_BRANCH_FILTER_ALL);
   const [search, setSearch] = useState("");
+  // Focused by the docked search button once the header has scrolled away.
+  const searchInputRef = useRef<TextInput>(null);
+  const topInset = useScreenTopInset();
   // Absent means the live queue — the tab's normal job. A selection turns the
   // screen into "the orders of these days", which needs a windowed fetch: the
   // queue is a most-recent-N page and would have nothing from a past day in it.
@@ -483,11 +493,13 @@ export default function OrdersScreen() {
     <EmptyState message={search ? "No orders match your search" : "No orders found"} />
   );
 
-  return (
-    <View style={styles.screen}>
+  const header = (
+    <>
       <ScreenHeader
         title="Orders"
         subtitle={isLoading ? undefined : `${visibleOrders.length} shown`}
+        ignoreTopInset
+        style={styles.header}
         actions={
           <>
             {/* Kitchen and Schedule hang under Orders (lib/subscreen-links.ts). */}
@@ -504,40 +516,63 @@ export default function OrdersScreen() {
         }
       />
 
-      <ReportPeriodBar
-        selection={dateSelection ?? LIVE_QUEUE_SELECTION}
-        presets={[]}
-        nowMs={nowMs}
-        onChange={setDateSelection}
-        onClear={() => setDateSelection(null)}
-        clearLabel="Live queue"
-      />
-
-      <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
-
-      <OrderFilterBar
-        filters={filterOptions}
-        activeFilter={filter}
-        onFilterChange={(key) => setFilter(key as FilterKey)}
+      <OrderSearchRow
+        inputRef={searchInputRef}
         sort={sort}
         onSortToggle={() => setSort((s) => (s === "newest" ? "oldest" : "newest"))}
         search={search}
         onSearchChange={setSearch}
+      />
+
+      <View style={styles.period}>
+        <ReportPeriodBar
+          selection={dateSelection ?? LIVE_QUEUE_SELECTION}
+          presets={[]}
+          nowMs={nowMs}
+          onChange={setDateSelection}
+          onClear={() => setDateSelection(null)}
+          clearLabel="Live queue"
+          style={styles.periodRow}
+        />
+      </View>
+
+      <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
+    </>
+  );
+
+  // Docks under the status bar once the header above has scrolled away.
+  const toolbar = (
+    <View style={styles.toolbar}>
+      <OrderStatusPills
+        filters={filterOptions}
+        activeFilter={filter}
+        onFilterChange={(key) => setFilter(key as FilterKey)}
         branchFilters={branchFilters}
         activeBranchFilter={activeBranchFilter}
         onBranchFilterChange={setBranchFilter}
+        trailingInset={DOCKED_SEARCH_CLEARANCE}
       />
+    </View>
+  );
 
+  return (
+    <View style={[styles.screen, { paddingTop: topInset }]}>
       {/* One clock for every card's age and urgency accent, so a tick redraws
           the cards and not the list. */}
       <TickerProvider>
-        <FlatList
+        <CollapsingHeaderList
           style={styles.list}
           contentContainerStyle={styles.listContent}
+          itemStyle={styles.item}
+          header={header}
+          toolbar={toolbar}
+          searchInputRef={searchInputRef}
+          isSearchActive={search.trim().length > 0}
+          filterKey={`${filter}|${activeBranchFilter}|${sort}`}
           data={error || isLoading ? [] : visibleOrders}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          ListEmptyComponent={listEmpty}
+          emptyComponent={listEmpty}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
@@ -559,6 +594,11 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  list: { flex: 1, marginTop: spacing.md },
-  listContent: { padding: spacing.xl, paddingTop: spacing.sm },
+  header: { paddingBottom: spacing.sm },
+  period: { paddingHorizontal: spacing.xl, paddingTop: spacing.md },
+  periodRow: { marginBottom: 0 },
+  toolbar: { paddingVertical: spacing.sm },
+  list: { flex: 1 },
+  listContent: { paddingBottom: spacing.xl },
+  item: { paddingHorizontal: spacing.xl },
 });

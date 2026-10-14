@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from "react-native";
 
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { ReportRangePicker } from "./ReportRangePicker";
@@ -30,6 +30,7 @@ interface ReportPeriodBarProps {
    */
   onClear?: () => void;
   clearLabel?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function ReportPeriodBar({
@@ -39,6 +40,7 @@ export function ReportPeriodBar({
   onChange,
   onClear,
   clearLabel = "Live",
+  style,
 }: ReportPeriodBarProps) {
   const [isPickerOpen, setPickerOpen] = useState(false);
 
@@ -46,7 +48,7 @@ export function ReportPeriodBar({
   const pickLabel = isCustom ? describeSelection(selection, nowMs) : "Pick dates";
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, style]}>
       {presets.map((days) => {
         const active = selection.kind === "preset" && selection.days === days;
         const label = `${days} days`;
