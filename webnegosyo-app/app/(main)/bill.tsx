@@ -289,6 +289,7 @@ function BillScreen({ orderIds }: { orderIds: string[] }) {
         balanceDue={collect.balanceDue}
         methods={storeMethods.map((method) => ({ id: method.id, name: method.name, isCash: isCashMethod(method) }))}
         onSubmit={collect.submit}
+        onSubmitSplit={collect.submitSplit}
         onClose={collect.close}
         title={collect.title}
       />

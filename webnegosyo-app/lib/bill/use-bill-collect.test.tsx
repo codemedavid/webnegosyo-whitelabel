@@ -75,4 +75,56 @@ describe("useBillCollect", () => {
     expect(receipt.amountPaid).toBe(340);
     expect(Alert.alert).toHaveBeenCalledWith("Only part of the payment was recorded", expect.stringContaining("₱340.00"));
   });
+  it("records a split tender method by method and prints one slip naming both", async () => {
+    const { input, hook } = setup();
+
+    act(() => hook.result.current.open({ kind: "bill" }));
+    await act(() =>
+      hook.result.current.submitSplit([
+        { amount: 120, methodId: "m-gcash", methodName: "GCash", reference: "GC-1" },
+        { amount: 440, methodId: "m-cash", methodName: "Cash", cashTendered: 500, changeDue: 60 },
+      ]),
+    );
+
+    const rows = (input.recordPayment as jest.Mock).mock.calls.map(([args]) => [args.orderId, args.amount, args.paymentMethodName]);
+    expect(rows).toEqual([
+      ["order-a", 120, "GCash"],
+      ["order-a", 220, "Cash"],
+      ["order-b", 220, "Cash"],
+    ]);
+    const [receipt] = (input.printBillOut as jest.Mock).mock.calls[0];
+    expect(receipt).toMatchObject({
+      paymentMethod: "GCash + Cash",
+      paymentReference: "GC-1",
+      cashTendered: 500,
+      changeDue: 60,
+      amountPaid: 560,
+    });
+    expect(hook.result.current.target).toBeNull();
+  });
+
+  it("credits a guest's share with every method of their split", async () => {
+    const { hook, plan: currentPlan } = setup();
+    const [part] = billPartViews(orders, plan, 0).parts;
+
+    act(() => hook.result.current.open({ kind: "part", part }));
+    await act(() =>
+      hook.result.current.submitSplit([
+        { amount: 100, methodName: "GCash" },
+        { amount: 180, methodName: "Cash", cashTendered: 200, changeDue: 20 },
+      ]),
+    );
+
+    expect(currentPlan().paid).toEqual({ "even:0": 28000 });
+  });
+
+  it("refuses a split that adds up to more than is owed and records nothing", async () => {
+    const { input, hook } = setup();
+
+    act(() => hook.result.current.open({ kind: "bill" }));
+    await act(() => hook.result.current.submitSplit([{ amount: 500, methodName: "GCash" }, { amount: 100, methodName: "Cash" }]));
+
+    expect(Alert.alert).toHaveBeenCalledWith("Payment not recorded", "Only ₱560.00 is still owed on this bill.");
+    expect(input.recordPayment).not.toHaveBeenCalled();
+  });
 });
