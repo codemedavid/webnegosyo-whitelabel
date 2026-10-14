@@ -23,6 +23,7 @@ import {
   type TaxProfile,
 } from "./gov-discount";
 import type { OrderDiscountLine } from "./order-totals";
+import { cartKeyForOrderLine } from "./pos-line-discounts";
 import type { PosCartLine } from "./pos-cart";
 
 /** A manager's PIN approval, good for this sale up to `approvedReduction`. */
@@ -313,13 +314,17 @@ export function toOrderLineKeys(stored: StoredGovDiscount, cart: readonly PosCar
   });
 }
 
-/** `line-<index>` → the cart keys of the order as loaded for an edit. */
-export function fromOrderLineKeys(stored: StoredGovDiscount, cart: readonly PosCartLine[]): StoredGovDiscount {
-  return remapStored(stored, (key) => {
-    const match = /^line-(\d+)$/.exec(key);
-    const line = match ? cart[Number(match[1])] : undefined;
-    return line ? line.key : null;
-  });
+/**
+ * `line-<index>` → the cart key each order line loaded as, for an edit
+ * (`OrderEditContext.orderLineCartKeys`). By dish identity, not cart
+ * position: two order lines that loaded as one cart line add their units
+ * together, and a line that did not load takes its claim with it.
+ */
+export function fromOrderLineKeys(
+  stored: StoredGovDiscount,
+  orderLineCartKeys: readonly (string | null)[],
+): StoredGovDiscount {
+  return remapStored(stored, (key) => cartKeyForOrderLine(key, orderLineCartKeys) ?? null);
 }
 
 /** Each order line's share of the Senior/PWD reduction (`allocationsByLine`). */

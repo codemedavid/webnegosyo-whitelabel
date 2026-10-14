@@ -37,12 +37,27 @@ export function toOrderLineDiscounts(
 }
 
 /**
- * The reverse, for an order opened for an edit: each dish re-keyed from its
- * stored position (`line-<index>`) to the cart key of the dish now at that
- * position. Done once, at load, because an edit that removes an earlier dish
- * shifts every later position — the discount must follow its DISH.
- * `cartKeys[index]` is the cart key of the order's line `index`, or null for
- * a line the register could not load (its dishes are dropped).
+ * The cart key now holding order line `line-<index>`, for an order opened for
+ * an edit. `cartKeys[index]` is the cart key order line `index` loaded as
+ * (`orderLineCartKeys`): loading merges identical lines and skips empty ones,
+ * so cart position i is NOT order line i — the dish's identity is the only
+ * safe link. Null when that line did not load; undefined when `lineKey` is not
+ * an order position at all.
+ */
+export function cartKeyForOrderLine(
+  lineKey: string,
+  cartKeys: readonly (string | null)[],
+): string | null | undefined {
+  const match = /^line-(\d+)$/.exec(lineKey);
+  if (!match) return undefined;
+  return cartKeys[Number(match[1])] ?? null;
+}
+
+/**
+ * The reverse of `toOrderLineDiscounts`, for an order opened for an edit: each
+ * dish re-keyed from its stored position to its cart key, so an edit that
+ * removes an earlier dish (shifting every later position) leaves the discount
+ * on its DISH. A dish whose line did not load is dropped.
  */
 export function toCartLineDiscounts(
   lines: readonly OrderDiscountLine[],
@@ -51,9 +66,8 @@ export function toCartLineDiscounts(
   return lines.map((line) => {
     if (!line.items || line.items.length === 0) return line;
     const items = line.items.flatMap((item): DiscountLineItem[] => {
-      const match = /^line-(\d+)$/.exec(item.lineKey);
-      if (!match) return [item];
-      const key = cartKeys[Number(match[1])];
+      const key = cartKeyForOrderLine(item.lineKey, cartKeys);
+      if (key === undefined) return [item];
       return key ? [{ ...item, lineKey: key }] : [];
     });
     return { ...line, items };

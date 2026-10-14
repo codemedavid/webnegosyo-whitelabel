@@ -249,9 +249,10 @@ describe("storing and re-reading the discount", () => {
     expect(byPosition.claimants[0].allocation).toEqual({ mode: "items", units: { "line-1": 1 } });
     expect(orderLineAllocations(byPosition)).toEqual({ "line-1": 160 });
 
-    // A later edit hydrates the same line under a different key.
-    const hydrated = [line("rice", 50), { ...line("sisig", 560), key: "hydrated-sisig" }];
-    expect(fromOrderLineKeys(byPosition, hydrated).claimants[0].allocation).toEqual({
+    // A later edit loads the same line under a different key
+    // (`OrderEditContext.orderLineCartKeys`, by order position).
+    const orderLineCartKeys = ["hydrated-rice", "hydrated-sisig"];
+    expect(fromOrderLineKeys(byPosition, orderLineCartKeys).claimants[0].allocation).toEqual({
       mode: "items",
       units: { "hydrated-sisig": 1 },
     });

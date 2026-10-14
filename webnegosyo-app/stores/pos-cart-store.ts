@@ -282,14 +282,14 @@ function govContextOf(state: PosCartState): PosGovContext {
 
 /**
  * The Senior/PWD claimants a placed order was rung with, as live inputs keyed
- * to the cart the edit loaded. An append rings only the new round, so the
- * claimants refer to the placed lines the context holds.
+ * to the cart the edit loaded — by dish identity (`orderLineCartKeys`), which
+ * is the same in revise and append mode (an append's placed lines keep their
+ * keys in the context).
  */
 function placedGovernmentSession(entered: EnteredEditMode): PosGovSession {
   const stored = entered.context.storedDiscount?.government;
   if (!stored) return govSessionFromStored(null);
-  const placedCart = entered.context.mode === "append" ? entered.context.appendBaseCart : entered.cart;
-  return govSessionFromStored(fromOrderLineKeys(stored, placedCart));
+  return govSessionFromStored(fromOrderLineKeys(stored, entered.context.orderLineCartKeys));
 }
 
 export const usePosCartStore = create<PosCartState>((set, get) => ({

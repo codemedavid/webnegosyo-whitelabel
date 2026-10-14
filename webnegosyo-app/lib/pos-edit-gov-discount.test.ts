@@ -75,7 +75,7 @@ const line = (menuItemId: string, subtotal: number): PosCartLine =>
 function placedSession() {
   const entered = enterEditMode(placedOrder(), [], EMPTY_CATALOG);
   const stored = entered.context.storedDiscount?.government;
-  return { entered, session: govSessionFromStored(stored ? fromOrderLineKeys(stored, entered.cart) : null) };
+  return { entered, session: govSessionFromStored(stored ? fromOrderLineKeys(stored, entered.context.orderLineCartKeys) : null) };
 }
 
 function reprice(cart: PosCartLine[]) {
@@ -139,5 +139,62 @@ describe("editing an order with a Senior/PWD discount", () => {
     const totals = editModeTotals(cart, entered.context, state.pricing.lines, toOrderLineKeys(record, cart));
 
     expect(totals.settledDiscount?.allocationsByLine).toEqual({ "line-0": 160 });
+  });
+});
+
+describe("loading a Senior/PWD order whose lines do not map one-to-one onto the cart", () => {
+  // Line 0 is empty (skipped on load); lines 1 and 2 are the same dish, which
+  // loading merges into ONE cart line of two.
+  const items = [
+    { menuItemId: "m-rice", menuItemName: "Rice", quantity: 0, subtotal: 0 },
+    { menuItemId: "m-sisig", menuItemName: "Sisig", quantity: 1, subtotal: 560 },
+    { menuItemId: "m-sisig", menuItemName: "Sisig", quantity: 1, subtotal: 560 },
+  ];
+
+  function storedClaiming(units: Record<string, number>): StoredGovDiscount {
+    const priced = computeGovDiscount({
+      vatStatus: "vat",
+      lines: [
+        { key: "line-1", name: "Sisig", quantity: 1, amount: 560, eligible: true },
+        { key: "line-2", name: "Sisig", quantity: 1, amount: 560, eligible: true },
+      ],
+      claimants: [{ id: "c1", kind: "senior", name: "Juan Dela Cruz", idNumber: "12345", allocation: { mode: "items", units } }],
+    });
+    if (!priced.ok) throw new Error("fixture must price");
+    return { version: 1, vatStatus: "vat", serviceChargeMode: "full", diners: null, claimants: priced.claimants, vat: null };
+  }
+
+  function openWith(stored: StoredGovDiscount) {
+    const order = {
+      _id: "order-m",
+      total: 1120 - stored.claimants[0].reduction,
+      revisionNumber: 0,
+      items,
+      customerData: { discount: { total: stored.claimants[0].reduction, deliveryDiscount: 0, lines: [], allocationsByLine: {}, government: stored } },
+    };
+    return enterEditMode(order as never, [], EMPTY_CATALOG);
+  }
+
+  it("finds the claimed dish by identity, not by cart position", () => {
+    const entered = openWith(storedClaiming({ "line-2": 1 }));
+    const session = govSessionFromStored(fromOrderLineKeys(entered.context.storedDiscount!.government!, entered.context.orderLineCartKeys));
+
+    expect(entered.cart).toHaveLength(1);
+    expect(session.claimants[0].allocation).toEqual({ mode: "items", units: { [SISIG_KEY]: 1 } });
+  });
+
+  it("adds up claims on two order lines that loaded as one cart line", () => {
+    const entered = openWith(storedClaiming({ "line-1": 1, "line-2": 1 }));
+    const session = govSessionFromStored(fromOrderLineKeys(entered.context.storedDiscount!.government!, entered.context.orderLineCartKeys));
+
+    expect(session.claimants[0].allocation).toEqual({ mode: "items", units: { [SISIG_KEY]: 2 } });
+  });
+
+  it("saves the claim under the dish's position on the revised order", () => {
+    const entered = openWith(storedClaiming({ "line-2": 1 }));
+    const loaded = fromOrderLineKeys(entered.context.storedDiscount!.government!, entered.context.orderLineCartKeys);
+
+    // The revision writes one order line per cart line, in cart order.
+    expect(toOrderLineKeys(loaded, entered.cart).claimants[0].allocation).toEqual({ mode: "items", units: { "line-0": 1 } });
   });
 });

@@ -150,6 +150,14 @@ export interface OrderEditContext {
    */
   storedDiscount: OrderDiscountPayload | null;
   /**
+   * The cart key each of the order's lines loaded as, by order position
+   * (null for a line that did not load). Loading merges identical lines and
+   * skips empty ones, so cart position i is not order line i; anything stored
+   * by position (`line-<index>`: one-dish discounts, Senior/PWD claims) is
+   * mapped to the edit's cart through this.
+   */
+  orderLineCartKeys: (string | null)[];
+  /**
    * The vouchers behind that discount, fetched by code.
    *
    * Null until the lookup returns — and null forever at a counter with no
@@ -320,12 +328,22 @@ export function enterAppendMode(
  */
 function cartKeyedDiscount(
   stored: OrderDiscountPayload | null,
-  items: readonly HydratableOrderItem[],
-  catalog: ModifierCatalog,
+  cartKeys: readonly (string | null)[],
 ): OrderDiscountPayload | null {
   if (!stored || !stored.lines.some((line) => line.items && line.items.length > 0)) return stored;
-  const cartKeys = items.map((item) => hydratePosCart([item], catalog).lines[0]?.key ?? null);
   return { ...stored, lines: toCartLineDiscounts(stored.lines, cartKeys) };
+}
+
+/**
+ * The cart key each order line loads as, by order position — null for a line
+ * loading skips. Each line is loaded on its own because loading the whole
+ * order merges identical lines, which is exactly the shift this undoes.
+ */
+export function orderLineCartKeys(
+  items: readonly HydratableOrderItem[],
+  catalog: ModifierCatalog,
+): (string | null)[] {
+  return items.map((item) => hydratePosCart([item], catalog).lines[0]?.key ?? null);
 }
 
 function loadOrder(
@@ -344,7 +362,8 @@ function loadOrder(
     Number.isFinite(order.serviceCharge) && (order.serviceCharge ?? 0) > 0
       ? round2(order.serviceCharge as number)
       : 0;
-  const storedDiscount = cartKeyedDiscount(readOrderDiscount(order), order.items, catalog);
+  const cartKeys = orderLineCartKeys(order.items, catalog);
+  const storedDiscount = cartKeyedDiscount(readOrderDiscount(order), cartKeys);
 
   return {
     // Appending opens on an empty register; the order's lines wait in the
@@ -371,6 +390,7 @@ function loadOrder(
       serviceCharge,
       payments: [...payments],
       storedDiscount,
+      orderLineCartKeys: cartKeys,
       // Fetched by the screen once the order is open; see `withEditVouchers`.
       discountVouchers: null,
     },
