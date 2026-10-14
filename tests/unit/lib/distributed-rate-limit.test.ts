@@ -164,6 +164,26 @@ describe('checkRateLimit (distributed)', () => {
     expect(second.allowed).toBe(false)
   })
 
+  it('refuses on a Redis error when the caller guards a paid call (refuse mode)', async () => {
+    const { getRedisClient, checkRateLimit } = await load()
+    const { client } = fakeRedis(async () => { throw new Error('ECONNRESET') })
+    getRedisClient.mockReturnValue(client as never)
+
+    const result = await checkRateLimit('refuse-error-key', { limit: 5, windowSec: 60, onRedisFailure: 'refuse' })
+
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
+  })
+
+  it('still uses the per-instance limiter in refuse mode when Redis is simply not configured (local dev)', async () => {
+    const { getRedisClient, checkRateLimit } = await load()
+    getRedisClient.mockReturnValue(null as never)
+
+    const result = await checkRateLimit('refuse-unconfigured-key', { limit: 1, windowSec: 60, onRedisFailure: 'refuse' })
+
+    expect(result.allowed).toBe(true)
+  })
+
   it('falls back to the per-instance limiter when Redis is not configured', async () => {
     const { getRedisClient, checkRateLimit } = await load()
     getRedisClient.mockReturnValue(null)

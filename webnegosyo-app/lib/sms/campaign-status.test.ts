@@ -60,3 +60,17 @@ describe("statusLabel", () => {
     expect(statusLabel("archived")).toBe("Archived");
   });
 });
+
+describe("scheduled — campaigns the web sends (server-run)", () => {
+  it("says where it is sent from", () => {
+    expect(statusLabel("scheduled")).toBe("Sends from the web");
+  });
+
+  it("offers no Activate / Pause / Archive from the phone", () => {
+    expect(statusActionsFor("scheduled")).toEqual([]);
+  });
+
+  it("can never be activated on the phone", () => {
+    expect(canActivate("scheduled", true)).toBe(false);
+  });
+});

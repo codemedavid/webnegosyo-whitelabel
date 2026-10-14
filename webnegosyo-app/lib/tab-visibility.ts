@@ -19,6 +19,7 @@
  * context (`usePortfolioAudience`, `useAdvanceOrdering`) stay in the callers.
  */
 
+import { canChooseBranch } from "./branch-context";
 import { isBusinessTabVisible, type PortfolioAudience } from "./portfolio-landing";
 import { isTabAllowed, type StaffPermissionHolder } from "./staff-permissions";
 import { getWorkspace, type WorkspaceKey } from "./workspaces";
@@ -57,6 +58,7 @@ export const SUBSCREEN_TABS: readonly string[] = [
   "trends",
   "customers",
   "loyalty",
+  "texts",
 ];
 
 /**
@@ -78,7 +80,15 @@ export const REPORT_TABS: readonly string[] = [
  * `subscreen-links.ts` because they also decide whether the tab exists — the
  * dashboard is customer-first, so a customers grant alone earns it.
  */
-export const REPORTS_DOORS: readonly string[] = ["customers", "loyalty"];
+export const REPORTS_DOORS: readonly string[] = ["customers", "loyalty", "texts"];
+
+/**
+ * Screens about the WHOLE store that a branch-confined account never gets,
+ * whatever its grants. The automatic texts go to every guest of the store, and
+ * the server refuses a branch account outright; a door that only ever answers
+ * "not for you" is worse than no door.
+ */
+const STORE_WIDE_TABS: readonly string[] = ["texts"];
 
 /** Screens the merchant sets up, listed in the Manage hub. */
 export const SETUP_TABS: readonly string[] = [
@@ -121,6 +131,7 @@ export function isTabReachable(tab: string, ctx: TabVisibilityContext): boolean 
   if (!isTabAllowed(ctx.caller, tab)) return false;
   if (!isBusinessTabVisible(tab, ctx.audience)) return false;
   if (ADVANCE_ORDER_TABS.includes(tab) && !ctx.takesAdvanceOrders) return false;
+  if (STORE_WIDE_TABS.includes(tab) && !canChooseBranch(ctx.audience.accountScope)) return false;
   return true;
 }
 

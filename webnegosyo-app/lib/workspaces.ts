@@ -63,7 +63,9 @@ export const WORKSPACES: readonly Workspace[] = [
     // the guest list and Rewards open from the Reports dashboard, which is the
     // customer overview (SUBSCREEN_TABS in lib/tab-visibility.ts, entry points
     // in lib/subscreen-links.ts). Each sub-screen follows its own parent.
-    tabs: ["analytics", "trends", "growth", "customers", "loyalty"],
+    // Texts (the automatic SMS automations) sits beside the guest list and the
+    // reward cards it texts about: all three are how a store keeps guests.
+    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts"],
     defaultTab: "analytics",
   },
   {

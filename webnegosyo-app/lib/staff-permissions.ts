@@ -171,6 +171,10 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Program rules and balance corrections move value. Mapped explicitly
   // because an unmapped tab defaults to ALLOWED.
   loyalty: "loyalty_manage",
+  // The automatic texts reach every guest's phone, and the server refuses
+  // anyone without the guest-list grant. Mapped explicitly because an unmapped
+  // tab defaults to ALLOWED.
+  texts: "customers",
 };
 
 export function isTabAllowed(user: StaffPermissionHolder, tab: string): boolean {

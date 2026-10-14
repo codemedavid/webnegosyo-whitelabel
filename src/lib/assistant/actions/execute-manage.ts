@@ -27,6 +27,7 @@ import { createLoyaltyProgram, readLoyaltyProgramStatus, reviseLoyaltyProgram, w
 import { programStatusPatch } from '@/lib/loyalty/manage'
 import { switchLoyaltyLive } from '@/lib/loyalty/go-live-write'
 import { formatPeso } from '@/components/admin/dashboard/dashboard-format'
+import { cancelCampaignWaiting, openServerRunIds } from '@/lib/texts/server/campaign-state'
 import type {
   CampaignStatusPayload,
   ExecuteOutcome,
@@ -169,12 +170,15 @@ export async function executeCampaignStatus(store: StoreRef, payload: CampaignSt
     .update({ status: 'paused' })
     .eq('id', payload.campaignId)
     .eq('tenant_id', store.id)
-    .eq('status', 'active')
+    .in('status', ['active', 'scheduled'])
     .select('id')
   if (error) throw new Error(`campaign pause failed: ${error.message}`)
   // Zero rows: it was paused, archived or removed in the meantime.
   if ((data ?? []).length !== 1) return { ok: false, error: 'That campaign is no longer active, so nothing was changed.' }
-  return { ok: true, message: `"${payload.name}" is paused. Resume it from the merchant app when you are ready.`, resultRef: payload.campaignId, link: { label: 'Open Customers', path: '/customers' } }
+  // A server-run campaign (web Texts) may have texts waiting for the phone: withdraw them (Resume puts them back).
+  const openRuns = await openServerRunIds(serviceClient(), store.id, payload.campaignId)
+  await cancelCampaignWaiting(serviceClient(), store.id, openRuns, 'paused')
+  return { ok: true, message: `"${payload.name}" is paused. Resume it from Texts or the merchant app when you are ready.`, resultRef: payload.campaignId, link: { label: 'Open Customers', path: '/customers' } }
 }
 
 export async function executeVoucherStatus(store: StoreRef, payload: VoucherStatusPayload): Promise<ExecuteOutcome> {

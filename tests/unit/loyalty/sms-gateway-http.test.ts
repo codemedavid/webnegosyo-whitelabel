@@ -23,11 +23,12 @@ let member: Record<string, unknown> = owner
 
 const rpc = jest.fn()
 const storeSettings = { data: null as { wallet_otp_required: boolean } | null, error: null as unknown }
+let tenantRow: Record<string, unknown> = { name: 'Cafe', loyalty_enabled: true, loyalty_shadow: false }
 const upsert = jest.fn<Promise<{ error: unknown }>, [unknown, unknown]>(async () => ({ error: null }))
 const admin = {
   rpc,
   from: (table: string) => ({
-    select: () => ({ eq: () => ({ maybeSingle: async () => (table === 'loyalty_store_settings' ? storeSettings : { data: { name: 'Cafe' }, error: null }) }) }),
+    select: () => ({ eq: () => ({ maybeSingle: async () => (table === 'loyalty_store_settings' ? storeSettings : { data: tenantRow, error: null }) }) }),
     upsert,
   }),
 }
@@ -70,6 +71,7 @@ async function load() {
 beforeEach(() => {
   process.env.LOYALTY_SMS_DELIVERY_ENABLED = 'true'
   member = owner
+  tenantRow = { name: 'Cafe', loyalty_enabled: true, loyalty_shadow: false }
   storeSettings.data = null
   storeSettings.error = null
   jest.clearAllMocks()
@@ -214,5 +216,26 @@ describe('sms settings: verify before showing rewards', () => {
     const { settings } = await load()
     upsert.mockResolvedValueOnce({ error: { message: 'down' } })
     expect((await settings(post('/x', { tenantId: TENANT, action: 'set_wallet_verification', enabled: true }))).status).toBe(503)
+  })
+})
+
+describe('reward-code claim on a phone that also sends automated texts', () => {
+  const body = { tenantId: TENANT, deviceId: DEVICE, credential: CREDENTIAL }
+
+  test('a denied claim in a loyalty store means revoked (403)', async () => {
+    const { delivery } = await load()
+    rpc.mockResolvedValue({ data: { ok: false, error: 'request_denied' }, error: null })
+    expect((await delivery(post('/x', body), 'claim')).status).toBe(403)
+  })
+
+  test('a store without live loyalty just has no codes to send — the phone keeps its enrollment', async () => {
+    const { delivery } = await load()
+    rpc.mockResolvedValue({ data: { ok: false, error: 'request_denied' }, error: null })
+    tenantRow = { name: 'Cafe', loyalty_enabled: false, loyalty_shadow: false }
+    const response = await delivery(post('/x', body), 'claim')
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ job: null })
+    tenantRow = { name: 'Cafe', loyalty_enabled: true, loyalty_shadow: true }
+    expect(await (await delivery(post('/x', body), 'claim')).json()).toEqual({ job: null })
   })
 })

@@ -217,7 +217,7 @@ const GOAL_STEPS: Record<GoalId, (ctx: PathContext) => Draft[]> = {
     {
       id: 'texts_on',
       title: 'Turn on a text message',
-      detail: 'In the SmartMenu app on Android: Reports → Bring them back.',
+      detail: 'In the SmartMenu app: Reports → Texts. Your sending phone must be an Android phone.',
       action: null,
       lessonSlugs: [],
       goal: 'regulars',

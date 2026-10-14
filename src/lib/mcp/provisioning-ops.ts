@@ -42,6 +42,7 @@ import { launchProduct } from '@/lib/mcp/launch-product'
 import { fetchUpsellPerformanceForTenantId } from '@/lib/queries/upsell-performance'
 import { createSmsCampaign, listSmsCampaignsForProvisioning } from '@/lib/sms-campaigns-service'
 import { assertNonDestructiveOpName, assertNoTenantDeactivation } from '@/lib/mcp/op-safety'
+import { RECIPE_IDS } from '@/lib/sms-automations/types'
 
 /**
  * A provisioning operation is the unit both the remote MCP tools and any REST
@@ -347,6 +348,28 @@ const ops: ProvisioningOp<unknown>[] = [
             return createSmsCampaign(tenantId, withoutTenantId(input as Record<string, unknown>), ctx)
         },
     }),
+    op({
+        name: 'save_sms_automation',
+        description:
+            "Create or edit a tenant's SMS AUTOMATION (one per recipe): review_request, first_visit_followup, loyalty_almost_there, loyalty_reward_waiting, loyalty_reward_expiring, win_back, regulars_gone_quiet. Envelope: { tenantId, recipe, message_template?, params?, run_mode?, name? }. Omit message_template to keep the current one (or the recipe's default). A NEW automation is saved OFF and texts no one; this tool never switches one on — the owner does that in the merchant app (Reports > Texts). Placeholders must be ones the recipe can fill (see list_sms_automations).",
+        input: tenantScoped({
+            recipe: z.enum(RECIPE_IDS).describe('Which automation'),
+            message_template: z.string().max(459).optional().describe('Message with {{placeholders}}'),
+            params: z.object({
+                delayHours: z.number().int().min(0).max(365).optional(),
+                delayDays: z.number().int().min(0).max(365).optional(),
+                inactiveDays: z.number().int().min(0).max(365).optional(),
+                remainingAtMost: z.number().int().min(0).max(365).optional(),
+                minOrderCount: z.number().int().min(0).max(365).optional(),
+            }).optional().describe('Timing knobs; clamped to the recipe limits'),
+            run_mode: z.enum(['auto', 'manual']).optional().describe("'auto' sends by itself once switched on; 'manual' only on Run now"),
+            name: z.string().max(80).optional(),
+        }),
+        execute: async (ctx, input) => {
+            const { saveSmsAutomationOp } = await import('@/lib/sms-automations/mcp-ops')
+            return saveSmsAutomationOp(ctx.client as never, input as never)
+        },
+    }),
     // Reads
     op({
         name: 'list_sms_campaigns',
@@ -354,6 +377,16 @@ const ops: ProvisioningOp<unknown>[] = [
             "List a tenant's SMS campaigns (name, status, schedule, message) so you can see what is already running before creating another. Envelope: { tenantId }.",
         input: z.object({ tenantId: UUID }),
         execute: (ctx, input) => listSmsCampaignsForProvisioning((input as { tenantId: string }).tenantId, ctx),
+    }),
+    op({
+        name: 'list_sms_automations',
+        description:
+            "List a tenant's SMS automations (recipe, on/off, what it does, message, texts sent 30d), the recipes not set up yet with the placeholders each may use, and what blocks sending (no sending phone, no review link, loyalty off). Envelope: { tenantId }.",
+        input: z.object({ tenantId: UUID }),
+        execute: async (ctx, input) => {
+            const { listSmsAutomationsOp } = await import('@/lib/sms-automations/mcp-ops')
+            return listSmsAutomationsOp(ctx.client as never, (input as { tenantId: string }).tenantId)
+        },
     }),
     op({
         name: 'list_bundles',

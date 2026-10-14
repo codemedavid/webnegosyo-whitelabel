@@ -118,7 +118,7 @@ describe('middleware session gating', () => {
 })
 
 describe('middleware cron bypass', () => {
-  it.each(['/api/loyalty/maintenance', '/api/loyverse/reconcile'])(
+  it.each(['/api/loyalty/maintenance', '/api/loyverse/reconcile', '/api/sms/automations/tick'])(
     'does no tenant or auth work for %s',
     async (path) => {
       await run(path)

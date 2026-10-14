@@ -31,9 +31,11 @@ interface GoalStepProps {
   reachById: Record<string, number>;
   selectedId: string | null;
   onPick: (presetId: string) => void;
+  /** Shown when the account can open Texts: follow-ups live there, not here. */
+  onOpenAutomations?: () => void;
 }
 
-export function GoalStep({ presets, reachById, selectedId, onPick }: GoalStepProps) {
+export function GoalStep({ presets, reachById, selectedId, onPick, onOpenAutomations }: GoalStepProps) {
   return (
     <View style={styles.wrap}>
       <StepIntro
@@ -87,6 +89,25 @@ export function GoalStep({ presets, reachById, selectedId, onPick }: GoalStepPro
         </View>
         <Icon name="chevron" size={14} color={colors.textTertiary} strokeWidth={2} />
       </TouchableOpacity>
+
+      {onOpenAutomations ? (
+        <TouchableOpacity
+          style={styles.automations}
+          onPress={onOpenAutomations}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel="Bringing guests back? Texts does it automatically. Open Texts."
+        >
+          <Icon name="rotate" size={18} color={colors.accent} />
+          <View style={styles.tileCopy}>
+            <Text style={styles.tileTitle}>Bringing guests back?</Text>
+            <Text style={styles.tagline}>
+              Win-backs and first-timer follow-ups send by themselves in Texts — no campaign needed.
+            </Text>
+          </View>
+          <Icon name="chevron" size={14} color={colors.textTertiary} strokeWidth={2} />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -123,6 +144,15 @@ const styles = StyleSheet.create({
   reachDotLive: { backgroundColor: colors.success },
   reach: { ...typography.caption, fontWeight: "700", color: colors.textPrimary },
   reachNone: { color: colors.textSecondary, fontWeight: "600" },
+  automations: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentLight,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
   blank: {
     flexDirection: "row",
     alignItems: "center",

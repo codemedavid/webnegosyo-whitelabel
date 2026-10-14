@@ -18,7 +18,7 @@ import { requestGatewayNotificationPermission } from "../lib/loyalty/notificatio
 import { SmsFallbackCard } from "./loyalty/SmsFallbackCard";
 
 const SMS_PERMISSION_DENIED =
-  "Allow SMS for SmartMenu (Android Settings → Apps → SmartMenu → Permissions) so this phone can send reward codes.";
+  "Allow SMS for SmartMenu (Android Settings → Apps → SmartMenu → Permissions) so this phone can send reward codes and automated texts.";
 
 /**
  * Owner control for using THIS Android phone as the store's SMS gateway for
@@ -30,17 +30,21 @@ const SMS_PERMISSION_DENIED =
  * tapping Send. Removing the phone stops the gateway and revokes it for good.
  * Renders nothing off Android, for staff, or while the pilot gate is off.
  */
-export function LoyaltySmsDeviceCard() {
-  const tenantId = useAuthStore((s) => s.tenantId);
-  const userId = useAuthStore((s) => s.userId);
+/** Whether this device and account may enroll as the sending phone (the card renders only then). */
+export function useCanEnrollSmsDevice(): boolean {
   const isOwner = useAuthStore((s) => s.isOwner);
   const isSuperadmin = useAuthStore((s) => s.isSuperadmin);
   const isDemo = useAuthStore((s) => s.isDemo);
+  return Platform.OS === "android" && isLoyaltySmsDeliveryEnabled() && !isDemo && (isOwner || isSuperadmin);
+}
+
+export function LoyaltySmsDeviceCard() {
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const userId = useAuthStore((s) => s.userId);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isShown =
-    Platform.OS === "android" && isLoyaltySmsDeliveryEnabled() && !isDemo && (isOwner || isSuperadmin);
+  const isShown = useCanEnrollSmsDevice();
 
   const enrollment = useDeviceEnrollment(tenantId, userId, isShown);
   const gateway = useSmsGateway(isShown);
@@ -140,11 +144,11 @@ export function LoyaltySmsDeviceCard() {
         <Text style={styles.title}>SMS gateway</Text>
         {!deviceId ? (
           <Text style={styles.body}>
-            Enroll this phone to send reward codes to customers from its own SIM, automatically. Up to five phones per store.
+            Enroll this phone to send reward codes and your automated texts from its own SIM, automatically. Up to five phones per store.
           </Text>
         ) : !gateway.hasNative ? (
           <Text style={styles.body}>
-            Update the app to use this phone as an SMS gateway. It will then send reward codes in the background.
+            Update the app to use this phone as an SMS gateway. It will then send reward codes and automated texts in the background.
           </Text>
         ) : (
           <>
@@ -161,13 +165,13 @@ export function LoyaltySmsDeviceCard() {
             </View>
             <Text style={styles.body}>
               {gateway.isEnabled
-                ? "On — this phone sends reward codes by itself, even with the app closed. Keep it charged, with load and signal."
+                ? "On — this phone sends reward codes and automated texts by itself, even with the app closed. Keep it charged, with load and signal."
                 : "Off — reward codes go through your backup below, or customers are asked to see the cashier."}
             </Text>
             {gateway.isEnabled && gateway.isBatteryUnrestricted === false ? (
               <View style={styles.notice}>
                 <Text style={styles.noticeText}>
-                  Android may pause the gateway to save battery. Allow background activity so codes keep going out.
+                  Android may pause the gateway to save battery. Allow background activity so texts keep going out.
                 </Text>
                 <TouchableOpacity accessibilityRole="button" disabled={isBusy} onPress={() => void allowBackground()}>
                   <Text style={styles.noticeAction}>Allow background activity</Text>

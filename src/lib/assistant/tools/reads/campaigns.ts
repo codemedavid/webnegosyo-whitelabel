@@ -1,5 +1,5 @@
 /**
- * get_sms_campaigns — the store's SMS campaigns (draft / active / paused), how
+ * get_sms_campaigns — the store's SMS campaigns (draft / active / scheduled / paused), how
  * many texts each sent or failed in 30 days, and how many guests can be texted.
  * Campaign refs let a later turn pause one.
  */
@@ -15,7 +15,7 @@ import type { ToolResult } from '@/lib/assistant/types'
 const input = z.object({})
 type Input = z.infer<typeof input>
 
-const STATUS_LABEL: Record<AssistantCampaign['status'], string> = { draft: 'Draft', active: 'Active', paused: 'Paused', archived: 'Archived' }
+const STATUS_LABEL: Record<AssistantCampaign['status'], string> = { draft: 'Draft', active: 'Active', paused: 'Paused', archived: 'Archived', scheduled: 'Scheduled' }
 
 function sameAudience(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)])
@@ -47,7 +47,7 @@ export function buildCampaignsResult(data: AssistantCampaigns, refs: RefBook): T
         failed30d: campaign.failed30d,
       })),
       ...(data.isSendCountCapped ? { caveat: 'Send counts are a lower bound (very large history).' } : {}),
-      note: 'Texts are sent by the merchant app on an Android phone; activating a campaign happens there.',
+      note: 'Active campaigns are sent by the merchant app on an Android phone; scheduled ones go out automatically from Texts on the web. Starting a campaign happens there, never here.',
     },
     card: {
       type: 'ranked',

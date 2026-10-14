@@ -18,6 +18,7 @@ const SELF_AUTHENTICATED_API_PREFIXES = [
   '/api/messenger',
   '/api/loyalty/maintenance',
   '/api/loyverse/reconcile',
+  '/api/sms/automations/tick',
 ] as const
 
 /** Paths the tenant rewrite must never touch: global API routes and the image optimiser. */

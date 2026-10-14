@@ -12,6 +12,7 @@ import {
   Users,
   Ticket,
   Gift,
+  MessageSquareText,
   Menu,
   X,
   ArrowUpRight,
@@ -359,6 +360,7 @@ export const adminSidebarItems: SidebarEntry[] = [
   },
   { label: 'Customers', href: '/admin/customers', icon: Users, section: 'Grow' },
   { label: 'Loyalty', href: '/admin/loyalty', icon: Gift, section: 'Grow' },
+  { label: 'Texts', href: '/admin/texts', icon: MessageSquareText, section: 'Grow' },
   { label: 'Vouchers', href: '/admin/vouchers', icon: Ticket, section: 'Grow' },
   {
     label: 'Analytics',

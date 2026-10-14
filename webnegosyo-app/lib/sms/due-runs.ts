@@ -20,7 +20,11 @@
 import { computeNextDueAt } from "./schedule";
 import type { SmsCampaignSchedule } from "./types";
 
-export type CampaignStatus = "draft" | "active" | "paused" | "archived";
+/**
+ * `scheduled` = the SERVER sends it (web Texts, sms_campaigns.delivery='server').
+ * It is never due here: only `active` fires on the phone.
+ */
+export type CampaignStatus = "draft" | "active" | "paused" | "archived" | "scheduled";
 
 export interface ScheduledCampaign {
   id: string;

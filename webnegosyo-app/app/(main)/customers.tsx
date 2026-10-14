@@ -56,7 +56,9 @@ import { ScreenHeader } from "../../components/ScreenHeader";
 import { CustomersAccessGate } from "../../components/customers/CustomersAccessGate";
 import { Button } from "../../components/Button";
 import { CampaignQuickStart } from "../../components/sms/campaign/CampaignQuickStart";
-import { CAMPAIGN_PRESETS } from "../../lib/sms/campaign-presets";
+import { offeredCampaignPresets } from "../../lib/sms/campaign-presets";
+import { isTabReachable } from "../../lib/tab-visibility";
+import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { IconButton } from "../../components/IconButton";
 import { ReachBar } from "../../components/sms/ReachBar";
 import { GuestRow } from "../../components/sms/GuestRow";
@@ -399,6 +401,7 @@ function CampaignsSection({
   states: CampaignDueState[];
   refreshControl: React.ReactElement<RefreshControlProps>;
 }) {
+  const presets = offeredCampaignPresets(isTabReachable("texts", useTabVisibilityContext()));
   return (
     <FlatList
       data={states}
@@ -416,7 +419,7 @@ function CampaignsSection({
       }
       ListEmptyComponent={
         <CampaignQuickStart
-          presets={CAMPAIGN_PRESETS.slice(0, QUICK_START_COUNT)}
+          presets={presets.slice(0, QUICK_START_COUNT)}
           onStart={(presetId) => router.push(newCampaignFromPresetHref(presetId))}
         />
       }

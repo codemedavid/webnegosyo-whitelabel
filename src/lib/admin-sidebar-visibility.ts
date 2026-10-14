@@ -54,6 +54,8 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
   // not a manager's to read. The route is gated too (`isStoreWideAdminPath`);
   // hiding the entry is what stops it being offered.
   if (!flags.multiBranchEnabled || flags.isBranchScopedAccount) paths.add('/outlets')
+  // Texts reach every guest of the store; the route is store-wide only too.
+  if (flags.isBranchScopedAccount) paths.add('/admin/texts')
   // Only stores set up through onboarding have a path (and goals) to show.
   if (!flags.hasStartHere) paths.add('/admin/start')
 

@@ -60,6 +60,40 @@ export async function listSuppressedPhones(tenantId: string): Promise<string[]> 
   return (data ?? []).map((row) => String((row as { phone_e164: unknown }).phone_e164));
 }
 
+const DAY_MS = 86_400_000;
+/** sms_settings.guest_cap_days default (store never saved its texting rules). */
+const DEFAULT_GUEST_CAP_DAYS = 3;
+const MAX_RECENT_ROWS = 2000;
+
+/**
+ * Phones this store texted recently — by a campaign OR an automation — inside
+ * its "one text per guest every N days" window (`sms_settings`, default 3).
+ * A campaign skips them, so a guest who just got a win-back automation is not
+ * texted again by a weekend blast the next morning. Throws rather than
+ * returning [] on a failed read: an empty list would quietly re-text everyone.
+ */
+export async function listRecentlyTextedPhones(tenantId: string, now: Date = new Date()): Promise<Set<string>> {
+  const { data: rules, error: rulesError } = await supabase
+    .from("sms_settings")
+    .select("guest_cap_days")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (rulesError) throw new Error(rulesError.message);
+  const capDays = Number((rules as { guest_cap_days?: unknown } | null)?.guest_cap_days) || DEFAULT_GUEST_CAP_DAYS;
+  const since = new Date(now.getTime() - capDays * DAY_MS).toISOString();
+
+  const [campaigns, automations] = await Promise.all([
+    supabase.from("sms_sends").select("phone_e164")
+      .eq("tenant_id", tenantId).eq("result", "sent").gte("sent_at", since).limit(MAX_RECENT_ROWS),
+    supabase.from("sms_outbox").select("phone_e164")
+      .eq("tenant_id", tenantId).in("status", ["sent", "claimed"]).gte("created_at", since).limit(MAX_RECENT_ROWS),
+  ]);
+  for (const result of [campaigns, automations]) if (result.error) throw new Error(result.error.message);
+  return new Set(
+    [...(campaigns.data ?? []), ...(automations.data ?? [])].map((row) => String((row as { phone_e164: unknown }).phone_e164)),
+  );
+}
+
 /**
  * Record or withdraw a guest's consent to be texted.
  *

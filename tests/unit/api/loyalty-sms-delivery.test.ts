@@ -21,6 +21,7 @@ let mockMember: Record<string, unknown> | null
 let mockAuthError: unknown
 let mockMemberError: unknown
 const mockRpc = jest.fn()
+let mockStore: { loyalty_enabled: boolean; loyalty_shadow: boolean }
 
 jest.mock('@supabase/supabase-js', () => ({ createClient: () => ({
   auth: { getUser: async () => ({ data: { user: mockUser }, error: mockAuthError }) },
@@ -28,6 +29,7 @@ jest.mock('@supabase/supabase-js', () => ({ createClient: () => ({
 }) }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({
   rpc: (...args: unknown[]) => mockRpc(...args),
+  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: mockStore, error: null }) }) }) }),
 }) }))
 
 const base = { tenantId, deviceId, credential }
@@ -49,6 +51,7 @@ beforeEach(() => {
   mockMember = { role: 'admin', tenant_id: tenantId, permissions: ['loyalty_manage'], is_owner: false }
   mockAuthError = null
   mockMemberError = null
+  mockStore = { loyalty_enabled: true, loyalty_shadow: false }
   mockRpc.mockReset().mockResolvedValue({ data: { ok: true }, error: null })
 })
 
@@ -121,6 +124,14 @@ describe('claim', () => {
   it('tells a revoked or unauthorized device to stop polling', async () => {
     mockRpc.mockResolvedValue({ data: { ok: false, error: 'request_denied' }, error: null })
     expect((await call('claim', base)).status).toBe(403)
+  })
+
+  it('keeps a phone enrolled when its store simply has no live loyalty (it still sends automated texts)', async () => {
+    mockStore = { loyalty_enabled: false, loyalty_shadow: false }
+    mockRpc.mockResolvedValue({ data: { ok: false, error: 'request_denied' }, error: null })
+    const response = await call('claim', base)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ job: null })
   })
 
   it('does not expose database failures', async () => {

@@ -37,6 +37,8 @@ const ACTIONS: Record<CampaignStatus, StatusAction[]> = {
   paused: [{ next: "active", label: "Resume", isDestructive: false }, ARCHIVE],
   active: [{ next: "paused", label: "Pause", isDestructive: false }, ARCHIVE],
   archived: [],
+  // Sent by the server from the web (Texts): managed there, never from the phone.
+  scheduled: [],
 };
 
 const LABELS: Record<CampaignStatus, string> = {
@@ -44,6 +46,7 @@ const LABELS: Record<CampaignStatus, string> = {
   active: "Active",
   paused: "Paused",
   archived: "Archived",
+  scheduled: "Sends from the web",
 };
 
 export function statusActionsFor(status: CampaignStatus): StatusAction[] {
@@ -52,7 +55,7 @@ export function statusActionsFor(status: CampaignStatus): StatusAction[] {
 
 /** Whether this campaign may be put live right now. */
 export function canActivate(status: CampaignStatus, isValid: boolean): boolean {
-  if (status === "archived" || status === "active") return false;
+  if (status === "archived" || status === "active" || status === "scheduled") return false;
   return isValid;
 }
 

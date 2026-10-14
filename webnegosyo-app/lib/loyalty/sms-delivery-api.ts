@@ -48,11 +48,17 @@ function deadline(ms: number) {
   return { promise, cancel: () => clearTimeout(timer) };
 }
 
-async function send(
+/**
+ * Bounded authenticated POST/DELETE to a web route; shared with the
+ * automated-texts port. `extraHeaders` never override the content type or
+ * the session token.
+ */
+export async function send(
   deps: DeliveryTransportDeps,
   method: "POST" | "DELETE",
   path: string,
   body: Record<string, unknown>,
+  extraHeaders: Record<string, string> = {},
 ): Promise<{ status: number; json: unknown }> {
   const session = deadline(deps.sessionTimeoutMs ?? LOYALTY_SMS_SESSION_TIMEOUT_MS);
   let token: string | undefined;
@@ -70,7 +76,7 @@ async function send(
       deps.fetchImpl(`${deps.webAppUrl.replace(/\/+$/, "")}${path}`, {
         method,
         signal: controller.signal,
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { ...extraHeaders, "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       }),
       request.promise.catch((error) => {

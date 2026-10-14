@@ -218,6 +218,8 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Minting an MCP key grants full merchant authority — owner/store_setup only.
   mcp: 'store_setup',
   customers: 'customers',
+  // Campaigns, automatic texts and sending phones reach the same guest list.
+  texts: 'customers',
   vouchers: 'vouchers',
   loyalty: 'loyalty_manage',
   // The roster plus who confirmed, cancelled and rang what: the owner's, or a

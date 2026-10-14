@@ -124,6 +124,21 @@ async function readLessonsWatched(admin: Admin, userId: string | null): Promise<
   return countRows(admin.from('university_lesson_progress').select('lesson_id', { count: 'exact', head: true }).eq('user_id', userId), 'lessons watched')
 }
 
+/**
+ * Texts switched on (or ready to switch on): SMS campaigns AND automations.
+ * The launch follow-ups are automations now, saved Off.
+ */
+async function countTexts(admin: Admin, tenantId: string, which: 'on' | 'ready'): Promise<number> {
+  const [campaigns, automations] = await Promise.all([
+    countRows(admin.from('sms_campaigns').select('id', { count: 'exact', head: true })
+      // `scheduled` = the server sends it (web Texts); `active` = the owner's app does.
+      .eq('tenant_id', tenantId).in('status', which === 'on' ? ['active', 'scheduled'] : ['draft']), 'texts'),
+    countRows(admin.from('sms_automations').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId).eq('status', which === 'on' ? 'on' : 'off'), 'automations'),
+  ])
+  return campaigns + automations
+}
+
 /** Null when the store was not set up through onboarding (no goals to frame a path with). */
 export async function loadStartHere(
   admin: Admin,
@@ -140,8 +155,8 @@ export async function loadStartHere(
     safely('launch combos', () => readLaunchCombosWaiting(admin, tenant.id)),
     safely('app logins', () => countRows(admin.from('platform_device_tokens').select('token', { count: 'exact', head: true }).eq('tenant_id', tenant.id), 'app')),
     safely('stamps', () => countRows(admin.from('loyalty_ledger').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('kind', 'earn'), 'stamps')),
-    safely('texts', () => countRows(admin.from('sms_campaigns').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('status', 'active'), 'texts')),
-    safely('draft texts', () => countRows(admin.from('sms_campaigns').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('status', 'draft'), 'drafts')),
+    safely('texts', () => countTexts(admin, tenant.id, 'on')),
+    safely('draft texts', () => countTexts(admin, tenant.id, 'ready')),
     safely('photos', () => readBestSellerPhotos(admin, tenant.id)),
     safely('ticks', () => readTicks(admin, tenant.id)),
     safely('lessons', () => readLessonsWatched(admin, opts.userId)),

@@ -103,8 +103,8 @@ test("the release gate closing stops the gateway and refuses further sends", asy
 test("each sent code updates the persistent notification", async () => {
   const { deps, task } = setup({}, ["sent", "idle", "sent"]);
   await task({ tenantId, actorId });
-  expect(deps.setStatus).toHaveBeenCalledWith("Ready to send reward codes");
-  expect(deps.setStatus).toHaveBeenLastCalledWith("2 codes sent today · last at 9:30 AM");
+  expect(deps.setStatus).toHaveBeenCalledWith("Ready to send texts");
+  expect(deps.setStatus).toHaveBeenLastCalledWith("2 texts sent today · last at 9:30 AM");
 });
 
 test("a restarted gateway supersedes the old loop, which exits without stopping the new service", async () => {
@@ -185,5 +185,5 @@ test("a healthy poll after trouble restores the normal text", async () => {
   let polls = 0;
   (deps.isGatewayEnabled as jest.Mock).mockImplementation(async () => polls++ < 8);
   await task({ tenantId, actorId });
-  expect(deps.setStatus).toHaveBeenLastCalledWith("Ready to send reward codes");
+  expect(deps.setStatus).toHaveBeenLastCalledWith("Ready to send texts");
 });
