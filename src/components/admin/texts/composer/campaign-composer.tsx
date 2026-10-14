@@ -38,7 +38,7 @@ const FIX_TARGETS = { name: 'composer-name', message: 'composer-message-text', w
 function focusFirst(id: string) {
   requestAnimationFrame(() => {
     const node = document.getElementById(id)
-    node?.scrollIntoView({ block: 'center' })
+    node?.scrollIntoView?.({ block: 'center' })
     node?.focus({ preventScroll: true })
   })
 }
