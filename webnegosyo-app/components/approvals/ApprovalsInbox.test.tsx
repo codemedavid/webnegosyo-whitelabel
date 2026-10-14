@@ -80,6 +80,25 @@ describe("ApprovalsInbox", () => {
   it("explains a first load that failed", () => {
     renderInbox(query({ data: undefined, error: { message: "x", status: 0, code: "offline" } }));
     expect(screen.getByText("Couldn't load requests")).toBeTruthy();
+    expect(screen.getByText("Check your connection and try again.")).toBeTruthy();
+  });
+
+  it("does not blame the connection when the server answered", () => {
+    renderInbox(query({ data: undefined, error: { message: "x", status: 500, code: null } }));
+    expect(screen.getByText("Couldn't load requests")).toBeTruthy();
+    expect(screen.getByText("Something went wrong on our side. Try again in a moment.")).toBeTruthy();
+    expect(screen.queryByText("Check your connection and try again.")).toBeNull();
+  });
+
+  it("shows a calm notice, not an error, when the server has no approvals yet", () => {
+    renderInbox(query({ data: undefined, error: { message: "x", status: 404, code: null } }));
+    expect(screen.getByText("Approvals are on their way")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load requests")).toBeNull();
+  });
+
+  it("passes on the server's own words when it refuses the account", () => {
+    renderInbox(query({ data: undefined, error: { message: "You can't see this store's requests.", status: 403, code: "forbidden" } }));
+    expect(screen.getByText("You can't see this store's requests.")).toBeTruthy();
   });
 
   it("names an overpayment refund as such", () => {

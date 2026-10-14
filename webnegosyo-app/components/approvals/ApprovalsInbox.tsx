@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { router } from "expo-router";
 
-import { decidedLine, recentSummary } from "../../lib/approvals/inbox-model";
+import { decidedLine, inboxLoadProblem, recentSummary } from "../../lib/approvals/inbox-model";
 import { approvalHref } from "../../lib/approvals/push-route";
 import { requestHeadline } from "../../lib/approvals/state";
 import { useApprovalInbox, useNow, useRecentApprovals, type ApprovalList, type ApprovalsQuery } from "../../lib/approvals/use-approvals";
@@ -33,6 +33,18 @@ function AllSet() {
       <Text style={styles.allSetTitle}>{"Nothing waiting. Your team's all set."}</Text>
       <Text style={styles.allSetText}>
         When someone asks for a refund, cancel, big discount or write-off, it lands here and on your phone.
+      </Text>
+    </View>
+  );
+}
+
+function NotYetAvailable() {
+  return (
+    <View style={styles.allSet}>
+      <Image source={OWL_IMAGE} alt="" style={styles.owl} accessible={false} accessibilityIgnoresInvertColors />
+      <Text style={styles.allSetTitle}>Approvals are on their way</Text>
+      <Text style={styles.allSetText}>
+        Refund and cancel requests will land here once your store gets the update. Everything else in Activity works now.
       </Text>
     </View>
   );
@@ -86,7 +98,9 @@ export function ApprovalsInboxView({ pending, recent, now, isOffline, onOpen }: 
 
   if (pending.isLoading) return <ActivitySkeleton rows={3} />;
   if (!pending.data && pending.error) {
-    return <ErrorState title="Couldn't load requests" message="Check your connection and try again." onRetry={() => void pending.refetch()} />;
+    const problem = inboxLoadProblem(pending.error);
+    if (problem.kind === "unavailable") return <NotYetAvailable />;
+    return <ErrorState title="Couldn't load requests" message={problem.message} onRetry={() => void pending.refetch()} />;
   }
 
   return (

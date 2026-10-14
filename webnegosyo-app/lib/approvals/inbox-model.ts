@@ -54,3 +54,25 @@ export function homeCardCopy(requests: readonly ApprovalRequestView[], now: Date
     subtitle: `Oldest: ${firstName(oldest.requestedByName)}, ${timeAgo(oldest.createdAt, now)}`,
   };
 }
+
+/** What a failed first load of the inbox should say. */
+export type InboxLoadProblem =
+  | { kind: "unavailable" }
+  | { kind: "error"; message: string };
+
+const HTTP_NOT_FOUND = 404;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_FORBIDDEN = 403;
+
+/**
+ * Status 0 never reached the server, so only then is it the connection. A 404
+ * is a web app without the approvals routes (not deployed yet): nothing is
+ * broken on this phone, so it reads as a notice. A refusal keeps the server's
+ * own words; anything else is on our side.
+ */
+export function inboxLoadProblem(error: { status: number; message: string }): InboxLoadProblem {
+  if (error.status === HTTP_NOT_FOUND) return { kind: "unavailable" };
+  if (error.status === 0) return { kind: "error", message: "Check your connection and try again." };
+  if (error.status === HTTP_UNAUTHORIZED || error.status === HTTP_FORBIDDEN) return { kind: "error", message: error.message };
+  return { kind: "error", message: "Something went wrong on our side. Try again in a moment." };
+}
