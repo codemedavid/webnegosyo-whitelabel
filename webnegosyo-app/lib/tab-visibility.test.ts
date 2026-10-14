@@ -106,6 +106,20 @@ describe("isTabReachable", () => {
     expect(isTabReachable(REPORTS_TAB, analyst)).toBe(true);
   });
 
+  it("opens Store activity only to the store view: owners, activity_view, approve_requests", () => {
+    // Opt-in keys: a legacy full-access admin does NOT hold them. Staff without
+    // them reach their OWN activity through the my-activity door, not the bar.
+    expect(isTabReachable("activity", owner)).toBe(true);
+    const viewer = { ...owner, caller: { role: "admin", isOwner: false, permissions: ["activity_view"] } };
+    const approver = { ...owner, caller: { role: "admin", isOwner: false, permissions: ["approve_requests"] } };
+    const legacyAdmin = { ...owner, caller: { role: "admin", isOwner: false, permissions: null } };
+    expect(isTabReachable("activity", viewer)).toBe(true);
+    expect(isTabReachable("activity", approver)).toBe(true);
+    expect(isTabReachable("activity", legacyAdmin)).toBe(false);
+    expect(isTabReachable("activity", posOnlyStaff)).toBe(false);
+    expect(isTabReachable("activity", cook)).toBe(false);
+  });
+
   it("gives Reports to staff who may see customers but no sales report", () => {
     // The dashboard itself is customer-first, and the guest list and Rewards
     // open from it, so a customers grant alone is enough for the tab.

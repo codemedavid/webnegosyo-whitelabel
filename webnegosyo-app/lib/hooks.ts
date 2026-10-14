@@ -17,6 +17,7 @@ import {
 import { useAccountBranchScope, useBranchScope } from "./use-branch-scope";
 import { planLifecycleSync } from "./customers/lifecycle-plan";
 import { notifyLifecycleSync } from "./customers/lifecycle";
+import { stripOrderEventReason } from "./order-cancel-reason";
 import { invalidateResource } from "./query/use-resource";
 import { ORDER_CUSTOMERS_RESOURCE } from "./loyalty/order-customers";
 import type { OrderBackend } from "./order-backend";
@@ -297,7 +298,9 @@ export function useSafeMutation(ref: FunctionReference<"mutation">): SafeMutatio
   if (convexMutate) {
     const mutate = convexMutate;
     return async (args) => {
-      const result = await mutate(args);
+      // Convex validates args strictly; a cancel's reason travels to the
+      // platform on the lifecycle post instead (lib/order-cancel-reason.ts).
+      const result = await mutate(stripOrderEventReason(args));
       reportLifecycle({ tenantId, orderBackend, refName, args }, queryClient);
       return result;
     };

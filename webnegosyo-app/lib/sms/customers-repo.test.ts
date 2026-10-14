@@ -19,7 +19,7 @@ function nextResult(): { data: unknown; error: unknown } {
 jest.mock("../supabase", () => {
   const makeChain = () => {
     const chain: Record<string, unknown> = {};
-    for (const method of ["select", "update", "eq", "order", "limit"]) {
+    for (const method of ["select", "update", "eq", "order", "limit", "gte", "in", "maybeSingle"]) {
       chain[method] = (...args: unknown[]) => {
         calls.push({ method, args });
         return chain;
@@ -255,5 +255,36 @@ describe("setCustomerOptOut", () => {
     queued = [{ data: null, error: { message: "offline" } }];
 
     await expect(setCustomerOptOut("c1", true)).rejects.toThrow("offline");
+  });
+});
+
+describe("listRecentlyTextedPhones", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    queued = [];
+  });
+
+  it("collects phones texted by campaigns OR automations inside the store's cap window", async () => {
+    const { listRecentlyTextedPhones } = await import("./customers-repo");
+    queued = [
+      { data: { guest_cap_days: 5 }, error: null },
+      { data: [{ phone_e164: "+639171111111" }, { phone_e164: "+639172222222" }], error: null },
+      { data: [{ phone_e164: "+639172222222" }, { phone_e164: "+639173333333" }], error: null },
+    ];
+    const phones = await listRecentlyTextedPhones("t1", new Date("2026-10-14T04:00:00Z"));
+    expect([...phones].sort()).toEqual(["+639171111111", "+639172222222", "+639173333333"]);
+    const tables = calls.filter((c) => c.method === "from").map((c) => c.args[0]);
+    expect(tables).toEqual(["sms_settings", "sms_sends", "sms_outbox"]);
+    const since = calls.filter((c) => c.method === "gte").map((c) => c.args[1]);
+    expect(since).toEqual(["2026-10-09T04:00:00.000Z", "2026-10-09T04:00:00.000Z"]);
+  });
+
+  it("uses the 3-day default when the store never saved its rules, and fails loudly", async () => {
+    const { listRecentlyTextedPhones } = await import("./customers-repo");
+    queued = [{ data: null, error: null }, { data: [], error: null }, { data: [], error: null }];
+    await listRecentlyTextedPhones("t1", new Date("2026-10-14T04:00:00Z"));
+    expect(calls.filter((c) => c.method === "gte")[0].args[1]).toBe("2026-10-11T04:00:00.000Z");
+    queued = [{ data: null, error: null }, { data: null, error: { message: "denied" } }, { data: [], error: null }];
+    await expect(listRecentlyTextedPhones("t1", new Date())).rejects.toThrow("denied");
   });
 });

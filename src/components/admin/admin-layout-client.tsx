@@ -97,6 +97,7 @@ export function AdminLayoutClient({ children, tenantSlug, tenant, caller }: Admi
     // render) this reads as store-wide, matching the permission filter above.
     isBranchScopedAccount: caller ? !canViewBranchDirectory(caller) : false,
     hasStartHere: tenant.has_start_here,
+    isPlatformBackend: tenant.is_platform_backend,
   }
 
   // The owl is for store-wide accounts on stores a superadmin switched it on for;

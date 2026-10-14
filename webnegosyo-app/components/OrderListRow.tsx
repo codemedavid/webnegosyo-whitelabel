@@ -25,6 +25,8 @@ interface OrderListRowProps<O extends OrderListRowOrder> {
   isBusy: boolean;
   /** Known-customer chip; must be referentially stable across renders. */
   customerBadge?: OrderCustomerBadge | null;
+  /** The viewer holds the `orders` grant (see canUserCancelOrder); false hides Cancel. */
+  mayCancelOrders: boolean;
   onOpen: (orderId: string) => void;
   onAdvance: (orderId: string) => void;
   onCancel: (order: O) => void;
@@ -35,6 +37,7 @@ function OrderListRowInner<O extends OrderListRowOrder>({
   nextStatusLabel,
   isBusy,
   customerBadge,
+  mayCancelOrders,
   onOpen,
   onAdvance,
   onCancel,
@@ -43,7 +46,7 @@ function OrderListRowInner<O extends OrderListRowOrder>({
   const handleAdvance = useCallback(() => onAdvance(order._id), [onAdvance, order._id]);
   const handleCancel = useCallback(() => onCancel(order), [onCancel, order]);
 
-  const canCancel = canCancelOrder(order.status);
+  const canCancel = mayCancelOrders && canCancelOrder(order.status);
   const canAdvance = nextStatusLabel !== undefined && !isBusy;
 
   return (

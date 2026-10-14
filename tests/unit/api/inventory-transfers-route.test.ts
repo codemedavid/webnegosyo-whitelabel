@@ -105,6 +105,24 @@ const DRAFT = {
   lines: [{ inventoryItemId: 'flour', quantity: 20 }],
 }
 
+describe('POST /api/inventory/transfers — who may move stock', () => {
+  test('admits an inventory-only account', async () => {
+    const response = await post({ role: 'admin', tenant_id: TENANT, permissions: ['inventory'], is_owner: false }, DRAFT)
+
+    expect(response.status).toBe(200)
+    expect(createTransferWith).toHaveBeenCalledTimes(1)
+  })
+
+  test('refuses a menu-only account, saying which grant to ask for', async () => {
+    // `menu` keeps recipes and the ingredient list; moving stock is `inventory`.
+    const response = await post({ role: 'admin', tenant_id: TENANT, permissions: ['menu'], is_owner: false }, DRAFT)
+
+    expect(response.status).toBe(403)
+    expect((await response.json()).error).toMatch(/Inventory permission/)
+    expect(createTransferWith).not.toHaveBeenCalled()
+  })
+})
+
 describe('POST /api/inventory/transfers — the four steps', () => {
   test('drafts a transfer', async () => {
     const response = await post(OWNER, DRAFT)

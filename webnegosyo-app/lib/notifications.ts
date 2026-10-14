@@ -2,6 +2,7 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { APPROVAL_PUSH_CATEGORIES, APPROVALS_CHANNEL_ID } from "./approvals/push-route";
 
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
@@ -48,10 +49,79 @@ export async function ensureOrdersChannel(): Promise<void> {
   ordersChannelReady = true;
 }
 
+let stockAlertsChannelReady = false;
+
+/**
+ * The "stock-alerts" Android channel that low / out-of-stock pushes target
+ * (`channelId` in `src/lib/push/merchant-notification-push.ts`). Default
+ * sound and HIGH importance so it shows as a heads-up, but deliberately NOT
+ * the order ringtone: a counter phone must never make a merchant think an
+ * order came in when an ingredient ran low. Same create-never-delete rule as
+ * the orders channel. No-op on iOS.
+ */
+export async function ensureStockAlertsChannel(): Promise<void> {
+  if (Platform.OS !== "android" || stockAlertsChannelReady) return;
+  await Notifications.setNotificationChannelAsync("stock-alerts", {
+    name: "Stock alerts",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 200],
+  });
+  stockAlertsChannelReady = true;
+}
+
+let approvalsChannelReady = false;
+
+/**
+ * The Android `approvals` channel: HIGH importance, the default sound (never
+ * the new-order ringtone, so a request never sounds like an order) and a
+ * vibration. Resolves whether it exists, because the device token reports it
+ * (`deviceChannels`) and the server only targets a channel the phone created —
+ * a push to a missing channel is dropped silently. iOS has no channels.
+ */
+export async function ensureApprovalsChannel(): Promise<boolean> {
+  if (Platform.OS !== "android") return false;
+  if (approvalsChannelReady) return true;
+  try {
+    await Notifications.setNotificationChannelAsync(APPROVALS_CHANNEL_ID, {
+      name: "Approval requests",
+      description: "Refunds and cancels your team asks you to approve",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 200, 120, 200],
+      sound: "default",
+    });
+    approvalsChannelReady = true;
+  } catch (error: unknown) {
+    console.warn("[notifications] approvals channel failed:", error instanceof Error ? error.message : error);
+  }
+  return approvalsChannelReady;
+}
+
+/** The channels this install has created, for `platform_device_tokens.channels`. */
+export function deviceChannels(): string[] {
+  return approvalsChannelReady ? [APPROVALS_CHANNEL_ID] : [];
+}
+
+/**
+ * Registers the Approve / Decline actions (design-spec §3.12). Before the
+ * token is requested, so the first request push already has its buttons.
+ */
+export async function ensureApprovalCategories(): Promise<void> {
+  const platform = Platform.OS === "ios" ? "ios" : "android";
+  for (const category of APPROVAL_PUSH_CATEGORIES(platform)) {
+    try {
+      await Notifications.setNotificationCategoryAsync(category.identifier, category.actions);
+    } catch (error: unknown) {
+      console.warn("[notifications] approval category failed:", error instanceof Error ? error.message : error);
+    }
+  }
+}
+
 export async function registerForPushNotifications(): Promise<string | null> {
   // Make sure the ringtone channel exists even on devices/emulators where we
   // bail out below — local in-app order alerts still rely on it.
   await ensureOrdersChannel();
+  await ensureApprovalsChannel();
+  await ensureApprovalCategories();
 
   // Push notifications only work on physical devices
   if (!Device.isDevice) {

@@ -119,7 +119,9 @@ const brotliCompress = promisify(zlib.brotliCompress);
 // v35 authenticates POS creation before idempotent replay, keeps recent
 // product-sale lines, and serializes Lalamove booking before the paid request.
 // Existing v34 tenants must receive these function updates too.
-const CURRENT_SCHEMA_VERSION = 35;
+// v36 splits payment-method analytics by the settlement ledger, so a bill paid
+// ₱120 by GCash and the rest in cash counts under both methods.
+const CURRENT_SCHEMA_VERSION = 36;
 const SCHEMA_POLL_TIMEOUT_MS = 10_000;
 const MAX_SCHEMA_WAIT_MS = 120_000;
 

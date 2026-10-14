@@ -22,6 +22,13 @@ export interface AdminSidebarFlags {
   isBranchScopedAccount?: boolean | null
   /** The store is in its first weeks after onboarding: "Start here" is offered. Absent = not offered. */
   hasStartHere?: boolean | null
+  /**
+   * `resolveOrderBackend(tenant) === 'platform'`. Sales reports read only the
+   * platform database for now (Convex coverage is reports Phase 7), and on a
+   * platform store Product Analytics redirects into Reports → Items. Absent =
+   * unknown: neither entry changes.
+   */
+  isPlatformBackend?: boolean | null
 }
 
 export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
@@ -40,6 +47,9 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
     if (!flags.convexConfigured) paths.add('/product-analytics')
   }
 
+  if (flags.isPlatformBackend === true) paths.add('/product-analytics')
+  if (flags.isPlatformBackend === false) paths.add('/admin/reports')
+
   if (!flags.bundlesEnabled) paths.add('/bundles')
   if (!flags.inventoryEnabled) paths.add('/inventory')
   // Transfers needs somewhere to transfer TO. A single-shop store gets the rest
@@ -54,6 +64,8 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
   // not a manager's to read. The route is gated too (`isStoreWideAdminPath`);
   // hiding the entry is what stops it being offered.
   if (!flags.multiBranchEnabled || flags.isBranchScopedAccount) paths.add('/outlets')
+  // Texts reach every guest of the store; the route is store-wide only too.
+  if (flags.isBranchScopedAccount) paths.add('/admin/texts')
   // Only stores set up through onboarding have a path (and goals) to show.
   if (!flags.hasStartHere) paths.add('/admin/start')
 

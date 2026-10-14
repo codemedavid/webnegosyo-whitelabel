@@ -3,10 +3,12 @@ import type { MenuItem, ModifierGroup } from '@/types/database'
 import { MAX_CART_ITEM_QUANTITY } from '@/lib/cart-utils'
 import { computeModifierSubtotal, normalizeModifierGroups } from '@/lib/modifier-groups'
 import { resolveLinkedOptions, type LinkedItemSnapshot } from '@/lib/modifier-linked-options'
+import { withRecipeStockAvailability } from '@/lib/inventory/option-availability'
 import {
   getDefaultSelection,
   getSelectedOptions,
   mapSelectionToCartFormat,
+  pruneUnavailableSelection,
   toggleOption,
   validateAllGroups,
   setOptionQuantity,
@@ -23,7 +25,15 @@ interface UseModifierGroupsOptions {
    * render as unavailable rather than blank.
    */
   linkedItems?: ReadonlyMap<string, LinkedItemSnapshot>
+  /**
+   * Options whose recipe the shelf cannot cover right now (from the stock
+   * ceilings). They render as unavailable, and any pick of them — e.g. a
+   * default seeded before the ceilings arrived — is dropped.
+   */
+  soldOutOptionIds?: ReadonlySet<string>
 }
+
+const NONE_SOLD_OUT: ReadonlySet<string> = new Set()
 
 interface UseModifierGroupsResult {
   /** Whether the item carries an explicit unified modifier_groups payload. */
@@ -51,18 +61,29 @@ interface UseModifierGroupsResult {
  * `active` is false for items without an explicit `modifier_groups` payload, so
  * callers keep their existing legacy variation/add-on path untouched.
  */
-export function useModifierGroups({ item, linkedItems }: UseModifierGroupsOptions): UseModifierGroupsResult {
+export function useModifierGroups({
+  item,
+  linkedItems,
+  soldOutOptionIds = NONE_SOLD_OUT,
+}: UseModifierGroupsOptions): UseModifierGroupsResult {
   const active = Boolean(item.modifier_groups && item.modifier_groups.length > 0)
 
   const groups = useMemo(() => {
     if (!active) return []
     const normalized = normalizeModifierGroups({ modifier_groups: item.modifier_groups })
     // Linked options resolve to an ordinary ModifierOption, so everything
-    // downstream (pricing, validation, cart projection) is unchanged.
-    return resolveLinkedOptions(normalized, linkedItems ?? new Map())
-  }, [active, item.modifier_groups, linkedItems])
+    // downstream (pricing, validation, cart projection) is unchanged. A
+    // recipe-sold-out option becomes an ordinary unavailable one the same way.
+    return withRecipeStockAvailability(
+      resolveLinkedOptions(normalized, linkedItems ?? new Map()),
+      soldOutOptionIds,
+    )
+  }, [active, item.modifier_groups, linkedItems, soldOutOptionIds])
 
-  const [selection, setSelection] = useState<ModifierSelection>(() => getDefaultSelection(groups))
+  const [rawSelection, setSelection] = useState<ModifierSelection>(() => getDefaultSelection(groups))
+  // Availability can arrive after the defaults were seeded; what the diner
+  // sees, pays for and adds is always the selection minus sold-out picks.
+  const selection = useMemo(() => pruneUnavailableSelection(groups, rawSelection), [groups, rawSelection])
   const [quantity, setQuantity] = useState(1)
 
   // Reset selection + quantity to defaults when the item changes.
@@ -91,9 +112,11 @@ export function useModifierGroups({ item, linkedItems }: UseModifierGroupsOption
     [groups, selection],
   )
 
+  // Edits start from what the diner sees, so a hidden sold-out pick never
+  // counts against a group's limit.
   const toggle = useCallback((group: ModifierGroup, optionId: string) => {
-    setSelection((prev) => toggleOption(prev, group, optionId))
-  }, [])
+    setSelection((prev) => toggleOption(pruneUnavailableSelection(groups, prev), group, optionId))
+  }, [groups])
 
   const incrementQuantity = useCallback(() => {
     setQuantity((q) => Math.min(q + 1, MAX_CART_ITEM_QUANTITY))
@@ -117,7 +140,8 @@ export function useModifierGroups({ item, linkedItems }: UseModifierGroupsOption
     totalPrice,
     cartFormat,
     toggle,
-    setOptionQuantity: (group, optionId, portions) => setSelection(prev => setOptionQuantity(prev, group, optionId, portions)),
+    setOptionQuantity: (group, optionId, portions) =>
+      setSelection(prev => setOptionQuantity(pruneUnavailableSelection(groups, prev), group, optionId, portions)),
     setQuantity,
     incrementQuantity,
     decrementQuantity,

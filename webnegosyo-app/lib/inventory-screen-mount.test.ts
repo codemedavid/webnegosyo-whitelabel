@@ -26,7 +26,7 @@ describe("inventory tab registration", () => {
 
   it("gates the tab through the workspace and permission check like every other tab", () => {
     // Without show(), the tab would appear in every view and for staff who
-    // hold no menu permission.
+    // hold no inventory permission.
     expect(layout).toMatch(/href: show\("inventory"\)/);
   });
 });

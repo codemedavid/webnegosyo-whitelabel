@@ -12,7 +12,7 @@
  * forgets to check.
  */
 
-import { getMenuStockCeilings } from '@/lib/inventory/menu-ceilings'
+import { getMenuStockAvailability, getMenuStockCeilings } from '@/lib/inventory/menu-ceilings'
 
 const from = jest.fn()
 jest.mock('@/lib/supabase/admin', () => ({
@@ -24,7 +24,7 @@ function table(data: unknown, error: unknown = null) {
     then: (resolve: (v: unknown) => void) => resolve({ data, error }),
     maybeSingle: () => Promise.resolve({ data: Array.isArray(data) ? data[0] : data, error }),
   }
-  for (const method of ['select', 'eq', 'is', 'in', 'order', 'limit']) {
+  for (const method of ['select', 'eq', 'is', 'in', 'order', 'limit', 'range']) {
     chain[method] = () => chain
   }
   return chain
@@ -45,6 +45,7 @@ interface WireOptions {
   components?: unknown[]
   items?: unknown[]
   branchStock?: unknown[]
+  menuItems?: unknown[]
   error?: unknown
 }
 
@@ -56,7 +57,7 @@ function wire(options: WireOptions = {}) {
     inventory_items: table(options.items ?? [FLOUR], options.error),
     inventory_units: table([GRAM], options.error),
     inventory_stock: table(options.branchStock ?? [], options.error),
-    menu_items: table([{ id: 'm-pizza', name: 'Margherita' }], options.error),
+    menu_items: table(options.menuItems ?? [{ id: 'm-pizza', name: 'Margherita' }], options.error),
   }
   from.mockImplementation((name: string) => tables[name] ?? table([]))
 }
@@ -136,5 +137,77 @@ describe('getMenuStockCeilings', () => {
     const ceilings = await getMenuStockCeilings('t1', 'branch-1')
 
     expect(ceilings.get('m-pizza')).toBe(2)
+  })
+})
+
+describe('getMenuStockAvailability — per-option ceilings', () => {
+  // Pizza 200 g flour; "Extra cheese" option 100 g cheese; "Truffle" simple-stock option with a leftover recipe.
+  const CHEESE = { id: 'ing-cheese', name: 'Cheese', stock_unit_id: 'unit-gram', current_qty: 250, is_active: true }
+  const OPTION_RECIPES = [
+    PIZZA_RECIPE,
+    { id: 'r-cheese', target_type: 'modifier_option', menu_item_id: 'm-pizza', modifier_option_id: 'opt-cheese' },
+    { id: 'r-truffle', target_type: 'modifier_option', menu_item_id: 'm-pizza', modifier_option_id: 'opt-truffle' },
+  ]
+  const OPTION_COMPONENTS = [
+    PIZZA_COMPONENT,
+    { recipe_id: 'r-cheese', inventory_item_id: 'ing-cheese', quantity: 100, unit_id: 'unit-gram' },
+    { recipe_id: 'r-truffle', inventory_item_id: 'ing-cheese', quantity: 999, unit_id: 'unit-gram' },
+  ]
+  const PIZZA_WITH_OPTIONS = {
+    id: 'm-pizza', name: 'Margherita',
+    modifier_groups: [{ id: 'g', name: 'Extras', min_select: 0, max_select: null, display_order: 0, options: [
+      { id: 'opt-cheese', name: 'Extra cheese', price_modifier: 30, display_order: 0 },
+      { id: 'opt-truffle', name: 'Truffle', price_modifier: 90, display_order: 1, stock_mode: 'simple', stock_qty: 3 },
+    ] }],
+  }
+  const wireOptions = (cheese: number, branchStock: unknown[] = []) => wire({
+    recipes: OPTION_RECIPES,
+    components: OPTION_COMPONENTS,
+    items: [FLOUR, { ...CHEESE, current_qty: cheese }],
+    menuItems: [PIZZA_WITH_OPTIONS],
+    branchStock,
+  })
+
+  it('reports how many of the dish the shelf can make with each recipe option', async () => {
+    wireOptions(250) // cheese for 2 extra-cheese pizzas, flour for 5
+
+    const { dishes, options } = await getMenuStockAvailability('t1')
+
+    expect(dishes.get('m-pizza')).toBe(5)
+    expect(options.get('m-pizza')?.get('opt-cheese')).toBe(2)
+  })
+
+  it('reads zero for an option whose ingredient is exhausted while the dish stays on sale', async () => {
+    wireOptions(0)
+
+    const { dishes, options } = await getMenuStockAvailability('t1')
+
+    expect(dishes.get('m-pizza')).toBe(5)
+    expect(options.get('m-pizza')?.get('opt-cheese')).toBe(0)
+  })
+
+  it('leaves out an option counted with simple stock — its own counter decides', async () => {
+    wireOptions(0)
+
+    const { options } = await getMenuStockAvailability('t1')
+
+    expect(options.get('m-pizza')?.has('opt-truffle')).toBe(false)
+  })
+
+  it('treats a branch with no row for the option ingredient as unknown, not sold out', async () => {
+    wireOptions(0, [{ inventory_item_id: 'ing-flour', outlet_id: 'branch-1', current_qty: 400 }])
+
+    const { options } = await getMenuStockAvailability('t1', 'branch-1')
+
+    expect(options.get('m-pizza')?.has('opt-cheese') ?? false).toBe(false)
+  })
+
+  it('is empty when the tenant has not turned inventory on', async () => {
+    wire({ tenant: { inventory_enabled: false } })
+
+    const { dishes, options } = await getMenuStockAvailability('t1')
+
+    expect(dishes.size).toBe(0)
+    expect(options.size).toBe(0)
   })
 })

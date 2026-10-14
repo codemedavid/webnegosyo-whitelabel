@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { EditorPageHeader } from '@/components/admin/menu-editor/editor-page-header'
 import { MenuItemForm } from '@/components/admin/menu-item-form'
 import { dishCostConvexUrl } from '@/lib/menu-editor/cost-backend'
-import { getCachedTenantBySlug, getCachedCategoriesByTenant } from '@/lib/cache'
+import { getCachedTenantBySlug, getCachedCategoriesByTenant, getCachedCurrentUserRole } from '@/lib/cache'
 import { getMenuItemById, getLinkableMenuItems } from '@/lib/admin-service'
 import { ItemBranchesPanel } from '@/components/admin/item-branches-panel'
 import { createSupabaseOutletRepository } from '@/lib/outlets/supabase-outlet-repository'
@@ -11,6 +11,7 @@ import { isMultiBranchEnabled } from '@/lib/outlets/multi-branch-flag'
 import { getPresellAllocations } from '@/lib/presell/allocations-read'
 import { toBusinessDayKey } from '@/lib/inventory/business-day'
 import { getLinkedMenuItemIds } from '@/lib/inventory/recipe-link-read'
+import { resolveInventoryAccess } from '@/components/admin/inventory-manager/inventory-access'
 
 export default async function EditMenuItemPage({
   params,
@@ -35,7 +36,7 @@ export default async function EditMenuItemPage({
   const isModifierGroupsTenant = tenant.modifier_groups_enabled ?? false
   const isInventoryTenant = tenant.inventory_enabled ?? false
 
-  const [item, categories, linkableItems, outlets, itemOverrides, presellRead, recipeLinks] = await Promise.all([
+  const [item, categories, linkableItems, outlets, itemOverrides, presellRead, recipeLinks, caller] = await Promise.all([
     getMenuItemById(itemId, tenant.id).catch(() => null),
     getCachedCategoriesByTenant(tenant.id),
     // Only the modifier-groups editor reads these, and the query is an
@@ -59,6 +60,9 @@ export default async function EditMenuItemPage({
     // Only so the Ingredients row can say "Linked" or "Not linked" while
     // closed; a failed read (null) leaves the row without a verdict.
     isInventoryTenant ? getLinkedMenuItemIds(tenant.id) : Promise.resolve({ linkedMenuItemIds: null }),
+    // Recipe cost, margin and the typed cost are `costs`; a `menu`-only editor
+    // still edits the dish and its recipe, without the peso figures.
+    getCachedCurrentUserRole(),
   ])
 
   const presellAllocations =
@@ -106,6 +110,7 @@ export default async function EditMenuItemPage({
         presellAllocations={presellAllocations}
         presellLoadError={presellLoadError}
         convexUrl={dishCostConvexUrl(tenant)}
+        canSeeCosts={resolveInventoryAccess(caller).canSeeCosts}
         branchesPanel={
           /*
             A row of "More options" but outside the <form>: a branch override

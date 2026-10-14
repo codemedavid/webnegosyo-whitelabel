@@ -1,5 +1,6 @@
 import Image from 'next/image'
 import { landingFontClass } from '@/components/landing/landing-fonts'
+import { MotionRoot } from './motion/motion-root'
 
 /** The set-up pages' frame (`/onboarding/...`): white ground, wordmark, a way to reach us. */
 
@@ -7,9 +8,15 @@ export const ONBOARDING_HELP_URL = 'https://m.me/WebNegosyoOfficial'
 const INK = '#17130F'
 const MUTED = '#5C544D'
 
-export function OnboardingShell({ children }: { children: React.ReactNode }) {
+/** `night`: the dark, photographic frame the sign-up link opens on. */
+type ShellTone = 'light' | 'night'
+
+const NIGHT = '#14100D'
+
+export function OnboardingShell({ children, tone = 'light' }: { children: React.ReactNode; tone?: ShellTone }) {
+  const isNight = tone === 'night'
   return (
-    <main className={`${landingFontClass} min-h-dvh bg-white antialiased`} style={{ fontFamily: 'var(--font-landing-text), system-ui, sans-serif', color: INK }}>
+    <main className={`${landingFontClass} min-h-dvh antialiased`} style={{ fontFamily: 'var(--font-landing-text), system-ui, sans-serif', color: isNight ? '#FFFFFF' : INK, backgroundColor: isNight ? NIGHT : '#FFFFFF' }}>
       <header className="flex h-16 items-center justify-between px-5 sm:px-8">
         <span className="flex items-center gap-2">
           <Image src="/smartmenu-mark.png" alt="" width={32} height={32} className="h-8 w-8 rounded-lg" />
@@ -19,13 +26,12 @@ export function OnboardingShell({ children }: { children: React.ReactNode }) {
           href={ONBOARDING_HELP_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-full border px-4 py-2 text-sm font-semibold transition-colors hover:bg-[#F6F4F1]"
-          style={{ borderColor: '#E9E5E0' }}
+          className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${isNight ? 'border-white/20 hover:bg-white/10' : 'border-[#E9E5E0] hover:bg-[#F6F4F1]'}`}
         >
           Questions?
         </a>
       </header>
-      {children}
+      <MotionRoot>{children}</MotionRoot>
     </main>
   )
 }

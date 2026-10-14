@@ -17,7 +17,8 @@ const WHOLE_PESO_THRESHOLD = 1000;
 
 interface InventoryHeroProps {
   summary: StockSummary;
-  value: StockValue;
+  /** What the shelf is worth, or null for an account without the Costs grant. */
+  value: StockValue | null;
   levelFilter: LevelFilter;
   onToggleLevel: (level: StockLevel) => void;
 }
@@ -34,7 +35,7 @@ export function InventoryHero({ summary, value, levelFilter, onToggleLevel }: In
     low: summary.lowCount,
     ok: summary.okCount,
   };
-  const decimals = value.total >= WHOLE_PESO_THRESHOLD ? 0 : 2;
+  const ingredientCount = `Across ${summary.total} ${summary.total === 1 ? "ingredient" : "ingredients"}`;
 
   return (
     <View style={styles.hero}>
@@ -50,13 +51,16 @@ export function InventoryHero({ summary, value, levelFilter, onToggleLevel }: In
 
         <View style={styles.copy}>
           <Text style={styles.eyebrow}>Stock on hand</Text>
-          <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
-            {formatPeso(value.total, decimals)}
-          </Text>
+          {/* Absent without the Costs grant — never ₱0, never "add a cost". */}
+          {value && (
+            <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
+              {formatPeso(value.total, value.total >= WHOLE_PESO_THRESHOLD ? 0 : 2)}
+            </Text>
+          )}
           <Text style={styles.subline} numberOfLines={2}>
-            {value.uncostedCount > 0
+            {value && value.uncostedCount > 0
               ? `${value.uncostedCount} without a cost — add one to count them`
-              : `Across ${summary.total} ${summary.total === 1 ? "ingredient" : "ingredients"}`}
+              : ingredientCount}
           </Text>
         </View>
       </View>

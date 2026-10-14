@@ -11,6 +11,8 @@ import {
   saveRecipeForTarget,
 } from '@/lib/inventory/recipes-service'
 import { recipeInputSchema } from '@/lib/inventory/schemas'
+import { isRecipeLineRejection } from '@/lib/inventory/recipe-line-rules'
+import { ingredientsForCaller } from '@/lib/inventory/cost-visibility'
 
 const nonEmptyId = z.string().trim().min(1)
 const tenantSlugSchema = z.string().min(2).regex(/^[a-z0-9-]+$/)
@@ -48,6 +50,10 @@ interface ErrorContext {
 function errorResponse(error: unknown, context: ErrorContext) {
   if (error instanceof z.ZodError || error instanceof SyntaxError) {
     return NextResponse.json({ error: 'Invalid recipe request' }, { status: 400 })
+  }
+  // A line no sale could ever deduct: the reason is written for the merchant.
+  if (isRecipeLineRejection(error)) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
   }
 
   const message = error instanceof Error ? error.message : 'Recipe request failed'
@@ -107,7 +113,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       JSON.parse(request.nextUrl.searchParams.get('target') ?? ''),
     )
 
-    await verifyTenantPermission(tenantId, 'menu', 'view')
+    // Recipes are `menu`; what an ingredient costs is `costs` (Phase 0d), so a
+    // caller without it gets the ingredient list with the prices left out.
+    const { userRole } = await verifyTenantPermission(tenantId, 'menu', 'view')
     const [ingredients, units, recipe] = await Promise.all([
       getIngredients(tenantId),
       getUnits(tenantId),
@@ -115,7 +123,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     ])
 
     return NextResponse.json(
-      { success: true, data: { ingredients, units, recipe } },
+      { success: true, data: { ingredients: ingredientsForCaller(ingredients, userRole), units, recipe } },
       { headers: { 'Cache-Control': 'private, no-store' } },
     )
   } catch (error) {

@@ -51,7 +51,7 @@ function getRequest() {
 beforeEach(() => {
   jest.clearAllMocks()
   jest.spyOn(console, 'error').mockImplementation(() => {})
-  verifyTenantPermission.mockResolvedValue({ user: { id: 'user-1' } })
+  verifyTenantPermission.mockResolvedValue({ user: { id: 'user-1' }, userRole: { role: 'admin', is_owner: true, permissions: null } })
   getIngredients.mockResolvedValue([{ id: 'ingredient-1' }])
   getUnits.mockResolvedValue([{ id: 'unit-1' }])
   getRecipeForTarget.mockResolvedValue({ recipe: { id: 'recipe-1' }, components: [] })
@@ -85,6 +85,20 @@ describe('PUT /api/inventory/recipe', () => {
     })
     expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu', 'delete')
     expect(saveRecipeForTarget).toHaveBeenCalledWith(TENANT, TARGET, input)
+  })
+
+  it('answers 400 with the merchant-facing reason when a line could never be deducted', async () => {
+    const { recipeLineRejection } = await import('@/lib/inventory/recipe-line-rules')
+    saveRecipeForTarget.mockRejectedValue(recipeLineRejection('Egg is stocked in pc, so it can\'t be measured in g'))
+    const response = await PUT(new NextRequest('http://localhost/api/inventory/recipe', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', origin: 'http://localhost' },
+      body: JSON.stringify({ tenantId: TENANT, tenantSlug: 'shop', target: TARGET, input: { notes: null, components: [] } }),
+    }))
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toContain('Egg is stocked in pc')
+    expect(captureException).not.toHaveBeenCalled()
   })
 
   it('rejects a cross-origin write before authorization or persistence', async () => {
@@ -154,6 +168,34 @@ describe('GET /api/inventory/recipe', () => {
         recipe: { recipe: { id: 'recipe-1' }, components: [] },
       },
     })
+  })
+
+  it('leaves ingredient prices out for an account without Costs & Profit', async () => {
+    // Recipes stay `menu`, but what an ingredient costs is `costs` (Phase 0d).
+    // Absent, never 0: a ₱0 price would read as a free ingredient.
+    verifyTenantPermission.mockResolvedValue({
+      user: { id: 'user-1' },
+      userRole: { role: 'admin', is_owner: false, permissions: ['menu'] },
+    })
+    getIngredients.mockResolvedValue([{ id: 'ingredient-1', name: 'Beef', unit_cost: 420 }])
+
+    const response = await GET(getRequest())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.data.ingredients).toEqual([{ id: 'ingredient-1', name: 'Beef' }])
+  })
+
+  it('keeps ingredient prices for an account holding Costs & Profit', async () => {
+    verifyTenantPermission.mockResolvedValue({
+      user: { id: 'user-1' },
+      userRole: { role: 'admin', is_owner: false, permissions: ['menu', 'costs'] },
+    })
+    getIngredients.mockResolvedValue([{ id: 'ingredient-1', name: 'Beef', unit_cost: 420 }])
+
+    const body = await (await GET(getRequest())).json()
+
+    expect(body.data.ingredients).toEqual([{ id: 'ingredient-1', name: 'Beef', unit_cost: 420 }])
   })
 
   it('reports an unexpected backend failure without attaching the request payload', async () => {

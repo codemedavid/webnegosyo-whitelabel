@@ -1,4 +1,5 @@
 import type { Tenant } from '@/types/database'
+import { resolveOrderBackend } from '@/lib/order-backend'
 
 /**
  * The slice of a tenant the admin shell (sidebar + mobile header) renders.
@@ -23,6 +24,8 @@ export interface AdminShellTenant {
   bundles_enabled: boolean | null
   /** Whether a Convex deployment is set — the URL itself stays on the server. */
   is_convex_configured: boolean
+  /** Orders live on the shared platform database (`resolveOrderBackend`): Sales reports read it. */
+  is_platform_backend: boolean
   inventory_enabled: boolean | null
   multi_branch_enabled: boolean | null
   /** Owner AI assistant ("the Owl"). Coerced: only a strict `true` shows it. */
@@ -40,6 +43,7 @@ export function toAdminShellTenant(tenant: Tenant, opts: { hasStartHere?: boolea
     menu_engineering_enabled: tenant.menu_engineering_enabled ?? null,
     bundles_enabled: tenant.bundles_enabled ?? null,
     is_convex_configured: !!tenant.convex_deployment_url,
+    is_platform_backend: resolveOrderBackend(tenant) === 'platform',
     inventory_enabled: tenant.inventory_enabled ?? null,
     multi_branch_enabled: tenant.multi_branch_enabled ?? null,
     assistant_enabled: tenant.assistant_enabled === true,

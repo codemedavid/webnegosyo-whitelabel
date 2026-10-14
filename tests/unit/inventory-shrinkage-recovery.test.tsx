@@ -17,6 +17,7 @@ import { InventoryManager } from '@/components/admin/inventory-manager'
 import type { DailyReportRow } from '@/lib/inventory/daily-report'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 jest.mock('@/components/admin/recipe-editor', () => ({ RecipeEditor: () => null }))
@@ -110,7 +111,7 @@ describe('the report offers a way to answer a shortfall', () => {
 describe('inventory receives the hand-off', () => {
   function renderManager(props: Record<string, unknown> = {}) {
     render(
-      <InventoryManager
+      <InventoryManager access={FULL_INVENTORY_ACCESS}
         tenantId="t1"
         tenantSlug="acme"
         initialIngredients={[FLOUR]}

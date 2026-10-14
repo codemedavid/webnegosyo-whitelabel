@@ -26,13 +26,16 @@
  *      unconvertible ingredient is passed over rather than read as zero. Zero
  *      is a claim about the shelf; silence is not.
  *
- * Only a BASE recipe constrains, matching auto-86: an ingredient used solely by
- * a variation option or addon leaves the dish sellable in its other
- * configurations, and option-level ceilings need per-option availability that
- * does not exist yet.
+ * A cart line is judged IN ITS CONFIGURATION: its base recipe plus every
+ * selected variation option, add-on and modifier-option recipe, × add-on
+ * portions — exactly what `resolveOrderDepletions` will spend once the order is
+ * accepted (both read `resolveLineRecipePortions`). A bare dish (no selections,
+ * as a menu-wide ceiling asks) reads its base recipe alone, so an ingredient
+ * used only by one option leaves the dish sellable in its other
+ * configurations; that option gets its own ceiling (`resolveOptionCeilings`).
  */
 
-import { resolveConfiguredRecipeIds } from '@/lib/inventory/graph-builder'
+import { resolveLineRecipePortions, type LineRecipePortion } from '@/lib/inventory/order-depletion'
 import { convertQuantity, type InventoryUnit } from '@/lib/inventory/unit-conversion'
 import type { Recipe, RecipeComponent } from '@/types/database'
 
@@ -59,18 +62,24 @@ export interface ProducibleTarget {
   optionIds?: string[]
   addonIds?: string[]
   modifierOptionIds?: string[]
+  /** Add-on portions per unit of the dish; absent means one. */
+  addonQuantities?: Record<string, number>
 }
 
 export interface CartStockLine extends ProducibleTarget {
   quantity: number
+  /** The picks a diner would recognise this configuration by ("Large, Pearls"). */
+  optionLabel?: string
 }
 
 export interface CartStockShortfall {
   menuItemId: string
-  /** How many the cart asked for, across every line naming this dish. */
+  /** How many the cart asked for, across every line of this configuration. */
   requested: number
   /** How many the shelf can actually cover. */
   producible: number
+  /** The configuration's picks, when the caller named them. */
+  optionLabel?: string
 }
 
 /** What one unit of a dish takes off the shelf, in each ingredient's stock unit. */
@@ -107,13 +116,42 @@ function indexComponents(
 }
 
 /**
- * What one unit of `target` consumes, already converted into each ingredient's
- * own stock unit and merged per ingredient.
+ * What one unit of the given recipe portions consumes, already converted into
+ * each ingredient's own stock unit and merged per ingredient.
  *
  * Components this cannot judge — an ingredient with no stock row, an inactive
  * one, or a unit that will not convert (grams of an ingredient stocked by the
  * piece needs a density nobody has recorded) — are dropped, not zeroed.
  */
+function needsFromPortions(
+  portions: readonly LineRecipePortion[],
+  componentsByRecipe: ReadonlyMap<string, RecipeComponent[]>,
+  stockById: ReadonlyMap<string, ProducibleStock>,
+  unitsById: ReadonlyMap<string, InventoryUnit>,
+): UnitNeed[] {
+  const totals = new Map<string, number>()
+  for (const { recipe, portions: perUnit } of portions) {
+    for (const component of componentsByRecipe.get(recipe.id) ?? []) {
+      const ingredient = stockById.get(component.inventory_item_id)
+      if (!ingredient) continue
+
+      const needed = Number(component.quantity) * perUnit
+      if (!Number.isFinite(needed) || needed <= 0) continue
+
+      const inStockUnit = convertToStockUnit(needed, component.unit_id, ingredient, unitsById)
+      if (inStockUnit === null) continue
+
+      totals.set(
+        component.inventory_item_id,
+        (totals.get(component.inventory_item_id) ?? 0) + inStockUnit,
+      )
+    }
+  }
+
+  return [...totals].map(([ingredientId, quantity]) => ({ ingredientId, quantity }))
+}
+
+/** What one unit of `target`, in its configuration, consumes. */
 function resolveUnitNeeds(
   target: ProducibleTarget,
   recipes: readonly Recipe[],
@@ -121,34 +159,12 @@ function resolveUnitNeeds(
   stockById: ReadonlyMap<string, ProducibleStock>,
   unitsById: ReadonlyMap<string, InventoryUnit>,
 ): UnitNeed[] {
-  const configured = resolveConfiguredRecipeIds(
-    target.menuItemId,
-    target.optionIds ?? [],
-    target.addonIds ?? [],
-    recipes,
-    target.modifierOptionIds ?? [],
+  return needsFromPortions(
+    resolveLineRecipePortions(target, recipes),
+    componentsByRecipe,
+    stockById,
+    unitsById,
   )
-
-  if (!configured.baseRecipeId) return []
-
-  const totals = new Map<string, number>()
-  for (const component of componentsByRecipe.get(configured.baseRecipeId) ?? []) {
-    const ingredient = stockById.get(component.inventory_item_id)
-    if (!ingredient) continue
-
-    const needed = Number(component.quantity)
-    if (!Number.isFinite(needed) || needed <= 0) continue
-
-    const inStockUnit = convertToStockUnit(needed, component.unit_id, ingredient, unitsById)
-    if (inStockUnit === null) continue
-
-    totals.set(
-      component.inventory_item_id,
-      (totals.get(component.inventory_item_id) ?? 0) + inStockUnit,
-    )
-  }
-
-  return [...totals].map(([ingredientId, quantity]) => ({ ingredientId, quantity }))
 }
 
 /**
@@ -222,8 +238,29 @@ export function resolveProducibleUnits(
   return unitsFrom(needs, remaining)
 }
 
+/** Sorted, de-duplicated ids: the same picks in any order are one configuration. */
+function idsKey(ids: readonly string[] | undefined): string[] {
+  return [...new Set(ids ?? [])].sort()
+}
+
+/**
+ * Lines with the same dish AND the same picks are one configuration. Option
+ * buckets are unioned — ids are unique per option, and depletion unions them
+ * too — and add-on portions are part of the identity: two pearls is not one.
+ */
+function configurationKey(line: CartStockLine): string {
+  const picks = idsKey([...(line.optionIds ?? []), ...(line.addonIds ?? []), ...(line.modifierOptionIds ?? [])])
+  const portions = Object.entries(line.addonQuantities ?? {})
+    .filter(([, quantity]) => quantity !== 1)
+    .sort(([a], [b]) => a.localeCompare(b))
+  return JSON.stringify([line.menuItemId, picks, portions])
+}
+
 /**
  * The lines of a cart that ask for more than the kitchen can make.
+ *
+ * Each line is judged in its configuration (base + selected option recipes ×
+ * portions), the way depletion will spend it.
  *
  * The cart is judged as a WHOLE, not line by line: two dishes sharing one
  * ingredient must not both be granted it. Lines are walked in cart order and
@@ -231,8 +268,10 @@ export function resolveProducibleUnits(
  * served in full and the shortfall lands on the later one — the same order the
  * kitchen would fill them in.
  *
- * Lines naming the same dish are merged first. Three plus three of one pizza is
- * six pizzas; reported as two lines of three, each would look satisfiable.
+ * Lines of the same configuration are merged first. Three plus three of one
+ * pizza is six pizzas; reported as two lines of three, each would look
+ * satisfiable. Two configurations of one dish stay apart — they spend
+ * different ingredients — and share the running shelf instead.
  */
 export function findCartStockShortfalls(
   lines: readonly CartStockLine[],
@@ -252,9 +291,10 @@ export function findCartStockShortfalls(
   for (const line of lines) {
     const quantity = Number(line.quantity)
     if (!Number.isFinite(quantity) || quantity <= 0) continue
-    const existing = merged.get(line.menuItemId)
-    merged.set(line.menuItemId, {
-      ...line,
+    const key = configurationKey(line)
+    const existing = merged.get(key)
+    merged.set(key, {
+      ...(existing ?? line),
       quantity: (existing?.quantity ?? 0) + quantity,
     })
   }
@@ -277,11 +317,68 @@ export function findCartStockShortfalls(
         menuItemId: line.menuItemId,
         requested: line.quantity,
         producible,
+        ...(line.optionLabel ? { optionLabel: line.optionLabel } : {}),
       })
     }
   }
 
   return shortfalls
+}
+
+/** Menu item id → option id → whole units of the dish producible WITH that option. */
+export type OptionStockCeilings = ReadonlyMap<string, ReadonlyMap<string, number>>
+
+/** The option a recipe belongs to, or null for a base or prep recipe. */
+function recipeOptionId(recipe: Recipe): string | null {
+  if (recipe.target_type === 'modifier_option') return recipe.modifier_option_id ?? null
+  if (recipe.target_type === 'variation_option') return recipe.variation_option_id ?? null
+  if (recipe.target_type === 'addon') return recipe.addon_id ?? null
+  return null
+}
+
+/**
+ * How many of each dish the shelf can make WITH each option that carries its
+ * own recipe — the base recipe plus that option's, one portion, exactly as a
+ * cart line picking it would be judged at checkout.
+ *
+ * An option whose own recipe names nothing judgeable here (no stock row, an
+ * inactive ingredient, an unconvertible unit) is ABSENT: ignorance, never zero.
+ * `countedSeparately` names options using simple stock: their counter is the
+ * truth and a leftover recipe on them is never spent.
+ */
+export function resolveOptionCeilings(
+  recipes: readonly Recipe[],
+  components: readonly RecipeComponent[],
+  stock: readonly ProducibleStock[],
+  units: readonly InventoryUnit[],
+  countedSeparately: ReadonlySet<string> = new Set(),
+): OptionStockCeilings {
+  const stockById = indexStock(stock)
+  const componentsByRecipe = indexComponents(components)
+  const unitsById = indexUnits(units)
+  const onHand = new Map([...stockById.values()].map((item) => [item.id, item.current_qty]))
+
+  const ceilings = new Map<string, Map<string, number>>()
+  for (const recipe of recipes) {
+    const optionId = recipeOptionId(recipe)
+    if (!optionId || !recipe.menu_item_id || countedSeparately.has(optionId)) continue
+    if (ceilings.get(recipe.menu_item_id)?.has(optionId)) continue
+
+    // One id set to every bucket, as checkout sends it: whichever target exists matches.
+    const portions = resolveLineRecipePortions(
+      { menuItemId: recipe.menu_item_id, optionIds: [optionId], addonIds: [optionId], modifierOptionIds: [optionId] },
+      recipes,
+    )
+    const ownPortions = portions.filter((portion) => recipeOptionId(portion.recipe) === optionId)
+    if (needsFromPortions(ownPortions, componentsByRecipe, stockById, unitsById).length === 0) continue
+
+    const needs = needsFromPortions(portions, componentsByRecipe, stockById, unitsById)
+    const forDish = ceilings.get(recipe.menu_item_id) ?? new Map<string, number>()
+    forDish.set(optionId, unitsFrom(needs, onHand))
+    ceilings.set(recipe.menu_item_id, forDish)
+  }
+
+  return ceilings
 }
 
 /** What a dish is called when its name did not survive to the caller. */
@@ -301,7 +398,8 @@ export function describeStockShortfalls(
   if (shortfalls.length === 0) return ''
 
   const parts = shortfalls.map((shortfall) => {
-    const name = nameByMenuItemId.get(shortfall.menuItemId) ?? UNNAMED_DISH
+    const dish = nameByMenuItemId.get(shortfall.menuItemId) ?? UNNAMED_DISH
+    const name = shortfall.optionLabel ? `${dish} (${shortfall.optionLabel})` : dish
     if (shortfall.producible <= 0) return `${name} is sold out`
     return `${name} has only ${shortfall.producible} left`
   })

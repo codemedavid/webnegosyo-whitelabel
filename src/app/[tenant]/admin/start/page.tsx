@@ -1,4 +1,4 @@
-import Image from 'next/image'
+import { Eye } from 'lucide-react'
 import { notFound, redirect } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { verifyTenantAdmin } from '@/lib/admin-service'
@@ -12,6 +12,8 @@ import { findOnboardingByTenant } from '@/lib/onboarding/repository'
 import { loadLaunchSnapshot } from '@/lib/onboarding/launch-snapshot'
 import { buildLaunchReadiness } from '@/lib/onboarding/readiness'
 import { listStoreAddresses } from '@/lib/qr-print/qr-links'
+import { Owl } from '@/components/mascot/owl'
+import { visitLine } from '@/lib/storefront/visit-totals'
 import { LaunchChecklist } from '@/components/admin/launch/launch-checklist'
 import { PathStepRow, type LessonChip } from '@/components/admin/start-here/path-step'
 import { GoalTrackerCard } from '@/components/admin/start-here/goal-tracker-card'
@@ -97,7 +99,9 @@ export default async function StartHerePage({ params }: StartPageProps) {
       )}
 
       <header className="flex items-start gap-3.5">
-        <Image src="/assistant/owl-96.webp" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-full ring-1 ring-wn-line" />
+        <span className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-gradient-to-b from-[#FFF8EA] to-[#FCE3B4] ring-1 ring-wn-line">
+          <Owl framing="bust" size={48} state={data.path.isComplete ? 'happy' : 'idle'} />
+        </span>
         <div className="min-w-0 flex-1">
           <h1 className="text-[1.6rem] font-extrabold leading-tight tracking-[-0.02em] text-wn-ink sm:text-[1.85rem]">
             {data.path.isComplete ? 'You finished your first weeks' : greeting}
@@ -106,6 +110,12 @@ export default async function StartHerePage({ params }: StartPageProps) {
             {goalTitles.length > 0 && <>Your goals: <b className="text-wn-ink">{goalTitles.join(' · ')}</b> · </>}
             {data.path.done} of {data.path.total} done
           </p>
+          {data.visits && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[13.5px] font-semibold text-wn-ink">
+              <Eye className="h-4 w-4 shrink-0 text-wn-stone" aria-hidden />
+              {visitLine(data.visits)}
+            </p>
+          )}
           <div
             className="mt-3 h-2.5 max-w-md overflow-hidden rounded-full bg-wn-line"
             role="progressbar" aria-label="Start here progress" aria-valuemin={0} aria-valuemax={data.path.total} aria-valuenow={data.path.done}

@@ -20,3 +20,20 @@ export const DEMO_STORE = {
 /** Friendly message shown when a guest attempts a write in demo mode. */
 export const DEMO_READONLY_MESSAGE =
   "You're exploring the demo store. Create your own store to manage live orders.";
+
+/**
+ * The session a guest gets from "Explore the demo store" (welcome and login
+ * screens): no user, the demo tenant, and `isDemo` so every write is refused.
+ */
+export function demoSessionAuth() {
+  return {
+    userId: null,
+    tenantId: DEMO_STORE.tenantId,
+    tenantSlug: DEMO_STORE.tenantSlug,
+    tenantName: DEMO_STORE.tenantName,
+    convexUrl: DEMO_STORE.convexUrl,
+    isLoading: false,
+    isAuthenticated: true,
+    isDemo: true,
+  } as const;
+}

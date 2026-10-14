@@ -154,3 +154,22 @@ describe("order edits queue", () => {
     expect(byId.retrying.attempts).toBe(1);
   });
 });
+
+describe("a queued status change's previous status", () => {
+  it("parses back after a restart, and refuses a damaged one", () => {
+    const stored = {
+      editId: "e1",
+      tenantId: "t",
+      backend: "platform",
+      orderId: "o",
+      ref: "orders:updateOrderStatus",
+      args: { orderId: "o", status: "preparing" },
+      createdAt: 1,
+      attempts: 0,
+      lastError: null,
+      previousStatus: "cancelled",
+    };
+    expect(parseStoredOrderEdits(JSON.stringify([stored]))[0].previousStatus).toBe("cancelled");
+    expect(() => parseStoredOrderEdits(JSON.stringify([{ ...stored, previousStatus: 3 }]))).toThrow();
+  });
+});

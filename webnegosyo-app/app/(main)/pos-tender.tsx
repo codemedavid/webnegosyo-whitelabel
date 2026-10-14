@@ -18,7 +18,15 @@ import { useAuthStore } from "../../stores/auth-store";
 import { hasLiveOrderBackend, resolveOrderBackend } from "../../lib/order-backend";
 import { usePosCartStore } from "../../stores/pos-cart-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
-import { canIssueRefund } from "../../lib/order-edit-guards";
+import { isApprovalsStore } from "../../lib/approvals/access";
+import {
+  isRefundNeedsApprovalError,
+  ledgerRefunded,
+  refundGate as decideRefundGate,
+  REFUND_NEEDS_APPROVAL_MESSAGE,
+  type RulesState,
+} from "../../lib/approvals/refund-gate";
+import { useApprovalRules } from "../../lib/approvals/use-approvals";
 import { posCartToOrderItems } from "../../lib/order-edit-cart";
 import {
   isCashMethod,
@@ -34,12 +42,13 @@ import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
 import { resolveRegisterOutlet } from "../../lib/register-outlet";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { buildPosStockItems } from "../../lib/pos-stock";
-import { notifyOrderStockRevision } from "../../lib/pos-stock-notify";
+import { sendStockCall } from "../../lib/offline/drain-stock-calls";
 import { posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
 import { burnPosRedemptions } from "../../lib/voucher-service";
 import { placeCounterSale } from "../../lib/offline/place-sale";
 import { newLocalOrderId } from "../../lib/offline/local-id";
 import { runPosSaleBookkeeping } from "../../lib/offline/pos-sale-bookkeeping";
+import { keepOwedStock } from "../../lib/offline/owed-stock";
 import { isOffline } from "../../lib/offline/connectivity";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
@@ -74,6 +83,8 @@ import { goTo } from "../../lib/tab-navigation";
 import { colors, radius, spacing, typography } from "../../theme/colors";
 import { ProofCapture, type CapturedProof } from "../../components/pos/ProofCapture";
 import { SwipeToComplete } from "../../components/pos/SwipeToComplete";
+import { Button } from "../../components/Button";
+import { AskManagerRefund } from "../../components/approvals/AskManagerRefund";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
@@ -84,6 +95,8 @@ const updatePaymentStatusRef =
   "orders:updatePaymentStatus" as unknown as FunctionReference<"mutation">;
 const reviseOrderRef = "orders:reviseOrder" as unknown as FunctionReference<"mutation">;
 const recordPaymentRef = "orders:recordPayment" as unknown as FunctionReference<"mutation">;
+
+const REFUND_SAVED_NEEDS_APPROVAL_TITLE = "The edit was saved but the refund needs approval";
 
 const TENDER_MODE_OPTIONS = [
   { label: "Pay now", value: "now" as TenderMode },
@@ -220,10 +233,31 @@ export default function PosTenderScreen() {
   // The difference to settle when editing; the whole sale otherwise.
   const amountDue = edit ? Math.abs(edit.balance) : totals.total;
 
-  const refundGate = useMemo(
-    () => canIssueRefund({ role, isOwner, permissions }),
-    [role, isOwner, permissions],
-  );
+  // The refund gate mirrors the server's direct-refund limit (same day, up to
+  // the staff cap) once the store's rules are known, so a cashier over it sees
+  // "Ask a manager to approve" BEFORE the bill is rewritten (approvals, H1).
+  const isApprovals = isApprovalsStore({ orderBackend }) && !useAuthStore.getState().isDemo;
+  const rulesQuery = useApprovalRules(tenantId, isRefund && isApprovals && !isOwner && role !== "superadmin");
+  const rulesState: RulesState = rulesQuery.data
+    ? { status: "known", rules: rulesQuery.data.rules }
+    : rulesQuery.isLoading
+      ? { status: "loading" }
+      : { status: "unknown" };
+  const refundGate = decideRefundGate({
+    user: { role, isOwner, permissions },
+    amount: amountDue,
+    orderRefunded: ledgerRefunded(editContext?.payments ?? []),
+    rules: rulesState,
+    now: new Date(),
+    orderCreatedAt: editContext?.orderCreatedAt ?? null,
+    isApprovalsStore: isApprovals,
+  });
+  // The server refused the refund row after the bill was saved (rules changed
+  // or could not be checked): say so plainly instead of a generic error.
+  const [refundRefusedAfterSave, setRefundRefusedAfterSave] = useState<{ amount: number } | null>(null);
+  // This tab stays mounted between sales: a refusal belongs to one edit only.
+  const editOrderId = editContext?.orderId ?? null;
+  useEffect(() => setRefundRefusedAfterSave(null), [editOrderId]);
 
   // Cached per order type and warmed by the register while items are still
   // being added, so Charge opens on the amount due rather than a spinner.
@@ -287,8 +321,9 @@ export default function PosTenderScreen() {
       method !== null &&
       isProofOutstanding(method, { reference, hasProof: proof !== null }),
   });
-  const blockedReason =
-    paymentBlockedReason ?? (phoneProblem ? "Fix the phone number or clear it" : undefined);
+  const blockedReason = refundRefusedAfterSave
+    ? REFUND_NEEDS_APPROVAL_MESSAGE
+    : paymentBlockedReason ?? (phoneProblem ? "Fix the phone number or clear it" : undefined);
 
   /**
    * Save an edited order and settle the difference.
@@ -309,6 +344,13 @@ export default function PosTenderScreen() {
     }
     if (!hasOrderBackend) {
       Alert.alert("Not connected", "This store's order backend is not configured.");
+      return;
+    }
+    // Decided BEFORE the revision is saved: a refund beyond this person's own
+    // limit goes to a manager (AskManagerRefund) and the edit is not saved,
+    // never a lowered bill with no refund behind it.
+    if (edit.intent === "refund" && !refundGate.allowed) {
+      Alert.alert("Refund needs approval", refundGate.reason ?? REFUND_NEEDS_APPROVAL_MESSAGE);
       return;
     }
 
@@ -386,13 +428,17 @@ export default function PosTenderScreen() {
       // no-op while the NEXT edit still moves stock. Never throws: the bill is
       // already rewritten and the money settled by this point.
       if (tenantId) {
-        await notifyOrderStockRevision(
+        const movement = posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems));
+        const revision = editContext.expectedRevisionNumber + 1;
+        // Stored on the device, then sent and retried in the background until
+        // the platform answers — the revision claim makes a repeat a no-op —
+        // so the screen never waits on it and a killed app does not lose it.
+        void sendStockCall({
           tenantId,
-          editContext.orderId,
-          editContext.expectedRevisionNumber + 1,
-          posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems)),
-          "pos",
-        );
+          orderId: editContext.orderId,
+          action: "revise",
+          payload: { revision, deplete: movement.deplete, restore: movement.restore, source: "pos" },
+        });
       }
 
       // Burn the codes THIS edit added. The order's own codes were burned when
@@ -414,6 +460,12 @@ export default function PosTenderScreen() {
       endEdit();
       router.back();
     } catch (err) {
+      if (edit.intent === "refund" && isRefundNeedsApprovalError(err)) {
+        // The bill is already rewritten; only the money did not move.
+        setRefundRefusedAfterSave({ amount: Math.abs(edit.balance) });
+        setIsCompleting(false);
+        return;
+      }
       Alert.alert(
         "Could not save the order",
         err instanceof Error ? err.message : "The edit was not saved.",
@@ -426,6 +478,8 @@ export default function PosTenderScreen() {
     edit,
     isCompleting,
     hasOrderBackend,
+    refundGate.allowed,
+    refundGate.reason,
     tenantId,
     lines,
     editReason,
@@ -571,19 +625,20 @@ export default function PosTenderScreen() {
       // outage). Convex mints its own ids, so it is still written first and
       // only kept locally when the server cannot be reached. A refusal throws
       // to the alert below either way (lib/offline/place-sale.ts).
+      const sale = {
+        localId,
+        tenantId,
+        backend,
+        clientOrderId,
+        createdAt,
+        orderArgs,
+        bookkeeping,
+        paidAtTender: isPaidNow,
+      };
       const outcome = await placeCounterSale({
         createOrder,
         writeBehind: isPlatform,
-        sale: {
-          localId,
-          tenantId,
-          backend,
-          clientOrderId,
-          createdAt,
-          orderArgs,
-          bookkeeping,
-          paidAtTender: isPaidNow,
-        },
+        sale,
       });
       const orderId = outcome.kind === "written" ? outcome.orderId : outcome.localId;
       // Written behind on the platform, the row will exist under this id in a
@@ -641,7 +696,10 @@ export default function PosTenderScreen() {
           // Stock, Loyverse, voucher burns, the activity line, customer
           // capture — through the one runner the outbox replay also uses. A
           // queued sale owes it later, once the server holds the order.
-          await runPosSaleBookkeeping({ tenantId, orderId, backend, createdAt, bookkeeping });
+          const reported = await runPosSaleBookkeeping({ tenantId, orderId, backend, createdAt, bookkeeping });
+          // A stock call that did not land is handed to the outbox, which
+          // retries it alone (never the reports) until the platform has it.
+          await keepOwedStock({ outcome: reported, sale, orderId: String(orderId) });
         }
 
         // The print queue serialises against the kitchen chit, and a dead
@@ -751,6 +809,40 @@ export default function PosTenderScreen() {
             This order was {formatPeso(editContext.originalTotal)} and is now{" "}
             {formatPeso(edit.newTotal)}.
           </Text>
+        )}
+
+        {/* Over the cashier's own refund limit: ask a manager BEFORE saving (approvals). */}
+        {isRefund && refundGate.needsApproval && !refundRefusedAfterSave && editContext && (
+          <AskManagerRefund
+            mode="instead_of_edit"
+            orderId={editContext.orderId}
+            outletId={editContext.outletId ?? null}
+            amount={amountDue}
+            paidTotal={editContext.originalTotal}
+          />
+        )}
+        {/* A race: the edit saved, then the database refused its refund row. */}
+        {refundRefusedAfterSave && editContext && (
+          <View style={styles.refusedNotice} accessibilityRole="alert">
+            <Text style={styles.refusedTitle}>{REFUND_SAVED_NEEDS_APPROVAL_TITLE}</Text>
+            <Text style={styles.editMeta}>No money was given back yet. Ask a manager for the exact amount.</Text>
+            <AskManagerRefund
+              mode="after_saved_edit"
+              orderId={editContext.orderId}
+              outletId={editContext.outletId ?? null}
+              amount={refundRefusedAfterSave.amount}
+              paidTotal={editContext.originalTotal}
+            />
+            <Button
+              label="Open the order"
+              tone="ghost"
+              onPress={() => {
+                const orderId = editContext.orderId;
+                endEdit();
+                router.push(`/(main)/order/${orderId}` as never);
+              }}
+            />
+          </View>
         )}
 
         {/*
@@ -1026,6 +1118,14 @@ const styles = StyleSheet.create({
   body: { padding: spacing.xl, paddingTop: 60, gap: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.textSecondary },
   editMeta: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
+  refusedNotice: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.statusPending.bg,
+  },
+  refusedTitle: { ...typography.body, fontWeight: "700", color: colors.statusPending.text },
   discounts: { gap: spacing.xs, marginTop: spacing.xs },
   discountRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
   discountLabel: { ...typography.caption, color: colors.textSecondary, flexShrink: 1 },

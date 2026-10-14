@@ -148,14 +148,14 @@ export const DEFAULT_SCREEN_OPTIONS: readonly DefaultScreenOption[] = [
     label: 'Stock',
     description: 'Ingredient levels, counts, and transfers',
     workspace: 'products',
-    permission: 'menu',
+    permission: 'inventory',
   },
   {
     tab: 'daily-report',
     label: 'Daily Report',
     description: 'Yesterday reconciled — usage, variance, and cost',
     workspace: 'products',
-    permission: 'menu',
+    permission: 'costs',
   },
   {
     tab: 'payments',

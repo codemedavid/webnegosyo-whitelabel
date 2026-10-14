@@ -71,3 +71,14 @@ describe("summarizePendingSales", () => {
     ).toEqual({ pending: 0, stuck: 0, hasFreshSales: false });
   });
 });
+
+describe("a written sale that owes only its stock call", () => {
+  it("is neither pending nor stuck — its order is on the server", () => {
+    const owed = sale({ syncedOrderId: "s1", reportsDone: true, stockAttempts: 9, createdAt: 0 });
+    expect(summarizePendingSales([owed], { ...scope, isOnline: false })).toEqual({
+      pending: 0,
+      stuck: 0,
+      hasFreshSales: false,
+    });
+  });
+});

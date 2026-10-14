@@ -4,9 +4,10 @@
  * Loads one menu item's recipe-derived costs for the product editor.
  *
  * This is the client-side caller for `getMenuItemCostAction`. It is deliberately
- * forgiving: an unsaved item, a tenant without inventory, a failed action, or a
- * thrown request all resolve to "no recipe costs", because a cost display that
- * cannot load must never take the product form down with it. The costing
+ * forgiving: an unsaved item, a tenant without inventory, an account without
+ * `costs`, a failed or refused action, or a thrown request all resolve to "no
+ * recipe costs", because a cost display that cannot load must never take the
+ * product form down with it. The costing
  * service itself still throws on a fetch failure — that distinction is
  * intentional, and this is the layer that decides the editor keeps working.
  */
@@ -32,13 +33,18 @@ export function useMenuItemCosts(
   tenantId: string,
   menuItemId: string | undefined,
   inventoryEnabled: boolean,
+  /**
+   * The caller holds `costs`. Without it the action is never called at all —
+   * the server would refuse anyway, and asking costs a round trip per dish.
+   */
+  canSeeCosts: boolean,
 ): MenuItemCosts {
   const [costs, setCosts] = useState<CostState>(NO_COSTS)
   const [reloadToken, setReloadToken] = useState(0)
   const refresh = useCallback(() => setReloadToken((n) => n + 1), [])
 
   useEffect(() => {
-    if (!menuItemId || !inventoryEnabled) {
+    if (!menuItemId || !inventoryEnabled || !canSeeCosts) {
       setCosts(NO_COSTS)
       return
     }
@@ -66,7 +72,7 @@ export function useMenuItemCosts(
     return () => {
       isCurrent = false
     }
-  }, [tenantId, menuItemId, inventoryEnabled, reloadToken])
+  }, [tenantId, menuItemId, inventoryEnabled, canSeeCosts, reloadToken])
 
   return { ...costs, refresh }
 }

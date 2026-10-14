@@ -51,9 +51,13 @@ export async function getRecipeCoverage(tenantId: string): Promise<RecipeCoverag
     const [menuItemsResult, recipesResult, componentsResult] = await Promise.all([
       supabase
         .from('menu_items')
-        .select('id, name, is_available, auto_disabled_at')
+        // The option JSON lets coverage spot portion picks that deduct nothing.
+        .select('id, name, is_available, auto_disabled_at, modifier_groups, variation_types, variations, addons')
         .eq('tenant_id', tenantId),
-      supabase.from('recipes').select('id, target_type, menu_item_id').eq('tenant_id', tenantId),
+      supabase
+        .from('recipes')
+        .select('id, target_type, menu_item_id, variation_option_id, addon_id, modifier_option_id')
+        .eq('tenant_id', tenantId),
       supabase.from('recipe_components').select('recipe_id, inventory_item_id').eq('tenant_id', tenantId),
     ])
 

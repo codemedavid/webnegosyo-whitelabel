@@ -257,3 +257,77 @@ describe("CollectPaymentSheet — cash", () => {
     expect(screen.getByText("Confirm order & record payment")).toBeTruthy();
   });
 });
+
+/**
+ * One bill, two methods: ₱120 by GCash and the rest in cash. Each part must
+ * reach the caller as its own payment, so the ledger and the reports can
+ * count each method separately.
+ */
+describe("CollectPaymentSheet — split between methods", () => {
+  const SPLIT_METHODS = [
+    { id: "cash", name: "Cash", isCash: true },
+    { id: "gcash", name: "GCash", isCash: false },
+  ];
+
+  function renderSplit(props: Partial<React.ComponentProps<typeof CollectPaymentSheet>> = {}) {
+    const onSubmitSplit = jest.fn(async () => {});
+    const rendered = renderSheet({ methods: SPLIT_METHODS, balanceDue: 300, onSubmitSplit, ...props });
+    return { ...rendered, onSubmitSplit };
+  }
+
+  it("is not offered when the caller cannot record a split", () => {
+    renderSheet({ methods: SPLIT_METHODS });
+    expect(screen.queryByText(/Split between methods/)).toBeNull();
+  });
+
+  it("records ₱120 GCash and the rest in cash as two payments", async () => {
+    const { onSubmit, onSubmitSplit } = renderSplit();
+
+    fireEvent.press(screen.getByText(/Split between methods/));
+    fireEvent.changeText(screen.getByLabelText("Payment 1 amount"), "120");
+    fireEvent.changeText(screen.getByLabelText("Payment 1 reference number"), "GC-77");
+    fireEvent.changeText(screen.getByLabelText("Payment 2 cash received"), "200");
+    expect(screen.getByText("Change ₱20.00")).toBeTruthy();
+    fireEvent.press(screen.getByText("Record 2 payments"));
+
+    await waitFor(() =>
+      expect(onSubmitSplit).toHaveBeenCalledWith([
+        { amount: 120, methodId: "gcash", methodName: "GCash", reference: "GC-77" },
+        { amount: 180, methodId: "cash", methodName: "Cash", cashTendered: 200, changeDue: 20 },
+      ]),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows the rest on the last line before anything is typed there", () => {
+    renderSplit();
+
+    fireEvent.press(screen.getByText(/Split between methods/));
+    fireEvent.changeText(screen.getByLabelText("Payment 1 amount"), "120");
+
+    expect(screen.getByPlaceholderText("The rest · ₱180.00")).toBeTruthy();
+  });
+
+  it("refuses a split worth more than the bill, and records nothing", async () => {
+    const { onSubmitSplit } = renderSplit();
+
+    fireEvent.press(screen.getByText(/Split between methods/));
+    fireEvent.changeText(screen.getByLabelText("Payment 1 amount"), "200");
+    fireEvent.changeText(screen.getByLabelText("Payment 2 amount"), "150");
+    fireEvent.press(screen.getByText("Record 2 payments"));
+
+    expect(await screen.findByText("These add up to ₱350.00, but only ₱300.00 is owed.")).toBeTruthy();
+    expect(onSubmitSplit).not.toHaveBeenCalled();
+  });
+
+  it("goes back to one method", async () => {
+    const { onSubmit } = renderSplit();
+
+    fireEvent.press(screen.getByText(/Split between methods/));
+    fireEvent.press(screen.getByText("Pay with one method"));
+    fireEvent.changeText(screen.getByLabelText("Cash received"), "300");
+    fireEvent.press(screen.getByText("Record payment"));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ amount: 300 })));
+  });
+});

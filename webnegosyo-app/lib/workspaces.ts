@@ -63,7 +63,11 @@ export const WORKSPACES: readonly Workspace[] = [
     // the guest list and Rewards open from the Reports dashboard, which is the
     // customer overview (SUBSCREEN_TABS in lib/tab-visibility.ts, entry points
     // in lib/subscreen-links.ts). Each sub-screen follows its own parent.
-    tabs: ["analytics", "trends", "growth", "customers", "loyalty"],
+    // Texts (the automatic SMS automations) sits beside the guest list and the
+    // reward cards it texts about: all three are how a store keeps guests.
+    // Activity is the store's own log (refunds, cancels, stock, drawers): read
+    // beside the sales it explains.
+    tabs: ["analytics", "trends", "growth", "customers", "loyalty", "texts", "activity"],
     defaultTab: "analytics",
   },
   {
@@ -75,9 +79,10 @@ export const WORKSPACES: readonly Workspace[] = [
     // How the merchant gets paid sits beside what they sell: both are the
     // storefront's setup, and neither is a view of a shift.
     // The daily report sits next to the shelf it reconciles rather than in
-    // Insights: it carries no revenue on the phone, and the merchant who
-    // counts the flour and the one asking whether the count matched are the
-    // same person standing in the same place.
+    // Insights: it is a stock reconciliation first — its one sales figure (for
+    // food cost %) shows only to an account holding Sales reports — and the
+    // merchant who counts the flour and the one asking whether the count
+    // matched are the same person standing in the same place.
     // Categories sits right after the products it groups: the merchant who
     // adds a dish and the merchant who decides which section it lands in are
     // the same person, one tap apart.

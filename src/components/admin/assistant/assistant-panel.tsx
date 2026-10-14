@@ -1,14 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Image from 'next/image'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, type UIMessage } from 'ai'
 import { ArrowUp, Check, History, ImagePlus, Loader2, Mic, Plus, Square, X } from 'lucide-react'
+import { Owl } from '@/components/mascot/owl'
 import { cn } from '@/lib/utils'
 import { MAX_INPUT_CHARS, MAX_PHOTOS_PER_MESSAGE, MAX_PHOTOS_TOTAL_CHARS, PHOTO_ONLY_TEXT } from '@/lib/assistant/limits'
 import { AssistantMessage, collectChips } from './assistant-message'
 import { PhotoError, prepareMenuPhoto } from './menu-photos'
+import { assistantOwlState } from './owl-mood'
 import { useVoiceInput } from './voice-input'
 
 interface StarterGroup {
@@ -24,6 +25,9 @@ const STARTERS: StarterGroup[] = [
   { title: 'Loyalty & offers', prompts: ['How is my loyalty program doing?', 'Which offers are running?', 'Which vouchers are being used?'] },
   { title: 'Inventory', prompts: ['What stock is running low?'] },
 ]
+
+/** How long Owl celebrates a confirmed change. */
+const CHEER_MS = 2600
 
 interface AssistantPanelProps {
   tenantId: string
@@ -138,6 +142,18 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
     conversationRef.current = conversationIdOf(messages) ?? conversationRef.current
   }, [messages])
 
+  // Owl hops for a moment after the owner confirms a change.
+  const [isCheering, setIsCheering] = useState(false)
+  const cheerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cheer = () => {
+    if (cheerTimerRef.current) clearTimeout(cheerTimerRef.current)
+    setIsCheering(true)
+    cheerTimerRef.current = setTimeout(() => setIsCheering(false), CHEER_MS)
+  }
+  useEffect(() => () => {
+    if (cheerTimerRef.current) clearTimeout(cheerTimerRef.current)
+  }, [])
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, status])
@@ -185,6 +201,7 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
   const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
   const chips = !isBusy && lastAssistant ? collectChips(lastAssistant) : []
   const errorText = readError(error)
+  const owlState = assistantOwlState({ hasError: Boolean(errorText), isBusy, isCheering })
 
   return (
     <div
@@ -198,7 +215,9 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
       )}
     >
       <header className="flex items-center gap-2.5 border-b border-border px-4 py-3">
-        <Image src="/assistant/owl-96.webp" alt="" width={32} height={32} className="h-8 w-8 rounded-full" />
+        <span className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-gradient-to-b from-[#FFF8EA] to-[#FCE3B4]">
+          <Owl framing="bust" size={36} state={owlState} label={owlState === 'thinking' ? 'Owl is thinking' : undefined} />
+        </span>
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-extrabold tracking-[-0.01em]">Owl</p>
           <p className="truncate text-[11px] text-muted-foreground">Your store assistant</p>
@@ -240,6 +259,7 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
           </div>
         ) : messages.length === 0 ? (
           <div className="space-y-4">
+            <Owl state="happy" size={96} className="-mb-1" />
             <div className="space-y-1">
               <p className="text-[15px] font-bold">Hi! What would you like to know?</p>
               <p className="text-[13px] text-muted-foreground">I read your real sales and menu, then suggest what to do next. Send a photo of a menu and I’ll add its dishes.</p>
@@ -258,7 +278,7 @@ export function AssistantPanel({ tenantId, adminBasePath, isOpen, onClose }: Ass
             ))}
           </div>
         ) : (
-          messages.map((message) => <AssistantMessage key={message.id} message={message} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onClose} />)
+          messages.map((message) => <AssistantMessage key={message.id} message={message} tenantId={tenantId} adminBasePath={adminBasePath} onNavigate={onClose} onApplied={cheer} />)
         )}
         {status === 'submitted' ? <p className="text-xs text-muted-foreground">Thinking…</p> : null}
         {errorText ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13px] text-rose-800">{errorText}</p> : null}

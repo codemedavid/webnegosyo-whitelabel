@@ -22,7 +22,7 @@ import {
 } from '@/lib/inventory/order-stock-claim'
 
 const TENANT = '44444444-4444-4444-8444-444444444444'
-const ORDER = 'ord-uncancel-1'
+const ORDER = 'b0000000-0000-4000-8000-0000000000e1'
 const FLOUR = 'item-flour'
 const GRAM = 'unit-gram'
 
@@ -115,7 +115,7 @@ function stubPipeline(
           return Promise.resolve({ data: null, error: null })
         },
         delete: () => ({
-          eq: () => ({ eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }) }),
+          eq: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }) }) }),
         }),
       }
     }
@@ -200,7 +200,7 @@ describe('redepleteOrderStockBestEffort (un-cancel)', () => {
       stubPipeline(claimInserts, ledgerInserts, { orderReadError: { message: 'boom' } }),
     )
 
-    await expect(redepleteOrderStockBestEffort(TENANT, ORDER)).resolves.toBeUndefined()
+    await expect(redepleteOrderStockBestEffort(TENANT, ORDER)).resolves.toBe('failed')
     expect(console.error).toHaveBeenCalled()
     expect(ledgerInserts).toEqual([])
   })
@@ -216,7 +216,9 @@ describe('redepleteOrderStockBestEffort (un-cancel)', () => {
 
     await redepleteOrderStockBestEffort(TENANT, ORDER)
 
-    expect(claimInserts).toEqual([])
+    // Only the "re-opened" marker sale claim, so later edits are not refused
+    // as if the order were still cancelled.
+    expect(claimInserts).toEqual([expect.objectContaining({ reason: 'sale', kind: 'order' })])
     expect(ledgerInserts).toEqual([])
   })
 })

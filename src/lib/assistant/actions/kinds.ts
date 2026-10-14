@@ -12,6 +12,8 @@ import type { LastCallSaveInput } from '@/lib/boost/writes'
 import type { LoyaltyProgramInput } from '@/lib/loyalty/manage'
 import type { LoyaltyRules } from '@/lib/loyalty/types'
 import type { ParsedMenuItem } from '@/types/ai-menu-parser'
+import type { NormalizedDraft } from '@/lib/sms-automations/api/schema'
+import type { AutomationStatus } from '@/lib/sms-automations/types'
 
 export type ActionKind =
   | 'bundle'
@@ -28,12 +30,15 @@ export type ActionKind =
   | 'voucher_status'
   | 'menu_item_change'
   | 'menu_import'
+  | 'sms_automation'
+  | 'sms_automation_status'
+  | 'sms_automation_run'
 
 export const ACTION_PERMISSION: Readonly<Record<ActionKind, StaffPermissionKey>> = {
   bundle: 'analytics',
   upsell: 'analytics',
   menu_item: 'menu',
-  stock_adjustment: 'menu',
+  stock_adjustment: 'inventory',
   sms_campaign: 'customers',
   voucher: 'vouchers',
   offer_change: 'analytics',
@@ -46,6 +51,11 @@ export const ACTION_PERMISSION: Readonly<Record<ActionKind, StaffPermissionKey>>
   voucher_status: 'vouchers',
   menu_item_change: 'menu',
   menu_import: 'menu',
+  // Automation writes run under the service role like their API route, so
+  // this check (plus the route's own) is the boundary.
+  sms_automation: 'customers',
+  sms_automation_status: 'customers',
+  sms_automation_run: 'customers',
 }
 
 export interface OfferPayload {
@@ -135,6 +145,24 @@ export interface MenuImportPayload {
   categories: MenuImportCategory[]
   /** Each item's `category` is the exact `name` of one of `categories`. */
   items: ParsedMenuItem[]
+}
+
+/** Create or edit the store's automation for one recipe (a new one is saved Off). */
+export interface SmsAutomationPayload {
+  draft: NormalizedDraft
+}
+
+export interface SmsAutomationStatusPayload {
+  automationId: string
+  name: string
+  status: AutomationStatus
+  /** Turning on: also text the guests who already qualify. */
+  sendBacklog: boolean
+}
+
+export interface SmsAutomationRunPayload {
+  automationId: string
+  name: string
 }
 
 export type ActionPayload = OfferPayload | MenuItemPayload | StockPayload | Record<string, unknown>

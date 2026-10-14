@@ -31,10 +31,13 @@ function valid(value: unknown): value is SmsJournalEntry {
   );
 }
 
-export function createSmsDeliveryJournal(storage: Storage, scope: Scope) {
+/** Reward codes keep the original key; automated texts get their own journal. */
+export type SmsJournalNamespace = "loyalty.sms.ack.v1" | "sms.outbox.ack.v1";
+
+export function createSmsDeliveryJournal(storage: Storage, scope: Scope, namespace: SmsJournalNamespace = "loyalty.sms.ack.v1") {
   if (![scope.tenantId, scope.actorId, scope.deviceId].every(uuid))
     throw new Error("Invalid SMS journal scope");
-  const key = `loyalty.sms.ack.v1.${scope.tenantId.toLowerCase()}.${scope.actorId.toLowerCase()}.${scope.deviceId.toLowerCase()}`;
+  const key = `${namespace}.${scope.tenantId.toLowerCase()}.${scope.actorId.toLowerCase()}.${scope.deviceId.toLowerCase()}`;
   async function read(): Promise<SmsJournalEntry | null> {
     const raw = await storage.getItem(key);
     if (raw === null) return null;

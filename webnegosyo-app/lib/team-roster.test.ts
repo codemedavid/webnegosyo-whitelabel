@@ -22,6 +22,26 @@ describe("PERMISSION_OPTIONS", () => {
   });
 });
 
+describe("the reports, stock and cost grants", () => {
+  const option = (key: string) => PERMISSION_OPTIONS.find((o) => o.key === key);
+
+  it("names the three carved-out grants in words an owner recognises", () => {
+    expect(option("reports")?.label).toBe("Sales reports");
+    expect(option("inventory")?.label).toBe("Inventory");
+    expect(option("costs")?.label).toBe("Costs");
+  });
+
+  it("no longer tells the owner that menu hands out the stock or the daily report", () => {
+    const menu = option("menu")?.description ?? "";
+    expect(menu).not.toMatch(/stock|daily report/i);
+    expect(menu).toMatch(/recipes/i);
+  });
+
+  it("marks sales reports as already included with analytics", () => {
+    expect(containingGrantLabel("reports")).toBe("Analytics");
+  });
+});
+
 describe("PINNABLE_SCREENS", () => {
   it("labels every workspace tab exactly once", () => {
     const allTabs = WORKSPACES.flatMap((w) => [...w.tabs]);

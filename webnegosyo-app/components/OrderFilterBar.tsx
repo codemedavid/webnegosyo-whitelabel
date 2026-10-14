@@ -41,48 +41,107 @@ export function OrderFilterBar({
   activeBranchFilter,
   onBranchFilterChange,
 }: OrderFilterBarProps) {
-  const hasBranchRow = (branchFilters?.length ?? 0) > 0
   return (
     <View style={styles.container}>
-      <View style={styles.searchRow}>
-        <View style={styles.searchBox}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search name or contact"
-            placeholderTextColor={colors.textTertiary}
-            value={search}
-            onChangeText={onSearchChange}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity
-              onPress={() => onSearchChange("")}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-            >
-              <Text style={styles.clearLabel}>Clear</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <TouchableOpacity
-          style={styles.sortButton}
-          onPress={onSortToggle}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={`Sort by ${sort === "newest" ? "newest" : "oldest"} first`}
-        >
-          <Text style={styles.sortText}>{sort === "newest" ? "Newest first" : "Oldest first"}</Text>
-        </TouchableOpacity>
-      </View>
+      <OrderSearchRow
+        sort={sort}
+        onSortToggle={onSortToggle}
+        search={search}
+        onSearchChange={onSearchChange}
+      />
+      <OrderStatusPills
+        filters={filters}
+        activeFilter={activeFilter}
+        onFilterChange={onFilterChange}
+        branchFilters={branchFilters}
+        activeBranchFilter={activeBranchFilter}
+        onBranchFilterChange={onBranchFilterChange}
+      />
+    </View>
+  );
+}
 
+type OrderSearchRowProps = Pick<
+  OrderFilterBarProps,
+  "sort" | "onSortToggle" | "search" | "onSearchChange"
+> & {
+  /** Lets a docked search button focus the field. */
+  inputRef?: React.Ref<TextInput>;
+};
+
+/** The search field and the sort toggle: the half of the bar that scrolls away. */
+export function OrderSearchRow({
+  sort,
+  onSortToggle,
+  search,
+  onSearchChange,
+  inputRef,
+}: OrderSearchRowProps) {
+  return (
+    <View style={styles.searchRow}>
+      <View style={styles.searchBox}>
+        <TextInput
+          ref={inputRef}
+          style={styles.searchInput}
+          placeholder="Search name or contact"
+          placeholderTextColor={colors.textTertiary}
+          value={search}
+          onChangeText={onSearchChange}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+        {search.length > 0 && (
+          <TouchableOpacity
+            onPress={() => onSearchChange("")}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+          >
+            <Text style={styles.clearLabel}>Clear</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <TouchableOpacity
+        style={styles.sortButton}
+        onPress={onSortToggle}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`Sort by ${sort === "newest" ? "newest" : "oldest"} first`}
+      >
+        <Text style={styles.sortText}>{sort === "newest" ? "Newest first" : "Oldest first"}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+type OrderStatusPillsProps = Pick<
+  OrderFilterBarProps,
+  "filters" | "activeFilter" | "onFilterChange" | "branchFilters" | "activeBranchFilter" | "onBranchFilterChange"
+> & {
+  /** Extra room after the last pill, e.g. for a docked search button. */
+  trailingInset?: number;
+};
+
+/** The status pills (and branch pills): the half of the bar that docks. */
+export function OrderStatusPills({
+  filters,
+  activeFilter,
+  onFilterChange,
+  branchFilters,
+  activeBranchFilter,
+  onBranchFilterChange,
+  trailingInset = 0,
+}: OrderStatusPillsProps) {
+  const hasBranchRow = (branchFilters?.length ?? 0) > 0;
+  const pillRowStyle = [styles.pillRow, { paddingRight: spacing.xl + trailingInset }];
+  return (
+    <View style={styles.container}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.pillRow}
+        contentContainerStyle={pillRowStyle}
       >
         {filters.map((filter) => {
           const isActive = filter.key === activeFilter;
@@ -92,6 +151,8 @@ export function OrderFilterBar({
               style={[styles.pill, isActive && styles.pillActive]}
               onPress={() => onFilterChange(filter.key)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isActive }}
             >
               <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{filter.label}</Text>
               <View style={[styles.countBadge, isActive && styles.countBadgeActive]}>
@@ -106,7 +167,7 @@ export function OrderFilterBar({
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillRow}
+          contentContainerStyle={pillRowStyle}
         >
           {branchFilters?.map((branch) => {
             const isActive = branch.key === activeBranchFilter;

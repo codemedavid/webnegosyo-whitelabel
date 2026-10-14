@@ -19,7 +19,12 @@ import {
 } from "../../lib/daily-report/daily-report-view";
 import { judgeVariance, type VarianceLevel } from "../../lib/daily-report/variance-verdict";
 import { resolveFoodCostPercent } from "../../lib/daily-report/food-cost";
-import { resolveReportRevenue } from "../../lib/daily-report-revenue";
+import {
+  SALES_NEED_REPORTS_NOTE,
+  resolveReportRevenue,
+  resolveRevenueAccess,
+} from "../../lib/daily-report-revenue";
+import { hasPermission } from "../../lib/staff-permissions";
 import { useBranchScope } from "../../lib/use-branch-scope";
 import { BRANCH_STATS_SCHEMA_VERSION } from "../../lib/convex-order-scope";
 import { useSafeQuery } from "../../lib/hooks";
@@ -99,8 +104,19 @@ interface DashboardStats {
   totalRevenue?: number;
 }
 
+/** Shown instead of the report to an account that reached it without Costs. */
+const COSTS_NEEDED_MESSAGE = "The daily report needs Costs access. Ask the owner.";
+
 export default function DailyReportScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  // Every figure here is priced, so the tab rides "costs" — but this route is
+  // reachable by link, so it refuses on its own as well. The sales row (and so
+  // food cost %) additionally needs Sales reports.
+  const canSeeCosts = hasPermission({ role, isOwner, permissions }, "costs");
+  const canSeeSales = hasPermission({ role, isOwner, permissions }, "reports");
 
   // Resolved once per mount rather than per render: the default day is derived
   // from the clock, and a day that changed underneath the merchant mid-session
@@ -145,6 +161,7 @@ export default function DailyReportScreen() {
 
   const load = useCallback(async () => {
     if (!tenantId) return;
+    if (!canSeeCosts) return;
 
     const version = ++requestVersion.current;
     setFailed(false);
@@ -162,7 +179,7 @@ export default function DailyReportScreen() {
     setDishesWithRecipe(covered);
     setIsLoading(false);
     setRefreshing(false);
-  }, [tenantId, dayKey, reportOutletId, reportKey]);
+  }, [tenantId, dayKey, reportOutletId, reportKey, canSeeCosts]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -197,22 +214,32 @@ export default function DailyReportScreen() {
   }, [dayKey]);
 
 
-  const { data: stats, isLoading: statsLoading } = useSafeQuery<DashboardStats>(
-    getDashboardStatsByPeriodRef,
-    // Not asked for at all when it could not be used. A branch-scoped account
-    // should not spend a round trip on a figure this screen must withhold.
-    // Asked for whenever it can be USED. Skipped only when the figure would be
-    // withheld regardless, so no round trip is spent on an answer this screen
-    // must refuse to show.
-    isBranchScoped && !isRevenueBranchScoped ? "skip" : revenueWindow,
-  );
-
-  const revenue = resolveReportRevenue({
+  // Whether to ask for the takings at all. Without Sales reports the database
+  // refuses the orders, and a refused read comes back empty — which would draw
+  // as a day that took nothing. (An account without Costs never sees the
+  // report, so it never asks either.)
+  const revenueAccess = resolveRevenueAccess({
+    canSeeSales: canSeeSales && canSeeCosts,
     isBranchScoped,
     isRevenueBranchScoped,
-    isLoading: statsLoading,
-    stats,
   });
+
+  const { data: stats, isLoading: statsLoading } = useSafeQuery<DashboardStats>(
+    getDashboardStatsByPeriodRef,
+    // Asked for only when it can be USED, so no round trip is spent on an
+    // answer this screen must refuse to show.
+    revenueAccess === "shown" ? revenueWindow : "skip",
+  );
+
+  const revenue =
+    revenueAccess === "shown"
+      ? resolveReportRevenue({
+          isBranchScoped,
+          isRevenueBranchScoped,
+          isLoading: statsLoading,
+          stats,
+        })
+      : undefined;
 
   const foodCostPercent =
     report && revenue !== undefined ? resolveFoodCostPercent(report.totals.cogs, revenue) : null;
@@ -221,16 +248,23 @@ export default function DailyReportScreen() {
     if (!report) return [];
     // The revenue caveat leads: it explains an absent figure the merchant can
     // see is absent, which the stock caveats below it do not speak to.
-    const revenueCaveat = revenue === undefined ? null : describeRevenueCaveat(revenue);
+    // An account without Sales reports is told so rather than shown a gap.
+    const revenueCaveat =
+      revenueAccess === "no-reports"
+        ? SALES_NEED_REPORTS_NOTE
+        : revenue === undefined
+          ? null
+          : describeRevenueCaveat(revenue);
     return [
       ...(revenueCaveat ? [revenueCaveat] : []),
       ...describeReportCaveats(report, report.countSession),
     ];
-  }, [report, revenue]);
+  }, [report, revenue, revenueAccess]);
 
   const isLatestDay = dayKey >= selection.latestDayKey;
 
   const body = () => {
+    if (!canSeeCosts) return <EmptyState message={COSTS_NEEDED_MESSAGE} />;
     if (isLoading || loadedReport?.key !== reportKey) return <LoadingState message="Reconciling the day..." />;
     if (failed || !report) {
       return (

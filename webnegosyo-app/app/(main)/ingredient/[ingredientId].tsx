@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../../../stores/auth-store";
+import { useHasPermission } from "../../../lib/use-has-permission";
 import { useBranchScope } from "../../../lib/use-branch-scope";
 import { loadInventoryStock } from "../../../lib/inventory-service";
 import { formatStockQuantity, stockFillRatio, type StockItemView } from "../../../lib/inventory-stock";
@@ -30,6 +31,8 @@ import { colors, typography, spacing, radius, shadow } from "../../../theme/colo
 import { BackHeader } from "../../../components/BackHeader";
 import { IconButton } from "../../../components/IconButton";
 import { Icon, type IconName } from "../../../components/Icon";
+import { ListRow } from "../../../components/ListRow";
+import { activityHref } from "../../../lib/activity/activity-links";
 import { LoadingState } from "../../../components/LoadingState";
 import { ErrorState } from "../../../components/ErrorState";
 import { EmptyState } from "../../../components/EmptyState";
@@ -64,6 +67,8 @@ type Missing = "archived" | "gone";
 export default function IngredientScreen() {
   const { ingredientId } = useLocalSearchParams<{ ingredientId: string }>();
   const tenantId = useAuthStore((s) => s.tenantId);
+  // Stock value and unit cost are absent without `costs` — never ₱0 or "Not set".
+  const canSeeCosts = useHasPermission("costs");
   const scope = useBranchScope();
   const outletId = scope.kind === "branch" ? scope.outletId : undefined;
 
@@ -261,13 +266,17 @@ export default function IngredientScreen() {
         </View>
 
         <View style={styles.stats}>
-          <Stat label="Stock value" value={unitCost > 0 ? formatPeso(valueOf(item)) : "—"} />
-          <Stat
-            label={`Cost per ${unitLabel}`}
-            value={unitCost > 0 ? formatPeso(unitCost) : "Not set"}
-            isMuted={unitCost <= 0}
-            onPress={unitCost > 0 ? undefined : openEditor}
-          />
+          {canSeeCosts && (
+            <>
+              <Stat label="Stock value" value={unitCost > 0 ? formatPeso(valueOf(item)) : "—"} />
+              <Stat
+                label={`Cost per ${unitLabel}`}
+                value={unitCost > 0 ? formatPeso(unitCost) : "Not set"}
+                isMuted={unitCost <= 0}
+                onPress={unitCost > 0 ? undefined : openEditor}
+              />
+            </>
+          )}
           <Stat
             label="Reorder level"
             value={hasThreshold ? formatStockQuantity(item.reorderLevel, item.unitAbbreviation) : "Not set"}
@@ -276,6 +285,16 @@ export default function IngredientScreen() {
           <Stat label="Last delivery" value={lastIn} isMuted={lastIn === "Never"} />
         </View>
 
+        {/* Who received, counted, wasted or adjusted it — with names — in Store activity. */}
+        <ListRow
+          icon="clock"
+          title="Who changed this stock"
+          subtitle="Deliveries, counts, waste and adjustments, with names"
+          onPress={() =>
+            router.push(activityHref({ subject: { type: "ingredient", ref: item.id, label: item.name } }) as never)
+          }
+          style={styles.activityLink}
+        />
         <View style={styles.historyHead}>
           <Text style={styles.sectionTitle}>History</Text>
           {movements.length > 0 && <Text style={styles.sectionCount}>{movements.length}</Text>}
@@ -397,6 +416,7 @@ function Stat({ label, value, isMuted, onPress }: StatProps) {
 }
 
 const styles = StyleSheet.create({
+  activityLink: { borderRadius: radius.lg, overflow: "hidden", marginTop: spacing.sm },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingTop: spacing.xs, gap: spacing.lg, paddingBottom: 48 },
 

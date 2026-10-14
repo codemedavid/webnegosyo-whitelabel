@@ -9,6 +9,7 @@ import { MANAGE_SECTIONS, hubSections } from "../../lib/hubs";
 import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { tabPresentation } from "../../lib/workspace-presentation";
 import { canOpenTeam } from "../../lib/staff-service";
+import { canEditApprovalRules } from "../../lib/approvals/access";
 import { canManageCash } from "../../lib/cash-drawers";
 import { hasPermission } from "../../lib/staff-permissions";
 import { goTo, type TabAwareRouter } from "../../lib/tab-navigation";
@@ -16,6 +17,7 @@ import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
 import { useTutorialChapters, useTutorialProgress } from "../../lib/tutorial/use-tutorial";
 import { progressSummary } from "../../lib/tutorial/progress";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { NotificationBell } from "../../components/notifications/NotificationBell";
 import { ListRow } from "../../components/ListRow";
 import { Icon } from "../../components/Icon";
 
@@ -45,6 +47,7 @@ export default function ManageScreen() {
   const ctx = useTabVisibilityContext();
   const sections = hubSections(MANAGE_SECTIONS, ctx);
   const showTeam = canOpenTeam({ role, isOwner, permissions, outletId, isDemo });
+  const showApprovalRules = !isDemo && canEditApprovalRules({ role, isOwner, permissions });
   const canDesignReceipt = hasPermission({ role, isOwner, permissions }, "store_setup");
   const showCashDrawers = !isDemo && canManageCash({ role, isOwner, permissions });
   const chapters = useTutorialChapters();
@@ -74,7 +77,7 @@ export default function ManageScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Manage" subtitle="How the store works" />
+      <ScreenHeader title="Manage" subtitle="How the store works" actions={<NotificationBell />} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <TouchableOpacity
           style={styles.storeCard}
@@ -130,6 +133,15 @@ export default function ManageScreen() {
                 title="Team"
                 subtitle="Staff accounts and what each can do"
                 onPress={() => router.push("/(main)/team")}
+                grouped
+              />
+            ) : null}
+            {showApprovalRules ? (
+              <ListRow
+                icon="shield"
+                title="Approval rules"
+                subtitle="Refund limits, who approves, how long requests wait"
+                onPress={() => router.push("/(main)/approval-rules")}
                 grouped
               />
             ) : null}

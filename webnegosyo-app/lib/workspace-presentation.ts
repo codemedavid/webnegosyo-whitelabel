@@ -46,9 +46,11 @@ const TAB_PRESENTATION: Record<string, TabPresentation> = {
   growth: { label: "Growth", icon: "growth", hint: "A growth plan built from your numbers" },
   customers: { label: "Guest list", icon: "customers", hint: "Every guest, and follow-up campaigns" },
   loyalty: { label: "Rewards", icon: "gift", hint: "Stamp cards and points for regulars" },
+  texts: { label: "Texts", icon: "message", hint: "Automatic texts that bring guests back" },
   "product-analytics": { label: "Performance", icon: "performance", hint: "What sells, and what doesn't" },
   "daily-report": { label: "Stock report", icon: "report", hint: "Whether today's stock added up" },
   branches: { label: "Compare branches", icon: "compare", hint: "Branch against branch" },
+  activity: { label: "Activity", icon: "clock", hint: "Refunds, cancels, stock and drawers — and who did them" },
   // Manage
   "product-management": { label: "Products", icon: "manage", hint: "Products, prices, availability" },
   categories: { label: "Categories", icon: "list", hint: "Menu sections, their order and icons" },

@@ -1,7 +1,8 @@
 /**
  * calc_promo_breakeven and suggest_promotions — the economics of a discount,
- * from the store's prices, recipe costs (when inventory costing has them) and
- * real sales.
+ * from the store's prices, recipe costs (when inventory costing has them and
+ * the caller holds `costs`) and real sales. Without `costs` the maths degrades
+ * to the assumed food cost rather than failing.
  */
 
 import { z } from 'zod'
@@ -13,7 +14,7 @@ import { DAY_MS, manilaDayStart } from '@/lib/dashboard/periods'
 import { isCompletedSale, type SaleRecord } from '@/lib/dashboard/sale-record'
 import { formatPeso } from '@/components/admin/dashboard/dashboard-format'
 import { loadCustomerHubOverview } from '@/lib/customers/load-hub-overview'
-import { hasPermission } from '@/lib/staff-permissions'
+import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
 import { readAssistantMenu, type AssistantMenuItem } from '@/lib/assistant/data/menu'
 import { computeBreakeven, DEFAULT_FOOD_COST_PCT, type BreakevenLine, type CostedItem } from '@/lib/assistant/insights/breakeven'
 import { buildPromoIdeas, PROMO_GOALS, type PromoFacts } from '@/lib/assistant/insights/promotions'
@@ -24,7 +25,12 @@ import type { ToolResult } from '@/lib/assistant/types'
 
 const WINDOW_DAYS = 30
 
-async function unitCost(tenantId: string, itemId: string): Promise<number | null> {
+/**
+ * One dish's recipe cost, or null when there is none or the caller may not see
+ * costs (Phase 0d: dish cost is `costs`, not `analytics`).
+ */
+export async function recipeUnitCost(caller: PermissionHolder, tenantId: string, itemId: string): Promise<number | null> {
+  if (!hasPermission(caller, 'costs')) return null
   try {
     const breakdown = await getMenuItemCost(tenantId, itemId)
     return breakdown.baseCost !== null && breakdown.baseCost > 0 ? breakdown.baseCost : null
@@ -38,7 +44,7 @@ async function costed(ctx: AssistantToolContext, items: readonly AssistantMenuIt
     fetchMenuPerformanceForTenantId(ctx.tenantId, { client: createAdminClient() }, WINDOW_DAYS),
   )
   const units = new Map(performance.items.flatMap((row) => (row.itemId ? [[row.itemId, row.units] as const] : [])))
-  const costs = await Promise.all(items.map((item) => unitCost(ctx.tenantId, item.id)))
+  const costs = await Promise.all(items.map((item) => recipeUnitCost(ctx.caller, ctx.tenantId, item.id)))
   return items.map((item, index) => ({
     name: item.name,
     price: item.price,

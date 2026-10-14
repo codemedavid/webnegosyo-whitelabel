@@ -246,3 +246,14 @@ describe('DailyReportPanel — an unfinished count', () => {
     expect(screen.queryByTestId('daily-report-caveats')).not.toBeInTheDocument()
   })
 })
+
+describe('DailyReportPanel — table columns', () => {
+  it('puts each row\'s cost under the Cost header, not under the recount column', () => {
+    renderPanel({ rows: [row({ cogs: 120 })], totals: { cogs: 120, wasteCost: 0, shrinkageCost: 0 } })
+
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.trim())
+    const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
+
+    expect(cells[headers.indexOf('Cost')]).toHaveTextContent('₱120.00')
+  })
+})

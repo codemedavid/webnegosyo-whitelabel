@@ -19,14 +19,21 @@ const TENANT = 'tenant-1'
 interface Recorded {
   filters: Array<[string, unknown]>
   ranges: Array<[string, unknown]>
+  pages: Array<[number, number]>
 }
 
 const recorded: Record<string, Recorded> = {}
 const tableData: Record<string, unknown[]> = {}
 
 const from = jest.fn((table: string) => {
-  recorded[table] ??= { filters: [], ranges: [] }
+  recorded[table] ??= { filters: [], ranges: [], pages: [] }
+  let page: [number, number] | null = null
   const chain: Record<string, unknown> = {
+    range: (start: number, end: number) => {
+      recorded[table].pages.push([start, end])
+      page = [start, end]
+      return chain
+    },
     select: () => chain,
     eq: (column: string, value: unknown) => {
       recorded[table].filters.push([column, value])
@@ -48,8 +55,10 @@ const from = jest.fn((table: string) => {
     },
     maybeSingle: () =>
       Promise.resolve({ data: (tableData[table] ?? [])[0] ?? null, error: null }),
-    then: (resolve: (v: unknown) => void) =>
-      resolve({ data: tableData[table] ?? [], error: null }),
+    then: (resolve: (v: unknown) => void) => {
+      const rows = tableData[table] ?? []
+      resolve({ data: page ? rows.slice(page[0], page[1] + 1) : rows, error: null })
+    },
   }
   return chain
 })
@@ -142,6 +151,24 @@ describe('getDailyInventoryReport', () => {
 
     // Assert — "200" alone is unreadable; "200 g" is a quantity.
     expect(report.rows[0].stockUnitAbbreviation).toBe('g')
+  })
+
+  test('reads the whole day past the 1000-row page cap', async () => {
+    // A busy store writes thousands of movements a day; an unpaged read saw
+    // the first 1,000 and reported the rest of the day as never sold.
+    tableData.stock_movements = Array.from({ length: 2500 }, (_, i) => ({
+      inventory_item_id: 'flour',
+      reason: 'sale',
+      quantity_delta: -1,
+      balance_after: 2500 - i - 1,
+      created_at: '2026-07-29T05:00:00.000Z',
+    }))
+
+    const report = await getDailyInventoryReport(TENANT, '2026-07-29')
+
+    expect(report.rows[0]).toMatchObject({ name: 'Flour', sold: 2500 })
+    expect(recorded.stock_movements.pages[0]).toEqual([0, 999])
+    expect(recorded.inventory_items.pages[0]).toEqual([0, 999])
   })
 
   test('reports a quiet day as empty rather than failing', async () => {

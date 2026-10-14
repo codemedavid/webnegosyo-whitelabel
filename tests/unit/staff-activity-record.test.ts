@@ -51,3 +51,33 @@ describe('recordOrderEvent', () => {
     warn.mockRestore()
   })
 })
+
+describe('createSupabaseOrderEventStore — reasons', () => {
+  function fakeDb() {
+    const rows: Record<string, unknown>[] = []
+    const db = {
+      from: () => ({
+        insert: (row: Record<string, unknown>) => {
+          rows.push(row)
+          return Promise.resolve({ error: null })
+        },
+      }),
+    }
+    return { db, rows }
+  }
+
+  test('writes the cancel reason and note when given', async () => {
+    const { createSupabaseOrderEventStore } = await import('@/lib/staff-activity/record-order-event')
+    const { db, rows } = fakeDb()
+    await createSupabaseOrderEventStore(db as never).insert({ ...DRAFT, status: 'cancelled', reason: 'Customer left', note: 'Walked out' })
+    expect(rows[0]).toMatchObject({ status: 'cancelled', reason: 'Customer left', note: 'Walked out' })
+  })
+
+  test('leaves the columns out entirely when there is no reason (pre-migration safe)', async () => {
+    const { createSupabaseOrderEventStore } = await import('@/lib/staff-activity/record-order-event')
+    const { db, rows } = fakeDb()
+    await createSupabaseOrderEventStore(db as never).insert(DRAFT)
+    expect(rows[0]).not.toHaveProperty('reason')
+    expect(rows[0]).not.toHaveProperty('note')
+  })
+})

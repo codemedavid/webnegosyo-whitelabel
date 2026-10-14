@@ -9,7 +9,7 @@
  * arrives, and an edit only until it has been replayed (it leaves the queue).
  */
 
-import { needsAttention, type QueuedSale } from "./order-outbox";
+import { isUserVisibleSale, needsAttention, type QueuedSale } from "./order-outbox";
 import { isOrderEditStuck, type QueuedOrderEdit } from "./order-edits";
 import type { OrderPaymentLike } from "../order-history-view";
 
@@ -197,14 +197,19 @@ function isInWindow(createdAt: number, window: OfflineOrderInput["window"]): boo
   return !window || (createdAt >= window.startMs && createdAt < window.endMs);
 }
 
+/** Queued sales that should still read as orders (`isUserVisibleSale`). */
+function shownSales(input: OfflineOrderInput): QueuedSale[] {
+  return mineOnly(input.sales, input.tenantId).filter(isUserVisibleSale);
+}
+
 function hasNothingWaiting(input: OfflineOrderInput): boolean {
-  return mineOnly(input.sales, input.tenantId).length === 0 && mineOnly(input.edits, input.tenantId).length === 0;
+  return shownSales(input).length === 0 && mineOnly(input.edits, input.tenantId).length === 0;
 }
 
 /** Queued sales the server does not hold yet, with their own changes applied. */
 function localOrdersFor(input: OfflineOrderInput, serverIds: ReadonlySet<string>): LocalOrder[] {
   const edits = mineOnly(input.edits, input.tenantId);
-  return mineOnly(input.sales, input.tenantId)
+  return shownSales(input)
     .filter((sale) => isInWindow(sale.createdAt, input.window))
     .map(queuedSaleToOrder)
     .filter((order) => !serverIds.has(order._id))
@@ -266,7 +271,7 @@ export function mergeRealtimeQueue<T extends OrderLike>(
 
 /** Line items of queued sales, shaped like `orders:getAllOrderItems` rows. */
 export function localOrderItems(input: OfflineOrderInput): (LocalOrderItem & { orderId: string })[] {
-  return mineOnly(input.sales, input.tenantId).flatMap((sale) =>
+  return shownSales(input).flatMap((sale) =>
     toLocalItems(sale.orderArgs.items).map((item) => ({ ...item, orderId: queuedSaleOrderId(sale) }))
   );
 }

@@ -18,7 +18,7 @@
  * months behind that 200 (mismatched FCM project between the build and the
  * EAS credential), reported here as a clean send. See `expo-delivery.ts`.
  */
-import { after, NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   buildExpoPushMessages,
@@ -31,9 +31,8 @@ import {
   chaseExpoReceipts,
   describePushFailures,
   sendExpoPushMessages,
-  staleTokensFrom,
-  type PushFailure,
 } from '@/lib/push/expo-delivery'
+import { afterResponse, pruneStaleTokens } from '@/lib/push/push-route-helpers'
 
 interface NotifiableOrderRow {
   id: string
@@ -43,47 +42,6 @@ interface NotifiableOrderRow {
   total: number | null
   item_count: number | null
   customer_data: unknown
-}
-
-type AdminClient = ReturnType<typeof createAdminClient>
-
-/**
- * Forgets the devices Expo says no longer have the app, in BOTH token tables:
- * one physical device that has uninstalled is equally dead for order pushes
- * and for platform announcements, and a token left behind inflates every
- * "reached N devices" count from then on.
- */
-async function pruneStaleTokens(admin: AdminClient, failures: readonly PushFailure[]) {
-  const stale = staleTokensFrom(failures)
-  if (stale.length === 0) return
-
-  const [orderTokens, deviceTokens] = await Promise.all([
-    admin.from('push_tokens').delete().in('token', stale),
-    admin.from('platform_device_tokens').delete().in('token', stale),
-  ])
-  if (orderTokens.error) {
-    console.error('[notify-order] stale push_tokens cleanup failed:', orderTokens.error.message)
-  }
-  if (deviceTokens.error) {
-    console.error(
-      '[notify-order] stale platform_device_tokens cleanup failed:',
-      deviceTokens.error.message
-    )
-  }
-}
-
-/**
- * Runs follow-up work once the response is on its way. `after` throws when
- * there is no request scope — a unit test, or any caller outside Next's
- * server runtime — and the work then runs inline rather than being dropped:
- * what it finds is the only signal that a whole platform has gone silent.
- */
-function afterResponse(task: () => Promise<void>): Promise<void> | void {
-  try {
-    after(task)
-  } catch {
-    return task()
-  }
 }
 
 export async function POST(request: NextRequest) {
@@ -178,7 +136,7 @@ export async function POST(request: NextRequest) {
     if (refusals) {
       console.error(`[notify-order] tenant ${order.tenant_id} receipt refusals: ${refusals}`)
     }
-    await pruneStaleTokens(admin, all)
+    await pruneStaleTokens(admin, all, 'notify-order')
   })
 
   // "Accepted", not "delivered": a receipt may still refuse these. Devices

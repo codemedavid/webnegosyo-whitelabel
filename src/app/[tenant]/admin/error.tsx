@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { Owl } from '@/components/mascot/owl'
 import { Button } from '@/components/ui/button'
 import { reportClientError } from '@/lib/report-client-error'
 
@@ -17,6 +18,7 @@ export default function AdminError({
 
   return (
     <div className="flex flex-col items-center justify-center py-20 gap-4">
+      <Owl state="sorry" size={130} />
       <h2 className="text-xl font-semibold">Something went wrong</h2>
       <p className="text-muted-foreground text-sm max-w-md text-center">
         An error occurred while loading this page. This is usually temporary.

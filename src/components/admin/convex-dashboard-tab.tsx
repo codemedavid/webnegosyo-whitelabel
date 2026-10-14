@@ -18,6 +18,7 @@ import {
   useConvexOrders,
 } from "@/hooks/use-convex-orders";
 import { cn } from "@/lib/utils";
+import { inclusiveEndFor } from "@/lib/convex/period-bounds";
 
 const PERIODS = [
   "Today",
@@ -43,7 +44,9 @@ function computePeriodRange(period: Period): { start: number; end: number } {
       yesterday.setHours(0, 0, 0, 0);
       const todayMidnight = new Date(now);
       todayMidnight.setHours(0, 0, 0, 0);
-      return { start: yesterday.getTime(), end: todayMidnight.getTime() };
+      // The query is inclusive at both ends: stop just before midnight so an
+      // order placed at 00:00:00.000 counts on today only.
+      return { start: yesterday.getTime(), end: inclusiveEndFor(todayMidnight.getTime()) };
     }
     case "This Week": {
       const startOfWeek = new Date(now);

@@ -46,6 +46,8 @@ export interface WriteOrderChangeInput {
   tenantId: string;
   backend: OrderBackend;
   live: (args: Record<string, unknown>) => Promise<unknown>;
+  /** A status change's prior status, stored with a queued copy for the replay. */
+  previousStatus?: string;
   /** The server has no row for this order yet. */
   isOrderOnDeviceOnly: (orderId: string) => boolean;
   /** Some change to this order is still waiting to be written. */
@@ -89,6 +91,7 @@ export async function writeOrderChange(input: WriteOrderChangeInput): Promise<un
       ref: input.ref,
       args,
       createdAt: (input.now ?? Date.now)(),
+      ...(input.previousStatus !== undefined ? { previousStatus: input.previousStatus } : {}),
       attempts: 0,
       lastError: null,
     });

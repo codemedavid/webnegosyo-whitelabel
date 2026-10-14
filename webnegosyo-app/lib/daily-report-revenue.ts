@@ -88,3 +88,38 @@ export function resolveReportRevenue({
 
   return revenue;
 }
+
+/** Shown in place of the sales row to an account without Sales reports. */
+export const SALES_NEED_REPORTS_NOTE = "Sales need Sales Reports access. Ask the owner.";
+
+/**
+ * Whether this account may ask for the day's takings at all:
+ * - `shown` — ask, and state what comes back through `resolveReportRevenue`.
+ * - `no-reports` — the account lacks Sales reports. The database refuses it
+ *   the orders, and a refused read comes back EMPTY, which would draw as a day
+ *   that took nothing — so the query is skipped and the account is told why.
+ * - `not-comparable` — a branch account whose backend cannot narrow the
+ *   takings (see the scope mismatch above). Skipped and silently absent.
+ *
+ * The grant is checked first: telling an account the figure is incomparable
+ * implies it would otherwise have been theirs to see.
+ */
+export type RevenueAccess = "shown" | "no-reports" | "not-comparable";
+
+export interface RevenueAccessInput {
+  /** Whether the account holds Sales reports (directly or through Analytics). */
+  canSeeSales: boolean;
+  isBranchScoped: boolean;
+  /** As in `ReportRevenueInput`: absent means the takings were NOT narrowed. */
+  isRevenueBranchScoped?: boolean;
+}
+
+export function resolveRevenueAccess({
+  canSeeSales,
+  isBranchScoped,
+  isRevenueBranchScoped,
+}: RevenueAccessInput): RevenueAccess {
+  if (!canSeeSales) return "no-reports";
+  if (isBranchScoped && !isRevenueBranchScoped) return "not-comparable";
+  return "shown";
+}

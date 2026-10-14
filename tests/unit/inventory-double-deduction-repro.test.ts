@@ -22,7 +22,7 @@ import {
 } from '@/lib/inventory/order-stock-service'
 
 const TENANT = '55555555-5555-4555-8555-555555555555'
-const ORDER = 'ord-double-1'
+const ORDER = 'b0000000-0000-4000-8000-0000000000d1'
 const FLOUR = 'item-flour'
 const GRAM = 'unit-gram'
 const ONE_ORDER_OF_FLOUR = -200
@@ -78,19 +78,33 @@ function query(table: string) {
     insert: (input: Row | Row[]) => {
       const inserted = Array.isArray(input) ? input : [input]
       if (table === 'order_stock_applications') {
+        inserted.forEach((row) => { row.kind = row.kind ?? 'order' })
         const [claim] = inserted
         const taken = db.order_stock_applications.some(
           (row) =>
             row.tenant_id === claim.tenant_id &&
             row.order_id === claim.order_id &&
             row.reason === claim.reason &&
-            row.revision === claim.revision,
+            row.kind === claim.kind && row.revision === claim.revision,
         )
         if (taken) return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } })
       }
       const target = (db as unknown as Record<string, Row[]>)[table]
       if (target) target.push(...inserted)
       return Promise.resolve({ data: null, error: null })
+    },
+    update: (patch: Row) => {
+      const upd: Record<string, unknown> = {
+        eq: (column: string, value: unknown) => {
+          filters.push((row) => row[column] === value)
+          return upd
+        },
+        then: (resolve: (r: unknown) => unknown) => {
+          rows().forEach((row) => Object.assign(row, patch))
+          return Promise.resolve({ error: null }).then(resolve)
+        },
+      }
+      return upd
     },
     delete: () => {
       const del: Record<string, unknown> = {

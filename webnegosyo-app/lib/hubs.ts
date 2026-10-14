@@ -26,6 +26,9 @@ export const REPORTS_SECTIONS: readonly HubSection[] = [
   { title: "Sales", tabs: ["analytics", "growth"] },
   { title: "Products", tabs: ["product-analytics", "daily-report"] },
   { title: "Branches", tabs: ["branches"] },
+  // Refunds, cancels, stock and drawer changes, and who made them — for the
+  // store view (owners, activity_view, approve_requests).
+  { title: "Store", tabs: ["activity"] },
 ];
 
 export const MANAGE_SECTIONS: readonly HubSection[] = [

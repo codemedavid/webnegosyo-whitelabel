@@ -33,6 +33,28 @@ export interface PosStockItem {
    * Optional so items built before this field existed keep resolving.
    */
   addonIds?: string[];
+  /**
+   * Portions per unit for add-ons picked more than once (`{ [id]: n }`), only
+   * for n ≠ 1 and only for ids in `addonIds`. The platform multiplies that
+   * option's recipe by n — the same field web checkout sends.
+   */
+  addonQuantities?: Record<string, number>;
+}
+
+/** The platform accepts 1..99 portions of one add-on. */
+export const MAX_ADDON_PORTIONS = 99;
+
+function portionsOf(portions: number | undefined): number {
+  if (portions === undefined || !Number.isFinite(portions)) return 1;
+  return Math.min(MAX_ADDON_PORTIONS, Math.max(1, Math.round(portions)));
+}
+
+/** `{ id: n }` for every selection carrying more than one portion, else null. */
+function addonQuantitiesOf(selections: PosCartLine["selections"]): Record<string, number> | null {
+  const entries = selections
+    .map((selection) => [selection.optionId, portionsOf(selection.portions)] as const)
+    .filter(([, portions]) => portions !== 1);
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 /**
@@ -42,10 +64,14 @@ export interface PosStockItem {
  * different ingredients, so each must be resolved against its own recipes.
  */
 export function buildPosStockItems(cart: readonly PosCartLine[]): PosStockItem[] {
-  return cart.map((line) => ({
-    menuItemId: line.menuItemId,
-    quantity: line.quantity,
-    optionIds: line.selections.map((selection) => selection.optionId),
-    addonIds: line.selections.map((selection) => selection.optionId),
-  }));
+  return cart.map((line) => {
+    const addonQuantities = addonQuantitiesOf(line.selections);
+    return {
+      menuItemId: line.menuItemId,
+      quantity: line.quantity,
+      optionIds: line.selections.map((selection) => selection.optionId),
+      addonIds: line.selections.map((selection) => selection.optionId),
+      ...(addonQuantities ? { addonQuantities } : {}),
+    };
+  });
 }

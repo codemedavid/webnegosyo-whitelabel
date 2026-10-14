@@ -44,7 +44,7 @@ afterEach(() => {
 
 describe('best-effort stock wrappers report swallowed failures to Sentry', () => {
   it('applyOrderStockBestEffort tags the depletion failure', async () => {
-    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBeUndefined()
+    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBe('failed')
 
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
       tags: expect.objectContaining({
@@ -56,7 +56,7 @@ describe('best-effort stock wrappers report swallowed failures to Sentry', () =>
   })
 
   it('reverseOrderStockBestEffort tags the restore failure', async () => {
-    await expect(reverseOrderStockBestEffort('t1', 'o1')).resolves.toBeUndefined()
+    await expect(reverseOrderStockBestEffort('t1', 'o1')).resolves.toBe('failed')
 
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
       tags: expect.objectContaining({
@@ -68,7 +68,7 @@ describe('best-effort stock wrappers report swallowed failures to Sentry', () =>
   })
 
   it('redepleteOrderStockBestEffort tags the re-depletion failure', async () => {
-    await expect(redepleteOrderStockBestEffort('t1', 'o1')).resolves.toBeUndefined()
+    await expect(redepleteOrderStockBestEffort('t1', 'o1')).resolves.toBe('failed')
 
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
       tags: expect.objectContaining({
@@ -82,7 +82,7 @@ describe('best-effort stock wrappers report swallowed failures to Sentry', () =>
   it('applyOrderRevisionStockBestEffort carries the revision being saved', async () => {
     await expect(
       applyOrderRevisionStockBestEffort('t1', 'o1', 3, ITEMS, []),
-    ).resolves.toBeUndefined()
+    ).resolves.toBe('failed')
 
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), {
       tags: expect.objectContaining({
@@ -98,7 +98,7 @@ describe('best-effort stock wrappers report swallowed failures to Sentry', () =>
       throw new Error('sentry down')
     })
 
-    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBeUndefined()
+    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBe('failed')
     expect(console.error).toHaveBeenCalled()
   })
 })

@@ -7,6 +7,7 @@ import {
   cancelTransferWith,
 } from '@/lib/inventory/stock-transfers-service'
 import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
+import { PERMISSION_REFUSALS } from '@/lib/inventory/permission-refusals'
 import { transferDraftSchema, receiptCountsSchema } from '@/lib/inventory/schemas'
 import { z } from 'zod'
 import { canAccessStoreAdmin, type PlatformAction } from '@/lib/platform-staff/permissions'
@@ -98,13 +99,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Belonging to the tenant is not enough — every staff member here is
   // `role='admin'`, so reach lives in `permissions`. A cashier holding only
   // `pos` could otherwise send a transfer and empty their own shop's shelf onto
-  // another's book. `menu` is the same key that gates the inventory tab, so the
-  // door and the UI agree rather than merely looking like they do.
+  // another's book. `inventory` is the same key that gates the inventory tab, so
+  // the door and the UI agree (Phase 0d moved stock off `menu`).
   const isTenantMember =
     canAccessStoreAdmin(appUser, tenantId, TRANSFER_VERBS[action as TransferAction])
 
-  if (!isTenantMember || !hasPermission(appUser as PermissionHolder, 'menu')) {
+  if (!isTenantMember) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  if (!hasPermission(appUser as PermissionHolder, 'inventory')) {
+    return NextResponse.json({ error: PERMISSION_REFUSALS.transfers }, { status: 403 })
   }
 
   // A store that has not switched inventory on must never accumulate a ledger

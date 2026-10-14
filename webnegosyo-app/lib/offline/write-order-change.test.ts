@@ -166,4 +166,30 @@ describe("writeOrderChange", () => {
     const { input } = setup({ args: { status: "ready" } });
     await expect(writeOrderChange(input)).rejects.toThrow(/order/i);
   });
+
+  it("keeps a status change's previous status beside — never inside — the queued args", async () => {
+    // Arrange — Convex validators refuse unknown fields, so `args` stays exact.
+    const { input, live, enqueue } = setup({
+      isOffline: () => true,
+      args: { orderId: "order-1", status: "preparing" },
+      previousStatus: "cancelled",
+    });
+
+    // Act
+    await writeOrderChange(input);
+
+    // Assert
+    expect(live).not.toHaveBeenCalled();
+    expect(enqueue.mock.calls[0][0]).toMatchObject({
+      args: { orderId: "order-1", status: "preparing" },
+      previousStatus: "cancelled",
+    });
+  });
+
+  it("never sends the previous status to the server", async () => {
+    const { input, live } = setup({ previousStatus: "cancelled" });
+    await writeOrderChange(input);
+    expect(live).toHaveBeenCalledWith({ orderId: "order-1", status: "ready" });
+  });
 });
+

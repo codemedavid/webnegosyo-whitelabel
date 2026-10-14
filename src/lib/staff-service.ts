@@ -6,6 +6,7 @@
 import { resolveStaffLimit } from '@/lib/billing/subscription-status'
 import { validateDefaultTab } from '@/lib/staff-default-screen'
 import {
+  isGrantedByFullAccess,
   validatePermissionKeys,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
@@ -163,7 +164,8 @@ const GRANT_OUTSIDE_SCOPE = 'You can only grant permissions you hold'
 
 /**
  * May this caller hand out exactly these permissions? An owner or superadmin
- * (or a pre-staff-management admin, `permissions: null`) may grant anything.
+ * may grant anything; a pre-staff-management admin (`permissions: null`) may
+ * grant anything except the opt-in keys, which it does not hold itself.
  * Everyone else may grant only what they hold — a branch admin holding one
  * permission must not be able to mint a full-access account (H3). `null` as
  * the requested set means "full access", which only a full-access caller has.
@@ -176,7 +178,8 @@ export function canGrantPermissions(
   requested: readonly string[] | null
 ): boolean {
   if (caller.role === 'superadmin' || caller.is_owner) return true
-  if (caller.permissions == null) return true
+  // Full access stops short of the opt-in keys, so it cannot hand them out.
+  if (caller.permissions == null) return (requested ?? []).every(isGrantedByFullAccess)
   if (requested === null) return false
   const held = new Set(caller.permissions)
   return requested.every((key) => held.has(key))

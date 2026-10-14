@@ -8,11 +8,17 @@
  */
 
 import { describe, it, expect, jest } from '@jest/globals'
-import {
-  getCostingGraph,
-  getMenuItemCost,
-  type CostingRowSets,
-} from '@/lib/inventory/costing-service'
+
+// Dish cost is gated on `costs` (Phase 0d); this suite is about the maths, so
+// the caller is the owner. The gate itself: inventory-permission-split.test.ts.
+jest.mock('@/lib/admin-service', () => ({
+  verifyTenantAdmin: () =>
+    Promise.resolve({ user: { id: 'u1' }, userRole: { role: 'admin', is_owner: true, permissions: null } }),
+}))
+
+// Imported lazily: under next/jest a static import runs before jest.mock.
+const service = () => import('@/lib/inventory/costing-service')
+import type { CostingRowSets } from '@/lib/inventory/costing-service'
 import type { InventoryItem, InventoryUnitRow, Recipe, RecipeComponent } from '@/types/database'
 
 const GRAM: InventoryUnitRow = {
@@ -49,7 +55,7 @@ describe('getCostingGraph', () => {
       units: [GRAM], items: [FLOUR], recipes: [BASE_RECIPE], components: [BASE_COMPONENT],
     })
 
-    const graph = await getCostingGraph('t1', deps)
+    const graph = await (await service()).getCostingGraph('t1', deps)
 
     expect(graph.ingredients.flour).toBeDefined()
     expect(graph.recipes.r_base.components).toHaveLength(1)
@@ -57,7 +63,7 @@ describe('getCostingGraph', () => {
   })
 
   it('returns an empty graph for a tenant with no inventory yet', async () => {
-    const graph = await getCostingGraph('t1', depsReturning(EMPTY_ROWS))
+    const graph = await (await service()).getCostingGraph('t1', depsReturning(EMPTY_ROWS))
 
     expect(graph.ingredients).toEqual({})
     expect(graph.recipes).toEqual({})
@@ -70,7 +76,7 @@ describe('getMenuItemCost', () => {
       units: [GRAM], items: [FLOUR], recipes: [BASE_RECIPE], components: [BASE_COMPONENT],
     })
 
-    const breakdown = await getMenuItemCost('t1', 'm1', deps)
+    const breakdown = await (await service()).getMenuItemCost('t1', 'm1', deps)
 
     expect(breakdown.baseCost).toBeCloseTo(5, 6)
     expect(breakdown.errors).toEqual([])
@@ -81,7 +87,7 @@ describe('getMenuItemCost', () => {
       units: [GRAM], items: [FLOUR], recipes: [BASE_RECIPE], components: [BASE_COMPONENT],
     })
 
-    const breakdown = await getMenuItemCost('t1', 'other-item', deps)
+    const breakdown = await (await service()).getMenuItemCost('t1', 'other-item', deps)
 
     expect(breakdown.baseCost).toBeNull()
     expect(breakdown.errors).toEqual([])
@@ -90,7 +96,7 @@ describe('getMenuItemCost', () => {
   it('fetches the tenant rows only once per call', async () => {
     const deps = depsReturning(EMPTY_ROWS)
 
-    await getMenuItemCost('t1', 'm1', deps)
+    await (await service()).getMenuItemCost('t1', 'm1', deps)
 
     expect(deps.fetchCostingRows).toHaveBeenCalledTimes(1)
   })
@@ -101,7 +107,7 @@ describe('getMenuItemCost', () => {
       units: [GRAM], items: [], recipes: [BASE_RECIPE], components: [BASE_COMPONENT],
     })
 
-    const breakdown = await getMenuItemCost('t1', 'm1', deps)
+    const breakdown = await (await service()).getMenuItemCost('t1', 'm1', deps)
 
     expect(breakdown.baseCost).toBeNull()
     expect(breakdown.errors).toHaveLength(1)
@@ -114,6 +120,6 @@ describe('getMenuItemCost', () => {
       }),
     }
 
-    await expect(getMenuItemCost('t1', 'm1', deps)).rejects.toThrow('connection refused')
+    await expect((await service()).getMenuItemCost('t1', 'm1', deps)).rejects.toThrow('connection refused')
   })
 })

@@ -10,6 +10,7 @@ import { render, screen } from '@testing-library/react'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 
@@ -36,7 +37,7 @@ function dailyReport(
 
 function renderManager(props: Record<string, unknown> = {}) {
   return render(
-    <InventoryManager
+    <InventoryManager access={FULL_INVENTORY_ACCESS}
       tenantId="t1"
       tenantSlug="acme"
       initialIngredients={INGREDIENTS}

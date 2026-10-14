@@ -2,7 +2,7 @@ import React from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors, radius, shadow, spacing, typography } from "../../theme/colors";
 import { formatPeso } from "../../lib/format";
-import type { CartTotals, PosCartLine } from "../../lib/pos-cart";
+import { selectionLabel, type CartTotals, type PosCartLine } from "../../lib/pos-cart";
 import type { PosOrderType } from "../../lib/pos-catalog";
 import { isDineInType } from "../../lib/pos-table";
 import type { OrderDiscountLine } from "../../lib/order-totals";
@@ -257,7 +257,7 @@ export function CartSheet({
                   </Text>
                   {line.selections.length > 0 && (
                     <Text style={styles.lineMeta} numberOfLines={1}>
-                      {line.selections.map((s) => s.optionName).join(", ")}
+                      {line.selections.map(selectionLabel).join(", ")}
                     </Text>
                   )}
                   {line.note ? (

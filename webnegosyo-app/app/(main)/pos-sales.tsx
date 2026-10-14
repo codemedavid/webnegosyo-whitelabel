@@ -20,6 +20,7 @@ import {
   useOfflineRealtimeQueue,
 } from "../../lib/offline/use-offline-orders";
 import { isQueuedOrderWrite } from "../../lib/offline/write-order-change";
+import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 import { OfflineOrdersNotice } from "../../components/OfflineOrdersNotice";
 import { useAuthStore } from "../../stores/auth-store";
 import { useRegisterSettingsStore } from "../../stores/register-settings-store";
@@ -55,6 +56,8 @@ import { LoadingState } from "../../components/LoadingState";
 import { SectionHeader } from "../../components/SectionHeader";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { ListRow } from "../../components/ListRow";
+import { canOpenMyActivity, MY_ACTIVITY_HREF } from "../../lib/activity/my-activity";
 
 const getOrdersRef = "orders:getOrders" as unknown as FunctionReference<"query">;
 const getRealtimeQueueRef = "orders:getRealtimeQueue" as unknown as FunctionReference<"query">;
@@ -267,6 +270,12 @@ function JoinedLedger({
 }
 
 function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, savedAt, refetch }: DrawerRead) {
+  // The "Your activity today" door at the foot of the Drawer.
+  const activityViewer = {
+    userId: useAuthStore((s) => s.userId),
+    tenantId: useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId),
+    isDemo: useAuthStore((s) => s.isDemo),
+  };
   const orderBackend = useAuthStore((s) => s.orderBackend);
   const includeOnlineOrders = useRegisterSettingsStore((s) => s.drawerIncludesOnlineOrders);
   const setIncludeOnlineOrders = useRegisterSettingsStore((s) => s.setDrawerIncludesOnlineOrders);
@@ -355,9 +364,14 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
 
     setConfirmingId(order._id);
     try {
-      const written = await updateStatus({ orderId: order._id, status: "confirmed" });
+      const previousStatus = order.status ?? undefined;
+      const written = await updateStatus({ orderId: order._id, status: "confirmed" }, { previousStatus });
       // Kept on this device: the replay pushes to Loyverse once it lands.
       if (isQueuedOrderWrite(written)) return;
+
+      // Only moves stock for an order confirmed out of `cancelled`; the shared
+      // rule every status screen applies. Background, never throws.
+      void syncStockForStatusChange({ orderId: String(order._id), newStatus: "confirmed", previousStatus });
 
       // Push the confirmed order into Loyverse. The drawer shows a total and an
       // item count, never the dishes, so only the id travels and the server
@@ -513,12 +527,24 @@ function DrawerContent({ page, todaysSales, ledger, coverageNote, isOffline, sav
             })}
           </View>
         )}
+
+        {/* The cashier's own refunds, cancels and stock changes (Store activity). */}
+        {canOpenMyActivity(activityViewer) ? (
+          <ListRow
+            icon="clock"
+            title="Your activity today"
+            subtitle="Refunds, cancels and stock changes you made"
+            onPress={() => router.push(MY_ACTIVITY_HREF as never)}
+            style={styles.myActivity}
+          />
+        ) : null}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  myActivity: { marginTop: spacing.lg, borderRadius: radius.lg, overflow: "hidden" },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,

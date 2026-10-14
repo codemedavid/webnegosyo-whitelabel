@@ -1,15 +1,18 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, Eye, Loader2, X } from 'lucide-react'
+import { Owl } from '@/components/mascot/owl'
 import { MIN_OWNER_PASSWORD } from '@/lib/onboarding/answers'
 import { STORE_TYPES } from '@/lib/onboarding/store-type'
 import type { PublicOnboardingAssets } from '@/lib/onboarding/repository'
 import type { MenuReadView } from '@/lib/onboarding/menu-read'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { removeOnboardingPhoto, signInNewOwner, submitOnboarding, trackOnboardingEvent, uploadOnboardingPhoto } from './onboarding-api'
-import { ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, PrimaryButton, TextButton } from './onboarding-ui'
+import { ACCENT_SOFT, ErrorNote, FOCUS_RING, OB, PrimaryButton, Shimmer, TextButton } from './onboarding-ui'
+import { ChapterBreakOverlay, ColorRipple } from './motion/parts'
+import { chapterBreakFor, type ChapterBreak } from './motion/moments'
 import { accentStyle, resolveBrandColor } from './onboarding-theme'
 import { StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
 import { previewMenuRows, type PreviewMenuRow } from './preview-menu'
@@ -18,6 +21,7 @@ import { BrandStep, MenuStep, StoreStep } from './wizard-steps'
 import { AccountStep, HoursStep, OrderingStep, PaymentsStep } from './wizard-steps-setup'
 import { BestSellersStep } from './wizard-bestsellers'
 import { ChapterProgress } from './wizard-progress'
+import { guideOwlState } from './guide-owl'
 import { useMenuRead } from './use-menu-read'
 import {
   AUTO_ADVANCE_STEPS,
@@ -188,6 +192,9 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   // Menu pages still uploading: moving on now would start the one AI read on a partial set.
   const [isUploadingMenu, setIsUploadingMenu] = useState(false)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  // The short celebration between chapters (About you → Your store → Go live).
+  const [chapterBreak, setChapterBreak] = useState<ChapterBreak | null>(null)
+  const endChapterBreak = useCallback(() => setChapterBreak(null), [])
   // False until the saved draft and step were read, so a returning owner never sees the Welcome screen flash.
   const [isRestored, setIsRestored] = useState(false)
   const headingRef = useRef<HTMLDivElement>(null)
@@ -274,6 +281,7 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   function goTo(nextIndex: number) {
     if (advanceTimer.current) clearTimeout(advanceTimer.current)
     setDirection(nextIndex > stepIndex ? 1 : -1)
+    setChapterBreak(chapterBreakFor(WIZARD_STEPS[stepIndex], WIZARD_STEPS[nextIndex], WIZARD_STEPS))
     setStepIndex(nextIndex)
     writeStorage(stepKey(token), WIZARD_STEPS[nextIndex])
     setError(null)
@@ -322,6 +330,8 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const storeName = draft.storeName.trim() || view.businessName
   const shift = isReducedMotion ? 0 : STEP_SHIFT_PX * direction
   const hasPreviewButton = PREVIEW_STEPS.has(step)
+  // Owl guides the set-up: he stays put while the questions slide, so he can react.
+  const owlState = guideOwlState(step, { isSubmitting, isUploadingMenu })
 
   const question = (
     <AnimatePresence mode="wait" initial={false} custom={direction}>
@@ -362,7 +372,15 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
       <div className={`min-w-0 px-5 pb-40 pt-4 sm:px-8 ${isAboutChapter ? '' : 'lg:flex lg:items-start lg:justify-center lg:px-12 lg:pb-36 lg:pt-8'}`}>
         <div className={`mx-auto w-full ${isAboutChapter ? 'max-w-[36rem]' : 'max-w-[34rem]'}`}>
           {!isWelcome && <div className="mb-8"><ChapterProgress step={step} /></div>}
-          {isWelcome && <div className="h-6 sm:h-10" aria-hidden />}
+          {isWelcome && <div className="h-2 sm:h-6" aria-hidden />}
+          {isWelcome
+            ? <Owl state={owlState} size={132} className="mb-4" />
+            : (
+              // A round avatar: the bust art spills past its square, so the circle crops it.
+              <span className="mb-4 flex h-16 w-16 items-end justify-center overflow-hidden rounded-full" style={{ backgroundColor: OB.wash }}>
+                <Owl state={owlState} framing="bust" size={60} />
+              </span>
+            )}
           {question}
           {error && <div className="mt-6"><ErrorNote>{error}</ErrorNote></div>}
         </div>
@@ -371,7 +389,8 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
       {!isAboutChapter && (
         <aside className="hidden lg:block lg:p-4 lg:pb-28" aria-label="Preview of your store">
           <div className="sticky top-4 flex h-[calc(100dvh-9rem)] min-h-[560px] flex-col items-center justify-center rounded-3xl transition-colors duration-700" style={{ backgroundColor: ACCENT_SOFT }}>
-            <div className="w-full max-w-[290px]">{preview}</div>
+            <ColorRipple color={brand ?? OB.ink} />
+            <div className="relative w-full max-w-[290px]">{preview}</div>
           </div>
         </aside>
       )}
@@ -391,11 +410,13 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
               {continueLabel(step, isSubmitting, isUploadingMenu)}
               {!isLastStep && !isSubmitting && <ArrowRight className="h-4 w-4" aria-hidden />}
+              {isLastStep && !isSubmitting && <Shimmer />}
             </PrimaryButton>
           </div>
         </div>
       </footer>
 
+      <ChapterBreakOverlay moment={chapterBreak} onDone={endChapterBreak} />
       <MobilePreviewSheet isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)}>{preview}</MobilePreviewSheet>
     </form>
   )

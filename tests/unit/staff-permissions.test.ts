@@ -6,6 +6,8 @@ import {
   canAddStaff,
   validatePermissionKeys,
   IMPLIED_BY,
+  OPT_IN_PERMISSION_KEYS,
+  STAFF_PERMISSION_LABELS,
   impliedPermissions,
   permissionForAdminPath,
   permissionForMobileTab,
@@ -46,6 +48,16 @@ describe('staff permission registry', () => {
       'tables',
       'loyalty_manage',
       'loyalty_redeem',
+      // Store activity & approvals: opt-in — a full-access account does NOT
+      // get them without the owner ticking them (see OPT_IN_PERMISSION_KEYS).
+      'activity_view',
+      'approve_requests',
+      // Reports & inventory suite (Phase 0d): sales reports (implied by
+      // analytics), stock, and what things cost — the last two carved out of
+      // 'menu' and backfilled once onto every menu holder.
+      'reports',
+      'inventory',
+      'costs',
     ])
   })
 
@@ -99,15 +111,56 @@ describe('hasPermission', () => {
 
   it('leaves every separate authority opt-in', () => {
     for (const key of ['order_edit', 'order_refund', 'vouchers', 'branch_staff',
-                       'loyalty_manage', 'loyalty_redeem', 'pos', 'menu'] as const) {
+                       'loyalty_manage', 'loyalty_redeem', 'pos', 'menu',
+                       'reports', 'inventory', 'costs'] as const) {
       expect(hasPermission(ordersOnlyStaff, key)).toBe(false)
+    }
+  })
+})
+
+describe('opt-in permissions (activity_view, approve_requests)', () => {
+  it('names exactly the two store-activity keys', () => {
+    expect([...OPT_IN_PERMISSION_KEYS]).toEqual(['activity_view', 'approve_requests'])
+  })
+
+  it('labels them for the owner picking them', () => {
+    expect(STAFF_PERMISSION_LABELS.activity_view.label).toBe('See store activity')
+    expect(STAFF_PERMISSION_LABELS.approve_requests.label).toBe('Approve requests')
+  })
+
+  it('is NOT granted by full access (permissions null)', () => {
+    expect(hasPermission(legacyAdmin, 'activity_view')).toBe(false)
+    expect(hasPermission(legacyAdmin, 'approve_requests')).toBe(false)
+  })
+
+  it('is still granted to the owner and to superadmins', () => {
+    for (const key of OPT_IN_PERMISSION_KEYS) {
+      expect(hasPermission(owner, key)).toBe(true)
+      expect(hasPermission(superadmin, key)).toBe(true)
+    }
+  })
+
+  it('is granted when ticked by name', () => {
+    const manager: PermissionHolder = { role: 'admin', is_owner: false, permissions: ['activity_view'] }
+    expect(hasPermission(manager, 'activity_view')).toBe(true)
+    expect(hasPermission(manager, 'approve_requests')).toBe(false)
+  })
+
+  it('is never reached through containment', () => {
+    for (const key of OPT_IN_PERMISSION_KEYS) expect(IMPLIED_BY[key]).toBeUndefined()
+  })
+
+  it('leaves full access granting every other key, as before', () => {
+    const optIn = new Set<string>(OPT_IN_PERMISSION_KEYS)
+    for (const key of STAFF_PERMISSION_KEYS.filter((k) => !optIn.has(k))) {
+      expect(hasPermission(legacyAdmin, key)).toBe(true)
     }
   })
 })
 
 describe('IMPLIED_BY', () => {
   it('names only grants that are strict subsets of their parent', () => {
-    expect(IMPLIED_BY).toEqual({ kitchen: 'orders', tables: 'orders' })
+    expect(IMPLIED_BY).toEqual({ kitchen: 'orders', tables: 'orders', reports: 'analytics' })
   })
 
   it('never points a key at itself or at a key outside the registry', () => {
@@ -212,6 +265,10 @@ describe('permissionForAdminPath', () => {
 
   it('maps customers routes', () => {
     expect(permissionForAdminPath('/my-resto/admin/customers')).toBe('customers')
+  })
+
+  it('maps Texts to customers (texts go to the same guest list)', () => {
+    expect(permissionForAdminPath('/my-resto/admin/texts')).toBe('customers')
   })
 
   it('leaves the dashboard and settings ungated', () => {

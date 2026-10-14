@@ -19,6 +19,7 @@ import { MetricsPanel } from '@/components/admin/dashboard/metrics-panel'
 import { TodoCard } from '@/components/admin/dashboard/todo-card'
 import { WhoIsBuyingCard } from '@/components/admin/dashboard/who-is-buying-card'
 import { StartHereNudge } from '@/components/admin/start-here/start-here-nudge'
+import { ReviewStaffAccessNudge } from '@/components/admin/staff/review-staff-access-nudge'
 import type { Tenant } from '@/types/database'
 
 interface AdminDashboardProps {
@@ -160,6 +161,10 @@ export default async function AdminDashboard({ params, searchParams }: AdminDash
 
       <Suspense fallback={null}>
         <StartHereNudge tenant={tenant} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <ReviewStaffAccessNudge tenant={tenant} />
       </Suspense>
 
       <Suspense key={range} fallback={<AnalyticsDashboardSkeleton />}>

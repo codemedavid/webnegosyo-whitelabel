@@ -6,7 +6,7 @@ import {
   getBranchStockSummaries,
 } from '@/lib/inventory/branch-stock-read'
 import { resolveBranchScope, type BranchScope } from '@/lib/outlets/branch-scope'
-import { seedDefaultUnits } from '@/lib/inventory/units-service'
+import { getUnits, seedDefaultUnits } from '@/lib/inventory/units-service'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import { StockAlertsBanner } from '@/components/admin/stock-alerts-banner'
 import { StockReconciliationBanner } from '@/components/admin/stock-reconciliation-banner'
@@ -34,6 +34,10 @@ import { resolveReportDay } from '@/lib/inventory/business-day'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { NamedBranch } from '@/lib/inventory/branch-stock-view'
 import type { Outlet, Tenant } from '@/types/database'
+import {
+  planInventoryReads,
+  resolveInventoryAccess,
+} from '@/components/admin/inventory-manager/inventory-access'
 
 /**
  * The cached tenant row carries no credentials (they live in tenant_secrets),
@@ -152,7 +156,15 @@ export default async function AdminInventoryPage({
   // Quantities are read as whoever is looking: the owner's roll-up across every
   // branch, or one branch's own shelf. A manager shown the chain total would
   // count their shelf short against it.
-  const scope = resolveBranchScope((await getCachedCurrentUserRole()) ?? { role: '' })
+  const caller = await getCachedCurrentUserRole()
+  const scope = resolveBranchScope(caller ?? { role: '' })
+
+  // What this account may see and do (plan §6), decided once. It also decides
+  // which reads happen at all: an inventory clerk without `menu` must not
+  // trigger the unit seed (a `menu`-gated write that throws), and nobody is
+  // sent a priced report or takings they may not see.
+  const access = resolveInventoryAccess(caller)
+  const reads = planInventoryReads(access)
 
   // The report reconciles one Manila day: what the trade took off the shelf and
   // what it cost. Scoped to whoever is looking, matching the quantities above
@@ -191,7 +203,8 @@ export default async function AdminInventoryPage({
   ] = await Promise.all([
     // Seed the default unit catalog on first visit so ingredients always have
     // a unit to reference. Idempotent — existing units are returned untouched.
-    seedDefaultUnits(tenant.id),
+    // Only an account that may create units seeds; everyone else just reads.
+    reads.shouldSeedUnits ? seedDefaultUnits(tenant.id) : getUnits(tenant.id),
     ingredientsRead,
     // Open alerts need no feature-flag check of their own: when a tenant has
     // low-stock alerts switched off, nothing writes them, so the list is empty
@@ -220,10 +233,11 @@ export default async function AdminInventoryPage({
         activeBranchesOf(rows),
       ),
     ),
-    readDailyReport(tenant.id, dayKey, reportScope.outletId),
+    // Priced on every line, so not read at all without `costs`.
+    reads.shouldReadDailyReport ? readDailyReport(tenant.id, dayKey, reportScope.outletId) : undefined,
     // Read alongside the report rather than after it; only shown when the
-    // report itself was read (below).
-    reportScope.isRevenueBranchScoped
+    // report itself was read (below). Needs `reports` as well as `costs`.
+    reads.shouldReadRevenue && reportScope.isRevenueBranchScoped
       ? withOrderCredentials(tenant).then((withKeys) =>
           getDailyRevenue(withKeys, dayKey, {}, reportScope.outletId),
         )
@@ -265,6 +279,10 @@ export default async function AdminInventoryPage({
   // where null would say "could not be read" and imply the figure would
   // otherwise have been theirs to see. See `resolveReportScope`.
   const dailyRevenue = dailyReport ? branchRevenue : null
+  // The figure WOULD have been shown, but this account lacks Sales Reports: the
+  // panel says so rather than reading as "could not be read" or saying nothing.
+  const isSalesWithheld =
+    Boolean(dailyReport) && !access.canSeeSales && reportScope.isRevenueBranchScoped
 
   return (
     <div className="space-y-6">
@@ -300,6 +318,7 @@ export default async function AdminInventoryPage({
         activityLoadFailed={activity.loadFailed}
         dailyReport={dailyReport}
         dailyRevenue={dailyRevenue}
+        isSalesWithheld={isSalesWithheld}
         latestDayKey={latestDayKey}
         defaultTab={tab}
         stockItemId={stock}
@@ -308,6 +327,7 @@ export default async function AdminInventoryPage({
         countProgress={openCount.countProgress}
         openCountOutletId={openCount.openCountOutletId}
         branches={branches}
+        access={access}
       />
     </div>
   )

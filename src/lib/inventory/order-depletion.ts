@@ -32,6 +32,63 @@ export interface StockDepletion {
   unitId: string
 }
 
+/** The selections of one order line, without its quantity. */
+export type DepletionLineSelection = Omit<DepletionOrderItem, 'quantity'>
+
+/** One recipe a line spends, and how many portions of it per unit of the dish. */
+export interface LineRecipePortion {
+  recipe: Recipe
+  /** Add-on portions per parent unit; 1 for the base and single-pick options. */
+  portions: number
+}
+
+/**
+ * Which recipes ONE unit of a configured dish spends, and how many portions of
+ * each: the base recipe plus every selected variation option, add-on and
+ * modifier option recipe. Option recipes ADD to the base, never replace it.
+ *
+ * The single definition of "what a line spends", shared by depletion and by
+ * every stock guard that must agree with it (`producible.ts`).
+ */
+export function resolveLineRecipePortions(
+  item: DepletionLineSelection,
+  recipes: readonly Recipe[],
+): LineRecipePortion[] {
+  const configured = resolveConfiguredRecipeIds(
+    item.menuItemId,
+    item.optionIds ?? [],
+    item.addonIds ?? [],
+    recipes,
+    [...new Set([...(item.modifierOptionIds ?? []), ...(item.optionIds ?? []), ...(item.addonIds ?? [])])],
+  )
+
+  const recipeIds = [
+    ...(configured.baseRecipeId ? [configured.baseRecipeId] : []),
+    ...configured.optionRecipeIds,
+    ...configured.addonRecipeIds,
+  ]
+
+  const selectedRecipes = [...new Set(recipeIds)]
+    .map((id) => recipes.find((recipe) => recipe.id === id))
+    .filter((recipe): recipe is Recipe => Boolean(recipe))
+  // One recipe per selected id: a modifier_option recipe wins over a legacy
+  // twin for the same option, so one pick is never spent twice.
+  const canonical = new Map<string, Recipe>()
+  for (const recipe of selectedRecipes) {
+    const selectedId = recipe.modifier_option_id ?? recipe.addon_id ?? recipe.variation_option_id
+    const key = selectedId ? `selection:${selectedId}` : `base:${recipe.id}`
+    const existing = canonical.get(key)
+    if (!existing || recipe.target_type === 'modifier_option') canonical.set(key, recipe)
+  }
+
+  return [...canonical.values()].flatMap((recipe) => {
+    const addonId = recipe.addon_id ?? recipe.modifier_option_id
+    const portions = addonId ? item.addonQuantities?.[addonId] ?? 1 : 1
+    if (!Number.isInteger(portions) || portions <= 0) return []
+    return [{ recipe, portions }]
+  })
+}
+
 /**
  * How much of each ingredient one order consumes.
  *
@@ -56,34 +113,8 @@ export function resolveOrderDepletions(
   for (const item of items) {
     if (!Number.isFinite(item.quantity) || item.quantity <= 0) continue
 
-    const configured = resolveConfiguredRecipeIds(
-      item.menuItemId,
-      item.optionIds ?? [],
-      item.addonIds ?? [],
-      recipes,
-      [...new Set([...(item.modifierOptionIds ?? []), ...(item.optionIds ?? []), ...(item.addonIds ?? [])])],
-    )
-
-    const recipeIds = [
-      ...(configured.baseRecipeId ? [configured.baseRecipeId] : []),
-      ...configured.optionRecipeIds,
-      ...configured.addonRecipeIds,
-    ]
-
-    const selectedRecipes = [...new Set(recipeIds)].map((id) => recipes.find((recipe) => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe))
-    const canonical = new Map<string, Recipe>()
-    for (const recipe of selectedRecipes) {
-      const selectedId = recipe.modifier_option_id ?? recipe.addon_id ?? recipe.variation_option_id
-      const key = selectedId ? `selection:${selectedId}` : `base:${recipe.id}`
-      const existing = canonical.get(key)
-      if (!existing || recipe.target_type === 'modifier_option') canonical.set(key, recipe)
-    }
-    for (const recipe of canonical.values()) {
-      const recipeId = recipe.id
-      const addonId = recipe.addon_id ?? recipe.modifier_option_id
-      const portions = addonId ? item.addonQuantities?.[addonId] ?? 1 : 1
-      if (!Number.isInteger(portions) || portions <= 0) continue
-      for (const component of componentsByRecipe.get(recipeId) ?? []) {
+    for (const { recipe, portions } of resolveLineRecipePortions(item, recipes)) {
+      for (const component of componentsByRecipe.get(recipe.id) ?? []) {
         const key = `${component.inventory_item_id}::${component.unit_id}`
         const existing = totals.get(key)
         const quantity = component.quantity * item.quantity * portions
@@ -97,4 +128,31 @@ export function resolveOrderDepletions(
   }
 
   return [...totals.values()].filter((d) => d.quantity > 0)
+}
+
+/** A placed order line, as checkout carries it. */
+export interface CheckoutOrderLine {
+  menu_item_id: string
+  quantity: number
+  option_ids?: string[]
+  addon_ids?: string[]
+  addon_quantities?: Record<string, number>
+}
+
+/**
+ * A checkout line as depletion (and every guard that must agree with it) reads
+ * it. The same id set feeds both option buckets: variation options and unified
+ * modifier options both arrive in `option_ids`/`addon_ids` and ids are unique
+ * per option, so whichever recipe target exists matches and the other finds
+ * nothing.
+ */
+export function depletionItemFromCheckoutLine(line: CheckoutOrderLine): DepletionOrderItem {
+  return {
+    menuItemId: line.menu_item_id,
+    quantity: line.quantity,
+    optionIds: line.option_ids ?? [],
+    modifierOptionIds: [...new Set([...(line.option_ids ?? []), ...(line.addon_ids ?? [])])],
+    addonIds: line.addon_ids ?? [],
+    ...(line.addon_quantities ? { addonQuantities: line.addon_quantities } : {}),
+  }
 }

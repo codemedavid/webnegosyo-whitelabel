@@ -2,7 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   MAX_SYNC_ATTEMPTS,
   OUTBOX_STORAGE_KEY,
+  STOCK_RETRY_BASE_MS,
+  STOCK_RETRY_MAX_MS,
+  deferOwedStock,
   enqueueSale,
+  nextStockRetryAt,
+  owesOnlyStock,
+  isUserVisibleSale,
   getOutbox,
   hydrateOutbox,
   isSaleQueued,
@@ -241,5 +247,58 @@ describe("order outbox", () => {
 
       expect(before.attempts).toBe(MAX_SYNC_ATTEMPTS);
     });
+  });
+});
+
+describe("a sale that owes only its stock call", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetOutboxForTests();
+    storage.getItem.mockResolvedValue(null);
+    storage.setItem.mockResolvedValue(undefined);
+  });
+
+  it("persists the deferral: reports done, one more stock attempt, the next try time", async () => {
+    // Arrange
+    await enqueueSale(sale("a"));
+    await markSaleWritten("a", "server-a");
+
+    // Act
+    await deferOwedStock("a", 99_000);
+
+    // Assert
+    const stored = JSON.parse(storage.setItem.mock.calls.at(-1)?.[1] as string)[0];
+    expect(stored).toMatchObject({ reportsDone: true, stockAttempts: 1, stockRetryAt: 99_000 });
+    expect(stored.bookkeepingDone).toBeUndefined();
+    expect(owesOnlyStock(getOutbox().sales[0])).toBe(true);
+  });
+
+  it("survives a restart: the stored deferral parses back", () => {
+    const stored = [{ ...sale("a"), syncedOrderId: "s", reportsDone: true, stockAttempts: 3, stockRetryAt: 5 }];
+    expect(parseStoredOutbox(JSON.stringify(stored))[0]).toMatchObject({ stockAttempts: 3, stockRetryAt: 5 });
+  });
+
+  it("refuses a damaged deferral rather than guessing", () => {
+    const stored = [{ ...sale("a"), stockAttempts: -1 }];
+    expect(() => parseStoredOutbox(JSON.stringify(stored))).toThrow();
+  });
+
+  it("is not owed-only before the order is written or once bookkeeping is done", () => {
+    expect(owesOnlyStock({ ...sale("a"), reportsDone: true })).toBe(false);
+    expect(owesOnlyStock({ ...sale("a"), syncedOrderId: "s", reportsDone: true, bookkeepingDone: true })).toBe(false);
+    expect(owesOnlyStock({ ...sale("a"), syncedOrderId: "s" })).toBe(false);
+  });
+
+  it("shows a sale as an order only until the server holds it and it owes nothing but stock", () => {
+    expect(isUserVisibleSale(sale("a"))).toBe(true);
+    expect(isUserVisibleSale({ ...sale("a"), syncedOrderId: "s" })).toBe(true);
+    expect(isUserVisibleSale({ ...sale("a"), syncedOrderId: "s", reportsDone: true })).toBe(false);
+  });
+
+  it("backs off exponentially and caps the wait", () => {
+    expect(nextStockRetryAt(0, 1)).toBe(STOCK_RETRY_BASE_MS);
+    expect(nextStockRetryAt(0, 2)).toBe(STOCK_RETRY_BASE_MS * 2);
+    expect(nextStockRetryAt(0, 3)).toBe(STOCK_RETRY_BASE_MS * 4);
+    expect(nextStockRetryAt(1000, 40)).toBe(1000 + STOCK_RETRY_MAX_MS);
   });
 });

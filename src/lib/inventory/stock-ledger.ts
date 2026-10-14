@@ -108,11 +108,17 @@ export interface MovingAverageInput {
  *
  * Non-positive on-hand stock takes the delivery price outright: stock can go
  * negative when a sale lands before its delivery is recorded, and using that as
- * a weight would produce a nonsense — possibly negative — cost.
+ * a weight would produce a nonsense — possibly negative — cost. So does stock
+ * that was never priced: an unpriced shelf is unknown, not free, and blending
+ * it in would halve the first real price.
+ *
+ * The ledger trigger is what actually blends (apply_stock_movement, migration
+ * 20261012180000_inventory_frozen_cost.sql), under the row lock; this is the
+ * reference it mirrors and must keep mirroring.
  */
 export function movingAverageUnitCost(input: MovingAverageInput): number {
   const { currentQty, currentUnitCost, receivedQty, receivedUnitCost } = input
-  if (currentQty <= 0) return receivedUnitCost
+  if (currentQty <= 0 || currentUnitCost <= 0) return receivedUnitCost
 
   const totalQty = currentQty + receivedQty
   if (totalQty <= 0) return receivedUnitCost

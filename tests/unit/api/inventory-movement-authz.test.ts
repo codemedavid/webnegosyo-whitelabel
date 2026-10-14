@@ -16,8 +16,9 @@
  * waste, and enter a stocktake — the last of which rewrites the shelf figure and
  * shows up in the daily report as someone else's shrinkage.
  *
- * The permission checked is `menu`, the same key that gates the inventory tab
- * and the web sidebar entry, so the door and the UI now agree.
+ * The permission checked is `inventory` (Phase 0d: carved out of `menu`, which
+ * keeps recipes and the ingredient list), the same key that gates the
+ * inventory tab and the web sidebar entry, so the door and the UI agree.
  */
 
 import { NextRequest } from 'next/server'
@@ -127,7 +128,7 @@ describe('POST /api/inventory/movement — which branch the stock moves at', () 
 })
 
 describe('POST /api/inventory/movement — who may move stock', () => {
-  test('refuses a staff member who does not hold the menu grant', async () => {
+  test('refuses a staff member who does not hold the inventory grant', async () => {
     // Arrange — a cashier. Same role as the owner; only the grants differ.
     const response = await post({
       role: 'admin',
@@ -141,7 +142,20 @@ describe('POST /api/inventory/movement — who may move stock', () => {
     expect(recordStockMovementWith).not.toHaveBeenCalled()
   })
 
-  test('admits a staff member who holds the menu grant', async () => {
+  test('admits a staff member who holds the inventory grant', async () => {
+    const response = await post({
+      role: 'admin',
+      tenant_id: TENANT,
+      permissions: ['inventory'],
+      is_owner: false,
+    })
+
+    expect(response.status).toBe(200)
+    expect(recordStockMovementWith).toHaveBeenCalled()
+  })
+
+  test('refuses a menu-only account, saying which grant to ask for', async () => {
+    // `menu` keeps recipes and the ingredient list; it no longer records stock.
     const response = await post({
       role: 'admin',
       tenant_id: TENANT,
@@ -149,8 +163,9 @@ describe('POST /api/inventory/movement — who may move stock', () => {
       is_owner: false,
     })
 
-    expect(response.status).toBe(200)
-    expect(recordStockMovementWith).toHaveBeenCalled()
+    expect(response.status).toBe(403)
+    expect((await response.json()).error).toMatch(/Inventory permission/)
+    expect(recordStockMovementWith).not.toHaveBeenCalled()
   })
 
   test('admits the owner regardless of the grants on their row', async () => {
@@ -190,7 +205,7 @@ describe('POST /api/inventory/movement — who may move stock', () => {
     const response = await post({
       role: 'admin',
       tenant_id: 'someone-else',
-      permissions: ['menu'],
+      permissions: ['inventory'],
       is_owner: true,
     })
 
@@ -343,3 +358,45 @@ describe('POST /api/inventory/movement — delivery price from the phone', () =>
     )
   })
 })
+
+describe('POST /api/inventory/movement — a delivery price needs costs (Phase 0d review H1)', () => {
+  const CLERK = { role: 'admin', tenant_id: TENANT, permissions: ['inventory'], is_owner: false }
+  const BUYER = { role: 'admin', tenant_id: TENANT, permissions: ['inventory', 'costs'], is_owner: false }
+
+  test('drops the price from a clerk without costs: a priced receive rewrites the ingredient cost', async () => {
+    // 1 g at ₱9,999 on an empty shelf would set the ingredient's cost outright,
+    // and every dish cost and sale cost after it.
+    await post(CLERK as never, { reason: 'receive', unit_cost: 9999 })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ unit_cost: undefined }),
+      expect.anything(),
+    )
+  })
+
+  test('keeps the price for an account holding costs', async () => {
+    await post(BUYER as never, { reason: 'receive', unit_cost: 52.5 })
+
+    expect(recordStockMovementWith).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ unit_cost: 52.5 }),
+      expect.anything(),
+    )
+  })
+
+  test('never hands a clerk without costs the cost the ledger froze', async () => {
+    recordStockMovementWith.mockImplementationOnce(() =>
+      Promise.resolve({ movement: { id: 'mv1', unit_cost: 0.33 }, item: { id: 'i1', unit_cost: 0.33 } } as never),
+    )
+    appUser = CLERK as never
+    const response = await POST(movementRequest({ reason: 'waste', quantity: 5 }))
+    const body = await response.json()
+
+    expect(body.movement).not.toHaveProperty('unit_cost')
+    expect(body.item).not.toHaveProperty('unit_cost')
+  })
+})
+

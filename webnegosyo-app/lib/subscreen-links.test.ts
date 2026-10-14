@@ -68,11 +68,17 @@ describe("subscreensOf", () => {
     expect(subscreensOf("analytics", owner).map((l) => l.tab)).toEqual(["trends"]);
   });
 
-  it("offers the guest list and Rewards from the Reports dashboard", () => {
+  it("offers the guest list, Rewards and Texts from the Reports dashboard", () => {
     expect(subscreensOf("reports", owner).map((l) => l.tab)).toEqual([
       "customers",
       "loyalty",
+      "texts",
     ]);
+  });
+
+  it("drops Texts for a branch-confined account — the texts reach the whole store", () => {
+    const branchManager = { ...owner, audience: { ...owner.audience, accountScope: { kind: "branch" as const, outletId: "o1" } } };
+    expect(subscreensOf("reports", branchManager).map((l) => l.tab)).not.toContain("texts");
   });
 
   it("carries the label and hint the bar and hubs already use", () => {
@@ -135,6 +141,7 @@ describe("parentOf / isSubscreen", () => {
     expect(parentOf("trends")).toBe("analytics");
     expect(parentOf("customers")).toBe("reports");
     expect(parentOf("loyalty")).toBe("reports");
+    expect(parentOf("texts")).toBe("reports");
   });
 
   it("leaves a bar tab parentless", () => {

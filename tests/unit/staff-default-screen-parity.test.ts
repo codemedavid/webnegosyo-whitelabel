@@ -16,7 +16,16 @@ import { isTabAllowed } from '../../webnegosyo-app/lib/staff-permissions'
  * list, so adding a tab to the app is what makes this fail.
  */
 
-const APP_TABS = WORKSPACES.flatMap((workspace) => [...workspace.tabs])
+/**
+ * Tabs the app registers that are deliberately NOT offered as a staff opening
+ * screen. Texts is a store-wide owner screen and Store activity needs the
+ * opt-in `activity_view` grant; the deployed `manage-staff` edge function
+ * refuses any default_screen it doesn't know, so offering either here would
+ * let an owner save a choice the server then rejects.
+ */
+const NOT_OFFERED: ReadonlySet<string> = new Set(['texts', 'activity'])
+
+const APP_TABS = WORKSPACES.flatMap((workspace) => [...workspace.tabs]).filter((tab) => !NOT_OFFERED.has(tab))
 
 /** A staff account holding exactly the listed grants and nothing else. */
 function staffWith(permissions: string[]) {

@@ -26,6 +26,8 @@ const SUPERADMIN_ONLY = [
   'configure_integration',
   'create_sms_campaign',
   'list_sms_campaigns',
+  'save_sms_automation',
+  'list_sms_automations',
   'create_tenant_owner',
   'list_tenant_users',
 ]

@@ -8,6 +8,7 @@ import { mutation, query, internalQuery, type QueryCtx } from "./_generated/serv
 import { requireAccess } from "./auth";
 import { localDayStartMs, localDateKey, localDayOfWeek, localHour } from "./time";
 import { resolveAnalyticsContact } from "./customerIdentity";
+import { orderMethodSlices, type SlicePayment } from "./paymentSlices";
 
 // Safety cap for queries that load large collections
 const QUERY_LIMIT = 10000;
@@ -55,6 +56,31 @@ function orderWindowFilter(
   const lower = orderTimeFilter(q, "gte", window.start);
   if (!Number.isFinite(window.end)) return lower;
   return q.and(lower, orderTimeFilter(q, "lt", window.end));
+}
+
+/**
+ * The settlement rows of the window's orders, by order, so a bill paid with
+ * several methods counts under each. A payment never predates its order, so
+ * reading the ledger from the window's start is enough. Read through the
+ * creation-time index so the scan stops at the window's start: a `.filter`
+ * would walk the whole ledger and, on a busy store, hit Convex's per-query
+ * scan limit.
+ */
+async function paymentsByOrder(
+  ctx: QueryCtx,
+  window: { start: number; end: number }
+): Promise<Map<string, SlicePayment[]>> {
+  const rows = await ctx.db
+    .query("orderPayments")
+    .withIndex("by_creation_time", (q) => q.gte("_creationTime", window.start))
+    .order("desc")
+    .take(QUERY_LIMIT);
+  const byOrder = new Map<string, SlicePayment[]>();
+  for (const row of rows) {
+    const key = String(row.orderId);
+    byOrder.set(key, [...(byOrder.get(key) ?? []), row]);
+  }
+  return byOrder;
 }
 
 /** The window arguments every analytics query accepts. */
@@ -310,14 +336,16 @@ async function getRevenueBreakdownHandler(ctx: QueryCtx, args: ObjectType<typeof
       orderTypeMap.set(type, existing);
     }
 
-    // Group by payment method
+    // Group by payment method: a split bill counts under each method it used.
+    const ledger = await paymentsByOrder(ctx, window);
     const paymentMethodMap = new Map<string, { revenue: number; count: number }>();
     for (const order of filtered) {
-      const method = order.paymentMethod ?? "Unknown";
-      const existing = paymentMethodMap.get(method) ?? { revenue: 0, count: 0 };
-      existing.revenue += order.total;
-      existing.count += 1;
-      paymentMethodMap.set(method, existing);
+      for (const slice of orderMethodSlices(order, ledger.get(String(order._id)))) {
+        const existing = paymentMethodMap.get(slice.method) ?? { revenue: 0, count: 0 };
+        existing.revenue += slice.amount;
+        existing.count += 1;
+        paymentMethodMap.set(slice.method, existing);
+      }
     }
 
     return {
@@ -499,15 +527,18 @@ export const getPaymentMethodAnalytics = query({
       .order("desc")
       .take(QUERY_LIMIT);
 
-    // Aggregate by payment method
+    // Aggregate by payment method: a split bill counts under each method it used.
+    const ledger = await paymentsByOrder(ctx, window);
+    const slicesOf = (order: (typeof orders)[number]) => orderMethodSlices(order, ledger.get(String(order._id)));
     const methodMap = new Map<string, { count: number; revenue: number; totalOrderValue: number }>();
     for (const order of orders) {
-      const method = order.paymentMethod ?? "Unknown";
-      const existing = methodMap.get(method) ?? { count: 0, revenue: 0, totalOrderValue: 0 };
-      existing.count += 1;
-      existing.revenue += order.total;
-      existing.totalOrderValue += order.total;
-      methodMap.set(method, existing);
+      for (const slice of slicesOf(order)) {
+        const existing = methodMap.get(slice.method) ?? { count: 0, revenue: 0, totalOrderValue: 0 };
+        existing.count += 1;
+        existing.revenue += slice.amount;
+        existing.totalOrderValue += slice.amount;
+        methodMap.set(slice.method, existing);
+      }
     }
 
     const totalOrders = orders.length;
@@ -525,10 +556,11 @@ export const getPaymentMethodAnalytics = query({
     const dailyMap = new Map<string, Map<string, number>>();
     for (const order of orders) {
       const date = localDateKey(orderTime(order));
-      const method = order.paymentMethod ?? "Unknown";
       if (!dailyMap.has(date)) dailyMap.set(date, new Map());
       const dayMethods = dailyMap.get(date)!;
-      dayMethods.set(method, (dayMethods.get(method) ?? 0) + order.total);
+      for (const slice of slicesOf(order)) {
+        dayMethods.set(slice.method, (dayMethods.get(slice.method) ?? 0) + slice.amount);
+      }
     }
 
     const dailyBreakdown = Array.from(dailyMap.entries())

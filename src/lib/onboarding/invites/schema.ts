@@ -26,3 +26,6 @@ export type CreateInviteInput = z.infer<typeof createInviteSchema>
 export const joinFormSchema = invitePaidCustomerSchema.pick({ name: true, business_name: true, email: true, phone: true }).strict()
 
 export type JoinFormInput = z.infer<typeof joinFormSchema>
+
+/** The answer a refusal is about, so the sign-up can reopen that question; null when it is about none. */
+export type JoinRefusalField = keyof JoinFormInput | null

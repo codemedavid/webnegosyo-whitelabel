@@ -193,6 +193,61 @@ function postMovementQty(
   return quantities
 }
 
+interface OpenAlertRow {
+  id: string
+  inventory_item_id: string
+  level: string
+  outlet_id: string | null
+}
+
+/**
+ * An open "low" alert whose ingredient has now run out becomes "out".
+ *
+ * The dedup guard keeps one open alert per ingredient, so without this the
+ * low -> out crossing was swallowed: the row kept saying "low" over an empty
+ * shelf and nobody was told. The UPDATE is what the bell's trigger
+ * (`stock_alerts_notify_escalation`) turns into an "out of stock" notice.
+ * Counted as raised: it is a new thing the merchant needs to hear.
+ *
+ * A store-wide caller (`outletId === undefined`) computed its crossing from
+ * the roll-up, so only the store-wide row is about that figure — never a
+ * branch's, whose shelf it did not look at. One UPDATE per distinct quantity
+ * (normally just one), so a batch is one trigger statement and one push.
+ */
+async function escalateOpenAlerts(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  crossings: readonly StockCrossing[],
+  openRows: readonly OpenAlertRow[],
+  outletId: AlertOutlet,
+): Promise<number> {
+  const outQuantity = new Map(
+    crossings.filter((c) => c.to === 'out').map((c) => [c.itemId, c.quantity]),
+  )
+  const targets = openRows.filter(
+    (row) =>
+      row.level === 'low' &&
+      outQuantity.has(row.inventory_item_id) &&
+      (outletId !== undefined || row.outlet_id === null),
+  )
+
+  const idsByQuantity = new Map<number, string[]>()
+  for (const row of targets) {
+    const quantity = outQuantity.get(row.inventory_item_id) ?? 0
+    idsByQuantity.set(quantity, [...(idsByQuantity.get(quantity) ?? []), row.id])
+  }
+
+  for (const [quantity, ids] of idsByQuantity) {
+    await supabase
+      .from('stock_alerts')
+      .update({ level: 'out', quantity } as never)
+      .eq('tenant_id', tenantId)
+      .in('id', ids)
+      .is('resolved_at', null)
+  }
+  return targets.length
+}
+
 async function raiseAlerts(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,
@@ -208,7 +263,7 @@ async function raiseAlerts(
   const { data: openRows } = await scopeToOutlet(
     supabase
       .from('stock_alerts')
-      .select('id, inventory_item_id')
+      .select('id, inventory_item_id, level, outlet_id')
       .eq('tenant_id', tenantId)
       .is('resolved_at', null)
       .in(
@@ -218,11 +273,10 @@ async function raiseAlerts(
     outletId,
   )
 
-  const alreadyOpen = new Set(
-    ((openRows ?? []) as unknown as Array<{ inventory_item_id: string }>).map(
-      (r) => r.inventory_item_id,
-    ),
-  )
+  const open = (openRows ?? []) as unknown as OpenAlertRow[]
+  const alreadyOpen = new Set(open.map((r) => r.inventory_item_id))
+
+  const escalated = await escalateOpenAlerts(supabase, tenantId, crossings, open, outletId)
 
   const rows = crossings
     .filter((c) => !alreadyOpen.has(c.itemId))
@@ -236,7 +290,7 @@ async function raiseAlerts(
       // row written before branches existed.
       outlet_id: outletId ?? null,
     }))
-  if (rows.length === 0) return 0
+  if (rows.length === 0) return escalated
 
   // Deliberately uncast. Every other write in this file still carries
   // `as never` because the generated types lag the schema, but these rows are
@@ -244,7 +298,7 @@ async function raiseAlerts(
   // catches a row that forgot the branch — which would raise the alert against
   // the whole store instead of the one shop that is short.
   await supabase.from('stock_alerts').insert(rows)
-  return rows.length
+  return rows.length + escalated
 }
 
 async function resolveAlerts(

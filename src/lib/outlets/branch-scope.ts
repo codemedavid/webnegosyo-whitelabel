@@ -218,8 +218,11 @@ function isStoreWideAccount(user: BranchScopedUser): boolean {
   return trimmed(user.outlet_id) === ''
 }
 
-/** Admin sections only a store-wide account may open. */
-const STORE_WIDE_ADMIN_SECTIONS: ReadonlySet<string> = new Set(['outlets'])
+/**
+ * Admin sections only a store-wide account may open. `texts`: campaigns and
+ * automatic texts reach every guest of the store, not one branch's.
+ */
+const STORE_WIDE_ADMIN_SECTIONS: ReadonlySet<string> = new Set(['outlets', 'texts'])
 
 /**
  * Whether this admin pathname belongs to a section reserved for a store-wide
