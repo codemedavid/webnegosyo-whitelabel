@@ -34,6 +34,7 @@ import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { repriceEditDiscount } from "./pos-edit-discount";
 import { orderLineAllocations } from "./pos-gov-discount";
+import { lineItemAllocations, mergeAllocations, toOrderLineDiscounts } from "./pos-line-discounts";
 import type { StoredGovDiscount } from "./gov-discount";
 import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
@@ -658,7 +659,7 @@ export function editModeTotals(
     ...countedAddedLines(addedDiscountLines, discount.lines),
   ];
   const settledDiscount = settledDiscountOf(
-    settledLines,
+    toOrderLineDiscounts(settledLines, cart),
     discountTotal,
     context.storedDiscount,
     government,
@@ -744,12 +745,17 @@ function settledDiscountOf(
       amount: line.amount,
       ...(line.code != null ? { code: line.code } : {}),
       ...(line.voucherId != null ? { voucherId: line.voucherId } : {}),
+      ...(line.items && line.items.length > 0 ? { items: line.items.map((item) => ({ ...item })) } : {}),
     })),
-    // Only a Senior/PWD discount is tied to lines (the claimant's own items),
-    // keyed by order position like a new sale's (`pos-order.ts`); without it
-    // the revision's order_items.discount_amount reads 0 and a split bill
-    // spreads the senior's discount over the whole table.
-    allocationsByLine: government ? orderLineAllocations(government) : {},
+    // Tied to lines: a Senior/PWD discount (the claimant's own items) and every
+    // line-specific discount (unit-limited voucher, item discount), keyed by
+    // order position like a new sale's (`pos-order.ts`); without them the
+    // revision's order_items.discount_amount reads 0 and a split bill spreads
+    // the discount over the whole table.
+    allocationsByLine: mergeAllocations(
+      government ? orderLineAllocations(government) : {},
+      lineItemAllocations(lines),
+    ),
     ...(government ? { government } : {}),
   };
 }

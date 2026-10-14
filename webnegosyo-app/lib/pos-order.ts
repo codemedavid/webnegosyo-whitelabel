@@ -17,6 +17,7 @@
 import { cartTotals, type PosCartLine, type ServiceCharge } from "./pos-cart";
 import type { StoredGovDiscount } from "./gov-discount";
 import { orderLineAllocations } from "./pos-gov-discount";
+import { lineItemAllocations, mergeAllocations, toOrderLineDiscounts } from "./pos-line-discounts";
 import type { OrderDiscountLine } from "./order-totals";
 import { computeChange } from "./pos-cash";
 import { withOrderOutlet, type OrderOutletContext } from "./order-outlet";
@@ -179,19 +180,30 @@ function discountBlob(
   discounts: readonly OrderDiscountLine[] | undefined,
   discountTotal: number,
   government: StoredGovDiscount | null | undefined,
+  cart: readonly PosCartLine[],
 ): Record<string, unknown> {
   if (!discounts || discounts.length === 0 || discountTotal <= 0) return {};
+
+  // Dishes named by order position, the way every reader of the order expects.
+  const lines = toOrderLineDiscounts(
+    discounts.filter((line) => Number.isFinite(line.amount) && line.amount > 0),
+    cart,
+  );
 
   return {
     discount: {
       total: discountTotal,
       // Always zero at a counter: a walk-in sale has no delivery to discount.
       deliveryDiscount: 0,
-      lines: discounts.filter((line) => Number.isFinite(line.amount) && line.amount > 0),
-      // Only a Senior/PWD discount is allocated to lines: it belongs to the
-      // claimant's own items, and the BIR record and a split bill both need to
-      // know which. Vouchers at a counter are refunded whole.
-      allocationsByLine: government ? orderLineAllocations(government) : {},
+      lines,
+      // Allocated to lines: a Senior/PWD discount (the claimant's own items —
+      // the BIR record and a split bill need to know which) and every
+      // line-specific discount (a unit-limited voucher, a cashier's item
+      // discount). Order-wide vouchers at a counter are refunded whole.
+      allocationsByLine: mergeAllocations(
+        government ? orderLineAllocations(government) : {},
+        lineItemAllocations(lines),
+      ),
       ...(government ? { government } : {}),
     },
   };
@@ -286,7 +298,7 @@ export function buildPosOrder(context: PosOrderContext): PosOrderArgs {
       ...tableCustomerData(context.table),
       // Spread before `pos` so a discount can never displace the payment
       // payload — both live in this blob and both are needed to settle a sale.
-      ...discountBlob(context.discounts, discountTotal, context.government),
+      ...discountBlob(context.discounts, discountTotal, context.government, cart),
       pos: paymentPayload(tender, context.cashierId),
     },
     total,

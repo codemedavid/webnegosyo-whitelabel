@@ -1,5 +1,5 @@
 import { cartTotals, round2, type PosCartLine } from "./pos-cart";
-import type { OrderDiscountPayload } from "./order-discount";
+import { discountLineItems, type OrderDiscountPayload } from "./order-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { applyPosVouchers, posDiscountContext } from "./pos-discount";
 import type {
@@ -77,6 +77,12 @@ const CART_DEPENDENT_REASONS: readonly VoucherRejectionReason[] = [
 
 const EMPTY: EditDiscount = { lines: [], total: 0, isRepriced: false };
 
+/** The position in `line-<index>`, or Infinity for any other key. */
+function lineIndexOf(lineKey: string): number {
+  const match = /^line-(\d+)$/.exec(lineKey);
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+}
+
 /**
  * Can the register actually judge this voucher's scope against this cart?
  *
@@ -143,9 +149,12 @@ export function repriceEditDiscount(input: EditDiscountInput): EditDiscount {
   for (const storedLine of stored.lines) {
     if (!Number.isFinite(storedLine.amount) || storedLine.amount <= 0) continue;
 
-    // No code means a cashier's open discount. Nothing to re-evaluate.
+    // No code means a cashier's open discount. Nothing to re-evaluate; an
+    // item discount keeps the dish it was given on, while that dish is still
+    // on the order.
     if (!storedLine.code) {
-      lines.push({ label: storedLine.label, amount: storedLine.amount });
+      const items = discountLineItems(storedLine).filter((item) => lineIndexOf(item.lineKey) < cart.length);
+      lines.push({ label: storedLine.label, amount: storedLine.amount, ...(items.length > 0 ? { items } : {}) });
       continue;
     }
 

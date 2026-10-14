@@ -24,7 +24,12 @@ import { round2 } from "./pos-cart";
 import type { OrderDiscountLine } from "./order-totals";
 import { hasPermission, type StaffPermissionHolder } from "./staff-permissions";
 import { applyVouchers, type VoucherApplication } from "./vouchers/stacking";
-import type { DiscountContext, Voucher } from "./vouchers/types";
+import {
+  applyDiscountToRemaining,
+  computeVoucherDiscount,
+  type RemainingAmounts,
+} from "./vouchers/discount";
+import type { DiscountContext, UnitPicks, Voucher } from "./vouchers/types";
 import type { PosCartLine } from "./pos-cart";
 
 /** A cashier-entered discount. Not a voucher; burns no redemption. */
@@ -61,8 +66,11 @@ export function posDiscountContext(
   now: Date,
   outletId?: string | null,
   deliveryFee = 0,
+  /** Which units each unit-limited voucher should land on (code → cart key → units). */
+  unitPicks?: Readonly<Record<string, UnitPicks>>,
 ): DiscountContext {
   return {
+    ...(unitPicks && Object.keys(unitPicks).length > 0 ? { unitPicks } : {}),
     lines: cart.map((line) => ({
       id: line.key,
       menuItemId: line.menuItemId,
@@ -154,4 +162,95 @@ export function manualDiscountLine(
   if (amount <= 0) return null;
 
   return { label: `Discount — ${discount.reason.trim()}`, amount };
+}
+
+/**
+ * A cashier's discount on ONE dish of the sale — "1 of the 5 fries came out
+ * cold". Same gate and audit trail as the whole-order discount (the `vouchers`
+ * permission and a written reason); a percent or a peso amount off EACH of
+ * `units` units of that line. At most one per line: a second replaces it.
+ */
+export interface ManualItemDiscount {
+  /** The register cart line (`PosCartLine.key`). */
+  lineKey: string;
+  /** How many of the line's units get it; trimmed to what the line still has. */
+  units: number;
+  kind: "percent" | "fixed";
+  /** Percent (0–100) for `percent`, pesos off each unit for `fixed`. */
+  value: number;
+  reason: string;
+}
+
+export function validateManualItemDiscount(
+  discount: ManualItemDiscount,
+  user: StaffPermissionHolder,
+): ManualDiscountVerdict {
+  const base = validateManualDiscount(
+    { kind: discount.kind, value: discount.value, reason: discount.reason },
+    user,
+  );
+  if (!base.isAllowed) return base;
+  if (!Number.isInteger(discount.units) || discount.units < 1) {
+    return { isAllowed: false, message: "Choose at least one item." };
+  }
+  return { isAllowed: true };
+}
+
+/** "Discount — Damaged": the same label as a whole-order discount, so reports group them. */
+function manualLabel(reason: string): string {
+  return `Discount — ${reason.trim()}`;
+}
+
+/**
+ * Prices the cashier's item discounts on what the vouchers left, one unit at a
+ * time, through the voucher engine's own unit arithmetic — so an item
+ * discount and a voucher can never both take the same fries past its price.
+ * Returns the discount lines (each naming its dish) and what is left after.
+ */
+export function priceItemDiscounts(
+  discounts: readonly ManualItemDiscount[],
+  context: DiscountContext,
+  remaining: RemainingAmounts,
+): { lines: OrderDiscountLine[]; remaining: RemainingAmounts } {
+  let left = remaining;
+  const lines: OrderDiscountLine[] = [];
+  for (const discount of discounts) {
+    const line = context.lines.find((candidate) => candidate.id === discount.lineKey);
+    if (!line) continue;
+    const available = (left.byUnit[line.id] ?? []).filter((cents) => cents > 0).length;
+    const units = Math.min(Math.floor(discount.units), available);
+    if (units < 1) continue;
+
+    const code = `ITEM:${line.id}`;
+    const voucher: Voucher = {
+      id: code,
+      code,
+      name: manualLabel(discount.reason),
+      discountType: discount.kind,
+      discountValue: discount.value,
+      scope: "universal",
+      isStackable: true,
+      usedCount: 0,
+      channels: ["pos"],
+      isActive: true,
+      maxDiscountedUnits: units,
+    };
+    const result = computeVoucherDiscount(
+      voucher,
+      { ...context, lines: [line], unitPicks: { [code]: { [line.id]: units } } },
+      left,
+    );
+    if (result.amount <= 0) continue;
+    left = applyDiscountToRemaining(left, result);
+    lines.push({
+      label: manualLabel(discount.reason),
+      amount: result.amount,
+      items: result.allocations.map((allocation) => ({
+        lineKey: allocation.lineId,
+        units: allocation.units ?? units,
+        amount: allocation.amount,
+      })),
+    });
+  }
+  return { lines, remaining: left };
 }

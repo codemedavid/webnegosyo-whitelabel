@@ -5,11 +5,16 @@ import {
   applyPosVouchers,
   manualDiscountLine,
   posDiscountContext,
+  priceItemDiscounts,
   validateManualDiscount,
+  validateManualItemDiscount,
   type ManualDiscount,
+  type ManualItemDiscount,
 } from "./pos-discount";
 import type { RejectedVoucher } from "./vouchers/stacking";
-import type { Voucher } from "./vouchers/types";
+import { unitLimitOf } from "./vouchers/discount";
+import { getEligibleLines } from "./vouchers/eligibility";
+import type { UnitPicks, Voucher } from "./vouchers/types";
 import { chooseDiscountRegime, type RegimeChoice } from "./gov-discount";
 import {
   EMPTY_GOV_SESSION,
@@ -46,6 +51,13 @@ export interface PosDiscountSession {
   vouchers: readonly Voucher[];
   /** The cashier's open discount, if one was given. */
   manual: ManualDiscount | null;
+  /** Discounts on one dish each ("1 of 5 fries"), at most one per line. Absent = none. */
+  itemDiscounts?: readonly ManualItemDiscount[];
+  /**
+   * Which units each unit-limited voucher lands on, as the cashier chose:
+   * voucher code → cart line key → units. Absent = the cheapest units.
+   */
+  unitPicks?: Readonly<Record<string, UnitPicks>>;
   /**
    * Senior Citizen / PWD claimants for this sale — see `pos-gov-discount.ts`.
    * Absent is the same as none.
@@ -107,9 +119,103 @@ export function discountAfterCartChange(
   cart: readonly PosCartLine[],
 ): PosDiscountSession {
   if (cart.length === 0) return EMPTY_POS_DISCOUNT_SESSION;
-  if (!session.government) return session;
-  const government = govSessionAfterCartChange(session.government, cart);
-  return government === session.government ? session : { ...session, government };
+  const withItems = itemDiscountsAfterCartChange(session, cart);
+  if (!withItems.government) return withItems;
+  const government = govSessionAfterCartChange(withItems.government, cart);
+  return government === withItems.government ? withItems : { ...withItems, government };
+}
+
+/** An item discount leaves with its line; a shrunken line is trimmed at pricing. */
+function itemDiscountsAfterCartChange(
+  session: PosDiscountSession,
+  cart: readonly PosCartLine[],
+): PosDiscountSession {
+  const held = session.itemDiscounts ?? [];
+  const kept = held.filter((discount) => cart.some((line) => line.key === discount.lineKey));
+  return kept.length === held.length ? session : { ...session, itemDiscounts: kept };
+}
+
+/**
+ * Records a cashier's discount on one dish, replacing any earlier one on the
+ * same line, or refuses it (same gate as the whole-order discount).
+ */
+export function setSessionItemDiscount(
+  session: PosDiscountSession,
+  discount: ManualItemDiscount,
+  user?: StaffPermissionHolder,
+): PosDiscountSession {
+  const holder: StaffPermissionHolder =
+    user ?? ({ role: "admin", isOwner: true, permissions: null } as StaffPermissionHolder);
+  if (!validateManualItemDiscount(discount, holder).isAllowed) return session;
+
+  const others = (session.itemDiscounts ?? []).filter((held) => held.lineKey !== discount.lineKey);
+  return { ...session, itemDiscounts: [...others, { ...discount, reason: discount.reason.trim() }] };
+}
+
+export function removeSessionItemDiscount(
+  session: PosDiscountSession,
+  lineKey: string,
+): PosDiscountSession {
+  const held = session.itemDiscounts ?? [];
+  const kept = held.filter((discount) => discount.lineKey !== lineKey);
+  return kept.length === held.length ? session : { ...session, itemDiscounts: kept };
+}
+
+/** Which units a unit-limited voucher lands on (empty picks = back to the cheapest). */
+export function setSessionUnitPicks(
+  session: PosDiscountSession,
+  code: string,
+  picks: UnitPicks,
+): PosDiscountSession {
+  const key = code.trim().toUpperCase();
+  const chosen = Object.fromEntries(Object.entries(picks).filter(([, units]) => units > 0));
+  const { [key]: _previous, ...rest } = session.unitPicks ?? {};
+  return {
+    ...session,
+    unitPicks: Object.keys(chosen).length > 0 ? { ...rest, [key]: chosen } : rest,
+  };
+}
+
+/** One applied unit-limited voucher, for the "Applies to … · Change" picker. */
+export interface VoucherUnitChoice {
+  code: string;
+  name: string;
+  /** How many units the voucher may discount in total. */
+  limit: number;
+  /** Every line the voucher may land on, with how many units it is on now. */
+  lines: { lineKey: string; name: string; quantity: number; chosen: number }[];
+}
+
+/** The unit-limited vouchers on this sale, the dishes each may hit, and where each is now. */
+export function voucherUnitChoices(
+  session: PosDiscountSession,
+  cart: readonly PosCartLine[],
+  serviceCharge: number,
+  now: Date,
+  outletId?: string | null,
+  deliveryFee = 0,
+): VoucherUnitChoice[] {
+  const priced = sessionDiscount(session, cart, serviceCharge, now, outletId, deliveryFee);
+  const context = posDiscountContext(cart, serviceCharge, now, outletId, deliveryFee);
+  return session.vouchers.flatMap((voucher) => {
+    const limit = unitLimitOf(voucher);
+    const applied = priced.lines.find((line) => line.code === voucher.code);
+    if (limit === null || !applied) return [];
+    const eligible = getEligibleLines(voucher, context.lines);
+    return [
+      {
+        code: voucher.code,
+        name: voucher.name || voucher.code,
+        limit,
+        lines: eligible.map((line) => ({
+          lineKey: line.id,
+          name: cart.find((entry) => entry.key === line.id)?.name ?? "Item",
+          quantity: Math.max(1, Math.floor(line.quantity)),
+          chosen: applied.items?.find((item) => item.lineKey === line.id)?.units ?? 0,
+        })),
+      },
+    ];
+  });
 }
 
 export function setSessionGovernment(
@@ -185,10 +291,13 @@ export function sessionDiscount(
   /** What the store's Senior/PWD rules need; absent = no government pricing. */
   govContext?: PosGovContext,
 ): PosSessionDiscount {
-  const context = posDiscountContext(cart, serviceCharge, now, outletId, deliveryFee);
+  const context = posDiscountContext(cart, serviceCharge, now, outletId, deliveryFee, session.unitPicks);
   const application = applyPosVouchers(session.vouchers, context);
+  // Item discounts come off what the vouchers left, unit by unit.
+  const items = priceItemDiscounts(session.itemDiscounts ?? [], context, application.remaining);
+  const itemTotal = round2(items.lines.reduce((sum, line) => sum + line.amount, 0));
 
-  const lines: OrderDiscountLine[] = [...application.discountLines];
+  const lines: OrderDiscountLine[] = [...application.discountLines, ...items.lines];
 
   // `cartTotals` owns this arithmetic — asking it for an undiscounted total is
   // how the sale's chargeable amount is obtained rather than re-adding the
@@ -198,7 +307,7 @@ export function sessionDiscount(
     type: "fixed",
     value: serviceCharge,
   });
-  const remainder = round2(chargeable - application.discountTotal);
+  const remainder = round2(chargeable - application.discountTotal - itemTotal);
 
   if (session.manual) {
     const line = manualDiscountLine(session.manual, remainder);

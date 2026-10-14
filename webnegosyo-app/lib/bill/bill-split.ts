@@ -8,7 +8,7 @@
  * Every slice is allocated in whole centavos, so an order's units always add
  * back to exactly that order's total.
  */
-import { readOrderDiscount } from "../order-discount";
+import { discountLineItems, readOrderDiscount } from "../order-discount";
 import { allocateCents, toCents } from "./money";
 import { sortBillOrders, type BillItem, type BillOrder } from "./bill-orders";
 
@@ -155,18 +155,62 @@ function governmentPieceCents(order: BillOrder, pieces: readonly Piece[]): numbe
 
 const GOVERNMENT_LABEL = "Senior/PWD discount";
 
+/** One stored discount line, spread over the pieces it belongs to. */
+interface PlacedDiscount {
+  label: string;
+  shares: number[];
+  /** The part tied to particular pieces (a one-item discount), per piece. */
+  specific: number[];
+}
+
+/**
+ * Each discount line spread over the order's pieces. A line-specific one (a
+ * unit-limited voucher, a cashier's item discount) sits on the next untouched
+ * pieces of ITS dish — whoever takes the discounted fries takes the discount;
+ * anything not tied to a dish spreads by price like every other charge.
+ */
+function placeDiscounts(order: BillOrder, pieces: readonly Piece[]): PlacedDiscount[] {
+  const weights = pieces.map((piece) => piece.cents);
+  const stored = readOrderDiscount(order)?.lines ?? [];
+  const labels = orderDiscountLines(order);
+  const nextPiece = new Map<number, number>();
+
+  return labels.map((line, position) => {
+    const specific = pieces.map(() => 0);
+    const storedLine = stored.filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0)[position];
+    for (const item of discountLineItems(storedLine)) {
+      const match = /^line-(\d+)$/.exec(item.lineKey);
+      if (!match) continue;
+      const lineIndex = Number(match[1]);
+      const onLine = pieces.flatMap((piece, index) => (piece.lineIndex === lineIndex ? [index] : []));
+      const start = nextPiece.get(lineIndex) ?? 0;
+      const taken = onLine.slice(start, start + item.units);
+      nextPiece.set(lineIndex, start + taken.length);
+      if (taken.length === 0) continue;
+      const shares = allocateCents(toCents(item.amount), taken.map((index) => weights[index]));
+      taken.forEach((index, at) => {
+        specific[index] += shares[at];
+      });
+    }
+    const placed = specific.reduce((sum, cents) => sum + cents, 0);
+    const rest = allocateCents(Math.max(0, line.cents - placed), weights);
+    return { label: line.label, shares: specific.map((cents, index) => cents + rest[index]), specific };
+  });
+}
+
 function unitsOfOrder(order: BillOrder): BillUnit[] {
   const pieces = piecesOf(order);
   const weights = pieces.map((piece) => piece.cents);
   const government = governmentPieceCents(order, pieces);
   if (government) return governmentUnits(order, pieces, government);
-  const totals = allocateCents(toCents(order.total), weights);
+  const discounts = placeDiscounts(order, pieces);
+  const specific = pieces.map((_, index) => discounts.reduce((sum, line) => sum + line.specific[index], 0));
+  const specificTotal = specific.reduce((sum, cents) => sum + cents, 0);
+  // The bill before the dish-specific discounts, spread by price; each piece
+  // then gives back exactly its own — so the parts still add to the total.
+  const gross = allocateCents(toCents(order.total) + specificTotal, weights);
   const delivery = allocateCents(toCents(order.deliveryFee ?? 0), weights);
   const service = allocateCents(toCents(order.serviceCharge ?? 0), weights);
-  const discounts = orderDiscountLines(order).map((line) => ({
-    label: line.label,
-    shares: allocateCents(line.cents, weights),
-  }));
 
   return pieces.map((piece, index) => ({
     id: `${order._id}:${piece.lineIndex}:${piece.piece}`,
@@ -178,7 +222,7 @@ function unitsOfOrder(order: BillOrder): BillUnit[] {
     discountLines: discounts
       .map((line) => ({ label: line.label, cents: line.shares[index] }))
       .filter((line) => line.cents > 0),
-    totalCents: totals[index],
+    totalCents: gross[index] - specific[index],
   }));
 }
 
