@@ -293,7 +293,8 @@ function useAuthRedirect() {
       }
       return;
     }
-    if (group !== "(auth)") router.replace("/(auth)/login");
+    // Signed out: the welcome screen, which leads to Log in or the demo.
+    if (group !== "(auth)") router.replace("/(auth)/welcome");
   }, [
     isLoading,
     bootstrapError,

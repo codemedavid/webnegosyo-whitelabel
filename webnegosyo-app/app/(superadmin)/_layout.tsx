@@ -21,7 +21,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       // No session — ignore.
     }
     useAuthStore.getState().clear();
-    router.replace("/(auth)/login");
+    router.replace("/(auth)/welcome");
   };
   return (
     <CrashFallback

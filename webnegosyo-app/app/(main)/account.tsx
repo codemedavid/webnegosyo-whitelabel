@@ -58,7 +58,7 @@ export default function AccountScreen() {
       // No active session (e.g. demo) — ignore.
     }
     clear();
-    router.replace("/(auth)/login");
+    router.replace("/(auth)/welcome");
   };
 
   const performDelete = async () => {
@@ -100,7 +100,7 @@ export default function AccountScreen() {
         "Account deleted",
         "Your account and sign-in access have been permanently deleted."
       );
-      router.replace("/(auth)/login");
+      router.replace("/(auth)/welcome");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not delete your account.";
       Alert.alert(

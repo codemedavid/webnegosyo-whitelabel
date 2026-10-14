@@ -11,10 +11,11 @@ import {
   Platform,
 } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
 import { signOutThisDevice } from "../../lib/sign-out";
 import { useAuthStore } from "../../stores/auth-store";
-import { DEMO_STORE } from "../../lib/demo";
+import { demoSessionAuth } from "../../lib/demo";
 import {
   needsTenantLookup,
   needsOutletLookup,
@@ -31,20 +32,12 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const insets = useSafeAreaInsets();
 
   const handleExploreDemo = () => {
     // No credentials needed — Convex reads are public. Marks the session
     // read-only so a guest can browse without altering real data.
-    setAuth({
-      userId: null,
-      tenantId: DEMO_STORE.tenantId,
-      tenantSlug: DEMO_STORE.tenantSlug,
-      tenantName: DEMO_STORE.tenantName,
-      convexUrl: DEMO_STORE.convexUrl,
-      isLoading: false,
-      isAuthenticated: true,
-      isDemo: true,
-    });
+    setAuth(demoSessionAuth());
     router.replace("/(main)/dashboard");
   };
 
@@ -126,6 +119,17 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      {router.canGoBack() && (
+        <TouchableOpacity
+          style={[styles.back, { top: insets.top + 8 }]}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back to welcome"
+          hitSlop={12}
+        >
+          <Text style={styles.backText}>‹ Back</Text>
+        </TouchableOpacity>
+      )}
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Merchant Admin</Text>
@@ -198,6 +202,8 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1, justifyContent: "center", paddingHorizontal: 32 },
+  back: { position: "absolute", left: 20, zIndex: 1, paddingVertical: 6 },
+  backText: { ...typography.body, color: colors.textPrimary, fontWeight: "700" },
   header: { alignItems: "center", marginBottom: 48 },
   eyebrow: { ...typography.eyebrow, color: colors.accent, marginBottom: spacing.sm },
   title: { fontSize: 28, fontWeight: "800", color: colors.textPrimary },
