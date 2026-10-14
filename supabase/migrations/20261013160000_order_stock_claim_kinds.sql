@@ -38,8 +38,11 @@ end $$;
 -- is a sale above revision 0 that no un-cancel wrote (no `order_redeplete`
 -- audit row and no earlier cancellation). Applied live 2026-10-14: 9 edit
 -- sales + 1 edit void reclassified; no un-cancel was misfiled. Claims written
--- by the previously deployed code after this ran default to 'order' — re-run
--- this UPDATE once after the new code is live to file those edits.
+-- by the previously deployed code after this ran default to 'order'. Do NOT
+-- re-run this UPDATE on the platform database (owner's call, 2026-10-14: no
+-- changes to existing live rows); those few edit claims stay 'order'. Once
+-- the new code is live it cannot tell a real un-cancel whose audit row failed
+-- from an edit, so a re-run could misfile one.
 update public.order_stock_applications c
 set kind = 'edit'
 where c.revision > 0
