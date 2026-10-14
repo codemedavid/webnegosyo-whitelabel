@@ -44,6 +44,18 @@ describe('isLatestSaleReversed', () => {
     expect(isLatestSaleReversed([], [{ action: 'sale', revision: 0 }, { action: 'void', revision: 1 }])).toBe(false)
     expect(isLatestSaleReversed([], [{ action: 'sale', revision: 0 }, { action: 'cancel', revision: 1 }])).toBe(true)
   })
+
+  it('a counter sale left by a failed un-cancel does not refuse its retry', () => {
+    // The un-cancel's simple-option sale landed at 1, its ingredient write
+    // failed and handed its claim back: the order is still cancelled.
+    const simple = [{ action: 'sale', revision: 0 }, { action: 'cancel', revision: 0 }, { action: 'sale', revision: 1 }]
+    expect(isLatestSaleReversed([sale(0), voidClaim(0)], simple)).toBe(true)
+  })
+
+  it('counter claims still decide for an order whose ingredients recorded no sale', () => {
+    const simple = [{ action: 'sale', revision: 0 }, { action: 'cancel', revision: 0 }, { action: 'sale', revision: 1 }]
+    expect(isLatestSaleReversed([voidClaim(0)], simple)).toBe(false)
+  })
 })
 
 describe('isCancelledByClaims', () => {

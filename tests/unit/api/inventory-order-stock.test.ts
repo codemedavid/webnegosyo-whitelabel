@@ -34,13 +34,20 @@ jest.mock('@/lib/inventory/order-stock-service', () => ({
  * simulates an unreachable backend.
  */
 let storedLifecycle: { status: string; customerData?: unknown; outletId?: string | null } | null | 'throw' = null
+/** Which backend answered. Convex by default: a miss there is not proof. */
+let storedBackend: 'convex' | 'supabase' | 'platform' = 'convex'
 const lifecycleReads: string[] = []
 jest.mock('@/lib/order-lifecycle-read', () => ({
-  readStoredOrderLifecycle: async (_tenantId: string, orderId: string) => {
+  readRoutedOrderLifecycle: async (_tenantId: string, orderId: string) => {
     lifecycleReads.push(orderId)
     if (storedLifecycle === 'throw') throw new Error('convex down')
-    return storedLifecycle
+    return { backend: storedBackend, order: storedLifecycle }
   },
+}))
+
+const rateLimitMock = jest.fn<(...args: unknown[]) => Promise<unknown>>()
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: (...args: unknown[]) => rateLimitMock(...args),
 }))
 
 const releasePresellMock = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined)
@@ -75,7 +82,9 @@ describe('POST /api/inventory/order-stock', () => {
     jest.resetModules()
     jest.clearAllMocks()
     storedLifecycle = null
+    storedBackend = 'convex'
     lifecycleReads.length = 0
+    rateLimitMock.mockResolvedValue({ allowed: true, remaining: 100, retryAfterSec: 30 })
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key'
 
@@ -392,10 +401,8 @@ describe('POST /api/inventory/order-stock', () => {
         data: { role: 'admin', tenant_id: 't1', outlet_id: null },
         error: null,
       })
-      orderMaybeSingleMock.mockResolvedValue({
-        data: { outlet_id: 'outlet-north' },
-        error: null,
-      })
+      storedBackend = 'platform'
+      storedLifecycle = { status: 'pending', outletId: 'outlet-north' }
 
       const { POST } = await import('@/app/api/inventory/order-stock/route')
       const platformBody = { ...VALID_BODY, orderId: '11111111-1111-4111-8111-111111111111' }
@@ -412,29 +419,20 @@ describe('POST /api/inventory/order-stock', () => {
       )
     })
 
-    test('the order-s branch outranks the account-s when they disagree', async () => {
+    test('a branch account cannot move another branch-s order stock', async () => {
       appUserSingleMock.mockResolvedValue({
         data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-south' },
         error: null,
       })
-      orderMaybeSingleMock.mockResolvedValue({
-        data: { outlet_id: 'outlet-north' },
-        error: null,
-      })
+      storedBackend = 'platform'
+      storedLifecycle = { status: 'pending', outletId: 'outlet-north' }
 
       const { POST } = await import('@/app/api/inventory/order-stock/route')
       const platformBody = { ...VALID_BODY, orderId: '11111111-1111-4111-8111-111111111111' }
-      await POST(makeRequest(platformBody, 'Bearer token-1'))
+      const res = await POST(makeRequest(platformBody, 'Bearer token-1'))
 
-      expect(applyMock).toHaveBeenCalledWith(
-        't1',
-        platformBody.orderId,
-        expect.anything(),
-        'sale',
-        0,
-        'outlet-north',
-        expect.anything(),
-      )
+      expect(res.status).toBe(403)
+      expect(applyMock).not.toHaveBeenCalled()
     })
 
     test('falls back to the account when the order is not in the platform table', async () => {
@@ -444,7 +442,6 @@ describe('POST /api/inventory/order-stock', () => {
         data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-north' },
         error: null,
       })
-      orderMaybeSingleMock.mockResolvedValue({ data: null, error: null })
 
       const { POST } = await import('@/app/api/inventory/order-stock/route')
       await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
@@ -629,13 +626,22 @@ describe('POST /api/inventory/order-stock', () => {
       )
     })
 
-    test('a branch account never pays for a Convex lookup — its own branch is the answer', async () => {
+    test('a branch account cannot restore or re-open another branch-s Convex order', async () => {
       appUserSingleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-south' }, error: null })
-      storedLifecycle = { status: 'pending', outletId: 'outlet-north' }
+      storedLifecycle = { status: 'cancelled', outletId: 'outlet-north' }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID, action: 'restore' }, 'Bearer token-1'))
+
+      expect(res.status).toBe(403)
+      expect(reverseMock).not.toHaveBeenCalled()
+    })
+
+    test('an unbranched order is open to a branch account', async () => {
+      appUserSingleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-south' }, error: null })
+      storedLifecycle = { status: 'pending', outletId: null }
       const { POST } = await import('@/app/api/inventory/order-stock/route')
       await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
 
-      expect(lifecycleReads).toEqual([])
       expect(applyMock).toHaveBeenCalledWith(
         't1', VALID_BODY.orderId, expect.any(Array), 'sale', 0, 'outlet-south', expect.anything(),
       )
@@ -651,6 +657,89 @@ describe('POST /api/inventory/order-stock', () => {
       const items = (applyMock.mock.calls[0] as unknown[])[2] as Array<Record<string, unknown>>
       expect(items).toHaveLength(1)
       expect(items[0].addonQuantities).toEqual({ 'a-shot': 2 })
+    })
+  })
+
+  describe('forged or out-of-scope requests', () => {
+    const PLATFORM_ORDER = '22222222-2222-4222-8222-222222222222'
+
+    test('refuses a platform order that does not exist (404), so an invented id cannot drain the shelf', async () => {
+      storedBackend = 'platform'
+      storedLifecycle = null
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ ...VALID_BODY, orderId: PLATFORM_ORDER }, 'Bearer token-1'))
+
+      expect(res.status).toBe(404)
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('a Convex miss is not proof: the sale still moves stock', async () => {
+      storedBackend = 'convex'
+      storedLifecycle = null
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+      expect(applyMock).toHaveBeenCalled()
+    })
+
+    test('asks for a retry (503) when a sale-s order cannot be read', async () => {
+      storedLifecycle = 'throw'
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(503)
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('a staffer with no order-handling grant is refused', async () => {
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', outlet_id: null, permissions: ['menu', 'analytics'] },
+        error: null,
+      })
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(403)
+      expect(applyMock).not.toHaveBeenCalled()
+    })
+
+    test('a kitchen-only staffer may still restore a cancelled order', async () => {
+      appUserSingleMock.mockResolvedValue({
+        data: { role: 'admin', tenant_id: 't1', outlet_id: null, permissions: ['kitchen'] },
+        error: null,
+      })
+      storedLifecycle = { status: 'cancelled' }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: 'jh7dm2p8qr3n5x9', action: 'restore' }, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+      expect(reverseMock).toHaveBeenCalled()
+    })
+
+    test('drops lines with an absurd or fractional quantity', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest({
+        ...VALID_BODY,
+        items: [
+          { menuItemId: 'm-latte', quantity: 1_000_000 },
+          { menuItemId: 'm-bun', quantity: 1.5 },
+          { menuItemId: 'm-tea', quantity: 3 },
+        ],
+      }, 'Bearer token-1'))
+
+      const items = (applyMock.mock.calls[0] as unknown[])[2] as Array<Record<string, unknown>>
+      expect(items.map((item) => item.menuItemId)).toEqual(['m-tea'])
+    })
+
+    test('answers 429 past the per-person allowance, before any stock moves', async () => {
+      rateLimitMock.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 9 })
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(res.status).toBe(429)
+      expect(rateLimitMock).toHaveBeenCalledWith('order-stock:u1', expect.anything())
+      expect(applyMock).not.toHaveBeenCalled()
     })
   })
 })

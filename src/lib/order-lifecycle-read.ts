@@ -3,7 +3,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createConvexServerClient } from '@/lib/convex/server'
 import { getTenantSecrets } from '@/lib/tenant-secrets'
-import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
+import { resolveOrderBackend, type OrderBackend, type OrderBackendTenantFields } from '@/lib/order-backend'
 import { createTenantOrderRealtimeClient } from '@/lib/supabase/tenant-order-client'
 import { fetchTenantOrderById } from '@/lib/tenant-supabase-orders-read'
 
@@ -85,6 +85,26 @@ export async function readStoredOrderLifecycle(
   tenantId: string,
   orderId: string,
 ): Promise<StoredOrderLifecycle | null> {
+  return (await readRoutedOrderLifecycle(tenantId, orderId)).order
+}
+
+/** The order (or null) together with the backend that was asked. */
+export interface RoutedOrderLifecycle {
+  /** Null when the store itself was not found. */
+  backend: OrderBackend | null
+  order: StoredOrderLifecycle | null
+}
+
+/**
+ * `readStoredOrderLifecycle`, plus WHICH backend answered. Only a platform
+ * miss is proof the order does not exist: a Convex store without a deploy key
+ * answers null too, so a caller deciding "this order is invented" must check
+ * the backend first.
+ */
+export async function readRoutedOrderLifecycle(
+  tenantId: string,
+  orderId: string,
+): Promise<RoutedOrderLifecycle> {
   const supabase = createAdminClient()
   const { data: tenantData, error } = await supabase
     .from('tenants')
@@ -94,15 +114,16 @@ export async function readStoredOrderLifecycle(
   if (error) throw error
 
   const config = tenantData as OrderBackendTenantFields | null
-  if (!config) return null
+  if (!config) return { backend: null, order: null }
 
-  switch (resolveOrderBackend(config)) {
+  const backend = resolveOrderBackend(config)
+  switch (backend) {
     case 'convex':
-      return readFromConvex(supabase, config, tenantId, orderId)
+      return { backend, order: await readFromConvex(supabase, config, tenantId, orderId) }
     case 'supabase':
-      return readFromTenantSupabase(config, tenantId, orderId)
+      return { backend, order: await readFromTenantSupabase(config, tenantId, orderId) }
     case 'platform':
-      return readFromPlatform(supabase, tenantId, orderId)
+      return { backend, order: await readFromPlatform(supabase, tenantId, orderId) }
   }
 }
 

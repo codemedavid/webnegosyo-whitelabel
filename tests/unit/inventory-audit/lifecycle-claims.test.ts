@@ -315,6 +315,24 @@ describe('claim kinds — after the fix (2026-10-14)', () => {
     expect(netFlour()).toBe(-300)
   })
 
+  it('un-cancel undoes a cancellation that took stock out, not only one that put it back', async () => {
+    // Arrange — the order's net was POSITIVE (a +500 g correction filed on it),
+    // so its cancellation took 300 g out.
+    await applyOrderStockMovements(TENANT, ORDER, TWO_PLAIN, 'sale', 0)
+    db.stock_movements.push({
+      tenant_id: TENANT, inventory_item_id: FLOUR, outlet_id: null, reason: 'void',
+      quantity_delta: 500, entered_quantity: 500, entered_unit_id: GRAM, order_id: ORDER,
+    })
+    await reverseOrderStockMovements(TENANT, ORDER)
+    expect(netFlour()).toBe(0)
+
+    // Act
+    await redepleteOrderStockBestEffort(TENANT, ORDER)
+
+    // Assert — back to where the live order stood.
+    expect(netFlour()).toBe(300)
+  })
+
   it('a cancellation from before the record falls back to the order lines', async () => {
     await applyOrderStockMovements(TENANT, ORDER, TWO_PLAIN, 'sale', 0)
     await reverseOrderStockMovements(TENANT, ORDER)

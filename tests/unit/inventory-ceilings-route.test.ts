@@ -20,6 +20,14 @@ jest.mock('@/lib/inventory/menu-ceilings', () => ({
   getMenuStockAvailability: (...a: unknown[]) => getMenuStockAvailability(...a),
 }))
 
+const checkRateLimit = jest.fn()
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
+}))
+
+const TENANT = '0dd96b60-5232-4c79-922b-0bd9022d12ba'
+const BRANCH = '66ea076d-2aa1-45d4-b575-743fcdf3d73a'
+
 const request = (query: string) =>
   new NextRequest(`http://localhost/api/inventory/ceilings${query}`)
 
@@ -29,11 +37,12 @@ beforeEach(() => {
     dishes: new Map([['m-pizza', 5]]),
     options: new Map([['m-tea', new Map([['opt-pearls', 0]])]]),
   })
+  checkRateLimit.mockResolvedValue({ allowed: true, remaining: 100, retryAfterSec: 30 })
 })
 
 describe('GET /api/inventory/ceilings', () => {
   it('returns one ceiling per tracked dish', async () => {
-    const response = await GET(request('?tenantId=t1'))
+    const response = await GET(request(`?tenantId=${TENANT}`))
     const body = await response.json()
 
     expect(response.status).toBe(200)
@@ -41,7 +50,7 @@ describe('GET /api/inventory/ceilings', () => {
   })
 
   it('returns, per dish, how many can be made with each recipe-tracked option', async () => {
-    const body = await (await GET(request('?tenantId=t1'))).json()
+    const body = await (await GET(request(`?tenantId=${TENANT}`))).json()
 
     expect(body.optionCeilings).toEqual({ 'm-tea': { 'opt-pearls': 0 } })
   })
@@ -54,15 +63,15 @@ describe('GET /api/inventory/ceilings', () => {
   })
 
   it('passes the branch through so a stepper reflects that branch’s shelf', async () => {
-    await GET(request('?tenantId=t1&outletId=branch-1'))
+    await GET(request(`?tenantId=${TENANT}&outletId=${BRANCH}`))
 
-    expect(getMenuStockAvailability).toHaveBeenCalledWith('t1', 'branch-1')
+    expect(getMenuStockAvailability).toHaveBeenCalledWith(TENANT, BRANCH)
   })
 
   it('treats a missing branch as store-wide', async () => {
-    await GET(request('?tenantId=t1'))
+    await GET(request(`?tenantId=${TENANT}`))
 
-    expect(getMenuStockAvailability).toHaveBeenCalledWith('t1', null)
+    expect(getMenuStockAvailability).toHaveBeenCalledWith(TENANT, null)
   })
 
   it('answers with no ceilings rather than an error when the read throws', async () => {
@@ -70,7 +79,7 @@ describe('GET /api/inventory/ceilings', () => {
     // it behaved before this route existed — never to a broken menu.
     getMenuStockAvailability.mockRejectedValue(new Error('boom'))
 
-    const response = await GET(request('?tenantId=t1'))
+    const response = await GET(request(`?tenantId=${TENANT}`))
     const body = await response.json()
 
     expect(response.status).toBe(200)
@@ -79,8 +88,28 @@ describe('GET /api/inventory/ceilings', () => {
   })
 
   it('is not cached — a ceiling is stale the moment the next order lands', async () => {
-    const response = await GET(request('?tenantId=t1'))
+    const response = await GET(request(`?tenantId=${TENANT}`))
 
     expect(response.headers.get('cache-control')).toMatch(/no-store/)
+  })
+
+  it('rejects a tenant or branch that is not an id, before touching the database', async () => {
+    // Every call fans out into a whole-store stock graph read on the shared
+    // database, so garbage never gets that far.
+    for (const query of ['?tenantId=t1', `?tenantId=${TENANT}&outletId=branch-1`]) {
+      const response = await GET(request(query))
+      expect(response.status).toBe(400)
+    }
+    expect(getMenuStockAvailability).not.toHaveBeenCalled()
+  })
+
+  it('answers 429 past the per-address allowance, without reading stock', async () => {
+    checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 12 })
+
+    const response = await GET(request(`?tenantId=${TENANT}`))
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('12')
+    expect(getMenuStockAvailability).not.toHaveBeenCalled()
   })
 })

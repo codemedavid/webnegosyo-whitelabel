@@ -216,8 +216,9 @@ export interface SimpleOptionClaimRow {
  * (best-effort, timed out, or made outside updateOrderStatus) or a repeated
  * un-cancel would each spend the order a second time. An edit's restore is not
  * a cancellation — counting it let an edited order's un-cancel deduct twice.
- * Both claim tables count — an order with no recipes releases its recipe claim,
- * and its simple-option claims are then the only record of what was sold; the
+ * The simple-option claims count only when no ingredient sale is on record —
+ * an order with no recipes releases its recipe claim, and its simple-option
+ * claims are then the only record of what was sold; the
  * simple RPC marks a cancellation `action = 'cancel'` ('void' is its edit).
  *
  * An order with no sale on record has nothing to double-count, so it stays
@@ -228,9 +229,14 @@ export function isLatestSaleReversed(
   simpleClaims: readonly SimpleOptionClaimRow[] = [],
 ): boolean {
   const own = claims.filter(isOrderClaim)
+  // The ingredient claims are the authority once they record a sale. A
+  // simple-option sale written by an un-cancel whose ingredient write then
+  // failed (and handed its claim back) would otherwise read as the latest sale
+  // and refuse every retry, leaving the re-opened order's ingredients unspent.
+  const hasOwnSale = own.some((claim) => claim.reason === 'sale')
   const moves = [
     ...own.map((claim) => ({ isSale: claim.reason === 'sale', isCancel: claim.reason === 'void', revision: claim.revision })),
-    ...simpleClaims.map((claim) => ({ isSale: claim.action === 'sale', isCancel: claim.action === 'cancel', revision: Number(claim.revision) })),
+    ...(hasOwnSale ? [] : simpleClaims).map((claim) => ({ isSale: claim.action === 'sale', isCancel: claim.action === 'cancel', revision: Number(claim.revision) })),
   ]
   const sales = moves.filter((move) => move.isSale)
   if (sales.length === 0) return true

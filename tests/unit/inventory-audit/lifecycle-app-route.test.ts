@@ -28,10 +28,15 @@ jest.mock('@/lib/presell/order-claim', () => ({ releasePresellForOrder: releaseP
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => fakeClient() }))
 // The route reads the order through the backend-aware lifecycle reader.
 jest.mock('@/lib/order-lifecycle-read', () => ({
-  readStoredOrderLifecycle: async () =>
-    storedOrder
+  readRoutedOrderLifecycle: async () => ({
+    backend: 'platform',
+    order: storedOrder
       ? { status: storedOrder.status, customerData: storedOrder.customer_data ?? null, outletId: storedOrder.outlet_id ?? null }
       : null,
+  }),
+}))
+jest.mock('@/lib/distributed-rate-limit', () => ({
+  checkRateLimit: async () => ({ allowed: true, remaining: 100, retryAfterSec: 0 }),
 }))
 
 function fakeClient() {
