@@ -6,7 +6,7 @@
 
 const postAuthorizedMock = jest.fn();
 jest.mock("../authorized-post", () => ({
-  postAuthorized: (...args: unknown[]) => postAuthorizedMock(...args),
+  postAuthorizedDetailed: (...args: unknown[]) => postAuthorizedMock(...args),
 }));
 
 import type { QueuedSale } from "../offline/order-outbox";
@@ -49,8 +49,8 @@ describe("BUG — offline/write-behind register sale: a failed stock POST is nev
 
   it("does not mark bookkeeping done when the platform refused (or never received) the depletion", async () => {
     // Arrange — the order write succeeds, but the stock POST times out /
-    // 5xxs / has no session (postAuthorized answers false, never throws).
-    postAuthorizedMock.mockResolvedValue(false);
+    // 5xxs / has no session (the post answers not-ok, never throws).
+    postAuthorizedMock.mockResolvedValue({ ok: false, status: null });
     const markBookkeepingDone = jest.fn().mockResolvedValue(undefined);
     const remove = jest.fn().mockResolvedValue(undefined);
     const noop = jest.fn().mockResolvedValue(undefined);

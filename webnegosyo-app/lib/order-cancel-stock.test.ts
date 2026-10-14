@@ -13,9 +13,13 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
-// The real notifier module is kept (for `withStockRetry`); its transport is
-// stubbed so nothing reaches expo-constants or the network.
-jest.mock("./authorized-post", () => ({ postAuthorized: jest.fn() }));
+// The real queue and drain run; only the network notifiers and the device's
+// storage are stubbed.
+jest.mock("./authorized-post", () => ({ postAuthorizedDetailed: jest.fn() }));
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: { getItem: jest.fn(async () => null), setItem: jest.fn(async () => undefined), removeItem: jest.fn() },
+}));
 
 const restoreMock = jest.fn();
 const redepleteMock = jest.fn();
@@ -36,8 +40,14 @@ jest.mock("../stores/auth-store", () => ({
 }));
 
 import { stockActionForStatusChange, syncStockForStatusChange } from "./order-cancel-stock";
+import { getStockCalls, resetStockCallsForTests } from "./offline/stock-call-queue";
+import { drainStockCalls, resetStockDrainForTests } from "./offline/drain-stock-calls";
 
-const noWait = { delaysMs: [] as number[] };
+/** Let the kicked drain (not awaited by the caller) run to the end. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  await drainStockCalls({ tenantId: "t1" });
+}
 
 describe("stockActionForStatusChange", () => {
   it.each([
@@ -61,48 +71,47 @@ describe("stockActionForStatusChange", () => {
 describe("syncStockForStatusChange", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetStockCallsForTests();
+    resetStockDrainForTests();
     getStateMock.mockReturnValue({ tenantId: "t1" });
     restoreMock.mockResolvedValue("ok");
     redepleteMock.mockResolvedValue("ok");
   });
 
-  it("restores the order's stock when it is cancelled", async () => {
+  it("queues and sends a restore when the order is cancelled", async () => {
     // Act
-    const outcome = await syncStockForStatusChange(
-      { orderId: "jh7dm2p8qr3n5x9", previousStatus: "confirmed", newStatus: "cancelled" },
-      noWait,
-    );
+    const action = await syncStockForStatusChange({
+      orderId: "jh7dm2p8qr3n5x9",
+      previousStatus: "confirmed",
+      newStatus: "cancelled",
+    });
+    await settle();
 
     // Assert
-    expect(outcome).toBe("ok");
+    expect(action).toBe("restore");
     expect(restoreMock).toHaveBeenCalledWith("t1", "jh7dm2p8qr3n5x9", "merchant_app");
     expect(redepleteMock).not.toHaveBeenCalled();
+    expect(getStockCalls()).toEqual([]);
   });
 
-  it("re-spends the stock when a cancelled order is reinstated", async () => {
-    // Act
-    await syncStockForStatusChange({ orderId: "o1", previousStatus: "cancelled", newStatus: "preparing" }, noWait);
+  it("queues and sends a re-spend when a cancelled order is reinstated", async () => {
+    await syncStockForStatusChange({ orderId: "o1", previousStatus: "cancelled", newStatus: "preparing" });
+    await settle();
 
-    // Assert
     expect(redepleteMock).toHaveBeenCalledWith("t1", "o1", "merchant_app");
     expect(restoreMock).not.toHaveBeenCalled();
   });
 
-  it("retries a transient failure and stops on success", async () => {
-    // Arrange
-    redepleteMock.mockResolvedValueOnce("retry").mockResolvedValueOnce("ok");
-    const sleep = jest.fn().mockResolvedValue(undefined);
+  it("is stored on the device before it is sent, and kept when it does not land", async () => {
+    // The defect: a status change's stock call lived ~40s in memory, so a
+    // killed app or a long outage lost it for good.
+    redepleteMock.mockResolvedValue("retry");
 
-    // Act
-    const outcome = await syncStockForStatusChange(
-      { orderId: "o1", previousStatus: "cancelled", newStatus: "confirmed" },
-      { delaysMs: [5], sleep },
-    );
+    await syncStockForStatusChange({ orderId: "o1", previousStatus: "cancelled", newStatus: "confirmed" });
+    expect(getStockCalls()).toEqual([expect.objectContaining({ orderId: "o1", action: "redeplete", attempts: 0 })]);
+    await settle();
 
-    // Assert
-    expect(outcome).toBe("ok");
-    expect(redepleteMock).toHaveBeenCalledTimes(2);
-    expect(sleep).toHaveBeenCalledWith(5);
+    expect(getStockCalls()).toEqual([expect.objectContaining({ orderId: "o1", action: "redeplete", attempts: 1 })]);
   });
 
   it("runs one order's calls strictly in order, even when fired together", async () => {
@@ -116,20 +125,22 @@ describe("syncStockForStatusChange", () => {
     redepleteMock.mockImplementation(async () => { calls.push("redeplete"); return "ok"; });
 
     // Act
-    const cancel = syncStockForStatusChange({ orderId: "o9", previousStatus: "confirmed", newStatus: "cancelled" }, noWait);
-    const reinstate = syncStockForStatusChange({ orderId: "o9", previousStatus: "cancelled", newStatus: "preparing" }, noWait);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await syncStockForStatusChange({ orderId: "o9", previousStatus: "confirmed", newStatus: "cancelled" });
+    await syncStockForStatusChange({ orderId: "o9", previousStatus: "cancelled", newStatus: "preparing" });
+    for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
     expect(calls).toEqual(["restore:start"]);
     releaseRestore();
-    await Promise.all([cancel, reinstate]);
+    await settle();
 
     // Assert
     expect(calls).toEqual(["restore:start", "restore:end", "redeplete"]);
   });
 
   it("does nothing for an ordinary forward transition", async () => {
-    await syncStockForStatusChange({ orderId: "o1", previousStatus: "pending", newStatus: "confirmed" }, noWait);
-    await syncStockForStatusChange({ orderId: "o1", previousStatus: "ready", newStatus: "delivered" }, noWait);
+    await syncStockForStatusChange({ orderId: "o1", previousStatus: "pending", newStatus: "confirmed" });
+    await syncStockForStatusChange({ orderId: "o1", previousStatus: "ready", newStatus: "delivered" });
+    await settle();
+    expect(getStockCalls()).toEqual([]);
     expect(restoreMock).not.toHaveBeenCalled();
     expect(redepleteMock).not.toHaveBeenCalled();
   });
@@ -137,15 +148,23 @@ describe("syncStockForStatusChange", () => {
   it("does nothing when no tenant is signed in", async () => {
     getStateMock.mockReturnValue({ tenantId: null });
     await expect(
-      syncStockForStatusChange({ orderId: "o1", previousStatus: "confirmed", newStatus: "cancelled" }, noWait),
+      syncStockForStatusChange({ orderId: "o1", previousStatus: "confirmed", newStatus: "cancelled" }),
     ).resolves.toBeNull();
-    expect(restoreMock).not.toHaveBeenCalled();
+    expect(getStockCalls()).toEqual([]);
   });
 
   it("acts for the store being impersonated, not the signed-in account's own", async () => {
+    const send = jest.fn().mockResolvedValue(undefined);
     getStateMock.mockReturnValue({ tenantId: "own", impersonatedTenantId: "viewed" });
-    await syncStockForStatusChange({ orderId: "o1", previousStatus: "confirmed", newStatus: "cancelled" }, noWait);
-    expect(restoreMock).toHaveBeenCalledWith("viewed", "o1", "merchant_app");
+
+    await syncStockForStatusChange({ orderId: "o1", previousStatus: "confirmed", newStatus: "cancelled" }, { send });
+
+    expect(send).toHaveBeenCalledWith({
+      tenantId: "viewed",
+      orderId: "o1",
+      action: "restore",
+      payload: { source: "merchant_app" },
+    });
   });
 });
 

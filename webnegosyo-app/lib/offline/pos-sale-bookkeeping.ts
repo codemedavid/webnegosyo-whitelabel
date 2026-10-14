@@ -14,7 +14,8 @@
  * The stock call's answer IS reported back: it is the one piece a sale must
  * not lose, and the only one the server makes idempotent (claimed per order),
  * so a caller holding a durable queue keeps retrying it — see
- * `sync-outbox.ts`. `skipReports` runs the stock call alone, for that retry.
+ * `sync-outbox.ts`. `skipReports` runs the stock call alone, for that retry;
+ * `onReportsDone` lets that queue checkpoint the reports as soon as they land.
  */
 
 import type { OrderBackend } from "../order-backend";
@@ -35,6 +36,12 @@ export interface PosSaleBookkeepingFacts {
   bookkeeping: QueuedSaleBookkeeping;
   /** The reports already ran for this sale; only the stock call is owed. */
   skipReports?: boolean;
+  /**
+   * Persist "the reports ran" — called the moment they resolve, while the
+   * stock call may still be out, so a crash in between does not send the
+   * non-idempotent reports again. A failed checkpoint is only logged.
+   */
+  onReportsDone?: () => Promise<void>;
 }
 
 export interface PosSaleBookkeepingOutcome {
@@ -85,10 +92,21 @@ export async function runPosSaleBookkeeping(
   const { tenantId, orderId, bookkeeping } = facts;
   const [stock] = await Promise.all([
     deps.stock(tenantId, orderId, bookkeeping.stockItems, "pos"),
-    facts.skipReports ? Promise.resolve() : runReports(facts, deps),
+    facts.skipReports ? Promise.resolve() : runReports(facts, deps).then(() => checkpointReports(facts)),
   ]);
   // An injected notifier that predates the outcome answers nothing: it ran.
   return { stock: stock ?? "ok" };
+}
+
+async function checkpointReports(facts: PosSaleBookkeepingFacts): Promise<void> {
+  if (!facts.onReportsDone) return;
+  try {
+    await facts.onReportsDone();
+  } catch (error) {
+    // The reports landed; only the checkpoint is lost, so a crash before the
+    // stock call settles could repeat them — exactly the risk before it existed.
+    console.warn(`[pos] Could not record that order ${facts.orderId}'s reports ran:`, error);
+  }
 }
 
 /** Everything but stock — none of it is idempotent, so it runs once. */

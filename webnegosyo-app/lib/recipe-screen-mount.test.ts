@@ -56,9 +56,12 @@ describe("recipe editor screen", () => {
     expect(screen).toMatch(/won't deduct stock/i);
   });
 
-  it("defers all data access to recipe-service instead of querying inline", () => {
-    expect(screen).toMatch(/from ["']\.\.\/\.\.\/\.\.\/\.\.\/lib\/recipe-service["']/);
+  it("defers all data access to recipe-service (through its hook) instead of querying inline", () => {
+    const hook = read("lib", "use-recipe-editor.ts");
+    expect(screen).toMatch(/from ["']\.\.\/\.\.\/\.\.\/\.\.\/lib\/use-recipe-editor["']/);
+    expect(hook).toMatch(/from ["']\.\/recipe-service["']/);
     expect(screen).not.toMatch(/supabase\s*\.\s*from\(/);
+    expect(hook).not.toMatch(/supabase\s*\.\s*from\(/);
   });
 });
 
@@ -81,6 +84,7 @@ describe("choice recipes", () => {
     const screen = read("app", "(main)", "product", "recipe", "[productId].tsx");
     expect(screen).toMatch(/DishChoicesSection/);
     expect(screen).toMatch(/each time this choice is picked, on top of the dish's own recipe/);
-    expect(screen).toMatch(/recipeLineProblem|check:/);
+    // Every write carries the line check; the writes live in the editor's hook.
+    expect(read("lib", "use-recipe-editor.ts")).toMatch(/recipeLineProblem|check:/);
   });
 });

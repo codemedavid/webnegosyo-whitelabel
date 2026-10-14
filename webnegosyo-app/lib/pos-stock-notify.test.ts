@@ -15,8 +15,6 @@ import {
   notifyOrderStockRedeplete,
   notifyPosStockDepletion,
   notifyOrderStockRestore,
-  withStockRetry,
-  type StockPostOutcome,
 } from "./pos-stock-notify";
 import type { PosStockItem } from "./pos-stock";
 
@@ -103,10 +101,25 @@ describe("notifyPosStockDepletion", () => {
   });
 
   it("reports retry on a server error and permanent on a refusal", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
     fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
     await expect(notifyPosStockDepletion("t1", "order-1", items)).resolves.toBe("retry");
     fetchMock.mockResolvedValueOnce({ ok: false, status: 409 });
     await expect(notifyPosStockDepletion("t1", "order-1", items)).resolves.toBe("permanent");
+    warn.mockRestore();
+  });
+
+  it("logs a permanent refusal with the order, the store and the HTTP status", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 403 });
+
+    await notifyPosStockDepletion("t1", "order-1", items);
+
+    const line = String(warn.mock.calls[0][0]);
+    expect(line).toContain("order-1");
+    expect(line).toContain("t1");
+    expect(line).toContain("403");
+    warn.mockRestore();
   });
 
   it("treats a sale with no items as already done", async () => {
@@ -223,8 +236,10 @@ describe("notifyOrderStockRedeplete", () => {
   });
 
   it("reports a refusal for an order that is still cancelled as permanent", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
     fetchMock.mockResolvedValue({ ok: false, status: 409 });
     await expect(notifyOrderStockRedeplete("t1", "order-1")).resolves.toBe("permanent");
+    warn.mockRestore();
   });
 });
 
@@ -236,52 +251,15 @@ describe("classifyStockResponse", () => {
     [false, 403, "permanent"],
     [false, 409, "permanent"],
     [false, 404, "retry"],
+    [false, 405, "permanent"],
+    [false, 408, "retry"],
+    [false, 410, "permanent"],
+    [false, 422, "permanent"],
     [false, 429, "retry"],
     [false, 500, "retry"],
     [false, 503, "retry"],
     [false, null, "retry"],
   ] as const)("ok=%s status=%s is %s", (ok, status, expected) => {
     expect(classifyStockResponse(ok, status)).toBe(expected);
-  });
-});
-
-describe("withStockRetry", () => {
-  it("retries a transient failure after each backoff delay until it lands", async () => {
-    // Arrange
-    const outcomes: StockPostOutcome[] = ["retry", "retry", "ok"];
-    const attempt = jest.fn(async () => outcomes.shift() ?? "ok");
-    const sleep = jest.fn().mockResolvedValue(undefined);
-
-    // Act
-    const outcome = await withStockRetry(attempt, { delaysMs: [10, 20, 30], sleep });
-
-    // Assert
-    expect(outcome).toBe("ok");
-    expect(attempt).toHaveBeenCalledTimes(3);
-    expect(sleep.mock.calls).toEqual([[10], [20]]);
-  });
-
-  it("stops at once on a permanent refusal", async () => {
-    const attempt = jest.fn(async (): Promise<StockPostOutcome> => "permanent");
-    const sleep = jest.fn().mockResolvedValue(undefined);
-
-    await expect(withStockRetry(attempt, { delaysMs: [10, 20], sleep })).resolves.toBe("permanent");
-    expect(attempt).toHaveBeenCalledTimes(1);
-    expect(sleep).not.toHaveBeenCalled();
-  });
-
-  it("gives back retry once every delay is spent", async () => {
-    const attempt = jest.fn(async (): Promise<StockPostOutcome> => "retry");
-    const sleep = jest.fn().mockResolvedValue(undefined);
-
-    await expect(withStockRetry(attempt, { delaysMs: [10, 20], sleep })).resolves.toBe("retry");
-    expect(attempt).toHaveBeenCalledTimes(3);
-  });
-
-  it("never throws, even when an attempt does", async () => {
-    const attempt = jest.fn(async (): Promise<StockPostOutcome> => {
-      throw new Error("boom");
-    });
-    await expect(withStockRetry(attempt, { delaysMs: [], sleep: jest.fn() })).resolves.toBe("retry");
   });
 });

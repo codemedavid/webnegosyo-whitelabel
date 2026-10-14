@@ -1,41 +1,23 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../../../../stores/auth-store";
 import { hasPermission } from "../../../../lib/staff-permissions";
-import {
-  addRecipeComponent,
-  ensureRecipe,
-  loadDishRecipeChoices,
-  loadDishRecipeCoverage,
-  loadIngredientOptions,
-  loadRecipe,
-  loadUnitOptions,
-  removeRecipeComponent,
-  updateRecipeComponent,
-  type IngredientOption,
-  type LineCheck,
-  type MenuItemRecipe,
-  type RecipeComponentView,
-  type UnitOption,
-} from "../../../../lib/recipe-service";
 import {
   isOptionTargetType,
   optionTarget,
   type OptionRecipeChoice,
-  type OptionRecipeGroup,
   type RecipeTarget,
 } from "../../../../lib/recipe-target";
-import { findChoice, summarizeChoiceCoverage } from "../../../../lib/recipe-editor";
+import { useRecipeEditor } from "../../../../lib/use-recipe-editor";
 import { recipeHref } from "../../../../lib/navigation";
 import { colors, typography, spacing, radius, shadow } from "../../../../theme/colors";
 import { BackHeader } from "../../../../components/BackHeader";
@@ -65,7 +47,8 @@ function targetFromParams(productId: string, kind?: string, option?: string): Re
  * This is the write path that makes deduction real for an app-first merchant:
  * a sale only moves stock when the dish has a recipe, and until this screen
  * the app could show the shelf but never wire a dish to it. All data access
- * lives in lib/recipe-service.ts; this screen only arranges it.
+ * lives in lib/recipe-service.ts and the editor's behaviour (loading, the save
+ * queue, the sheets) in lib/use-recipe-editor.ts; this screen only lays it out.
  *
  * Opened for the dish, it edits the dish's own recipe and lists every choice
  * on it (flavours, sizes, add-ons); opened with `?kind=&option=` it edits one
@@ -82,7 +65,6 @@ export default function RecipeEditorScreen() {
     () => targetFromParams(productId ?? "", kind, option),
     [productId, kind, option],
   );
-  const isChoice = target.type !== "menu_item";
   const tenantId = useAuthStore((s) => s.impersonatedTenantId ?? s.tenantId);
   const role = useAuthStore((s) => s.role);
   const isOwner = useAuthStore((s) => s.isOwner);
@@ -94,176 +76,29 @@ export default function RecipeEditorScreen() {
   // route reachable by URL, so it refuses on its own as well.
   const isAllowed = hasPermission({ role, isOwner, permissions }, "menu");
 
-  const [recipe, setRecipe] = useState<MenuItemRecipe | null>(null);
-  const [dishName, setDishName] = useState("");
-  const [choiceGroups, setChoiceGroups] = useState<OptionRecipeGroup[]>([]);
-  const [coverage, setCoverage] = useState<Record<string, number> | null>(null);
-  const [ingredients, setIngredients] = useState<IngredientOption[]>([]);
-  const [units, setUnits] = useState<UnitOption[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [unitTarget, setUnitTarget] = useState<RecipeComponentView | null>(null);
-  // The ingredient just added: its amount box takes focus once it mounts, so
-  // the merchant goes straight from "which" to "how much".
-  const [focusItemId, setFocusItemId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (!tenantId || !productId) return;
-    try {
-      const [loadedRecipe, options, unitCatalog, dish, dishCoverage] = await Promise.all([
-        loadRecipe(tenantId, target),
-        loadIngredientOptions(tenantId),
-        loadUnitOptions(tenantId),
-        loadDishRecipeChoices(tenantId, productId),
-        isChoice ? Promise.resolve(null) : loadDishRecipeCoverage(tenantId, productId),
-      ]);
-      setRecipe(loadedRecipe);
-      setIngredients(options);
-      setUnits(unitCatalog);
-      setDishName(dish.name);
-      setChoiceGroups(dish.groups);
-      setCoverage(dishCoverage);
-      setError(null);
-    } catch (loadError: unknown) {
-      setError(loadError instanceof Error ? loadError.message : "Could not load the recipe.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [tenantId, productId, target, isChoice]);
-
-  // On focus, not just on mount: coming back from a choice's recipe must show
-  // its new ingredient count on the dish's list.
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
-
-  const components = useMemo(() => recipe?.components ?? [], [recipe]);
-
-  const stockUnitByItem = useMemo(
-    () => new Map(ingredients.map((ingredient) => [ingredient.id, ingredient.stockUnitId])),
-    [ingredients],
-  );
-
-  const choice = useMemo(
-    () => (isChoice ? findChoice(choiceGroups, target) : null),
-    [isChoice, choiceGroups, target],
-  );
-  const choiceSummary = useMemo(
-    () => summarizeChoiceCoverage(choiceGroups, coverage),
-    [choiceGroups, coverage],
-  );
-
-  /** What a line is judged against: its ingredient's stock unit and the catalogue. */
-  const lineCheck = useCallback(
-    (inventoryItemId: string, ingredientName: string): LineCheck => ({
-      ingredient: { name: ingredientName, stockUnitId: stockUnitByItem.get(inventoryItemId) ?? null },
-      units,
-    }),
-    [stockUnitByItem, units],
-  );
-
-  // Saves run one after another rather than being dropped while one is in
-  // flight: an amount committed on blur and an "Add" tapped straight after
-  // both have to land, and a dropped one used to vanish without a word.
-  const saveQueue = useRef<Promise<void>>(Promise.resolve());
-  const pendingSaves = useRef(0);
-  const runSave = useCallback(
-    (work: () => Promise<void>) => {
-      pendingSaves.current += 1;
-      setIsSaving(true);
-      const next = saveQueue.current.then(async () => {
-        try {
-          await work();
-        } catch (saveError: unknown) {
-          Alert.alert(
-            "Recipe",
-            saveError instanceof Error ? saveError.message : "That did not save. Try again.",
-          );
-        } finally {
-          pendingSaves.current -= 1;
-          if (pendingSaves.current === 0) {
-            // One re-read after the last queued save shows what was stored.
-            await load();
-            setIsSaving(false);
-          }
-        }
-      });
-      saveQueue.current = next;
-      return next;
-    },
-    [load],
-  );
-
-  const handleAdd = (ingredient: IngredientOption) => {
-    if (!tenantId || !productId) return;
-    setIsPickerOpen(false);
-    setFocusItemId(ingredient.id);
-    void runSave(async () => {
-      // The stock unit — always convertible to itself. An ingredient without
-      // one cannot be judged, so the first unit is a starting point.
-      const unitId = ingredient.stockUnitId ?? units[0]?.id;
-      if (!unitId) {
-        throw new Error("Set up a unit for this ingredient on the Inventory screen first.");
-      }
-      // `ensure` finds the row a save queued just before this one created.
-      const recipeId = recipe?.id ?? (await ensureRecipe(tenantId, target));
-      await addRecipeComponent(tenantId, {
-        recipeId,
-        inventoryItemId: ingredient.id,
-        // 1 stock unit is a starting point the merchant is expected to edit,
-        // not a guess at the real amount — but unlike zero it deducts.
-        quantity: 1,
-        unitId,
-        sortOrder: components.length,
-        check: lineCheck(ingredient.id, ingredient.name),
-      });
-    });
-  };
-
-  const handleQuantityCommit = (line: RecipeComponentView, quantity: number) => {
-    if (!tenantId) return;
-    void runSave(() =>
-      updateRecipeComponent(tenantId, line.id, {
-        quantity,
-        unitId: line.unitId,
-        check: lineCheck(line.inventoryItemId, line.ingredientName),
-      }),
-    );
-  };
-
-  const handleUnitPick = (unitId: string) => {
-    const line = unitTarget;
-    setUnitTarget(null);
-    if (!tenantId || !line || unitId === line.unitId) return;
-    void runSave(() =>
-      updateRecipeComponent(tenantId, line.id, {
-        quantity: line.quantity,
-        unitId,
-        check: lineCheck(line.inventoryItemId, line.ingredientName),
-      }),
-    );
-  };
+  const { state, actions } = useRecipeEditor(target, { tenantId });
+  const {
+    isChoice,
+    components,
+    dishName,
+    choiceGroups,
+    coverage,
+    ingredients,
+    units,
+    stockUnitByItem,
+    choice,
+    choiceSummary,
+    isLoading,
+    error,
+    isSaving,
+    isPickerOpen,
+    unitTarget,
+    focusItemId,
+  } = state;
 
   const openChoice = (picked: OptionRecipeChoice) => {
     if (!productId || picked.target.type === "menu_item") return;
     router.push(recipeHref(productId, { kind: picked.target.type, optionId: picked.optionId }));
-  };
-
-  const handleRemove = (line: RecipeComponentView) => {
-    if (!tenantId) return;
-    const name = line.ingredientName || "this ingredient";
-    Alert.alert("Remove ingredient", `Remove ${name} from the recipe?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () => void runSave(() => removeRecipeComponent(tenantId, line.id)),
-      },
-    ]);
   };
 
   const header = (
@@ -296,7 +131,7 @@ export default function RecipeEditorScreen() {
 
   const body = (() => {
     if (!tenantId || isLoading) return <LoadingState />;
-    if (error) return <ErrorState message={error} onRetry={() => void load()} />;
+    if (error) return <ErrorState message={error} onRetry={() => void actions.reload()} />;
     return null;
   })();
 
@@ -376,10 +211,10 @@ export default function RecipeEditorScreen() {
                       line={line}
                       disabled={isSaving}
                       autoFocus={line.inventoryItemId === focusItemId}
-                      onFocus={() => setFocusItemId(null)}
-                      onCommitQuantity={(quantity) => handleQuantityCommit(line, quantity)}
-                      onOpenUnits={() => setUnitTarget(line)}
-                      onRemove={() => handleRemove(line)}
+                      onFocus={actions.clearFocus}
+                      onCommitQuantity={(quantity) => void actions.commitQuantity(line, quantity)}
+                      onOpenUnits={() => actions.openUnits(line)}
+                      onRemove={() => actions.remove(line)}
                     />
                   </View>
                 ))}
@@ -414,7 +249,7 @@ export default function RecipeEditorScreen() {
             label={hasLines ? "Add another ingredient" : "Add first ingredient"}
             icon="plus"
             size="lg"
-            onPress={() => setIsPickerOpen(true)}
+            onPress={actions.openPicker}
             disabled={isSaving}
           />
         </View>
@@ -424,16 +259,16 @@ export default function RecipeEditorScreen() {
         visible={isPickerOpen}
         ingredients={ingredients}
         components={components}
-        onPick={handleAdd}
-        onClose={() => setIsPickerOpen(false)}
+        onPick={(ingredient) => void actions.add(ingredient)}
+        onClose={actions.closePicker}
       />
       <UnitPickerSheet
         ingredientName={unitTarget ? unitTarget.ingredientName || "this ingredient" : null}
         units={units}
         selectedUnitId={unitTarget?.unitId ?? null}
         stockUnitId={unitTarget ? stockUnitByItem.get(unitTarget.inventoryItemId) ?? null : null}
-        onPick={handleUnitPick}
-        onClose={() => setUnitTarget(null)}
+        onPick={(unitId) => void actions.pickUnit(unitId)}
+        onClose={actions.closeUnits}
       />
     </View>
   );

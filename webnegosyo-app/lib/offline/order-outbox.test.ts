@@ -8,6 +8,7 @@ import {
   enqueueSale,
   nextStockRetryAt,
   owesOnlyStock,
+  isUserVisibleSale,
   getOutbox,
   hydrateOutbox,
   isSaleQueued,
@@ -286,6 +287,12 @@ describe("a sale that owes only its stock call", () => {
     expect(owesOnlyStock({ ...sale("a"), reportsDone: true })).toBe(false);
     expect(owesOnlyStock({ ...sale("a"), syncedOrderId: "s", reportsDone: true, bookkeepingDone: true })).toBe(false);
     expect(owesOnlyStock({ ...sale("a"), syncedOrderId: "s" })).toBe(false);
+  });
+
+  it("shows a sale as an order only until the server holds it and it owes nothing but stock", () => {
+    expect(isUserVisibleSale(sale("a"))).toBe(true);
+    expect(isUserVisibleSale({ ...sale("a"), syncedOrderId: "s" })).toBe(true);
+    expect(isUserVisibleSale({ ...sale("a"), syncedOrderId: "s", reportsDone: true })).toBe(false);
   });
 
   it("backs off exponentially and caps the wait", () => {

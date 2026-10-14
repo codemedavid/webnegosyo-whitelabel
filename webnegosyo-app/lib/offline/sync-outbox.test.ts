@@ -38,6 +38,8 @@ function harness(sales: QueuedSale[]) {
   const markBookkeepingDone = jest.fn().mockResolvedValue(undefined);
   const rebindEdits = jest.fn().mockResolvedValue(undefined);
   const deferStock = jest.fn().mockResolvedValue(undefined);
+  const markReportsDone = jest.fn().mockResolvedValue(undefined);
+  const reportAbandoned = jest.fn();
   const deps = {
     tenantId: "tenant-1",
     backend: "platform" as const,
@@ -51,6 +53,8 @@ function harness(sales: QueuedSale[]) {
     markBookkeepingDone,
     rebindEdits,
     deferStock,
+    markReportsDone,
+    reportAbandoned,
     now: () => 50_000,
   };
   return {
@@ -64,6 +68,8 @@ function harness(sales: QueuedSale[]) {
     markBookkeepingDone,
     rebindEdits,
     deferStock,
+    markReportsDone,
+    reportAbandoned,
   };
 }
 
@@ -87,6 +93,7 @@ describe("syncOutbox", () => {
       refused: 0,
       stuck: 0,
       stockOwed: 0,
+      stockAbandoned: 0,
       stoppedOffline: false,
     });
 
@@ -125,6 +132,7 @@ describe("syncOutbox", () => {
       refused: 0,
       stuck: 0,
       stockOwed: 0,
+      stockAbandoned: 0,
       stoppedOffline: true,
     });
     expect(h.remove).toHaveBeenCalledTimes(1);
@@ -142,6 +150,7 @@ describe("syncOutbox", () => {
       refused: 1,
       stuck: 0,
       stockOwed: 0,
+      stockAbandoned: 0,
       stoppedOffline: false,
     });
     expect(h.recordFailure).toHaveBeenCalledWith("a", "ArgumentValidationError");
@@ -330,6 +339,7 @@ describe("a sale the server keeps refusing", () => {
       refused: 0,
       stuck: 1,
       stockOwed: 0,
+      stockAbandoned: 0,
       stoppedOffline: false,
     });
     expect(h.createOrder).not.toHaveBeenCalled();
@@ -412,7 +422,7 @@ describe("a sale whose stock call did not land", () => {
     const result = await syncOutbox(h.deps);
 
     // Assert
-    expect(result).toEqual({ synced: 0, refused: 0, stuck: 0, stockOwed: 1, stoppedOffline: false });
+    expect(result).toEqual({ synced: 0, refused: 0, stuck: 0, stockOwed: 1, stockAbandoned: 0, stoppedOffline: false });
     expect(h.markBookkeepingDone).not.toHaveBeenCalled();
     expect(h.remove).not.toHaveBeenCalled();
     expect(h.recordFailure).not.toHaveBeenCalled();
@@ -443,7 +453,7 @@ describe("a sale whose stock call did not land", () => {
     const result = await syncOutbox(h.deps);
 
     expect(h.bookkeeping).not.toHaveBeenCalled();
-    expect(result).toEqual({ synced: 0, refused: 0, stuck: 0, stockOwed: 1, stoppedOffline: false });
+    expect(result).toEqual({ synced: 0, refused: 0, stuck: 0, stockOwed: 1, stockAbandoned: 0, stoppedOffline: false });
   });
 
   it("forgets the sale when the platform refused the stock for good", async () => {
@@ -455,6 +465,14 @@ describe("a sale whose stock call did not land", () => {
     expect(h.markBookkeepingDone).toHaveBeenCalledWith("a");
     expect(h.remove).toHaveBeenCalledWith("a");
     expect(h.deferStock).not.toHaveBeenCalled();
+    // Refused for good is not silent: the shelf is now wrong until a stocktake.
+    expect(h.reportAbandoned).toHaveBeenCalledWith({
+      tenantId: "tenant-1",
+      orderId: "server-pos-a",
+      action: "deplete",
+      reason: "refused",
+      attempts: 1,
+    });
   });
 
   it("gives up after the last stock attempt instead of holding the sale forever", async () => {
@@ -469,11 +487,31 @@ describe("a sale whose stock call did not land", () => {
     h.bookkeeping.mockResolvedValue({ stock: "retry" });
     const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    await syncOutbox(h.deps);
+    const result = await syncOutbox(h.deps);
 
     expect(h.deferStock).not.toHaveBeenCalled();
     expect(h.markBookkeepingDone).toHaveBeenCalledWith("a");
+    expect(h.reportAbandoned).toHaveBeenCalledWith({
+      tenantId: "tenant-1",
+      orderId: "server-a",
+      action: "deplete",
+      reason: "exhausted",
+      attempts: MAX_STOCK_ATTEMPTS,
+    });
+    expect(result.stockAbandoned).toBe(1);
     warn.mockRestore();
+  });
+
+  it("persists 'reports done' through the bookkeeping's checkpoint, not after the stock call", async () => {
+    const h = harness([sale("a")]);
+    h.bookkeeping.mockImplementation(async (facts: { onReportsDone?: () => Promise<void> }) => {
+      await facts.onReportsDone?.();
+      return { stock: "ok" };
+    });
+
+    await syncOutbox(h.deps);
+
+    expect(h.markReportsDone).toHaveBeenCalledWith("a");
   });
 
   it("retries an owed stock call even when the store has since switched backend", async () => {

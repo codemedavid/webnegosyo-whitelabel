@@ -24,6 +24,9 @@ jest.mock("./order-edits", () => ({
   subscribeOrderEdits: () => () => {},
   isOrderEditStuck: () => false,
 }));
+const mockDrainStock = jest.fn().mockResolvedValue({ sent: 0, owed: 0, abandoned: 0 });
+jest.mock("./stock-call-queue", () => ({ hydrateStockCalls: () => Promise.resolve() }));
+jest.mock("./drain-stock-calls", () => ({ drainStockCalls: (...args: unknown[]) => mockDrainStock(...args) }));
 import { OUTBOX_RETRY_INTERVAL_MS, useOutboxSync } from "./use-outbox-sync";
 
 beforeEach(() => {
@@ -65,5 +68,24 @@ it("leaves order changes queued when the sales run lost the connection", async (
   const { unmount } = renderHook(() => useOutboxSync());
   await act(async () => {});
   expect(mockSyncEdits).not.toHaveBeenCalled();
+  unmount();
+});
+
+it("drains the owed stock calls after the order changes, for this store", async () => {
+  mockSync.mockResolvedValueOnce({ synced: 0, stoppedOffline: false });
+  mockSyncEdits.mockResolvedValueOnce({ synced: 0, stoppedOffline: false });
+  const { unmount } = renderHook(() => useOutboxSync());
+  await act(async () => {});
+  expect(mockDrainStock).toHaveBeenCalledTimes(1);
+  expect(mockSyncEdits.mock.invocationCallOrder[0]).toBeLessThan(mockDrainStock.mock.invocationCallOrder[0]);
+  expect(mockDrainStock.mock.calls[0][0]).toMatchObject({ tenantId: "t1" });
+  unmount();
+});
+
+it("leaves stock calls queued when the run lost the connection", async () => {
+  mockSync.mockResolvedValueOnce({ synced: 0, stoppedOffline: true });
+  const { unmount } = renderHook(() => useOutboxSync());
+  await act(async () => {});
+  expect(mockDrainStock).not.toHaveBeenCalled();
   unmount();
 });

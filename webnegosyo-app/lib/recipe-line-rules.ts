@@ -41,10 +41,12 @@ const KIND_WORD: Record<UnitDimension, string> = {
 
 /**
  * Whether a quantity in `from` can be expressed in `to`. Same dimension, or
- * weight ↔ volume. A unit without a dimension cannot be judged, so it passes.
+ * weight ↔ volume. A unit without a dimension cannot convert — the sale-time
+ * converter (web `unit-conversion.ts`) refuses it, so a line in it would never
+ * deduct.
  */
 export function canConvertUnits(from: RuleUnit, to: RuleUnit): boolean {
-  if (!from.dimension || !to.dimension) return true;
+  if (!from.dimension || !to.dimension) return false;
   if (from.dimension === to.dimension) return true;
   return MASS_LIKE.has(from.dimension) && MASS_LIKE.has(to.dimension);
 }

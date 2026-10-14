@@ -25,7 +25,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { resolveOrderBackend, type OrderBackend } from "../order-backend";
 import { useAccountBranchScope } from "../use-branch-scope";
 import { branchScopeKey } from "../backends/query-keys";
-import { getOutbox, owesOnlyStock } from "./order-outbox";
+import { getOutbox, isUserVisibleSale } from "./order-outbox";
 import { getOrderEdits, isOrderEditRef } from "./order-edits";
 import { persistSnapshot, readResourceSnapshot } from "./resource-snapshot";
 import { useConnectivity } from "./use-connectivity";
@@ -245,9 +245,9 @@ export function useOfflineOrderDetail(orderId: string | undefined): OfflineOrder
     return {
       serverOrderId,
       isDeviceOnly: isSaleUnwritten(sale),
-      // An order written to the server and owing only its stock call is the
-      // server's to show; the sale entry still maps a local id to it.
-      localOrder: sale && !owesOnlyStock(sale) ? applyOrderEdits(queuedSaleToOrder(sale), edits) : null,
+      // A sale the server already shows (`isUserVisibleSale`) has no local
+      // copy; the sale entry still maps a local id to it.
+      localOrder: sale && isUserVisibleSale(sale) ? applyOrderEdits(queuedSaleToOrder(sale), edits) : null,
       withEdits: (order) => applyOrderEdits(order, edits),
       pendingPayments: localPaymentsFor(serverOrderId, edits),
     };

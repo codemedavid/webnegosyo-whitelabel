@@ -46,8 +46,9 @@ export function recipeLineProblem(
   ingredient: RecipeLineIngredient,
   units: readonly InventoryUnit[],
 ): string | null {
+  const name = ingredient.name || 'this ingredient'
   if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
-    return `Enter how much ${ingredient.name} this uses — it must be more than 0.`
+    return `Enter how much ${name} this uses — it must be more than 0.`
   }
 
   const stockUnit = units.find((unit) => unit.id === ingredient.stock_unit_id)
@@ -55,11 +56,11 @@ export function recipeLineProblem(
 
   const unit = units.find((candidate) => candidate.id === line.unit_id)
   if (!unit) {
-    return `Choose a unit for ${ingredient.name} (it is stocked in ${stockUnit.abbreviation}).`
+    return `Choose a unit for ${name} (it is stocked in ${stockUnit.abbreviation}).`
   }
 
   if (!canConvertUnits(unit, stockUnit)) {
-    return `${ingredient.name} is stocked in ${stockUnit.abbreviation}, so it can't be measured in ${unit.abbreviation} — sales would never deduct it. Use ${KIND_WORD[stockUnit.dimension]} unit like ${stockUnit.abbreviation}.`
+    return `${name} is stocked in ${stockUnit.abbreviation}, so it can't be measured in ${unit.abbreviation} — sales would never deduct it. Use ${KIND_WORD[stockUnit.dimension]} unit like ${stockUnit.abbreviation}.`
   }
 
   return null

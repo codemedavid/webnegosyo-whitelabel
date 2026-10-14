@@ -22,8 +22,10 @@
  * sale that never deducts leaves the shelf wrong for good, and the server
  * claims depletion per order, so replaying it is safe. When it does not land
  * the sale stays queued — reports marked done, stock owed, retried with
- * backoff (`nextStockRetryAt`) — until it lands or is refused for good. Such a
- * sale is not "waiting to sync" for the cashier: its order is written.
+ * backoff — until it lands or is refused for good (`settleStockOutcome`, the
+ * policy the stock-call queue shares). Such a sale is not "waiting to sync"
+ * for the cashier: its order is written. Giving up is never silent
+ * (`stock-abandoned.ts`).
  *
  * One run at a time per process: a second trigger while a run is in flight
  * joins it rather than racing it, which is what makes the replay safe against
@@ -35,20 +37,21 @@ import { withDeadline } from "./deadline";
 import { reportOffline } from "./connectivity";
 import { isNetworkFailure } from "./network-error";
 import {
-  MAX_STOCK_ATTEMPTS,
   deferOwedStock,
   getOutbox,
   isPaidAtTender,
   isStockRetryDue,
   markBookkeepingDone,
+  markReportsDone,
   markSaleWritten,
   needsAttention,
-  nextStockRetryAt,
   owesOnlyStock,
   recordSyncFailure,
   removeQueuedSale,
   type QueuedSale,
 } from "./order-outbox";
+import { settleStockOutcome } from "./stock-retry-policy";
+import { reportAbandonedStock, type AbandonedStockCall } from "./stock-abandoned";
 import { rebindOrderEdits } from "./order-edits";
 import {
   runPosSaleBookkeeping,
@@ -75,6 +78,10 @@ export interface SyncOutboxDeps {
   rebindEdits?: (localId: string, orderId: string) => Promise<void>;
   /** Persist "reports done, stock owed, try again at `retryAt`". */
   deferStock?: (localId: string, retryAt: number) => Promise<void>;
+  /** Persist "reports done" the moment they land, before the stock settles. */
+  markReportsDone?: (localId: string) => Promise<void>;
+  /** Say that a sale's stock call was given up on. */
+  reportAbandoned?: (call: AbandonedStockCall) => void;
   now?: () => number;
 }
 
@@ -85,6 +92,8 @@ export interface SyncOutboxResult {
   stuck: number;
   /** Written sales whose stock call has not landed yet; retried with backoff. */
   stockOwed: number;
+  /** Sales whose stock call was refused for good or ran out of attempts. */
+  stockAbandoned: number;
   /** The connection was lost mid-run; the remaining sales stay queued. */
   stoppedOffline: boolean;
 }
@@ -116,12 +125,13 @@ async function writeOrder(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Pro
   return orderId;
 }
 
-type SyncOneResult = "synced" | "stock_owed";
+type SyncOneResult = "synced" | "stock_owed" | "stock_abandoned";
 
 async function syncOne(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Promise<SyncOneResult> {
   const orderId = sale.syncedOrderId ?? (await writeOrder(sale, deps));
 
   assertActive(deps);
+  let result: SyncOneResult = "synced";
   if (!sale.bookkeepingDone) {
     const outcome = await deps.bookkeeping({
       tenantId: sale.tenantId,
@@ -130,22 +140,31 @@ async function syncOne(sale: QueuedSale, deps: Required<SyncOutboxDeps>): Promis
       createdAt: sale.createdAt,
       bookkeeping: sale.bookkeeping,
       skipReports: sale.reportsDone === true,
+      onReportsDone: () => deps.markReportsDone(sale.localId),
     });
-    if (outcome?.stock === "retry") {
-      const attempts = (sale.stockAttempts ?? 0) + 1;
-      if (attempts < MAX_STOCK_ATTEMPTS) {
-        assertActive(deps);
-        await deps.deferStock(sale.localId, nextStockRetryAt(deps.now(), attempts));
-        return "stock_owed";
-      }
-      console.warn(`[offline] Gave up deducting stock for order ${orderId} after ${attempts} attempts.`);
+    // An injected runner that predates the outcome answers nothing: it ran.
+    const settled = settleStockOutcome({ attempts: sale.stockAttempts ?? 0 }, outcome?.stock ?? "ok", deps.now());
+    if (settled.verdict === "owed") {
+      assertActive(deps);
+      await deps.deferStock(sale.localId, settled.retryAt);
+      return "stock_owed";
+    }
+    if (settled.verdict === "abandoned") {
+      deps.reportAbandoned({
+        tenantId: sale.tenantId,
+        orderId,
+        action: "deplete",
+        reason: settled.reason,
+        attempts: settled.attempts,
+      });
+      result = "stock_abandoned";
     }
     await deps.markBookkeepingDone(sale.localId);
   }
 
   assertActive(deps);
   await deps.remove(sale.localId);
-  return "synced";
+  return result;
 }
 
 /** Owed stock does not depend on which backend wrote the order. */
@@ -182,6 +201,7 @@ async function runSync(
     refused: 0,
     stuck: mine.length - replayable.length,
     stockOwed: replayable.filter((sale) => owesOnlyStock(sale) && !isStockRetryDue(sale, now)).length,
+    stockAbandoned: 0,
     stoppedOffline: false,
   };
 
@@ -195,6 +215,7 @@ async function runSync(
       const outcome = await syncOne(sale, deps);
       if (outcome === "stock_owed") result.stockOwed += 1;
       else result.synced += 1;
+      if (outcome === "stock_abandoned") result.stockAbandoned += 1;
     } catch (error) {
       if (error === SCOPE_CHANGED || !deps.isActive()) break;
       if (isNetworkFailure(error)) {
@@ -220,6 +241,8 @@ function resolveDeps(deps: SyncOutboxDeps): Required<SyncOutboxDeps> {
     markBookkeepingDone,
     rebindEdits: rebindOrderEdits,
     deferStock: deferOwedStock,
+    markReportsDone,
+    reportAbandoned: reportAbandonedStock,
     now: Date.now,
     ...deps,
   };
@@ -236,6 +259,7 @@ async function runCycle(deps: Required<SyncOutboxDeps>): Promise<SyncOutboxResul
       refused: result.refused + followUp.refused,
       stuck: followUp.stuck,
       stockOwed: result.stockOwed + followUp.stockOwed,
+      stockAbandoned: result.stockAbandoned + followUp.stockAbandoned,
       stoppedOffline: followUp.stoppedOffline,
     };
   }

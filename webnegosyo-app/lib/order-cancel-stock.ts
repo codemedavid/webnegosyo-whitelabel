@@ -12,20 +12,18 @@
  * detail, kitchen board, register drawer, pickup scan, and the offline replay —
  * calls this with the status the order had BEFORE, so they cannot diverge.
  *
- * Retried in the process with backoff on a transient failure (the server's
- * per-order claims make a repeat a no-op). Never throws, and callers do not
- * await it on a screen: by the time it runs the status change is saved, and a
- * stock write must never make an order un-cancellable or a ticket un-bumpable.
+ * Stored on the device before it is sent and retried with backoff until the
+ * platform answers for good (`offline/drain-stock-calls.ts`; the server's
+ * per-order claims make a repeat a no-op). One order's calls are sent in the
+ * order they were made — a cancel and an immediate reinstate can never reach
+ * the server as redeplete-then-restore. Never throws, and resolves once the
+ * call is stored, not sent: by the time it runs the status change is saved,
+ * and a stock write must never make an order un-cancellable or a ticket
+ * un-bumpable.
  */
 
 import { useAuthStore } from "../stores/auth-store";
-import {
-  notifyOrderStockRedeplete,
-  notifyOrderStockRestore,
-  withStockRetry,
-  type StockPostOutcome,
-  type StockRetryOptions,
-} from "./pos-stock-notify";
+import { sendStockCall } from "./offline/drain-stock-calls";
 
 const CANCELLED = "cancelled";
 
@@ -55,10 +53,15 @@ export function stockActionForStatusChange(
   return null;
 }
 
+export interface StatusStockDeps {
+  send?: typeof sendStockCall;
+}
+
+/** Answers the action queued, or null when the change moves no stock. */
 export async function syncStockForStatusChange(
   change: StatusStockChange,
-  retry?: StockRetryOptions,
-): Promise<StockPostOutcome | null> {
+  { send = sendStockCall }: StatusStockDeps = {},
+): Promise<StatusStockAction | null> {
   const action = stockActionForStatusChange(change.previousStatus, change.newStatus);
   if (!action) return null;
 
@@ -66,22 +69,6 @@ export async function syncStockForStatusChange(
   const tenantId = auth.impersonatedTenantId ?? auth.tenantId;
   if (!tenantId) return null;
 
-  const notify = action === "restore" ? notifyOrderStockRestore : notifyOrderStockRedeplete;
-  // One order's stock calls run strictly in order. A cancel and an immediate
-  // reinstate (or two queued offline changes replayed together) fired
-  // concurrently could reach the server as redeplete-then-restore: both are
-  // refused against the order's real status and neither is retried.
-  const previous = inFlightByOrder.get(change.orderId) ?? Promise.resolve(null);
-  const next = previous
-    .catch(() => null)
-    .then(() => withStockRetry(() => notify(tenantId, change.orderId, "merchant_app"), retry));
-  inFlightByOrder.set(change.orderId, next);
-  try {
-    return await next;
-  } finally {
-    if (inFlightByOrder.get(change.orderId) === next) inFlightByOrder.delete(change.orderId);
-  }
+  await send({ tenantId, orderId: change.orderId, action, payload: { source: "merchant_app" } });
+  return action;
 }
-
-/** The tail of each order's stock-call chain; see `syncStockForStatusChange`. */
-const inFlightByOrder = new Map<string, Promise<StockPostOutcome | null>>();

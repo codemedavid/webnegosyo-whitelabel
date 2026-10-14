@@ -9,7 +9,7 @@
  * arrives, and an edit only until it has been replayed (it leaves the queue).
  */
 
-import { needsAttention, owesOnlyStock, type QueuedSale } from "./order-outbox";
+import { isUserVisibleSale, needsAttention, type QueuedSale } from "./order-outbox";
 import { isOrderEditStuck, type QueuedOrderEdit } from "./order-edits";
 import type { OrderPaymentLike } from "../order-history-view";
 
@@ -197,13 +197,9 @@ function isInWindow(createdAt: number, window: OfflineOrderInput["window"]): boo
   return !window || (createdAt >= window.startMs && createdAt < window.endMs);
 }
 
-/**
- * Queued sales that should still read as orders. One owing only its stock call
- * is left out: the server holds the order, and a local copy would linger as a
- * ghost "confirmed" order after the real one moved on.
- */
+/** Queued sales that should still read as orders (`isUserVisibleSale`). */
 function shownSales(input: OfflineOrderInput): QueuedSale[] {
-  return mineOnly(input.sales, input.tenantId).filter((sale) => !owesOnlyStock(sale));
+  return mineOnly(input.sales, input.tenantId).filter(isUserVisibleSale);
 }
 
 function hasNothingWaiting(input: OfflineOrderInput): boolean {

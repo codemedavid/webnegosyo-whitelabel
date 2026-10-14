@@ -74,9 +74,10 @@ export async function runOrderEditSideEffects(edit: QueuedOrderEdit): Promise<vo
     import("../order-cancel-stock"),
     import("../loyverse-confirm"),
   ]);
-  // Not awaited: its retries back off for up to a minute and must not hold
-  // the rest of the replay behind them. It never throws.
-  void syncStockForStatusChange({ orderId, newStatus: status, previousStatus: edit.previousStatus });
+  // Awaited only until the stock call is STORED (it is sent and retried in the
+  // background), so the change is forgotten only once its stock is owed
+  // durably. It never throws.
+  await syncStockForStatusChange({ orderId, newStatus: status, previousStatus: edit.previousStatus });
   if (status === "confirmed") await pushConfirmedOrderToLoyverse(orderId);
 }
 

@@ -21,7 +21,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { withOrderOutlet } from "../../lib/order-outlet";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
-import { notifyPosStockDepletion, withStockRetry } from "../../lib/pos-stock-notify";
+import { sendStockCall } from "../../lib/offline/drain-stock-calls";
 import { qrOrderStockItems } from "../../lib/qr-order-stock";
 import { priceComboHandoff } from "../../lib/scan-handoff-pricing";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
@@ -410,11 +410,15 @@ export default function ScanScreen() {
       // invisible to the Regulars list as a counter sale was. Skips itself when
       // the payload names nobody, and never throws — the order is already in.
       if (tenantId) {
-        // Retried in the background on a transient failure (the server's
-        // per-order claim makes a repeat a no-op); never holds the screen.
-        void withStockRetry(() =>
-          notifyPosStockDepletion(tenantId, String(orderId), stockItems, "qr_scan"),
-        );
+        // Stored on the device, then sent and retried in the background until
+        // the platform answers (the server's per-order claim makes a repeat a
+        // no-op); never holds the screen, survives the app being killed.
+        void sendStockCall({
+          tenantId,
+          orderId: String(orderId),
+          action: "deplete",
+          payload: { items: stockItems, source: "qr_scan" },
+        });
         await notifyCustomerCapture(tenantId, {
           backend: writeBackend,
           orderId: String(orderId),

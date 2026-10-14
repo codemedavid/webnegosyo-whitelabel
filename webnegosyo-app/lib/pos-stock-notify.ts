@@ -1,5 +1,4 @@
-import { postAuthorized } from "./authorized-post";
-import { responseStatusOf } from "./authorized-post-status";
+import { postAuthorizedDetailed } from "./authorized-post";
 import type { PosStockItem } from "./pos-stock";
 
 /**
@@ -13,34 +12,39 @@ export type StockAuditSource = "pos" | "qr_scan" | "merchant_app";
  * What became of one stock call.
  *
  * - `ok`: the platform accepted it (or there was nothing to send).
- * - `permanent`: the platform refused it in a way a retry cannot change
- *   (400/401/403/409 — malformed, unauthorised, or e.g. "this order is not
- *   cancelled"). Retrying would only be refused again.
- * - `retry`: the call may not have happened — a timeout, a 5xx, no session,
- *   no network. The server's claims make every stock action idempotent per
- *   order, so sending it again is safe and is the only way the ledger heals.
+ * - `permanent`: the platform refused it in a way a retry cannot change — any
+ *   4xx but the four in {@link RETRYABLE_CLIENT_STATUSES} (400 malformed, 403
+ *   no permission / wrong branch, 409 e.g. "this order is not cancelled").
+ *   Retrying would only be refused again.
+ * - `retry`: the call may not have happened, or may succeed later — a timeout,
+ *   a 5xx, 401/404/408/429, no session, no network. The server's claims make
+ *   every stock action idempotent per order, so sending it again is safe and is
+ *   the only way the ledger heals.
  */
 export type StockPostOutcome = "ok" | "permanent" | "retry";
 
 const STOCK_ROUTE = "/api/inventory/order-stock";
 
-/** Refusals that say "no" for good; anything else non-2xx is worth retrying. */
-// 401 is NOT permanent: a device back online after hours can send a token that
-// expired a moment ago, or lose a refresh race. Retrying lets the session
-// refresh; MAX attempts still bound a credential that is genuinely dead.
-const PERMANENT_STATUSES: readonly number[] = [400, 403, 409];
-
 /**
- * Backoff between in-process attempts for a stock call no queue persists
- * (status-change restore/redeplete, an order edit's revision, a scanned QR
- * sale). About 40 seconds end to end — enough to ride out a blip, short enough
- * that a dead connection is not retried into the next shift.
+ * Client errors that are NOT final — everything else in 4xx is.
+ *
+ * - 401: a device back online after hours can send a token that expired a
+ *   moment ago, or lose a refresh race. Retrying lets the session refresh.
+ * - 404 `order_not_found`: the order row may not be visible to the route yet
+ *   (a sale written a moment ago, a replica catching up).
+ * - 408 / 429: the server asked us to come back later.
+ *
+ * The attempt cap still bounds a credential or an order that is genuinely gone.
  */
-export const STOCK_RETRY_DELAYS_MS: readonly number[] = [2_000, 8_000, 30_000];
+const RETRYABLE_CLIENT_STATUSES: readonly number[] = [401, 404, 408, 429];
+
+function isPermanentStatus(status: number): boolean {
+  return status >= 400 && status < 500 && !RETRYABLE_CLIENT_STATUSES.includes(status);
+}
 
 export function classifyStockResponse(ok: boolean, status: number | null): StockPostOutcome {
   if (ok) return "ok";
-  if (status !== null && PERMANENT_STATUSES.includes(status)) return "permanent";
+  if (status !== null && isPermanentStatus(status)) return "permanent";
   return "retry";
 }
 
@@ -51,49 +55,30 @@ function withSource<T extends Record<string, unknown>>(body: T, source?: StockAu
 
 /**
  * The one authenticated call every stock action shares. Never throws, and —
- * via `postAuthorized` — always settles within its deadline: the tender screen
- * awaits this before it clears its spinner, so an unbounded wait here is a
- * frozen register.
+ * via `postAuthorizedDetailed` — always settles within its deadline: the
+ * tender screen awaits this before it clears its spinner, so an unbounded wait
+ * here is a frozen register.
+ *
+ * A permanent refusal is logged with its HTTP status here, the one place that
+ * still knows it; the queue holding the call reports the give-up itself.
  */
 async function postStockAction(body: Record<string, unknown>): Promise<StockPostOutcome> {
-  const ok = await postAuthorized(STOCK_ROUTE, body);
-  return classifyStockResponse(ok, responseStatusOf(body));
-}
-
-export interface StockRetryOptions {
-  delaysMs?: readonly number[];
-  sleep?: (ms: number) => Promise<void>;
-}
-
-function sleepFor(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Run a stock call, retrying transient failures after each backoff delay.
- * Stops at the first `ok` or `permanent`; answers `retry` once every delay is
- * spent. Never throws.
- */
-export async function withStockRetry(
-  attempt: () => Promise<StockPostOutcome>,
-  { delaysMs = STOCK_RETRY_DELAYS_MS, sleep = sleepFor }: StockRetryOptions = {},
-): Promise<StockPostOutcome> {
-  for (let index = 0; ; index += 1) {
-    let outcome: StockPostOutcome;
-    try {
-      outcome = await attempt();
-    } catch {
-      outcome = "retry";
-    }
-    if (outcome !== "retry" || index >= delaysMs.length) return outcome;
-    await sleep(delaysMs[index]);
+  const { ok, status } = await postAuthorizedDetailed(STOCK_ROUTE, body);
+  const outcome = classifyStockResponse(ok, status);
+  if (outcome === "permanent") {
+    console.warn(
+      `[stock] The platform refused the ${String(body.action ?? "deplete")} stock call for order ` +
+        `${String(body.orderId)} (store ${String(body.tenantId)}): HTTP ${status}.`,
+    );
   }
+  return outcome;
 }
 
 /**
- * Ask the platform to spend a counter sale's ingredients. ONE attempt; the
- * caller decides how to retry (the sales outbox persists it, see
- * `offline/sync-outbox.ts`).
+ * Ask the platform to spend a sale's ingredients. ONE attempt; the caller
+ * decides how to retry (a counter sale rides in the sales outbox, see
+ * `offline/sync-outbox.ts`; a scanned QR sale in the stock-call queue, see
+ * `offline/drain-stock-calls.ts`).
  *
  * Register sales are written straight to the tenant's order backend and never
  * pass through the web app's `createOrderAction` where depletion is wired.

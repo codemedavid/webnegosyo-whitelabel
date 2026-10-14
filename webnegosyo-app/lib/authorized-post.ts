@@ -26,7 +26,6 @@
 
 import { getWebAppUrl } from "./web-app-url";
 import { supabase } from "./supabase";
-import { recordResponseStatus } from "./authorized-post-status";
 
 /**
  * How long a post-sale write waits before giving up.
@@ -63,6 +62,18 @@ export async function getAccessTokenBounded(timeoutMs: number): Promise<string |
 }
 
 /**
+ * What became of one authorized POST. `status` is null when no server answered
+ * (no session, a timeout, no network) — a caller that must tell a permanent
+ * refusal from a transient one reads it (the stock notifier).
+ */
+export interface AuthorizedPostResult {
+  ok: boolean;
+  status: number | null;
+}
+
+const UNANSWERED: AuthorizedPostResult = { ok: false, status: null };
+
+/**
  * POST `body` to a web app route as the signed-in cashier.
  *
  * Returns whether the route accepted it. Callers behind a completed sale ignore
@@ -73,6 +84,16 @@ export async function postAuthorized(
   body: unknown,
   options: AuthorizedPostOptions = {},
 ): Promise<boolean> {
+  const { ok } = await postAuthorizedDetailed(path, body, options);
+  return ok;
+}
+
+/** {@link postAuthorized}, answering the HTTP status as well. Same contract. */
+export async function postAuthorizedDetailed(
+  path: string,
+  body: unknown,
+  options: AuthorizedPostOptions = {},
+): Promise<AuthorizedPostResult> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -93,7 +114,7 @@ export async function postAuthorized(
     // deadline that only started afterwards would never fire.
     const { data } = await Promise.race([supabase.auth.getSession(), expiry]);
     const token = data.session?.access_token;
-    if (!token) return false;
+    if (!token) return UNANSWERED;
 
     const response = await Promise.race([
       fetch(`${getWebAppUrl()}${path}`, {
@@ -108,15 +129,15 @@ export async function postAuthorized(
       expiry,
     ]);
 
-    // Kept for callers that must tell a permanent refusal from a transient
-    // one (the stock notifier) — see `authorized-post-status.ts`.
-    recordResponseStatus(body, response.status);
-    return response.ok === true;
+    const status = typeof response.status === "number" && Number.isFinite(response.status)
+      ? response.status
+      : null;
+    return { ok: response.ok === true, status };
   } catch {
     // Best-effort by design — the sale is rung up and paid for by the time any
     // caller reaches here. A ledger that drifts is reconcilable; a register
     // that will not close a tender is not.
-    return false;
+    return UNANSWERED;
   } finally {
     clearTimeout(timer);
   }

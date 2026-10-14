@@ -76,6 +76,39 @@ describe("runPosSaleBookkeeping", () => {
     expect(deps.activity).not.toHaveBeenCalled();
     expect(deps.capture).not.toHaveBeenCalled();
   });
+
+  it("checkpoints the reports the moment they resolve, while the stock call is still out", async () => {
+    // A crash between the reports landing and the stock call settling must not
+    // send the Loyverse receipt, the voucher burn or the activity line twice.
+    jest.clearAllMocks();
+    let releaseStock: (outcome: "ok") => void = () => undefined;
+    deps.stock.mockImplementationOnce(() => new Promise((resolve) => { releaseStock = resolve; }));
+    const onReportsDone = jest.fn().mockResolvedValue(undefined);
+
+    const running = runPosSaleBookkeeping({ ...facts(), onReportsDone }, deps);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onReportsDone).toHaveBeenCalledTimes(1);
+    releaseStock("ok");
+    await expect(running).resolves.toEqual({ stock: "ok" });
+  });
+
+  it("does not checkpoint reports it skipped", async () => {
+    jest.clearAllMocks();
+    const onReportsDone = jest.fn();
+    await runPosSaleBookkeeping({ ...facts(), skipReports: true, onReportsDone }, deps);
+    expect(onReportsDone).not.toHaveBeenCalled();
+  });
+
+  it("still settles when the checkpoint cannot be written", async () => {
+    jest.clearAllMocks();
+    deps.stock.mockResolvedValueOnce("ok");
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const onReportsDone = jest.fn().mockRejectedValue(new Error("disk full"));
+
+    await expect(runPosSaleBookkeeping({ ...facts(), onReportsDone }, deps)).resolves.toEqual({ stock: "ok" });
+    warn.mockRestore();
+  });
 });
 
 function facts() {

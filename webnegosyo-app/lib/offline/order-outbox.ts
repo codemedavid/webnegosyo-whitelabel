@@ -99,22 +99,12 @@ export function needsAttention(sale: QueuedSale): boolean {
   return sale.attempts >= MAX_SYNC_ATTEMPTS;
 }
 
-/** First wait after a stock call that did not land; doubles per attempt. */
-export const STOCK_RETRY_BASE_MS = 30_000;
-/** The longest wait between two stock attempts. */
-export const STOCK_RETRY_MAX_MS = 30 * 60_000;
-/**
- * Stock attempts after which an owed call is abandoned (with a warning) so the
- * sale does not sit on the device forever — about a day of retries at the
- * capped interval. The shelf is then reconciled by a stocktake.
- */
-export const MAX_STOCK_ATTEMPTS = 48;
-
-/** When to try an owed stock call again, after `attempts` failed tries. */
-export function nextStockRetryAt(now: number, attempts: number): number {
-  const exponent = Math.max(0, Math.min(attempts - 1, 20));
-  return now + Math.min(STOCK_RETRY_BASE_MS * 2 ** exponent, STOCK_RETRY_MAX_MS);
-}
+export {
+  MAX_STOCK_ATTEMPTS,
+  STOCK_RETRY_BASE_MS,
+  STOCK_RETRY_MAX_MS,
+  nextStockRetryAt,
+} from "./stock-retry-policy";
 
 /**
  * The order row is written and its reports ran; only the stock call is still
@@ -123,6 +113,17 @@ export function nextStockRetryAt(now: number, attempts: number): number {
  */
 export function owesOnlyStock(sale: QueuedSale): boolean {
   return Boolean(sale.syncedOrderId) && sale.reportsDone === true && sale.bookkeepingDone !== true;
+}
+
+/**
+ * Whether a queued sale should still read as an order on the device — in the
+ * order list, the order screen and the register's "waiting to sync" banner.
+ * One owing only its stock call is the server's to show: a local copy would
+ * linger as a ghost "confirmed" order after the real one moved on, and the
+ * cashier has nothing to wait for.
+ */
+export function isUserVisibleSale(sale: QueuedSale): boolean {
+  return !owesOnlyStock(sale);
 }
 
 /** Whether an owed stock call's backoff has elapsed. */
@@ -263,6 +264,14 @@ export function markSaleWritten(localId: string, orderId: string): Promise<void>
 /** The bookkeeping has run; persisted BEFORE the sale is forgotten. */
 export function markBookkeepingDone(localId: string): Promise<void> {
   return updateSale(localId, (sale) => ({ ...sale, bookkeepingDone: true }));
+}
+
+/**
+ * The non-stock bookkeeping ran; persisted the moment it lands, while the stock
+ * call may still be out (`pos-sale-bookkeeping.ts` `onReportsDone`).
+ */
+export function markReportsDone(localId: string): Promise<void> {
+  return updateSale(localId, (sale) => (sale.reportsDone ? sale : { ...sale, reportsDone: true }));
 }
 
 /**

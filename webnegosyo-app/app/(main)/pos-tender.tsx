@@ -34,7 +34,7 @@ import { convexServiceChargeArg } from "../../lib/convex-service-charge-arg";
 import { resolveRegisterOutlet } from "../../lib/register-outlet";
 import { useBranchContextStore } from "../../stores/branch-context-store";
 import { buildPosStockItems } from "../../lib/pos-stock";
-import { notifyOrderStockRevision, withStockRetry } from "../../lib/pos-stock-notify";
+import { sendStockCall } from "../../lib/offline/drain-stock-calls";
 import { posLinesToLoyverseOrderLines } from "../../lib/loyverse-notify";
 import { burnPosRedemptions } from "../../lib/voucher-service";
 import { placeCounterSale } from "../../lib/offline/place-sale";
@@ -389,11 +389,15 @@ export default function PosTenderScreen() {
       if (tenantId) {
         const movement = posStockRevision(editContext.originalStockItems, buildPosStockItems(savedItems));
         const revision = editContext.expectedRevisionNumber + 1;
-        // Retried in the background on a transient failure — the revision
-        // claim makes a repeat a no-op — so the screen never waits on it.
-        void withStockRetry(() =>
-          notifyOrderStockRevision(tenantId, editContext.orderId, revision, movement, "pos"),
-        );
+        // Stored on the device, then sent and retried in the background until
+        // the platform answers — the revision claim makes a repeat a no-op —
+        // so the screen never waits on it and a killed app does not lose it.
+        void sendStockCall({
+          tenantId,
+          orderId: editContext.orderId,
+          action: "revise",
+          payload: { revision, deplete: movement.deplete, restore: movement.restore, source: "pos" },
+        });
       }
 
       // Burn the codes THIS edit added. The order's own codes were burned when

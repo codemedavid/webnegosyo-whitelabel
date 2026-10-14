@@ -39,6 +39,19 @@ describe("runOrderEditSideEffects", () => {
     expect(syncStockMock).toHaveBeenCalledWith({ orderId: "o1", newStatus: "cancelled", previousStatus: "confirmed" });
   });
 
+  it("resolves only once the stock call is stored, so the change is not forgotten first", async () => {
+    let stored = false;
+    syncStockMock.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      stored = true;
+      return "restore";
+    });
+
+    await runOrderEditSideEffects(statusEdit("cancelled", "confirmed"));
+
+    expect(stored).toBe(true);
+  });
+
   it("still pushes a confirmed order to Loyverse", async () => {
     await runOrderEditSideEffects(statusEdit("confirmed", "pending"));
     expect(pushLoyverseMock).toHaveBeenCalledWith("o1");

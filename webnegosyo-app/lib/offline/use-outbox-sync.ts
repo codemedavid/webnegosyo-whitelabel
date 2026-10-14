@@ -8,7 +8,9 @@
  *
  * Triggers: the outbox gaining a sale while online, the belief flipping to
  * online, and the app returning to the foreground. `syncOutbox` serialises
- * overlapping triggers itself.
+ * overlapping triggers itself. The same loop drains the stock calls screens
+ * queued (`drain-stock-calls.ts`), so one owed across a restart or an outage
+ * is retried here.
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -36,6 +38,8 @@ import {
   type OrderEditsState,
 } from "./order-edits";
 import { syncOrderEdits } from "./sync-order-edits";
+import { hydrateStockCalls } from "./stock-call-queue";
+import { drainStockCalls } from "./drain-stock-calls";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updatePaymentStatusRef =
@@ -53,7 +57,7 @@ export function useOrderEdits(): OrderEditsState {
 }
 
 function hydrateQueues(): Promise<unknown> {
-  return Promise.all([hydrateOutbox(), hydrateOrderEdits()]);
+  return Promise.all([hydrateOutbox(), hydrateOrderEdits(), hydrateStockCalls()]);
 }
 
 export interface PendingSaleCounts {
@@ -152,15 +156,18 @@ export function useOutboxSync(): void {
       void hydrateQueues()
         .then(() => syncOutbox({ tenantId, backend, ...mutations.current, isActive }))
         // Changes after sales: an order rung up and advanced offline must
-        // exist before its "preparing" is sent.
-        .then((sales) => sales.stoppedOffline
-          ? undefined
-          : syncOrderEdits({
-              tenantId,
-              backend,
-              isActive,
-              mutate: (ref, args) => editMutations.current[ref](args),
-            }))
+        // exist before its "preparing" is sent. Owed stock calls last: a
+        // replayed change queues its own (restore / re-spend) on the way.
+        .then(async (sales) => {
+          if (sales.stoppedOffline) return;
+          const edits = await syncOrderEdits({
+            tenantId,
+            backend,
+            isActive,
+            mutate: (ref, args) => editMutations.current[ref](args),
+          });
+          if (!edits.stoppedOffline) await drainStockCalls({ tenantId, isActive });
+        })
         .catch((error) => console.warn("[offline] Could not sync queued sales:", error));
     };
     sync();
