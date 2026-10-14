@@ -38,6 +38,7 @@ import {
   type AdminClient,
   type OrderLedgerRow,
   type OrderStockResult,
+  type StockWriteOutcome,
 } from './order-stock-ledger'
 import { SYSTEM_CONTEXT, auditOrderStock, warnSkipped, type OrderAuditTarget } from './order-stock-audit'
 import { applyOrderStockMovements } from './order-stock-movements'
@@ -64,7 +65,7 @@ export async function redepleteOrderStockBestEffort(
   tenantId: string,
   orderId: string,
   context: StockAuditContext = SYSTEM_CONTEXT,
-): Promise<void> {
+): Promise<StockWriteOutcome> {
   const target: OrderAuditTarget = {
     tenantId, orderId, event: 'order_redeplete', context, revision: null, outletId: null,
   }
@@ -78,7 +79,7 @@ export async function redepleteOrderStockBestEffort(
     // un-cancel lands here).
     if (!isLatestSaleReversed(claims, simpleClaims)) {
       await auditOrderStock(target, { result: unwritten('duplicate') })
-      return
+      return 'settled'
     }
 
     const revision = nextRedepletionRevision(claims, simpleClaims)
@@ -97,19 +98,21 @@ export async function redepleteOrderStockBestEffort(
         )
       }
       await finishRedepletion(supabase, { ...target, revision, outletId: soleOutletId(restored) ?? order.outletId }, result)
-      return
+      return 'settled'
     }
 
     if (order.items.length === 0) {
       await markOrderReopened(supabase, tenantId, orderId, revision)
-      return
+      return 'settled'
     }
     const result = await applyOrderStockMovements(tenantId, orderId, order.items, 'sale', revision, order.outletId)
     warnSkipped('[inventory] Skipped stock movements for un-cancelled order', orderId, result)
     await finishRedepletion(supabase, { ...target, revision, outletId: order.outletId }, result)
+    return 'settled'
   } catch (error) {
     reportStockFailure({ tenantId, orderId, operation: 'redeplete_order_stock' }, error)
     await auditOrderStock(target, { error })
+    return 'failed'
   }
 }
 

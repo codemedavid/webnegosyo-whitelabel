@@ -5,6 +5,7 @@ import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-li
 import type { AppUserScopeRow } from '@/lib/queries/fetch-app-user-scope'
 import { validateAddonQuantities } from '@/lib/inventory/selection-quantities'
 import { parseStockAuditSource, type StockAuditContext } from '@/lib/inventory/stock-audit'
+import type { StockWriteOutcome } from '@/lib/inventory/order-stock-service'
 
 /**
  * POST /api/inventory/order-stock
@@ -95,6 +96,17 @@ async function readOrderLifecycle(tenantId: string, orderId: string): Promise<Li
 
 function refuse(status: number, error: string): NextResponse {
   return NextResponse.json({ error }, { status })
+}
+
+/**
+ * The service never throws, so a write that did not happen has to be said
+ * here. A 200 would tell the app's durable stock queue the shelf moved and it
+ * would drop the call for good; every write is claimed, so the retry a 503
+ * asks for cannot spend an order twice.
+ */
+function settledResponse(outcome: StockWriteOutcome): NextResponse {
+  if (outcome === 'failed') return refuse(503, 'stock_write_failed')
+  return NextResponse.json({ success: true })
 }
 
 /** Only restore/redeplete care whether the order is cancelled right now. */
@@ -245,7 +257,7 @@ async function restore({ request, read, audit }: ActionContext): Promise<NextRes
   if (refusal) return refusal
 
   const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await reverseOrderStockBestEffort(request.tenantId, request.orderId, audit)
+  const outcome = await reverseOrderStockBestEffort(request.tenantId, request.orderId, audit)
 
   // A cancelled pre-order gives its date stock back, like `updateOrderStatus`
   // and the Convex order sheet do. The claim rides in the SERVER's copy of
@@ -254,7 +266,7 @@ async function restore({ request, read, audit }: ActionContext): Promise<NextRes
     const { releasePresellForCancelledConvexOrder } = await import('@/lib/presell/convex-cancel')
     await releasePresellForCancelledConvexOrder(request.tenantId, read.customerData)
   }
-  return NextResponse.json({ success: true })
+  return settledResponse(outcome)
 }
 
 async function redeplete({ request, read, audit }: ActionContext): Promise<NextResponse> {
@@ -262,8 +274,7 @@ async function redeplete({ request, read, audit }: ActionContext): Promise<NextR
   if (refusal) return refusal
 
   const { redepleteOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await redepleteOrderStockBestEffort(request.tenantId, request.orderId, audit)
-  return NextResponse.json({ success: true })
+  return settledResponse(await redepleteOrderStockBestEffort(request.tenantId, request.orderId, audit))
 }
 
 /**
@@ -274,7 +285,7 @@ async function redeplete({ request, read, audit }: ActionContext): Promise<NextR
  */
 async function revise({ request, outletId, audit }: ActionContext): Promise<NextResponse> {
   const { applyOrderRevisionStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await applyOrderRevisionStockBestEffort(
+  const outcome = await applyOrderRevisionStockBestEffort(
     request.tenantId,
     request.orderId,
     Number(request.body.revision),
@@ -283,15 +294,15 @@ async function revise({ request, outletId, audit }: ActionContext): Promise<Next
     outletId,
     audit,
   )
-  return NextResponse.json({ success: true })
+  return settledResponse(outcome)
 }
 
 async function deplete({ request, outletId, audit }: ActionContext): Promise<NextResponse> {
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
-  await applyOrderStockBestEffort(
+  const outcome = await applyOrderStockBestEffort(
     request.tenantId, request.orderId, toDepletionItems(request.body.items), 'sale', 0, outletId, { context: audit },
   )
-  return NextResponse.json({ success: true })
+  return settledResponse(outcome)
 }
 
 const HANDLERS: Record<StockAction, (context: ActionContext) => Promise<NextResponse>> = {

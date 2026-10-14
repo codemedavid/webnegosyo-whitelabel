@@ -22,6 +22,7 @@ import type { DepletionOrderItem } from './order-depletion'
 import { reportStockFailure } from './stock-failure-report'
 import type { StockAuditContext } from './stock-audit'
 import { applyOrderStockMovements, reverseOrderStockMovements } from './order-stock-movements'
+import type { StockWriteOutcome } from './order-stock-ledger'
 import {
   SYSTEM_CONTEXT,
   auditOrderStock,
@@ -34,22 +35,29 @@ export { applyOrderStockMovements, reverseOrderStockMovements } from './order-st
 export { redepleteOrderStockBestEffort } from './order-stock-redeplete'
 export type { OrderStockResult } from './order-stock-ledger'
 export type { OrderStockAuditOptions } from './order-stock-audit'
+export type { StockWriteOutcome } from './order-stock-ledger'
 
-/** Never throws: a stock write must not make an order un-cancellable. */
+/**
+ * Never throws: a stock write must not make an order un-cancellable. Answers
+ * `failed` when the write did not happen, so a caller that can retry (the
+ * app's stock queue, through the order-stock route) knows to.
+ */
 export async function reverseOrderStockBestEffort(
   tenantId: string,
   orderId: string,
   context: StockAuditContext = SYSTEM_CONTEXT,
-): Promise<void> {
+): Promise<StockWriteOutcome> {
   const target: OrderAuditTarget = {
     tenantId, orderId, event: 'order_restore', context, revision: null, outletId: null,
   }
   try {
     const result = await reverseOrderStockMovements(tenantId, orderId)
     await auditOrderStock(target, { result })
+    return 'settled'
   } catch (error) {
     reportStockFailure({ tenantId, orderId, operation: 'reverse_order_stock' }, error)
     await auditOrderStock(target, { error })
+    return 'failed'
   }
 }
 
@@ -68,9 +76,9 @@ export async function applyOrderStockBestEffort(
   revision: number = 0,
   outletId: string | null = null,
   audit: OrderStockAuditOptions = {},
-): Promise<void> {
+): Promise<StockWriteOutcome> {
   // An order with no lines has nothing to move and nothing worth a log row.
-  if (items.length === 0) return
+  if (items.length === 0) return 'settled'
   const target: OrderAuditTarget = {
     tenantId,
     orderId,
@@ -91,11 +99,13 @@ export async function applyOrderStockBestEffort(
     )
     warnSkipped('[inventory] Skipped stock movements for order', orderId, result)
     await auditOrderStock(target, { result })
+    return 'settled'
   } catch (error) {
     // `applyOrderRevisionStockBestEffort` funnels through here too, so the
     // revision being saved rides along whenever the caller passed one.
     reportStockFailure({ tenantId, orderId, operation: 'apply_order_stock', revision }, error)
     await auditOrderStock(target, { error })
+    return 'failed'
   }
 }
 
@@ -120,32 +130,24 @@ export async function applyOrderRevisionStockBestEffort(
   restore: readonly DepletionOrderItem[],
   outletId: string | null = null,
   context: StockAuditContext = SYSTEM_CONTEXT,
-): Promise<void> {
+): Promise<StockWriteOutcome> {
   // Simple counters enforce a floor: return the old configuration first so a
   // swap can reuse its own stock. The RPC distinguishes edits from cancellation
   // and retries below are no-ops under its independent transaction claims.
+  let counters: StockWriteOutcome = 'settled'
   try {
     const supabase = createAdminClient()
     if (restore.length) await applySimpleOptionStock(supabase, tenantId, orderId, 'void', revision, restore, outletId)
     if (deplete.length) await applySimpleOptionStock(supabase, tenantId, orderId, 'sale', revision, deplete, outletId)
   } catch (error) {
     reportStockFailure({ tenantId, orderId, operation: 'revise_simple_option_stock' }, error)
+    counters = 'failed'
   }
   // Edit claims live in their own namespace ('edit'), numbered by the order's
   // own revision counter, so an edit's return never reads as a cancellation
   // and never collides with an un-cancel's revision.
-  if (deplete.length > 0) {
-    await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision, outletId, {
-      context,
-      event: 'order_edit',
-      kind: 'edit',
-    })
-  }
-  if (restore.length > 0) {
-    await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision, outletId, {
-      context,
-      event: 'order_edit',
-      kind: 'edit',
-    })
-  }
+  const audit = { context, event: 'order_edit', kind: 'edit' } as const
+  const spent = await applyOrderStockBestEffort(tenantId, orderId, deplete, 'sale', revision, outletId, audit)
+  const returned = await applyOrderStockBestEffort(tenantId, orderId, restore, 'void', revision, outletId, audit)
+  return [counters, spent, returned].includes('failed') ? 'failed' : 'settled'
 }

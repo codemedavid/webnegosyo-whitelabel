@@ -35,7 +35,7 @@ describe('applyOrderStockBestEffort', () => {
     })
 
     // Act / Assert
-    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBeUndefined()
+    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBe('failed')
     expect(console.error).toHaveBeenCalled()
   })
 
@@ -46,11 +46,11 @@ describe('applyOrderStockBestEffort', () => {
       }),
     })
 
-    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBeUndefined()
+    await expect(applyOrderStockBestEffort('t1', 'o1', ITEMS)).resolves.toBe('failed')
   })
 
   it('does nothing at all for an order with no lines', async () => {
-    await expect(applyOrderStockBestEffort('t1', 'o1', [])).resolves.toBeUndefined()
+    await expect(applyOrderStockBestEffort('t1', 'o1', [])).resolves.toBe('settled')
     expect(from).not.toHaveBeenCalled()
   })
 

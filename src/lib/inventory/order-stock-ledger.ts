@@ -18,6 +18,13 @@ import type { InventoryUnit } from './unit-conversion'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
 
+/**
+ * What a best-effort order stock write tells its caller. The wrappers never
+ * throw; `failed` means nothing was written (every claim was handed back), so
+ * a caller that can retry should.
+ */
+export type StockWriteOutcome = 'settled' | 'failed'
+
 export interface OrderStockResult {
   /** Movements actually written. Zero is normal — most menus are partly costed. */
   movementCount: number

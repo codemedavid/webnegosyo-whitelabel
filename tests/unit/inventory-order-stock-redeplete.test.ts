@@ -200,7 +200,7 @@ describe('redepleteOrderStockBestEffort (un-cancel)', () => {
       stubPipeline(claimInserts, ledgerInserts, { orderReadError: { message: 'boom' } }),
     )
 
-    await expect(redepleteOrderStockBestEffort(TENANT, ORDER)).resolves.toBeUndefined()
+    await expect(redepleteOrderStockBestEffort(TENANT, ORDER)).resolves.toBe('failed')
     expect(console.error).toHaveBeenCalled()
     expect(ledgerInserts).toEqual([])
   })

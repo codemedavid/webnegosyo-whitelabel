@@ -369,6 +369,49 @@ describe('POST /api/inventory/order-stock', () => {
     })
   })
 
+  describe('a stock write that failed inside the service', () => {
+    // The wrappers never throw (an order must never be lost to stock), so the
+    // route has to say "try again" itself. Answering 200 told the app's durable
+    // stock queue the shelf had moved and it dropped the call for good. Every
+    // write is claimed, so the retry the 503 asks for is safe.
+    const ORDER_ID = 'jh7dm2p8qr3n5x9'
+    const CASES: Array<{ action: string; mock: string; status: string; body: Record<string, unknown> }> = [
+      { action: 'deplete', mock: 'applyOrderStockBestEffort', status: 'pending', body: { items: VALID_BODY.items } },
+      { action: 'restore', mock: 'reverseOrderStockBestEffort', status: 'cancelled', body: {} },
+      { action: 'redeplete', mock: 'redepleteOrderStockBestEffort', status: 'preparing', body: {} },
+      { action: 'revise', mock: 'applyOrderRevisionStockBestEffort', status: 'pending', body: { revision: 1, deplete: [], restore: [] } },
+    ]
+
+    test.each(CASES)('$action answers 503 so the caller retries', async ({ action, mock, status, body }) => {
+      // Arrange
+      storedLifecycle = { status }
+      const service = await import('@/lib/inventory/order-stock-service')
+      const serviceMock = (service as unknown as Record<string, jest.Mock>)[mock]
+      serviceMock.mockImplementation(async () => 'failed')
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+
+      // Act
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID, action, ...body }, 'Bearer token-1'))
+
+      // Assert
+      expect(serviceMock).toHaveBeenCalled()
+      expect(res.status).toBe(503)
+      expect(await res.json()).toEqual({ error: 'stock_write_failed' })
+    })
+
+    test.each(CASES)('$action answers 200 once the write settled', async ({ action, mock, status, body }) => {
+      storedLifecycle = { status }
+      const service = await import('@/lib/inventory/order-stock-service')
+      const serviceMock = (service as unknown as Record<string, jest.Mock>)[mock]
+      serviceMock.mockImplementation(async () => 'settled')
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID, action, ...body }, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+    })
+  })
+
   describe('the branch a register spends from', () => {
     test('spends the branch the register-s own account belongs to', async () => {
       // A branch-locked account is a register standing in one shop.
