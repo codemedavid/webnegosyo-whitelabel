@@ -292,6 +292,13 @@ export function sessionDiscount(
   deliveryFee = 0,
   /** What the store's Senior/PWD rules need; absent = no government pricing. */
   govContext?: PosGovContext,
+  /**
+   * The store discount an order being EDITED already carries (vouchers,
+   * cashier discounts — `carriedEditDiscountTotal`). It counts on the store's
+   * side of the Senior/PWD comparison, so adding a claimant to a discounted
+   * order gives the higher of the two, never both. Zero on a counter sale.
+   */
+  carriedOtherTotal = 0,
 ): PosSessionDiscount {
   const context = posDiscountContext(cart, serviceCharge, now, outletId, deliveryFee, session.unitPicks);
   const application = applyPosVouchers(session.vouchers, context);
@@ -326,7 +333,7 @@ export function sessionDiscount(
       })
     : { status: "none" };
 
-  const chosen = chooseRegime(lines, government);
+  const chosen = chooseRegime(lines, government, carriedOtherTotal);
   const total = Math.min(
     round2(chosen.lines.reduce((sum, line) => sum + line.amount, 0)),
     chargeable,
@@ -358,12 +365,14 @@ export function appliedGovernment(discount: PosSessionDiscount): PosGovPricing |
 function chooseRegime(
   otherLines: readonly OrderDiscountLine[],
   government: PosGovState,
+  carriedOtherTotal: number,
 ): { lines: readonly OrderDiscountLine[]; regime: RegimeChoice | null } {
   if (government.status !== "priced") return { lines: otherLines, regime: null };
   const governmentLines = government.pricing.lines;
-  if (otherLines.length === 0) return { lines: governmentLines, regime: null };
+  const carried = Number.isFinite(carriedOtherTotal) ? Math.max(0, carriedOtherTotal) : 0;
+  if (otherLines.length === 0 && carried <= 0) return { lines: governmentLines, regime: null };
 
-  const otherTotal = round2(otherLines.reduce((sum, line) => sum + line.amount, 0));
+  const otherTotal = round2(otherLines.reduce((sum, line) => sum + line.amount, 0) + carried);
   const regime = chooseDiscountRegime(government.pricing.result.totalReduction, otherTotal);
   return { lines: regime.regime === "government" ? governmentLines : otherLines, regime };
 }

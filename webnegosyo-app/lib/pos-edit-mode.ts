@@ -34,7 +34,12 @@ import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { repriceEditDiscount } from "./pos-edit-discount";
 import { orderLineAllocations } from "./pos-gov-discount";
-import { lineItemAllocations, mergeAllocations, toOrderLineDiscounts } from "./pos-line-discounts";
+import {
+  lineItemAllocations,
+  mergeAllocations,
+  toCartLineDiscounts,
+  toOrderLineDiscounts,
+} from "./pos-line-discounts";
 import type { StoredGovDiscount } from "./gov-discount";
 import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
@@ -139,6 +144,9 @@ export interface OrderEditContext {
    * edited cart without being deducted twice. Null for an order with no
    * recorded breakdown — there the residue is the only evidence a discount
    * happened, so it stays inside `carriedCharges` as before.
+   *
+   * A one-dish discount names its dish by CART key here (`cartKeyedDiscount`),
+   * not by the order position it was stored under.
    */
   storedDiscount: OrderDiscountPayload | null;
   /**
@@ -302,6 +310,24 @@ export function enterAppendMode(
   return loadOrder(order, payments, catalog, "append");
 }
 
+/**
+ * The stored discount with each dish named by its CART key instead of its
+ * order position. Positions shift when an edit removes an earlier dish; cart
+ * keys do not, so a one-dish discount follows its dish through the edit and
+ * `editModeTotals` writes it back under the dish's new position. Each order
+ * line's key is found on its own, because loading merges identical lines and
+ * skips empty ones, so cart position i is not order line i.
+ */
+function cartKeyedDiscount(
+  stored: OrderDiscountPayload | null,
+  items: readonly HydratableOrderItem[],
+  catalog: ModifierCatalog,
+): OrderDiscountPayload | null {
+  if (!stored || !stored.lines.some((line) => line.items && line.items.length > 0)) return stored;
+  const cartKeys = items.map((item) => hydratePosCart([item], catalog).lines[0]?.key ?? null);
+  return { ...stored, lines: toCartLineDiscounts(stored.lines, cartKeys) };
+}
+
 function loadOrder(
   order: EditableOrderLike,
   payments: readonly OrderPayment[],
@@ -318,7 +344,7 @@ function loadOrder(
     Number.isFinite(order.serviceCharge) && (order.serviceCharge ?? 0) > 0
       ? round2(order.serviceCharge as number)
       : 0;
-  const storedDiscount = readOrderDiscount(order);
+  const storedDiscount = cartKeyedDiscount(readOrderDiscount(order), order.items, catalog);
 
   return {
     // Appending opens on an empty register; the order's lines wait in the
@@ -589,6 +615,8 @@ export function withEditDeliveryFee(
  * government block means every stored line is one — government and store
  * discounts never combine.)
  */
+const NO_CARRIED_DISCOUNT: { lines: readonly OrderDiscountLine[]; total: number } = { lines: [], total: 0 };
+
 function carriedEditDiscount(
   context: OrderEditContext,
   cart: readonly PosCartLine[],
@@ -608,6 +636,18 @@ function carriedEditDiscount(
     deliveryFee: context.deliveryFee,
     now: new Date(),
   });
+}
+
+/**
+ * The store discount (vouchers, cashier discounts) the edited order carries,
+ * re-priced against the edited cart — the store's side of the Senior/PWD
+ * "higher of the two" comparison (`sessionDiscount`'s `carriedOtherTotal`).
+ */
+export function carriedEditDiscountTotal(
+  registerCart: readonly PosCartLine[],
+  context: OrderEditContext,
+): number {
+  return carriedEditDiscount(context, effectiveEditCart(registerCart, context)).total;
 }
 
 export function editModeTotals(
@@ -632,7 +672,10 @@ export function editModeTotals(
   // lookup returns, `discountVouchers` is null and the bill as placed is
   // carried — showing full price for a moment and then dropping would read as
   // a price that changed itself.
-  const discount = carriedEditDiscount(context, cart);
+  // A Senior/PWD block here means it WON the comparison against the carried
+  // store discount (`sessionDiscount`'s `carriedOtherTotal`), so the carried
+  // one goes: the higher of the two, never both (RA 9994 §4).
+  const discount = government ? NO_CARRIED_DISCOUNT : carriedEditDiscount(context, cart);
 
   // A code the cashier applied during THIS edit, on top of whatever the order
   // already carried. Capped against the two together rather than separately:

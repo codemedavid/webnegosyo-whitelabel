@@ -36,6 +36,30 @@ export function toOrderLineDiscounts(
   });
 }
 
+/**
+ * The reverse, for an order opened for an edit: each dish re-keyed from its
+ * stored position (`line-<index>`) to the cart key of the dish now at that
+ * position. Done once, at load, because an edit that removes an earlier dish
+ * shifts every later position — the discount must follow its DISH.
+ * `cartKeys[index]` is the cart key of the order's line `index`, or null for
+ * a line the register could not load (its dishes are dropped).
+ */
+export function toCartLineDiscounts(
+  lines: readonly OrderDiscountLine[],
+  cartKeys: readonly (string | null)[],
+): OrderDiscountLine[] {
+  return lines.map((line) => {
+    if (!line.items || line.items.length === 0) return line;
+    const items = line.items.flatMap((item): DiscountLineItem[] => {
+      const match = /^line-(\d+)$/.exec(item.lineKey);
+      if (!match) return [item];
+      const key = cartKeys[Number(match[1])];
+      return key ? [{ ...item, lineKey: key }] : [];
+    });
+    return { ...line, items };
+  });
+}
+
 /** Each order line's share of the line-specific discounts, in pesos. */
 export function lineItemAllocations(lines: readonly OrderDiscountLine[]): Record<string, number> {
   const cents: Record<string, number> = {};

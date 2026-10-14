@@ -29,6 +29,7 @@ import {
   effectiveEditCart,
   withEditDeliveryFee,
   withEditVouchers,
+  carriedEditDiscountTotal,
   type EditModeTotals,
   type EnteredEditMode,
   type OrderEditContext,
@@ -516,6 +517,7 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
     const outletId = get().editContext
       ? get().editContext?.outletId ?? null
       : get().saleOutlet?.id ?? null;
+    const editContext = get().editContext;
     return sessionDiscount(
       discount,
       lines,
@@ -524,6 +526,8 @@ export const usePosCartStore = create<PosCartState>((set, get) => ({
       outletId,
       deliveryFee,
       govContextOf(get()),
+      // An edited order's own store discount competes with a Senior/PWD claim.
+      editContext ? carriedEditDiscountTotal(lines, editContext) : 0,
     );
   },
 
