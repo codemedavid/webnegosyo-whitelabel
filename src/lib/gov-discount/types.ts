@@ -138,6 +138,7 @@ export type GovProblemCode =
   | 'diners_missing'
   | 'diners_too_few'
   | 'nothing_eligible'
+  | 'nothing_left_to_share'
 
 export interface GovProblem {
   code: GovProblemCode

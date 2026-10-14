@@ -84,6 +84,20 @@ function tableProblems(input: GovDiscountInput): GovProblem[] {
     } else if (diners < shared.length) {
       problems.push({ code: 'diners_too_few', message: `${shared.length} people are claiming, so the table needs at least ${shared.length} diners.` })
     }
+    // Shared claimants split what the item claims left; with nothing left a
+    // ₱0 grant (with an ID on it) would reach the sales book.
+    const hasLeftover = input.lines.some(
+      (line) => line.eligible && line.amount > 0 && unclaimedUnits(line, input.claimants) > 0,
+    )
+    if (!hasLeftover) {
+      for (const claimant of shared) {
+        problems.push({
+          claimantId: claimant.id,
+          code: 'nothing_left_to_share',
+          message: 'Every covered item is already claimed, so there is nothing left to share. Pick their own items instead.',
+        })
+      }
+    }
   }
 
   const seen = new Map<string, string>()
