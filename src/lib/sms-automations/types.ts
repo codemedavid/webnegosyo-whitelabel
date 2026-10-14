@@ -152,7 +152,8 @@ export interface OutboxDraft {
 /** An earlier outbox row, for dedupe, re-entry and the per-guest cap. */
 export interface HistoryRow {
   automation_id: string | null
-  recipe: RecipeId
+  /** 'campaign' = a server-run campaign text (web Texts): it still caps the guest. */
+  recipe: RecipeId | 'campaign'
   customer_id: string | null
   phone_e164: string
   occurrence_key: string

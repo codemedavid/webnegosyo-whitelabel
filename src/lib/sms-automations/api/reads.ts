@@ -168,13 +168,58 @@ export interface ActivityQuery {
   statuses?: OutboxStatus[]
   automationId?: string
   limit?: number
+  /** Web Texts only: also show server-run campaign texts (shipped apps never see them). */
+  includeCampaigns?: boolean
+  /** Web Texts only: just this campaign's texts (all of its runs). */
+  campaignId?: string
+  /** Web Texts only: just this campaign run's texts. */
+  campaignRunId?: string
+}
+
+const ACTIVITY_COLUMNS =
+  'id, automation_id, recipe, phone_e164, body, status, skip_reason, error, source, not_before, created_at, sent_at, customers(name)'
+/** Newest runs of one campaign whose texts the feed covers. */
+const MAX_CAMPAIGN_RUNS = 200
+
+type ActivityRow = {
+  id: string; automation_id: string | null; recipe: string; phone_e164: string; body: string; status: OutboxStatus
+  skip_reason: string | null; error: string | null; source: string; not_before: string; created_at: string
+  sent_at: string | null; customers: { name: string | null } | null; campaign_run_id?: string | null
+}
+
+async function campaignRunIds(db: SupabaseClient, tenantId: string, campaignId: string): Promise<string[]> {
+  const { data, error } = await db.from('sms_campaign_runs').select('id').eq('tenant_id', tenantId).eq('campaign_id', campaignId)
+    .order('due_at', { ascending: false }).limit(MAX_CAMPAIGN_RUNS)
+  if (error) throw new ReadError(`campaign runs: ${error.message}`)
+  return ((data ?? []) as { id: string }[]).map((row) => row.id)
+}
+
+/** run id → its campaign (id + name), for the rows on one page. */
+async function campaignsOfRuns(db: SupabaseClient, tenantId: string, runIds: string[]): Promise<Map<string, { id: string; name: string }>> {
+  if (runIds.length === 0) return new Map()
+  const runs = await db.from('sms_campaign_runs').select('id, campaign_id').eq('tenant_id', tenantId).in('id', runIds)
+  if (runs.error) throw new ReadError(`campaign runs: ${runs.error.message}`)
+  const campaignOf = new Map(((runs.data ?? []) as { id: string; campaign_id: string }[]).map((run) => [run.id, run.campaign_id]))
+  const campaigns = await db.from('sms_campaigns').select('id, name').eq('tenant_id', tenantId).in('id', [...new Set(campaignOf.values())])
+  if (campaigns.error) throw new ReadError(`campaigns: ${campaigns.error.message}`)
+  const nameOf = new Map(((campaigns.data ?? []) as { id: string; name: string }[]).map((row) => [row.id, row.name]))
+  return new Map([...campaignOf.entries()].map(([runId, campaignId]) => [runId, { id: campaignId, name: nameOf.get(campaignId) ?? '' }]))
+}
+
+/** Which runs to show: one run, one campaign's runs, or null (no run filter). Empty = nothing to show. */
+async function runFilterOf(db: SupabaseClient, tenantId: string, query: ActivityQuery): Promise<string[] | null> {
+  if (query.campaignRunId) return [query.campaignRunId]
+  return query.campaignId ? campaignRunIds(db, tenantId, query.campaignId) : null
 }
 
 /** Newest first, paged by (created_at, id). Phones are shown by their last 4 digits only. */
 export async function listActivity(db: SupabaseClient, tenantId: string, query: ActivityQuery) {
   const limit = query.limit ?? DEFAULT_ACTIVITY_PAGE
-  let request = db.from('sms_outbox')
-    .select('id, automation_id, recipe, phone_e164, body, status, skip_reason, error, source, not_before, created_at, sent_at, customers(name)')
+  const runFilter = await runFilterOf(db, tenantId, query)
+  if (runFilter && runFilter.length === 0) return { items: [], nextCursor: null }
+  // The default (shipped app) read never touches campaign columns.
+  const withCampaigns = Boolean(query.includeCampaigns || runFilter)
+  let request = db.from('sms_outbox').select(withCampaigns ? `${ACTIVITY_COLUMNS}, campaign_run_id` : ACTIVITY_COLUMNS)
     .eq('tenant_id', tenantId)
   if (query.cursor) {
     const [createdAt, id] = query.cursor.split('~')
@@ -183,29 +228,37 @@ export async function listActivity(db: SupabaseClient, tenantId: string, query: 
   if (query.status) request = request.eq('status', query.status)
   if (query.statuses) request = request.in('status', query.statuses)
   if (query.automationId) request = request.eq('automation_id', query.automationId)
+  if (runFilter) request = request.in('campaign_run_id', runFilter)
+  else if (!query.includeCampaigns) request = request.neq('source', 'campaign')
   const { data, error } = await request.order('created_at', { ascending: false }).order('id').limit(limit + 1)
   if (error) throw new ReadError(`activity: ${error.message}`)
-  const rows = (data ?? []) as unknown as {
-    id: string; automation_id: string | null; recipe: string; phone_e164: string; body: string; status: OutboxStatus
-    skip_reason: string | null; error: string | null; source: string; not_before: string; created_at: string
-    sent_at: string | null; customers: { name: string | null } | null
-  }[]
+  const rows = (data ?? []) as unknown as ActivityRow[]
   const page = rows.slice(0, limit)
+  const campaigns = withCampaigns
+    ? await campaignsOfRuns(db, tenantId, [...new Set(page.flatMap((row) => (row.campaign_run_id ? [row.campaign_run_id] : [])))])
+    : new Map<string, { id: string; name: string }>()
   return {
-    items: page.map((row) => ({
-      id: row.id,
-      automationId: row.automation_id,
-      recipe: row.recipe,
-      guestName: row.customers?.name ?? null,
-      phoneLast4: row.phone_e164.slice(-4),
-      body: row.body,
-      status: row.status,
-      reason: row.skip_reason ?? row.error,
-      source: row.source,
-      notBefore: row.not_before,
-      createdAt: row.created_at,
-      sentAt: row.sent_at,
-    })),
+    items: page.map((row) => toActivityItem(row, row.campaign_run_id ? campaigns.get(row.campaign_run_id) ?? null : null)),
     nextCursor: rows.length > limit ? `${page[page.length - 1].created_at}~${page[page.length - 1].id}` : null,
+  }
+}
+
+function toActivityItem(row: ActivityRow, campaign: { id: string; name: string } | null) {
+  return {
+    id: row.id,
+    automationId: row.automation_id,
+    recipe: row.recipe,
+    guestName: row.customers?.name ?? null,
+    phoneLast4: row.phone_e164.slice(-4),
+    body: row.body,
+    status: row.status,
+    reason: row.skip_reason ?? row.error,
+    source: row.source,
+    notBefore: row.not_before,
+    createdAt: row.created_at,
+    sentAt: row.sent_at,
+    /** Web Texts: the campaign that sent it; null for automation rows. */
+    campaignId: campaign?.id ?? null,
+    campaignName: campaign?.name ?? null,
   }
 }

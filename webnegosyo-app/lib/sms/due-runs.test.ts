@@ -53,6 +53,14 @@ describe("computeCampaignDueStates — only active campaigns can fire", () => {
   });
 });
 
+describe("computeCampaignDueStates — web-run campaigns", () => {
+  it("never makes a scheduled (server-run) campaign due on the phone", () => {
+    const [state] = computeCampaignDueStates([campaign({ status: "scheduled" })], NOW);
+    expect(state.isDue).toBe(false);
+    expect(state.dueAt).toBeNull();
+  });
+});
+
 describe("computeCampaignDueStates — repeating campaigns", () => {
   it("is due when an interval has elapsed since the last run", () => {
     const [state] = computeCampaignDueStates(

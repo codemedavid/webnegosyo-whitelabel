@@ -39,6 +39,7 @@ export type SendNowBlock =
   | "unsaved"
   | "invalid"
   | "archived"
+  | "web_managed"
   | "in_progress"
   | "no_audience";
 
@@ -96,6 +97,11 @@ export function decideSendNow(input: SendNowInput): SendNowDecision {
       "archived",
       "This campaign is archived. Restore it before sending."
     );
+  }
+
+  // The server sends it (web Texts); a phone run would text the same guests twice.
+  if (input.status === "scheduled") {
+    return blocked("web_managed", "This campaign sends from the web. Manage it in Texts on the web.");
   }
 
   if (input.isRunning) {

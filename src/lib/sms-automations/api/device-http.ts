@@ -11,12 +11,14 @@
  */
 
 import 'server-only'
-import type { NextRequest, NextResponse } from 'next/server'
+import { after, type NextRequest, type NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashDeviceCredential } from '@/lib/loyalty/device-credential'
 import { authenticateMerchant, hasExactKeys, isRecord, isUuid, readBody, respond, unavailable } from '@/lib/loyalty/merchant-http'
 import { hasPermission } from '@/lib/staff-permissions'
 import { MAX_BODY_CHARS } from '../planner'
+import { PHONE_INFO_HEADER, parsePhoneInfoHeader } from '@/lib/texts/phone-info'
+import { recordPhoneInfo } from '@/lib/texts/server/phones'
 
 export const OUTBOX_ACTIONS = ['claim', 'finish'] as const
 const WAIT_REASONS = new Set(['no_job', 'quiet_hours', 'daily_limit', 'paced'])
@@ -58,6 +60,26 @@ function claimResponse(data: unknown): NextResponse {
   return unavailable(UNAVAILABLE)
 }
 
+type Database = ReturnType<typeof createAdminClient>
+
+/**
+ * What the phone says about itself (`x-wn-phone-info`), saved for the web's
+ * Texts page. Only after the claim RPC accepted the device credential, so a
+ * forged header cannot write. Fire-and-forget: it never fails or slows the
+ * claim (`recordPhoneInfo` never throws; `after` keeps the function alive).
+ */
+function recordPhoneReport(request: NextRequest, database: Database, tenantId: string, deviceId: string, claim: unknown): void {
+  if (!isRecord(claim) || claim.error === 'request_denied') return
+  const info = parsePhoneInfoHeader(request.headers.get(PHONE_INFO_HEADER))
+  if (!info) return
+  const pending = recordPhoneInfo(database, tenantId, deviceId, info)
+  try {
+    after(() => pending)
+  } catch {
+    // Outside a request scope (tests, scripts): the write is already running.
+  }
+}
+
 export async function handleOutboxDelivery(request: NextRequest, action: string): Promise<NextResponse> {
   if (!isEnabled()) return respond({ error: 'Texting from this phone is not available yet.' }, 503)
   if (!(OUTBOX_ACTIONS as readonly string[]).includes(action)) return respond({ error: 'Not found' }, 404)
@@ -80,7 +102,9 @@ export async function handleOutboxDelivery(request: NextRequest, action: string)
     const database = createAdminClient({ timeoutMs: 8000 })
     if (action === 'claim') {
       const { data, error } = await database.rpc('claim_sms_outbox_message', identity)
-      return error ? unavailable(UNAVAILABLE) : claimResponse(data)
+      if (error) return unavailable(UNAVAILABLE)
+      recordPhoneReport(request, database, tenantId, identity.p_device_id, data)
+      return claimResponse(data)
     }
     const { data, error } = await database.rpc('finish_sms_outbox_message', {
       ...identity,

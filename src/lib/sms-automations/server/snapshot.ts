@@ -14,6 +14,7 @@ import { resolveOrderBackend, type OrderBackendTenantFields } from '@/lib/order-
 import { listStoreAddresses } from '@/lib/qr-print/qr-links'
 import { getRootDomain } from '@/lib/tenant-host'
 import { loadActiveLoyaltyPrograms } from '@/lib/loyalty/store'
+import { readAll as readAllPages, type PageResult } from '@/lib/texts/server/paged'
 import type { BalanceRow, OrderRow } from '../candidates'
 import { getRecipe } from '../recipes'
 import {
@@ -23,7 +24,6 @@ import {
 import type { AutomationRow, AutomationSettings, GuestProfile, HistoryRow, RecipeId, StoreContext } from '../types'
 import type { StoreData } from '../work'
 
-const PAGE_SIZE = 1000
 /** A store larger than this is read in part, loudly, rather than timing out a shared tick. */
 const MAX_ROWS = 50_000
 const HOUR_MS = 3_600_000
@@ -54,17 +54,8 @@ export interface StoreSnapshot {
   suppressedPhones: Set<string>
 }
 
-type PageResult = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
-
-async function readAll<T>(label: string, page: (from: number, to: number) => PageResult): Promise<T[]> {
-  const rows: T[] = []
-  for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1)
-    if (error) throw new SnapshotError(`${label} could not be read: ${error.message}`)
-    rows.push(...((data ?? []) as T[]))
-    if (!data || data.length < PAGE_SIZE) return rows
-  }
-  throw new SnapshotError(`${label}: more than ${MAX_ROWS} rows`)
+function readAll<T>(label: string, page: (from: number, to: number) => PageResult): Promise<T[]> {
+  return readAllPages<T>(label, page, { maxRows: MAX_ROWS, makeError: (message) => new SnapshotError(message) })
 }
 
 interface TenantRow extends OrderBackendTenantFields {

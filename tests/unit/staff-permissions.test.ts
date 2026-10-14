@@ -214,6 +214,10 @@ describe('permissionForAdminPath', () => {
     expect(permissionForAdminPath('/my-resto/admin/customers')).toBe('customers')
   })
 
+  it('maps Texts to customers (texts go to the same guest list)', () => {
+    expect(permissionForAdminPath('/my-resto/admin/texts')).toBe('customers')
+  })
+
   it('leaves the dashboard and settings ungated', () => {
     expect(permissionForAdminPath('/my-resto/admin')).toBeNull()
     expect(permissionForAdminPath('/my-resto/admin/settings')).toBeNull()

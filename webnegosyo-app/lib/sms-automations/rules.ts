@@ -16,7 +16,7 @@ export interface Choice<T> {
 
 const QUIET_WINDOWS: readonly { start: string; end: string }[] = [
   { start: "21:00", end: "08:00" },
-  { start: "22:00", end: "07:00" },
+  { start: "21:00", end: "07:00" },
   { start: "20:00", end: "09:00" },
 ];
 const GUEST_CAP_DAYS = [1, 2, 3, 5, 7] as const;

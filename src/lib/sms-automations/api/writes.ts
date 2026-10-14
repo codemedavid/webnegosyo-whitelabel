@@ -14,7 +14,7 @@ import { planSnapshot, runStore } from '../server/run'
 import { loadStoreSnapshot } from '../server/snapshot'
 import type { AutomationRow, AutomationStatus } from '../types'
 import { readLoyaltyOn, readOutlook, readSender, readSettings } from './reads'
-import type { NormalizedDraft, NormalizedSettings } from './schema'
+import { QUIET_HOURS_FLOOR_ERROR, coversQuietHoursFloor, type NormalizedDraft, type NormalizedSettings } from './schema'
 import { openRouterChat } from '@/lib/ai/openrouter'
 import { BOOST_AI_FALLBACK_MODEL, BOOST_AI_MODEL } from '@/lib/boost/ai/prompt'
 import { acceptWrittenMessages, buildWritePrompt, type WriteLanguage } from '../write-copy'
@@ -139,6 +139,8 @@ export async function previewAutomation(db: SupabaseClient, tenantId: string, dr
 }
 
 export async function saveSettings(db: SupabaseClient, tenantId: string, settings: NormalizedSettings): Promise<void> {
+  // normalizeSettings already refuses this; a caller that skipped it must not narrow the legal window.
+  if (!coversQuietHoursFloor(settings.quietHoursStart, settings.quietHoursEnd)) throw new Error(QUIET_HOURS_FLOOR_ERROR)
   const { error } = await db.from('sms_settings').upsert({
     tenant_id: tenantId,
     quiet_hours_start: settings.quietHoursStart,

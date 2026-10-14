@@ -15,10 +15,10 @@ const RULES: TextingRules = {
 
 describe("texting rule choices", () => {
   it("offers a few sensible quiet windows, keeping the store's own", () => {
-    expect(quietHourChoices(RULES).map((c) => c.label)).toEqual(["9pm–8am", "10pm–7am", "8pm–9am"]);
+    expect(quietHourChoices(RULES).map((c) => c.label)).toEqual(["9pm–8am", "9pm–7am", "8pm–9am"]);
     expect(quietHourChoices({ ...RULES, quietHoursStart: "23:00", quietHoursEnd: "06:30" }).map((c) => c.label))
-      .toEqual(["9pm–8am", "10pm–7am", "8pm–9am", "11pm–6:30am"]);
-    expect(withQuietHours(RULES, "22:00-07:00")).toEqual({ ...RULES, quietHoursStart: "22:00", quietHoursEnd: "07:00" });
+      .toEqual(["9pm–8am", "9pm–7am", "8pm–9am", "11pm–6:30am"]);
+    expect(withQuietHours(RULES, "21:00-07:00")).toEqual({ ...RULES, quietHoursStart: "21:00", quietHoursEnd: "07:00" });
   });
 
   it("offers caps and limits in plain words", () => {

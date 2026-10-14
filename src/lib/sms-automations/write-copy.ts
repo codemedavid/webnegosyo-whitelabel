@@ -22,7 +22,8 @@ const MAX_SEGMENTS = 2
 const SAMPLE_VALUE = 'Sample Value Here'
 const SAMPLE_LINK = 'https://store.webnegosyo.com/menu'
 
-const INVENTED_CLAIM = new RegExp(
+/** Words that claim something the store never said (offers, numbers, links, awards). Also used by Texts campaign copy. */
+export const INVENTED_CLAIM = new RegExp(
   [
     String.raw`\p{Nd}|₱|%|#|https?:|www\.|@|\w\.[a-z]{2,}\b`,
     String.raw`\b(free|sale|discount|promo|deals?|bogo|buy one|off your|% off|guaranteed?|cheapest|lowest|unlimited|limited time|today only)\b`,

@@ -131,7 +131,8 @@ async function readLessonsWatched(admin: Admin, userId: string | null): Promise<
 async function countTexts(admin: Admin, tenantId: string, which: 'on' | 'ready'): Promise<number> {
   const [campaigns, automations] = await Promise.all([
     countRows(admin.from('sms_campaigns').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId).eq('status', which === 'on' ? 'active' : 'draft'), 'texts'),
+      // `scheduled` = the server sends it (web Texts); `active` = the owner's app does.
+      .eq('tenant_id', tenantId).in('status', which === 'on' ? ['active', 'scheduled'] : ['draft']), 'texts'),
     countRows(admin.from('sms_automations').select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenantId).eq('status', which === 'on' ? 'on' : 'off'), 'automations'),
   ])

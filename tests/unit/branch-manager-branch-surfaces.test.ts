@@ -66,6 +66,10 @@ describe('isStoreWideAdminPath', () => {
     expect(isStoreWideAdminPath('/acme/admin/outlets/outlet-south')).toBe(true)
   })
 
+  it('claims Texts, which reach every guest of the store', () => {
+    expect(isStoreWideAdminPath('/acme/admin/texts')).toBe(true)
+  })
+
   it('leaves every other admin section alone', () => {
     // Orders, menu, and the rest are branch-scoped elsewhere; this gate must
     // not start bouncing a manager out of the app.
@@ -118,7 +122,8 @@ describe('hiddenAdminSidebarPaths — branch-scoped account', () => {
     })
 
     expect(storeWide).toEqual(new Set())
-    expect(branchScoped).toEqual(new Set(['/outlets']))
+    // Texts reach every guest of the store, so a branch account never sees them.
+    expect(branchScoped).toEqual(new Set(['/outlets', '/admin/texts']))
   })
 
   it('reads an absent branch lock as store-wide', () => {

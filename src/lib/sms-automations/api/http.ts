@@ -26,28 +26,44 @@ const WRITE_LIMIT = { maxRequests: 6, windowMs: 60_000 }
 
 type Db = ReturnType<typeof createAdminClient>
 
-function fromOutcome<T>(outcome: Outcome<T>): NextResponse {
-  return outcome.ok
-    ? respond({ success: true, ...outcome.value }, 200)
-    : respond({ error: outcome.error, code: outcome.code ?? null }, outcome.status)
+/** What one automations request answers: the route's JSON body minus `success`, or a refusal. */
+export type AutomationResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; status: number; error: string; code: string | null }
+
+export interface AutomationCaller {
+  /** The signed-in member acting (recorded as the creator of new automations). */
+  actorId: string
 }
 
-async function dispatch(db: Db, request: AutomationRequest, actorId: string): Promise<NextResponse> {
+const answer = (value: object): AutomationResult => ({ ok: true, value: { ...value } })
+const refuse = (status: number, error: string, code: string | null): AutomationResult => ({ ok: false, status, error, code })
+
+function fromOutcome<T extends object>(outcome: Outcome<T>): AutomationResult {
+  return outcome.ok ? answer(outcome.value) : refuse(outcome.status, outcome.error, outcome.code ?? null)
+}
+
+/**
+ * One parsed request, run against the store in `request.tenantId`. Shared by
+ * this route (bearer session) and the web's `automationsAction` (cookie
+ * session); each checks its caller before calling it.
+ */
+export async function dispatchAutomationRequest(db: Db, request: AutomationRequest, caller: AutomationCaller): Promise<AutomationResult> {
   const { tenantId } = request
   switch (request.action) {
     case 'list':
-      return respond({ success: true, ...await listAutomationsView(db, tenantId) }, 200)
+      return answer(await listAutomationsView(db, tenantId))
     case 'activity':
-      return respond({ success: true, ...await listActivity(db, tenantId, request) }, 200)
+      return answer(await listActivity(db, tenantId, request))
     case 'save': {
       const draft = normalizeDraft(request.automation)
-      if (!draft.ok) return respond({ error: draft.error, code: 'invalid_message' }, 400)
-      return fromOutcome(await saveAutomation(db, tenantId, actorId, draft.draft))
+      if (!draft.ok) return refuse(400, draft.error, 'invalid_message')
+      return fromOutcome(await saveAutomation(db, tenantId, caller.actorId, draft.draft))
     }
     case 'preview': {
       const draft = normalizeDraft(request.automation)
-      if (!draft.ok) return respond({ error: draft.error, code: 'invalid_message' }, 400)
-      return respond({ success: true, ...await previewAutomation(db, tenantId, draft.draft) }, 200)
+      if (!draft.ok) return refuse(400, draft.error, 'invalid_message')
+      return answer(await previewAutomation(db, tenantId, draft.draft))
     }
     case 'set_status':
       return fromOutcome(await setAutomationStatus(db, tenantId, request.automationId, request.status, request.sendBacklog ?? false))
@@ -55,15 +71,32 @@ async function dispatch(db: Db, request: AutomationRequest, actorId: string): Pr
       return fromOutcome(await runAutomationNow(db, tenantId, request.automationId))
     case 'save_settings': {
       const settings = normalizeSettings(request.settings)
-      if (!settings.ok) return respond({ error: settings.error, code: 'invalid_settings' }, 400)
+      if (!settings.ok) return refuse(400, settings.error, 'invalid_settings')
       await saveSettings(db, tenantId, settings.settings)
-      return respond({ success: true, settings: settings.settings }, 200)
+      return answer({ settings: settings.settings })
     }
     case 'write':
       return fromOutcome(await writeMessages(db, tenantId, request.recipe, request.language))
     case 'cancel_waiting':
-      return respond({ success: true, cancelled: await cancelWaiting(db, tenantId, request.automationId) }, 200)
+      return answer({ cancelled: await cancelWaiting(db, tenantId, request.automationId) })
   }
+}
+
+/** The per-person brake on expensive actions, or null when the request may run. */
+export function automationRateLimitError(action: AutomationRequest['action'], actorId: string): string | null {
+  if (HEAVY_ACTIONS.has(action) && !checkRateLimit(`sms-automations:${actorId}`, HEAVY_LIMIT).allowed) {
+    return 'Too many requests. Wait a minute and try again.'
+  }
+  if (action === 'write' && !checkRateLimit(`sms-automations-write:${actorId}`, WRITE_LIMIT).allowed) {
+    return 'That’s a lot of drafts — wait a minute and try again.'
+  }
+  return null
+}
+
+function toResponse(result: AutomationResult): NextResponse {
+  return result.ok
+    ? respond({ success: true, ...result.value }, 200)
+    : respond({ error: result.error, code: result.code }, result.status)
 }
 
 export async function handleSmsAutomations(request: NextRequest): Promise<NextResponse> {
@@ -76,16 +109,12 @@ export async function handleSmsAutomations(request: NextRequest): Promise<NextRe
   const auth = await authenticateMerchant(request, tenantId)
   if (!auth.ok) return auth.response
   if (!hasPermission(auth.member, 'customers') || auth.member.outlet_id) return respond({ error: 'Forbidden' }, 403)
-  if (HEAVY_ACTIONS.has(parsed.data.action)
-    && !checkRateLimit(`sms-automations:${auth.userId}`, HEAVY_LIMIT).allowed) {
-    return respond({ error: 'Too many requests. Wait a minute and try again.' }, 429)
-  }
-  if (parsed.data.action === 'write' && !checkRateLimit(`sms-automations-write:${auth.userId}`, WRITE_LIMIT).allowed) {
-    return respond({ error: 'That’s a lot of drafts — wait a minute and try again.' }, 429)
-  }
+  const limited = automationRateLimitError(parsed.data.action, auth.userId)
+  if (limited) return respond({ error: limited }, 429)
 
   try {
-    return await dispatch(createAdminClient({ timeoutMs: 8000 }), { ...parsed.data, tenantId }, auth.userId)
+    const db = createAdminClient({ timeoutMs: 8000 })
+    return toResponse(await dispatchAutomationRequest(db, { ...parsed.data, tenantId }, { actorId: auth.userId }))
   } catch (error) {
     log.error('request failed', { tenantId, action: parsed.data.action, error: error instanceof Error ? error.message : String(error) })
     return unavailable(UNAVAILABLE)

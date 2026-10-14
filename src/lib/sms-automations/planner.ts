@@ -66,8 +66,9 @@ export function maskGuestName(name: string | null): string {
   return parts.length === 1 ? parts[0] : `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`
 }
 
-function familyOf(recipe: HistoryRow['recipe']): string {
-  return getRecipe(recipe).family
+/** Campaign texts (web Texts) live in their own family; they never dedupe against an automation. */
+export function familyOf(recipe: HistoryRow['recipe']): string {
+  return recipe === 'campaign' ? 'campaign' : getRecipe(recipe).family
 }
 
 interface HistoryIndex {

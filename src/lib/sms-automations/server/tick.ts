@@ -2,7 +2,9 @@
  * The 5-minute cron: for every store with an automatic automation switched ON
  * and a sender phone enrolled, sweep stale outbox rows and queue the texts of
  * guests who JUST started to qualify (`fresh` mode — the backlog is the
- * owner's call, via Run now). Server-only.
+ * owner's call, via Run now). Stores with a server-run campaign (web Texts,
+ * status `scheduled`) are processed too — see texts/server/campaign-tick.ts.
+ * Server-only.
  *
  * A store without an enrolled phone is skipped on purpose: a queued text
  * burns its occurrence, so queueing for a phone that does not exist would
@@ -12,6 +14,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createLogger } from '@/lib/logger'
 import type { AutomationRow } from '../types'
+import { runCampaignsForStore, serverCampaignStores } from '@/lib/texts/server/campaign-tick'
 import { runStore } from './run'
 import { alertWaitingTexts } from './waiting-alert'
 
@@ -69,24 +72,48 @@ export interface TickDeps {
   runOne?: (tenantId: string) => Promise<number>
 }
 
-async function runOneStore(client: SupabaseClient, tenantId: string, now: Date): Promise<number> {
+interface StoreWork {
+  hasAutomations: boolean
+  hasCampaigns: boolean
+}
+
+/** Server-run campaigns (web Texts). A campaign failure is logged, never fails the store's automations. */
+async function runStoreCampaigns(client: SupabaseClient, tenantId: string, now: Date): Promise<number> {
+  try {
+    return (await runCampaignsForStore(client, tenantId, now)).queued
+  } catch (error) {
+    log.error('store campaigns failed', { tenantId, error: error instanceof Error ? error.message : String(error) })
+    return 0
+  }
+}
+
+async function runOneStore(client: SupabaseClient, tenantId: string, now: Date, work: StoreWork): Promise<number> {
   const { error } = await client.rpc('sweep_sms_outbox', { p_tenant_id: tenantId })
   if (error) throw new Error(`outbox sweep failed: ${error.message}`)
-  const result = await runStore(client, tenantId, { mode: 'fresh', pick: isAutomaticAndOn, enqueue: true, now })
+  const automationsQueued = work.hasAutomations
+    ? (await runStore(client, tenantId, { mode: 'fresh', pick: isAutomaticAndOn, enqueue: true, now })).queued
+    : 0
+  const campaignsQueued = work.hasCampaigns ? await runStoreCampaigns(client, tenantId, now) : 0
   // Texts piling up behind a silent phone: tell the owner. A failed alert never fails the store's run.
   await alertWaitingTexts(client, tenantId, now).catch((alertError: unknown) => {
     log.error('waiting-texts alert failed', { tenantId, error: alertError instanceof Error ? alertError.message : String(alertError) })
   })
-  return result.queued
+  return automationsQueued + campaignsQueued
 }
 
 export async function runAutomationTick({ client, now = () => new Date(), budgetMs = DEFAULT_BUDGET_MS, runOne }: TickDeps): Promise<TickSummary> {
   const started = Date.now()
-  const due = await storesDueForTick(client)
+  // Automation stores need an enabled phone; campaign stores are read without one so a
+  // campaign that waits too long for a phone can pause itself (missed_no_phone).
+  const [automationStores, campaignStores] = await Promise.all([storesDueForTick(client), serverCampaignStores(client)])
+  const automationSet = new Set(automationStores)
+  const due = [...new Set([...automationStores, ...campaignStores])].sort()
   // Rotate the start so a slow store never starves the same stores behind it every tick.
   const offset = due.length === 0 ? 0 : Math.floor(now().getTime() / TICK_INTERVAL_MS) % due.length
   const tenants = [...due.slice(offset), ...due.slice(0, offset)]
-  const run = runOne ?? ((tenantId: string) => runOneStore(client, tenantId, now()))
+  const run = runOne ?? ((tenantId: string) => runOneStore(client, tenantId, now(), {
+    hasAutomations: automationSet.has(tenantId), hasCampaigns: campaignStores.has(tenantId),
+  }))
   const summary: TickSummary = { stores: tenants.length, processed: 0, queued: 0, failed: 0, deferred: 0 }
 
   for (const tenantId of tenants) {

@@ -120,6 +120,14 @@ describe("decideSendNow — when it must not", () => {
     expect(decision.block).toBe("archived");
   });
 
+  it("refuses a campaign the web sends — the phone must not send it too", () => {
+    const decision = decideSendNow(input({ status: "scheduled" }));
+
+    expect(decision.canSend).toBe(false);
+    expect(decision.block).toBe("web_managed");
+    expect(decision.message).toBe("This campaign sends from the web. Manage it in Texts on the web.");
+  });
+
   it("refuses while a run is already in flight", () => {
     // Two overlapping runs of the same campaign is the double-send this whole
     // domain is built to avoid.

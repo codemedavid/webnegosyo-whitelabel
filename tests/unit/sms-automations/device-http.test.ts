@@ -25,15 +25,15 @@ const MESSAGE = '2f6e1c3a-8a0e-4c62-9a53-4c3c0f1e2d12'
 const LEASE = '3f6e1c3a-8a0e-4c62-9a53-4c3c0f1e2d13'
 const CREDENTIAL = 'a'.repeat(43)
 
-function post(body: unknown) {
+function post(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest('https://example.com/api/sms/outbox/claim', {
-    method: 'POST', body: JSON.stringify(body), headers: { authorization: 'Bearer t' },
+    method: 'POST', body: JSON.stringify(body), headers: { authorization: 'Bearer t', ...headers },
   })
 }
 
-async function call(action: string, body: unknown) {
+async function call(action: string, body: unknown, headers: Record<string, string> = {}) {
   const { handleOutboxDelivery } = await import('@/lib/sms-automations/api/device-http')
-  const response = await handleOutboxDelivery(post(body), action)
+  const response = await handleOutboxDelivery(post(body, headers), action)
   return { status: response.status, json: await response.json() }
 }
 
@@ -99,5 +99,52 @@ describe('outbox finish', () => {
 
   it('refuses a free-text error', async () => {
     expect((await call('finish', { ...identity, messageId: MESSAGE, leaseToken: LEASE, outcome: 'failed', error: 'Phone said: <b>' })).status).toBe(400)
+  })
+})
+
+describe('the phone\'s own report (x-wn-phone-info)', () => {
+  const INFO = { 'x-wn-phone-info': encodeURIComponent(JSON.stringify({ manufacturer: 'samsung', model: 'SM-A155F', os: '14', app: '1.0.13', sms: true })) }
+  const recorded = () => rpc.mock.calls.filter(([name]) => name === 'record_sms_sender_info')
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+  it('is recorded after the claim RPC accepted the device', async () => {
+    rpc.mockImplementation(async (name: string) => (name === 'claim_sms_outbox_message'
+      ? { data: { ok: false, error: 'no_job', nextAt: null }, error: null }
+      : { data: true, error: null }))
+    expect((await call('claim', identity, INFO)).status).toBe(200)
+    await settle()
+    expect(rpc.mock.calls[0][0]).toBe('claim_sms_outbox_message')
+    expect(recorded()).toHaveLength(1)
+    expect(recorded()[0][1]).toEqual({
+      p_tenant_id: TENANT, p_device_id: DEVICE, p_manufacturer: 'samsung', p_model: 'SM-A155F', p_os: '14',
+      p_app: '1.0.13', p_sms: true, p_bat: null,
+    })
+  })
+
+  it('is never recorded for a refused device, a failed claim, a finish, or a bad header', async () => {
+    rpc.mockResolvedValue({ data: { ok: false, error: 'request_denied' }, error: null })
+    await call('claim', identity, INFO)
+    rpc.mockResolvedValue({ data: null, error: { message: 'timeout' } })
+    await call('claim', identity, INFO)
+    rpc.mockResolvedValue({ data: { ok: true }, error: null })
+    await call('finish', { ...identity, messageId: MESSAGE, leaseToken: LEASE, outcome: 'sent' }, INFO)
+    rpc.mockResolvedValue({ data: { ok: false, error: 'no_job', nextAt: null }, error: null })
+    await call('claim', identity, { 'x-wn-phone-info': 'not-json' })
+    await call('claim', identity)
+    await settle()
+    expect(recorded()).toHaveLength(0)
+  })
+
+  it('never fails or changes the claim when recording fails', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    rpc.mockImplementation(async (name: string) => {
+      if (name === 'claim_sms_outbox_message') return { data: { ok: true, messageId: MESSAGE, leaseToken: LEASE, phone: '+639171234567', body: 'Hi' }, error: null }
+      throw new Error('socket hang up')
+    })
+    const { status, json } = await call('claim', identity, INFO)
+    await settle()
+    expect(status).toBe(200)
+    expect(json.message.messageId).toBe(MESSAGE)
+    errorSpy.mockRestore()
   })
 })

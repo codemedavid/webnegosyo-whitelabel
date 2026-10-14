@@ -23,7 +23,8 @@ const CAMPAIGN_COLUMNS =
   "schedule_date, schedule_interval_days, schedule_weekdays, quiet_hours_start, " +
   "quiet_hours_end, max_per_run, created_at";
 
-const CAMPAIGN_STATUSES: readonly CampaignStatus[] = ["draft", "active", "paused", "archived"];
+/** `scheduled` (web-run) is recognised so it can be labelled; it is never due on the phone. */
+const CAMPAIGN_STATUSES: readonly CampaignStatus[] = ["draft", "active", "paused", "archived", "scheduled"];
 const SCHEDULE_KINDS: readonly ScheduleKind[] = ["one_off", "every_n_days", "weekly"];
 
 /**

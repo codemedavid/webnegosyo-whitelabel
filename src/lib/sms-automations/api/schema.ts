@@ -71,6 +71,10 @@ const requestSchema = z.discriminatedUnion('action', [
     statuses: z.array(z.enum(OUTBOX_STATUSES)).min(1).max(OUTBOX_STATUSES.length).optional(),
     automationId: z.uuid().optional(),
     limit: z.number().int().min(1).max(MAX_ACTIVITY_PAGE).optional(),
+    /** Web Texts only: also show campaign texts (the app's default leaves them out). */
+    includeCampaigns: z.boolean().optional(),
+    /** Web Texts only: just this campaign's texts. */
+    campaignId: z.uuid().optional(),
   }),
 ])
 export type AutomationRequest = z.infer<typeof requestSchema>
@@ -132,10 +136,37 @@ function cleanReviewUrl(raw: string | null): { ok: true; value: string | null } 
   }
 }
 
+/** Promo texts are barred 9 PM–7 AM in the Philippines (owner decision 2026-10-14): every window must cover it. */
+export const QUIET_HOURS_FLOOR = { start: '21:00', end: '07:00' } as const
+export const QUIET_HOURS_FLOOR_ERROR =
+  "Quiet hours must cover at least 9 PM to 7 AM. That's the rule for promo texts in the Philippines."
+const MINUTES_PER_DAY = 24 * 60
+
+function minuteOf(hhmm: string): number {
+  const [hours, minutes] = hhmm.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+/** True when the quiet window [start, end) (wrapping midnight) contains every minute of the floor. */
+export function coversQuietHoursFloor(start: string, end: string): boolean {
+  const from = minuteOf(start)
+  const until = minuteOf(end)
+  const isQuiet = (minute: number) => (from < until ? minute >= from && minute < until : minute >= from || minute < until)
+  const floorStart = minuteOf(QUIET_HOURS_FLOOR.start)
+  const floorLength = (minuteOf(QUIET_HOURS_FLOOR.end) - floorStart + MINUTES_PER_DAY) % MINUTES_PER_DAY
+  for (let offset = 0; offset < floorLength; offset += 1) {
+    if (!isQuiet((floorStart + offset) % MINUTES_PER_DAY)) return false
+  }
+  return true
+}
+
 /** Same rules as the sms_settings checks, with messages an owner can act on. */
 export function normalizeSettings(input: SettingsInput): SettingsResult {
   if (input.quietHoursStart === input.quietHoursEnd) {
     return { ok: false, error: 'Quiet hours need a start and an end that differ.' }
+  }
+  if (!coversQuietHoursFloor(input.quietHoursStart, input.quietHoursEnd)) {
+    return { ok: false, error: QUIET_HOURS_FLOOR_ERROR }
   }
   const review = cleanReviewUrl(input.reviewUrl)
   if (!review.ok) return { ok: false, error: 'Paste the full review link, starting with https://' }

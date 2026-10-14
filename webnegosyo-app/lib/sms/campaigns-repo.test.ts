@@ -305,6 +305,10 @@ describe("toScheduledCampaign — row to domain", () => {
     expect(campaign.schedule.scheduleWeekdays).toEqual([]);
   });
 
+  it("recognises a web-run campaign as scheduled, never as active", () => {
+    expect(toScheduledCampaign({ ...row, status: "scheduled" }, null).status).toBe("scheduled");
+  });
+
   it("falls back to an unknown status rather than inventing 'active'", () => {
     // Defaulting to active would let a row written by a newer build start
     // texting people from an older app that does not understand its status.
