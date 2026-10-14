@@ -6,7 +6,8 @@ import type { ApprovalsApi } from "../../lib/approvals/api";
 import type { RequestOrder } from "../../lib/approvals/request-draft";
 import { approvalRequest } from "../../lib/approvals/test-fixtures";
 import { createAppQueryClient } from "../../lib/query/query-client";
-import { RequestSheet } from "./RequestSheet";
+import { clearUnsettledSends } from "../../lib/approvals/unsettled-sends";
+import { RequestSheet, type RequestSheetProps } from "./RequestSheet";
 
 const ORDER: RequestOrder = {
   orderId: "11111111-1111-4111-8111-111111111111",
@@ -79,7 +80,10 @@ beforeEach(() => {
   client = createAppQueryClient();
 });
 
-afterEach(() => client.clear());
+afterEach(() => {
+  client.clear();
+  clearUnsettledSends();
+});
 
 async function pickOneSisigWrongItem() {
   fireEvent.press(screen.getByRole("button", { name: "Add one Chicken Sisig" }));
@@ -179,5 +183,48 @@ describe("RequestSheet", () => {
     await act(async () => fireEvent.press(await screen.findByRole("button", { name: "Send for approval · ₱60" })));
     expect(create.mock.calls[0][1]).toMatchObject({ payload: { scope: "balance", amount: 60 } });
     expect(await screen.findByText("Nothing is overpaid on this order any more, so there is nothing to give back.")).toBeTruthy();
+  });
+
+  it("keeps the retry key when the sheet is closed and reopened after an unknown outcome", async () => {
+    const create = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 0, error: "offline", code: "offline" })
+      .mockResolvedValueOnce({ ok: true, status: 201, data: { route: "request", replayed: true, approvers: [], request: approvalRequest() } });
+    const api = fakeApi(create);
+    const props = (visible: boolean): RequestSheetProps => ({
+      visible,
+      kind: "refund",
+      order: ORDER,
+      tenantId: "t-1",
+      user: { role: "admin", isOwner: false, permissions: ["pos"] },
+      userId: "u-ana",
+      isOffline: false,
+      onClose: jest.fn(),
+      onSent: jest.fn(),
+      api,
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <RequestSheet {...props(true)} />
+      </QueryClientProvider>,
+    );
+    await pickOneSisigWrongItem();
+    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱185" })));
+
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <RequestSheet {...props(false)} />
+      </QueryClientProvider>,
+    );
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <RequestSheet {...props(true)} />
+      </QueryClientProvider>,
+    );
+    await pickOneSisigWrongItem();
+    await act(async () => fireEvent.press(screen.getByRole("button", { name: "Send for approval · ₱185" })));
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][1].idempotencyKey).toBe(create.mock.calls[0][1].idempotencyKey);
   });
 });

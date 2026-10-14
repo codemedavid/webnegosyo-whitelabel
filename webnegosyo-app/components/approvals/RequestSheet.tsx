@@ -20,6 +20,12 @@ import {
   type RequestSheetKind,
 } from "../../lib/approvals/request-draft";
 import { formatPesoShort } from "../../lib/approvals/state";
+import {
+  forgetUnsettledSend,
+  readUnsettledSend,
+  rememberUnsettledSend,
+  unsettledSendId,
+} from "../../lib/approvals/unsettled-sends";
 import { REASONS_BY_KIND, type CreateApprovalResult, type RefundScope } from "../../lib/approvals/types";
 import { useApprovalRules, useInvalidateApprovals } from "../../lib/approvals/use-approvals";
 import type { StaffPermissionHolder } from "../../lib/staff-permissions";
@@ -55,7 +61,8 @@ export interface RequestSheetProps {
 /**
  * The cashier's refund / paid-cancel sheet (design-spec §3.8). One retry key
  * is minted when the sheet OPENS and reused on every retry, so a double tap
- * or a lost answer files one request. The button names the outcome: "Send
+ * or a lost answer files one request — also across closing and reopening the
+ * sheet after a send that got no answer (unsettled-sends). The button names the outcome: "Send
  * for approval · ₱185", or "Refund ₱185 now" when the rules let this person
  * act directly — the server decides and the create response says which.
  */
@@ -69,14 +76,17 @@ export function RequestSheet(props: RequestSheetProps) {
   const failedSignature = useRef<string | null>(null);
   const rules = useApprovalRules(tenantId, visible, api);
   const invalidate = useInvalidateApprovals(tenantId);
+  const sendId = unsettledSendId(tenantId, order.orderId, kind);
 
-  // Every opening is a fresh request with its own retry key.
+  // Every opening is a fresh request with its own retry key — unless the last
+  // send for this order got no answer: then the same body reuses its key.
   useEffect(() => {
     if (!visible) return;
+    const prior = readUnsettledSend(sendId);
     setDraft(initialDraft(kind, seed));
     setError(null);
-    idempotencyKey.current = newIdempotencyKey();
-    failedSignature.current = null;
+    idempotencyKey.current = prior?.key ?? newIdempotencyKey();
+    failedSignature.current = prior?.signature ?? null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset once per opening, not on every seed identity
   }, [visible, kind]);
 
@@ -103,6 +113,11 @@ export function RequestSheet(props: RequestSheetProps) {
     setError(null);
     const result = await api.create(tenantId, { ...check.input, idempotencyKey: idempotencyKey.current });
     setSending(false);
+    if (!result.ok && result.status === 0) {
+      rememberUnsettledSend(sendId, { key: idempotencyKey.current, signature });
+    } else {
+      forgetUnsettledSend(sendId);
+    }
     if (!result.ok) {
       if (result.code === "idempotency_conflict") {
         // The key already belongs to another body: never reuse it.
