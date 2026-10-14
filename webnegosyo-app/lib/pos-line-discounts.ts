@@ -29,8 +29,10 @@ export function toOrderLineDiscounts(
       const index = indexByKey.get(item.lineKey);
       return index === undefined ? [] : [{ ...item, lineKey: `line-${index}` }];
     });
-    const { items: _dropped, ...rest } = line;
-    return items.length > 0 ? { ...rest, items } : rest;
+    if (items.length > 0) return { ...line, items };
+    const { items: dropped, ...rest } = line;
+    void dropped;
+    return rest;
   });
 }
 

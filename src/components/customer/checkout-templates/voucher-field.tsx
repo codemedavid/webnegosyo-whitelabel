@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { VoucherPreview } from '@/lib/vouchers/preview'
+import { VoucherUnitChoice } from './voucher-unit-choice'
 
 interface VoucherFieldProps {
   codes: readonly string[]
@@ -11,6 +12,10 @@ interface VoucherFieldProps {
   onApply: (code: string) => void | Promise<void>
   onRemove: (code: string) => void | Promise<void>
   formatPrice: (amount: number) => string
+  /** Dish names by preview line id, for "Applies to: Fries ×1". */
+  lineNames?: Readonly<Record<string, string>>
+  /** Moves a voucher that discounts N items to the lines the customer chose. */
+  onChooseUnits?: (code: string, picks: Record<string, number>) => void | Promise<void>
 }
 
 /**
@@ -27,6 +32,8 @@ export function VoucherField({
   onApply,
   onRemove,
   formatPrice,
+  lineNames = {},
+  onChooseUnits,
 }: VoucherFieldProps) {
   const [draft, setDraft] = useState('')
 
@@ -98,6 +105,9 @@ export function VoucherField({
                     <X className="h-4 w-4" />
                   </button>
                 </div>
+                {accepted?.unitLimit && onChooseUnits && (
+                  <VoucherUnitChoice voucher={accepted} lineNames={lineNames} onChoose={onChooseUnits} />
+                )}
                 {rejected && <p className="text-red-600">{rejected.message}</p>}
               </li>
             )

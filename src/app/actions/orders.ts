@@ -25,6 +25,7 @@ import {
   WEB_UNAVAILABLE_ORDER_TYPE_MESSAGE,
 } from '@/lib/order-types/order-type-availability'
 import { priceOrderWithVouchers } from '@/lib/vouchers/order-pricing'
+import { sanitizeUnitPicks } from '@/lib/vouchers/unit-picks'
 import { createVoucherLookup } from '@/lib/vouchers/repository'
 import { burnRedemptions, loadCategoryMap } from '@/lib/vouchers/order-voucher-flow'
 import { writeOrderDiscount } from '@/lib/order-discount'
@@ -183,7 +184,14 @@ export async function createOrderAction(
    * never an amount. Priced here against the server's own lines; the ID is
    * checked when the order is handed over. See gov-discount-checkout.
    */
-  governmentClaim?: unknown
+  governmentClaim?: unknown,
+  /**
+   * Which of the order's lines (`line-<index>`) a voucher that discounts N
+   * items should land on, by code. Never an amount: it only moves a discount
+   * between eligible units, and the engine re-validates it against the
+   * server-priced lines (an invalid pick falls back to the cheapest units).
+   */
+  voucherUnitPicks?: unknown
 ) {
   // Declared OUTSIDE the try so the catch below can reach them. Presell stock
   // is claimed mid-flight, and a throw after that point used to walk past every
@@ -598,6 +606,7 @@ export async function createOrderAction(
       categoryByMenuItemId,
       outletId: resolvedOutlet?.id ?? null,
       customerKey,
+      unitPicks: sanitizeUnitPicks(voucherUnitPicks),
     })
 
     // ---- Senior / PWD ----------------------------------------------------

@@ -207,6 +207,7 @@ export function OrderSummaryLines({
     items, total, deliveryFee, isFetchingDeliveryFee, deliveryFeeAddress, deliveryFeeError, freeDeliveryRemaining,
     customerData, serviceChargeAmount, grandTotal,
     voucherCodes, voucherPreview, isCheckingVoucher, applyVoucherCode, removeVoucherCode,
+    voucherLineNames, setVoucherUnitPicks,
     govLines,
   } = checkout
 
@@ -322,6 +323,8 @@ export function OrderSummaryLines({
         onApply={applyVoucherCode}
         onRemove={removeVoucherCode}
         formatPrice={formatPrice}
+        lineNames={voucherLineNames}
+        onChooseUnits={setVoucherUnitPicks}
       />
 
       <GovClaimField state={checkout} formatPrice={formatPrice} accent={accent} />

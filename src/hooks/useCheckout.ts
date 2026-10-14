@@ -382,6 +382,7 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
   const {
     voucherCodes, voucherPreview, effectiveDiscounts,
     isCheckingVoucher, applyVoucherCode, removeVoucherCode,
+    voucherLineNames, voucherOrderPicks, setVoucherUnitPicks,
   } = useCheckoutVouchers({
     tenantId: tenant?.id ?? null,
     items,
@@ -875,7 +876,10 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
           clientOrderId,
           quote.quoteSignature,
           // Who is claiming Senior/PWD — never an amount.
-          govClaimState.govClaim ?? undefined
+          govClaimState.govClaim ?? undefined,
+          // Which item a voucher that discounts N items lands on — never an
+          // amount; the server re-validates it. Absent when nothing was chosen.
+          Object.keys(voucherOrderPicks).length > 0 ? voucherOrderPicks : undefined
         )
         saveResult = attemptResult
         return { success: attemptResult.success, error: attemptResult.error }
@@ -1067,6 +1071,8 @@ export function useCheckout({ tenantSlug, initialTenant, config }: UseCheckoutIn
     isCheckingVoucher,
     applyVoucherCode,
     removeVoucherCode,
+    voucherLineNames,
+    setVoucherUnitPicks,
     // Senior / PWD
     ...govClaimState,
     // advance order / scheduling

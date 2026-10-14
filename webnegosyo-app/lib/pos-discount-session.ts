@@ -169,7 +169,9 @@ export function setSessionUnitPicks(
 ): PosDiscountSession {
   const key = code.trim().toUpperCase();
   const chosen = Object.fromEntries(Object.entries(picks).filter(([, units]) => units > 0));
-  const { [key]: _previous, ...rest } = session.unitPicks ?? {};
+  const rest = Object.fromEntries(
+    Object.entries(session.unitPicks ?? {}).filter(([existing]) => existing !== key),
+  );
   return {
     ...session,
     unitPicks: Object.keys(chosen).length > 0 ? { ...rest, [key]: chosen } : rest,

@@ -30,7 +30,7 @@ export interface StoredDiscountLine {
    * unit-limited voucher or a cashier's item discount. Read it through
    * `discountLineItems`, which shape-checks.
    */
-  items?: DiscountLineItem[]
+  items?: readonly DiscountLineItem[]
 }
 
 /**
