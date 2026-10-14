@@ -56,7 +56,7 @@ import type { ModifierCatalog } from "../../../lib/order-edit-cart";
 import { goTo } from "../../../lib/tab-navigation";
 import { useBranchScope } from "../../../lib/use-branch-scope";
 import type { OrderPaymentLike, OrderRevisionLike } from "../../../lib/order-history-view";
-import { orderSummaryRows } from "../../../lib/order-summary-rows";
+import { discountItemsText, orderSummaryRows } from "../../../lib/order-summary-rows";
 import { readOrderDiscount } from "../../../lib/order-discount";
 import { buildCustomerDetailRows } from "../../../lib/customer-details";
 import { lookupVouchers } from "../../../lib/voucher-service";
@@ -929,6 +929,7 @@ export default function OrderDetailScreen() {
           serviceCharge: order.serviceCharge,
           discount: readOrderDiscount(order),
           total: order.total,
+          itemNames: (order.items ?? []).map((item) => item.menuItemName),
         }).map((row, index) => (
           <View
             key={`${row.kind}-${index}`}
@@ -942,6 +943,7 @@ export default function OrderDetailScreen() {
                 bill, both work from the code.
               */}
               {row.code ? <Text style={styles.summaryCode}>  {row.code}</Text> : null}
+              {row.items ? <Text style={styles.summaryCode}>  {discountItemsText(row.items)}</Text> : null}
             </Text>
             <Text
               style={[

@@ -8,7 +8,7 @@ import { NOT_AN_INVOICE_NOTICE } from "./gov-discount/tax-profile";
 import type { VatBreakdown } from "./gov-discount/types";
 import { readOrderDiscount } from "./order-discount";
 import { govClaimantRows, orderVatBreakdown, vatRows } from "./order-gov-summary";
-import { orderSummaryRows, type OrderSummaryRowKind } from "./order-summary-rows";
+import { orderSummaryRows, type OrderSummaryRow, type OrderSummaryRowKind } from "./order-summary-rows";
 import { TABLE_NUMBER_FIELD_NAME, getOrderTableNumber } from "./order-table-number";
 import type { ReceiptTaxIdentity } from "./receipt-tax";
 
@@ -655,6 +655,7 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
     serviceCharge: order.serviceCharge,
     discount: ctx.discount,
     total: order.total,
+    itemNames: (order.items ?? []).map((item) => item.menuItemName),
   });
 
   // The total is printed straight from `order.total` — the backend's
@@ -665,6 +666,7 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
       // leave room for the amount rather than trusted to fit.
       const amount = `-P${row.amount.toFixed(2)}`;
       lines.push(leftRight(fitDiscountLabel(row.label, Math.max(0, w - amount.length - 1)), amount, w));
+      lines.push(...discountDishLines(row, w));
       continue;
     }
     lines.push(leftRight(RECEIPT_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w));
@@ -709,6 +711,15 @@ function renderTotals(order: ReceiptOrder, ctx: RenderContext, w: number): strin
 // ---------------------------------------------------------------------------
 
 const LABEL_QUALIFIER = " · ";
+
+/**
+ * "  Fries x1" under a discount that came off particular dishes (a voucher
+ * limited to N items, a cashier's discount on one item), one dish per line.
+ * Plain "x": thermal code pages have no "×". Nothing for an order-wide one.
+ */
+function discountDishLines(row: OrderSummaryRow, w: number): string[] {
+  return (row.items ?? []).map((item) => truncate(`  ${item.name} x${item.units}`, w));
+}
 
 /**
  * A discount label clipped to `max`. A label too long that reads
@@ -991,11 +1002,13 @@ function renderModernTotals(order: ReceiptOrder, ctx: RenderContext, w: number):
     serviceCharge: order.serviceCharge,
     discount: ctx.discount,
     total: order.total,
+    itemNames: (order.items ?? []).map((item) => item.menuItemName),
   });
   for (const row of summaryRows.filter((r) => r.kind !== "total")) {
     if (row.kind === "discount") {
       const amount = `-P${row.amount.toFixed(2)}`;
       lines.push(leftRight(fitDiscountLabel(row.label, Math.max(0, w - amount.length - 1)), amount, w));
+      lines.push(...discountDishLines(row, w));
       continue;
     }
     lines.push(leftRight(MODERN_LABELS[row.kind], `P${row.amount.toFixed(2)}`, w));

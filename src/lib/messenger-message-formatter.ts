@@ -9,7 +9,7 @@ import { formatPrice } from './cart-utils'
 import { getOrderScheduledLabel } from './advance-order-utils'
 import { getOrderOutletLabel } from './outlets/order-outlet-display'
 import { readOrderDiscount } from './order-discount'
-import { orderSummaryRows, type OrderSummaryRow } from './order-summary-rows'
+import { discountItemsText, orderSummaryRows, type OrderSummaryRow } from './order-summary-rows'
 
 /**
  * The ticket's own wording for a money row.
@@ -23,7 +23,7 @@ function formatSummaryRow(row: OrderSummaryRow): string {
     case 'subtotal':
       return `💰 Subtotal: ${formatPrice(row.amount)}`
     case 'discount':
-      return `🎟️ ${row.label}: -${formatPrice(row.amount)}`
+      return `🎟️ ${row.label}${row.items ? ` (${discountItemsText(row.items)})` : ''}: -${formatPrice(row.amount)}`
     case 'service':
       return `🧾 Service Charge: ${formatPrice(row.amount)}`
     case 'delivery':
@@ -154,6 +154,7 @@ export function formatOrderMessage(order: Order, tenant: Tenant): string {
     serviceCharge: Number(order.service_charge_amount) || 0,
     discount: readOrderDiscount(order),
     total: Number(order.total),
+    itemNames: (order.items ?? []).map((item) => item.menu_item_name),
   })) {
     lines.push(formatSummaryRow(row))
   }

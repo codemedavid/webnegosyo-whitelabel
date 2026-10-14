@@ -53,7 +53,7 @@ import { restoreOrderStockAction } from "@/app/actions/inventory";
 import { notifyConvexLifecycleSync } from "@/lib/customers/web-lifecycle-sync";
 import { visibleCustomerFields } from "@/lib/admin/order-customer-fields";
 import { releasePresellForCancelledConvexOrderAction } from "@/app/actions/presell";
-import { orderSummaryRows } from "@/lib/order-summary-rows";
+import { discountItemsText, orderSummaryRows } from "@/lib/order-summary-rows";
 import { readOrderDiscount } from "@/lib/order-discount";
 import { GovDiscountSummary } from "@/components/admin/gov-discount-summary";
 import { displayCustomerName } from '@/lib/order-display-name'
@@ -356,6 +356,7 @@ export function ConvexOrderSheet({
                   deliveryFee: order.deliveryFee,
                   discount: readOrderDiscount(order),
                   total: order.total,
+                  itemNames: (order.items ?? []).map((item: OrderItem) => item.menuItemName),
                 }).map((row, index) =>
                   row.kind === 'total' ? (
                     <div
@@ -370,7 +371,10 @@ export function ConvexOrderSheet({
                       key={`${row.kind}-${index}`}
                       className="flex items-center justify-between text-sm"
                     >
-                      <span className="text-muted-foreground">{row.label}</span>
+                      <span className="text-muted-foreground">
+                        {row.label}
+                        {row.items && <span className="ml-1 text-xs">({discountItemsText(row.items)})</span>}
+                      </span>
                       <span
                         className={
                           row.kind === 'discount'

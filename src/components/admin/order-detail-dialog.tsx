@@ -4,7 +4,7 @@ import { formatDailyOrderNumber } from '@/lib/order-number'
 
 import dynamic from 'next/dynamic'
 import { format, formatDistance } from 'date-fns'
-import { orderSummaryRows } from '@/lib/order-summary-rows'
+import { discountItemsText, orderSummaryRows } from '@/lib/order-summary-rows'
 import { shouldShowLalamoveControls } from '@/lib/lalamove-order-visibility'
 import { readOrderDiscount } from '@/lib/order-discount'
 import { buildCustomerDetailRows } from '@/lib/customer-details'
@@ -306,6 +306,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                       serviceCharge: Number(order.service_charge_amount) || 0,
                       discount: readOrderDiscount(order),
                       total: Number(order.total),
+                      itemNames: order.order_items.map((item) => item.menu_item_name),
                     }).map((row, index) =>
                       row.kind === 'total' ? (
                         <div key={`${row.kind}-${index}`}>
@@ -319,6 +320,7 @@ export function OrderDetailDialog({ order, tenantSlug, tenantId, onClose }: Orde
                         <div key={`${row.kind}-${index}`} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">
                             {row.kind === 'subtotal' ? `Subtotal (${itemsCount} items)` : row.label}
+                            {row.items && <span className="ml-1 text-xs">({discountItemsText(row.items)})</span>}
                           </span>
                           <span
                             className={

@@ -4,7 +4,7 @@ import { colors, typography, spacing, radius } from "../../theme/colors";
 import { Card } from "../Card";
 import { Icon } from "../Icon";
 import { getInitials, getAvatarColor } from "../../lib/order-visuals";
-import { orderSummaryRows } from "../../lib/order-summary-rows";
+import { discountItemsText, orderSummaryRows } from "../../lib/order-summary-rows";
 import type { SummarisableDiscount } from "../../lib/order-summary-rows";
 
 export interface OrderLineItem {
@@ -190,6 +190,7 @@ export function OrderItemsCard({
     serviceCharge,
     discount,
     total,
+    itemNames: items.map((item) => item.menuItemName),
   });
 
   return (
@@ -215,6 +216,7 @@ export function OrderItemsCard({
               {/* The voucher's NAME can be shared by two vouchers; the code
                   is what a merchant reconciles against. */}
               {row.code ? <Text style={styles.summaryCode}>  {row.code}</Text> : null}
+              {row.items ? <Text style={styles.summaryCode}>  {discountItemsText(row.items)}</Text> : null}
             </Text>
             <Text
               style={[
