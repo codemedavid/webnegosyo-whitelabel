@@ -118,6 +118,23 @@ describe('pause wins over planning (review item 1)', () => {
     expect(db.tables.sms_outbox.length).toBeGreaterThan(0)
     expect(db.tables.sms_outbox.every((row) => row.status === 'cancelled' && row.skip_reason === 'paused')).toBe(true)
   })
+
+  test('a pause mid-plan never reports a negative count when an earlier attempt already queued texts', async () => {
+    const { planAndQueueRun, readCampaign } = await import('@/lib/texts/server/campaign-run')
+    const run = { id: 'r1', tenant_id: T, campaign_id: C, due_at: NOW.toISOString(), delivery: 'server', status: 'running', created_at: '2026-10-14T01:50:00Z' }
+    const earlier = { id: 'o1', tenant_id: T, family: 'campaign', recipe: 'campaign', source: 'campaign', customer_id: '11', phone_e164: '+639170000011', occurrence_key: 'run:r1', campaign_run_id: 'r1', status: 'queued' }
+    let isRaced = false
+    const db = seed({ sms_campaign_runs: [run], sms_outbox: [earlier] }, {
+      beforeWrite: ({ table, mode, tables }) => {
+        if (table === 'sms_outbox' && mode === 'upsert' && !isRaced) { isRaced = true; tables.sms_campaigns[0].status = 'paused' }
+      },
+    })
+    const campaign = await readCampaign(db.client, T, C)
+
+    const result = await planAndQueueRun(db.client, T, campaign!, 'r1', NOW, NOW)
+
+    expect(result.queued).toBe(0)
+  })
 })
 
 describe('a run that keeps failing (review item 5)', () => {

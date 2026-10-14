@@ -117,7 +117,9 @@ export async function planAndQueueRun(
   if (!before.isLive || !before.isRunOpen) return { planned: 0, queued: 0, summary: plan.summary }
   const inserted = await insertRows(db, plan.rows as unknown as Record<string, unknown>[])
   const after = await readLiveness(db, tenantId, campaign.id, runId)
-  const queued = after.isLive ? inserted : inserted - await withdrawRunTexts(db, tenantId, [runId], after.status === 'paused' ? 'paused' : 'archived')
+  // Not live any more: everything this run had waiting is withdrawn, so nothing counts as queued.
+  if (!after.isLive) await withdrawRunTexts(db, tenantId, [runId], after.status === 'paused' ? 'paused' : 'archived')
+  const queued = after.isLive ? inserted : 0
   await markPlanned(db, tenantId, runId, plan, now)
   return { planned: plan.rows.length, queued, summary: plan.summary }
 }
