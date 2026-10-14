@@ -51,9 +51,18 @@ describe("hubSections", () => {
 
   it("drops rows a staffer may not open and keeps the rest of the section", () => {
     // May reorder the flour, may not read where the money lands.
+    const stockStaff = {
+      ...owner,
+      caller: { role: "admin", isOwner: false, permissions: ["menu", "inventory"] },
+    };
+    const store = hubSections(MANAGE_SECTIONS, stockStaff).find((s) => s.title === "Store");
+    expect(store?.tabs).toEqual(["product-management", "categories", "inventory"]);
+  });
+
+  it("keeps the shelf off a menu-only account now that stock has its own key", () => {
     const menuStaff = { ...owner, caller: { role: "admin", isOwner: false, permissions: ["menu"] } };
     const store = hubSections(MANAGE_SECTIONS, menuStaff).find((s) => s.title === "Store");
-    expect(store?.tabs).toEqual(["product-management", "categories", "inventory"]);
+    expect(store?.tabs).toEqual(["product-management", "categories"]);
   });
 
   it("returns nothing for an account that may open no report", () => {

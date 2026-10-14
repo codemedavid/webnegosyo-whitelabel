@@ -29,4 +29,12 @@ describe("money", () => {
   it("splits a negative amount (a discount) the same way", () => {
     expect(allocateCents(-1000, [1, 1, 1])).toEqual([-334, -333, -333]);
   });
+
+  it("never hands back -0, which formats as -₱0.00", () => {
+    // A one-centavo discount spread over three pieces: two of them get nothing.
+    const shares = allocateCents(-1, [1, 1, 1]);
+
+    expect(shares).toEqual([-1, 0, 0]);
+    expect(shares.some((share) => Object.is(share, -0))).toBe(false);
+  });
 });

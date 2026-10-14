@@ -24,7 +24,7 @@
 
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantPermission } from '@/lib/admin-service'
+import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 
 /**
  * Zero is meaningful: it is how `branchLevelInputs` already spells "this branch
@@ -51,7 +51,7 @@ export async function setBranchReorderLevel(
   outletId: string | null,
   reorderLevel: number,
 ): Promise<void> {
-  await verifyTenantPermission(tenantId, 'menu', 'create')
+  await requireGrant(tenantId, 'inventory', 'create', PERMISSION_REFUSALS.reorderLevel)
   const level = reorderLevelSchema.parse(reorderLevel)
 
   const supabase = await createClient()

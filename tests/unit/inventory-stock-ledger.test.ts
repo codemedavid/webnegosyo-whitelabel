@@ -145,6 +145,20 @@ describe('movingAverageUnitCost', () => {
     })
     expect(cost).toBe(3)
   })
+
+  it('takes the delivery price outright when what is on hand was never priced', () => {
+    // Arrange: 1kg counted in at set-up with no price, then the first priced
+    // delivery of 1kg at ₱0.12/g. Blending would read the uncosted kilo as free
+    // and halve the cost to ₱0.06/g — every dish made from it looks twice as
+    // profitable as it is.
+    // Act
+    const cost = movingAverageUnitCost({
+      currentQty: 1000, currentUnitCost: 0, receivedQty: 1000, receivedUnitCost: 0.12,
+    })
+
+    // Assert
+    expect(cost).toBe(0.12)
+  })
 })
 
 /**

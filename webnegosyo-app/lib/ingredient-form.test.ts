@@ -17,6 +17,7 @@ import {
   findNameClash,
   groupUnitsByDimension,
   parseOpeningStock,
+  restrictIngredientUpdate,
   suggestCategories,
   type IngredientDraft,
   type IngredientRecord,
@@ -248,5 +249,47 @@ describe("findNameClash", () => {
   it("is null for a blank or unique name", () => {
     expect(findNameClash("", rows, null)).toBeNull();
     expect(findNameClash("Salt", rows, null)).toBeNull();
+  });
+});
+
+describe("restrictIngredientUpdate", () => {
+  // Each column of an ingredient answers to its own grant in the database:
+  // the master to Menu, the price to Costs, the reorder level to Inventory.
+  // The phone sends only what this account may change, so a stale value it was
+  // never shown (a price, to a clerk) cannot ride along and be refused.
+  const full = buildIngredientPayload(
+    draft({ category: "Dry goods", unitCost: "52.50", reorderLevel: "5", sku: "FL-1" }),
+  );
+  const ALL = { canEditMaster: true, canSeeCosts: true, canSetReorder: true };
+
+  it("sends everything to an account holding all three grants", () => {
+    expect(restrictIngredientUpdate(full, ALL)).toEqual(full);
+  });
+
+  it("never sends a price for an account that may not see costs", () => {
+    const update = restrictIngredientUpdate(full, { ...ALL, canSeeCosts: false });
+    expect(update).not.toHaveProperty("unit_cost");
+    expect(update.name).toBe("Flour");
+  });
+
+  it("sends only the reorder level for a stock clerk", () => {
+    const update = restrictIngredientUpdate(full, {
+      canEditMaster: false,
+      canSeeCosts: false,
+      canSetReorder: true,
+    });
+    expect(update).toEqual({ reorder_level: 5 });
+  });
+
+  it("leaves the reorder level alone for an account without the inventory grant", () => {
+    const update = restrictIngredientUpdate(full, { ...ALL, canSetReorder: false });
+    expect(update).not.toHaveProperty("reorder_level");
+    expect(update.unit_cost).toBe(52.5);
+  });
+
+  it("does not change the payload it was given", () => {
+    const before = { ...full };
+    restrictIngredientUpdate(full, { canEditMaster: false, canSeeCosts: false, canSetReorder: false });
+    expect(full).toEqual(before);
   });
 });

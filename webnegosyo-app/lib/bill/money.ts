@@ -38,5 +38,6 @@ export function allocateCents(totalCents: number, weights: readonly number[]): n
     shares[index] += 1;
     spare -= 1;
   }
-  return shares.map((share) => share * sign);
+  // Never -0: Intl formats it as "-₱0.00". The web copy (src/lib/reports/money.ts) does the same.
+  return shares.map((share) => (share === 0 ? 0 : share * sign));
 }

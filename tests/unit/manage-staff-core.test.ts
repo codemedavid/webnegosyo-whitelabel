@@ -143,6 +143,11 @@ describe('manage-staff core parity', () => {
     )
     expect(DEFAULT_SCREEN_PERMISSIONS).toEqual(webMap)
   })
+
+  it('pins the stock screen to inventory and the priced daily report to costs', () => {
+    expect(DEFAULT_SCREEN_PERMISSIONS.inventory).toBe('inventory')
+    expect(DEFAULT_SCREEN_PERMISSIONS['daily-report']).toBe('costs')
+  })
 })
 
 // ============================================

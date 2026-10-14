@@ -75,9 +75,10 @@ export const WORKSPACES: readonly Workspace[] = [
     // How the merchant gets paid sits beside what they sell: both are the
     // storefront's setup, and neither is a view of a shift.
     // The daily report sits next to the shelf it reconciles rather than in
-    // Insights: it carries no revenue on the phone, and the merchant who
-    // counts the flour and the one asking whether the count matched are the
-    // same person standing in the same place.
+    // Insights: it is a stock reconciliation first — its one sales figure (for
+    // food cost %) shows only to an account holding Sales reports — and the
+    // merchant who counts the flour and the one asking whether the count
+    // matched are the same person standing in the same place.
     // Categories sits right after the products it groups: the merchant who
     // adds a dish and the merchant who decides which section it lands in are
     // the same person, one tap apart.

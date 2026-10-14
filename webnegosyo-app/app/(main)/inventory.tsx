@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useAuthStore } from "../../stores/auth-store";
+import { useHasPermission } from "../../lib/use-has-permission";
 import { useBranchScope, useAccountBranchScope } from "../../lib/use-branch-scope";
 import { loadInventoryStock } from "../../lib/inventory-service";
 import {
@@ -75,6 +76,10 @@ import {
  */
 export default function InventoryScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
+  // The shelf is `inventory`; what it is worth is `costs`; adding to the
+  // ingredient list is the master, which stayed on `menu`.
+  const canSeeCosts = useHasPermission("costs");
+  const canAddIngredient = useHasPermission("menu");
   const scope = useBranchScope();
   // Composing asks what the ACCOUNT may do, never what it is currently
   // looking at: drilling into a branch is a narrowing of the view, not a
@@ -369,8 +374,8 @@ export default function InventoryScreen() {
           icon="stock"
           title="Start tracking your stock"
           message="Add the ingredients you buy — flour, milk, cups — and see what is running low before service."
-          actionLabel="Add your first ingredient"
-          onAction={openEditor}
+          actionLabel={canAddIngredient ? "Add your first ingredient" : undefined}
+          onAction={canAddIngredient ? openEditor : undefined}
         />
       );
     }
@@ -401,7 +406,11 @@ export default function InventoryScreen() {
       <ScreenHeader
         title="Stock"
         subtitle={scope.kind === "branch" ? "This branch's shelf" : "Ingredients, counts and deliveries"}
-        actions={<IconButton icon="plus" label="Add ingredient" tone="primary" onPress={openEditor} />}
+        actions={
+          canAddIngredient ? (
+            <IconButton icon="plus" label="Add ingredient" tone="primary" onPress={openEditor} />
+          ) : undefined
+        }
       />
 
       <ScrollView
@@ -415,7 +424,7 @@ export default function InventoryScreen() {
           <>
             <InventoryHero
               summary={summary}
-              value={value}
+              value={canSeeCosts ? value : null}
               levelFilter={levelFilter}
               onToggleLevel={toggleLevel}
             />

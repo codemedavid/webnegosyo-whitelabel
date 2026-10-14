@@ -55,9 +55,10 @@ export default function RecipeEditorScreen() {
   const permissions = useAuthStore((s) => s.permissions);
 
   // Rewiring what a sale deducts is a menu decision, so it rides the same
-  // "menu" key that gates the inventory and product-management tabs. The tab
-  // bar already hides those from an ungranted staffer, but this is a detail
-  // route reachable by URL, so it refuses on its own as well.
+  // "menu" key that gates product management (recipes stayed on "menu" when
+  // stock moved to "inventory"). The tab bar already hides that from an
+  // ungranted staffer, but this is a detail route reachable by URL, so it
+  // refuses on its own as well.
   const isAllowed = hasPermission({ role, isOwner, permissions }, "menu");
 
   const [recipe, setRecipe] = useState<MenuItemRecipe | null>(null);

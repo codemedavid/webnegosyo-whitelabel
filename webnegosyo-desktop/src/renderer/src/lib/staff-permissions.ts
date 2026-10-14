@@ -33,7 +33,11 @@ export const STAFF_PERMISSION_KEYS = [
   // who may retire a promo code should not be able to rewrite every regular's
   // stamp card. Attaching a customer at the register needs no grant.
   'loyalty_manage',
-  'loyalty_redeem'
+  'loyalty_redeem',
+  // Reports & inventory suite: sales reports, stock, and what things cost.
+  'reports',
+  'inventory',
+  'costs'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -53,7 +57,8 @@ export interface StaffPermissionHolder {
  */
 export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
   kitchen: 'orders',
-  tables: 'orders'
+  tables: 'orders',
+  reports: 'analytics'
 }
 
 /** Whether `permissions` grants `key` outright or through its containing grant. */

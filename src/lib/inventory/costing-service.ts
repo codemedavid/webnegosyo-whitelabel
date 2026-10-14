@@ -16,6 +16,7 @@
 
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import { buildCostingGraph } from '@/lib/inventory/graph-builder'
 import { computeMenuItemCostBreakdown, type MenuItemCostBreakdown } from '@/lib/inventory/cost-breakdown'
 import type { CostingGraph } from '@/lib/inventory/costing'
@@ -80,12 +81,16 @@ export async function getCostingGraph(
  * Recipe-derived cost of one menu item's targets: its base configuration, each
  * variation option, each addon, and each unified modifier option. A recipe that
  * cannot be costed lands in `errors` without taking the other targets down.
+ *
+ * Dish cost is `costs`, not `menu` (Phase 0d): a cook writing a recipe has no
+ * claim on the store's margins.
  */
 export async function getMenuItemCost(
   tenantId: string,
   menuItemId: string,
   deps: CostingFetchDeps = defaultDeps,
 ): Promise<MenuItemCostBreakdown> {
+  await requireGrant(tenantId, 'costs', 'view', PERMISSION_REFUSALS.dishCost)
   const rows = await deps.fetchCostingRows(tenantId)
   const graph = buildCostingGraph(rows.units, rows.items, rows.recipes, rows.components)
   return computeMenuItemCostBreakdown(menuItemId, rows.recipes, graph)

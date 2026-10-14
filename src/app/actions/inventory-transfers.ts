@@ -8,14 +8,21 @@
  * with a lifecycle of its own; folding four more actions into an already long
  * module would bury the one seam where a branch acts on another branch's stock.
  *
- * Every authority question is answered underneath, in
- * `stock-transfers-service.ts`, against `app_users` — never against anything the
- * client sent. What is decided here is only the shape of the input and the
- * shape of the answer.
+ * Branch authority is answered underneath, in `stock-transfers-service.ts`,
+ * against `app_users` — never against anything the client sent. The grant
+ * (`inventory`, Phase 0d) is checked HERE, like `/api/inventory/transfers`
+ * checks it for the app: the service's cookie variants only delegate to the
+ * `...With` variants both doors share (inventory-transfer-client-parity).
  */
+
+/** Moving stock between branches is `inventory`. */
+function requireTransferGrant(tenantId: string, action: 'create' | 'edit') {
+  return requireGrant(tenantId, 'inventory', action, PERMISSION_REFUSALS.transfers)
+}
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
 import {
   createTransfer,
   sendTransfer,
@@ -56,6 +63,7 @@ export async function createStockTransferAction(
   input: StockTransferDraftInput,
 ) {
   try {
+    await requireTransferGrant(tenantId, 'create')
     const draft = transferDraftSchema.parse(input)
     const data = await createTransfer(tenantId, draft)
     revalidatePath(inventoryPath(tenantSlug))
@@ -71,6 +79,7 @@ export async function sendStockTransferAction(
   transferId: string,
 ) {
   try {
+    await requireTransferGrant(tenantId, 'edit')
     await sendTransfer(tenantId, transferId)
     revalidatePath(inventoryPath(tenantSlug))
     return { success: true as const }
@@ -90,6 +99,7 @@ export async function receiveStockTransferAction(
   counts: Record<string, number>,
 ) {
   try {
+    await requireTransferGrant(tenantId, 'edit')
     const checked = receiptCountsSchema.parse(counts)
     await receiveTransfer(tenantId, transferId, checked)
     revalidatePath(inventoryPath(tenantSlug))
@@ -105,6 +115,7 @@ export async function cancelStockTransferAction(
   transferId: string,
 ) {
   try {
+    await requireTransferGrant(tenantId, 'edit')
     await cancelTransfer(tenantId, transferId)
     revalidatePath(inventoryPath(tenantSlug))
     return { success: true as const }

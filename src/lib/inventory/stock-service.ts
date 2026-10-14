@@ -16,15 +16,19 @@ import { createClient } from '@/lib/supabase/server'
 import { auditManualMovement, type ManualMovementAudit } from '@/lib/inventory/stock-audit-service'
 import type { StockAuditSource } from '@/lib/inventory/stock-audit'
 import { verifyTenantPermission } from '@/lib/admin-service'
+import { PERMISSION_REFUSALS, requireGrant } from '@/lib/inventory/permission-gate'
+import {
+  canSeeCosts,
+  movementInputForCaller,
+  movementResultForCaller,
+  withoutUnitCost,
+} from '@/lib/inventory/cost-visibility'
 import type { InventoryItem, InventoryUnitRow, StockMovement } from '@/types/database'
 import {
   stockMovementInputSchema,
   type StockMovementInput,
 } from '@/lib/inventory/schemas'
-import {
-  resolveMovementDelta,
-  movingAverageUnitCost,
-} from '@/lib/inventory/stock-ledger'
+import { resolveMovementDelta } from '@/lib/inventory/stock-ledger'
 import {
   convertQuantity,
   convertUnitCost,
@@ -82,12 +86,16 @@ export interface StockMovementResult {
   alreadyRecorded?: boolean
 }
 
-/** Recent movements for one ingredient, newest first. */
+/**
+ * Recent movements for one ingredient, newest first. Stock history is
+ * `inventory`; the delivery price on each line is `costs`, left out without it.
+ */
 export async function getStockMovements(
   tenantId: string,
   inventoryItemId: string,
   limit = 20,
 ): Promise<StockMovement[]> {
+  const { userRole } = await requireGrant(tenantId, 'inventory', 'view', PERMISSION_REFUSALS.stockHistory)
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -99,7 +107,8 @@ export async function getStockMovements(
     .limit(limit)
 
   if (error) throw error
-  return (data ?? []) as unknown as StockMovement[]
+  const rows = (data ?? []) as unknown as StockMovement[]
+  return canSeeCosts(userRole) ? rows : withoutUnitCost(rows)
 }
 
 /**
@@ -111,9 +120,10 @@ export async function recordStockMovement(
   tenantId: string,
   input: StockMovementInput,
 ): Promise<StockMovementResult> {
-  await verifyTenantPermission(tenantId, 'menu', 'create')
+  const { userRole } = await requireGrant(tenantId, 'inventory', 'create', PERMISSION_REFUSALS.recordStock)
   const supabase = await createClient()
-  return recordStockMovementWith(supabase, tenantId, input)
+  const result = await recordStockMovementWith(supabase, tenantId, movementInputForCaller(input, userRole))
+  return movementResultForCaller(result, userRole)
 }
 
 /**
@@ -409,25 +419,10 @@ export async function recordStockMovementWith(
   }
   const movement = movementRow as unknown as StockMovement
 
-  // A delivery at a new price blends into the cost of stock already on hand.
-  // Only when a price was actually supplied — see `stockMovementInputSchema`.
-  if (validated.reason === 'receive' && unitCostInStockUnit !== undefined) {
-    // Every term here is per stock unit: the shelf's existing cost, the
-    // delivery's converted price, and both quantities. Mixing units in a
-    // weighted average silently biases the blend rather than failing.
-    const blended = movingAverageUnitCost({
-      currentQty: item.current_qty,
-      currentUnitCost: item.unit_cost,
-      receivedQty: quantityDelta,
-      receivedUnitCost: unitCostInStockUnit,
-    })
-    const { error: costError } = await supabase
-      .from('inventory_items')
-      .update({ unit_cost: blended } as never)
-      .eq('id', item.id)
-      .eq('tenant_id', tenantId)
-    if (costError) throw costError
-  }
+  // A delivery's price is blended into the average cost by the ledger trigger,
+  // under the row lock, from the per-stock-unit price written above
+  // (`movingAverageUnitCost` is the reference it mirrors). Blending here again
+  // from `item`, read before the insert, would race a second delivery.
 
   // A merchant wasting the last of an ingredient crosses the same line an order
   // does, so the alert path hangs off both writers. It reads the item as it

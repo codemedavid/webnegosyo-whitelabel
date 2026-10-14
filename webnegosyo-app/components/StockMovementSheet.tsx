@@ -29,6 +29,7 @@ import { newLocalOrderId } from "../lib/offline/local-id";
 import { formatStockQuantity, type StockItemView } from "../lib/inventory-stock";
 import { colors, typography, spacing, radius } from "../theme/colors";
 import { Icon, type IconName } from "./Icon";
+import { useHasPermission } from "../lib/use-has-permission";
 
 /** Chips under the amount for a delivery or waste; a count is typed exactly. */
 const QUICK_STEPS: readonly number[] = [1, 5, 10];
@@ -89,6 +90,7 @@ export function StockMovementSheet({
   onRecorded,
 }: StockMovementSheetProps) {
   const insets = useSafeAreaInsets();
+  const canPriceDelivery = useHasPermission("costs");
   const [draft, setDraft] = useState<MovementDraft>(EMPTY_MOVEMENT_DRAFT);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,7 +274,8 @@ export function StockMovementSheet({
               </View>
             )}
 
-            {draft.reason === "receive" && (
+            {/* A delivery price moves the ingredient's cost, so it needs "costs". */}
+            {draft.reason === "receive" && canPriceDelivery && (
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>Price per {unit || "unit"} (optional)</Text>
                 <View style={styles.fieldInputRow}>

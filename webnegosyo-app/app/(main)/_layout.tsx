@@ -20,6 +20,7 @@ import { WhatsNewPopup } from "../../components/WhatsNewPopup";
 import { TutorialWelcomePopup } from "../../components/tutorial/TutorialWelcomePopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
 import { OwlLauncher } from "../../components/assistant/OwlLauncher";
+import { canReadOrders } from "../../lib/staff-permissions";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -64,6 +65,9 @@ export default function MainLayout() {
 
   const ctx = useTabVisibilityContext();
   const show = (tab: string) => (isTabOnBar(tab, ctx) ? undefined : null);
+  // The watchers below subscribe to new orders. An account the database
+  // refuses orders to would subscribe, be answered with nothing, and wait.
+  const canSeeOrders = canReadOrders(ctx.caller);
   // The bar sits on the home-indicator inset rather than a fixed 85pt guess
   // that was too tall on Android and too short on some iPhones.
   const insets = useSafeAreaInsets();
@@ -71,12 +75,16 @@ export default function MainLayout() {
 
   return (
     <>
-      {/* App-wide new-order ringtone — active on every tab, not just Home. */}
-      <GlobalOrderAlerts />
-      {/* Auto-prints kitchen chits on new orders, whichever tab is open. */}
-      <GlobalKitchenAutoPrint />
-      {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
-      <GlobalReceiptAutoPrint />
+      {canSeeOrders && (
+        <>
+          {/* App-wide new-order ringtone — active on every tab, not just Home. */}
+          <GlobalOrderAlerts />
+          {/* Auto-prints kitchen chits on new orders, whichever tab is open. */}
+          <GlobalKitchenAutoPrint />
+          {/* Prints the cashier receipt when an order is confirmed, from any screen. */}
+          <GlobalReceiptAutoPrint />
+        </>
+      )}
       <PrinterWarmUp />
       {/* Watches the connection and replays counter sales taken offline. */}
       <OfflineSalesSync />

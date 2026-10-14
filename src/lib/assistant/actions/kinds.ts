@@ -33,7 +33,7 @@ export const ACTION_PERMISSION: Readonly<Record<ActionKind, StaffPermissionKey>>
   bundle: 'analytics',
   upsell: 'analytics',
   menu_item: 'menu',
-  stock_adjustment: 'menu',
+  stock_adjustment: 'inventory',
   sms_campaign: 'customers',
   voucher: 'vouchers',
   offer_change: 'analytics',

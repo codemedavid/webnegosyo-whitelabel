@@ -34,6 +34,12 @@ const scope = jest.fn<Promise<BranchScope>, unknown[]>()
 jest.mock('@/lib/supabase/server', () => ({
   createClient: () => Promise.resolve({ from: (...a: unknown[]) => from(...a), auth: { getUser: () => Promise.resolve({ data: { user: { id: 'u-1' } } }) } }),
 }))
+// Counting is gated on `inventory` (inventory-permission-split pins it); here
+// the caller is the owner.
+jest.mock('@/lib/admin-service', () => ({
+  verifyTenantAdmin: () =>
+    Promise.resolve({ user: { id: 'u-1' }, userRole: { role: 'admin', is_owner: true, permissions: null } }),
+}))
 jest.mock('@/lib/inventory/acting-branch-scope', () => ({
   resolveActingBranchScope: (...a: unknown[]) => scope(...a),
 }))

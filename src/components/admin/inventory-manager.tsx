@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RecipeWorkbench } from '@/components/admin/recipe-workbench'
 import { DailyReportPanel } from '@/components/admin/daily-report-panel'
 import { IngredientsTab } from '@/components/admin/inventory-manager/ingredients-tab'
+import { CostVisibilityProvider } from '@/components/admin/inventory-manager/cost-visibility'
+import type { InventoryAccess } from '@/components/admin/inventory-manager/inventory-access'
 import { summarizeInventoryHealth, type InventoryFlags, type InventoryHealth } from '@/lib/inventory/inventory-health'
 import { cn } from '@/lib/utils'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
@@ -72,6 +74,13 @@ interface InventoryManagerProps {
    * means this caller does not supply revenue at all.
    */
   dailyRevenue?: number | null
+  /**
+   * The takings exist but this account may not see them (no `reports`). The
+   * report then says so instead of quietly losing its Sales and food cost
+   * cards. Computed by the page, which knows whether the figure would have
+   * been shown at all.
+   */
+  isSalesWithheld?: boolean
   /** Today, in Manila. Passed in so the render stays deterministic. */
   latestDayKey?: string
   /**
@@ -104,17 +113,24 @@ interface InventoryManagerProps {
    */
   stockItemId?: string
   stockReason?: string
+  /**
+   * What this account may see and do, computed once by the page from the
+   * caller. Required: a screen that forgot to say would otherwise have to
+   * guess, and either guess is wrong for someone.
+   */
+  access: InventoryAccess
 }
 
 /**
  * Literal class names, because Tailwind cannot see an interpolated one.
  *
- * Two or three tabs now: what do I have, what is a dish made of, and what did
- * yesterday cost. Overview folded into the first because its figures describe
- * the list underneath them, and Units moved behind a button because it is
- * configured once and then never again.
+ * One to three tabs now: what do I have, what is a dish made of (`menu`), and
+ * what did yesterday cost (`costs`). Overview folded into the first because its
+ * figures describe the list underneath them, and Units moved behind a button
+ * because it is configured once and then never again.
  */
 const TAB_GRID_COLUMNS: Record<number, string> = {
+  1: 'sm:grid-cols-1',
   2: 'sm:grid-cols-2',
   3: 'sm:grid-cols-3',
 }
@@ -136,6 +152,7 @@ export function InventoryManager({
   activityLoadFailed = false,
   dailyReport,
   dailyRevenue,
+  isSalesWithheld = false,
   latestDayKey,
   openCountId = null,
   countProgress = null,
@@ -144,11 +161,15 @@ export function InventoryManager({
   defaultTab,
   stockItemId,
   stockReason,
+  access,
 }: InventoryManagerProps) {
   const [ingredients, setIngredients] = useState<InventoryItem[]>(initialIngredients)
   const [units, setUnits] = useState<InventoryUnitRow[]>(initialUnits)
 
-  const canShowReport = Boolean(dailyReport && latestDayKey)
+  // The report is priced on every line, so it is `costs` whatever was passed.
+  // Recipes are the ingredient master's other half, so they are `menu`.
+  const canShowReport = Boolean(dailyReport && latestDayKey && access.canSeeCosts)
+  const canShowRecipes = access.canEditMaster
 
   // One list feeds both the table and the strip above it, so they cannot
   // disagree about how many ingredients exist. Falls back to the server's
@@ -175,85 +196,97 @@ export function InventoryManager({
   // stepping a day would land back here and read as a broken link. An unknown
   // tab (including the retired `overview` and `units`) falls back rather than
   // opening nothing.
-  const availableTabs = ['ingredients', 'recipes', ...(canShowReport ? ['reports'] : [])]
+  const availableTabs = [
+    'ingredients',
+    ...(canShowRecipes ? ['recipes'] : []),
+    ...(canShowReport ? ['reports'] : []),
+  ]
   const initialTab =
     defaultTab && availableTabs.includes(defaultTab) ? defaultTab : 'ingredients'
 
   return (
-    <Tabs defaultValue={initialTab}>
-      {/*
-        The column count is looked up, never interpolated — Tailwind scans for
-        literal class names, so a `grid-cols-${n}` template compiles to nothing
-        and the tabs stack.
-      */}
-      {/* The negative margin lets the strip scroll edge to edge on a phone
-          while the page keeps its gutter. */}
-      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
-        <TabsList
-          className={cn(
-            'max-sm:h-12 max-sm:w-max sm:grid sm:w-full sm:max-w-xl',
-            TAB_GRID_COLUMNS[availableTabs.length],
-          )}
-        >
-          <TabsTrigger className="max-sm:px-4" value="ingredients">
-            Ingredients
-          </TabsTrigger>
-          <TabsTrigger className="max-sm:px-4" value="recipes">
-            Recipes
-          </TabsTrigger>
-          {canShowReport && (
-            <TabsTrigger className="max-sm:px-4" value="reports">
-              Reports
+    <CostVisibilityProvider canSeeCosts={access.canSeeCosts}>
+      <Tabs defaultValue={initialTab}>
+        {/*
+          The column count is looked up, never interpolated — Tailwind scans for
+          literal class names, so a `grid-cols-${n}` template compiles to nothing
+          and the tabs stack.
+        */}
+        {/* The negative margin lets the strip scroll edge to edge on a phone
+            while the page keeps its gutter. */}
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+          <TabsList
+            className={cn(
+              'max-sm:h-12 max-sm:w-max sm:grid sm:w-full sm:max-w-xl',
+              TAB_GRID_COLUMNS[availableTabs.length],
+            )}
+          >
+            <TabsTrigger className="max-sm:px-4" value="ingredients">
+              Ingredients
             </TabsTrigger>
-          )}
-        </TabsList>
-      </div>
+            {canShowRecipes && (
+              <TabsTrigger className="max-sm:px-4" value="recipes">
+                Recipes
+              </TabsTrigger>
+            )}
+            {canShowReport && (
+              <TabsTrigger className="max-sm:px-4" value="reports">
+                Reports
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </div>
 
-      <TabsContent value="ingredients" className="pt-4">
-        <IngredientsTab
-          tenantId={tenantId}
-          tenantSlug={tenantSlug}
-          ingredients={ingredients}
-          units={units}
-          lastPurchaseByItemId={lastPurchaseByItemId}
-          branchStockByItemId={branchStockByItemId}
-          onChange={setIngredients}
-          onUnitsChange={setUnits}
-          health={liveHealth}
-          autoHidden={autoHidden}
-          activity={activity}
-          activityLoadFailed={activityLoadFailed}
-          stockItemId={stockItemId}
-          stockReason={stockReason}
-          openCountId={openCountId}
-          countProgress={countProgress}
-          openCountOutletId={openCountOutletId}
-          branches={branches}
-        />
-      </TabsContent>
-
-      <TabsContent value="recipes" className="pt-4">
-        <RecipeWorkbench
-          tenantId={tenantId}
-          tenantSlug={tenantSlug}
-          rows={coverageRows}
-          ingredients={ingredients}
-          components={recipeComponents}
-          loadFailed={coverageLoadFailed}
-        />
-      </TabsContent>
-
-      {dailyReport && latestDayKey && (
-        <TabsContent value="reports" className="pt-4">
-          <DailyReportPanel
+        <TabsContent value="ingredients" className="pt-4">
+          <IngredientsTab
+            tenantId={tenantId}
             tenantSlug={tenantSlug}
-            report={dailyReport}
-            revenue={dailyRevenue}
-            dishesWithRecipe={dishesWithRecipe}
-            latestDayKey={latestDayKey}
+            ingredients={ingredients}
+            units={units}
+            lastPurchaseByItemId={lastPurchaseByItemId}
+            branchStockByItemId={branchStockByItemId}
+            onChange={setIngredients}
+            onUnitsChange={setUnits}
+            health={liveHealth}
+            autoHidden={autoHidden}
+            activity={activity}
+            activityLoadFailed={activityLoadFailed}
+            stockItemId={stockItemId}
+            stockReason={stockReason}
+            openCountId={openCountId}
+            countProgress={countProgress}
+            openCountOutletId={openCountOutletId}
+            branches={branches}
+            access={access}
           />
         </TabsContent>
-      )}
-    </Tabs>
+
+        {canShowRecipes && (
+          <TabsContent value="recipes" className="pt-4">
+            <RecipeWorkbench
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              rows={coverageRows}
+              ingredients={ingredients}
+              components={recipeComponents}
+              loadFailed={coverageLoadFailed}
+            />
+          </TabsContent>
+        )}
+
+        {canShowReport && dailyReport && latestDayKey && (
+          <TabsContent value="reports" className="pt-4">
+            <DailyReportPanel
+              tenantSlug={tenantSlug}
+              report={dailyReport}
+              revenue={dailyRevenue}
+              isSalesWithheld={isSalesWithheld}
+              dishesWithRecipe={dishesWithRecipe}
+              latestDayKey={latestDayKey}
+            />
+          </TabsContent>
+        )}
+      </Tabs>
+    </CostVisibilityProvider>
   )
 }

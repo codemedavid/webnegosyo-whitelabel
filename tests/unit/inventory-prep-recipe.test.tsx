@@ -9,6 +9,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import { InventoryManager } from '@/components/admin/inventory-manager'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 
@@ -39,7 +40,7 @@ const FLOUR = baseItem({ id: 'i1', name: 'Flour', is_prep: false })
 
 function renderManager(ingredients: InventoryItem[]) {
   render(
-    <InventoryManager
+    <InventoryManager access={FULL_INVENTORY_ACCESS}
       tenantId="t1"
       tenantSlug="demo"
       initialIngredients={ingredients}

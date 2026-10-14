@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getMenuStockCeilings } from '@/lib/inventory/menu-ceilings'
+import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
+import { getClientIP } from '@/lib/rate-limit'
 
 /**
  * GET /api/inventory/ceilings?tenantId=…&outletId=…
@@ -17,17 +20,45 @@ import { getMenuStockCeilings } from '@/lib/inventory/menu-ceilings'
  * anyway. No ingredient, cost, supplier, recipe or stock quantity crosses this
  * boundary. Untracked dishes are simply absent.
  *
- * Never an error response. A stepper that cannot load its cap falls back to
- * uncapped — exactly how it behaved before this existed — and checkout remains
- * the authoritative refusal either way. A broken menu would be a far worse
- * outcome than an uncapped one.
+ * Open is not the same as unbounded. Every call reads a store's whole stock
+ * graph (recipes, components, shelves, units) on the database every store
+ * shares, so ids are validated before anything is read and each address gets
+ * a per-store allowance counted in Redis (a cold lambda must not reset it; a
+ * Redis outage falls back to the per-instance count, never to no limit). The
+ * allowance is far above what a diner's menu (30-second refresh) or a register
+ * (one read per change of dishes in the sale) ever needs.
+ *
+ * A failed read is never an error response. A stepper that cannot load its cap
+ * falls back to uncapped — exactly how it behaved before this existed — and
+ * checkout remains the authoritative refusal either way. A broken menu would be
+ * a far worse outcome than an uncapped one. Callers treat any non-OK answer,
+ * a 400 or 429 included, the same way.
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  const tenantId = request.nextUrl.searchParams.get('tenantId')
-  const outletId = request.nextUrl.searchParams.get('outletId')
 
-  if (!tenantId) {
-    return NextResponse.json({ error: 'tenantId is required' }, { status: 400 })
+const querySchema = z.object({
+  tenantId: z.string().uuid(),
+  outletId: z.string().uuid().nullable(),
+})
+
+const RATE_LIMIT: RateLimitOptions = { limit: 120, windowSec: 60, onRedisFailure: 'instance' }
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const parsed = querySchema.safeParse({
+    tenantId: request.nextUrl.searchParams.get('tenantId'),
+    outletId: request.nextUrl.searchParams.get('outletId') || null,
+  })
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'tenantId (and outletId, if given) must be ids' }, { status: 400 })
+  }
+  const { tenantId, outletId } = parsed.data
+
+  const ip = getClientIP(request) ?? 'unknown'
+  const rate = await checkRateLimit(`stock-ceilings:${ip}:${tenantId}`, RATE_LIMIT)
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } },
+    )
   }
 
   // A ceiling is stale the moment the next order lands, so nothing may hold
@@ -36,7 +67,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const headers = { 'Cache-Control': 'no-store' }
 
   try {
-    const ceilings = await getMenuStockCeilings(tenantId, outletId || null)
+    const ceilings = await getMenuStockCeilings(tenantId, outletId)
     return NextResponse.json({ ceilings: Object.fromEntries(ceilings) }, { headers })
   } catch (error) {
     console.error('[inventory] Ceilings read failed', tenantId, error)

@@ -12,6 +12,7 @@ import { render, screen } from '@testing-library/react'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import type { InventoryHealth } from '@/lib/inventory/inventory-health'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 jest.mock('@/components/admin/recipe-editor', () => ({ RecipeEditor: () => null }))
@@ -52,7 +53,7 @@ const FLAGS = { lowStockAlertsEnabled: true, auto86Enabled: false }
 describe('InventoryManager health strip', () => {
   it('counts the rows the table shows, not a figure frozen at page load', () => {
     render(
-      <InventoryManager
+      <InventoryManager access={FULL_INVENTORY_ACCESS}
         tenantId="t1"
         tenantSlug="seacook"
         initialIngredients={[QA_STOCK]}
@@ -69,7 +70,7 @@ describe('InventoryManager health strip', () => {
 
   it('still leads with the instruction when the list really is empty', () => {
     render(
-      <InventoryManager
+      <InventoryManager access={FULL_INVENTORY_ACCESS}
         tenantId="t1"
         tenantSlug="seacook"
         initialIngredients={[]}

@@ -45,9 +45,10 @@ describe("recipe editor route", () => {
 describe("recipe editor screen", () => {
   const screen = read("app", "(main)", "product", "recipe", "[productId].tsx");
 
-  it("gates on the menu permission like the rest of the inventory surface", () => {
-    // The inventory tab rides the "menu" key in staff-permissions; a staff
-    // member who cannot edit the menu must not be able to rewire deductions.
+  it("gates on the menu permission, which kept recipes when stock got its own key", () => {
+    // Stock moved to "inventory", but recipes and the ingredient list stayed on
+    // "menu"; a staff member who cannot edit the menu must not be able to
+    // rewire deductions.
     expect(screen).toMatch(/hasPermission\(/);
     expect(screen).toMatch(/"menu"/);
   });

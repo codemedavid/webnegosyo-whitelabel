@@ -142,8 +142,13 @@ describe('recordStockMovementWith — delivery price is stored per stock unit', 
     expect(captured.movementInsert?.unit_cost).toBeCloseTo(0.12, 8)
   })
 
-  test('the blended item cost is per stock unit, so 2 kg reads as P240 of stock', async () => {
-    // Arrange
+  test('the service leaves the average cost to the ledger trigger', async () => {
+    // Arrange — the blend used to be computed here from an item read earlier
+    // in the request and written back afterwards, so two deliveries landing
+    // together each blended against the same stale shelf and the second
+    // overwrote the first. The ledger trigger now blends under the row lock
+    // (20261012180000_inventory_frozen_cost.sql); a second write from here
+    // would be a race, not a backup.
     const { client, captured } = buildClient(BEEF, [GRAM, KILOGRAM])
 
     // Act
@@ -155,11 +160,12 @@ describe('recordStockMovementWith — delivery price is stored per stock unit', 
       unit_cost: 120,
     })
 
-    // Assert
-    const blended = captured.itemUpdate?.unit_cost as number
-    expect(blended).toBeCloseTo(0.12, 8)
+    // Assert — the trigger reads the movement's per-stock-unit price, so 2 kg
+    // at P120/kg is P240 of stock however the blend comes out.
+    expect(captured.itemUpdate).toBeNull()
     const deltaInStockUnit = captured.movementInsert?.quantity_delta as number
-    expect(deltaInStockUnit * blended).toBeCloseTo(240, 6)
+    const priceInStockUnit = captured.movementInsert?.unit_cost as number
+    expect(deltaInStockUnit * priceInStockUnit).toBeCloseTo(240, 6)
   })
 
   test('a price entered in the stock unit is stored unchanged', async () => {

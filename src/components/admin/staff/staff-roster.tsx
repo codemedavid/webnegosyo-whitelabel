@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   STAFF_PERMISSION_LABELS,
+  editablePermissions,
   type StaffPermissionKey,
 } from '@/lib/staff-permissions'
 import type { RosterStaff } from '@/lib/outlets/branch-roster'
@@ -284,7 +285,7 @@ export function StaffRoster({
                   size="sm"
                   onClick={() => {
                     setEditTarget(member)
-                    setEditPermissions(member.permissions ?? [])
+                    setEditPermissions(editablePermissions(member.permissions))
                   }}
                 >
                   <Wrench className="mr-2 h-4 w-4" />

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, ClipboardCheck, Info, PackageCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ClipboardCheck, Info, Lock, PackageCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { previousBusinessDayKey } from '@/lib/inventory/business-day'
@@ -32,6 +32,14 @@ interface DailyReportPanelProps {
    * the original stock-only report rather than an alarming failure notice.
    */
   revenue?: number | null
+  /**
+   * A FOURTH state: the takings exist but this account may not see them (no
+   * Sales Reports access). The tiles are withheld whatever `revenue` holds,
+   * and a quiet note says why — distinct from "could not be read", which would
+   * send the merchant hunting for a fault, and from absent, which would leave
+   * two cards missing without a word.
+   */
+  isSalesWithheld?: boolean
   /**
    * How many dishes have a working recipe. Absent means the caller cannot say,
    * and the verdict is omitted rather than guessed — a grade built on an
@@ -87,6 +95,9 @@ const TOTALS_GRID = {
   stock: 'grid grid-cols-2 gap-3 sm:grid-cols-3',
   withRevenue: 'grid grid-cols-2 gap-3 lg:grid-cols-5',
 } as const
+
+/** Plan §6.3: the account is told who can change this, not left to guess. */
+const SALES_WITHHELD_NOTE = 'Sales and food cost % need Sales Reports access. Ask the owner.'
 
 /** Shown instead of a percentage when the day has no answer. Not "0.0%". */
 const UNKNOWN_FIGURE = '—'
@@ -150,6 +161,7 @@ export function DailyReportPanel({
   report,
   latestDayKey,
   revenue,
+  isSalesWithheld = false,
   dishesWithRecipe,
 }: DailyReportPanelProps) {
   // Same three-state rule as revenue: absent means "this caller cannot say",
@@ -166,7 +178,8 @@ export function DailyReportPanel({
 
   // `undefined` means this caller does not deal in revenue; `null` means it
   // tried and failed. Only the latter is worth telling the merchant about.
-  const showsRevenue = revenue !== undefined
+  // Withheld outranks both: a figure handed in by mistake still never renders.
+  const showsRevenue = !isSalesWithheld && revenue !== undefined
   const foodCostPercent = showsRevenue ? resolveFoodCostPercent(report.totals.cogs, revenue) : null
   const revenueCaveat = showsRevenue ? describeRevenueCaveat(revenue) : null
 
@@ -238,6 +251,16 @@ export function DailyReportPanel({
             </a>
           )}
         </div>
+      )}
+
+      {isSalesWithheld && (
+        <p
+          data-testid="daily-report-sales-withheld"
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <Lock className="h-4 w-4 shrink-0" aria-hidden />
+          {SALES_WITHHELD_NOTE}
+        </p>
       )}
 
       <div className={showsRevenue ? TOTALS_GRID.withRevenue : TOTALS_GRID.stock}>
@@ -420,6 +443,15 @@ export function DailyReportPanel({
                   <td className={cn(FIGURE_CELL, 'text-muted-foreground', LABEL.closing)}>
                     {formatQuantity(line.closing, line.stockUnitAbbreviation)}
                   </td>
+                  <td
+                    className={cn(
+                      FIGURE_CELL,
+                      LABEL.cogs,
+                      'text-right max-md:font-medium',
+                    )}
+                  >
+                    {formatPeso(line.cogs)}
+                  </td>
                   {/*
                     The only row that gets an action is the one the report just
                     made an accusation about. Everything else here is a figure;
@@ -437,15 +469,6 @@ export function DailyReportPanel({
                     ) : (
                       <span className="sr-only">Nothing missing</span>
                     )}
-                  </td>
-                  <td
-                    className={cn(
-                      FIGURE_CELL,
-                      LABEL.cogs,
-                      'text-right max-md:font-medium',
-                    )}
-                  >
-                    {formatPeso(line.cogs)}
                   </td>
                 </tr>
               ))}

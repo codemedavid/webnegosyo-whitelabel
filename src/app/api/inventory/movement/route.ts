@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { recordStockMovementWith } from '@/lib/inventory/stock-service'
 import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
+import { movementInputForCaller, movementResultForCaller } from '@/lib/inventory/cost-visibility'
+import { PERMISSION_REFUSALS } from '@/lib/inventory/permission-refusals'
 import { resolveBranchScope, type BranchScopedUser } from '@/lib/outlets/branch-scope'
 import { canAccessStoreAdmin } from '@/lib/platform-staff/permissions'
 import { asAppUserQueryClient, fetchAppUserScope } from '@/lib/queries/fetch-app-user-scope'
@@ -97,12 +99,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // hide inventory from them, but UI is not a boundary and this route is
   // reachable with the token the app is holding.
   //
-  // `menu` is the same key that gates both of those surfaces, so the door and
-  // the UI now agree rather than merely looking like they do.
+  // `inventory` is the same key that gates both of those surfaces, so the door
+  // and the UI agree. (Phase 0d moved stock off `menu`, which keeps recipes and
+  // the ingredient list.)
   const isTenantMember = canAccessStoreAdmin(appUser, tenantId, 'create')
 
-  if (!isTenantMember || !hasPermission(appUser as PermissionHolder, 'menu')) {
+  if (!isTenantMember) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  if (!hasPermission(appUser as PermissionHolder, 'inventory')) {
+    return NextResponse.json({ error: PERMISSION_REFUSALS.recordStock }, { status: 403 })
   }
 
   // A tenant who has not turned inventory on must never accumulate a ledger
@@ -123,13 +129,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const { movement, item, alreadyRecorded } = await recordStockMovementWith(
+    const caller = appUser as PermissionHolder
+    const recorded = await recordStockMovementWith(
       // A Bearer-token client built from the untyped `createClient`, where the
       // service expects the `Database`-typed server one. The queries it runs
       // are identical; only the generic differs.
       supabase as never,
       tenantId,
-      {
+      movementInputForCaller({
         inventory_item_id: inventoryItemId,
         reason,
         quantity,
@@ -168,7 +175,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // The schema rejects anything that is not a uuid.
         client_request_id:
           typeof body?.clientRequestId === 'string' ? body.clientRequestId : undefined,
-      },
+      }, caller),
       // Everything the service would otherwise resolve for itself, already
       // resolved above to authorize this call. Without it the write repeats a
       // remote `auth.getUser()` twice more and re-reads `app_users` — three
@@ -181,6 +188,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
     )
 
+    const { movement, item, alreadyRecorded } = movementResultForCaller(recorded, caller)
     return NextResponse.json({ success: true, movement, item, alreadyRecorded: alreadyRecorded === true })
   } catch (error) {
     // The merchant is waiting on this. Return the reason rather than a generic

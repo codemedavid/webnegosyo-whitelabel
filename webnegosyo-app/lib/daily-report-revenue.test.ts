@@ -6,7 +6,11 @@
  * one: it is a small, plausible, memorable figure that a merchant will price
  * against.
  */
-import { resolveReportRevenue } from "./daily-report-revenue";
+import {
+  SALES_NEED_REPORTS_NOTE,
+  resolveReportRevenue,
+  resolveRevenueAccess,
+} from "./daily-report-revenue";
 
 describe("the day's takings, as the report may state them", () => {
   it("reports the takings when the account can see the whole store", () => {
@@ -180,5 +184,31 @@ describe("resolveReportRevenue — which backend can actually narrow the takings
     });
 
     expect(revenue).toBeUndefined();
+  });
+});
+
+describe("resolveRevenueAccess — whether this account may ask for the takings at all", () => {
+  it("shows the takings to a store-wide account holding Sales reports", () => {
+    expect(resolveRevenueAccess({ canSeeSales: true, isBranchScoped: false })).toBe("shown");
+  });
+
+  it("never asks without Sales reports — the database would refuse the orders", () => {
+    // A refused read is not an error, it is an empty one, and an empty one
+    // reads as a day that took nothing. The account must be told instead.
+    expect(resolveRevenueAccess({ canSeeSales: false, isBranchScoped: false })).toBe("no-reports");
+    expect(
+      resolveRevenueAccess({ canSeeSales: false, isBranchScoped: true, isRevenueBranchScoped: true }),
+    ).toBe("no-reports");
+  });
+
+  it("withholds incomparable takings from a branch account even with Sales reports", () => {
+    expect(resolveRevenueAccess({ canSeeSales: true, isBranchScoped: true })).toBe("not-comparable");
+    expect(
+      resolveRevenueAccess({ canSeeSales: true, isBranchScoped: true, isRevenueBranchScoped: true }),
+    ).toBe("shown");
+  });
+
+  it("words the missing grant as something the owner can fix", () => {
+    expect(SALES_NEED_REPORTS_NOTE).toBe("Sales need Sales Reports access. Ask the owner.");
   });
 });

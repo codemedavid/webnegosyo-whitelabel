@@ -84,6 +84,27 @@ describe('selectableDefaultScreens', () => {
   })
 })
 
+describe('the stock screens after the menu split', () => {
+  // Stock rides 'inventory' and the priced daily report rides 'costs'. Offering
+  // either to a menu-only account would pin it to a screen the app refuses.
+  it('pins the stock screen to an inventory holder, never to menu alone', () => {
+    expect(validateDefaultTab('inventory', ['inventory'])).toBe('inventory')
+    expect(validateDefaultTab('inventory', ['menu'])).toBeNull()
+  })
+
+  it('pins the daily report only to an account that may see costs', () => {
+    expect(validateDefaultTab('daily-report', ['costs'])).toBe('daily-report')
+    expect(validateDefaultTab('daily-report', ['menu', 'inventory'])).toBeNull()
+  })
+
+  it('offers a menu-only account the menu screens and not the shelf', () => {
+    const tabs = selectableDefaultScreens({ permissions: ['menu'] }).map((option) => option.tab)
+    expect(tabs).toEqual(expect.arrayContaining(['product-management', 'categories']))
+    expect(tabs).not.toContain('inventory')
+    expect(tabs).not.toContain('daily-report')
+  })
+})
+
 describe('validateDefaultTab', () => {
   it('accepts a screen the account may open', () => {
     expect(validateDefaultTab('pos', CASHIER)).toBe('pos')

@@ -30,6 +30,24 @@ export const STAFF_PERMISSION_KEYS = [
   // stamp card. Attaching a customer at the register needs no grant.
   'loyalty_manage',
   'loyalty_redeem',
+  // Sales reports: the sales summary and breakdowns, transaction history,
+  // payments, end-of-day, and their exports. Implied by 'analytics' (see
+  // IMPLIED_BY), which already showed every sales figure. 'orders' does NOT
+  // grant it: running the live queue is not reading the books.
+  'reports',
+  // Stock: deliveries, waste, counts, transfers, reorder levels and the
+  // low-stock bell. Carved out of 'menu', which keeps recipes and the
+  // ingredient master, so a kitchen hand can count the shelf without editing
+  // the menu. Every account holding 'menu' was given it once (migration
+  // 20261013120000), so nobody lost the stock screens.
+  'inventory',
+  // What things cost: ingredient prices, dish cost, COGS, gross profit and
+  // food cost %. The database enforces every cost CHANGE (a price edit or a
+  // priced delivery) and the frozen sale costs; ingredient prices are still
+  // readable through the API until cost moves to its own table (plan §8.8,
+  // Phase 3/5), so screens hide them. Given once to every 'menu' holder
+  // alongside 'inventory'.
+  'costs',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -98,6 +116,18 @@ export const STAFF_PERMISSION_LABELS: Record<
     label: 'Redeem Loyalty Rewards',
     description: 'Apply verified customer rewards at POS without access to customer history',
   },
+  reports: {
+    label: 'Sales Reports',
+    description: 'Sales summary, transactions, payments and end-of-day, and their exports',
+  },
+  inventory: {
+    label: 'Inventory',
+    description: 'Record deliveries, waste and counts, move stock between branches, see low-stock alerts',
+  },
+  costs: {
+    label: 'Costs & Profit',
+    description: 'See and change what ingredients cost, dish costs, gross profit and food cost %',
+  },
 }
 
 export const MAX_STAFF_PER_TENANT = 3
@@ -122,7 +152,24 @@ export const MAX_STAFF_PER_TENANT = 3
 export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
   kitchen: 'orders',
   tables: 'orders',
+  // Every sales figure a report shows was already on Growth & Analytics.
+  reports: 'analytics',
 }
+
+/**
+ * Who may read a store's orders and order lines at all (and so its customer
+ * names, phones and addresses). Mirrored in SQL by the orders SELECT policy
+ * (migration 20261013120200) and in the app's copy; staff-permissions tests
+ * pin all three. `kitchen` and `tables` are listed although `orders` implies
+ * them: a cook's or host's tablet holds them without `orders`.
+ */
+export const ORDER_READ_KEYS = ['orders', 'pos', 'kitchen', 'tables', 'analytics', 'reports'] as const satisfies readonly StaffPermissionKey[]
+
+/**
+ * Who may read the money taken on an order (order_payments, order_revisions).
+ * The kitchen display reads tickets, never the till.
+ */
+export const PAYMENT_READ_KEYS = ['orders', 'pos', 'tables', 'analytics', 'reports'] as const satisfies readonly StaffPermissionKey[]
 
 /** Whether `permissions` grants `key` outright or through its containing grant. */
 function listGrants(permissions: readonly string[], key: StaffPermissionKey): boolean {
@@ -156,6 +203,22 @@ export function impliedPermissions(
   return (Object.keys(IMPLIED_BY) as StaffPermissionKey[]).filter(
     (key) => !permissions.includes(key) && permissions.includes(IMPLIED_BY[key] as string)
   )
+}
+
+/**
+ * The list a permission editor starts from. A legacy full-access account
+ * (`null`) opens with everything it can do ticked: opening it with nothing
+ * ticked made the first Save strip every grant at once. A stored list is
+ * copied as-is, including keys this build does not know, so an editor never
+ * drops what it cannot see.
+ */
+export function editablePermissions(permissions: readonly string[] | null): string[] {
+  return permissions === null ? [...STAFF_PERMISSION_KEYS] : [...permissions]
+}
+
+/** Whether `user` holds at least one of `keys` (owners and full access hold all). */
+export function hasAnyPermission(user: PermissionHolder, keys: readonly StaffPermissionKey[]): boolean {
+  return keys.some((key) => hasPermission(user, key))
 }
 
 /** Only the tenant owner (or a superadmin) may manage staff accounts. */
@@ -200,7 +263,14 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   menu: 'menu',
   categories: 'menu',
   bundles: 'menu',
-  inventory: 'menu',
+  // Stock, deliveries, waste, counts, transfers. Revenue and cost figures on
+  // these pages are gated again inside the page (`reports`, `costs`).
+  inventory: 'inventory',
+  // The add-on library rewrites what every dish offers, like the menu itself.
+  addons: 'menu',
+  // Sales reports (Phase 1 routes register here before they exist, so the
+  // first page under /admin/reports can never ship open to every account).
+  reports: 'reports',
   'boost-sales': 'analytics',
   'product-analytics': 'analytics',
   'menu-engineering': 'analytics',
@@ -224,6 +294,20 @@ const ADMIN_SECTION_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // branch admin's for their own branch.
   staff: 'branch_staff',
 }
+
+/**
+ * Admin sections open to every staff account ON PURPOSE. A section that is
+ * neither here nor in ADMIN_SECTION_PERMISSIONS is open BY ACCIDENT, and
+ * tests/unit/staff-permissions-reports-inventory.test.ts fails on it.
+ */
+export const OPEN_ADMIN_SECTIONS = [
+  // Their own password and the sections the page gates one by one.
+  'settings',
+  // Video lessons on using the product.
+  'learn',
+  // The onboarding path; its steps link into gated pages, which gate themselves.
+  'start',
+] as const
 
 /**
  * The permission gating a web admin pathname (with or without a tenant
@@ -262,6 +346,10 @@ const MOBILE_TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // Renaming, hiding or rearranging a menu section rewrites the storefront's
   // navigation, so it rides the same grant the product list does.
   categories: 'menu',
+  // Stock and its priced daily report were carved out of 'menu'. Mirrors the
+  // app's TAB_PERMISSIONS (webnegosyo-app/lib/staff-permissions.ts).
+  inventory: 'inventory',
+  'daily-report': 'costs',
 }
 
 export function permissionForMobileTab(tab: string): StaffPermissionKey | null {

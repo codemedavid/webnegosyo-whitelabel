@@ -11,6 +11,7 @@
  */
 
 import type { ImportBatchInput, ImportRowInput } from '@/lib/inventory/import/import-batch'
+import { rowRecordsCount, type ImportRowRefusals } from '@/lib/inventory/import/import-grants'
 import type { InventoryItem } from '@/types/database'
 
 /** What an update may change. Never the unit (it would re-read every quantity) or the photo. */
@@ -24,6 +25,11 @@ export interface ImportDeps {
   updateItem: (id: string, patch: IngredientPatch) => Promise<InventoryItem | null>
   /** Records a stock count, in the item's own unit; returns the item after it. */
   recordCount: (item: InventoryItem, quantity: number) => Promise<InventoryItem>
+  /**
+   * What the importer's grants refuse for one row (Phase 0d: prices are
+   * `costs`, reorder levels and counts `inventory`). Absent = nothing refused.
+   */
+  rowRefusals?: (row: ImportRowInput) => ImportRowRefusals
 }
 
 export type ImportRowOutcome = 'created' | 'updated' | 'failed'
@@ -83,6 +89,11 @@ async function applyRow(deps: ImportDeps, unitIds: ReadonlySet<string>, row: Imp
     return { rowNumber: row.rowNumber, outcome: 'failed', error: 'That unit isn’t one of your units any more.' }
   }
 
+  const refusals = deps.rowRefusals?.(row) ?? { save: null, count: null }
+  if (refusals.save) {
+    return { rowNumber: row.rowNumber, outcome: 'failed', error: refusals.save }
+  }
+
   let saved: { item: InventoryItem | null; outcome: ImportRowOutcome }
   try {
     saved = await saveRow(deps, row)
@@ -96,8 +107,8 @@ async function applyRow(deps: ImportDeps, unitIds: ReadonlySet<string>, row: Imp
 
   const result: ImportRowResult = { rowNumber: row.rowNumber, outcome: saved.outcome, item: saved.item }
   // A new ingredient starts at zero, so an opening count of zero moves nothing.
-  const needsCount = row.onHand !== null && (row.existingId !== null || row.onHand > 0)
-  if (!needsCount) return result
+  if (!rowRecordsCount(row)) return result
+  if (refusals.count) return { ...result, stockError: refusals.count }
 
   try {
     return { ...result, item: await deps.recordCount(saved.item, row.onHand as number) }

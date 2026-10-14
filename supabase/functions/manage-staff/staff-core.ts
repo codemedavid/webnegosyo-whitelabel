@@ -33,6 +33,11 @@ export const STAFF_PERMISSION_KEYS = [
   'tables',
   'loyalty_manage',
   'loyalty_redeem',
+  // Reports & inventory suite: sales reports (implied by analytics), stock,
+  // and what things cost (both carved out of menu, backfilled once).
+  'reports',
+  'inventory',
+  'costs',
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -104,6 +109,7 @@ export function resolveStaffCaller(
 export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
   kitchen: 'orders',
   tables: 'orders',
+  reports: 'analytics',
 }
 
 /** Whether `permissions` grants `key` outright or through its containing grant. */
@@ -159,8 +165,8 @@ export const DEFAULT_SCREEN_PERMISSIONS: Record<string, StaffPermissionKey | nul
   'product-analytics': 'analytics',
   'product-management': 'menu',
   categories: 'menu',
-  inventory: 'menu',
-  'daily-report': 'menu',
+  inventory: 'inventory',
+  'daily-report': 'costs',
   payments: 'store_setup',
   vouchers: 'vouchers',
   portfolio: 'analytics',

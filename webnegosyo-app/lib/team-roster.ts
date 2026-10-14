@@ -20,7 +20,7 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
   },
   menu: {
     label: "Menu",
-    description: "Edit products, prices, stock, and the daily report",
+    description: "Edit products, prices, recipes, and the ingredient list",
   },
   analytics: {
     label: "Analytics",
@@ -73,6 +73,18 @@ const PERMISSION_LABELS: Record<StaffPermissionKey, { label: string; description
   tables: {
     label: "Tables",
     description: "The floor plan — seat parties, clear tables, see each table's bill",
+  },
+  reports: {
+    label: "Sales reports",
+    description: "Sales figures, transactions, and end-of-day totals",
+  },
+  inventory: {
+    label: "Inventory",
+    description: "Stock: deliveries, waste, counts, transfers, and reorder levels",
+  },
+  costs: {
+    label: "Costs",
+    description: "What things cost: ingredient prices, dish cost, and food cost %",
   },
 };
 

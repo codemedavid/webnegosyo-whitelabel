@@ -24,6 +24,7 @@ import type { Category } from '@/types/database'
 import { EditorSection } from '@/components/admin/menu-editor/editor-section'
 import { DishPhotoField } from '@/components/admin/menu-editor/dish-photo-field'
 import { DISH_SECTION_IDS } from '@/components/admin/menu-editor/dish-sections'
+import { useCanSeeCosts } from '@/components/admin/inventory-manager/cost-visibility'
 
 type OnBasicsChange = <K extends keyof DishBasics>(field: K, value: DishBasics[K]) => void
 
@@ -127,7 +128,10 @@ interface DishPricingSectionProps {
   values: DishBasics
   errors: DishBasicsErrors
   onChange: OnBasicsChange
-  /** Recipe-derived cost of one plain order; null when the dish has no costed recipe. */
+  /**
+   * Recipe-derived cost of one plain order; null when the dish has no costed
+   * recipe. Shown only to an account with `costs`, whatever arrives here.
+   */
   recipeCost: number | null
 }
 
@@ -135,6 +139,7 @@ const MARGIN_GOOD_PERCENT = 60
 const MARGIN_OK_PERCENT = 30
 
 export function DishPricingSection({ values, errors, onChange, recipeCost }: DishPricingSectionProps) {
+  const canSeeCosts = useCanSeeCosts()
   const price = parseFloat(values.price)
   const salePrice = parseFloat(values.discounted_price)
   const isOnSale = Number.isFinite(price) && Number.isFinite(salePrice) && salePrice < price
@@ -170,7 +175,7 @@ export function DishPricingSection({ values, errors, onChange, recipeCost }: Dis
         </Field>
       </div>
 
-      {recipeCost !== null && Number.isFinite(sellingPrice) && sellingPrice > 0 && (
+      {canSeeCosts && recipeCost !== null && Number.isFinite(sellingPrice) && sellingPrice > 0 && (
         <MarginLine sellingPrice={sellingPrice} cost={recipeCost} />
       )}
     </EditorSection>

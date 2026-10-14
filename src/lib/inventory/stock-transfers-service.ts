@@ -130,6 +130,10 @@ function toReceipts(lines: readonly TransferLineRow[]): TransferLineReceipt[] {
  * `entered_quantity` is the magnitude and `entered_unit_id` is left null: a
  * transfer is between two shelves of the same store, so both figures are
  * already in the item's stock unit and there is no unit the merchant typed.
+ *
+ * `unit_cost` is advisory only: the ledger trigger sets every transfer leg's
+ * cost itself (the departure at today's average, the arrival and any shortfall
+ * at the departure's), whatever is sent here.
  */
 async function writeMovements(
   supabase: StockActorClient,

@@ -10,7 +10,7 @@ function def(name: string, access: AssistantToolDef['access'], isAvailable?: Ass
 const DEFS = [
   def('sales', { permission: 'analytics' }),
   def('staff', { ownerOnly: true }),
-  def('inventory', { permission: 'menu' }, (f) => f.inventoryEnabled),
+  def('inventory', { permission: 'inventory' }, (f) => f.inventoryEnabled),
 ]
 
 describe('availableTools', () => {

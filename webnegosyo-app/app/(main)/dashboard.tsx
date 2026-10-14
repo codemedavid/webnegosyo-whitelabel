@@ -10,6 +10,7 @@ import { useBranchScope } from "../../lib/use-branch-scope";
 import { useTabVisibilityContext } from "../../lib/use-tab-visibility-context";
 import { isPortfolioAvailable } from "../../lib/portfolio-landing";
 import { isTabReachable } from "../../lib/tab-visibility";
+import { canReadOrders } from "../../lib/staff-permissions";
 import { quickActionsFor } from "../../lib/home-quick-actions";
 import { revenueDelta, todayRange, yesterdayRange } from "../../lib/home-period";
 import { ordersInWindowArgs } from "../../lib/report-window";
@@ -74,7 +75,7 @@ function getGreeting(): string {
   return "Good evening";
 }
 
-function HeaderActions({ isConnected }: { isConnected: boolean }) {
+function HeaderActions({ isConnected, canScan }: { isConnected: boolean; canScan: boolean }) {
   return (
     <>
       <IconButton
@@ -83,7 +84,10 @@ function HeaderActions({ isConnected }: { isConnected: boolean }) {
         dot={isConnected ? colors.success : colors.textTertiary}
         onPress={() => router.push("/(main)/printer-settings")}
       />
-      <IconButton icon="qr" label="Scan QR" tone="primary" onPress={() => router.push("/(main)/scan")} />
+      {/* Every scan files or collects an order, so it needs an order grant. */}
+      {canScan && (
+        <IconButton icon="qr" label="Scan QR" tone="primary" onPress={() => router.push("/(main)/scan")} />
+      )}
     </>
   );
 }
@@ -108,6 +112,11 @@ export default function DashboardScreen() {
   const loadSaved = usePrinterStore((s) => s.loadSaved);
 
   const ctx = useTabVisibilityContext();
+  // Home is open to every staff account, but the database hands orders only to
+  // one holding an order-facing grant. Without one, a read comes back EMPTY —
+  // ₱0 takings and a quiet queue — so this account is not asked to read at all
+  // and is shown neither.
+  const canSeeOrders = canReadOrders(ctx.caller);
   const quickActions = useMemo(() => quickActionsFor(ctx), [ctx]);
   const showBranches = isPortfolioAvailable(ctx.audience);
   // The drawer's own screen is the only place the shift can be opened or
@@ -127,13 +136,16 @@ export default function DashboardScreen() {
   const today = useMemo(() => todayRange(anchorMs), [anchorMs]);
 
   const { data: stats, isLoading, error: statsError, refetch: refetchStats } =
-    useSafeQuery<DashboardStats>(getDashboardStatsRef);
+    useSafeQuery<DashboardStats>(getDashboardStatsRef, canSeeOrders ? undefined : "skip");
   // Yesterday is the comparison every takings figure needs to mean anything.
   const { data: yesterdayStats, refetch: refetchYesterday } =
-    useSafeQuery<DashboardStats>(getDashboardStatsByPeriodRef, yesterday);
+    useSafeQuery<DashboardStats>(getDashboardStatsByPeriodRef, canSeeOrders ? yesterday : "skip");
   // The queue keeps working offline: saved orders plus this device's sales
   // and changes (lib/offline/). Takings stay the server's figure.
-  const queueResult = useSafeQuery<Record<string, QueueOrder[]>>(getRealtimeQueueRef);
+  const queueResult = useSafeQuery<Record<string, QueueOrder[]>>(
+    getRealtimeQueueRef,
+    canSeeOrders ? undefined : "skip"
+  );
   const {
     data: mergedQueue,
     error: queueError,
@@ -154,7 +166,7 @@ export default function DashboardScreen() {
   const { data: scopedOrders, isLoading: scopedOrdersLoading, refetch: refetchScopedOrders } =
     useSafeQuery<StatOrderLike[]>(
       getOrdersRef,
-      isBranchScoped
+      isBranchScoped && canSeeOrders
         ? // Yesterday and today exactly, where the backend can bound a read —
           // not the last 2000 orders filtered on the phone.
           ordersInWindowArgs(
@@ -201,7 +213,7 @@ export default function DashboardScreen() {
 
   // Offline the screen still has its queue to show; the notice says why the
   // takings are missing.
-  const error = isOffline ? null : statsError || queueError;
+  const error = isOffline || !canSeeOrders ? null : statsError || queueError;
 
   // Names the branch whose queue this is. A staffer moving between outlets
   // must never mistake one branch's numbers for another's.
@@ -209,14 +221,13 @@ export default function DashboardScreen() {
 
   const tabRouter = router as TabAwareRouter<`/(main)/${string}`>;
 
-  if (!hasBackend || error) {
+  const headerActions = <HeaderActions isConnected={isConnected} canScan={canSeeOrders} />;
+
+  // An account that reads no orders has no backend question to fail on.
+  if ((canSeeOrders && !hasBackend) || error) {
     return (
       <View style={styles.screen}>
-        <ScreenHeader
-          title={tenantName ?? "Home"}
-          subtitle={subtitle}
-          actions={<HeaderActions isConnected={isConnected} />}
-        />
+        <ScreenHeader title={tenantName ?? "Home"} subtitle={subtitle} actions={headerActions} />
         <ErrorState
           message={error ?? "This store's order backend is not configured yet. Please contact support."}
           onRetry={() => goTo(router, "/(main)/dashboard")}
@@ -238,12 +249,8 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader
-        title={tenantName ?? "Home"}
-        subtitle={subtitle}
-        actions={<HeaderActions isConnected={isConnected} />}
-      />
-      <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />
+      <ScreenHeader title={tenantName ?? "Home"} subtitle={subtitle} actions={headerActions} />
+      {canSeeOrders && <OfflineOrdersNotice isOffline={isOffline} savedAt={savedAt} />}
       <ScrollView
         style={styles.screen}
         contentContainerStyle={styles.content}
@@ -269,7 +276,13 @@ export default function DashboardScreen() {
             wait on an order query to be answered. */}
         {showShift && <ShiftStatusStrip onPress={() => goTo(tabRouter, "/(main)/pos-sales")} />}
 
-        {isStatsLoading ? (
+        {!canSeeOrders ? (
+          // Only what this account can open: no takings, no queue, no ₱0.
+          <QuickActions
+            actions={quickActions}
+            onPress={(action) => goTo(tabRouter, action.href as `/(main)/${string}`)}
+          />
+        ) : isStatsLoading ? (
           <LoadingState message="Loading today..." />
         ) : (
           <>

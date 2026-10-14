@@ -11,6 +11,7 @@ import {
   saveRecipeForTarget,
 } from '@/lib/inventory/recipes-service'
 import { recipeInputSchema } from '@/lib/inventory/schemas'
+import { ingredientsForCaller } from '@/lib/inventory/cost-visibility'
 
 const nonEmptyId = z.string().trim().min(1)
 const tenantSlugSchema = z.string().min(2).regex(/^[a-z0-9-]+$/)
@@ -107,7 +108,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       JSON.parse(request.nextUrl.searchParams.get('target') ?? ''),
     )
 
-    await verifyTenantPermission(tenantId, 'menu', 'view')
+    // Recipes are `menu`; what an ingredient costs is `costs` (Phase 0d), so a
+    // caller without it gets the ingredient list with the prices left out.
+    const { userRole } = await verifyTenantPermission(tenantId, 'menu', 'view')
     const [ingredients, units, recipe] = await Promise.all([
       getIngredients(tenantId),
       getUnits(tenantId),
@@ -115,7 +118,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     ])
 
     return NextResponse.json(
-      { success: true, data: { ingredients, units, recipe } },
+      { success: true, data: { ingredients: ingredientsForCaller(ingredients, userRole), units, recipe } },
       { headers: { 'Cache-Control': 'private, no-store' } },
     )
   } catch (error) {

@@ -16,7 +16,10 @@ import { verifyTenantPermission } from '@/lib/admin-service'
 import { resolveBranchScope } from '@/lib/outlets/branch-scope'
 import { recordStockMovementWith, type MovementActor } from '@/lib/inventory/stock-service'
 import { applyImportBatch, type ImportDeps, type ImportRowResult } from '@/lib/inventory/import/import-apply'
-import { importBatchSchema } from '@/lib/inventory/import/import-batch'
+import { importBatchSchema, type ImportBatchInput } from '@/lib/inventory/import/import-batch'
+import { importRowRefusals } from '@/lib/inventory/import/import-grants'
+import type { StoredIngredient } from '@/lib/inventory/ingredient-write-grants'
+import { hasPermission, type PermissionHolder } from '@/lib/staff-permissions'
 import type { InventoryItem } from '@/types/database'
 
 const IMPORT_NOTE = 'Imported from spreadsheet'
@@ -74,6 +77,33 @@ function supabaseDeps(
   }
 }
 
+const STORED_COLUMNS = 'id, name, sku, category, stock_unit_id, unit_cost, is_prep, image_url, reorder_level, is_active'
+
+/**
+ * The rows this batch updates, as stored — only read when the importer lacks
+ * `costs` or `inventory`, since only then can a changed price or level be
+ * refused. One read per batch.
+ */
+async function readStoredRows(
+  supabase: ServerClient,
+  tenantId: string,
+  holder: PermissionHolder,
+  batch: ImportBatchInput,
+): Promise<ReadonlyMap<string, StoredIngredient>> {
+  const ids = batch.rows.flatMap((row) => (row.existingId ? [row.existingId] : []))
+  const holdsAll = hasPermission(holder, 'costs') && hasPermission(holder, 'inventory')
+  if (holdsAll || ids.length === 0) return new Map()
+
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select(STORED_COLUMNS)
+    .eq('tenant_id', tenantId)
+    .in('id', ids)
+  if (error) throw error
+  const rows = (data ?? []) as unknown as Array<StoredIngredient & { id: string }>
+  return new Map(rows.map((row) => [row.id, row]))
+}
+
 export async function importIngredientBatch(tenantId: string, rawBatch: unknown): Promise<ImportRowResult[]> {
   const { user, userRole } = await verifyTenantPermission(tenantId, 'menu', 'create')
   const batch = importBatchSchema.parse(rawBatch)
@@ -83,6 +113,13 @@ export async function importIngredientBatch(tenantId: string, rawBatch: unknown)
     scope: resolveBranchScope(userRole),
   }
   const supabase = await createClient()
+  const stored = await readStoredRows(supabase, tenantId, userRole, batch)
 
-  return applyImportBatch(supabaseDeps(supabase, tenantId, actor, batch.outletId), batch)
+  return applyImportBatch(
+    {
+      ...supabaseDeps(supabase, tenantId, actor, batch.outletId),
+      rowRefusals: (row) => importRowRefusals(userRole, row, row.existingId ? stored.get(row.existingId) : undefined),
+    },
+    batch,
+  )
 }
