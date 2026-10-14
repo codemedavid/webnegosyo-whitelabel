@@ -11,6 +11,7 @@ import {
   saveRecipeForTarget,
 } from '@/lib/inventory/recipes-service'
 import { recipeInputSchema } from '@/lib/inventory/schemas'
+import { isRecipeLineRejection } from '@/lib/inventory/recipe-line-rules'
 
 const nonEmptyId = z.string().trim().min(1)
 const tenantSlugSchema = z.string().min(2).regex(/^[a-z0-9-]+$/)
@@ -48,6 +49,10 @@ interface ErrorContext {
 function errorResponse(error: unknown, context: ErrorContext) {
   if (error instanceof z.ZodError || error instanceof SyntaxError) {
     return NextResponse.json({ error: 'Invalid recipe request' }, { status: 400 })
+  }
+  // A line no sale could ever deduct: the reason is written for the merchant.
+  if (isRecipeLineRejection(error)) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
   }
 
   const message = error instanceof Error ? error.message : 'Recipe request failed'

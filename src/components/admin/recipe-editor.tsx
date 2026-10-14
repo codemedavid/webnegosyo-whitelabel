@@ -24,6 +24,11 @@ import {
   type RecipeFormState,
   type RecipeLineDraft,
 } from '@/lib/inventory/recipe-form'
+import {
+  compatibleRecipeUnits,
+  findRecipeProblem,
+  unitAfterIngredientChange,
+} from '@/lib/inventory/recipe-line-rules'
 
 interface RecipeEditorProps {
   tenantId: string
@@ -32,6 +37,8 @@ interface RecipeEditorProps {
   target: RecipeTarget
   /** Heading above the ingredient lines. */
   label?: string
+  /** One line under the heading, e.g. that an option's recipe adds to the dish's. */
+  hint?: string
   /** Fired after a successful save or clear, so a cost display can refresh. */
   onSaved?: () => void
   /** Lets a containing picker or dialog hold navigation while a write finishes. */
@@ -61,6 +68,7 @@ export function RecipeEditor({
   tenantSlug,
   target,
   label,
+  hint,
   onSaved,
   onSavingChange,
 }: RecipeEditorProps) {
@@ -154,12 +162,36 @@ export function RecipeEditor({
       return { ...f, lines: next.length > 0 ? next : [createEmptyRecipeLine()] }
     })
 
+  const stockUnitIdOf = (ingredientId: string) =>
+    ingredients.find((ingredient) => ingredient.id === ingredientId)?.stock_unit_id ?? ''
+
+  // Picking a new ingredient keeps the line's unit only if it can still
+  // measure it; otherwise the line moves to that ingredient's stock unit.
+  const changeIngredient = (index: number, ingredientId: string) => {
+    const line = form.lines[index]
+    updateLine(index, {
+      inventory_item_id: ingredientId,
+      unit_id: unitAfterIngredientChange(line?.unit_id ?? '', stockUnitIdOf(ingredientId), units),
+    })
+  }
+
   const handleSave = async () => {
     let input
     try {
       input = buildRecipeInput(form)
     } catch {
       toast.error('Each ingredient line needs an ingredient and a unit')
+      return
+    }
+
+    // The same rule the server refuses with, said before the round trip.
+    const problem = findRecipeProblem(
+      input.components,
+      new Map(ingredients.map((ingredient) => [ingredient.id, ingredient])),
+      units,
+    )
+    if (problem) {
+      toast.error(problem)
       return
     }
 
@@ -255,6 +287,7 @@ export function RecipeEditor({
           </span>
         )}
       </div>
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
 
       {/*
         A recipe line is four controls on one rail. Below `sm` the four do not
@@ -266,7 +299,7 @@ export function RecipeEditor({
           <div key={line.uid ?? index} className="flex gap-2 max-sm:flex-wrap">
             <Select
               value={line.inventory_item_id || undefined}
-              onValueChange={(value) => updateLine(index, { inventory_item_id: value })}
+              onValueChange={(value) => changeIngredient(index, value)}
             >
               <SelectTrigger className="flex-1 max-sm:h-11 max-sm:w-full max-sm:flex-none">
                 <SelectValue placeholder="Ingredient" />
@@ -296,7 +329,7 @@ export function RecipeEditor({
                 <SelectValue placeholder="Unit" />
               </SelectTrigger>
               <SelectContent>
-                {units.map((unit) => (
+                {compatibleRecipeUnits(stockUnitIdOf(line.inventory_item_id), units).map((unit) => (
                   <SelectItem key={unit.id} value={unit.id}>
                     {unit.abbreviation}
                   </SelectItem>

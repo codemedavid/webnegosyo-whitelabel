@@ -201,3 +201,23 @@ describe('the simplified option row', () => {
     expect(onChange.mock.calls[1][0][0]).toMatchObject({ min_select: 0, max_select: 1, selection_mode: 'choice' })
   })
 })
+
+describe('stock tracking copy (option recipes ADD to the dish recipe)', () => {
+  it('says "no separate count" still deducts an attached recipe', () => {
+    renderEditor(groupWith({ stock_mode: 'none' }))
+
+    expect(screen.getByText(/no separate count for this choice/i)).toHaveTextContent(/still deducted/i)
+  })
+
+  it('says a recipe-tracked choice is deducted on top of the dish recipe', () => {
+    renderEditor(groupWith({ stock_mode: 'recipe' }))
+
+    expect(screen.getByText(/sells out when its ingredients run out/i)).toHaveTextContent(/on top of the dish/i)
+  })
+
+  it('says a counted choice does not deduct its recipe', () => {
+    renderEditor(groupWith({ stock_mode: 'simple', stock_qty: 3 }))
+
+    expect(screen.getByText(/sells out when the count reaches 0/i)).toHaveTextContent(/not deducted/i)
+  })
+})

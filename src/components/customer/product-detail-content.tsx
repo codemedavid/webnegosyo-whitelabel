@@ -26,7 +26,8 @@ import { StoreClosedBanner } from '@/components/customer/store-closed-banner'
 import { STORE_CLOSED_MESSAGE } from '@/lib/store-open-status'
 import { isMenuItemOrderable } from '@/lib/menu-item-availability'
 import { useBranchPricing } from '@/hooks/use-branch-pricing'
-import { useStockCeilings, selectCeiling } from '@/hooks/use-stock-ceilings'
+import { useStockCeilings, useOptionStockCeilings, selectCeiling } from '@/hooks/use-stock-ceilings'
+import { configurationCeiling, soldOutOptionIds } from '@/lib/inventory/option-availability'
 import { resolveAddableQuantity, describeRemainingStock } from '@/lib/inventory/stepper-cap'
 import { MAX_CART_ITEM_QUANTITY } from '@/lib/cart-utils'
 import { usePresellAvailability } from '@/hooks/use-presell-availability'
@@ -48,7 +49,7 @@ import { motion } from 'framer-motion'
 import { useSeniorMode } from '@/components/customer/senior-mode/senior-mode-provider'
 import { describeAddedToCart } from '@/lib/senior-mode'
 import { ItemOffers, combosContainingItem } from '@/components/customer/offers/item-offers'
-import { postAddOffers } from '@/lib/boost/offer-items'
+import { oneTapSelection, postAddOffers } from '@/lib/boost/offer-items'
 import { cartOfferThemeFromBranding, offerThemeFromBranding } from '@/components/customer/offers/offer-theme'
 import { CartOfferRow } from '@/components/customer/offers/cart-offer-row'
 
@@ -251,7 +252,12 @@ export const ProductDetailContent = memo(function ProductDetailContent({
 
     // Unified modifier groups (Phase 2). Active only for items authored with the
     // new editor AND when the tenant flag is on; legacy items keep the path above.
-    const mg = useModifierGroups({ item, linkedItems: linkedModifierItems })
+    // Options whose own recipe the shelf cannot cover read as sold out — the
+    // same answer checkout's stock guard would give (inventory stores only;
+    // every other store gets no ceilings and nothing changes).
+    const optionCeilings = useOptionStockCeilings(tenant.id, branchPricing.selectedOutletId).get(item.id)
+    const soldOutOptions = useMemo(() => soldOutOptionIds(optionCeilings), [optionCeilings])
+    const mg = useModifierGroups({ item, linkedItems: linkedModifierItems, soldOutOptionIds: soldOutOptions })
     const useGroups = modifierGroupsEnabled && mg.active
     const effectiveQuantity = useGroups ? mg.quantity : quantity
     const effectiveTotalPrice = useGroups ? mg.totalPrice : totalPrice
@@ -265,7 +271,16 @@ export const ProductDetailContent = memo(function ProductDetailContent({
     // whole checkout to be turned away on the last screen. Untracked dishes get
     // `null` and behave exactly as they always have.
     const ceilings = useStockCeilings(tenant.id, branchPricing.selectedOutletId)
-    const stockCeiling = selectCeiling(ceilings, item.id)
+    // The configuration being picked: a Large with pearls is capped by the
+    // pearls as well as by the base recipe.
+    const stockCeiling = useMemo(
+        () => configurationCeiling(
+            selectCeiling(ceilings, item.id),
+            optionCeilings,
+            useGroups ? Object.values(mg.selection).flat() : [],
+        ),
+        [ceilings, item.id, optionCeilings, useGroups, mg.selection],
+    )
     // What the cart already holds of this dish, across every configuration of
     // it: five in the cart as three Large and two Small is still five pizzas'
     // worth of flour.
@@ -1031,7 +1046,9 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                 hideCurrencySymbol={hideCurrencySymbol}
                 primaryLabel="View cart"
                 onAdd={(upsellItem) => {
-                    addItem(upsellItem, undefined, [], 1, undefined, 'suggestion', item.id)
+                    // The picks its own page would have pre-selected (see oneTapSelection).
+                    const { variations, addons } = oneTapSelection(upsellItem)
+                    addItem(upsellItem, variations, addons, 1, undefined, 'suggestion', item.id)
                 }}
                 onCustomize={(upsellItem) => {
                     setIsPostAddUpsellOpen(false)

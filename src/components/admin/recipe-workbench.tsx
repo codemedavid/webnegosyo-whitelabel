@@ -208,6 +208,11 @@ export function RecipeWorkbench({
                             ? `${row.ingredientCount} ingredient${row.ingredientCount === 1 ? '' : 's'}`
                             : 'No recipe yet'}
                         </span>
+                        {row.unrecipedOptionGroups && (
+                          <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-400">
+                            {row.unrecipedOptionGroups.join(', ')} picks deduct nothing
+                          </span>
+                        )}
                       </button>
                     </li>
                   )
@@ -226,6 +231,17 @@ export function RecipeWorkbench({
                 <p className="text-sm text-muted-foreground">
                   Ingredients used every time this dish sells.
                 </p>
+                {selected.unrecipedOptionGroups && (
+                  <p
+                    data-testid="unreciped-option-groups-hint"
+                    className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                  >
+                    Choices in {selected.unrecipedOptionGroups.join(', ')} have no recipe, so picking
+                    more of them deducts nothing extra — only this base recipe is used, once per
+                    order line. To deduct each pick, open the dish in the menu editor and add a
+                    recipe to each choice (its ingredients are used on top of this one).
+                  </p>
+                )}
               </div>
               <RecipeEditor
                 // Remounts on dish change so the editor reloads rather than

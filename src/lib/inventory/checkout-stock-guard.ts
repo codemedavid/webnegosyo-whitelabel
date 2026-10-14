@@ -12,6 +12,10 @@
  * quantity stepper, so the number a customer is shown and the number they are
  * refused by come from the same place.
  *
+ * Each line is judged in its configuration — base recipe plus the recipes of
+ * its selected options and add-ons × portions — exactly as
+ * `order-stock-service` will spend it.
+ *
  * SILENCE IS THE DEFAULT. Inventory off, a failed read, an empty cart, a dish
  * with no recipe, an ingredient with no row at this branch — every one of those
  * returns "no opinion" rather than a refusal. A wrongly refused order costs a
@@ -24,7 +28,36 @@ import {
   describeStockShortfalls,
   type CartStockLine,
 } from '@/lib/inventory/producible'
-import { readTenantStockGraph } from '@/lib/inventory/stock-graph-read'
+import { readTenantStockGraph, type TenantStockGraph } from '@/lib/inventory/stock-graph-read'
+import { expandLinkedStockItems, recipeOptionNames } from '@/lib/inventory/option-stock'
+
+/**
+ * The cart as depletion will spend it: a simple-stock option's leftover recipe
+ * is dropped (its counter is checked separately), a linked option spends its
+ * linked dish's recipe, and each line carries the names of its recipe-bearing
+ * picks so a refusal can say "Milk Tea (Pearls)", not just "Milk Tea".
+ */
+function asDepletionWillSpend(
+  lines: readonly CartStockLine[],
+  graph: TenantStockGraph,
+): CartStockLine[] {
+  const catalog = graph.catalog ?? []
+  return lines.flatMap((line) => {
+    // The label is always the store's own option names — never text from the
+    // caller (the preflight's lines come from the browser).
+    const selection: CartStockLine = {
+      menuItemId: line.menuItemId,
+      quantity: line.quantity,
+      optionIds: line.optionIds,
+      addonIds: line.addonIds,
+      modifierOptionIds: line.modifierOptionIds,
+      addonQuantities: line.addonQuantities,
+    }
+    const [own, ...linked] = expandLinkedStockItems([selection], catalog, graph.recipes)
+    const names = recipeOptionNames(own, catalog, graph.recipes)
+    return [{ ...own, ...(names.length > 0 ? { optionLabel: names.join(', ') } : {}) }, ...linked]
+  })
+}
 
 /** No opinion. Every failure path returns this. */
 const NO_OPINION = ''
@@ -46,7 +79,7 @@ export async function findCheckoutStockShortfallMessage(
   if (!graph) return NO_OPINION
 
   const shortfalls = findCartStockShortfalls(
-    lines,
+    asDepletionWillSpend(lines, graph),
     graph.recipes,
     graph.components,
     graph.shelf,

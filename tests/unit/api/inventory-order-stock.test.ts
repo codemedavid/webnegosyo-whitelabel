@@ -24,7 +24,28 @@ jest.mock('@supabase/supabase-js', () => ({
 jest.mock('@/lib/inventory/order-stock-service', () => ({
   applyOrderStockBestEffort: jest.fn(),
   reverseOrderStockBestEffort: jest.fn(),
+  redepleteOrderStockBestEffort: jest.fn(),
   applyOrderRevisionStockBestEffort: jest.fn(),
+}))
+
+/**
+ * The server's own read of the order (any backend). Default: not found —
+ * the behaviour every pre-existing case here was written against. `'throw'`
+ * simulates an unreachable backend.
+ */
+let storedLifecycle: { status: string; customerData?: unknown; outletId?: string | null } | null | 'throw' = null
+const lifecycleReads: string[] = []
+jest.mock('@/lib/order-lifecycle-read', () => ({
+  readStoredOrderLifecycle: async (_tenantId: string, orderId: string) => {
+    lifecycleReads.push(orderId)
+    if (storedLifecycle === 'throw') throw new Error('convex down')
+    return storedLifecycle
+  },
+}))
+
+const releasePresellMock = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined)
+jest.mock('@/lib/presell/convex-cancel', () => ({
+  releasePresellForCancelledConvexOrder: releasePresellMock,
 }))
 
 const VALID_BODY = {
@@ -53,6 +74,8 @@ describe('POST /api/inventory/order-stock', () => {
   beforeEach(async () => {
     jest.resetModules()
     jest.clearAllMocks()
+    storedLifecycle = null
+    lifecycleReads.length = 0
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key'
 
@@ -536,6 +559,98 @@ describe('POST /api/inventory/order-stock', () => {
       await POST(makeRequest({ tenantId: 't1', orderId: 'jh7dm2p8qr3n5x9', action: 'restore' }, 'Bearer token-1'))
 
       expect(reverseMock).toHaveBeenCalledWith('t1', 'jh7dm2p8qr3n5x9', { source: 'merchant_app', actorUserId: 'u1' })
+    })
+  })
+
+  describe('order lifecycle (cancel / un-cancel from the app)', () => {
+    const ORDER_ID = 'jh7dm2p8qr3n5x9'
+
+    test('refuses to restore an order the server reads as NOT cancelled', async () => {
+      storedLifecycle = { status: 'delivered' }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID, action: 'restore' }, 'Bearer token-1'))
+
+      expect(res.status).toBe(409)
+      expect(reverseMock).not.toHaveBeenCalled()
+    })
+
+    test('asks for a retry (503) when the order cannot be read, rather than guessing', async () => {
+      storedLifecycle = 'throw'
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID, action: 'restore' }, 'Bearer token-1'))
+
+      expect(res.status).toBe(503)
+      expect(reverseMock).not.toHaveBeenCalled()
+    })
+
+    test('restoring a cancelled pre-order gives its date stock back from the SERVER copy', async () => {
+      const customerData = { presell_claim_id: 'claim-1' }
+      storedLifecycle = { status: 'cancelled', customerData }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest(
+        { tenantId: 't1', orderId: ORDER_ID, action: 'restore', customerData: { presell_claim_id: 'forged' } },
+        'Bearer token-1',
+      ))
+
+      expect(res.status).toBe(200)
+      expect(reverseMock).toHaveBeenCalled()
+      expect(releasePresellMock).toHaveBeenCalledWith('t1', customerData)
+    })
+
+    test('un-cancel re-spends the order through the service', async () => {
+      storedLifecycle = { status: 'preparing' }
+      const service = await import('@/lib/inventory/order-stock-service')
+      const redepleteMock = service.redepleteOrderStockBestEffort as unknown as jest.Mock
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID, action: 'redeplete' }, 'Bearer token-1'))
+
+      expect(res.status).toBe(200)
+      expect(redepleteMock).toHaveBeenCalledWith('t1', ORDER_ID, { source: 'merchant_app', actorUserId: 'u1' })
+    })
+
+    test('refuses an un-cancel while the stored order is still cancelled', async () => {
+      storedLifecycle = { status: 'cancelled' }
+      const service = await import('@/lib/inventory/order-stock-service')
+      const redepleteMock = service.redepleteOrderStockBestEffort as unknown as jest.Mock
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      const res = await POST(makeRequest({ tenantId: 't1', orderId: ORDER_ID, action: 'redeplete' }, 'Bearer token-1'))
+
+      expect(res.status).toBe(409)
+      expect(redepleteMock).not.toHaveBeenCalled()
+    })
+
+    test('a store-wide account selling a Convex order spends the ORDER\'s branch, not the store pool', async () => {
+      storedLifecycle = { status: 'pending', outletId: 'outlet-north' }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(applyMock).toHaveBeenCalledWith(
+        't1', VALID_BODY.orderId, expect.any(Array), 'sale', 0, 'outlet-north', expect.anything(),
+      )
+    })
+
+    test('a branch account never pays for a Convex lookup — its own branch is the answer', async () => {
+      appUserSingleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1', outlet_id: 'outlet-south' }, error: null })
+      storedLifecycle = { status: 'pending', outletId: 'outlet-north' }
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest(VALID_BODY, 'Bearer token-1'))
+
+      expect(lifecycleReads).toEqual([])
+      expect(applyMock).toHaveBeenCalledWith(
+        't1', VALID_BODY.orderId, expect.any(Array), 'sale', 0, 'outlet-south', expect.anything(),
+      )
+    })
+
+    test('one malformed add-on portion count does not cost the line its base recipe', async () => {
+      const { POST } = await import('@/app/api/inventory/order-stock/route')
+      await POST(makeRequest({
+        ...VALID_BODY,
+        items: [{ menuItemId: 'm-latte', quantity: 1, addonIds: ['a-shot', 'a-syrup'], addonQuantities: { 'a-shot': 2, 'a-syrup': 500 } }],
+      }, 'Bearer token-1'))
+
+      const items = (applyMock.mock.calls[0] as unknown[])[2] as Array<Record<string, unknown>>
+      expect(items).toHaveLength(1)
+      expect(items[0].addonQuantities).toEqual({ 'a-shot': 2 })
     })
   })
 })

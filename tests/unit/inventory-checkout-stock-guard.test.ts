@@ -29,7 +29,7 @@ function table(data: unknown, error: unknown = null) {
     maybeSingle: () => Promise.resolve({ data: Array.isArray(data) ? data[0] : data, error }),
     single: () => Promise.resolve({ data: Array.isArray(data) ? data[0] : data, error }),
   }
-  for (const method of ['select', 'eq', 'is', 'in', 'order', 'limit']) {
+  for (const method of ['select', 'eq', 'is', 'in', 'order', 'limit', 'range']) {
     chain[method] = () => chain
   }
   return chain
@@ -178,5 +178,87 @@ describe('findCheckoutStockShortfallMessage', () => {
     ])
 
     expect(message).toBe('')
+  })
+
+  describe('a cart line in its configuration (options, add-ons, portions)', () => {
+    // Milk tea: base = 10 g tea; "Pearls" modifier option = 50 g tapioca per portion.
+    const MILK_TEA = {
+      id: 'm-tea', name: 'Milk Tea',
+      modifier_groups: [{ id: 'g-extras', name: 'Extras', min_select: 0, max_select: null, display_order: 0, options: [
+        { id: 'opt-pearls', name: 'Pearls', price_modifier: 15, display_order: 0 },
+        { id: 'opt-jelly', name: 'Jelly', price_modifier: 15, display_order: 1, stock_mode: 'simple', stock_qty: 9 },
+      ] }],
+    }
+    const TEA_RECIPES = [
+      { id: 'r-tea', target_type: 'menu_item', menu_item_id: 'm-tea' },
+      { id: 'r-pearls', target_type: 'modifier_option', menu_item_id: 'm-tea', modifier_option_id: 'opt-pearls' },
+      { id: 'r-jelly', target_type: 'modifier_option', menu_item_id: 'm-tea', modifier_option_id: 'opt-jelly' },
+    ]
+    const TEA_COMPONENTS = [
+      { recipe_id: 'r-tea', inventory_item_id: 'ing-tea', quantity: 10, unit_id: 'unit-gram' },
+      { recipe_id: 'r-pearls', inventory_item_id: 'ing-tapioca', quantity: 50, unit_id: 'unit-gram' },
+      { recipe_id: 'r-jelly', inventory_item_id: 'ing-tapioca', quantity: 50, unit_id: 'unit-gram' },
+    ]
+    const ingredient = (id: string, qty: number) => ({ id, name: id, stock_unit_id: 'unit-gram', current_qty: qty, is_active: true })
+    const wireTea = (tapioca: number, branchStock: unknown[] = []) => wire({
+      recipes: TEA_RECIPES,
+      components: TEA_COMPONENTS,
+      items: [ingredient('ing-tea', 1000), ingredient('ing-tapioca', tapioca)],
+      menuItems: [MILK_TEA],
+      branchStock,
+    })
+    const pearlsLine = (quantity: number, portions = 1) => ({
+      menuItemId: 'm-tea', quantity,
+      addonIds: ['opt-pearls'], modifierOptionIds: ['opt-pearls'],
+      ...(portions !== 1 ? { addonQuantities: { 'opt-pearls': portions } } : {}),
+    })
+
+    it('refuses an add-on whose ingredient cannot cover the cart, naming the dish and the option', async () => {
+      wireTea(100) // pearls for 2
+
+      const message = await findCheckoutStockShortfallMessage('t1', [pearlsLine(3)])
+
+      expect(message).toContain('Milk Tea (Pearls)')
+      expect(message).toContain('only 2 left')
+    })
+
+    it('never echoes a label the caller supplied (the preflight lines come from the browser)', async () => {
+      wireTea(100)
+
+      const message = await findCheckoutStockShortfallMessage('t1', [{ ...pearlsLine(3), optionLabel: '<b>pwned</b>' }])
+
+      expect(message).toContain('Milk Tea (Pearls)')
+      expect(message).not.toContain('pwned')
+    })
+
+    it('multiplies by add-on portions the way depletion will', async () => {
+      wireTea(100) // two portions per drink = 100 g → 1 drink
+
+      const message = await findCheckoutStockShortfallMessage('t1', [pearlsLine(2, 2)])
+
+      expect(message).toContain('only 1 left')
+    })
+
+    it('lets the plain dish through when only the option ingredient is out', async () => {
+      wireTea(0)
+
+      expect(await findCheckoutStockShortfallMessage('t1', [{ menuItemId: 'm-tea', quantity: 3 }])).toBe('')
+    })
+
+    it('ignores a leftover recipe on an option counted with simple stock (depletion never spends it)', async () => {
+      wireTea(0)
+
+      const message = await findCheckoutStockShortfallMessage('t1', [
+        { menuItemId: 'm-tea', quantity: 1, addonIds: ['opt-jelly'], modifierOptionIds: ['opt-jelly'] },
+      ])
+
+      expect(message).toBe('')
+    })
+
+    it('passes over an option ingredient the branch has no row for', async () => {
+      wireTea(0, [{ inventory_item_id: 'ing-tea', outlet_id: 'branch-1', current_qty: 1000 }])
+
+      expect(await findCheckoutStockShortfallMessage('t1', [pearlsLine(3)], 'branch-1')).toBe('')
+    })
   })
 })

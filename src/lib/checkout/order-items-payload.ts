@@ -13,6 +13,7 @@ import { addonLabel } from '@/lib/addon-quantity'
 import { flattenBundleOrderItems, type BundleOrderItem } from '@/lib/bundle-order-items'
 import { calculateCartItemUnitPrice, getEffectiveItemPrice } from '@/lib/cart-utils'
 import { extractSelectionIds } from '@/lib/inventory/order-item-selection'
+import { depletionItemFromCheckoutLine, type DepletionOrderItem } from '@/lib/inventory/order-depletion'
 import type { CartBundleItem, CartItem } from '@/types/database'
 
 /** One regular cart line, in the shape `createOrderAction` order items expect. */
@@ -35,12 +36,12 @@ export interface CartLineOrderItem {
 
 export type CheckoutOrderItem = CartLineOrderItem | BundleOrderItem
 
-export interface StockPreflightLine {
+/** A cart line in its configuration — what the producible guard judges. */
+export type StockPreflightLine = DepletionOrderItem
+
+export interface PresellPreflightLine {
   menuItemId: string
   quantity: number
-}
-
-export interface PresellPreflightLine extends StockPreflightLine {
   presellDate: string | undefined
 }
 
@@ -88,9 +89,14 @@ export function buildOrderItemsPayload(
   return [...items.map(buildCartLineOrderItem), ...flattenBundleOrderItems(bundleItems)]
 }
 
-/** What the stock preflight asks about: each line's menu item and quantity. */
+/**
+ * What the stock preflight asks about: each line in its configuration, mapped
+ * exactly as `createOrderAction` hands it to the authoritative guard — option
+ * and add-on recipes count, so the preflight cannot pass a cart the order
+ * itself then refuses.
+ */
 export function toStockPreflightLines(items: readonly CartItem[]): StockPreflightLine[] {
-  return items.map(item => ({ menuItemId: item.menu_item.id, quantity: item.quantity }))
+  return items.map(item => depletionItemFromCheckoutLine(buildCartLineOrderItem(item)))
 }
 
 /** What the presell preflight asks about: the same, with each line's pickup date. */

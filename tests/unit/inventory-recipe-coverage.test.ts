@@ -153,3 +153,70 @@ describe('findUnusedIngredients', () => {
     )
   })
 })
+
+describe('portion picks that deduct nothing', () => {
+  // Live root cause (2026-10-13): "pick your flavours ×N" dishes whose picks
+  // have no recipe deduct only the dish's base recipe, once per order line.
+  // The key is absent when there is nothing to say.
+  const flavours = {
+    id: 'g-flavours', name: 'Flavours', selection_mode: 'quantity' as const, min_select: 1, max_select: 6, display_order: 0,
+    options: [
+      { id: 'o-garlic', name: 'Garlic', price_modifier: 0, display_order: 0 },
+      { id: 'o-spicy', name: 'Spicy', price_modifier: 0, display_order: 1 },
+    ],
+  }
+  const size = {
+    id: 'g-size', name: 'Size', min_select: 1, max_select: 1, display_order: 1,
+    options: [{ id: 'o-large', name: 'Large', price_modifier: 20, display_order: 0 }],
+  }
+  const wings = { ...dish('m-wings', 'Wings'), modifier_groups: [flavours, size] } as MenuItem
+  const optionRecipe = (id: string, optionId: string): Recipe =>
+    ({ id, tenant_id: 't1', target_type: 'modifier_option', menu_item_id: 'm-wings', modifier_option_id: optionId }) as Recipe
+
+  it('flags a tracked dish whose portion group has no recipe on any choice', () => {
+    const [row] = buildRecipeCoverage([wings], [baseRecipe('r1', 'm-wings')], [component('r1', 'chicken')])
+
+    expect(row.hasRecipe).toBe(true)
+    expect(row.unrecipedOptionGroups ?? []).toEqual(['Flavours'])
+  })
+
+  it('does not flag a single-choice group (it does not multiply portions)', () => {
+    const [row] = buildRecipeCoverage([wings], [baseRecipe('r1', 'm-wings')], [component('r1', 'chicken')])
+
+    expect(row.unrecipedOptionGroups ?? []).not.toContain('Size')
+  })
+
+  it('clears the flag once a choice in the group has its own recipe', () => {
+    const [row] = buildRecipeCoverage(
+      [wings],
+      [baseRecipe('r1', 'm-wings'), optionRecipe('r2', 'o-garlic')],
+      [component('r1', 'chicken'), component('r2', 'garlic')],
+    )
+
+    expect(row.unrecipedOptionGroups ?? []).toEqual([])
+  })
+
+  it('does not flag a group whose choices are other dishes or counted by hand', () => {
+    const linked = { ...flavours, options: [{ ...flavours.options[0], menu_item_id: 'm-sauce' }] }
+    const counted = { ...flavours, id: 'g2', name: 'Dips', options: [{ ...flavours.options[1], stock_mode: 'simple' as const, stock_qty: 4 }] }
+    const item = { ...wings, modifier_groups: [linked, counted] } as MenuItem
+
+    const [row] = buildRecipeCoverage([item], [baseRecipe('r1', 'm-wings')], [component('r1', 'chicken')])
+
+    expect(row.unrecipedOptionGroups ?? []).toEqual([])
+  })
+
+  it('leaves the hint off a dish with no recipe at all (it is already flagged)', () => {
+    const [row] = buildRecipeCoverage([wings], [], [])
+
+    expect(row.unrecipedOptionGroups ?? []).toEqual([])
+  })
+
+  it('reads legacy add-ons as a portion group', () => {
+    const item = { ...dish('m-rice', 'Rice bowl'), addons: [{ id: 'a-egg', name: 'Egg', price: 15 }] } as MenuItem
+
+    const [row] = buildRecipeCoverage([item], [baseRecipe('r1', 'm-rice')], [component('r1', 'rice')])
+
+    expect(row.unrecipedOptionGroups ?? []).toEqual(['Add-ons'])
+  })
+})

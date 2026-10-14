@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getMenuStockCeilings } from '@/lib/inventory/menu-ceilings'
+import { getMenuStockAvailability, type OptionStockCeilings } from '@/lib/inventory/menu-ceilings'
 
 /**
  * GET /api/inventory/ceilings?tenantId=…&outletId=…
@@ -14,8 +14,10 @@ import { getMenuStockCeilings } from '@/lib/inventory/menu-ceilings'
  * carrying nothing steerable and returning nothing private: the caller names a
  * tenant and optionally a branch, and what comes back is one integer per dish,
  * which is precisely what the storefront is about to render to that diner
- * anyway. No ingredient, cost, supplier, recipe or stock quantity crosses this
- * boundary. Untracked dishes are simply absent.
+ * anyway — plus, per dish, one integer per recipe-tracked option
+ * (`optionCeilings`), so a choice that cannot be made reads as sold out. No
+ * ingredient, cost, supplier, recipe or stock quantity crosses this boundary.
+ * Untracked dishes are simply absent.
  *
  * Never an error response. A stepper that cannot load its cap falls back to
  * uncapped — exactly how it behaved before this existed — and checkout remains
@@ -36,10 +38,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const headers = { 'Cache-Control': 'no-store' }
 
   try {
-    const ceilings = await getMenuStockCeilings(tenantId, outletId || null)
-    return NextResponse.json({ ceilings: Object.fromEntries(ceilings) }, { headers })
+    const { dishes, options } = await getMenuStockAvailability(tenantId, outletId || null)
+    return NextResponse.json(
+      { ceilings: Object.fromEntries(dishes), optionCeilings: toJsonOptionCeilings(options) },
+      { headers },
+    )
   } catch (error) {
     console.error('[inventory] Ceilings read failed', tenantId, error)
-    return NextResponse.json({ ceilings: {} }, { headers })
+    return NextResponse.json({ ceilings: {}, optionCeilings: {} }, { headers })
   }
+}
+
+function toJsonOptionCeilings(options: OptionStockCeilings): Record<string, Record<string, number>> {
+  return Object.fromEntries([...options].map(([menuItemId, byOption]) => [menuItemId, Object.fromEntries(byOption)]))
 }

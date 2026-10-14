@@ -146,13 +146,21 @@ async function submit(config: CheckoutConfig, tenant: Tenant = TENANT) {
 describe('useCheckout submit — Messenger order', () => {
   const config = configWith({ messenger_enabled: true })
 
-  it('asks the stock preflight about every cart line, and skips the presell one for a non-presell cart', async () => {
+  it('asks the stock preflight about every cart line in its configuration, and skips the presell one for a non-presell cart', async () => {
     await submit(config)
 
     expect(preflightPresellAction).not.toHaveBeenCalled()
+    // Option and add-on ids ride along: the guard spends option recipes the
+    // way depletion will (2026-10-13).
     expect(preflightCheckoutStockAction).toHaveBeenCalledWith(
       'tenant-1',
-      [{ menuItemId: 'm1', quantity: 2 }, { menuItemId: 'm2', quantity: 1 }],
+      [
+        {
+          menuItemId: 'm1', quantity: 2,
+          optionIds: ['v1'], addonIds: ['a1'], modifierOptionIds: ['v1', 'a1'], addonQuantities: { a1: 2 },
+        },
+        { menuItemId: 'm2', quantity: 1, optionIds: [], addonIds: [], modifierOptionIds: [] },
+      ],
       null,
     )
   })

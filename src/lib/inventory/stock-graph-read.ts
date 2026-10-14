@@ -16,9 +16,19 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { selectAllPages, type PageRequest, type PageResponse } from '@/lib/storefront/paged-select'
+
+/** The slice of a PostgREST builder a paged, tenant-scoped read uses. */
+interface PagedQuery {
+  select: (columns: string, options?: { count: 'exact' }) => PagedQuery
+  eq: (column: string, value: string) => PagedQuery
+  order: (column: string, options: { ascending: boolean }) => PagedQuery
+  range: (from: number, to: number) => PromiseLike<PageResponse<{ id: string }>>
+}
 import type { ProducibleStock } from '@/lib/inventory/producible'
+import type { StockOptionCatalogItem } from '@/lib/inventory/option-stock'
 import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
-import type { Recipe, RecipeComponent } from '@/types/database'
+import type { ModifierGroup, Recipe, RecipeComponent } from '@/types/database'
 
 interface IngredientRow {
   id: string
@@ -36,6 +46,7 @@ interface BranchStockRow {
 interface MenuItemRow {
   id: string
   name: string
+  modifier_groups?: ModifierGroup[] | null
 }
 
 export interface TenantStockGraph {
@@ -46,6 +57,12 @@ export interface TenantStockGraph {
   units: InventoryUnit[]
   /** Dish names, for anything that has to speak to a customer. */
   namesByMenuItemId: Map<string, string>
+  /**
+   * Each dish's option catalogue (`modifier_groups`): option names, simple-stock
+   * options and linked options, so a line is judged the way depletion spends it
+   * (`expandLinkedStockItems`). Absent reads as "no options known".
+   */
+  catalog?: StockOptionCatalogItem[]
 }
 
 /**
@@ -128,26 +145,30 @@ export async function readTenantStockGraph(
       return null
     }
 
+    // Every table is paged past PostgREST's 1000-row cap: a big menu read
+    // unpaged silently dropped recipes and branch rows, so its ceilings and
+    // checkout guard under-counted what the shelf owes.
+    const client = supabase as unknown as { from: (table: string) => PagedQuery }
+    const paged = (table: string, columns: string) =>
+      selectAllPages<{ id: string }>(
+        ({ from, to, withCount }: PageRequest) => client
+          .from(table)
+          .select(columns, withCount ? { count: 'exact' } : undefined)
+          .eq('tenant_id', tenantId)
+          .order('id', { ascending: true })
+          .range(from, to),
+        { label: `${table} for tenant ${tenantId}` },
+      )
+
     const [recipesResult, componentsResult, itemsResult, unitsResult, stockResult, menuResult] =
       await Promise.all([
-        supabase.from('recipes').select('id, target_type, menu_item_id').eq('tenant_id', tenantId),
-        supabase
-          .from('recipe_components')
-          .select('recipe_id, inventory_item_id, quantity, unit_id')
-          .eq('tenant_id', tenantId),
-        supabase
-          .from('inventory_items')
-          .select('id, name, stock_unit_id, current_qty, is_active')
-          .eq('tenant_id', tenantId),
-        supabase
-          .from('inventory_units')
-          .select('id, name, abbreviation, dimension, to_base_factor')
-          .eq('tenant_id', tenantId),
-        supabase
-          .from('inventory_stock')
-          .select('inventory_item_id, outlet_id, current_qty')
-          .eq('tenant_id', tenantId),
-        supabase.from('menu_items').select('id, name').eq('tenant_id', tenantId),
+        // Every target column: option recipes are matched by their own id.
+        paged('recipes', 'id, target_type, menu_item_id, variation_option_id, addon_id, modifier_option_id'),
+        paged('recipe_components', 'id, recipe_id, inventory_item_id, quantity, unit_id'),
+        paged('inventory_items', 'id, name, stock_unit_id, current_qty, is_active'),
+        paged('inventory_units', 'id, name, abbreviation, dimension, to_base_factor'),
+        paged('inventory_stock', 'id, inventory_item_id, outlet_id, current_qty'),
+        paged('menu_items', 'id, name, modifier_groups'),
       ])
 
     // A PostgREST error arrives as `error`, not as a throw. Without this the
@@ -167,6 +188,7 @@ export async function readTenantStockGraph(
 
     const units = (unitsResult.data ?? []) as unknown as InventoryUnit[]
     const unitsById = new Map(units.map((unit) => [unit.id, unit]))
+    const menuItems = (menuResult.data ?? []) as unknown as MenuItemRow[]
 
     return {
       recipes: (recipesResult.data ?? []) as unknown as Recipe[],
@@ -178,9 +200,8 @@ export async function readTenantStockGraph(
         outletId,
       ),
       units,
-      namesByMenuItemId: new Map(
-        ((menuResult.data ?? []) as unknown as MenuItemRow[]).map((item) => [item.id, item.name]),
-      ),
+      namesByMenuItemId: new Map(menuItems.map((item) => [item.id, item.name])),
+      catalog: menuItems.map((item) => ({ id: item.id, modifier_groups: item.modifier_groups ?? null })),
     }
   } catch (error) {
     console.error('[inventory] Stock graph read failed', tenantId, error)

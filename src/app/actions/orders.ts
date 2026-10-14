@@ -413,15 +413,15 @@ export async function createOrderAction(
     // re-read the tenant row just to learn inventory is off — a wasted round
     // trip on every order from a store without inventory.
     if (tenantConfig.inventory_enabled === true) {
-      const { findCheckoutStockShortfallMessage } = await import(
-        '@/lib/inventory/checkout-stock-guard'
-      )
+      const [{ findCheckoutStockShortfallMessage }, { depletionItemFromCheckoutLine }] = await Promise.all([
+        import('@/lib/inventory/checkout-stock-guard'),
+        import('@/lib/inventory/order-depletion'),
+      ])
+      // Each line in its configuration — the option and add-on ids and
+      // portions depletion will spend once this order is accepted.
       const shortfallMessage = await findCheckoutStockShortfallMessage(
         tenantId,
-        items.map((item) => ({
-          menuItemId: item.menu_item_id,
-          quantity: item.quantity,
-        })),
+        items.map(depletionItemFromCheckoutLine),
         resolvedOutlet?.id ?? null,
       )
       if (shortfallMessage) {

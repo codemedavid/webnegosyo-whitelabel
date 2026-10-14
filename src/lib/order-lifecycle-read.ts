@@ -23,6 +23,12 @@ import { fetchTenantOrderById } from '@/lib/tenant-supabase-orders-read'
 export interface StoredOrderLifecycle {
   status: string
   customerData: unknown
+  /** The branch that took the order; null = the unbranched store pool. */
+  outletId?: string | null
+}
+
+function readOutletId(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null
 }
 
 const ROUTING_COLUMNS = 'order_backend, convex_deployment_url, supabase_order_url, supabase_order_anon_key'
@@ -39,12 +45,12 @@ async function readFromConvex(
   if (!config.convex_deployment_url || !deployKey) return null
 
   const convex = createConvexServerClient(config.convex_deployment_url, deployKey)
-  const order = await convex.query<{ status?: string; customerData?: unknown } | null>(
+  const order = await convex.query<{ status?: string; customerData?: unknown; outletId?: unknown } | null>(
     'orders:getOrderByIdInternal',
     { orderId },
   )
   if (!order || typeof order.status !== 'string') return null
-  return { status: order.status, customerData: order.customerData ?? null }
+  return { status: order.status, customerData: order.customerData ?? null, outletId: readOutletId(order.outletId) }
 }
 
 async function readFromTenantSupabase(
@@ -54,8 +60,8 @@ async function readFromTenantSupabase(
 ): Promise<StoredOrderLifecycle | null> {
   const order = await fetchTenantOrderById(createTenantOrderRealtimeClient(config), tenantId, orderId)
   if (!order) return null
-  const row = order as unknown as { status: string; customer_data?: unknown }
-  return { status: row.status, customerData: row.customer_data ?? null }
+  const row = order as unknown as { status: string; customer_data?: unknown; outlet_id?: unknown }
+  return { status: row.status, customerData: row.customer_data ?? null, outletId: readOutletId(row.outlet_id) }
 }
 
 async function readFromPlatform(
@@ -65,14 +71,14 @@ async function readFromPlatform(
 ): Promise<StoredOrderLifecycle | null> {
   const { data, error } = await supabase
     .from('orders')
-    .select('status, customer_data')
+    .select('status, customer_data, outlet_id')
     .eq('id', orderId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
   if (error) throw error
-  const row = data as { status: string; customer_data: unknown } | null
+  const row = data as { status: string; customer_data: unknown; outlet_id?: unknown } | null
   if (!row) return null
-  return { status: row.status, customerData: row.customer_data ?? null }
+  return { status: row.status, customerData: row.customer_data ?? null, outletId: readOutletId(row.outlet_id) }
 }
 
 export async function readStoredOrderLifecycle(

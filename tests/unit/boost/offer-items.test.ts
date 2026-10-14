@@ -1,4 +1,4 @@
-import { needsChoices, offerableItems, postAddOffers } from '@/lib/boost/offer-items'
+import { needsChoices, offerableItems, oneTapSelection, postAddOffers } from '@/lib/boost/offer-items'
 import type { MenuItem } from '@/types/database'
 
 const base = (overrides: Partial<MenuItem> = {}): MenuItem =>
@@ -31,6 +31,53 @@ describe('needsChoices', () => {
     expect(needsChoices(base({
       modifier_groups: [{ id: 'g', name: 'Extras', display_order: 0, min_select: 0, max_select: null, options: [] }],
     } as Partial<MenuItem>))).toBe(false)
+  })
+})
+
+describe('oneTapSelection', () => {
+  it('adds a plain dish with no picks at all', () => {
+    expect(oneTapSelection(base())).toEqual({ variations: undefined, addons: [] })
+  })
+
+  it('carries the default picks of optional modifier groups, as the product page seeds them', () => {
+    const item = base({
+      modifier_groups: [
+        { id: 'sugar', name: 'Sugar', display_order: 0, min_select: 0, max_select: 1, options: [
+          { id: 'full', name: '100%', price_modifier: 0, display_order: 0, is_default: true },
+          { id: 'half', name: '50%', price_modifier: 0, display_order: 1 },
+        ] },
+        { id: 'extras', name: 'Extras', display_order: 1, min_select: 0, max_select: null, options: [
+          { id: 'pearls', name: 'Pearls', price_modifier: 15, display_order: 0, is_default: true },
+          { id: 'jelly', name: 'Jelly', price_modifier: 15, display_order: 1 },
+        ] },
+      ],
+    } as Partial<MenuItem>)
+
+    const { variations, addons } = oneTapSelection(item)
+
+    expect(Object.values(variations ?? {}).map((option) => option.id)).toEqual(['full'])
+    expect(addons.map((addon) => addon.id)).toEqual(['pearls'])
+  })
+
+  it('seeds one pick per optional legacy variation type, like the legacy product page', () => {
+    const item = base({
+      variation_types: [{ id: 'temp', name: 'Temp', is_required: false, display_order: 0, options: [
+        { id: 'hot', name: 'Hot', price_modifier: 0, display_order: 0 },
+        { id: 'iced', name: 'Iced', price_modifier: 10, display_order: 1, is_default: true },
+      ] }],
+    } as Partial<MenuItem>)
+
+    expect(oneTapSelection(item).variations).toEqual({ temp: expect.objectContaining({ id: 'iced' }) })
+  })
+})
+
+describe('needsChoices with default picks', () => {
+  it('opens the dish when a default pick is a linked dish (its price is only known on the page)', () => {
+    expect(needsChoices(base({
+      modifier_groups: [{ id: 'side', name: 'Side', display_order: 0, min_select: 0, max_select: 1, options: [
+        { id: 'coke', name: 'Coke', price_modifier: 0, display_order: 0, is_default: true, menu_item_id: 'm-coke' },
+      ] }],
+    } as Partial<MenuItem>))).toBe(true)
   })
 })
 

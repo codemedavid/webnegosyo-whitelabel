@@ -65,20 +65,12 @@ export interface OrderFollowUpInput {
 async function depleteStockForOrder(input: OrderFollowUpInput): Promise<void> {
   if (input.tenantConfig.inventory_enabled !== true) return
   const { applyOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+  const { depletionItemFromCheckoutLine } = await import('@/lib/inventory/order-depletion')
   await applyOrderStockBestEffort(
     input.tenantId,
     input.orderId,
-    input.items.map((item) => ({
-      menuItemId: item.menu_item_id,
-      quantity: item.quantity,
-      // The same id set feeds both buckets: variation options and unified
-      // modifier options both arrive here and ids are unique per option, so
-      // whichever recipe target exists matches and the other finds nothing.
-      optionIds: item.option_ids ?? [],
-      modifierOptionIds: [...new Set([...(item.option_ids ?? []), ...(item.addon_ids ?? [])])],
-      addonIds: item.addon_ids ?? [],
-      ...(item.addon_quantities ? { addonQuantities: item.addon_quantities } : {}),
-    })),
+    // The same mapping the checkout stock guard judged this cart with.
+    input.items.map(depletionItemFromCheckoutLine),
     'sale',
     0,
     input.outletId,

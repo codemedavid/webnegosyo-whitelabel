@@ -24,16 +24,67 @@ import { parseStockAuditSource, type StockAuditContext } from '@/lib/inventory/s
  * (a voided counter sale, or an online order cancelled from the merchant app)
  * never reaches `updateOrderStatus` either, so without it a cancelled order's
  * ingredients stayed spent. Restore needs no items — the reversal is derived
- * from the sale movements the order actually recorded.
+ * from the sale movements the order actually recorded. It is refused (409) for
+ * an order the server can read and that is NOT cancelled, and it gives a
+ * pre-order's date stock back, as `updateOrderStatus` does.
+ *
+ * `redeplete` is the un-cancel: an order leaving `cancelled` from the app
+ * spends exactly what its cancellation put back. Refused (409) while the
+ * stored order is still cancelled.
  *
  * Authenticated via the caller's own Supabase access token — same trust level
  * as /api/revalidate-menu and `verifyTenantAdmin` in src/lib/admin-service.ts.
  */
 
 /** What the caller wants done to this order's stock. */
-type StockAction = 'deplete' | 'restore' | 'revise'
+type StockAction = 'deplete' | 'restore' | 'revise' | 'redeplete'
 
-const STOCK_ACTIONS: readonly StockAction[] = ['deplete', 'restore', 'revise']
+const STOCK_ACTIONS: readonly StockAction[] = ['deplete', 'restore', 'revise', 'redeplete']
+
+/**
+ * The server's own read of the order, from whichever backend holds it.
+ * `unreadable` = the read threw (backend down): the caller should retry, so
+ * lifecycle-gated actions answer 503 rather than guess.
+ */
+type LifecycleRead =
+  | { kind: 'found'; status: string; customerData: unknown; outletId: string | null }
+  | { kind: 'missing' }
+  | { kind: 'unreadable' }
+
+async function readOrderLifecycle(tenantId: string, orderId: string): Promise<LifecycleRead> {
+  try {
+    const { readStoredOrderLifecycle } = await import('@/lib/order-lifecycle-read')
+    const order = await readStoredOrderLifecycle(tenantId, orderId)
+    if (!order) return { kind: 'missing' }
+    return {
+      kind: 'found',
+      status: order.status,
+      customerData: order.customerData,
+      outletId: order.outletId ?? null,
+    }
+  } catch (error) {
+    console.error('[order-stock] Could not read the order', { tenantId, orderId }, error)
+    return { kind: 'unreadable' }
+  }
+}
+
+function lifecycleRefusal(read: LifecycleRead, mustBeCancelled: boolean): NextResponse | null {
+  if (read.kind === 'unreadable') {
+    return NextResponse.json({ error: 'order_unreadable' }, { status: 503 })
+  }
+  // A missing order (not found, or a backend this server cannot reach) keeps
+  // the behaviour these actions always had: the caller is an authenticated
+  // member of the store acting on its own order.
+  if (read.kind === 'missing') return null
+  const isCancelled = read.status === 'cancelled'
+  if (isCancelled !== mustBeCancelled) {
+    return NextResponse.json(
+      { error: mustBeCancelled ? 'order_not_cancelled' : 'order_still_cancelled' },
+      { status: 409 },
+    )
+  }
+  return null
+}
 
 /** One configured line of the sale, as the register sends it. */
 interface OrderStockItemInput {
@@ -60,12 +111,15 @@ function toDepletionItems(value: unknown) {
   if (!Array.isArray(value)) return []
 
   return (value as OrderStockItemInput[])
-    .filter((item) => typeof item?.menuItemId === 'string' && Number.isFinite(Number(item?.quantity)) && Number(item?.quantity) > 0 && validateAddonQuantities(item.addonQuantities, toStringArray(item.addonIds)))
+    .filter((item) => typeof item?.menuItemId === 'string' && Number.isFinite(Number(item?.quantity)) && Number(item?.quantity) > 0)
     .map((item) => {
       const optionIds = toStringArray(item.optionIds)
       const addonIds = toStringArray(item.addonIds)
+      // One malformed portion count must not cost the line its base recipe:
+      // only the entries that validate are kept (an absent count means one).
       const addonQuantities = item.addonQuantities && typeof item.addonQuantities === 'object' && !Array.isArray(item.addonQuantities)
-        ? Object.fromEntries(Object.entries(item.addonQuantities).filter(([id, quantity]) => addonIds.includes(id) && Number.isSafeInteger(quantity) && Number(quantity) > 0 && Number(quantity) <= 99))
+        ? Object.fromEntries(Object.entries(item.addonQuantities).filter(([id, quantity]) =>
+            validateAddonQuantities({ [id]: quantity }, addonIds)))
         : undefined
       return {
         menuItemId: item.menuItemId as string,
@@ -166,7 +220,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? orderRow.outlet_id
       : null
 
-  const actorOutletId = orderOutletId ?? accountOutletId
+  // A Convex order has no row above, so a store-wide account (owner, full
+  // admin) would otherwise spend the unbranched pool for a sale a branch made.
+  // Its branch is read from Convex itself — only when it matters (a deplete or
+  // revise by a store-wide account), since a branch account's own branch is
+  // already the answer. A failed read keeps the old fallback.
+  let convexOutletId: string | null = null
+  if (!orderOutletId && !accountOutletId && !isUuid(orderId) && (action === 'deplete' || action === 'revise')) {
+    const read = await readOrderLifecycle(tenantId, orderId)
+    convexOutletId = read.kind === 'found' ? read.outletId : null
+  }
+
+  const actorOutletId = orderOutletId ?? convexOutletId ?? accountOutletId
 
   // For the audit log: WHICH screen asked (register, QR scan, order list …) and
   // WHO was signed in. The source is a label from a fixed list, never an
@@ -178,8 +243,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (action === 'restore') {
+    // Never reverse a live order: that hides what left the shelf AND burns the
+    // void claim its real cancellation will need.
+    const read = await readOrderLifecycle(tenantId, orderId)
+    const refusal = lifecycleRefusal(read, true)
+    if (refusal) return refusal
+
     const { reverseOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
     await reverseOrderStockBestEffort(tenantId, orderId, audit)
+
+    // A cancelled pre-order gives its date stock back, like `updateOrderStatus`
+    // and the Convex order sheet do. The claim rides in the SERVER's copy of
+    // customer_data, never the request body. Idempotent per claim.
+    if (read.kind === 'found') {
+      const { releasePresellForCancelledConvexOrder } = await import('@/lib/presell/convex-cancel')
+      await releasePresellForCancelledConvexOrder(tenantId, read.customerData)
+    }
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === 'redeplete') {
+    const read = await readOrderLifecycle(tenantId, orderId)
+    const refusal = lifecycleRefusal(read, false)
+    if (refusal) return refusal
+
+    const { redepleteOrderStockBestEffort } = await import('@/lib/inventory/order-stock-service')
+    await redepleteOrderStockBestEffort(tenantId, orderId, audit)
     return NextResponse.json({ success: true })
   }
 

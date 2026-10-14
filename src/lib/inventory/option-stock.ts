@@ -60,3 +60,24 @@ export function simpleOptionDemands(items: readonly DepletionOrderItem[], catalo
   }
   return [...totals.values()]
 }
+
+/**
+ * The names a diner would recognise for the picks on this line that spend
+ * ingredients of their own — the selected options carrying a recipe for this
+ * dish — in menu order. "Pearls", not "100% sugar": only a pick with a recipe
+ * can be why a configuration runs out.
+ */
+export function recipeOptionNames(
+  item: DepletionOrderItem,
+  catalog: readonly StockOptionCatalogItem[],
+  recipes: readonly Recipe[],
+): string[] {
+  const selected = new Set(selectedStockOptionIds(item))
+  if (selected.size === 0) return []
+  const withRecipe = new Set(recipes.flatMap((recipe) =>
+    recipe.menu_item_id === item.menuItemId
+      ? [recipe.modifier_option_id, recipe.addon_id, recipe.variation_option_id].filter((id): id is string => Boolean(id))
+      : []))
+  const options = catalog.find((row) => row.id === item.menuItemId)?.modifier_groups?.flatMap((group) => group.options) ?? []
+  return options.filter((option) => selected.has(option.id) && withRecipe.has(option.id)).map((option) => option.name)
+}

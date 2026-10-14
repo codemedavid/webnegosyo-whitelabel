@@ -15,9 +15,9 @@
 import { GET } from '@/app/api/inventory/ceilings/route'
 import { NextRequest } from 'next/server'
 
-const getMenuStockCeilings = jest.fn()
+const getMenuStockAvailability = jest.fn()
 jest.mock('@/lib/inventory/menu-ceilings', () => ({
-  getMenuStockCeilings: (...a: unknown[]) => getMenuStockCeilings(...a),
+  getMenuStockAvailability: (...a: unknown[]) => getMenuStockAvailability(...a),
 }))
 
 const request = (query: string) =>
@@ -25,7 +25,10 @@ const request = (query: string) =>
 
 beforeEach(() => {
   jest.clearAllMocks()
-  getMenuStockCeilings.mockResolvedValue(new Map([['m-pizza', 5]]))
+  getMenuStockAvailability.mockResolvedValue({
+    dishes: new Map([['m-pizza', 5]]),
+    options: new Map([['m-tea', new Map([['opt-pearls', 0]])]]),
+  })
 })
 
 describe('GET /api/inventory/ceilings', () => {
@@ -37,35 +40,42 @@ describe('GET /api/inventory/ceilings', () => {
     expect(body.ceilings).toEqual({ 'm-pizza': 5 })
   })
 
+  it('returns, per dish, how many can be made with each recipe-tracked option', async () => {
+    const body = await (await GET(request('?tenantId=t1'))).json()
+
+    expect(body.optionCeilings).toEqual({ 'm-tea': { 'opt-pearls': 0 } })
+  })
+
   it('rejects a request that names no tenant', async () => {
     const response = await GET(request(''))
 
     expect(response.status).toBe(400)
-    expect(getMenuStockCeilings).not.toHaveBeenCalled()
+    expect(getMenuStockAvailability).not.toHaveBeenCalled()
   })
 
   it('passes the branch through so a stepper reflects that branch’s shelf', async () => {
     await GET(request('?tenantId=t1&outletId=branch-1'))
 
-    expect(getMenuStockCeilings).toHaveBeenCalledWith('t1', 'branch-1')
+    expect(getMenuStockAvailability).toHaveBeenCalledWith('t1', 'branch-1')
   })
 
   it('treats a missing branch as store-wide', async () => {
     await GET(request('?tenantId=t1'))
 
-    expect(getMenuStockCeilings).toHaveBeenCalledWith('t1', null)
+    expect(getMenuStockAvailability).toHaveBeenCalledWith('t1', null)
   })
 
   it('answers with no ceilings rather than an error when the read throws', async () => {
     // A stepper that cannot load its cap must fall back to uncapped, exactly as
     // it behaved before this route existed — never to a broken menu.
-    getMenuStockCeilings.mockRejectedValue(new Error('boom'))
+    getMenuStockAvailability.mockRejectedValue(new Error('boom'))
 
     const response = await GET(request('?tenantId=t1'))
     const body = await response.json()
 
     expect(response.status).toBe(200)
     expect(body.ceilings).toEqual({})
+    expect(body.optionCeilings).toEqual({})
   })
 
   it('is not cached — a ceiling is stale the moment the next order lands', async () => {

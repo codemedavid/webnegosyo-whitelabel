@@ -16,7 +16,8 @@
  * want the same answers and must not compute them differently.
  */
 
-import type { InventoryItem, MenuItem, Recipe, RecipeComponent } from '@/types/database'
+import { normalizeModifierGroups } from '@/lib/modifier-groups'
+import type { InventoryItem, MenuItem, ModifierGroup, Recipe, RecipeComponent } from '@/types/database'
 
 export interface RecipeCoverageRow {
   menuItemId: string
@@ -24,6 +25,13 @@ export interface RecipeCoverageRow {
   /** True only when a base recipe exists AND lists at least one ingredient. */
   hasRecipe: boolean
   ingredientCount: number
+  /**
+   * Groups on a TRACKED dish where the diner picks portions (flavours ×N,
+   * add-ons) but no choice carries a recipe: those picks deduct nothing, so
+   * the dish spends only its base recipe, once per order line. Absent when
+   * there is nothing to say.
+   */
+  unrecipedOptionGroups?: string[]
 }
 
 export interface RecipeCoverageSummary {
@@ -59,6 +67,42 @@ function countIngredientsPerDish(
   return counts
 }
 
+/** Option ids that carry their own recipe, per dish. */
+function optionRecipeIdsByDish(recipes: readonly Recipe[]): Map<string, Set<string>> {
+  const byDish = new Map<string, Set<string>>()
+  for (const recipe of recipes) {
+    if (!recipe.menu_item_id) continue
+    const optionId = recipe.modifier_option_id ?? recipe.addon_id ?? recipe.variation_option_id
+    if (!optionId) continue
+    const ids = byDish.get(recipe.menu_item_id) ?? new Set<string>()
+    ids.add(optionId)
+    byDish.set(recipe.menu_item_id, ids)
+  }
+  return byDish
+}
+
+/** A group where the diner can take more than one portion. */
+function isPortionGroup(group: ModifierGroup): boolean {
+  return group.selection_mode === 'quantity' || group.max_select === null || group.max_select > 1
+}
+
+/**
+ * The portion groups of a dish whose choices spend no ingredients of their
+ * own. A group is left out when any choice has a recipe, is another dish
+ * (that dish's recipe is spent) or is counted by hand (simple stock) — the
+ * merchant has clearly set that group up.
+ */
+export function findUnrecipedPortionGroups(
+  item: Pick<MenuItem, 'modifier_groups' | 'variation_types' | 'variations' | 'addons'>,
+  optionIdsWithRecipe: ReadonlySet<string>,
+): string[] {
+  return normalizeModifierGroups(item)
+    .filter((group) => isPortionGroup(group) && group.options.length > 0)
+    .filter((group) => !group.options.some((option) =>
+      optionIdsWithRecipe.has(option.id) || option.menu_item_id || option.stock_mode === 'simple'))
+    .map((group) => group.name)
+}
+
 /**
  * Every dish with whether it has a working recipe.
  *
@@ -73,16 +117,24 @@ export function buildRecipeCoverage(
   components: readonly RecipeComponent[],
 ): RecipeCoverageRow[] {
   const counts = countIngredientsPerDish(recipes, components)
+  const optionRecipes = optionRecipeIdsByDish(recipes)
+  const noOptionRecipes: ReadonlySet<string> = new Set()
 
-  const rows = menuItems.map((item) => {
+  const rows = menuItems.map((item): RecipeCoverageRow => {
     const ingredientCount = counts.get(item.id) ?? 0
+    // An empty recipe row is a shell that depletes nothing. Calling it
+    // covered would report a dish as ready while it does nothing at all.
+    const hasRecipe = ingredientCount > 0
+    // Only a tracked dish gets the hint; an untracked one is already flagged.
+    const unrecipedOptionGroups = hasRecipe
+      ? findUnrecipedPortionGroups(item, optionRecipes.get(item.id) ?? noOptionRecipes)
+      : []
     return {
       menuItemId: item.id,
       name: item.name,
-      // An empty recipe row is a shell that depletes nothing. Calling it
-      // covered would report a dish as ready while it does nothing at all.
-      hasRecipe: ingredientCount > 0,
+      hasRecipe,
       ingredientCount,
+      ...(unrecipedOptionGroups.length > 0 ? { unrecipedOptionGroups } : {}),
     }
   })
 
