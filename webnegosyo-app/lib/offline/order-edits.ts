@@ -38,6 +38,13 @@ export interface QueuedOrderEdit {
   args: Record<string, unknown>;
   /** When staff made the change (epoch ms); edits replay in this order. */
   createdAt: number;
+  /**
+   * The order's status as the screen saw it when a status change was made.
+   * Kept OUTSIDE `args` (Convex validators refuse unknown fields) so the
+   * replay can run the same stock follow-up a live change runs — a change out
+   * of `cancelled` re-spends the stock the cancellation put back.
+   */
+  previousStatus?: string;
   attempts: number;
   lastError: string | null;
 }
@@ -104,6 +111,7 @@ function isQueuedOrderEdit(value: unknown): value is QueuedOrderEdit {
     isOrderEditRef(String(value.ref)) &&
     isRecord(value.args) &&
     typeof value.createdAt === "number" && Number.isFinite(value.createdAt) &&
+    (value.previousStatus === undefined || typeof value.previousStatus === "string") &&
     typeof value.attempts === "number" && Number.isInteger(value.attempts) && value.attempts >= 0 &&
     (value.lastError === null || typeof value.lastError === "string")
   );

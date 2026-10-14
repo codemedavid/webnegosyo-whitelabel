@@ -61,17 +61,23 @@ export interface SyncOrderEditsResult {
   stoppedOffline: boolean;
 }
 
-/** Stock back on a cancel, the Loyverse receipt on a confirm — as a live change. */
+/**
+ * The follow-ups a live change runs: stock back on a cancel (or spent again on
+ * a change out of `cancelled`), the Loyverse receipt on a confirm.
+ */
 export async function runOrderEditSideEffects(edit: QueuedOrderEdit): Promise<void> {
   if (edit.ref !== "orders:updateOrderStatus") return;
   const status = String(edit.args.status ?? "");
   const orderId = String(edit.args.orderId);
   // Loaded lazily, like the sale bookkeeping: these pull in the auth store.
-  const [{ restoreStockForStatusChange }, { pushConfirmedOrderToLoyverse }] = await Promise.all([
+  const [{ syncStockForStatusChange }, { pushConfirmedOrderToLoyverse }] = await Promise.all([
     import("../order-cancel-stock"),
     import("../loyverse-confirm"),
   ]);
-  await restoreStockForStatusChange(status, orderId);
+  // Awaited only until the stock call is STORED (it is sent and retried in the
+  // background), so the change is forgotten only once its stock is owed
+  // durably. It never throws.
+  await syncStockForStatusChange({ orderId, newStatus: status, previousStatus: edit.previousStatus });
   if (status === "confirmed") await pushConfirmedOrderToLoyverse(orderId);
 }
 

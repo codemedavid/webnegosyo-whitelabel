@@ -42,7 +42,13 @@ function configurationKey(item: PosStockItem): string {
   // only by Extra Cheese must not merge, or an addon swap nets to zero and
   // moves no stock at all.
   const addons = (item.addonIds ?? []).slice().sort().join(",");
-  return `${item.menuItemId}|${options}|${addons}`;
+  // Portions too: "Kimchi ×2" spends twice the kimchi of "Kimchi", so a
+  // change of amount must move stock rather than net to zero.
+  const portions = Object.entries(item.addonQuantities ?? {})
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([id, n]) => `${id}=${n}`)
+    .join(",");
+  return `${item.menuItemId}|${options}|${addons}|${portions}`;
 }
 
 /** Units per configuration, collapsing lines that spend the same ingredients. */
@@ -104,6 +110,7 @@ export function posStockRevision(
       // Only emitted when the source carried them, so movements built from
       // pre-addon items keep their exact old shape.
       ...(shape.addonIds ? { addonIds: [...shape.addonIds] } : {}),
+      ...(shape.addonQuantities ? { addonQuantities: { ...shape.addonQuantities } } : {}),
     };
 
     if (delta > 0) deplete.push(movement);

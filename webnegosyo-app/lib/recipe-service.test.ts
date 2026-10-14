@@ -14,9 +14,14 @@
 // module still imports it, and the real one reaches expo-constants.
 jest.mock("./supabase", () => ({ supabase: { from: jest.fn() } }));
 
+import { optionTarget } from "./recipe-target";
 import {
   addRecipeComponent,
   ensureMenuItemRecipe,
+  ensureRecipe,
+  loadDishRecipeChoices,
+  loadDishRecipeCoverage,
+  loadRecipe,
   loadDishName,
   loadMenuItemRecipe,
   loadIngredientOptions,
@@ -58,6 +63,10 @@ function makeDb(results: Record<string, unknown>) {
     chain.select = () => chain;
     chain.order = () => chain;
     chain.eq = (column: string, value: unknown) => {
+      recorded.filters.push({ table, column, value });
+      return chain;
+    };
+    chain.in = (column: string, value: unknown) => {
       recorded.filters.push({ table, column, value });
       return chain;
     };
@@ -321,7 +330,7 @@ describe("addRecipeComponent", () => {
 
   it("inserts the line scoped to the tenant", async () => {
     // Arrange
-    const { db, recorded } = makeDb({ recipe_components: { data: null, error: null } });
+    const { db, recorded } = makeDb({ recipe_components: { data: [{ id: "comp-new" }], error: null } });
 
     // Act
     await addRecipeComponent(TENANT, input, db);
@@ -484,5 +493,186 @@ describe("loadDishName", () => {
     // Assert
     expect(name).toBe("");
     expect(recorded.filters).toHaveLength(0);
+  });
+});
+
+describe("choice recipes", () => {
+  const FLAVOUR = optionTarget(MENU_ITEM, "modifier_option", "opt-bbq");
+
+  it("looks a modifier option's recipe up by its own id column", async () => {
+    // Arrange
+    const { db, recorded } = makeDb({ recipes: { data: null, error: null } });
+
+    // Act
+    await loadRecipe(TENANT, FLAVOUR, db);
+
+    // Assert
+    expect(recorded.filters).toEqual(
+      expect.arrayContaining([
+        { table: "recipes", column: "tenant_id", value: TENANT },
+        { table: "recipes", column: "menu_item_id", value: MENU_ITEM },
+        { table: "recipes", column: "target_type", value: "modifier_option" },
+        { table: "recipes", column: "modifier_option_id", value: "opt-bbq" },
+      ]),
+    );
+  });
+
+  it.each([
+    [optionTarget(MENU_ITEM, "modifier_option", "o1"), { modifier_option_id: "o1" }],
+    [optionTarget(MENU_ITEM, "variation_option", "v1"), { variation_option_id: "v1" }],
+    [optionTarget(MENU_ITEM, "addon", "a1"), { addon_id: "a1" }],
+  ])("creates a %j recipe with only its own id column", async (target, idColumn) => {
+    // Arrange
+    const { db, recorded } = makeDb({
+      recipes: [
+        { data: null, error: null },
+        { data: { id: "recipe-new" }, error: null },
+      ],
+    });
+
+    // Act
+    const id = await ensureRecipe(TENANT, target, db);
+
+    // Assert
+    expect(id).toBe("recipe-new");
+    expect(recorded.inserts).toEqual([
+      {
+        table: "recipes",
+        row: { tenant_id: TENANT, target_type: target.type, menu_item_id: MENU_ITEM, ...idColumn },
+      },
+    ]);
+  });
+});
+
+describe("line validation", () => {
+  const units = [
+    { id: "unit-pc", abbreviation: "pc", dimension: "count" as const },
+    { id: "unit-g", abbreviation: "g", dimension: "weight" as const },
+    { id: "unit-ml", abbreviation: "ml", dimension: "volume" as const },
+  ];
+  const egg = { name: "Egg", stockUnitId: "unit-pc" };
+  const milk = { name: "Milk", stockUnitId: "unit-ml" };
+  const line = { recipeId: "r", inventoryItemId: "ing-egg", quantity: 50, unitId: "unit-g", sortOrder: 0 };
+
+  it("refuses a unit that can never convert to the stock unit, before writing", async () => {
+    const { db, recorded } = makeDb({});
+    await expect(addRecipeComponent(TENANT, { ...line, check: { ingredient: egg, units } }, db)).rejects.toThrow(
+      /stocked in pc/,
+    );
+    expect(recorded.inserts).toHaveLength(0);
+  });
+
+  it("accepts grams of an ingredient stocked in millilitres", async () => {
+    const { db, recorded } = makeDb({ recipe_components: { data: [{ id: "c" }], error: null } });
+    await addRecipeComponent(TENANT, { ...line, check: { ingredient: milk, units } }, db);
+    expect(recorded.inserts).toHaveLength(1);
+  });
+
+  it("refuses an update to an unconvertible unit", async () => {
+    const { db, recorded } = makeDb({});
+    await expect(
+      updateRecipeComponent(TENANT, "c", { quantity: 2, unitId: "unit-g", check: { ingredient: egg, units } }, db),
+    ).rejects.toThrow(/can't be measured in g/);
+    expect(recorded.updates).toHaveLength(0);
+  });
+
+  it("reports an insert that wrote no row (an RLS refusal reads as zero rows)", async () => {
+    const { db } = makeDb({ recipe_components: { data: [], error: null } });
+    await expect(addRecipeComponent(TENANT, line, db)).rejects.toThrow(/could not be added/);
+  });
+});
+
+describe("loadUnitOptions dimension", () => {
+  it("carries each unit's dimension so the picker can be filtered", async () => {
+    const { db } = makeDb({
+      inventory_units: { data: [{ id: "g", abbreviation: "g", dimension: "weight" }, { id: "x", abbreviation: "x", dimension: "bogus" }], error: null },
+    });
+    await expect(loadUnitOptions(TENANT, db)).resolves.toEqual([
+      { id: "g", abbreviation: "g", dimension: "weight" },
+      { id: "x", abbreviation: "x" },
+    ]);
+  });
+});
+
+describe("loadDishRecipeChoices", () => {
+  it("reads the dish's choices scoped to tenant and item", async () => {
+    // Arrange
+    const { db, recorded } = makeDb({
+      menu_items: {
+        data: {
+          name: "699 - Beef Flavor",
+          modifier_groups: [
+            {
+              id: "g1",
+              name: "Flavours",
+              display_order: 0,
+              min_select: 1,
+              max_select: 100,
+              options: [{ id: "o1", name: "Beef BBQ", price_modifier: 0, display_order: 0 }],
+            },
+          ],
+        },
+        error: null,
+      },
+    });
+
+    // Act
+    const choices = await loadDishRecipeChoices(TENANT, MENU_ITEM, db);
+
+    // Assert
+    expect(choices.name).toBe("699 - Beef Flavor");
+    expect(choices.groups[0].choices[0]).toEqual({
+      optionId: "o1",
+      name: "Beef BBQ",
+      target: optionTarget(MENU_ITEM, "modifier_option", "o1"),
+    });
+    expect(recorded.filters).toEqual(
+      expect.arrayContaining([
+        { table: "menu_items", column: "tenant_id", value: TENANT },
+        { table: "menu_items", column: "id", value: MENU_ITEM },
+      ]),
+    );
+  });
+
+  it("costs the choices, not the screen, when the dish cannot be read", async () => {
+    const { db } = makeDb({ menu_items: { data: null, error: { message: "boom" } } });
+    await expect(loadDishRecipeChoices(TENANT, MENU_ITEM, db)).resolves.toEqual({ name: "", groups: [] });
+  });
+});
+
+describe("loadDishRecipeCoverage", () => {
+  it("counts lines per target and leaves out empty recipes", async () => {
+    // Arrange
+    const { db, recorded } = makeDb({
+      recipes: {
+        data: [
+          { id: "r-base", target_type: "menu_item", variation_option_id: null, addon_id: null, modifier_option_id: null },
+          { id: "r-bbq", target_type: "modifier_option", variation_option_id: null, addon_id: null, modifier_option_id: "o1" },
+          { id: "r-empty", target_type: "addon", variation_option_id: null, addon_id: "a1", modifier_option_id: null },
+        ],
+        error: null,
+      },
+      recipe_components: {
+        data: [{ recipe_id: "r-base" }, { recipe_id: "r-base" }, { recipe_id: "r-bbq" }],
+        error: null,
+      },
+    });
+
+    // Act
+    const coverage = await loadDishRecipeCoverage(TENANT, MENU_ITEM, db);
+
+    // Assert
+    expect(coverage).toEqual({ menu_item: 2, "modifier_option:o1": 1 });
+    expect(recorded.filters).toEqual(
+      expect.arrayContaining([
+        { table: "recipe_components", column: "tenant_id", value: TENANT },
+        { table: "recipe_components", column: "recipe_id", value: ["r-base", "r-bbq", "r-empty"] },
+      ]),
+    );
+  });
+
+  it("answers null rather than throwing when it cannot be read", async () => {
+    const { db } = makeDb({ recipes: { data: null, error: { message: "boom" } } });
+    await expect(loadDishRecipeCoverage(TENANT, MENU_ITEM, db)).resolves.toBeNull();
   });
 });

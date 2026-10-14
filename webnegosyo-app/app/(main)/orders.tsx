@@ -41,7 +41,7 @@ const LIVE_QUEUE_SELECTION = defaultSelection(1);
 import { TickerProvider } from "../../components/TickerProvider";
 import { useAuthStore } from "../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../lib/demo";
-import { restoreStockForStatusChange } from "../../lib/order-cancel-stock";
+import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
 import {
   markPaidAfterHandover,
   planOrderStatusChange,
@@ -361,7 +361,8 @@ export default function OrdersScreen() {
       // The row moves at once; a failed write puts it back.
       const rollback = patchOrderStatus(orderId, newStatus);
       try {
-        const written = await updateStatus({ orderId, status: newStatus });
+        const previousStatus = order.status;
+        const written = await updateStatus({ orderId, status: newStatus }, { previousStatus });
         // Handing the order over is taking the money for it.
         if (plan.shouldMarkPaid) {
           await markPaidAfterHandover(updatePaymentStatus, orderId);
@@ -369,10 +370,11 @@ export default function OrdersScreen() {
         // Kept on the device: the replay restores stock and pushes to
         // Loyverse once the change reaches the server (sync-order-edits.ts).
         if (isQueuedOrderWrite(written)) return;
-        // Put the ingredients back on a cancel — the same shared side-effect
-        // the detail screen runs. Never throws, so a stock write cannot make an
-        // order un-cancellable from the queue.
-        await restoreStockForStatusChange(newStatus, String(orderId));
+        // Put the ingredients back on a cancel (or spend them again when an
+        // order leaves `cancelled`) — the shared side-effect every status
+        // screen runs. Retries in the background and never throws, so a stock
+        // write cannot make an order un-cancellable from the queue.
+        void syncStockForStatusChange({ orderId: String(orderId), newStatus, previousStatus });
 
         // Push the confirmed order into Loyverse — the same shared side-effect
         // the detail screen runs. Only the id travels: this list holds no line

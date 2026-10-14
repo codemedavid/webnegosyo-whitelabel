@@ -211,4 +211,33 @@ describe('useModifierGroups — bounded multi-select (choose 2 to 3)', () => {
     // Multi-select groups never collapse into the single-variation slot.
     expect(selectedVariations).toEqual({})
   })
+
+  describe('options whose recipe the shelf cannot cover', () => {
+    it('drops a default that turns out to be sold out once the ceilings arrive', () => {
+      // Arrange — the page seeds "Large" before the stock read lands.
+      const { result, rerender } = renderHook(
+        ({ soldOut }: { soldOut?: ReadonlySet<string> }) => useModifierGroups({ item: makeItem(), soldOutOptionIds: soldOut }),
+        { initialProps: {} as { soldOut?: ReadonlySet<string> } },
+      )
+      expect(result.current.selection['g-size']).toEqual(['o-large'])
+
+      // Act
+      rerender({ soldOut: new Set(['o-large']) })
+
+      // Assert — the required size falls to what can still be made, and the price follows.
+      expect(result.current.selection['g-size']).toEqual(['o-small'])
+      expect(result.current.totalPrice).toBe(100)
+      expect(result.current.groups[0].options[1].is_available).toBe(false)
+      expect(result.current.validate().valid).toBe(true)
+    })
+
+    it('does not let a sold-out add-on be picked', () => {
+      const soldOut = new Set(['o-cheese'])
+      const { result } = renderHook(() => useModifierGroups({ item: makeItem(), soldOutOptionIds: soldOut }))
+
+      act(() => result.current.toggle(result.current.groups[1], 'o-cheese'))
+
+      expect(result.current.selection['g-addons']).toEqual([])
+    })
+  })
 })

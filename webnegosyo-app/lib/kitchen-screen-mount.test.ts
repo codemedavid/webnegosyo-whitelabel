@@ -90,6 +90,14 @@ describe("kitchen screen", () => {
     expect(screen()).toMatch(/printForRole\(\s*\n?\s*"kitchen"/);
   });
 
+  it("asks the server before a bump or recall, and refuses a cancelled order", () => {
+    // A stale board once wrote a cancelled order back to `ready`: resurrected,
+    // its stock restored by the cancel and never spent again.
+    const source = screen();
+    expect(source.match(/guardKitchenStatusWrite\(/g)?.length).toBe(2);
+    expect(source.match(/await readFreshStatus\(/g)?.length).toBe(2);
+  });
+
   it("blocks the demo session from bumping a real store's orders", () => {
     expect(screen()).toMatch(/isDemo/);
   });

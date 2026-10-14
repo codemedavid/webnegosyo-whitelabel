@@ -11,10 +11,11 @@
  * over it (`offline-order-view.ts`). The last live list is kept on disk, so a
  * shop that opens the app with no connection still sees its open orders.
  *
- * Writes: `useOfflineOrderMutation` has the signature of `useSafeMutation`;
+ * Writes: `useOfflineOrderMutation` has the signature of `useSafeMutation`
+ * plus an optional `{ previousStatus }`, stored beside a queued status change;
  * a change that cannot reach the server is queued and resolves with a
  * marker (`isQueuedOrderWrite`) so the screen can leave its follow-ups —
- * stock on a cancel, Loyverse on a confirm — to the replay.
+ * stock on a cancel or un-cancel, Loyverse on a confirm — to the replay.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -24,7 +25,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { resolveOrderBackend, type OrderBackend } from "../order-backend";
 import { useAccountBranchScope } from "../use-branch-scope";
 import { branchScopeKey } from "../backends/query-keys";
-import { getOutbox } from "./order-outbox";
+import { getOutbox, isUserVisibleSale } from "./order-outbox";
 import { getOrderEdits, isOrderEditRef } from "./order-edits";
 import { persistSnapshot, readResourceSnapshot } from "./resource-snapshot";
 import { useConnectivity } from "./use-connectivity";
@@ -244,14 +245,22 @@ export function useOfflineOrderDetail(orderId: string | undefined): OfflineOrder
     return {
       serverOrderId,
       isDeviceOnly: isSaleUnwritten(sale),
-      localOrder: sale ? applyOrderEdits(queuedSaleToOrder(sale), edits) : null,
+      // A sale the server already shows (`isUserVisibleSale`) has no local
+      // copy; the sale entry still maps a local id to it.
+      localOrder: sale && isUserVisibleSale(sale) ? applyOrderEdits(queuedSaleToOrder(sale), edits) : null,
       withEdits: (order) => applyOrderEdits(order, edits),
       pendingPayments: localPaymentsFor(serverOrderId, edits),
     };
   }, [orderId, input]);
 }
 
-type SafeMutation = (args?: unknown) => Promise<unknown>;
+/** What a screen knows about the order beyond the mutation's own arguments. */
+export interface OrderChangeMeta {
+  /** For a status change: the status the order had before it. */
+  previousStatus?: string;
+}
+
+type OfflineOrderMutation = (args?: unknown, meta?: OrderChangeMeta) => Promise<unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -261,14 +270,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * `useSafeMutation` for order changes that also works offline. Any other ref
  * passes straight through.
  */
-export function useOfflineOrderMutation(ref: FunctionReference<"mutation">): SafeMutation {
+export function useOfflineOrderMutation(ref: FunctionReference<"mutation">): OfflineOrderMutation {
   const live = useSafeMutation(ref);
   const tenantId = useScopedTenantId();
   const backend = useOrderBackend();
   const refName = String(ref);
 
-  return useCallback<SafeMutation>(
-    async (args) => {
+  return useCallback<OfflineOrderMutation>(
+    async (args, meta) => {
       if (!isOrderEditRef(refName) || !tenantId || !isRecord(args)) return live(args);
       // A Convex sale written since the screen loaded is addressed by its real id.
       const requested = String(args.orderId ?? "");
@@ -283,6 +292,7 @@ export function useOfflineOrderMutation(ref: FunctionReference<"mutation">): Saf
         tenantId,
         backend,
         live,
+        previousStatus: meta?.previousStatus,
         isOrderOnDeviceOnly: () => isSaleUnwritten(sale),
         hasEarlierEdits: (orderId) =>
           getOrderEdits().edits.some((edit) => edit.tenantId === tenantId && edit.orderId === orderId),

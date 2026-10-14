@@ -12,7 +12,7 @@
  */
 
 import type { OrderBackend } from "../order-backend";
-import { needsAttention, type QueuedSale } from "./order-outbox";
+import { isUserVisibleSale, needsAttention, type QueuedSale } from "./order-outbox";
 
 /** A healthy write lands well inside this; past it, the cashier should know. */
 export const FRESH_SALE_GRACE_MS = 10_000;
@@ -37,7 +37,9 @@ export function summarizePendingSales(
   sales: readonly QueuedSale[],
   scope: PendingSaleScope,
 ): PendingSaleSummary {
-  const mine = sales.filter((sale) => sale.tenantId === scope.tenantId);
+  // A written sale owing only its stock call is retried quietly in the
+  // background: the cashier has nothing to wait for or reconcile.
+  const mine = sales.filter((sale) => sale.tenantId === scope.tenantId && isUserVisibleSale(sale));
   const isStuck = (sale: QueuedSale) => needsAttention(sale) || sale.backend !== scope.backend;
   const waiting = mine.filter((sale) => !isStuck(sale));
   const isFresh = (sale: QueuedSale) =>

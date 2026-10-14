@@ -11,6 +11,8 @@ jest.mock("./supabase", () => ({
 }));
 
 import {
+  classifyStockResponse,
+  notifyOrderStockRedeplete,
   notifyPosStockDepletion,
   notifyOrderStockRestore,
 } from "./pos-stock-notify";
@@ -76,7 +78,7 @@ describe("notifyPosStockDepletion", () => {
     // Act / Assert
     await expect(
       notifyPosStockDepletion("t1", "order-1", items),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("retry");
   });
 
   it("never throws when the session lookup fails", async () => {
@@ -86,7 +88,42 @@ describe("notifyPosStockDepletion", () => {
     // Act / Assert
     await expect(
       notifyPosStockDepletion("t1", "order-1", items),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("retry");
+  });
+
+  it("reports ok once the platform accepted the depletion", async () => {
+    await expect(notifyPosStockDepletion("t1", "order-1", items)).resolves.toBe("ok");
+  });
+
+  it("reports retry when there was no session to send it with", async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+    await expect(notifyPosStockDepletion("t1", "order-1", items)).resolves.toBe("retry");
+  });
+
+  it("reports retry on a server error and permanent on a refusal", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
+    await expect(notifyPosStockDepletion("t1", "order-1", items)).resolves.toBe("retry");
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 409 });
+    await expect(notifyPosStockDepletion("t1", "order-1", items)).resolves.toBe("permanent");
+    warn.mockRestore();
+  });
+
+  it("logs a permanent refusal with the order, the store and the HTTP status", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 403 });
+
+    await notifyPosStockDepletion("t1", "order-1", items);
+
+    const line = String(warn.mock.calls[0][0]);
+    expect(line).toContain("order-1");
+    expect(line).toContain("t1");
+    expect(line).toContain("403");
+    warn.mockRestore();
+  });
+
+  it("treats a sale with no items as already done", async () => {
+    await expect(notifyPosStockDepletion("t1", "order-1", [])).resolves.toBe("ok");
   });
 });
 
@@ -144,7 +181,7 @@ describe("notifyOrderStockRestore", () => {
     // Act / Assert
     await expect(
       notifyOrderStockRestore("t1", "order-1"),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("retry");
   });
 });
 
@@ -171,5 +208,58 @@ describe("audit source", () => {
   it("names the source of a restore", async () => {
     await notifyOrderStockRestore("t1", "order-1", "pos");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ action: "restore", source: "pos" });
+  });
+});
+
+describe("notifyOrderStockRedeplete", () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    getSessionMock.mockResolvedValue({ data: { session: { access_token: "token-1" } } });
+  });
+
+  it("asks the platform to re-spend what the cancellation returned, sending no lines", async () => {
+    // Act
+    const outcome = await notifyOrderStockRedeplete("t1", "order-1", "merchant_app");
+
+    // Assert
+    expect(outcome).toBe("ok");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      tenantId: "t1",
+      orderId: "order-1",
+      action: "redeplete",
+      source: "merchant_app",
+    });
+  });
+
+  it("reports a refusal for an order that is still cancelled as permanent", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    fetchMock.mockResolvedValue({ ok: false, status: 409 });
+    await expect(notifyOrderStockRedeplete("t1", "order-1")).resolves.toBe("permanent");
+    warn.mockRestore();
+  });
+});
+
+describe("classifyStockResponse", () => {
+  it.each([
+    [true, 200, "ok"],
+    [false, 400, "permanent"],
+    [false, 401, "retry"],
+    [false, 403, "permanent"],
+    [false, 409, "permanent"],
+    [false, 404, "retry"],
+    [false, 405, "permanent"],
+    [false, 408, "retry"],
+    [false, 410, "permanent"],
+    [false, 422, "permanent"],
+    [false, 429, "retry"],
+    [false, 500, "retry"],
+    [false, 503, "retry"],
+    [false, null, "retry"],
+  ] as const)("ok=%s status=%s is %s", (ok, status, expected) => {
+    expect(classifyStockResponse(ok, status)).toBe(expected);
   });
 });

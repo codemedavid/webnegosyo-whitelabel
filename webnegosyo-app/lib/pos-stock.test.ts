@@ -112,3 +112,37 @@ describe("buildPosStockItems", () => {
     expect(items).toEqual([]);
   });
 });
+
+describe("add-on portions", () => {
+  it("sends portions beyond one as addonQuantities, keyed by option id", () => {
+    const line = {
+      menuItemId: "m-side",
+      name: "Sides",
+      basePrice: 0,
+      quantity: 1,
+      selections: [
+        { groupId: "g", groupName: "Sides", optionId: "o-kimchi", optionName: "Kimchi", priceModifier: 0, portions: 2 },
+        { groupId: "g", groupName: "Sides", optionId: "o-egg", optionName: "Egg", priceModifier: 0 },
+      ],
+    };
+    const [item] = buildPosStockItems(addLine([], line));
+    expect(item.addonIds).toEqual(["o-kimchi", "o-egg"]);
+    expect(item.addonQuantities).toEqual({ "o-kimchi": 2 });
+  });
+
+  it("omits addonQuantities entirely when every option is one portion", () => {
+    const [item] = buildPosStockItems(addLine([], largeLatte));
+    expect(item).not.toHaveProperty("addonQuantities");
+  });
+
+  it("clamps a corrupt portion count into the platform's 1..99 range", () => {
+    const line = {
+      menuItemId: "m",
+      name: "x",
+      basePrice: 0,
+      quantity: 1,
+      selections: [{ groupId: "g", groupName: "g", optionId: "o", optionName: "o", priceModifier: 0, portions: 500 }],
+    };
+    expect(buildPosStockItems(addLine([], line))[0].addonQuantities).toEqual({ o: 99 });
+  });
+});

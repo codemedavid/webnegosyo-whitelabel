@@ -1,6 +1,7 @@
 'use client'
 
 import { RecipeDisclosure } from '@/components/admin/recipe-disclosure'
+import { OPTION_RECIPE_HINT, OPTION_RECIPE_LABEL } from '@/lib/inventory/recipe-copy'
 
 interface ModifierOptionRecipeEditorProps {
   tenantId: string
@@ -31,7 +32,8 @@ export function ModifierOptionRecipeEditor({
       tenantId={tenantId}
       tenantSlug={tenantSlug}
       target={{ type: 'modifier_option', menuItemId, modifierOptionId }}
-      label="Recipe (ingredients used per sale)"
+      label={OPTION_RECIPE_LABEL}
+      hint={OPTION_RECIPE_HINT}
       onSaved={onSaved}
     />
   )

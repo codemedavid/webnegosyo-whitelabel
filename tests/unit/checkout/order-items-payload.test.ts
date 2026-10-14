@@ -103,10 +103,14 @@ describe('buildOrderItemsPayload', () => {
 })
 
 describe('preflight lines', () => {
-  it('asks the stock check about each line by menu item and quantity', () => {
+  it('asks the stock check about each line in its configuration, as depletion will spend it', () => {
     expect(toStockPreflightLines([LEGACY_LINE, GROUPED_LINE])).toEqual([
-      { menuItemId: 'm1', quantity: 2 },
-      { menuItemId: 'm2', quantity: 1 },
+      {
+        menuItemId: 'm1', quantity: 2,
+        optionIds: ['v1'], addonIds: ['a1'], modifierOptionIds: ['v1', 'a1'],
+        addonQuantities: { a1: 2 },
+      },
+      { menuItemId: 'm2', quantity: 1, optionIds: ['o1', 'o2'], addonIds: [], modifierOptionIds: ['o1', 'o2'] },
     ])
   })
 

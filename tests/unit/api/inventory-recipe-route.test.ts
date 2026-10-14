@@ -87,6 +87,20 @@ describe('PUT /api/inventory/recipe', () => {
     expect(saveRecipeForTarget).toHaveBeenCalledWith(TENANT, TARGET, input)
   })
 
+  it('answers 400 with the merchant-facing reason when a line could never be deducted', async () => {
+    const { recipeLineRejection } = await import('@/lib/inventory/recipe-line-rules')
+    saveRecipeForTarget.mockRejectedValue(recipeLineRejection('Egg is stocked in pc, so it can\'t be measured in g'))
+    const response = await PUT(new NextRequest('http://localhost/api/inventory/recipe', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', origin: 'http://localhost' },
+      body: JSON.stringify({ tenantId: TENANT, tenantSlug: 'shop', target: TARGET, input: { notes: null, components: [] } }),
+    }))
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toContain('Egg is stocked in pc')
+    expect(captureException).not.toHaveBeenCalled()
+  })
+
   it('rejects a cross-origin write before authorization or persistence', async () => {
     const response = await PUT(new NextRequest('http://localhost/api/inventory/recipe', {
       method: 'PUT',

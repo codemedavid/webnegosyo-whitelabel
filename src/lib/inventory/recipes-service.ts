@@ -19,6 +19,8 @@ import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { Recipe, RecipeComponent } from '@/types/database'
 import { buildRecipeTargetColumns, type RecipeTarget } from '@/lib/inventory/recipe-target'
 import { buildRecipeRowFields } from '@/lib/inventory/recipe-yield'
+import { findRecipeProblem, recipeLineRejection } from '@/lib/inventory/recipe-line-rules'
+import type { InventoryUnit } from '@/lib/inventory/unit-conversion'
 import {
   recipeComponentInputSchema,
   recipeInputSchema,
@@ -92,9 +94,52 @@ export async function getRecipeForTarget(
   return { recipe, components: (components ?? []) as unknown as RecipeComponent[] }
 }
 
+type RecipeClient = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Refuse, before anything is written, a line that no sale could ever deduct:
+ * a quantity of zero or less, or a unit that cannot convert to the
+ * ingredient's stock unit (`recipeLineProblem`). Such a line used to be saved
+ * and then skipped by every sale, its only trace an audit-log detail string.
+ */
+async function assertRecipeLinesDeductible(
+  supabase: RecipeClient,
+  tenantId: string,
+  components: readonly RecipeComponentInput[],
+): Promise<void> {
+  if (components.length === 0) return
+
+  const ingredientIds = [...new Set(components.map((component) => component.inventory_item_id))]
+  const [ingredientsResult, unitsResult] = await Promise.all([
+    supabase
+      .from('inventory_items')
+      .select('id, name, stock_unit_id')
+      .eq('tenant_id', tenantId)
+      .in('id', ingredientIds),
+    supabase
+      .from('inventory_units')
+      .select('id, name, abbreviation, dimension, to_base_factor')
+      .eq('tenant_id', tenantId),
+  ])
+  if (ingredientsResult.error) throw ingredientsResult.error
+  if (unitsResult.error) throw unitsResult.error
+
+  const ingredients = new Map(
+    ((ingredientsResult.data ?? []) as unknown as Array<{ id: string; name: string; stock_unit_id: string }>)
+      .map((row) => [row.id, row]),
+  )
+  const units = (unitsResult.data ?? []) as unknown as InventoryUnit[]
+
+  const problem = findRecipeProblem(components, ingredients, units)
+  if (problem) throw recipeLineRejection(problem)
+}
+
 /**
  * Upsert a recipe for a target and replace its components. Passing an empty
  * component list with no existing recipe is a no-op that returns null.
+ *
+ * Every line must be deductible (`recipe-line-rules.ts`); a refused save
+ * throws a `recipeLineRejection` carrying the merchant-facing reason.
  */
 export async function saveRecipeForTarget(
   tenantId: string,
@@ -106,6 +151,8 @@ export async function saveRecipeForTarget(
   const validated = recipeInputSchema.parse(input)
   const supabase = ctx?.client ?? (await createClient())
   const cols = buildRecipeTargetColumns(target)
+
+  await assertRecipeLinesDeductible(supabase as RecipeClient, tenantId, validated.components)
 
   // Find or create the recipe row.
   const { data: existing, error: findError } = await applyTargetFilter(

@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import type { CostMode, ModifierOption, ModifierStockMode } from '@/types/database'
 import { setOptionCostMode } from '@/lib/modifier-groups-form'
 import { computeOptionMargin } from '@/lib/modifier-margin'
+import { STOCK_MODE_HINT } from '@/lib/inventory/recipe-copy'
 import { ModifierOptionRecipeEditor } from '@/components/admin/modifier-option-recipe-editor'
 import type { LinkableMenuItem, ModifierRecipeContext } from '@/components/admin/modifier-groups-editor'
 
@@ -246,11 +247,12 @@ function OptionSettings({ option, basePrice, recipeContext, recipeCost, linkable
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">Don&apos;t track</SelectItem>
+              <SelectItem value="none">Don&apos;t count separately</SelectItem>
               <SelectItem value="simple">Count how many are left</SelectItem>
               <SelectItem value="recipe">From recipe ingredients</SelectItem>
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">{STOCK_MODE_HINT[stockMode]}</p>
           {stockMode === 'simple' && (
             <Input
               type="number"

@@ -18,7 +18,7 @@ import { useOrderItemImages } from "../../../hooks/use-order-item-images";
 import { displayCustomerName, getInitials, getAvatarColor } from "../../../lib/order-visuals";
 import { useAuthStore } from "../../../stores/auth-store";
 import { DEMO_READONLY_MESSAGE } from "../../../lib/demo";
-import { restoreStockForStatusChange } from "../../../lib/order-cancel-stock";
+import { syncStockForStatusChange } from "../../../lib/order-cancel-stock";
 import { pushConfirmedOrderToLoyverse } from "../../../lib/loyverse-confirm";
 import { LalamoveDeliveryCard } from "../../../components/LalamoveDeliveryCard";
 import { SettlementCard, RevisionHistoryCard } from "../../../components/order/SettlementCards";
@@ -682,7 +682,8 @@ export default function OrderDetailScreen() {
       // Confirmation receipts print from GlobalReceiptAutoPrint, which reacts
       // to the status transition itself — so a confirm from this screen, the
       // list, the Drawer or the web admin all print exactly once.
-      const written = await updateStatus({ orderId: order._id, status: newStatus });
+      const previousStatus = order.status;
+      const written = await updateStatus({ orderId: order._id, status: newStatus }, { previousStatus });
 
       // Handing the order over is taking the money for it.
       if (plan.shouldMarkPaid) {
@@ -726,10 +727,11 @@ export default function OrderDetailScreen() {
         );
       }
 
-      // Put the ingredients back on a cancel. This order lives in Convex, so
-      // cancelling it never reaches the web app's updateOrderStatus where
-      // stock is restored. Shared with the order list screen; never throws.
-      await restoreStockForStatusChange(newStatus, String(order._id));
+      // Put the ingredients back on a cancel, or spend them again when the
+      // order leaves `cancelled`. A status written by the app never reaches
+      // the web app's updateOrderStatus where stock moves. Shared with every
+      // status screen; retries in the background and never throws.
+      void syncStockForStatusChange({ orderId: String(order._id), newStatus, previousStatus });
       return true;
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Failed to update status");
