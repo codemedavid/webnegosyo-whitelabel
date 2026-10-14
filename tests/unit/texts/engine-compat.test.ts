@@ -128,4 +128,20 @@ describe('migrations match the code', () => {
     expect(campaigns).toContain("check (status in ('draft', 'active', 'paused', 'archived', 'scheduled'))")
     expect(campaigns).toContain("pause_reason in ('owner', 'missed_no_phone')")
   })
+
+  test('the server guard refuses untrusted edits, draft go-live and deletes of web campaigns', () => {
+    const guard = sql('20261015130000_sms_campaigns_server_guard.sql')
+    expect(guard).toContain("old.status = 'draft' and new.status in ('scheduled', 'active')")
+    expect(guard.indexOf("old.status = 'draft'")).toBeLessThan(guard.indexOf("new.status := 'scheduled'")) // before the coercion
+    expect(guard).toContain("free_columns constant text[] := array['status', 'name', 'updated_at']")
+    expect(guard).toContain('before delete on public.sms_campaigns')
+  })
+
+  test('the aggregate RPCs the reads call exist, service-role only', () => {
+    const fns = sql('20261015131000_sms_campaign_aggregates.sql')
+    for (const name of ['sms_campaign_run_progress(uuid, uuid[])', 'sms_texts_came_back(uuid, timestamptz, integer, boolean)']) {
+      expect(fns).toContain(`revoke all on function public.${name} from public, anon, authenticated`)
+      expect(fns).toContain(`grant execute on function public.${name} to service_role`)
+    }
+  })
 })

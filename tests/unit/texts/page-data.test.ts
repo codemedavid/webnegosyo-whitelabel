@@ -36,7 +36,7 @@ beforeEach(() => {
 })
 
 describe('loadTextsPage', () => {
-  it('assembles the page and shares the campaign list with the live read', async () => {
+  it('assembles the page; the live part reads on its own, never the campaign list again', async () => {
     const { loadTextsPage } = await import('@/lib/texts/server/page-data')
     const page = await loadTextsPage(TENANT, { userId: 'u1', isOwner: true }, NOW)
     expect(page).toMatchObject({
@@ -44,13 +44,11 @@ describe('loadTextsPage', () => {
       campaigns: [{ id: 'c1' }], thirtyDays: { sent: 10, cameBack: 2, sales: 500 }, optOutLine: 'Reply STOP to stop',
     })
     expect(listCampaignsView).toHaveBeenCalledTimes(1)
-    const known = readTextsLive.mock.calls[0][3]
-    await expect(known.campaigns).resolves.toEqual([{ id: 'c1' }])
+    expect(readTextsLive).toHaveBeenCalledWith({ fake: true }, 't-1', NOW)
   })
 
   it('throws when the campaign list cannot be read', async () => {
     listCampaignsView.mockRejectedValue(new Error('boom'))
-    readTextsLive.mockImplementation(async (_db, _t, _n, known) => { await known.campaigns.catch(() => null); return {} })
     const { loadTextsPage } = await import('@/lib/texts/server/page-data')
     await expect(loadTextsPage(TENANT, { userId: 'u1', isOwner: false }, NOW)).rejects.toThrow('boom')
   })

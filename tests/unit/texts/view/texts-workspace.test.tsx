@@ -103,10 +103,12 @@ describe('Texts workspace', () => {
   test('header, hero and the campaign list', async () => {
     await renderPage('')
     expect(screen.getByRole('heading', { name: 'Texts' })).toBeInTheDocument()
-    expect(screen.getByText('Last 30 days: 412 sent · 37 came back · ₱9,860 in orders')).toBeInTheDocument()
+    expect(screen.getByText('Last 30 days, from your own phone')).toBeInTheDocument()
+    expect(screen.getByText('412')).toBeInTheDocument()
+    expect(screen.getByText('₱9,860')).toBeInTheDocument()
     expect(screen.getAllByText('Ready').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Thank you, suki').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('18 · ₱6,420').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('18 came back').length).toBeGreaterThan(0)
   })
 
   test('empty store shows the preset grid', async () => {
@@ -160,7 +162,8 @@ describe('Texts workspace', () => {
   test('phones sheet lists the phone', async () => {
     await renderPage('phones=1')
     expect(await screen.findByText('Sending phones')).toBeInTheDocument()
-    expect(screen.getByText('Connected Oct 3 by Ana · App 1.0.14')).toBeInTheDocument()
+    expect(screen.getByText('Oct 3 by Ana')).toBeInTheDocument()
+    expect(screen.getByText('1.0.14')).toBeInTheDocument()
   })
 
   test('install links go to the platform download page, never the Play Store', async () => {

@@ -15,11 +15,12 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createLogger } from '@/lib/logger'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { checkRateLimit, type RateLimitOptions } from '@/lib/distributed-rate-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Outcome } from '@/lib/sms-automations/api/writes'
 import { parseAutomationRequest } from '@/lib/sms-automations/api/schema'
-import { automationRateLimitError, dispatchAutomationRequest } from '@/lib/sms-automations/api/http'
+import { dispatchAutomationRequest } from '@/lib/sms-automations/api/http'
+import { maskGuestName } from '@/lib/sms-automations/planner'
 import { campaignDraftInputSchema, audienceFilterSchema } from '@/lib/texts/campaign-schema'
 import { requireTextsAccess, type TextsCaller } from '@/lib/texts/gate'
 import { getCampaignReport, previewCampaignAudience } from '@/lib/texts/server/campaign-reads'
@@ -27,6 +28,7 @@ import {
   archiveCampaign, deleteCampaignDraft, duplicateCampaign, pauseCampaign, resumeCampaign, saveCampaignDraft,
   scheduleCampaign, sendCampaignNow, switchToAutomatic, unarchiveCampaign, writeCampaignMessages,
 } from '@/lib/texts/server/campaign-writes'
+import { forgetTextsLive } from '@/lib/texts/server/live'
 import { disconnectPhone, renamePhone, MAX_PHONE_LABEL } from '@/lib/texts/server/phones'
 import {
   AUDIENCE_PRESETS, type ActionResult, type AudiencePreview, type CampaignDisplayState, type CampaignReport,
@@ -35,10 +37,18 @@ import {
 const log = createLogger('[Texts]', 'DEBUG_SMS_AUTOMATIONS')
 const TEXTS_PAGE = '/[tenant]/admin/texts'
 const ACTION_QUERY_TIMEOUT_MS = 15_000
-/** Previews read a whole store's guests; a per-instance brake, not a quota. */
-const PREVIEW_LIMIT = { maxRequests: 30, windowMs: 60_000 }
-/** Each "Write it for me" is a paid model call. */
-const WRITE_LIMIT = { maxRequests: 6, windowMs: 60_000 }
+/** Previews read a whole store's guests. Shared across instances; an outage lets them through (logged). */
+const PREVIEW_LIMIT: RateLimitOptions = { limit: 30, windowSec: 60, onRedisFailure: 'open' }
+/** Each "Write it for me" is a paid model call: per person, refused while the limiter is down. */
+const WRITE_LIMIT: RateLimitOptions = { limit: 6, windowSec: 60, onRedisFailure: 'refuse' }
+/** "Write it for me" calls per store per (UTC) day — the cost ceiling. */
+const WRITE_DAILY_STORE_LIMIT = 60
+const WRITE_DAY_LIMIT: RateLimitOptions = { limit: WRITE_DAILY_STORE_LIMIT, windowSec: 86_400, onRedisFailure: 'refuse' }
+const PREVIEW_BUSY = 'Too many previews. Wait a minute and try again.'
+const WRITE_BUSY = 'That’s a lot of drafts — wait a minute and try again.'
+const WRITE_DAILY_BUSY = 'Write it for me has been used a lot today. Try again tomorrow, or write your own.'
+/** Automation requests that read a whole store (metered like a preview). */
+const HEAVY_AUTOMATION_ACTIONS: ReadonlySet<string> = new Set(['preview', 'run_now', 'set_status'])
 const AUTOMATION_WRITES: ReadonlySet<string> = new Set(['save', 'set_status', 'run_now', 'save_settings', 'cancel_waiting'])
 
 const tenantIdSchema = z.uuid()
@@ -56,8 +66,19 @@ interface Guard<I> {
   verb?: Verb
   ownerOnly?: boolean
   revalidate?: boolean
-  /** `checkRateLimit` key prefix + limit, per signed-in person. */
-  limit?: { key: string; config: { maxRequests: number; windowMs: number }; error: string }
+  /** Which shared rate limit the call counts against. */
+  meter?: Meter
+}
+
+type Meter = 'preview' | 'write'
+
+/** The refusal for an over-limit call, or null. Shared across serverless instances (Upstash). */
+async function meterError(meter: Meter, tenantId: string, userId: string): Promise<string | null> {
+  if (meter === 'preview') {
+    return (await checkRateLimit(`texts-preview:${userId}`, PREVIEW_LIMIT)).allowed ? null : PREVIEW_BUSY
+  }
+  if (!(await checkRateLimit(`texts-write:${userId}`, WRITE_LIMIT)).allowed) return WRITE_BUSY
+  return (await checkRateLimit(`texts-write-day:${tenantId}`, WRITE_DAY_LIMIT)).allowed ? null : WRITE_DAILY_BUSY
 }
 
 type Work<I, T> = (db: Db, tenantId: string, caller: TextsCaller, input: I) => Promise<ActionResult<T>>
@@ -82,16 +103,18 @@ async function guarded<I, T>(rawTenantId: unknown, guard: Guard<I>, work: Work<I
   const tenant = tenantIdSchema.safeParse(rawTenantId)
   if (!tenant.success) return fail(NOT_VALID, 'invalid_request')
   const tenantId = tenant.data.toLowerCase()
-  const caller = await authorise(tenantId, guard.verb ?? 'edit', guard.ownerOnly ?? false)
+  const verb = guard.verb ?? 'edit'
+  const caller = await authorise(tenantId, verb, guard.ownerOnly ?? false)
   if ('ok' in caller) return caller
   const parsed = guard.schema.safeParse(guard.input)
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? NOT_VALID, 'invalid')
-  if (guard.limit && !checkRateLimit(`${guard.limit.key}:${caller.userId}`, guard.limit.config).allowed) {
-    return fail(guard.limit.error, 'rate_limited')
-  }
+  const limited = guard.meter ? await meterError(guard.meter, tenantId, caller.userId) : null
+  if (limited) return fail(limited, 'rate_limited')
   try {
     const result = await work(createAdminClient({ timeoutMs: ACTION_QUERY_TIMEOUT_MS }), tenantId, caller, parsed.data)
     if (result.ok && guard.revalidate) revalidatePath(TEXTS_PAGE, 'page')
+    // The next poll must see the change, not this instance's few-seconds-old view.
+    if (result.ok && verb === 'edit') forgetTextsLive(tenantId)
     return result
   } catch (error) {
     log.error('action failed', { tenantId, error: error instanceof Error ? error.message : String(error) })
@@ -109,8 +132,7 @@ export async function saveCampaignAction(tenantId: string, input: unknown): Prom
 const previewSchema = z.strictObject({ audience: audienceFilterSchema, messageTemplate: z.string().max(2000) })
 
 export async function previewCampaignAudienceAction(tenantId: string, input: unknown): Promise<ActionResult<AudiencePreview>> {
-  const limit = { key: 'texts-preview', config: PREVIEW_LIMIT, error: 'Too many previews. Wait a minute and try again.' }
-  return guarded(tenantId, { schema: previewSchema, input, verb: 'view', limit }, async (db, id, _caller, draft) =>
+  return guarded(tenantId, { schema: previewSchema, input, verb: 'view', meter: 'preview' }, async (db, id, _caller, draft) =>
     ({ ok: true, value: await previewCampaignAudience(db, id, draft, new Date()) }))
 }
 
@@ -178,8 +200,7 @@ const writeSchema = z.strictObject({
 })
 
 export async function writeCampaignMessagesAction(tenantId: string, input: unknown): Promise<ActionResult<{ messages: string[] }>> {
-  const limit = { key: 'texts-write', config: WRITE_LIMIT, error: 'That’s a lot of drafts — wait a minute and try again.' }
-  return guarded(tenantId, { schema: writeSchema, input, limit }, async (db, id, _caller, request) =>
+  return guarded(tenantId, { schema: writeSchema, input, meter: 'write' }, async (db, id, _caller, request) =>
     fromOutcome(await writeCampaignMessages(db, id, request)))
 }
 
@@ -202,6 +223,22 @@ export async function disconnectPhoneAction(tenantId: string, deviceId: string):
 
 const automationRequestSchema = z.record(z.string(), z.unknown())
 
+function automationMeter(action: string): Meter | null {
+  if (action === 'write') return 'write'
+  return HEAVY_AUTOMATION_ACTIONS.has(action) ? 'preview' : null
+}
+
+/** The web feed names guests like the report does ("Maria S."); the app route keeps full names. */
+function withMaskedNames(value: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(value.items)) return value
+  const items = value.items.map((item: unknown) => {
+    if (!item || typeof item !== 'object') return item
+    const { guestName } = item as { guestName?: unknown }
+    return typeof guestName === 'string' ? { ...item, guestName: maskGuestName(guestName) } : item
+  })
+  return { ...value, items }
+}
+
 /**
  * `request` is exactly the JSON body the app sends to POST /api/sms/automations,
  * minus `tenantId`. The value is the route's JSON minus `success`.
@@ -212,11 +249,13 @@ export async function automationsAction(tenantId: string, request: unknown): Pro
   return guarded(tenantId, { schema: automationRequestSchema, input: request, verb }, async (db, id, caller, body) => {
     const parsed = parseAutomationRequest({ ...body, tenantId: id })
     if (!parsed.success) return fail(NOT_VALID, 'invalid_request')
-    const limited = automationRateLimitError(parsed.data.action, caller.userId)
+    const meter = automationMeter(parsed.data.action)
+    const limited = meter ? await meterError(meter, id, caller.userId) : null
     if (limited) return fail(limited, 'rate_limited')
     const result = await dispatchAutomationRequest(db, parsed.data, { actorId: caller.userId })
     if (!result.ok) return { ok: false, error: result.error, code: result.code ?? undefined }
     if (AUTOMATION_WRITES.has(parsed.data.action)) revalidatePath(TEXTS_PAGE, 'page')
-    return { ok: true, value: result.value }
+    const value = parsed.data.action === 'activity' ? withMaskedNames(result.value) : result.value
+    return { ok: true, value }
   })
 }

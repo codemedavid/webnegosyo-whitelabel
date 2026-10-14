@@ -14,6 +14,7 @@
 
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createLogger } from '@/lib/logger'
 import { isQuietAt } from '@/lib/sms-automations/quiet-hours'
 import { readOutlook, readSettings } from '@/lib/sms-automations/api/reads'
 import type { AutomationSettings } from '@/lib/sms-automations/types'
@@ -21,26 +22,37 @@ import { CAMPAIGN_COLUMNS, campaignFromRow, toCampaignListItem, type CampaignRec
 import type { CampaignListItem, CampaignReport, CampaignRunProgress, ThirtyDayLine } from '../types'
 import { readPhoneReadiness, readStoreFacts, type PhoneReadiness, type StoreFacts } from './audience-inputs'
 import { readCampaign } from './campaign-run'
-import { computeRunResults, findComebacks, totalsOf, type RunResult, type SendRecord } from './campaign-results'
+import { CAME_BACK_WINDOW_DAYS, computeRunResults, totalsOf, type RunResult } from './campaign-results'
 import { readGuestPage, runReportsOf } from './campaign-report'
 import { readRecentRuns, readRunsForCampaigns, type RunDetail } from './campaign-runs'
-import { readAll } from './paged'
 
 export { previewCampaignAudience } from './campaign-preview'
+
+const log = createLogger('[Texts]', 'DEBUG_SMS_AUTOMATIONS')
 
 const DAY_MS = 86_400_000
 const THIRTY_DAYS = 30
 const MAX_CAMPAIGNS = 500
 const MAX_OPEN_RUNS = 50
-const MAX_LINE_ROWS = 20_000
 
 // ─── Progress ────────────────────────────────────────────────────────────────
 
-async function countRunTexts(db: SupabaseClient, tenantId: string, runId: string, statuses: string[]): Promise<number> {
-  const { count, error } = await db.from('sms_outbox').select('id', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId).eq('campaign_run_id', runId).in('status', statuses)
+type ProgressRow = { campaign_run_id: string; status: string; n: number | string }
+
+const WAITING = new Set(['queued', 'claimed'])
+
+/** One grouped read for every open run (service-role RPC `sms_campaign_run_progress`). */
+async function readRunCounts(db: SupabaseClient, tenantId: string, runIds: string[]): Promise<Map<string, Record<'sent' | 'waiting' | 'notSent', number>>> {
+  const { data, error } = await db.rpc('sms_campaign_run_progress', { p_tenant: tenantId, p_run_ids: runIds })
   if (error) throw new Error(`campaign progress could not be read: ${error.message}`)
-  return count ?? 0
+  const counts = new Map(runIds.map((id) => [id, { sent: 0, waiting: 0, notSent: 0 }]))
+  for (const row of (data ?? []) as ProgressRow[]) {
+    const entry = counts.get(row.campaign_run_id)
+    if (!entry) continue
+    const bucket = row.status === 'sent' ? 'sent' : WAITING.has(row.status) ? 'waiting' : 'notSent'
+    counts.set(row.campaign_run_id, { ...entry, [bucket]: entry[bucket] + Number(row.n) })
+  }
+  return counts
 }
 
 interface ProgressContext {
@@ -50,12 +62,8 @@ interface ProgressContext {
   now: Date
 }
 
-async function progressOf(db: SupabaseClient, tenantId: string, run: { id: string; planned_count: number | null }, ctx: ProgressContext): Promise<CampaignRunProgress> {
-  const [sent, waiting, notSent] = await Promise.all([
-    countRunTexts(db, tenantId, run.id, ['sent']),
-    countRunTexts(db, tenantId, run.id, ['queued', 'claimed']),
-    countRunTexts(db, tenantId, run.id, ['failed', 'cancelled', 'expired', 'skipped']),
-  ])
+function progressOf(run: { id: string; planned_count: number | null }, counts: Record<'sent' | 'waiting' | 'notSent', number>, ctx: ProgressContext): CampaignRunProgress {
+  const { sent, waiting, notSent } = counts
   return {
     runId: run.id, sent, notSent, waiting,
     total: Math.max(run.planned_count ?? 0, sent + waiting + notSent),
@@ -72,10 +80,12 @@ export async function readCampaignProgress(db: SupabaseClient, tenantId: string,
   const runs = (data ?? []) as { id: string; campaign_id: string; planned_count: number | null }[]
   if (runs.length === 0) return {}
   const settings = await readSettings(db, tenantId)
-  const [phones, outlook] = await Promise.all([readPhoneReadiness(db, tenantId, now), readOutlook(db, tenantId, settings, now)])
+  const [phones, outlook, counts] = await Promise.all([
+    readPhoneReadiness(db, tenantId, now), readOutlook(db, tenantId, settings, now), readRunCounts(db, tenantId, runs.map((run) => run.id)),
+  ])
   const ctx: ProgressContext = { settings, phones, finishAt: outlook.finishAt, now }
-  const entries = await Promise.all(runs.map(async (run) => [run.campaign_id, await progressOf(db, tenantId, run, ctx)] as const))
-  return Object.fromEntries(entries)
+  const zero = { sent: 0, waiting: 0, notSent: 0 }
+  return Object.fromEntries(runs.map((run) => [run.campaign_id, progressOf(run, counts.get(run.id) ?? zero, ctx)]))
 }
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -124,7 +134,12 @@ async function readCampaignRows(db: SupabaseClient, tenantId: string): Promise<C
 async function listContext(db: SupabaseClient, tenantId: string, runs: RunDetail[], now: Date): Promise<ListContext> {
   const settings = await readSettings(db, tenantId)
   const [phones, store, progress] = await Promise.all([
-    readPhoneReadiness(db, tenantId, now), readStoreFacts(db, tenantId), readCampaignProgress(db, tenantId, now),
+    readPhoneReadiness(db, tenantId, now), readStoreFacts(db, tenantId),
+    // Progress is decoration on the list: a failed read shows no bar rather than no campaigns.
+    readCampaignProgress(db, tenantId, now).catch((error: unknown) => {
+      log.error('campaign progress unavailable', { tenantId, error: error instanceof Error ? error.message : String(error) })
+      return {} as Record<string, CampaignRunProgress>
+    }),
   ])
   const results = await computeRunResults(db, tenantId, store.orderBackend, runs.filter((run) => run.status !== 'pending'), now)
   return { runs, results, progress, settings, phones, store, now }
@@ -152,32 +167,36 @@ export async function getCampaignReport(
 
 // ─── 30-day line ─────────────────────────────────────────────────────────────
 
-type SentRow = { customer_id: string | null; sent_at: string | null }
+const ZERO_LINE: ThirtyDayLine = Object.freeze({ sent: 0, cameBack: 0, sales: 0 }) as ThirtyDayLine
 
-/** Every text that went out in 30 days (automations + campaigns, server + phone). */
-export async function readThirtyDayLine(db: SupabaseClient, tenantId: string, now: Date): Promise<ThirtyDayLine> {
+async function headCount(query: PromiseLike<{ count: number | null; error: { message: string } | null }>, label: string): Promise<number> {
+  const { count, error } = await query
+  if (error) throw new Error(`${label}: ${error.message}`)
+  return count ?? 0
+}
+
+async function readLine(db: SupabaseClient, tenantId: string, now: Date): Promise<ThirtyDayLine> {
   const since = new Date(now.getTime() - THIRTY_DAYS * DAY_MS).toISOString()
-  const [outbox, sends, store] = await Promise.all([
-    readAll<SentRow>('texts sent', (from, to) => db.from('sms_outbox').select('customer_id, sent_at')
-      .eq('tenant_id', tenantId).eq('status', 'sent').gte('sent_at', since).order('id').range(from, to), { maxRows: MAX_LINE_ROWS }),
-    readAll<SentRow>('campaign sends', (from, to) => db.from('sms_sends').select('customer_id, sent_at')
-      .eq('tenant_id', tenantId).eq('result', 'sent').gte('sent_at', since).order('id').range(from, to), { maxRows: MAX_LINE_ROWS }),
+  const [outboxSent, phoneSent, store] = await Promise.all([
+    headCount(db.from('sms_outbox').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'sent').gte('sent_at', since), 'texts sent'),
+    headCount(db.from('sms_sends').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('result', 'sent').gte('sent_at', since), 'campaign sends'),
     readStoreFacts(db, tenantId),
   ])
-  const all = [...outbox, ...sends]
-  const firstByGuest = new Map<string, string>()
-  for (const row of all) {
-    if (!row.customer_id || !row.sent_at) continue
-    const current = firstByGuest.get(row.customer_id)
-    if (!current || row.sent_at < current) firstByGuest.set(row.customer_id, row.sent_at)
-  }
-  const records: SendRecord[] = [...firstByGuest.entries()].map(([customerId, sentAt]) => ({
-    id: customerId, runId: '', customerId, phone: '', status: 'sent', reason: null, sentAt,
-  }))
-  const comebacks = await findComebacks(db, tenantId, store.orderBackend, records)
-  return {
-    sent: all.length,
-    cameBack: comebacks.size,
-    sales: [...comebacks.values()].reduce((sum, back) => sum + back.total, 0),
+  // Each texted guest's first order within 14 days of their first text — aggregated in SQL (no rows read).
+  const { data, error } = await db.rpc('sms_texts_came_back', {
+    p_tenant: tenantId, p_since: since, p_window_days: CAME_BACK_WINDOW_DAYS, p_exact: store.orderBackend === 'platform',
+  })
+  if (error) throw new Error(`came back: ${error.message}`)
+  const row = ((data ?? []) as { came_back: number | string; sales: number | string | null }[])[0]
+  return { sent: outboxSent + phoneSent, cameBack: Number(row?.came_back ?? 0), sales: Number(row?.sales ?? 0) }
+}
+
+/** Every text that went out in 30 days (automations + campaigns, server + phone). Never throws: zeros + a log. */
+export async function readThirtyDayLine(db: SupabaseClient, tenantId: string, now: Date): Promise<ThirtyDayLine> {
+  try {
+    return await readLine(db, tenantId, now)
+  } catch (error) {
+    log.error('30-day texts line unavailable', { tenantId, error: error instanceof Error ? error.message : String(error) })
+    return { ...ZERO_LINE }
   }
 }

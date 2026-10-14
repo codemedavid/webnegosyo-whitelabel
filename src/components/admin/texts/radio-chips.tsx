@@ -14,7 +14,7 @@ interface RadioChipsProps<T extends string> {
   options: readonly RadioChipOption<T>[]
   value: T | null
   onChange: (value: T) => void
-  size?: 'chip' | 'card'
+  size?: 'chip' | 'card' | 'segmented'
   className?: string
   describedBy?: string
 }
@@ -37,7 +37,12 @@ export function RadioChips<T extends string>({ label, options, value, onChange, 
   }
 
   return (
-    <div role="radiogroup" aria-label={label} aria-describedby={describedBy} className={cn('flex flex-wrap gap-2', className)}>
+    <div
+      role="radiogroup"
+      aria-label={label}
+      aria-describedby={describedBy}
+      className={cn(size === 'segmented' ? 'inline-flex max-w-full gap-1 overflow-x-auto rounded-full border bg-card p-1 shadow-[0_1px_2px_rgba(29,24,21,0.04)]' : 'flex flex-wrap gap-2', className)}
+    >
       {options.map((option, index) => {
         const isSelected = option.value === value
         return (
@@ -51,14 +56,19 @@ export function RadioChips<T extends string>({ label, options, value, onChange, 
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => move(event, index)}
             className={cn(
-              'border text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none',
-              size === 'chip' ? 'min-h-11 rounded-full px-4 py-2 sm:min-h-9 sm:py-1.5' : 'min-h-11 rounded-xl px-3 py-2',
-              isSelected ? 'border-foreground bg-foreground text-background' : 'bg-background hover:border-foreground/40 hover:bg-muted/40'
+              'text-left text-sm transition-[color,background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none',
+              size === 'segmented'
+                ? cn('min-h-11 shrink-0 rounded-full px-4 py-1.5 font-medium sm:min-h-8', isSelected ? 'bg-wn-ink text-white shadow-sm' : 'text-wn-stone hover:bg-wn-sand hover:text-foreground')
+                : cn(
+                    'border',
+                    size === 'chip' ? 'min-h-11 rounded-full px-4 py-2 sm:min-h-9 sm:py-1.5' : 'min-h-11 rounded-xl px-3.5 py-2.5',
+                    isSelected ? 'border-wn-ink bg-wn-ink text-white shadow-sm' : 'border-border bg-card hover:border-stone-400 hover:bg-wn-sand/60'
+                  )
             )}
           >
             <span className="block font-medium">{option.label}</span>
             {option.description && (
-              <span className={cn('block text-xs', isSelected ? 'text-background/80' : 'text-muted-foreground')}>{option.description}</span>
+              <span className={cn('mt-0.5 block text-xs', isSelected ? 'text-white/75' : 'text-wn-stone')}>{option.description}</span>
             )}
           </button>
         )

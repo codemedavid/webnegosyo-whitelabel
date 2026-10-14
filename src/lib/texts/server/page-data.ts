@@ -27,13 +27,12 @@ const IS_DEMO = false
 
 export async function loadTextsPage(tenant: TextsTenant, caller: TextsCaller, now: Date): Promise<TextsPageData> {
   const db = createAdminClient({ timeoutMs: PAGE_QUERY_TIMEOUT_MS })
-  const campaignsRead = listCampaignsView(db, tenant.id, now)
-  // The live read reuses the campaign list; it swallows its own failures, the page does not.
+  // The live part swallows its own failures; the page's lists do not.
   const [campaigns, thirtyDays, automations, live] = await Promise.all([
-    campaignsRead,
+    listCampaignsView(db, tenant.id, now),
     readThirtyDayLine(db, tenant.id, now),
     listAutomationsView(db, tenant.id, now),
-    readTextsLive(db, tenant.id, now, { campaigns: campaignsRead }),
+    readTextsLive(db, tenant.id, now),
   ])
   return {
     tenantId: tenant.id,

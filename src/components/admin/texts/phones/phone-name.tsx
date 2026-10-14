@@ -5,10 +5,10 @@ import { Check, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { renamePhoneAction } from '@/app/actions/texts'
 import type { SendingPhone } from '@/lib/texts/types'
 import { DEMO_READONLY, runAction } from '../run-action'
 import { useTexts } from '../texts-context'
+import { useTextsActions } from '../texts-actions'
 
 const MAX_NAME = 40
 
@@ -17,6 +17,7 @@ export function PhoneName({ phone, isEditing, onEditingChange }: { phone: Sendin
   const { tenantId, isDemo, refresh } = useTexts()
   const [value, setValue] = useState(phone.name)
   const [isSaving, setSaving] = useState(false)
+  const actions = useTextsActions()
   const trimmed = value.trim()
   const isValid = trimmed.length >= 1 && trimmed.length <= MAX_NAME
 
@@ -24,7 +25,7 @@ export function PhoneName({ phone, isEditing, onEditingChange }: { phone: Sendin
     if (!isValid) return
     if (isDemo) return void toast.info(DEMO_READONLY)
     setSaving(true)
-    const done = await runAction(() => renamePhoneAction(tenantId, phone.deviceId, trimmed))
+    const done = await runAction(() => actions.renamePhoneAction(tenantId, phone.deviceId, trimmed))
     setSaving(false)
     if (done === null) return
     onEditingChange(false)
@@ -35,7 +36,7 @@ export function PhoneName({ phone, isEditing, onEditingChange }: { phone: Sendin
     return (
       <div className="flex min-w-0 items-center gap-1">
         <h3 className="truncate font-semibold">{phone.name}</h3>
-        <Button type="button" variant="ghost" size="icon" className="size-11 sm:size-8" aria-label={`Rename ${phone.name}`} onClick={() => { setValue(phone.name); onEditingChange(true) }}>
+        <Button type="button" variant="ghost" size="icon" className="-my-2 size-11 rounded-full text-wn-stone hover:text-foreground sm:size-8" aria-label={`Rename ${phone.name}`} onClick={() => { setValue(phone.name); onEditingChange(true) }}>
           <Pencil className="h-3.5 w-3.5" />
         </Button>
       </div>

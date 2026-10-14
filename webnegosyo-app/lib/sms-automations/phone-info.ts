@@ -61,11 +61,20 @@ export type PhoneInfoReporterDeps = {
   collectTimeoutMs?: number;
 };
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+const TIMED_OUT = Symbol("timed out");
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); });
+  const timeout = new Promise<typeof TIMED_OUT>((resolve) => { timer = setTimeout(() => resolve(TIMED_OUT), ms); });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
+
+/**
+ * Collectors that once hung past the budget, for the rest of this app session
+ * (a native call that hangs once will hang again): later claims, and workers
+ * rebuilt with the same collector, skip the report instead of waiting again.
+ */
+const hungCollectors = new WeakSet<object>();
 
 export function createPhoneInfoReporter(deps: PhoneInfoReporterDeps): PhoneInfoReporter {
   const intervalMs = deps.intervalMs ?? PHONE_INFO_INTERVAL_MS;
@@ -80,9 +89,13 @@ export function createPhoneInfoReporter(deps: PhoneInfoReporterDeps): PhoneInfoR
     async next() {
       try {
         const version = deps.appVersion();
-        if (!isDue(version)) return null;
+        if (hungCollectors.has(deps.collect) || !isDue(version)) return null;
         const raw = await withTimeout(deps.collect(), timeoutMs);
-        const header = raw ? encodePhoneInfo(toPhoneInfo(raw)) : null;
+        if (raw === TIMED_OUT) {
+          hungCollectors.add(deps.collect);
+          return null;
+        }
+        const header = encodePhoneInfo(toPhoneInfo(raw));
         pendingVersion = header ? version : undefined;
         return header;
       } catch {

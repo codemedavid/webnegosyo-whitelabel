@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { activityRequest, type ActivityItem, type ActivityPage } from '@/lib/texts/view/activity'
 import type { ActivityShow } from '@/lib/texts/view/url'
 import { callAutomations } from '../automatic/call-automations'
+import { useTextsActions } from '../texts-actions'
 
 type State = { status: 'loading' | 'ready' | 'error'; items: ActivityItem[]; nextCursor: string | null; isLoadingMore: boolean }
 
@@ -12,10 +13,11 @@ export function useActivity(tenantId: string, show: ActivityShow, from: string |
   const [state, setState] = useState<State>({ status: 'loading', items: [], nextCursor: null, isLoadingMore: false })
   const [attempt, setAttempt] = useState(0)
   const request = useRef(0)
+  const actions = useTextsActions()
 
   const fetchPage = useCallback(
-    (cursor: string | null) => callAutomations<ActivityPage>(tenantId, activityRequest({ show, from, cursor, automationIdFor })),
-    [tenantId, show, from, automationIdFor]
+    (cursor: string | null) => callAutomations<ActivityPage>(actions, tenantId, activityRequest({ show, from, cursor, automationIdFor })),
+    [actions, tenantId, show, from, automationIdFor]
   )
 
   useEffect(() => {

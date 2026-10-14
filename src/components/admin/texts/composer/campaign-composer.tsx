@@ -6,8 +6,8 @@ import { presetForFilter } from '@/lib/texts/view/audience'
 import { isDraftDirty, nameProblem, startInstant, whenProblem, type ComposerDraft } from '@/lib/texts/view/composer-draft'
 import { finishEstimate } from '@/lib/texts/view/finish'
 import { messageProblem, segmentMeter } from '@/lib/texts/view/message'
-import { footerPhoneState, isPhoneAway, primaryLabel, waitText } from '@/lib/texts/view/review'
-import { finishText, toMs } from '@/lib/texts/view/time'
+import { footerPhoneState, isPhoneAway, primaryLabel, repeatLabel, waitText } from '@/lib/texts/view/review'
+import { clockText, finishText, toMs, weekdayDateText } from '@/lib/texts/view/time'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '../confirm-dialog'
 import { SheetFrame } from '../sheet-frame'
@@ -73,7 +73,11 @@ export function CampaignComposer({ initial, displayState, armRequest, onClose, o
     texts: reach * Math.max(1, meter.segments), start: startInstant(draft, now), now, isNow: draft.when === 'now',
     waitingAhead: live.sender.waiting, sentToday: live.sender.sentToday, rules, isPhoneAway: isAway,
   })
-  const problems = { name: nameProblem(draft.name), message: messageProblem(draft.messageTemplate) ?? (meter.tone === 'error' ? meter.text : null), when: whenProblem(draft, now) }
+  const problems = { name: nameProblem(draft.name), message: messageProblem(draft.messageTemplate) ?? (meter.tone === 'error' ? meter.text : null), when: whenProblem(draft, now, rules) }
+  const startAt = startInstant(draft, now)
+  const stamp = draft.when === 'repeat'
+    ? repeatLabel(draft.repeatKind, draft.weekdays, draft.intervalDays, draft.time).replace(/^every/, 'Every')
+    : draft.when === 'later' ? `${weekdayDateText(startAt)} ${clockText(startAt)}` : `Today ${clockText(now)}`
   const primary = primaryLabel({ when: draft.when, phone, reach, quietUntil: toMs(live.sender.quietUntil) })
 
   const goReview = () => {
@@ -113,8 +117,8 @@ export function CampaignComposer({ initial, displayState, armRequest, onClose, o
 
   return (
     <SheetFrame
-      title={draft.id ? draft.name || 'Campaign' : `New campaign${draft.name ? ` · ${draft.name}` : ''}`}
-      description={isReview ? 'Check it once more before it goes out.' : 'Who gets it, what it says, and when.'}
+      title={draft.name.trim() || 'New campaign'}
+      description={isReview ? 'Check it once more before it goes out.' : draft.id ? 'Who gets it, what it says, and when.' : 'New campaign · who gets it, what it says, and when.'}
       headerExtra={toggle}
       isDirty={isDirty}
       armRequest={armRequest}
@@ -126,29 +130,29 @@ export function CampaignComposer({ initial, displayState, armRequest, onClose, o
     >
       <div className="flex min-h-full">
         <div className={cn('min-w-0 flex-1', mobileView === 'preview' && 'hidden lg:block')}>
-          <div className="mx-auto max-w-xl space-y-8 px-4 py-6 sm:px-6">
+          <div className="mx-auto max-w-xl space-y-10 px-4 py-7 sm:px-8">
             {isReview && preview.preview ? (
               <ReviewPane draft={draft} preview={preview.preview} finishText={finish?.text ?? null} phone={phone} onBack={back} />
             ) : (
               <>
-                <div className="space-y-1.5">
-                  <label htmlFor="composer-name" className="text-xs font-medium text-muted-foreground">Campaign name (only you see it)</label>
+                <div className="space-y-1">
+                  <label htmlFor="composer-name" className="text-xs font-medium uppercase tracking-wide text-wn-stone">Campaign name · only you see it</label>
                   <Input id="composer-name" value={draft.name} maxLength={80} onChange={(event) => update({ name: event.target.value })}
                     aria-invalid={showErrors && problems.name !== null} aria-describedby={problems.name ? 'composer-name-error' : undefined}
-                    className="h-11 text-base font-semibold" />
+                    className="h-12 rounded-xl border-transparent bg-wn-sand/60 px-3 text-lg font-semibold tracking-tight shadow-none hover:border-wn-line focus-visible:border-wn-line focus-visible:bg-white" />
                   {showErrors && problems.name && <p id="composer-name-error" role="alert" className="text-sm text-destructive">{problems.name}</p>}
                 </div>
-                <WhoSection audience={draft.audience} onChange={(audience) => update({ audience })} preview={preview} onRetry={retry} />
+                <WhoSection audience={draft.audience} onChange={(audience) => update({ audience })} preview={preview} onRetry={retry} isDone={reach > 0} />
                 <MessageSection value={draft.messageTemplate} onChange={(messageTemplate) => update({ messageTemplate })} name={draft.name}
-                  audiencePreset={presetForFilter(draft.audience)} reach={reach} showErrors={showErrors} />
-                <WhenSection draft={draft} onChange={update} problem={showErrors || draft.when !== 'now' ? problems.when : null} finish={finish} />
+                  audiencePreset={presetForFilter(draft.audience)} reach={reach} showErrors={showErrors} isDone={problems.message === null} />
+                <WhenSection draft={draft} onChange={update} problem={showErrors || draft.when !== 'now' ? problems.when : null} finish={finish} isDone={problems.when === null} />
               </>
             )}
           </div>
         </div>
-        <aside aria-label="Phone preview" className={cn('border-l bg-muted/40 px-6 py-8 lg:block lg:w-[380px] lg:shrink-0', mobileView === 'preview' ? 'block flex-1 border-l-0' : 'hidden')}>
+        <aside aria-label="Phone preview" className={cn('border-l border-wn-line bg-wn-sand px-6 py-8 lg:block lg:w-[380px] lg:shrink-0', mobileView === 'preview' ? 'block flex-1 border-l-0' : 'hidden')}>
           <div className="lg:sticky lg:top-8">
-            <PhonePreview template={draft.messageTemplate} samples={sampledTemplate === draft.messageTemplate.trim() ? preview.preview?.samples ?? [] : []} />
+            <PhonePreview template={draft.messageTemplate} samples={sampledTemplate === draft.messageTemplate.trim() ? preview.preview?.samples ?? [] : []} stamp={stamp} />
           </div>
         </aside>
       </div>

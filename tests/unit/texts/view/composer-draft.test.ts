@@ -6,7 +6,8 @@ import {
   isDraftDirty,
   MAX_REPEAT_DAYS,
   nameProblem,
-  quietNote,
+  quietTimeProblem,
+  sendableTimes,
   whenProblem,
 } from '@/lib/texts/view/composer-draft'
 import { CAMPAIGN_PRESETS } from '@/lib/texts/view/presets'
@@ -93,8 +94,17 @@ describe('validation', () => {
     expect(whenProblem(draft, NOW)).toBe('Pick at least one day.')
   })
 
-  test('quiet-hours note', () => {
-    expect(quietNote('22:00', RULES)).toBe("That's during quiet hours (9pm–8am). It will start at 8:00 AM instead.")
-    expect(quietNote('10:00', RULES)).toBeNull()
+  test('a start inside quiet hours is refused, in the server\'s words', () => {
+    const floor = { quietHoursStart: '21:00', quietHoursEnd: '07:00' }
+    expect(quietTimeProblem('22:00', floor)).toBe("That's inside quiet hours (9 PM–7 AM). Pick a time after 7 AM.")
+    expect(quietTimeProblem('10:00', RULES)).toBeNull()
+    const draft = { ...blankDraft(NOW), when: 'later' as const, laterDate: '2026-10-16', time: '07:30' }
+    expect(whenProblem(draft, NOW, RULES)).toBe("That's inside quiet hours (9 PM–8 AM). Pick a time after 8 AM.")
+    expect(whenProblem(draft, NOW)).toBeNull()
+  })
+
+  test('quiet-hour times are never offered', () => {
+    const options = [{ value: '07:00' }, { value: '09:00' }, { value: '21:30' }]
+    expect(sendableTimes(options, RULES).map((o) => o.value)).toEqual(['09:00'])
   })
 })

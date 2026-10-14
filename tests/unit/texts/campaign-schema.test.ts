@@ -76,3 +76,18 @@ describe('checkScheduleTiming', () => {
     expect(checkScheduleTiming({ ...weekly, endsOn: '2026-10-14' }, NOW)).toBeNull()
   })
 })
+
+describe('checkScheduleTiming with the store quiet hours (review item 2)', () => {
+  const quiet = { start: '21:00', end: '07:00' }
+
+  test('refuses a send time inside quiet hours, in the owner\'s words', () => {
+    expect(checkScheduleTiming({ ...draft().schedule, time: '23:00' }, NOW, quiet))
+      .toBe("That's inside quiet hours (9 PM–7 AM). Pick a time after 7 AM.")
+    expect(checkScheduleTiming({ ...weekly, time: '06:30' }, NOW, { start: '21:30', end: '07:30' }))
+      .toBe("That's inside quiet hours (9:30 PM–7:30 AM). Pick a time after 7:30 AM.")
+  })
+
+  test('a time at the window\'s end is fine', () => {
+    expect(checkScheduleTiming({ ...draft().schedule, time: '07:00' }, NOW, quiet)).toBeNull()
+  })
+})

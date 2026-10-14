@@ -105,6 +105,17 @@ function renderAll(input: CampaignRunPlanInput, recipients: readonly SmsCustomer
   return { rendered, cannotFill: recipients.length - rendered.length }
 }
 
+/** Keep the first (most recent order) guest per phone number; `rendered` is already sorted by recency. */
+function onePerPhone(rendered: readonly Rendered[]): Rendered[] {
+  const seen = new Set<string>()
+  return rendered.filter(({ guest }) => {
+    const phone = guest.phone_e164 as string
+    if (seen.has(phone)) return false
+    seen.add(phone)
+    return true
+  })
+}
+
 function toRow(input: CampaignRunPlanInput, item: Rendered, startMs: number, rank: number): CampaignOutboxRow {
   const notBefore = startMs + rank * RANK_STEP_MS
   return {
@@ -131,14 +142,20 @@ export function planCampaignRun(input: CampaignRunPlanInput): CampaignRunPlan {
     now: input.now, suppressedPhones: input.suppressedPhones, recentlyTextedPhones: input.recentlyTextedPhones,
   })
   const { rendered, cannotFill } = renderAll(input, audience.recipients)
+  const unique = onePerPhone(rendered)
   const ceiling = input.ceiling ?? SERVER_RUN_CEILING
-  const chosen = rendered.slice(0, ceiling)
+  const chosen = unique.slice(0, ceiling)
   const start = input.dueAt.getTime() > input.now.getTime() ? input.dueAt : input.now
   const startMs = nextSendableAt(start, input.rules.quietHoursStart, input.rules.quietHoursEnd).getTime()
   const { filter: filteredOut, ...vetoes } = audience.summary
   return {
     rows: chosen.map((item, rank) => toRow(input, item, startMs, rank)),
-    summary: { ...emptySummary(), ...vetoes, cannot_fill: cannotFill, over_ceiling: rendered.length - chosen.length },
+    summary: {
+      ...emptySummary(), ...vetoes, cannot_fill: cannotFill,
+      // A second guest row with the same number would get the same promo twice: it counts as texted.
+      recently_texted: vetoes.recently_texted + (rendered.length - unique.length),
+      over_ceiling: unique.length - chosen.length,
+    },
     filteredOut,
     samples: chosen.slice(0, SAMPLE_SIZE).map((item) => ({ label: maskGuestName(item.guest.name), body: item.body })),
     maxSegments: chosen.reduce((max, item) => Math.max(max, countSmsSegments(item.body).segments), 0),

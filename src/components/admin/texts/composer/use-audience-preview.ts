@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { previewCampaignAudienceAction } from '@/app/actions/texts'
+import { useTextsActions } from '../texts-actions'
 import type { AudienceFilter, AudiencePreview } from '@/lib/texts/types'
 
 const DEBOUNCE_MS = 500
@@ -24,6 +24,7 @@ export function useAudiencePreview(tenantId: string, audience: AudienceFilter, m
   const [sampledTemplate, setSampledTemplate] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const request = useRef(0)
+  const actions = useTextsActions()
   const template = useRef(messageTemplate)
   useEffect(() => { template.current = messageTemplate }, [messageTemplate])
   const key = JSON.stringify(audience)
@@ -34,7 +35,7 @@ export function useAudiencePreview(tenantId: string, audience: AudienceFilter, m
     const timer = setTimeout(() => {
       const filter = JSON.parse(key) as AudienceFilter
       const sent = template.current.trim()
-      previewCampaignAudienceAction(tenantId, { audience: filter, messageTemplate: sent })
+      actions.previewCampaignAudienceAction(tenantId, { audience: filter, messageTemplate: sent })
         .then((result) => {
           if (mine !== request.current) return
           if (result.ok) setSampledTemplate(sent)
@@ -45,7 +46,7 @@ export function useAudiencePreview(tenantId: string, audience: AudienceFilter, m
         })
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [tenantId, key, attempt])
+  }, [actions, tenantId, key, attempt])
 
   const retry = useCallback(() => setAttempt((n) => n + 1), [])
   return { state, retry, sampledTemplate }

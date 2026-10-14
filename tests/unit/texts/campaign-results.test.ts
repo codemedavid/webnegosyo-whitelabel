@@ -96,3 +96,20 @@ test('totalsOf adds runs up and stays null before anything went out', async () =
     .toEqual({ sent: 4, notSent: 2, cameBack: 2, sales: 600, isFinal: false, finalOn: '2026-10-20', isApproximate: false })
   expect(totalsOf([], true)).toBeNull()
 })
+
+test('a run whose texts cannot be read is left out, the rest still count (review item 3)', async () => {
+  const { computeRunResults } = await import('@/lib/texts/server/campaign-results')
+  const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+  const db = createFakeDb({ sms_outbox: [], sms_sends: [{ id: 's1', tenant_id: T, run_id: 'p1', customer_id: 'g1', phone_e164: '+639170000001', result: 'sent', sent_at: '2026-10-10T03:00:00Z' }], orders: [], sms_campaign_runs: [] },
+    { readErrors: { sms_outbox: 'statement timeout' } })
+  const results = await computeRunResults(db.client, T, 'platform', [serverRun, { ...serverRun, id: 'p1', delivery: 'phone' }], NOW)
+  expect(results.has('r1')).toBe(false)
+  expect(results.get('p1')).toMatchObject({ sent: 1 })
+  errorSpy.mockRestore()
+})
+
+test('run ids are read in small groups so a group stays under the row cap', async () => {
+  const { RUNS_PER_SEND_READ } = await import('@/lib/texts/server/campaign-results')
+  const { SERVER_RUN_CEILING } = await import('@/lib/texts/run-plan')
+  expect(RUNS_PER_SEND_READ * SERVER_RUN_CEILING).toBeLessThan(20_000)
+})

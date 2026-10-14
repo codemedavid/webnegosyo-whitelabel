@@ -23,7 +23,7 @@ import { acceptCampaignMessages, buildCampaignWritePrompt } from '../write-campa
 import { readPhoneReadiness, readStoreFacts } from './audience-inputs'
 import { startCampaignRun } from './campaign-run'
 import {
-  CHANGED, NOT_FOUND, done, draftProblem, liveProblem, loadCampaignState, quietColumns, refuse, rowFieldsOf, updateOne,
+  CHANGED, NOT_FOUND, done, draftProblem, liveProblem, loadCampaignState, quietColumns, refuse, rowFieldsOf, timingProblem, updateOne,
 } from './campaign-state'
 
 export {
@@ -35,7 +35,7 @@ const WRITE_TIMEOUT_MS = 20_000
 const WRITE_MAX_TOKENS = 600
 
 export async function saveCampaignDraft(
-  db: SupabaseClient, tenantId: string, userId: string | null, input: CampaignDraftInput,
+  db: SupabaseClient, tenantId: string, userId: string | null, input: CampaignDraftInput, now: Date = new Date(),
 ): Promise<Outcome<{ id: string }>> {
   const settings = await readSettings(db, tenantId)
   const problem = draftProblem(input, settings)
@@ -54,6 +54,9 @@ export async function saveCampaignDraft(
   if (state.campaign.status === 'archived' || isLockedOneOff) {
     return refuse(409, 'This one already went out. Duplicate it to change it.', 'locked')
   }
+  // A live campaign's new time takes effect at once: a past or quiet-hours time would send immediately or wrongly.
+  const timing = state.campaign.status === 'scheduled' ? timingProblem(input.schedule, settings, now) : null
+  if (timing) return refuse(400, timing, 'invalid')
   const isSaved = await updateOne(db, tenantId, input.id, fields, ['draft', 'scheduled', 'paused', 'active'])
   return isSaved ? done({ id: input.id }) : refuse(409, CHANGED, 'changed')
 }

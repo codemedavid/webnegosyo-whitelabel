@@ -74,6 +74,28 @@ describe("createPhoneInfoReporter", () => {
     expect(await hanging.port.next()).toBeNull();
   });
 
+  test("a report that cannot be read in time is given up for the session, not retried on every claim", async () => {
+    const hang = jest.fn(() => new Promise<Record<string, unknown>>(() => undefined));
+    const first = reporter({ collect: hang });
+    expect(await first.port.next()).toBeNull();
+    first.advance(PHONE_INFO_INTERVAL_MS * 2);
+    const startedAt = Date.now();
+    expect(await first.port.next()).toBeNull();
+    expect(Date.now() - startedAt).toBeLessThan(40);
+    // A worker rebuilt later in the same session (same collector) does not wait again either.
+    expect(await reporter({ collect: hang }).port.next()).toBeNull();
+    expect(hang).toHaveBeenCalledTimes(1);
+  });
+
+  test("a collector that throws is tried again next time (only a hang is given up)", async () => {
+    const flaky = jest.fn()
+      .mockRejectedValueOnce(new Error("not yet"))
+      .mockResolvedValueOnce({ model: "Pixel 7" });
+    const { port } = reporter({ collect: flaky });
+    expect(await port.next()).toBeNull();
+    expect(decode(await port.next())).toEqual({ model: "Pixel 7" });
+  });
+
   test("sent() without a pending report changes nothing", async () => {
     const { port } = reporter();
     port.sent();

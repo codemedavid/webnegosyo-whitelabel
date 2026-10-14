@@ -29,20 +29,20 @@ export function ComposerFooter({ isReview, phone, primary, secondary, busy, onSa
       {isReview && note && <p className="text-xs text-muted-foreground">{note}</p>}
       <div className="flex items-center gap-3">
         <span className="hidden min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground sm:flex">
-          <StatusDot tone={hero.tone} /> Phone: {hero.word}
+          <StatusDot tone={hero.tone} isPulsing={phone === 'ready'} /> Phone: {phone === 'ready' ? 'Ready' : hero.word}
         </span>
         <span className="flex-1 sm:hidden" />
-        <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={onSaveDraft} disabled={busy !== null}>
+        <Button type="button" variant="outline" className="min-h-11 rounded-full px-5 sm:min-h-10" onClick={onSaveDraft} disabled={busy !== null}>
           {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
           {secondary}
         </Button>
         {isReview ? (
-          <Button type="button" className="min-h-11 sm:min-h-9" onClick={onPrimary} disabled={busy !== null}>
+          <Button type="button" className="min-h-11 rounded-full px-5 sm:min-h-10" onClick={onPrimary} disabled={busy !== null}>
             {busy === 'start' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
             {primary}
           </Button>
         ) : (
-          <Button type="button" className="min-h-11 sm:min-h-9" onClick={onReview} disabled={busy !== null}>
+          <Button type="button" className="min-h-11 rounded-full px-5 sm:min-h-10" onClick={onReview} disabled={busy !== null}>
             Review <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         )}

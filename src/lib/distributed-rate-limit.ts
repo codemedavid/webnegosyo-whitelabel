@@ -13,7 +13,9 @@ import { checkRateLimit as checkInstanceRateLimit } from '@/lib/rate-limit'
  * delivery quotes, payment proofs), so a Redis error or a slow Redis ALLOWS the
  * request. A limit that guards DISCLOSURE instead (a lookup keyed on someone
  * else's identifier) passes `onRedisFailure: 'instance'`, so an outage degrades
- * to the per-instance limiter rather than to no limit at all.
+ * to the per-instance limiter rather than to no limit at all. A limit that
+ * guards a PAID call (an AI model per tap) passes `'refuse'`: an outage refuses
+ * the request rather than let it run unmetered.
  *
  * When Redis is not configured at all (local dev, a preview without the
  * Upstash vars) it degrades to the per-instance limiter — the protection the
@@ -27,12 +29,13 @@ export interface RateLimitOptions {
   windowSec: number
   /**
    * What a Redis error, timeout or garbled reply does. `'open'` (default)
-   * allows the request; `'instance'` counts it in the per-instance limiter.
+   * allows the request; `'instance'` counts it in the per-instance limiter;
+   * `'refuse'` refuses it.
    */
   onRedisFailure?: RedisFailureMode
 }
 
-export type RedisFailureMode = 'open' | 'instance'
+export type RedisFailureMode = 'open' | 'instance' | 'refuse'
 
 export interface DistributedRateLimitResult {
   allowed: boolean
@@ -66,6 +69,9 @@ function checkInstance(key: string, options: RateLimitOptions, nowMs: number): D
 /** The answer when Redis could not give one, per the caller's failure mode. */
 function onRedisFailure(key: string, options: RateLimitOptions, nowMs: number): DistributedRateLimitResult {
   if (options.onRedisFailure === 'instance') return checkInstance(key, options, nowMs)
+  if (options.onRedisFailure === 'refuse') {
+    return { allowed: false, remaining: 0, retryAfterSec: secondsLeftInWindow(nowMs, options.windowSec) }
+  }
   return {
     allowed: true,
     remaining: options.limit,
@@ -112,7 +118,8 @@ export async function checkRateLimit(
       retryAfterSec,
     }
   } catch (error) {
-    const fallback = options.onRedisFailure === 'instance' ? 'per-instance limit' : 'allowing request'
+    const fallback = options.onRedisFailure === 'instance' ? 'per-instance limit'
+      : options.onRedisFailure === 'refuse' ? 'refusing request' : 'allowing request'
     console.error(`[rate-limit] Redis unavailable; ${fallback}`, {
       key,
       error: error instanceof Error ? error.message : String(error),

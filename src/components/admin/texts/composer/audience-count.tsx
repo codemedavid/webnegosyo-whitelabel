@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ChevronDown, Loader2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { audienceCountText, skippedLines, skippedTotal, zeroReachReason } from '@/lib/texts/view/audience'
+import { IconTile } from '../status-chip'
 import { useTexts } from '../texts-context'
 import type { PreviewState } from './use-audience-preview'
 
@@ -36,17 +37,17 @@ export function AudienceCount({ state, onRetry }: { state: PreviewState; onRetry
     : ''
 
   return (
-    <div id="composer-audience-count" tabIndex={-1} className="space-y-2 rounded-xl border bg-muted/30 px-4 py-3 outline-none">
+    <div id="composer-audience-count" tabIndex={-1} className="space-y-3 rounded-2xl border border-wn-line bg-gradient-to-br from-wn-sand to-white p-4 outline-none">
       <p className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm">
-          <span className="text-base font-semibold tabular-nums">{preview.reach.toLocaleString('en-US')} {preview.reach === 1 ? 'guest' : 'guests'}</span>{' '}
-          will get this
+        <IconTile tone={preview.reach > 0 ? 'emerald' : 'amber'} size="sm"><Users /></IconTile>
+        <p className="text-sm text-wn-stone">
+          <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">{preview.reach.toLocaleString('en-US')}</span>{' '}
+          {preview.reach === 1 ? 'guest' : 'guests'} will get this
         </p>
         {state.status === 'loading' && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="Updating" />}
         {total > 0 && (
-          <button type="button" aria-expanded={isOpen} onClick={() => setOpen((open) => !open)} className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+          <button type="button" aria-expanded={isOpen} onClick={() => setOpen((open) => !open)} className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-sm text-wn-stone hover:bg-white hover:text-foreground sm:min-h-8">
             {total.toLocaleString('en-US')} skipped <ChevronDown className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
         )}
@@ -60,12 +61,12 @@ export function AudienceCount({ state, onRetry }: { state: PreviewState; onRetry
         </p>
       )}
       {isOpen && (
-        <ul className="space-y-1 border-t pt-2 text-sm text-muted-foreground">
+        <ul className="space-y-1.5 border-t border-wn-line pt-3 text-sm text-wn-stone">
           {lines.map((line) => <li key={line}>{line}</li>)}
         </ul>
       )}
       {state.status === 'error' && <p className="text-xs text-muted-foreground" role="alert">Couldn&apos;t update the count. Your draft is safe.</p>}
-      <p className="text-xs text-muted-foreground">We check again right before it sends, so the number can change a little.</p>
+      <p className="text-xs text-wn-stone">We check again right before it sends, so the number can change a little.</p>
     </div>
   )
 }

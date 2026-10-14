@@ -15,7 +15,7 @@ import { readSettings } from '@/lib/sms-automations/api/reads'
 import { guestFromCustomerRow, type CustomerRow } from '@/lib/sms-automations/rows'
 import type { AutomationSettings } from '@/lib/sms-automations/types'
 import type { SmsCustomer } from '../audience'
-import { readAll } from './paged'
+import { PAGE_SIZE, readAll } from './paged'
 
 const DAY_MS = 86_400_000
 /** A phone silent this long is offline (same threshold as phone-health's "offline"). */
@@ -65,12 +65,28 @@ function toSmsCustomer(row: GuestRow): SmsCustomer {
   }
 }
 
-/** Guests who may be texted at all: a phone, consent, not opted out. */
+/** A store with more textable guests than this is refused loudly rather than timing out a shared request. */
+const MAX_GUESTS = 50_000
+
+/**
+ * Guests who may be texted at all: a phone, consent, not opted out. Keyset
+ * pages on id (`id > last`), served by the partial index
+ * customers(tenant_id, id) where textable — no OFFSET scans on big stores.
+ */
 export async function readTextableGuests(db: SupabaseClient, tenantId: string): Promise<SmsCustomer[]> {
-  const rows = await readAll<GuestRow>('guests', (from, to) => db.from('customers').select(GUEST_COLUMNS)
-    .eq('tenant_id', tenantId).not('phone_e164', 'is', null).eq('sms_consent', true).eq('sms_opt_out', false)
-    .order('id').range(from, to), { makeError: fail })
-  return rows.map(toSmsCustomer)
+  const rows: GuestRow[] = []
+  let lastId: string | null = null
+  for (;;) {
+    const base = db.from('customers').select(GUEST_COLUMNS)
+      .eq('tenant_id', tenantId).not('phone_e164', 'is', null).eq('sms_consent', true).eq('sms_opt_out', false)
+    const { data, error } = await (lastId ? base.gt('id', lastId) : base).order('id').limit(PAGE_SIZE)
+    if (error) throw fail(`guests could not be read: ${error.message}`)
+    const page = (data ?? []) as unknown as GuestRow[]
+    rows.push(...page)
+    if (rows.length > MAX_GUESTS) throw fail(`guests: more than ${MAX_GUESTS} who can be texted`)
+    if (page.length < PAGE_SIZE) return rows.map(toSmsCustomer)
+    lastId = page[page.length - 1].id
+  }
 }
 
 export interface IneligibleCounts {

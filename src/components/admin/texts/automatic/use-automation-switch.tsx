@@ -11,6 +11,7 @@ import { useTexts } from '../texts-context'
 import { useConfirm } from '../use-confirm'
 import { callAutomations } from './call-automations'
 import { TurnOnDialog, type TurnOnTarget } from './turn-on-dialog'
+import { useTextsActions } from '../texts-actions'
 
 export function targetOf(automation: Automation): TurnOnTarget {
   return { automationId: automation.id, name: automation.name, draft: toApiDraft(draftFromAutomation(automation)), runMode: automation.runMode }
@@ -24,6 +25,7 @@ export function targetOf(automation: Automation): TurnOnTarget {
 export function useAutomationSwitch() {
   const { tenantId, tenantSlug, isDemo, automations, setUrl, refresh } = useTexts()
   const router = useRouter()
+  const actions = useTextsActions()
   const [sheet, setSheet] = useState<{ target: TurnOnTarget; mode: SheetMode; blocker: Blocker | null } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const { ask, dialogProps } = useConfirm()
@@ -42,12 +44,12 @@ export function useAutomationSwitch() {
       title: 'Stop sending?', body: 'Texts still waiting are withdrawn.', cancelLabel: 'Keep it on', confirmLabel: 'Turn off', isDestructive: true,
       onConfirm: async () => {
         setBusyId(automation.id)
-        const done = await runAction(() => callAutomations(tenantId, { action: 'set_status', automationId: automation.id, status: 'off' }), "Couldn't turn it off. Try again.")
+        const done = await runAction(() => callAutomations(actions, tenantId, { action: 'set_status', automationId: automation.id, status: 'off' }), "Couldn't turn it off. Try again.")
         setBusyId(null)
         if (done !== null) refresh()
       },
     })
-  }, [ask, isDemo, refresh, tenantId])
+  }, [actions, ask, isDemo, refresh, tenantId])
 
   const fix = useCallback((blocker: Blocker) => {
     setSheet(null)

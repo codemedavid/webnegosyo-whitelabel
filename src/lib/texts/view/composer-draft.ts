@@ -6,7 +6,7 @@
 
 import type { AudienceFilter, CampaignDraftInput, CampaignListItem, CampaignSchedule, WhenChoice } from '../types'
 import type { CampaignPreset } from './presets'
-import { addDays, manilaHhmm, manilaInstant, manilaToday, monthDayText, quietWindowText, time12h } from './time'
+import { addDays, manilaHhmm, manilaInstant, manilaToday, monthDayText, time12h } from './time'
 
 export const DEFAULT_REPEAT_WEEKS = 8
 export const MAX_REPEAT_DAYS = 180
@@ -125,10 +125,16 @@ export function nameProblem(name: string): string | null {
   return null
 }
 
-/** Why the When section can't be saved, or null. */
-export function whenProblem(draft: ComposerDraft, now: number): string | null {
+type QuietWindow = { quietHoursStart: string; quietHoursEnd: string }
+
+/** Why the When section can't be saved, or null. A start inside quiet hours is refused (the server refuses it too). */
+export function whenProblem(draft: ComposerDraft, now: number, rules?: QuietWindow): string | null {
   if (draft.when === 'now') return null
   if (!/^\d{2}:\d{2}$/.test(draft.time)) return 'Pick a time.'
+  if (rules) {
+    const quiet = quietTimeProblem(draft.time, rules)
+    if (quiet) return quiet
+  }
   const today = manilaToday(now)
   if (draft.when === 'later') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.laterDate)) return 'Pick a day.'
@@ -157,10 +163,20 @@ export function isInQuietHours(hhmm: string, rules: { quietHoursStart: string; q
   return from < to ? at >= from && at < to : at >= from || at < to
 }
 
-/** "That's during quiet hours (9pm–8am). It will start at 8:00 AM instead." */
-export function quietNote(hhmm: string, rules: { quietHoursStart: string; quietHoursEnd: string }): string | null {
+/** "7:00 AM" → "7 AM", "07:30" → "7:30 AM". */
+function clockWord(hhmm: string): string {
+  return time12h(hhmm).replace(':00 ', ' ')
+}
+
+/** "That's inside quiet hours (9 PM–7 AM). Pick a time after 7 AM." — same words as the server. */
+export function quietTimeProblem(hhmm: string, rules: QuietWindow): string | null {
   if (!isInQuietHours(hhmm, rules)) return null
-  return `That's during quiet hours (${quietWindowText(rules)}). It will start at ${time12h(rules.quietHoursEnd)} instead.`
+  return `That's inside quiet hours (${clockWord(rules.quietHoursStart)}–${clockWord(rules.quietHoursEnd)}). Pick a time after ${clockWord(rules.quietHoursEnd)}.`
+}
+
+/** Only the times a campaign may start at: the quiet window is never offered. */
+export function sendableTimes<T extends { value: string }>(options: readonly T[], rules: QuietWindow): T[] {
+  return options.filter((option) => !isInQuietHours(option.value, rules))
 }
 
 /** The instant the first text could go: now, or the Later/Repeat start. */

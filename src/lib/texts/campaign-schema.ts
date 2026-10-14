@@ -12,7 +12,7 @@
 
 import { z } from 'zod'
 import { validateCampaignTemplate } from './message'
-import { manilaInstant, toManilaParts } from './schedule'
+import { isWithinQuietHours, manilaInstant, toManilaParts, type QuietWindow } from './schedule'
 import { SCHEDULE_KINDS, type CampaignSchedule } from './types'
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -81,8 +81,21 @@ export const campaignDraftInputSchema = z.strictObject({
 
 export type ParsedCampaignDraft = z.infer<typeof campaignDraftInputSchema>
 
-/** Going live: a one-off must be from now on, a repeat must not have ended. Null = fine. */
-export function checkScheduleTiming(schedule: CampaignSchedule, now: Date): string | null {
+/** "21:00" → "9 PM", "07:30" → "7:30 AM". */
+function clockWords(hhmm: string): string {
+  const [hours, minutes] = hhmm.split(':').map(Number)
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12
+  return `${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''} ${hours < 12 ? 'AM' : 'PM'}`
+}
+
+/**
+ * Going live: the send time is outside the store's quiet hours (when given), a
+ * one-off is from now on, a repeat has not ended. Null = fine.
+ */
+export function checkScheduleTiming(schedule: CampaignSchedule, now: Date, quiet?: QuietWindow): string | null {
+  if (quiet && isWithinQuietHours(schedule.time, quiet.start, quiet.end)) {
+    return `That's inside quiet hours (${clockWords(quiet.start)}–${clockWords(quiet.end)}). Pick a time after ${clockWords(quiet.end)}.`
+  }
   const today = toManilaParts(now).date
   if (schedule.kind === 'one_off') {
     const due = schedule.date ? manilaInstant(schedule.date, schedule.time) : null

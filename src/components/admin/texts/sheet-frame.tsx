@@ -48,12 +48,12 @@ export function SheetFrame({ title, description, headerExtra, isDirty = false, a
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-3 border-b px-4 py-3 sm:px-6">
+    <div className="flex h-full min-h-0 flex-col bg-white">
+      <header className="flex items-center gap-3 border-b border-wn-line bg-white px-4 py-3.5 sm:px-6">
         <div className="min-w-0 flex-1">
-          <SheetTitle className="truncate text-lg font-semibold">{title}</SheetTitle>
+          <SheetTitle className="truncate text-lg font-semibold tracking-tight">{title}</SheetTitle>
           {description
-            ? <SheetDescription className="truncate text-xs">{description}</SheetDescription>
+            ? <SheetDescription className="truncate text-[13px] text-wn-stone">{description}</SheetDescription>
             : <SheetDescription className="sr-only">{title}</SheetDescription>}
         </div>
         {headerExtra}
@@ -63,13 +63,13 @@ export function SheetFrame({ title, description, headerExtra, isDirty = false, a
           size={isArmed ? 'sm' : 'icon'}
           onClick={close}
           aria-label={isArmed ? 'Discard changes and close' : 'Close'}
-          className={isArmed ? 'min-h-11' : 'size-11 sm:size-9'}
+          className={isArmed ? 'min-h-11 rounded-full' : 'size-11 rounded-full text-wn-stone hover:text-foreground sm:size-9'}
         >
           {isArmed ? 'Discard changes?' : <X className="h-5 w-5" />}
         </Button>
       </header>
       <div className="relative min-h-0 flex-1 overflow-y-auto">{children}</div>
-      {footer && <footer className="border-t bg-background px-4 py-3 sm:px-6">{footer}</footer>}
+      {footer && <footer className="border-t border-wn-line bg-white/95 px-4 py-3 shadow-[0_-4px_16px_-12px_rgba(29,24,21,0.25)] backdrop-blur sm:px-6">{footer}</footer>}
     </div>
   )
 }

@@ -1,18 +1,20 @@
 'use client'
 
+import { Pause, Send, Smartphone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { CampaignListItem, CampaignRunProgress } from '@/lib/texts/types'
 import { progressLine } from '@/lib/texts/view/campaigns'
 import { finishText, toMs, clockText } from '@/lib/texts/view/time'
 import { cn } from '@/lib/utils'
 import { useServerNow, useTexts } from '../texts-context'
+import { IconTile } from '../status-chip'
 import { useCampaignActions } from './campaign-actions'
 
 export function ProgressBar({ progress, tone = 'emerald' }: { progress: CampaignRunProgress; tone?: 'emerald' | 'amber' }) {
   const done = progress.total > 0 ? Math.min(1, (progress.sent + progress.notSent) / progress.total) : 0
   return (
     <div
-      className="h-2 w-full overflow-hidden rounded-full bg-muted"
+      className="h-2 w-full overflow-hidden rounded-full bg-stone-200/70"
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={progress.total}
@@ -20,7 +22,7 @@ export function ProgressBar({ progress, tone = 'emerald' }: { progress: Campaign
       aria-label={`${progress.sent} of ${progress.total} sent`}
     >
       <div
-        className={cn('h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none', tone === 'amber' ? 'bg-amber-500' : 'bg-emerald-500')}
+        className={cn('h-full rounded-full transition-[width] duration-300 ease-out motion-reduce:transition-none', tone === 'amber' ? 'bg-amber-500' : 'bg-gradient-to-r from-emerald-500 to-emerald-400')}
         style={{ width: `${done * 100}%` }}
       />
     </div>
@@ -48,17 +50,31 @@ function SendingRow({ item, progress }: { item: CampaignListItem; progress: Camp
   const run = useCampaignActions()
   const text = useProgressText(progress)
   const isWaiting = progress.isWaitingForPhone
+  const pct = progress.total > 0 ? Math.round(((progress.sent + progress.notSent) / progress.total) * 100) : 0
   return (
-    <li className={cn('space-y-3 rounded-2xl border bg-card p-5', isWaiting && 'border-amber-300 bg-amber-50/60 dark:bg-amber-950/20')}>
-      <div className="flex items-center justify-between gap-3">
-        <p className="truncate font-semibold">{item.name}</p>
-        <div className="flex shrink-0 gap-2">
-          <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => run('pause', item)}>Pause</Button>
-          <Button type="button" size="sm" variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => run('view', item)}>View</Button>
+    <li className={cn('rounded-2xl border bg-card p-5 shadow-[0_1px_2px_rgba(29,24,21,0.04)]', isWaiting && 'border-amber-200 bg-gradient-to-br from-amber-50/80 to-white')}>
+      <div className="flex items-start gap-4">
+        <IconTile tone={isWaiting ? 'amber' : 'emerald'} className="hidden sm:flex">{isWaiting ? <Smartphone /> : <Send />}</IconTile>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-wn-stone">{isWaiting ? 'Waiting for your phone' : 'Sending now'}</p>
+              <p className="truncate font-semibold">{item.name}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button type="button" size="sm" variant="outline" className="min-h-11 rounded-full bg-white px-3 sm:min-h-8" onClick={() => run('pause', item)}>
+                <Pause className="h-3.5 w-3.5" aria-hidden="true" /> Pause
+              </Button>
+              <Button type="button" size="sm" variant="ghost" className="min-h-11 rounded-full px-3 sm:min-h-8" onClick={() => run('view', item)}>View</Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <ProgressBar progress={progress} tone={isWaiting ? 'amber' : 'emerald'} />
+            <span className="w-10 shrink-0 text-right text-sm font-semibold tabular-nums">{pct}%</span>
+          </div>
+          <p className={cn('text-sm tabular-nums', isWaiting ? 'text-amber-800' : 'text-wn-stone')}>{text}</p>
         </div>
       </div>
-      <ProgressBar progress={progress} tone={isWaiting ? 'amber' : 'emerald'} />
-      <p className={cn('text-sm tabular-nums', isWaiting ? 'text-amber-800 dark:text-amber-300' : 'text-muted-foreground')}>{text}</p>
     </li>
   )
 }
@@ -68,13 +84,12 @@ export function SendingNowCard() {
   const { campaigns, live } = useTexts()
   const open = campaigns
     .map((item) => ({ item, progress: live.progress[item.id] ?? null }))
-    .filter((entry): entry is { item: CampaignListItem; progress: CampaignRunProgress } => entry.progress !== null && entry.progress !== undefined)
+    .filter((entry): entry is { item: CampaignListItem; progress: CampaignRunProgress } => entry.progress !== null)
     .filter(({ progress }) => progress.waiting > 0 || progress.isWaitingForPhone)
   if (open.length === 0) return null
   return (
-    <section aria-label="Sending now" className="space-y-2">
-      <h2 className="text-sm font-semibold">Sending now</h2>
-      <ul className="space-y-2">
+    <section aria-label="Sending now">
+      <ul className="space-y-3">
         {open.map(({ item, progress }) => <SendingRow key={item.id} item={item} progress={progress} />)}
       </ul>
     </section>

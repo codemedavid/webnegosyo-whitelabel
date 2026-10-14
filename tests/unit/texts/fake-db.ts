@@ -17,7 +17,16 @@ export interface UniqueKey {
 export interface FakeDbOptions {
   unique?: Record<string, UniqueKey[]>
   rpc?: Record<string, (args: Record<string, unknown>) => unknown>
+  /** Runs before an insert/upsert/update/delete executes; may mutate `tables` (races) or throw (failures). */
+  beforeWrite?: (event: { table: string; mode: string; rows: Row[]; patch: Row; tables: Record<string, Row[]> }) => void
+  /** Tables whose reads fail with this message. */
+  readErrors?: Record<string, string>
+  /** Column defaults applied on insert (like the DB's). Defaults to TEXTS_DEFAULTS. */
+  defaults?: Record<string, Row>
 }
+
+/** The DB defaults the engine relies on. */
+export const TEXTS_DEFAULTS: Record<string, Row> = { sms_outbox: { status: 'queued' } }
 
 let idCounter = 0
 export const nextId = (): string => `00000000-0000-4000-8000-${String(++idCounter).padStart(12, '0')}`
@@ -122,7 +131,7 @@ export function createFakeDb(seed: Record<string, Row[]> = {}, options: FakeDbOp
       delete() { record('delete', []); mode = 'delete'; return api },
       eq(c: string, v: unknown) { record('eq', [c, v]); filters.push(opPredicate(c, 'eq', v)); return api },
       neq(c: string, v: unknown) { record('neq', [c, v]); filters.push(opPredicate(c, 'neq', v)); return api },
-      gt(c: string, v: unknown) { filters.push(opPredicate(c, 'gt', v)); return api },
+      gt(c: string, v: unknown) { record('gt', [c, v]); filters.push(opPredicate(c, 'gt', v)); return api },
       gte(c: string, v: unknown) { filters.push(opPredicate(c, 'gte', v)); return api },
       lt(c: string, v: unknown) { filters.push(opPredicate(c, 'lt', v)); return api },
       lte(c: string, v: unknown) { filters.push(opPredicate(c, 'lte', v)); return api },
@@ -134,8 +143,8 @@ export function createFakeDb(seed: Record<string, Row[]> = {}, options: FakeDbOp
       },
       or(expr: string) { record('or', [expr]); const terms = splitTop(expr).map(termPredicate); filters.push((row) => terms.some((p) => p(row))); return api },
       order(column: string, opts?: { ascending?: boolean }) { orders.push({ column, ascending: opts?.ascending !== false }); return api },
-      range(from: number, to: number) { window = [from, to]; return api },
-      limit(n: number) { window = [0, n - 1]; return api },
+      range(from: number, to: number) { record('range', [from, to]); window = [from, to]; return api },
+      limit(n: number) { record('limit', [n]); window = [0, n - 1]; return api },
       maybeSingle() { single = 'maybe'; return api },
       single() { single = 'one'; return api },
       then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
@@ -159,7 +168,7 @@ export function createFakeDb(seed: Record<string, Row[]> = {}, options: FakeDbOp
       tables[table] = tables[table] ?? []
       const written: Row[] = []
       for (const raw of payload) {
-        const row = { id: nextId(), created_at: new Date().toISOString(), ...raw }
+        const row = { id: nextId(), created_at: new Date().toISOString(), ...(options.defaults ?? TEXTS_DEFAULTS)[table], ...raw }
         if (conflicts(table, row)) {
           if (mode === 'upsert' && ignoreDuplicates) continue
           return { rows: written, error: { code: '23505', message: 'duplicate key value violates unique constraint' } }
@@ -171,6 +180,8 @@ export function createFakeDb(seed: Record<string, Row[]> = {}, options: FakeDbOp
     }
 
     function execute() {
+      if (mode !== 'select') options.beforeWrite?.({ table, mode, rows: payload, patch, tables })
+      if (mode === 'select' && options.readErrors?.[table]) return { data: null, error: { code: 'XX000', message: options.readErrors[table] }, count: null }
       if (mode === 'insert' || mode === 'upsert') {
         const { rows, error } = write()
         return finish(error ? [] : rows, error)

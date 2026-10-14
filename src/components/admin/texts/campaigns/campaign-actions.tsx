@@ -2,15 +2,6 @@
 
 import { createContext, useCallback, useContext, useRef, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import {
-  archiveCampaignAction,
-  deleteCampaignDraftAction,
-  duplicateCampaignAction,
-  pauseCampaignAction,
-  resumeCampaignAction,
-  switchToAutomaticAction,
-  unarchiveCampaignAction,
-} from '@/app/actions/texts'
 import type { CampaignListItem, CampaignRunProgress } from '@/lib/texts/types'
 import type { CampaignAction } from '@/lib/texts/view/campaigns'
 import { finishText, toMs } from '@/lib/texts/view/time'
@@ -18,6 +9,7 @@ import { ConfirmDialog } from '../confirm-dialog'
 import { DEMO_READONLY, runAction } from '../run-action'
 import { useTexts } from '../texts-context'
 import { useConfirm } from '../use-confirm'
+import { useTextsActions } from '../texts-actions'
 
 type Run = (action: CampaignAction, item: CampaignListItem) => void
 
@@ -44,6 +36,7 @@ export function CampaignActionsProvider({ children }: { children: ReactNode }) {
   const { tenantId, isDemo, live, setUrl, refresh } = useTexts()
   const { ask, dialogProps } = useConfirm()
   const inFlight = useRef(new Set<string>())
+  const actions = useTextsActions()
 
   const once = useCallback(async (key: string, work: () => Promise<void>) => {
     if (inFlight.current.has(key)) return
@@ -66,13 +59,13 @@ export function CampaignActionsProvider({ children }: { children: ReactNode }) {
         return ask({
           title: `Pause ${item.name}?`, body: pauseBody(progress), cancelLabel: 'Keep sending', confirmLabel: 'Pause',
           onConfirm: () => once(key, async () => {
-            const done = await runAction(() => pauseCampaignAction(tenantId, item.id), "Couldn't pause. Try again. Texts already sent can't be taken back.")
+            const done = await runAction(() => actions.pauseCampaignAction(tenantId, item.id), "Couldn't pause. Try again. Texts already sent can't be taken back.")
             if (done !== null) { toast.success('Paused.'); refresh() }
           }),
         })
       case 'resume':
         return void once(key, async () => {
-          const done = await runAction(() => resumeCampaignAction(tenantId, item.id))
+          const done = await runAction(() => actions.resumeCampaignAction(tenantId, item.id))
           if (done === null) return
           const finish = toMs(progress?.finishAt ?? null)
           toast.success(finish === null ? 'Resumed. It picks up where it left off.' : `Resumed. Done ${finishText(finish, Date.now())}.`)
@@ -83,27 +76,27 @@ export function CampaignActionsProvider({ children }: { children: ReactNode }) {
           title: 'Delete this draft?', body: "It's gone for good. Campaigns you've sent are kept.",
           cancelLabel: 'Keep it', confirmLabel: 'Delete', isDestructive: true,
           onConfirm: () => once(key, async () => {
-            const done = await runAction(() => deleteCampaignDraftAction(tenantId, item.id))
+            const done = await runAction(() => actions.deleteCampaignDraftAction(tenantId, item.id))
             if (done !== null) { toast.success('Draft deleted.'); setUrl({ campaign: null }); refresh() }
           }),
         })
       case 'archive':
         return void once(key, async () => {
-          const done = await runAction(() => archiveCampaignAction(tenantId, item.id))
+          const done = await runAction(() => actions.archiveCampaignAction(tenantId, item.id))
           if (done === null) return
           refresh()
           toast.success('Archived. Find it under Archived.', {
-            action: { label: 'Undo', onClick: () => void runAction(() => unarchiveCampaignAction(tenantId, item.id)).then((v) => v !== null && refresh()) },
+            action: { label: 'Undo', onClick: () => void runAction(() => actions.unarchiveCampaignAction(tenantId, item.id)).then((v) => v !== null && refresh()) },
           })
         })
       case 'unarchive':
         return void once(key, async () => {
-          const done = await runAction(() => unarchiveCampaignAction(tenantId, item.id))
+          const done = await runAction(() => actions.unarchiveCampaignAction(tenantId, item.id))
           if (done !== null) { toast.success('Back in your list.'); refresh() }
         })
       case 'duplicate':
         return void once(key, async () => {
-          const value = await runAction(() => duplicateCampaignAction(tenantId, item.id))
+          const value = await runAction(() => actions.duplicateCampaignAction(tenantId, item.id))
           if (!value) return
           refresh()
           setUrl({ campaign: value.id, edit: true, isReport: false })
@@ -114,12 +107,12 @@ export function CampaignActionsProvider({ children }: { children: ReactNode }) {
           body: "From now on it goes out on its schedule through your sending phone. You won't need to tap Send in the app.",
           cancelLabel: 'Keep sending it from the app', confirmLabel: 'Let it send by itself',
           onConfirm: () => once(key, async () => {
-            const done = await runAction(() => switchToAutomaticAction(tenantId, item.id))
+            const done = await runAction(() => actions.switchToAutomaticAction(tenantId, item.id))
             if (done !== null) { toast.success('It sends by itself now.'); refresh() }
           }),
         })
     }
-  }, [ask, isDemo, live.progress, once, refresh, setUrl, tenantId])
+  }, [actions, ask, isDemo, live.progress, once, refresh, setUrl, tenantId])
 
   return (
     <CampaignActionsContext.Provider value={run}>

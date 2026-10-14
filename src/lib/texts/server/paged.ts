@@ -36,6 +36,10 @@ export async function readAll<T>(
     rows.push(...((data ?? []) as T[]))
     if (!data || data.length < PAGE_SIZE) return rows
   }
+  // Exactly maxRows so far: only a row beyond the cap makes it "too many".
+  const { data, error } = await page(maxRows, maxRows)
+  if (error) throw makeError(`${label} could not be read: ${error.message}`)
+  if (!data || data.length === 0) return rows
   throw makeError(`${label}: more than ${maxRows} rows`)
 }
 

@@ -101,17 +101,44 @@ function fromSmsSends(row: SendRow): SendRecord {
 export const OUTBOX_SEND_COLUMNS = 'id, campaign_run_id, customer_id, phone_e164, status, skip_reason, error, sent_at'
 export const SMS_SEND_COLUMNS = 'id, run_id, customer_id, phone_e164, result, error_code, sent_at'
 
+/**
+ * Runs per read: a server run holds at most SERVER_RUN_CEILING (500) texts, so
+ * 20 runs stay at 10k rows — well under MAX_SEND_ROWS.
+ */
+export const RUNS_PER_SEND_READ = 20
+
+export interface RunSends {
+  sends: SendRecord[]
+  /** Runs whose texts could not be read: left out of results, never a thrown page. */
+  failedRunIds: Set<string>
+}
+
+async function readGroup(db: SupabaseClient, tenantId: string, delivery: 'server' | 'phone', ids: string[]): Promise<SendRecord[]> {
+  if (delivery === 'server') {
+    const rows = await readAll<OutboxRow>('campaign texts', (from, to) => db.from('sms_outbox').select(OUTBOX_SEND_COLUMNS)
+      .eq('tenant_id', tenantId).in('campaign_run_id', ids).order('id').range(from, to), { maxRows: MAX_SEND_ROWS })
+    return rows.map(fromOutbox)
+  }
+  const rows = await readAll<SendRow>('campaign sends', (from, to) => db.from('sms_sends').select(SMS_SEND_COLUMNS)
+    .eq('tenant_id', tenantId).in('run_id', ids).order('id').range(from, to), { maxRows: MAX_SEND_ROWS })
+  return rows.map(fromSmsSends)
+}
+
 /** Every text of these runs: outbox rows for server runs, `sms_sends` for phone runs. */
-export async function readRunSends(db: SupabaseClient, tenantId: string, runs: readonly RunDetail[]): Promise<SendRecord[]> {
-  const serverIds = runs.filter((r) => r.delivery === 'server').map((r) => r.id)
-  const phoneIds = runs.filter((r) => r.delivery === 'phone').map((r) => r.id)
-  const reads = [
-    ...chunk(serverIds).map((ids) => readAll<OutboxRow>('campaign texts', (from, to) => db.from('sms_outbox').select(OUTBOX_SEND_COLUMNS)
-      .eq('tenant_id', tenantId).in('campaign_run_id', ids).order('id').range(from, to), { maxRows: MAX_SEND_ROWS }).then((rows) => rows.map(fromOutbox))),
-    ...chunk(phoneIds).map((ids) => readAll<SendRow>('campaign sends', (from, to) => db.from('sms_sends').select(SMS_SEND_COLUMNS)
-      .eq('tenant_id', tenantId).in('run_id', ids).order('id').range(from, to), { maxRows: MAX_SEND_ROWS }).then((rows) => rows.map(fromSmsSends))),
-  ]
-  return (await Promise.all(reads)).flat()
+export async function readRunSends(db: SupabaseClient, tenantId: string, runs: readonly RunDetail[]): Promise<RunSends> {
+  const groups = (['server', 'phone'] as const).flatMap((delivery) =>
+    chunk(runs.filter((r) => r.delivery === delivery).map((r) => r.id), RUNS_PER_SEND_READ).map((ids) => ({ delivery, ids })))
+  const failedRunIds = new Set<string>()
+  const reads = await Promise.all(groups.map(async ({ delivery, ids }) => {
+    try {
+      return await readGroup(db, tenantId, delivery, ids)
+    } catch (error) {
+      log.error('campaign texts could not be read', { tenantId, runs: ids.length, error: error instanceof Error ? error.message : String(error) })
+      ids.forEach((id) => failedRunIds.add(id))
+      return []
+    }
+  }))
+  return { sends: reads.flat(), failedRunIds }
 }
 
 // ─── Came back ───────────────────────────────────────────────────────────────
@@ -221,12 +248,16 @@ export async function computeRunResults(
     return !cached
   })
   if (live.length === 0) return results
-  const sends = await readRunSends(db, tenantId, live)
-  const comebacks = await findComebacks(db, tenantId, backend, sends)
-  for (const run of live) {
-    const result = summarizeRun(run, sends, comebacks, now)
-    results.set(run.id, result)
-    if (result.isFinal) await storeFinal(db, tenantId, result, now)
+  const { sends, failedRunIds } = await readRunSends(db, tenantId, live)
+  const comebacks = await findComebacks(db, tenantId, backend, sends).catch((error: unknown) => {
+    log.error('came-back orders could not be read', { tenantId, error: error instanceof Error ? error.message : String(error) })
+    return null
+  })
+  for (const run of live.filter((r) => !failedRunIds.has(r.id))) {
+    const result = summarizeRun(run, sends, comebacks ?? new Map(), now)
+    // Without the orders the numbers are a floor: show them, never store them as final.
+    results.set(run.id, comebacks ? result : { ...result, isFinal: false })
+    if (result.isFinal && comebacks) await storeFinal(db, tenantId, result, now)
   }
   return results
 }

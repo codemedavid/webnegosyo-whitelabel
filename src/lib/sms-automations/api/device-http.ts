@@ -11,6 +11,7 @@
  */
 
 import 'server-only'
+import { createHash } from 'node:crypto'
 import { after, type NextRequest, type NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashDeviceCredential } from '@/lib/loyalty/device-credential'
@@ -62,16 +63,35 @@ function claimResponse(data: unknown): NextResponse {
 
 type Database = ReturnType<typeof createAdminClient>
 
+/** A phone claims every minute or so; its report rarely changes. */
+const REPORT_REPEAT_MS = 10 * 60_000
+const MAX_REMEMBERED_PHONES = 1000
+/** device → hash of the report last recorded and when (oldest first; bounded LRU, per instance). */
+const recentReports = new Map<string, { hash: string; at: number }>()
+
+/** True when this phone's report is new or due again; remembers it either way. */
+function isFreshReport(deviceId: string, header: string, now: number): boolean {
+  const hash = createHash('sha256').update(header).digest('hex')
+  const last = recentReports.get(deviceId)
+  if (last && last.hash === hash && now - last.at < REPORT_REPEAT_MS) return false
+  recentReports.delete(deviceId)
+  recentReports.set(deviceId, { hash, at: now })
+  if (recentReports.size > MAX_REMEMBERED_PHONES) recentReports.delete(recentReports.keys().next().value as string)
+  return true
+}
+
 /**
  * What the phone says about itself (`x-wn-phone-info`), saved for the web's
  * Texts page. Only after the claim RPC accepted the device credential, so a
  * forged header cannot write. Fire-and-forget: it never fails or slows the
  * claim (`recordPhoneInfo` never throws; `after` keeps the function alive).
+ * The same report from the same phone within 10 minutes is not written again.
  */
 function recordPhoneReport(request: NextRequest, database: Database, tenantId: string, deviceId: string, claim: unknown): void {
   if (!isRecord(claim) || claim.error === 'request_denied') return
-  const info = parsePhoneInfoHeader(request.headers.get(PHONE_INFO_HEADER))
-  if (!info) return
+  const header = request.headers.get(PHONE_INFO_HEADER)
+  const info = parsePhoneInfoHeader(header)
+  if (!info || !header || !isFreshReport(deviceId, header, Date.now())) return
   const pending = recordPhoneInfo(database, tenantId, deviceId, info)
   try {
     after(() => pending)

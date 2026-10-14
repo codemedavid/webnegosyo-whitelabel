@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { withoutHeroDuplicates } from '@/lib/texts/attention'
-import type { TextsPageData, TextsTab } from '@/lib/texts/types'
+import type { TextsLive, TextsPageData, TextsTab } from '@/lib/texts/types'
+import { TextsActionsProvider, type TextsActions } from './texts-actions'
 import { TextsProvider, type TextsContextValue } from './texts-context'
 import { useTextsLive, liveKey } from './use-texts-live'
 import { useTextsUrl } from './use-texts-url'
@@ -45,11 +46,19 @@ function useRefreshOnRunChange(progress: Record<string, unknown>, refresh: () =>
  * Rules. Every create/edit/report opens in a right-hand sheet; all of it is
  * in the URL.
  */
-export function TextsWorkspace({ data, downloadUrl }: { data: TextsPageData; downloadUrl: string }) {
+interface TextsWorkspaceProps {
+  data: TextsPageData
+  downloadUrl: string
+  /** Local preview harness only: fixture actions and live reads. Production passes neither. */
+  actions?: TextsActions
+  liveFetcher?: (tenantId: string) => Promise<TextsLive>
+}
+
+export function TextsWorkspace({ data, downloadUrl, actions, liveFetcher }: TextsWorkspaceProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { url, setUrl, go } = useTextsUrl()
-  const liveQuery = useTextsLive(data.tenantId, data.live, url.phones)
+  const liveQuery = useTextsLive(data.tenantId, data.live, url.phones, liveFetcher)
 
   const refresh = useCallback(() => {
     router.refresh()
@@ -82,6 +91,7 @@ export function TextsWorkspace({ data, downloadUrl }: { data: TextsPageData; dow
   const isCompactHero = url.tab === 'activity' || url.tab === 'rules'
 
   return (
+    <TextsActionsProvider actions={actions}>
     <TextsProvider value={value}>
       <CampaignActionsProvider>
         <div className="mx-auto max-w-5xl space-y-8 pb-16">
@@ -91,10 +101,14 @@ export function TextsWorkspace({ data, downloadUrl }: { data: TextsPageData; dow
             <NeedsAttentionStrip items={attention} />
           </div>
           <Tabs value={url.tab} onValueChange={(tab) => setUrl({ tab: tab as TextsTab, automatic: null })} className="gap-6">
-            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-              <TabsList className="h-11 sm:h-9">
+            <div className="-mx-4 overflow-x-auto border-b border-wn-line px-4 sm:mx-0 sm:px-0">
+              <TabsList className="h-auto gap-1 rounded-none bg-transparent p-0">
                 {TABS.map((tab) => (
-                  <TabsTrigger key={tab.value} value={tab.value} className="px-4">
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className="relative -mb-px h-11 flex-none rounded-none border-0 border-b-2 border-transparent px-3 text-sm font-medium text-wn-stone shadow-none transition-colors hover:text-foreground data-[state=active]:border-wn-ink data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4"
+                  >
                     {tab.label}
                   </TabsTrigger>
                 ))}
@@ -112,5 +126,6 @@ export function TextsWorkspace({ data, downloadUrl }: { data: TextsPageData; dow
         <AutomationEditorSheet />
       </CampaignActionsProvider>
     </TextsProvider>
+    </TextsActionsProvider>
   )
 }

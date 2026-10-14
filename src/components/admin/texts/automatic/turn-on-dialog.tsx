@@ -11,6 +11,7 @@ import {
 import { PACE_LINE } from '@/lib/texts/view/rules'
 import { useTexts } from '../texts-context'
 import { callAutomations, type BacklogValue, type PreviewValue } from './call-automations'
+import { useTextsActions } from '../texts-actions'
 
 export interface TurnOnTarget {
   automationId: string
@@ -40,17 +41,18 @@ export function TurnOnDialog({ target, mode, blocker, onFix, onClose }: TurnOnDi
   const [phase, setPhase] = useState<Phase>({ kind: 'checking' })
   const [error, setError] = useState<string | null>(null)
   const request = useRef(0)
+  const actions = useTextsActions()
 
   useEffect(() => {
     if (!target || blocker) return
     const mine = ++request.current
     setPhase({ kind: 'checking' })
     setError(null)
-    void callAutomations<PreviewValue>(tenantId, { action: 'preview', automation: target.draft }).then((result) => {
+    void callAutomations<PreviewValue>(actions, tenantId, { action: 'preview', automation: target.draft }).then((result) => {
       if (mine !== request.current) return
       setPhase(result.ok ? { kind: 'ask', queued: result.value.now?.queued ?? 0, outlook: result.value.outlook } : { kind: 'unreadable', error: result.error })
     })
-  }, [target, blocker, tenantId])
+  }, [actions, target, blocker, tenantId])
 
   const choose = async (choice: SheetChoice) => {
     if (!target || phase.kind !== 'ask') return
@@ -58,8 +60,8 @@ export function TurnOnDialog({ target, mode, blocker, onFix, onClose }: TurnOnDi
     setPhase({ ...asked, kind: 'working' })
     setError(null)
     const result = mode === 'run_now'
-      ? await callAutomations<BacklogValue>(tenantId, { action: 'run_now', automationId: target.automationId })
-      : await callAutomations<{ backlog: BacklogValue | null }>(tenantId, { action: 'set_status', automationId: target.automationId, status: 'on', sendBacklog: choice.sendBacklog })
+      ? await callAutomations<BacklogValue>(actions, tenantId, { action: 'run_now', automationId: target.automationId })
+      : await callAutomations<{ backlog: BacklogValue | null }>(actions, tenantId, { action: 'set_status', automationId: target.automationId, status: 'on', sendBacklog: choice.sendBacklog })
     if (!result.ok) {
       setError(result.error)
       setPhase(asked)

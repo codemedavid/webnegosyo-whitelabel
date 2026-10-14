@@ -81,3 +81,13 @@ test('offers up to five masked samples and the worst-case text count', () => {
   expect(result.samples[0]).toEqual({ label: 'Maria S.', body: expect.stringContaining('Hi Maria') })
   expect(result.maxSegments).toBe(2)
 })
+
+test('two guest rows with the same number get ONE text, the most recent guest wins (review item 7)', () => {
+  const twins = [
+    guest({ id: 'old', phone_e164: '+639170009999', last_order_at: daysAgo(30) }),
+    guest({ id: 'new', phone_e164: '+639170009999', last_order_at: daysAgo(2) }),
+  ]
+  const result = plan({ customers: twins })
+  expect(result.rows.map((row) => row.customer_id)).toEqual(['new'])
+  expect(result.summary.recently_texted).toBe(1)
+})

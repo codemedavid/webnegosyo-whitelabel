@@ -130,3 +130,26 @@ test('manilaInstant reads a Manila wall clock', () => {
   expect(manilaInstant('2026-10-16', '10:00')?.toISOString()).toBe('2026-10-16T02:00:00.000Z')
   expect(manilaInstant('garbage', '10:00')).toBeNull()
 })
+
+describe('repeats whose time falls in quiet hours (review item 2)', () => {
+  const NIGHT = { start: '21:00', end: '07:00' }
+  const daily = schedule({ kind: 'every_n_days', date: null, intervalDays: 1, time: '21:30', endsOn: '2026-10-20' })
+
+  test('a daily 21:30 campaign still goes every day (anchored on the unshifted time)', () => {
+    // The 14th's 21:30 occurrence was held to the 15th 07:00 — that run must not push the next one to the 17th.
+    const runs: ServerRun[] = [{ dueAt: at('2026-10-14T23:00:00Z'), status: 'completed' }] // 15th 07:00 Manila
+    const result = nextServerDueAt(input({ schedule: daily, runs, quietHours: NIGHT, now: at('2026-10-15T00:00:00Z') }))
+    expect(result.dueAt?.toISOString()).toBe('2026-10-15T23:00:00.000Z') // 16th 07:00 = the 15th's occurrence
+  })
+
+  test('the occurrence ON the end date still goes, even though it is held to the next morning', () => {
+    const runs: ServerRun[] = [{ dueAt: at('2026-10-19T23:00:00Z'), status: 'completed' }] // the 19th's, sent 20th 07:00
+    const result = nextServerDueAt(input({ schedule: daily, runs, quietHours: NIGHT, now: at('2026-10-20T00:00:00Z') }))
+    expect(result.dueAt?.toISOString()).toBe('2026-10-20T23:00:00.000Z') // the 20th's (last) occurrence
+  })
+
+  test('and stops after it', () => {
+    const runs: ServerRun[] = [{ dueAt: at('2026-10-20T23:00:00Z'), status: 'completed' }]
+    expect(nextServerDueAt(input({ schedule: daily, runs, quietHours: NIGHT, now: at('2026-10-21T00:00:00Z') })).state).toBe('finished')
+  })
+})

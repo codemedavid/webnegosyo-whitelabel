@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
-import { Link2Off } from 'lucide-react'
+import { Link2Off, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { AudiencePreset } from '@/lib/texts/types'
 import { CAMPAIGN_VARIABLES, hasLink, insertVariable, messageProblem, removeEmoji, segmentMeter } from '@/lib/texts/view/message'
@@ -17,6 +17,7 @@ interface MessageSectionProps {
   audiencePreset: AudiencePreset
   reach: number
   showErrors: boolean
+  isDone?: boolean
 }
 
 /** Announces "2 texts per guest" only when the number changes. */
@@ -31,7 +32,7 @@ function useSegmentAnnouncement(segments: number): string {
   return text
 }
 
-export function MessageSection({ value, onChange, name, audiencePreset, reach, showErrors }: MessageSectionProps) {
+export function MessageSection({ value, onChange, name, audiencePreset, reach, showErrors, isDone = false }: MessageSectionProps) {
   const { tenantId, storeName, optOutLine } = useTexts()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const errorId = useId()
@@ -61,19 +62,19 @@ export function MessageSection({ value, onChange, name, audiencePreset, reach, s
   }
 
   return (
-    <ComposerSection id="composer-message" step={2} title="Message">
+    <ComposerSection id="composer-message" step={2} title="Message" isDone={isDone}>
       <WriteForMe tenantId={tenantId} name={name} audiencePreset={audiencePreset} onPick={onChange} />
       <div className="space-y-2">
-        <p className="text-xs text-muted-foreground">Tap to add a guest&apos;s details</p>
+        <p className="text-xs text-wn-stone">Tap to add a guest&apos;s details</p>
         <div className="flex flex-wrap gap-2">
           {CAMPAIGN_VARIABLES.map((variable) => (
-            <Button key={variable.key} type="button" size="sm" variant="secondary" className="min-h-11 rounded-full sm:min-h-8" onClick={() => addVariable(variable.key)}>
-              {variable.label}
+            <Button key={variable.key} type="button" size="sm" variant="outline" className="min-h-11 rounded-full border-dashed bg-white px-3 text-[13px] font-medium sm:min-h-8" onClick={() => addVariable(variable.key)}>
+              <Plus className="h-3.5 w-3.5 text-wn-stone" aria-hidden="true" /> {variable.label}
             </Button>
           ))}
         </div>
       </div>
-      <div className={cn('rounded-xl border bg-background focus-within:ring-2 focus-within:ring-ring', visibleProblem && 'border-destructive')}>
+      <div className={cn('rounded-2xl border border-border bg-white shadow-[0_1px_2px_rgba(29,24,21,0.04)] transition-shadow focus-within:border-stone-400 focus-within:ring-4 focus-within:ring-stone-200/60', visibleProblem && 'border-red-400')}>
         <label htmlFor="composer-message-text" className="sr-only">Message</label>
         <textarea
           id="composer-message-text"

@@ -12,9 +12,9 @@ export function KnobSentence({ info, draft, onChange }: { info: RecipeInfo; draf
   const limits = knobLimits(info, sentence.knob)
   const set = (direction: 1 | -1) => onChange({ ...draft.params, [sentence.knob]: stepKnob(value, direction, sentence.knob, limits) })
   return (
-    <p className="flex flex-wrap items-center gap-2 text-base">
+    <p className="flex flex-wrap items-center gap-2 rounded-2xl border border-wn-line bg-gradient-to-br from-wn-sand to-white p-4 text-[17px] font-medium leading-relaxed tracking-tight">
       <span>{sentence.before}</span>
-      <span className="inline-flex items-center gap-1 rounded-full border px-1">
+      <span className="inline-flex items-center gap-1 rounded-full border border-wn-line bg-white px-1 shadow-sm">
         <Button type="button" variant="ghost" size="icon" className="size-11 rounded-full sm:size-8" disabled={!canStep(value, -1, limits)} onClick={() => set(-1)} aria-label="Less">
           <Minus className="h-4 w-4" />
         </Button>

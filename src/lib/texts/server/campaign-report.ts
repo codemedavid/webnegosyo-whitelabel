@@ -3,8 +3,9 @@
  * (masked names, last four digits, never the whole number). Server-only.
  *
  * The guest list pages through a campaign's server texts (sms_outbox) and then
- * its phone-sent texts (sms_sends), 50 at a time. The cursor is opaque to the
- * page: `s:<offset>` / `p:<offset>`.
+ * its phone-sent texts (sms_sends), 50 at a time, by keyset on id. The cursor
+ * is opaque to the page: `s:<last id>` / `p:<last id>`, or `p:` to start the
+ * phone-sent phase.
  */
 
 import 'server-only'
@@ -20,7 +21,7 @@ import {
 export const GUEST_PAGE_SIZE = 50
 /** Newest runs whose guests the list covers (a 6-month daily repeat stays inside it). */
 const MAX_RUNS_LISTED = 200
-const CURSOR = /^([sp]):(\d{1,7})$/
+const CURSOR = /^([sp]):([0-9a-f-]{36})?$/
 
 type Phase = 's' | 'p'
 
@@ -35,20 +36,20 @@ export function runReportsOf(results: ReadonlyMap<string, RunResult>, runs: read
     })
 }
 
-function parseCursor(cursor: string | null, hasServer: boolean): { phase: Phase; offset: number } | null {
-  if (!cursor) return { phase: hasServer ? 's' : 'p', offset: 0 }
+function parseCursor(cursor: string | null, hasServer: boolean): { phase: Phase; afterId: string | null } | null {
+  if (!cursor) return { phase: hasServer ? 's' : 'p', afterId: null }
   const match = CURSOR.exec(cursor)
-  return match ? { phase: match[1] as Phase, offset: Number(match[2]) } : null
+  return match ? { phase: match[1] as Phase, afterId: match[2] ?? null } : null
 }
 
 type Named = { customers?: { name: string | null } | null }
 
-async function readPhase(db: SupabaseClient, tenantId: string, phase: Phase, runIds: string[], offset: number) {
-  const to = offset + GUEST_PAGE_SIZE
-  const request = phase === 's'
+async function readPhase(db: SupabaseClient, tenantId: string, phase: Phase, runIds: string[], afterId: string | null) {
+  const base = phase === 's'
     ? db.from('sms_outbox').select(`${OUTBOX_SEND_COLUMNS}, customers(name)`).eq('tenant_id', tenantId).in('campaign_run_id', runIds)
     : db.from('sms_sends').select(`${SMS_SEND_COLUMNS}, customers(name)`).eq('tenant_id', tenantId).in('run_id', runIds)
-  const { data, error } = await request.order('id').range(offset, to)
+  const request = afterId ? base.gt('id', afterId) : base
+  const { data, error } = await request.order('id').limit(GUEST_PAGE_SIZE + 1)
   if (error) throw new Error(`campaign guests could not be read: ${error.message}`)
   return (data ?? []) as unknown as Array<Record<string, unknown> & Named>
 }
@@ -77,7 +78,7 @@ export async function readGuestPage(
   const ids = { s: recent.filter((r) => r.delivery === 'server').map((r) => r.id), p: recent.filter((r) => r.delivery === 'phone').map((r) => r.id) }
   const position = parseCursor(cursor, ids.s.length > 0)
   if (!position || ids[position.phase].length === 0) return { guests: [], nextCursor: null }
-  const rows = await readPhase(db, tenantId, position.phase, ids[position.phase], position.offset)
+  const rows = await readPhase(db, tenantId, position.phase, ids[position.phase], position.afterId)
   const page = rows.slice(0, GUEST_PAGE_SIZE)
   const sends = page.map((row) => toSend(position.phase, row))
   const comebacks = await findComebacks(db, tenantId, backend, sends)
@@ -93,7 +94,7 @@ export async function readGuestPage(
     }
   })
   const nextCursor = rows.length > GUEST_PAGE_SIZE
-    ? `${position.phase}:${position.offset + GUEST_PAGE_SIZE}`
-    : position.phase === 's' && ids.p.length > 0 ? 'p:0' : null
+    ? `${position.phase}:${String(page[page.length - 1].id)}`
+    : position.phase === 's' && ids.p.length > 0 ? 'p:' : null
   return { guests, nextCursor }
 }

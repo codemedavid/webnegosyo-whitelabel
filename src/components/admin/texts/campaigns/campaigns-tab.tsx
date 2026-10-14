@@ -45,7 +45,13 @@ export function CampaignsTab() {
             ← All campaigns
           </Button>
         ) : (
-          <RadioChips label="Show campaigns" options={FILTERS} value={url.filter} onChange={(filter) => setUrl({ filter })} />
+          <RadioChips
+            label="Show campaigns"
+            size="segmented"
+            options={FILTERS.map((f) => ({ ...f, label: <>{f.label}{f.value !== 'all' && counts[f.value] > 0 && <span className="ml-1.5 tabular-nums opacity-70">{counts[f.value]}</span>}</> }))}
+            value={url.filter}
+            onChange={(filter) => setUrl({ filter })}
+          />
         )}
         {!isArchived && counts.archived > 0 && (
           <Button type="button" variant="link" size="sm" className="min-h-11 px-0 sm:min-h-8" onClick={() => setUrl({ filter: 'archived' })}>

@@ -19,9 +19,10 @@ interface WhoSectionProps {
   onChange: (audience: AudienceFilter) => void
   preview: PreviewState
   onRetry: () => void
+  isDone?: boolean
 }
 
-export function WhoSection({ audience, onChange, preview, onRetry }: WhoSectionProps) {
+export function WhoSection({ audience, onChange, preview, onRetry, isDone = false }: WhoSectionProps) {
   const preset = presetForFilter(audience)
   // Closed by default even for a preset's own filter: the Custom chip already says who it is.
   const [isCustomOpen, setCustomOpen] = useState(false)
@@ -30,10 +31,11 @@ export function WhoSection({ audience, onChange, preview, onRetry }: WhoSectionP
     : OPTIONS
 
   return (
-    <ComposerSection id="composer-who" step={1} title="Who gets it">
+    <ComposerSection id="composer-who" step={1} title="Who gets it" isDone={isDone}>
       <RadioChips
         label="Who gets it"
         size="card"
+        className="grid grid-cols-2 sm:grid-cols-3"
         options={options}
         value={preset}
         onChange={(value) => {

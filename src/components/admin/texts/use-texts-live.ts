@@ -13,7 +13,7 @@ function isLive(value: unknown): value is TextsLive {
   return typeof value === 'object' && value !== null && 'sender' in value && 'attention' in value
 }
 
-async function fetchLive(tenantId: string): Promise<TextsLive> {
+export async function fetchLive(tenantId: string): Promise<TextsLive> {
   const response = await fetch(`/api/admin/texts/live?tenantId=${encodeURIComponent(tenantId)}`, { cache: 'no-store' })
   if (!response.ok) throw new Error(`live ${response.status}`)
   const body: unknown = await response.json()
@@ -33,7 +33,7 @@ function isSending(live: TextsLive | undefined): boolean {
  * something is sending (or a sheet asks for it), never while the tab is in
  * the background. Server data from a refresh replaces the cache.
  */
-export function useTextsLive(tenantId: string, initial: TextsLive, isFast: boolean) {
+export function useTextsLive(tenantId: string, initial: TextsLive, isFast: boolean, fetcher: (tenantId: string) => Promise<TextsLive> = fetchLive) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export function useTextsLive(tenantId: string, initial: TextsLive, isFast: boole
 
   return useQuery({
     queryKey: liveKey(tenantId),
-    queryFn: () => fetchLive(tenantId),
+    queryFn: () => fetcher(tenantId),
     initialData: initial,
     staleTime: 5_000,
     refetchInterval: (query) => (isFast || isSending(query.state.data) ? FAST_MS : SLOW_MS),

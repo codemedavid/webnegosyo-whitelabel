@@ -11,9 +11,9 @@ import type { AutomationSettings } from '@/lib/sms-automations/types'
 import { campaignDraftInputSchema, checkScheduleTiming } from '../campaign-schema'
 import type { CampaignRecord } from '../campaign-view'
 import { MAX_CAMPAIGN_SEGMENTS, estimateCampaignSegments } from '../message'
-import type { CampaignDraftInput } from '../types'
+import type { CampaignDraftInput, CampaignSchedule } from '../types'
 import { readCampaign } from './campaign-run'
-import { isOpenRun, readRunsForCampaigns, type RunDetail } from './campaign-runs'
+import { isOpenRun, readRunsForCampaigns, withdrawRunTexts, type RunDetail } from './campaign-runs'
 
 export const refuse = <T>(status: number, error: string, code: string): Outcome<T> => ({ ok: false, status, error, code })
 export const done = <T>(value: T): Outcome<T> => ({ ok: true, value })
@@ -69,19 +69,16 @@ export function draftProblem(input: unknown, settings: AutomationSettings): stri
 
 /** Why this campaign cannot go live at `now`, or null. `checkTiming: false` for Send now. */
 export function liveProblem(campaign: CampaignRecord, settings: AutomationSettings, now: Date, checkTiming = true): string | null {
-  return draftProblem(draftOf(campaign), settings) ?? (checkTiming ? checkScheduleTiming(campaign.schedule, now) : null)
+  return draftProblem(draftOf(campaign), settings) ?? (checkTiming ? timingProblem(campaign.schedule, settings, now) : null)
+}
+
+/** checkScheduleTiming against the store's own quiet hours. */
+export function timingProblem(schedule: CampaignSchedule, settings: AutomationSettings, now: Date): string | null {
+  return checkScheduleTiming(schedule, now, { start: settings.quietHoursStart, end: settings.quietHoursEnd })
 }
 
 /** Withdraw the open server runs' waiting texts (pause/archive/Owl). Returns how many. */
-export async function cancelCampaignWaiting(
-  db: SupabaseClient, tenantId: string, runIds: readonly string[], reason: 'paused' | 'archived',
-): Promise<number> {
-  if (runIds.length === 0) return 0
-  const { data, error } = await db.from('sms_outbox').update({ status: 'cancelled', skip_reason: reason })
-    .eq('tenant_id', tenantId).in('campaign_run_id', [...runIds]).eq('status', 'queued').select('id')
-  if (error) throw new Error(`waiting campaign texts could not be withdrawn: ${error.message}`)
-  return data?.length ?? 0
-}
+export const cancelCampaignWaiting = withdrawRunTexts
 
 /** Ids of a campaign's open server runs. */
 export async function openServerRunIds(db: SupabaseClient, tenantId: string, campaignId: string): Promise<string[]> {

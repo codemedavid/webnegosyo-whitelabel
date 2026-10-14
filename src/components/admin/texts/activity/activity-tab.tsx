@@ -14,11 +14,13 @@ import { callAutomations } from '../automatic/call-automations'
 import { recipeTitle } from '../automatic/automation-card'
 import { ActivityRow } from './activity-row'
 import { useActivity } from './use-activity'
+import { useTextsActions } from '../texts-actions'
 
 /** Every text and what became of it, newest first, a day at a time. */
 export function ActivityTab() {
   const { tenantId, isDemo, url, setUrl, automations, campaigns, refresh } = useTexts()
   const now = useServerNow()
+  const actions = useTextsActions()
   const { ask, dialogProps } = useConfirm()
   // Keyed on content, not the array: a page refresh hands over a new array, and must not drop loaded pages.
   const idsKey = automations.automations.map((a) => `${a.recipe}=${a.id}`).sort().join(',')
@@ -44,7 +46,7 @@ export function ActivityTab() {
       title: 'Cancel all waiting automatic texts?', body: 'They won’t be sent. Campaign texts are paused from the campaign instead.',
       cancelLabel: 'Keep them', confirmLabel: 'Cancel texts', isDestructive: true,
       onConfirm: async () => {
-        const done = await runAction(() => callAutomations<{ cancelled: number }>(tenantId, { action: 'cancel_waiting' }), "Couldn't cancel. Try again.")
+        const done = await runAction(() => callAutomations<{ cancelled: number }>(actions, tenantId, { action: 'cancel_waiting' }), "Couldn't cancel. Try again.")
         if (done) { toast.success(`${done.cancelled} ${done.cancelled === 1 ? 'text' : 'texts'} cancelled.`); reload(); refresh() }
       },
     })
@@ -61,18 +63,18 @@ export function ActivityTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <RadioChips label="Show texts" options={ACTIVITY_FILTERS} value={url.show} onChange={(show) => setUrl({ show })} />
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <RadioChips label="Show texts" size="segmented" options={ACTIVITY_FILTERS} value={url.show} onChange={(show) => setUrl({ show })} />
+        <label className="flex items-center gap-2 text-sm text-wn-stone">
           From
           <select value={url.from ?? 'all'} onChange={(event) => setUrl({ from: event.target.value === 'all' ? null : event.target.value })}
-            className="h-11 max-w-[220px] rounded-md border bg-background px-2 text-sm text-foreground sm:h-9">
+            className="h-11 max-w-[220px] rounded-full border border-wn-line bg-white px-3 text-sm text-foreground shadow-sm sm:h-9">
             {fromOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
       </div>
       {automaticWaiting > 0 && (
         <div className="flex justify-end">
-          <Button type="button" variant="outline" size="sm" className="min-h-11 sm:min-h-8" onClick={cancelAll}>Cancel all waiting automatic texts</Button>
+          <Button type="button" variant="ghost" size="sm" className="min-h-11 rounded-full text-wn-stone hover:text-red-700 sm:min-h-8" onClick={cancelAll}>Cancel all waiting automatic texts</Button>
         </div>
       )}
       {state.status === 'loading' && (
@@ -92,8 +94,8 @@ export function ActivityTab() {
       )}
       {groups.map((group) => (
         <section key={group.key} aria-label={group.label} className="space-y-1">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</h3>
-          <ul className="divide-y rounded-2xl border bg-card px-4">
+          <h3 className="px-1 text-xs font-medium uppercase tracking-wide text-wn-stone">{group.label}</h3>
+          <ul className="divide-y divide-wn-line rounded-2xl border border-wn-line bg-white px-4 shadow-[0_1px_2px_rgba(29,24,21,0.04)]">
             {group.items.map((item) => <ActivityRow key={item.id} item={item} source={sourceOf(item)} now={now} />)}
           </ul>
         </section>

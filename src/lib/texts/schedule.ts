@@ -201,14 +201,37 @@ function oneOffDue(input: ServerDueInput): ServerDue {
   return raw ? classify(shiftOutOfQuietHours(raw, quietHours.start, quietHours.end), now) : FINISHED
 }
 
+/**
+ * The unshifted occurrence a stored run's `due_at` came from. A 21:30 send
+ * inside a 21:00–07:00 window is stored as next morning 07:00; anchoring on
+ * that would push an every-day campaign to every other day and drop the
+ * end date's occurrence.
+ */
+export function rawOccurrenceOf(dueAt: Date, schedule: CampaignSchedule, quiet: QuietWindow): Date {
+  const parts = toManilaParts(dueAt)
+  if (!isWithinQuietHours(schedule.time, quiet.start, quiet.end) || parts.time !== quiet.end) return dueAt
+  const isEvening = minutesOfDay(schedule.time) >= minutesOfDay(quiet.end)
+  return manilaInstant(isEvening ? addManilaDays(parts.date, -1) : parts.date, schedule.time) ?? dueAt
+}
+
+/** A schedule edited since the last run can map two raw occurrences onto one held time; skip past it. */
+const MAX_COLLISION_STEPS = 8
+
 function repeatDue(input: ServerDueInput): ServerDue {
-  const lastRun = latestRunDue(input.runs)
+  const { schedule, quietHours } = input
+  const phone = toPhoneSchedule(schedule, quietHours)
+  const lastStored = latestRunDue(input.runs)
+  const lastRaw = lastStored ? rawOccurrenceOf(lastStored, schedule, quietHours) : null
   const from = input.scheduledFrom ?? input.createdAt
-  const anchor = lastRun && lastRun > from ? lastRun : from
-  const dueAt = computeNextDueAt(toPhoneSchedule(input.schedule, input.quietHours), { after: anchor, lastRunAt: lastRun, createdAt: null })
-  if (!dueAt) return FINISHED
-  if (input.schedule.endsOn && toManilaParts(dueAt).date > input.schedule.endsOn) return FINISHED
-  return classify(dueAt, input.now)
+  let after = lastRaw && lastRaw > from ? lastRaw : from
+  for (let step = 0; step < MAX_COLLISION_STEPS; step += 1) {
+    const raw = computeRawDueAt(phone, { after, lastRunAt: lastRaw, createdAt: null })
+    if (!raw || (schedule.endsOn && toManilaParts(raw).date > schedule.endsOn)) return FINISHED
+    const dueAt = shiftOutOfQuietHours(raw, quietHours.start, quietHours.end)
+    if (!lastStored || dueAt.getTime() > lastStored.getTime()) return classify(dueAt, input.now)
+    after = raw
+  }
+  return FINISHED
 }
 
 /** The campaign's next server occurrence and whether it is due, missed or done. */

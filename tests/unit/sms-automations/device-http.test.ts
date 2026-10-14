@@ -106,6 +106,8 @@ describe('the phone\'s own report (x-wn-phone-info)', () => {
   const INFO = { 'x-wn-phone-info': encodeURIComponent(JSON.stringify({ manufacturer: 'samsung', model: 'SM-A155F', os: '14', app: '1.0.13', sms: true })) }
   const recorded = () => rpc.mock.calls.filter(([name]) => name === 'record_sms_sender_info')
   const settle = () => new Promise((resolve) => setImmediate(resolve))
+  // Each test starts with an empty "recently recorded" memory.
+  beforeEach(() => jest.resetModules())
 
   it('is recorded after the claim RPC accepted the device', async () => {
     rpc.mockImplementation(async (name: string) => (name === 'claim_sms_outbox_message'
@@ -146,5 +148,27 @@ describe('the phone\'s own report (x-wn-phone-info)', () => {
     expect(status).toBe(200)
     expect(json.message.messageId).toBe(MESSAGE)
     errorSpy.mockRestore()
+  })
+
+  it('skips the write when the same phone sent the same report in the last 10 minutes', async () => {
+    rpc.mockImplementation(async (name: string) => (name === 'claim_sms_outbox_message'
+      ? { data: { ok: false, error: 'no_job', nextAt: null }, error: null }
+      : { data: true, error: null }))
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-14T02:00:00Z'))
+    const OTHER_DEVICE = '4f6e1c3a-8a0e-4c62-9a53-4c3c0f1e2d14'
+    const CHANGED = { 'x-wn-phone-info': encodeURIComponent(JSON.stringify({ model: 'SM-A155F', app: '1.0.14' })) }
+    await call('claim', identity, INFO)
+    await call('claim', identity, INFO)
+    await settle()
+    expect(recorded()).toHaveLength(1)
+    await call('claim', identity, CHANGED)
+    await call('claim', { ...identity, deviceId: OTHER_DEVICE }, INFO)
+    await settle()
+    expect(recorded()).toHaveLength(3)
+    clock.mockReturnValue(Date.parse('2026-10-14T02:10:01Z'))
+    await call('claim', identity, CHANGED)
+    await settle()
+    expect(recorded()).toHaveLength(4)
+    clock.mockRestore()
   })
 })

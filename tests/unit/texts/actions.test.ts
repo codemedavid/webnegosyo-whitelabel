@@ -22,10 +22,11 @@ const writeCampaignMessages = jest.fn()
 const disconnectPhone = jest.fn()
 const renamePhone = jest.fn()
 const dispatchAutomationRequest = jest.fn()
+const forgetTextsLive = jest.fn()
 
 jest.mock('server-only', () => ({}))
 jest.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePath(...args) }))
-jest.mock('@/lib/rate-limit', () => ({ checkRateLimit: (...args: unknown[]) => checkRateLimit(...args) }))
+jest.mock('@/lib/distributed-rate-limit', () => ({ checkRateLimit: (...args: unknown[]) => checkRateLimit(...args) }))
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ fake: true }) }))
 jest.mock('@/lib/texts/gate', () => ({ requireTextsAccess: (...args: unknown[]) => requireTextsAccess(...args) }))
 jest.mock('@/lib/texts/server/campaign-reads', () => ({
@@ -45,9 +46,9 @@ jest.mock('@/lib/texts/server/phones', () => ({
   disconnectPhone: (...args: unknown[]) => disconnectPhone(...args),
   renamePhone: (...args: unknown[]) => renamePhone(...args),
 }))
+jest.mock('@/lib/texts/server/live', () => ({ forgetTextsLive: (...args: unknown[]) => forgetTextsLive(...args) }))
 jest.mock('@/lib/sms-automations/api/http', () => ({
   dispatchAutomationRequest: (...args: unknown[]) => dispatchAutomationRequest(...args),
-  automationRateLimitError: () => null,
 }))
 
 const TENANT = '0DD96B60-5232-4C79-922B-0BD9022D12BA'
@@ -66,7 +67,7 @@ const actions = () => import('@/app/actions/texts')
 beforeEach(() => {
   jest.clearAllMocks()
   requireTextsAccess.mockResolvedValue({ userId: 'user-1', isOwner: false })
-  checkRateLimit.mockReturnValue({ allowed: true })
+  checkRateLimit.mockResolvedValue({ allowed: true, remaining: 1, retryAfterSec: 1 })
 })
 
 describe('the gate', () => {
@@ -135,14 +136,29 @@ describe('campaign actions', () => {
     expect(revalidatePath).not.toHaveBeenCalled()
   })
 
-  it('rate-limits previews and "write it for me"', async () => {
-    checkRateLimit.mockReturnValue({ allowed: false })
-    const { previewCampaignAudienceAction, writeCampaignMessagesAction } = await actions()
+  it('limits previews per person across instances, failing open', async () => {
+    previewCampaignAudience.mockResolvedValue({ reach: 1 })
+    const { previewCampaignAudienceAction } = await actions()
+    await previewCampaignAudienceAction(TENANT, { audience: {}, messageTemplate: 'Hi' })
+    expect(checkRateLimit).toHaveBeenCalledWith('texts-preview:user-1', { limit: 30, windowSec: 60, onRedisFailure: 'open' })
+    checkRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 30 })
     expect(await previewCampaignAudienceAction(TENANT, { audience: {}, messageTemplate: 'Hi' })).toMatchObject({ code: 'rate_limited' })
-    expect(await writeCampaignMessagesAction(TENANT, { name: 'Promo', audiencePreset: 'lapsed', language: 'tl' })).toMatchObject({ code: 'rate_limited' })
-    expect(previewCampaignAudience).not.toHaveBeenCalled()
-    expect(writeCampaignMessages).not.toHaveBeenCalled()
-    expect(checkRateLimit.mock.calls.map(([key]) => key)).toEqual(['texts-preview:user-1', 'texts-write:user-1'])
+    expect(previewCampaignAudience).toHaveBeenCalledTimes(1)
+  })
+
+  it('limits "Write it for me" per person and per store per day, refusing when the limiter is down', async () => {
+    writeCampaignMessages.mockResolvedValue({ ok: true, value: { messages: ['Hi'] } })
+    const { writeCampaignMessagesAction } = await actions()
+    const request = { name: 'Promo', audiencePreset: 'lapsed', language: 'tl' }
+    expect(await writeCampaignMessagesAction(TENANT, request)).toEqual({ ok: true, value: { messages: ['Hi'] } })
+    expect(checkRateLimit.mock.calls).toEqual([
+      ['texts-write:user-1', { limit: 6, windowSec: 60, onRedisFailure: 'refuse' }],
+      [`texts-write-day:${TENANT_ID}`, { limit: 60, windowSec: 86_400, onRedisFailure: 'refuse' }],
+    ])
+    checkRateLimit.mockResolvedValueOnce({ allowed: true, remaining: 1, retryAfterSec: 1 })
+      .mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 999 })
+    expect(await writeCampaignMessagesAction(TENANT, request)).toMatchObject({ ok: false, code: 'rate_limited', error: expect.stringMatching(/today/) })
+    expect(writeCampaignMessages).toHaveBeenCalledTimes(1)
   })
 
   it('previews without revalidating', async () => {
@@ -150,6 +166,22 @@ describe('campaign actions', () => {
     const { previewCampaignAudienceAction } = await actions()
     expect(await previewCampaignAudienceAction(TENANT, { audience: { minOrderCount: 2 }, messageTemplate: 'Hi' })).toEqual({ ok: true, value: { reach: 3 } })
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('the live view after a change', () => {
+  it('drops the cached live view after a successful change, not after a read or a refusal', async () => {
+    pauseCampaign.mockResolvedValueOnce({ ok: true, value: null })
+      .mockResolvedValueOnce({ ok: false, status: 409, error: 'No.', code: 'x' })
+    renamePhone.mockResolvedValue({ ok: true, value: null })
+    getCampaignReport.mockResolvedValue({ runs: [] })
+    const { pauseCampaignAction, renamePhoneAction, getCampaignReportAction } = await actions()
+    await pauseCampaignAction(TENANT, CAMPAIGN)
+    await renamePhoneAction(TENANT, DEVICE, 'Front')
+    expect(forgetTextsLive.mock.calls).toEqual([[TENANT_ID], [TENANT_ID]])
+    await pauseCampaignAction(TENANT, CAMPAIGN)
+    await getCampaignReportAction(TENANT, CAMPAIGN)
+    expect(forgetTextsLive).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -188,6 +220,34 @@ describe('automationsAction', () => {
     await automationsAction(TENANT, { action: 'cancel_waiting', tenantId: '11111111-1111-4111-8111-111111111111' })
     expect(dispatchAutomationRequest.mock.calls[0][1].tenantId).toBe(TENANT_ID)
     expect(revalidatePath).toHaveBeenCalledWith('/[tenant]/admin/texts', 'page')
+  })
+
+  it('meters automation "Write it for me" and previews with the same shared limits', async () => {
+    dispatchAutomationRequest.mockResolvedValue({ ok: true, value: { messages: [] } })
+    const { automationsAction } = await actions()
+    await automationsAction(TENANT, { action: 'write', recipe: 'win_back', language: 'en' })
+    expect(checkRateLimit.mock.calls.map(([key]) => key)).toEqual(['texts-write:user-1', `texts-write-day:${TENANT_ID}`])
+    checkRateLimit.mockClear()
+    await automationsAction(TENANT, { action: 'preview', automation: { recipe: 'win_back', messageTemplate: 'Hi' } })
+    expect(checkRateLimit.mock.calls.map(([key]) => key)).toEqual(['texts-preview:user-1'])
+    checkRateLimit.mockClear()
+    await automationsAction(TENANT, { action: 'list' })
+    expect(checkRateLimit).not.toHaveBeenCalled()
+  })
+
+  it('masks guest names in the activity feed ("Maria S."), keeping unknown names unknown', async () => {
+    dispatchAutomationRequest.mockResolvedValue({ ok: true, value: { items: [
+      { id: 'a', guestName: 'Maria Santos Reyes', phoneLast4: '4567' },
+      { id: 'b', guestName: null, phoneLast4: '1111' },
+      { id: 'c', guestName: 'Ana', phoneLast4: '2222' },
+    ], nextCursor: null } })
+    const { automationsAction } = await actions()
+    const result = await automationsAction(TENANT, { action: 'activity', includeCampaigns: true })
+    expect(result).toEqual({ ok: true, value: { items: [
+      { id: 'a', guestName: 'Maria R.', phoneLast4: '4567' },
+      { id: 'b', guestName: null, phoneLast4: '1111' },
+      { id: 'c', guestName: 'Ana', phoneLast4: '2222' },
+    ], nextCursor: null } })
   })
 
   it('refuses a request the route would refuse, and passes refusals through', async () => {

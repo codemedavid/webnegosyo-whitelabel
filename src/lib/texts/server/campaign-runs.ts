@@ -75,3 +75,26 @@ export async function readRecentRuns(db: SupabaseClient, tenantId: string, maxRo
 }
 
 export const isOpenRun = (run: RunRecord): boolean => run.status === 'pending' || run.status === 'running'
+
+export type WithdrawReason = 'paused' | 'archived'
+
+/** Withdraw these runs' waiting texts (pause/archive/Owl/tick). Returns how many. */
+export async function withdrawRunTexts(
+  db: SupabaseClient, tenantId: string, runIds: readonly string[], reason: WithdrawReason,
+): Promise<number> {
+  if (runIds.length === 0) return 0
+  const { data, error } = await db.from('sms_outbox').update({ status: 'cancelled', skip_reason: reason })
+    .eq('tenant_id', tenantId).in('campaign_run_id', [...runIds]).eq('status', 'queued').select('id')
+  if (error) throw new Error(`waiting campaign texts could not be withdrawn: ${error.message}`)
+  return data?.length ?? 0
+}
+
+/** Put back texts a pause withdrew, if they have not run out of time. Returns how many. */
+export async function requeuePausedTexts(db: SupabaseClient, tenantId: string, runIds: readonly string[], now: Date): Promise<number> {
+  if (runIds.length === 0) return 0
+  const { data, error } = await db.from('sms_outbox').update({ status: 'queued', skip_reason: null })
+    .eq('tenant_id', tenantId).in('campaign_run_id', [...runIds]).eq('status', 'cancelled').eq('skip_reason', 'paused')
+    .gt('expires_at', now.toISOString()).select('id')
+  if (error) throw new Error(`paused campaign texts could not be put back: ${error.message}`)
+  return data?.length ?? 0
+}

@@ -87,6 +87,47 @@ describe('editing a live campaign', () => {
   })
 })
 
+describe('review items 1, 2 and 6', () => {
+  test('editing a scheduled one-off to a time already past is refused (it would send at once)', async () => {
+    const { saveCampaignDraft } = await import('@/lib/texts/server/campaign-writes')
+    const id = '00000000-0000-4000-8000-0000000000d2'
+    const db = seed({ sms_campaigns: [campaign(id, { status: 'scheduled' })] })
+    const past = { ...DRAFT, id, schedule: { ...DRAFT.schedule, date: '2026-10-12' } }
+    expect(await saveCampaignDraft(db.client, T, U, past, NOW)).toMatchObject({ ok: false, code: 'invalid', error: 'Pick a time from now on.' })
+    expect(await saveCampaignDraft(db.client, T, U, { ...past, schedule: { ...DRAFT.schedule } }, NOW)).toMatchObject({ ok: true })
+  })
+
+  test('a draft may still hold a past time', async () => {
+    const { saveCampaignDraft } = await import('@/lib/texts/server/campaign-writes')
+    expect(await saveCampaignDraft(seed().client, T, U, { ...DRAFT, schedule: { ...DRAFT.schedule, date: '2026-10-12' } }, NOW)).toMatchObject({ ok: true })
+  })
+
+  test('going live inside quiet hours is refused with the store window', async () => {
+    const { scheduleCampaign } = await import('@/lib/texts/server/campaign-writes')
+    const db = seed({ sms_campaigns: [campaign('c1', { schedule_time: '22:00' })] })
+    expect(await scheduleCampaign(db.client, T, 'c1', NOW)).toMatchObject({
+      ok: false, code: 'invalid', error: "That's inside quiet hours (9 PM–8 AM). Pick a time after 8 AM.",
+    })
+  })
+
+  test('pause also withdraws a run that opened while it was pausing', async () => {
+    const { pauseCampaign } = await import('@/lib/texts/server/campaign-writes')
+    const db = seed({ sms_campaigns: [campaign('c1', { status: 'scheduled' })] })
+    // Planning raced the pause: a run + queued text appear just as the status flips.
+    db.tables.sms_campaigns[0].status = 'scheduled'
+    const raced = createFakeDb(db.tables, {
+      unique: TEXTS_UNIQUE,
+      beforeWrite: ({ table, mode, tables }) => {
+        if (table !== 'sms_campaigns' || mode !== 'update' || tables.sms_campaign_runs.length > 0) return
+        tables.sms_campaign_runs.push({ id: 'late', tenant_id: T, campaign_id: 'c1', status: 'running', delivery: 'server', due_at: NOW.toISOString() })
+        tables.sms_outbox.push({ id: 'o9', tenant_id: T, campaign_run_id: 'late', status: 'queued', expires_at: '2026-10-17T00:00:00Z' })
+      },
+    })
+    expect(await pauseCampaign(raced.client, T, 'c1', NOW)).toEqual({ ok: true, value: null })
+    expect(raced.tables.sms_outbox[0]).toMatchObject({ status: 'cancelled', skip_reason: 'paused' })
+  })
+})
+
 describe('"Now" from the composer: today, the current Manila minute', () => {
   const nowish = new Date('2026-10-14T02:00:45Z') // 10:00:45 Manila
   const nowDraft = { ...DRAFT, schedule: { ...DRAFT.schedule, date: '2026-10-14', time: '10:00' } }

@@ -4,7 +4,8 @@
  * client's actions one at a time, so a poll through an action would hold up
  * the owner's Save.
  *
- * Cookie session → `requireTextsAccess` (customers, store-wide). Never cached.
+ * Cookie session → `requireTextsAccess` (customers, store-wide). Never cached
+ * by the browser; shared per store for a few seconds on the server.
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -12,7 +13,7 @@ import { z } from 'zod'
 import { createLogger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireTextsAccess } from '@/lib/texts/gate'
-import { readTextsLive } from '@/lib/texts/server/live'
+import { readTextsLiveCached } from '@/lib/texts/server/live'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const live = await readTextsLive(createAdminClient({ timeoutMs: LIVE_QUERY_TIMEOUT_MS }), tenantId, new Date())
+    // Several open tabs of one store share one read for a few seconds.
+    const live = await readTextsLiveCached(createAdminClient({ timeoutMs: LIVE_QUERY_TIMEOUT_MS }), tenantId, new Date())
     return json(live, 200)
   } catch (error) {
     log.error('live read failed', { tenantId, error: error instanceof Error ? error.message : String(error) })

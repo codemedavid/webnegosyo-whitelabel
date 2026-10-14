@@ -16,9 +16,10 @@ import type { Outcome } from '@/lib/sms-automations/api/writes'
 import { maxEndsOn } from '../campaign-schema'
 import { MISSED_AFTER_MS, addManilaDays, manilaInstant, toManilaParts } from '../schedule'
 import {
-  CHANGED, NOT_FOUND, cancelCampaignWaiting, done, liveProblem, loadCampaignState, quietColumns, refuse, updateOne,
+  CHANGED, NOT_FOUND, cancelCampaignWaiting, done, liveProblem, loadCampaignState, openServerRunIds, quietColumns, refuse, updateOne,
   type CampaignState,
 } from './campaign-state'
+import { requeuePausedTexts } from './campaign-runs'
 
 /** A phone that claimed a run this recently may still be texting from it. */
 const PHONE_BUSY_MS = 30 * 60_000
@@ -35,16 +36,9 @@ export async function pauseCampaign(db: SupabaseClient, tenantId: string, campai
   if (!(await updateOne(db, tenantId, campaignId, { status: 'paused', pause_reason: 'owner' }, ['scheduled', 'active']))) {
     return refuse(409, CHANGED, 'changed')
   }
-  await cancelCampaignWaiting(db, tenantId, state.openRuns.map((run) => run.id), 'paused')
+  // Re-read AFTER the flip: a run the tick opened meanwhile is caught too (its planner re-checks as well).
+  await cancelCampaignWaiting(db, tenantId, await openServerRunIds(db, tenantId, campaignId), 'paused')
   return done(null)
-}
-
-async function requeuePaused(db: SupabaseClient, tenantId: string, runIds: readonly string[], now: Date): Promise<void> {
-  if (runIds.length === 0) return
-  const { error } = await db.from('sms_outbox').update({ status: 'queued', skip_reason: null })
-    .eq('tenant_id', tenantId).in('campaign_run_id', [...runIds]).eq('status', 'cancelled').eq('skip_reason', 'paused')
-    .gt('expires_at', now.toISOString())
-  if (error) throw new Error(`paused campaign texts could not be put back: ${error.message}`)
 }
 
 /** Why a paused server campaign cannot simply resume, or null. */
@@ -76,7 +70,7 @@ export async function resumeCampaign(db: SupabaseClient, tenantId: string, campa
   if (!(await updateOne(db, tenantId, campaignId, { status: 'scheduled', pause_reason: null, scheduled_from: now.toISOString() }, ['paused']))) {
     return refuse(409, CHANGED, 'changed')
   }
-  await requeuePaused(db, tenantId, state.openRuns.map((run) => run.id), now)
+  await requeuePausedTexts(db, tenantId, state.openRuns.map((run) => run.id), now)
   return done(null)
 }
 
@@ -87,7 +81,7 @@ export async function archiveCampaign(db: SupabaseClient, tenantId: string, camp
   if (!(await updateOne(db, tenantId, campaignId, { status: 'archived' }, ['draft', 'scheduled', 'paused', 'active']))) {
     return refuse(409, CHANGED, 'changed')
   }
-  const runIds = state.openRuns.map((run) => run.id)
+  const runIds = await openServerRunIds(db, tenantId, campaignId)
   await cancelCampaignWaiting(db, tenantId, runIds, 'archived')
   if (runIds.length > 0) {
     const { error } = await db.from('sms_campaign_runs').update({ status: 'completed', completed_at: now.toISOString() })
