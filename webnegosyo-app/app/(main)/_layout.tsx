@@ -20,6 +20,7 @@ import { WhatsNewPopup } from "../../components/WhatsNewPopup";
 import { TutorialWelcomePopup } from "../../components/tutorial/TutorialWelcomePopup";
 import { useBranchLanding } from "../../lib/use-branch-landing";
 import { OwlLauncher } from "../../components/assistant/OwlLauncher";
+import { useStockAlertPushRefresh } from "../../lib/merchant-notifications/use-merchant-notifications";
 
 /**
  * Error Boundary scoped to the main (post-login) tab tree. A render throw in any
@@ -61,6 +62,7 @@ export default function MainLayout() {
   // Opens an account on its pinned screen, and loads the branch list the
   // context rules validate selections against.
   useBranchLanding();
+  useStockAlertPushRefresh();
 
   const ctx = useTabVisibilityContext();
   const show = (tab: string) => (isTabOnBar(tab, ctx) ? undefined : null);
@@ -234,6 +236,8 @@ export default function MainLayout() {
         {/* Platform "What's New" inbox + post — reached from Manage or a push. */}
         <Tabs.Screen name="whats-new/index" options={{ href: null, title: "What's New" }} />
         <Tabs.Screen name="whats-new/[announcementId]" options={{ href: null, title: "Update" }} />
+        {/* The bell's list (low / out of stock) — reached from the header bell or a push. */}
+        <Tabs.Screen name="notifications" options={{ href: null, title: "Notifications" }} />
         {/* Guided tour: the chapter list and one chapter — reached from the greeter or Manage. */}
         <Tabs.Screen name="tutorial/index" options={{ href: null, title: "Learn the app" }} />
         {/* The chapter draws its own bar inside the simulation, so the real one hides. */}

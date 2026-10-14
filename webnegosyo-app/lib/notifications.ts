@@ -48,6 +48,26 @@ export async function ensureOrdersChannel(): Promise<void> {
   ordersChannelReady = true;
 }
 
+let stockAlertsChannelReady = false;
+
+/**
+ * The "stock-alerts" Android channel that low / out-of-stock pushes target
+ * (`channelId` in `src/lib/push/merchant-notification-push.ts`). Default
+ * sound and HIGH importance so it shows as a heads-up, but deliberately NOT
+ * the order ringtone: a counter phone must never make a merchant think an
+ * order came in when an ingredient ran low. Same create-never-delete rule as
+ * the orders channel. No-op on iOS.
+ */
+export async function ensureStockAlertsChannel(): Promise<void> {
+  if (Platform.OS !== "android" || stockAlertsChannelReady) return;
+  await Notifications.setNotificationChannelAsync("stock-alerts", {
+    name: "Stock alerts",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 200],
+  });
+  stockAlertsChannelReady = true;
+}
+
 export async function registerForPushNotifications(): Promise<string | null> {
   // Make sure the ringtone channel exists even on devices/emulators where we
   // bail out below — local in-app order alerts still rely on it.

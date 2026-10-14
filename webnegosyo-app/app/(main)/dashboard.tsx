@@ -29,6 +29,7 @@ import { QuickActions } from "../../components/QuickActions";
 import { StatusPipeline } from "../../components/StatusPipeline";
 import { OrderCard } from "../../components/OrderCard";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { NotificationBell } from "../../components/notifications/NotificationBell";
 import { SectionHeader } from "../../components/SectionHeader";
 import { IconButton } from "../../components/IconButton";
 import { ListRow } from "../../components/ListRow";
@@ -77,6 +78,7 @@ function getGreeting(): string {
 function HeaderActions({ isConnected }: { isConnected: boolean }) {
   return (
     <>
+      <NotificationBell />
       <IconButton
         icon="printer"
         label="Printer"
