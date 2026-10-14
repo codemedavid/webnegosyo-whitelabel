@@ -1,4 +1,4 @@
-import { EMPTY_JOIN, JOIN_QUESTIONS, firstOpenQuestion, joinFieldError, previewStoreLink } from '@/components/onboarding/join-steps'
+import { EMPTY_JOIN, JOIN_QUESTIONS, firstOpenQuestion, joinFieldError, previewStoreLink, questionIndexFor } from '@/components/onboarding/join-steps'
 
 describe('join-steps', () => {
   test('asks the store name first, so the link preview has something to show', () => {
@@ -23,6 +23,13 @@ describe('join-steps', () => {
     expect(firstOpenQuestion(EMPTY_JOIN)).toBe(0)
     expect(firstOpenQuestion({ ...EMPTY_JOIN, business_name: 'Kape', name: 'Juan' })).toBe(2)
     expect(firstOpenQuestion({ business_name: 'Kape', name: 'Juan', email: 'j@x.co', phone: '09171234567' })).toBe(3)
+  })
+
+  test('finds the question a server refusal is about, or none', () => {
+    expect(questionIndexFor('email')).toBe(2)
+    expect(questionIndexFor('business_name')).toBe(0)
+    expect(questionIndexFor(null)).toBe(-1)
+    expect(questionIndexFor('payment_term')).toBe(-1)
   })
 
   test('previews the link with the build slug rule', () => {

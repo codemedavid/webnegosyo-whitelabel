@@ -6,7 +6,7 @@ import { ArrowRight, Check, Loader2, Pencil } from 'lucide-react'
 import { redeemSignupLinkAction } from '@/app/actions/signup-link'
 import { Owl, type OwlState } from '@/components/mascot/owl'
 import { ErrorNote, FOCUS_RING, INPUT_CLASS, OB, PrimaryButton } from './onboarding-ui'
-import { EMPTY_JOIN, JOIN_QUESTIONS, joinFieldError, type JoinFields } from './join-steps'
+import { EMPTY_JOIN, JOIN_QUESTIONS, joinFieldError, questionIndexFor, type JoinFields } from './join-steps'
 import { JoinStoreCard } from './join-store-card'
 import { EASE_OUT } from './motion/parts'
 
@@ -104,6 +104,9 @@ export function JoinForm({ code, rootDomain = '' }: { code: string; rootDomain?:
     try {
       const result = await redeemSignupLinkAction(code, form)
       if (result.error !== null) {
+        // A refusal about one answer (a taken email) reopens that question, with the reason under it.
+        const target = questionIndexFor(result.field)
+        if (target >= 0 && target !== index) goTo(target)
         setError(result.error)
         setIsSaving(false)
         return

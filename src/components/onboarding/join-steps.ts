@@ -51,6 +51,11 @@ export function joinFieldError(key: JoinKey, value: string): string | null {
   return trimmed.length >= MIN_NAME_LENGTH ? null : key === 'name' ? 'Tell us your name' : 'Tell us your store name'
 }
 
+/** The question a server refusal is about (e.g. a taken email), or -1 when it is about none. */
+export function questionIndexFor(field: string | null): number {
+  return field === null ? -1 : JOIN_QUESTIONS.findIndex((question) => question.key === field)
+}
+
 /** The first question still unanswered (or the last one, when all are). */
 export function firstOpenQuestion(fields: JoinFields): number {
   const index = JOIN_QUESTIONS.findIndex((question) => joinFieldError(question.key, fields[question.key]) !== null)
