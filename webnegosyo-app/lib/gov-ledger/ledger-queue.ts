@@ -59,6 +59,22 @@ export function parseQueue(raw: string | null): QueuedGovRecord[] {
   }
 }
 
+function orderKeyOf(request: RecordGovDiscountRequest): string {
+  return [request.tenantId, request.backend, request.externalOrderId].join("|");
+}
+
+/** Oldest revision first within an order; orders keep their queue order. */
+function inSendingOrder(entries: readonly QueuedGovRecord[]): QueuedGovRecord[] {
+  const byOrder = new Map<string, QueuedGovRecord[]>();
+  for (const entry of entries) {
+    const key = orderKeyOf(entry.request);
+    byOrder.set(key, [...(byOrder.get(key) ?? []), entry]);
+  }
+  return [...byOrder.values()].flatMap((group) =>
+    [...group].sort((a, b) => a.request.revision - b.request.revision),
+  );
+}
+
 export interface GovLedgerQueue {
   enqueue(request: RecordGovDiscountRequest): Promise<void>;
   /** Sends everything waiting; returns how many are still waiting. */
@@ -95,9 +111,21 @@ export function createGovLedgerQueue(
       serial(async () => {
         const entries = await read();
         const remaining: QueuedGovRecord[] = [];
-        for (const entry of entries) {
+        // An order's revisions go oldest first, and the order stops at its
+        // first failure: sending revision 2 while 1 is still waiting would
+        // make the server record them out of order.
+        const blockedOrders = new Set<string>();
+        for (const entry of inSendingOrder(entries)) {
+          const order = orderKeyOf(entry.request);
+          if (blockedOrders.has(order)) {
+            remaining.push(entry);
+            continue;
+          }
           const isSent = await post(GOV_LEDGER_ROUTE, entry.request).catch(() => false);
-          if (!isSent) remaining.push({ ...entry, attempts: entry.attempts + 1 });
+          if (!isSent) {
+            blockedOrders.add(order);
+            remaining.push({ ...entry, attempts: entry.attempts + 1 });
+          }
         }
         await write(remaining);
         return remaining.length;

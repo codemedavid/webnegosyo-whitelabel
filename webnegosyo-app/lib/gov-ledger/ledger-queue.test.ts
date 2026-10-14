@@ -83,6 +83,29 @@ describe("the Senior/PWD ledger queue", () => {
     expect((await queue.pending()).map((entry) => entry.request.externalOrderId)).toEqual(["b"]);
   });
 
+  it("sends one order's revisions oldest first and stops that order at its first failure", async () => {
+    const storage = memoryStorage();
+    const sent: string[] = [];
+    const post = jest.fn(async (_path: string, body: unknown) => {
+      const record = body as RecordGovDiscountRequest;
+      sent.push(`${record.externalOrderId}#${record.revision}`);
+      return !(record.externalOrderId === "o1" && record.revision === 1);
+    });
+    const queue = createGovLedgerQueue(storage, post);
+    await queue.enqueue(request(2, "o1"));
+    await queue.enqueue(request(1, "o1"));
+    await queue.enqueue(request(0, "o2"));
+    await queue.enqueue(request(0, "o1"));
+
+    const waiting = await queue.flush();
+
+    // o1#2 is never sent while o1#1 is still waiting — the server would
+    // otherwise record a newer revision before an older one.
+    expect(sent).toEqual(["o1#0", "o1#1", "o2#0"]);
+    expect(waiting).toBe(2);
+    expect((await queue.pending()).map((entry) => entry.request.revision).sort()).toEqual([1, 2]);
+  });
+
   it("survives a damaged storage value", () => {
     expect(parseQueue("{not json")).toEqual([]);
     expect(parseQueue(JSON.stringify([{ id: 1 }]))).toEqual([]);
