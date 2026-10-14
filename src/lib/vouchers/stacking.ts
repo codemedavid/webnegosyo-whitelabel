@@ -18,10 +18,12 @@ import {
   applyDiscountToRemaining,
   computeVoucherDiscount,
   createRemainingAmounts,
+  unitLimitOf,
+  type RemainingAmounts,
   type VoucherDiscountResult,
 } from './discount'
 import type { DiscountContext, Voucher, VoucherRejectionReason } from './types'
-import type { OrderDiscountLine } from '../order-totals'
+import type { DiscountLineItem, OrderDiscountLine } from '../order-totals'
 
 const CENTAVO_PRECISION = 100
 
@@ -51,6 +53,19 @@ export interface VoucherApplication {
   deliveryDiscount: number
   /** Total discount per cart line, merged across every applied voucher. */
   allocationsByLine: Readonly<Record<string, number>>
+  /**
+   * What is still discountable after every applied voucher, per line and per
+   * unit — so a cashier's item discount stacks on what the vouchers left.
+   */
+  remaining: RemainingAmounts
+}
+
+/** The dishes a unit-limited voucher landed on, or undefined for any other. */
+function discountedItems(voucher: Voucher, result: VoucherDiscountResult): DiscountLineItem[] | undefined {
+  if (unitLimitOf(voucher) === null) return undefined
+  return result.allocations
+    .filter((allocation) => (allocation.units ?? 0) > 0)
+    .map((allocation) => ({ lineKey: allocation.lineId, units: allocation.units ?? 0, amount: allocation.amount }))
 }
 
 export function applyVouchers(
@@ -113,12 +128,16 @@ export function applyVouchers(
     }
   }
 
-  const discountLines: OrderDiscountLine[] = applied.map(({ voucher, result }) => ({
-    label: voucher.name || voucher.code,
-    amount: result.amount,
-    voucherId: voucher.id,
-    code: voucher.code,
-  }))
+  const discountLines: OrderDiscountLine[] = applied.map(({ voucher, result }) => {
+    const items = discountedItems(voucher, result)
+    return {
+      label: voucher.name || voucher.code,
+      amount: result.amount,
+      voucherId: voucher.id,
+      code: voucher.code,
+      ...(items ? { items } : {}),
+    }
+  })
 
   return {
     applied,
@@ -127,5 +146,6 @@ export function applyVouchers(
     discountTotal: roundMoney(applied.reduce((sum, a) => sum + a.result.amount, 0)),
     deliveryDiscount: roundMoney(applied.reduce((sum, a) => sum + a.result.deliveryAmount, 0)),
     allocationsByLine,
+    remaining,
   }
 }

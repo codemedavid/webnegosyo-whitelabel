@@ -23,4 +23,18 @@ export interface OrderDiscountLine {
   code?: string
   /** A Senior/PWD (government-mandated) line; its detail is in `government`. */
   isGovernment?: boolean
+  /**
+   * The dishes a line-specific discount landed on ("Fries ×1") — a
+   * unit-limited voucher or a cashier's discount on one item. Absent on
+   * order-wide discounts. Keys are the pricing's line ids; stored orders use
+   * `line-<index>`.
+   */
+  items?: readonly DiscountLineItem[]
+}
+
+/** One dish a line-specific discount came off. */
+export interface DiscountLineItem {
+  lineKey: string
+  units: number
+  amount: number
 }

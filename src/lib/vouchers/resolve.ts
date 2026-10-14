@@ -50,6 +50,7 @@ const EMPTY_RESULT: ResolvedVouchers = {
   discountTotal: 0,
   deliveryDiscount: 0,
   allocationsByLine: {},
+  remaining: { byLine: {}, byUnit: {}, deliveryFee: 0 },
   notFound: [],
 }
 

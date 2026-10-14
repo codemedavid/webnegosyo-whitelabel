@@ -19,6 +19,7 @@
  */
 
 import { readStoredGovDiscount, type StoredGovDiscount } from "./gov-discount/payload";
+import type { DiscountLineItem } from "./order-totals";
 
 /** One deducted line as stored. */
 export interface StoredDiscountLine {
@@ -28,6 +29,29 @@ export interface StoredDiscountLine {
   code?: string;
   /** A Senior/PWD (government-mandated) line; its detail is in `government`. */
   isGovernment?: boolean;
+  /**
+   * The dishes a line-specific discount came off (`line-<index>` + units) — a
+   * unit-limited voucher or a cashier's item discount. Read it through
+   * `discountLineItems`, which shape-checks.
+   */
+  items?: DiscountLineItem[];
+}
+
+/**
+ * The dishes a stored discount line came off, or [] for an order-wide line.
+ * Never throws: the blob is untyped at the database edge.
+ */
+export function discountLineItems(line: unknown): DiscountLineItem[] {
+  const items = (line as { items?: unknown } | null)?.items;
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item: unknown) => {
+    const candidate = item as Partial<DiscountLineItem> | null;
+    if (!candidate || typeof candidate.lineKey !== "string") return [];
+    const units = Number(candidate.units);
+    const amount = Number(candidate.amount);
+    if (!Number.isInteger(units) || units < 1 || !Number.isFinite(amount) || amount <= 0) return [];
+    return [{ lineKey: candidate.lineKey, units, amount }];
+  });
 }
 
 export interface OrderDiscountPayload {

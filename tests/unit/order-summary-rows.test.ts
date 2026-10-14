@@ -1,4 +1,4 @@
-import { orderSummaryRows } from "@/lib/order-summary-rows";
+import { discountItemsText, orderSummaryRows } from "@/lib/order-summary-rows";
 
 /**
  * The money rows shown beneath an order's items.
@@ -136,5 +136,47 @@ describe("orderSummaryRows", () => {
     expect(rows.filter((r) => r.kind === "discount")).toEqual([
       { kind: "discount", label: "WELCOME10", amount: 20 },
     ]);
+  });
+});
+
+describe("item-level discount rows", () => {
+  const discount = {
+    total: 76,
+    lines: [
+      { label: "Fries 50%", amount: 56, code: "FRIES50", items: [{ lineKey: "line-0", units: 1, amount: 56 }] },
+      { label: "Discount — damaged", amount: 20, items: [{ lineKey: "line-1", units: 2, amount: 20 }] },
+    ],
+  };
+
+  it("names the dish and units a line-specific discount came off", () => {
+    const rows = orderSummaryRows({ subtotal: 860, discount, total: 784, itemNames: ["Fries", "Burger"] });
+    const discountRows = rows.filter((row) => row.kind === "discount");
+
+    expect(discountRows.map((row) => row.items)).toEqual([
+      [{ name: "Fries", units: 1 }],
+      [{ name: "Burger", units: 2 }],
+    ]);
+    expect(discountItemsText(discountRows[0].items ?? [])).toBe("Fries ×1");
+  });
+
+  it("falls back to a neutral name when the line is not known", () => {
+    const rows = orderSummaryRows({ subtotal: 860, discount, total: 784 });
+
+    expect(rows.find((row) => row.kind === "discount")?.items).toEqual([{ name: "Item", units: 1 }]);
+  });
+
+  it("leaves order-wide discount rows without items", () => {
+    const rows = orderSummaryRows({
+      subtotal: 100,
+      discount: { total: 10, lines: [{ label: "WELCOME", amount: 10 }] },
+      total: 90,
+      itemNames: ["Fries"],
+    });
+
+    expect(rows.find((row) => row.kind === "discount")?.items).toBeUndefined();
+  });
+
+  it("joins several dishes and prints with a plain x for thermal paper", () => {
+    expect(discountItemsText([{ name: "Fries", units: 1 }, { name: "Soda", units: 2 }], "x")).toBe("Fries x1, Soda x2");
   });
 });
