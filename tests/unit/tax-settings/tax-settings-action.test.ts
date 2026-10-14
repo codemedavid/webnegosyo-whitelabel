@@ -43,6 +43,7 @@ const values = {
   approvalRule: 'above',
   approvalThreshold: '500',
   serviceChargeMode: 'full',
+  idPhotoMode: 'off',
 }
 
 const loadActions = () => import('@/app/actions/tax-settings')

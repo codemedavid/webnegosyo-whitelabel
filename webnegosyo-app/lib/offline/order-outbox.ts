@@ -20,6 +20,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GovRecordDraft } from "../gov-ledger/record-request";
+import type { SaleIdPhoto } from "../gov-id-photos/types";
 import type { OrderBackend } from "../order-backend";
 import type { OrderDiscountLine } from "../order-totals";
 import type { PosStockItem } from "../pos-stock";
@@ -45,6 +46,11 @@ export interface QueuedSaleBookkeeping {
    * every other sale (and on sales queued before the field existed).
    */
   govRecord?: GovRecordDraft | null;
+  /**
+   * Optional photos of the claimants' IDs (files on this device), uploaded
+   * once the grant is filed. Absent when the store keeps no photos.
+   */
+  govIdPhotos?: SaleIdPhoto[];
 }
 
 export interface QueuedSale {

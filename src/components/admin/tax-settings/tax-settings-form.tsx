@@ -25,6 +25,7 @@ import { DiscountsOfferedCard } from './discounts-offered-card'
 import { ReceiptsCard } from './receipts-card'
 import { RegistrationCard } from './registration-card'
 import { ServiceChargeCard } from './service-charge-card'
+import { IdPhotosCard } from './id-photos-card'
 import { TaxSaveBar } from './tax-save-bar'
 
 const FORM_ID = 'tax-settings-form'
@@ -84,6 +85,7 @@ export function TaxSettingsForm({ tenantId, tenantSlug, defaults, hasProfile, ca
           <DiscountsOfferedCard />
           <ApprovalRuleCard />
           <ServiceChargeCard />
+          <IdPhotosCard />
         </fieldset>
       </form>
 

@@ -30,6 +30,7 @@ const filled = (overrides: Partial<TaxSettingsFormValues> = {}): TaxSettingsForm
   approvalRule: 'above',
   approvalThreshold: '500',
   serviceChargeMode: 'full',
+  idPhotoMode: 'off',
   ...overrides,
 })
 

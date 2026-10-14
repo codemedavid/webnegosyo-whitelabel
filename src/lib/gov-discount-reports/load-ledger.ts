@@ -16,11 +16,13 @@ import type { Database } from '@/types/database'
 import { readPagesConcurrently, type PageResponse } from '@/lib/dashboard/paged-read'
 import { CLAIM_COLUMNS, REVERSAL_COLUMNS, REVIEW_COLUMNS, mapRows, toLedgerClaim, toLedgerReview, toReversalStamp } from './rows'
 import type { ReportPeriod } from './period'
-import type { LedgerClaim, LedgerReview, OutletName, ReversalStamp } from './types'
+import type { IdPhotoRef, LedgerClaim, LedgerReview, OutletName, ReversalStamp } from './types'
 
 export const MAX_LEDGER_ROWS = 20_000
 export const MAX_REVIEW_ROWS = 20_000
 export const MAX_LATER_REVERSALS = 5_000
+/** Photos live 90 days and are opt-in, so this is never close in practice. */
+export const MAX_ID_PHOTO_ROWS = 5_000
 const PAGE_SIZE = 1000
 /** Slack for a register clock running ahead of the database's. */
 const REVIEW_CLOCK_SLACK_MS = 24 * 60 * 60 * 1000
@@ -41,6 +43,8 @@ export interface LedgerPageData extends LedgerWindow {
   outlets: OutletName[]
   /** False only when the store has never recorded a grant at all. */
   hasAnyClaims: boolean
+  /** The optional ID photos the caller may view (RLS: reviewers, unexpired). */
+  idPhotos: IdPhotoRef[]
 }
 
 function fail(context: string, message: string): never {
@@ -128,6 +132,37 @@ async function loadOutlets(db: Db, tenantId: string): Promise<OutletName[]> {
   return ((data ?? []) as Row[]).map((row) => ({ id: String(row.id), name: String(row.name ?? 'Branch') }))
 }
 
+/**
+ * Every ID photo the caller may see. Photos exist for 90 days at most, so the
+ * whole (RLS-filtered, unexpired) set is small; reading it whole means a grant
+ * edited inside the window still finds the photo taken at the original sale.
+ * A failure hides the photos, never the sales book.
+ */
+async function loadIdPhotos(db: Db, tenantId: string): Promise<IdPhotoRef[]> {
+  const result = await readPagesConcurrently<Row>(
+    (from, to) =>
+      db
+        .from('gov_discount_id_photos')
+        .select('id, backend, external_order_id, claimant_ref')
+        .eq('tenant_id', tenantId)
+        .order('captured_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)
+        .then(asPage),
+    { pageSize: PAGE_SIZE, maxRows: MAX_ID_PHOTO_ROWS, concurrency: CONCURRENCY },
+  )
+  if (result.error) {
+    console.error('[gov-discount-reports] id photos unavailable', result.error)
+    return []
+  }
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    backend: String(row.backend),
+    externalOrderId: String(row.external_order_id),
+    claimantRef: String(row.claimant_ref),
+  }))
+}
+
 async function hasAnyClaim(db: Db, tenantId: string): Promise<boolean> {
   const { data, error } = await db.from('gov_discount_claims').select('id').eq('tenant_id', tenantId).limit(1)
   if (error) fail('any claim', error.message)
@@ -140,15 +175,16 @@ export async function loadLedgerPageData(
   period: ReportPeriod,
   nowMs: number,
 ): Promise<LedgerPageData> {
-  const [window, laterReversals, outlets] = await Promise.all([
+  const [window, laterReversals, outlets, idPhotos] = await Promise.all([
     loadLedgerWindow(db, tenantId, period),
     loadLaterReversals(db, tenantId, period, nowMs),
     loadOutlets(db, tenantId),
+    loadIdPhotos(db, tenantId),
   ])
   const grantIds = new Set(window.rows.filter((row) => row.event === 'granted').map((row) => row.id))
   const [reviews, hasAnyClaims] = await Promise.all([
     loadReviews(db, tenantId, period, grantIds),
     window.rows.length > 0 ? Promise.resolve(true) : hasAnyClaim(db, tenantId),
   ])
-  return { ...window, laterReversals, reviews, outlets, hasAnyClaims }
+  return { ...window, laterReversals, reviews, outlets, hasAnyClaims, idPhotos }
 }

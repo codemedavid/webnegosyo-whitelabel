@@ -16,6 +16,8 @@ export interface GovLedgerWorkspaceProps {
   kinds: readonly GovDiscountKind[]
   /** Empty for a single-location store. */
   outlets: readonly OutletName[]
+  /** Grant id → its optional ID photo's id. */
+  photoIdByGrant?: Readonly<Record<string, string>>
 }
 
 /**
@@ -31,6 +33,7 @@ export function GovLedgerWorkspace({
   needsALook,
   kinds,
   outlets,
+  photoIdByGrant = {},
 }: GovLedgerWorkspaceProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -53,6 +56,7 @@ export function GovLedgerWorkspace({
         tenantId={tenantId}
         tenantSlug={tenantSlug}
         branchName={branchName}
+        photoId={selected ? photoIdByGrant[selected.id] ?? null : null}
         onClose={() => setSelectedId(null)}
       />
     </>

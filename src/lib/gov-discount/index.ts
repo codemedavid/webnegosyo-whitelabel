@@ -28,14 +28,19 @@ export {
 export { chooseDiscountRegime, type DiscountRegime, type RegimeChoice } from './regime'
 export {
   DEFAULT_APPROVAL_THRESHOLD,
+  ID_PHOTO_MODES,
+  ID_PHOTO_PRIVACY_NOTE,
+  ID_PHOTO_RETENTION_DAYS,
   NOT_AN_INVOICE_NOTICE,
   TAX_PROFILE_COLUMNS,
   defaultTaxProfile,
+  idPhotoModeOf,
   needsManagerApproval,
   taxProfileFromRow,
   taxProfileToRow,
   tinHeaderLine,
   type ApprovalRule,
+  type IdPhotoMode,
   type TaxProfile,
 } from './tax-profile'
 export {

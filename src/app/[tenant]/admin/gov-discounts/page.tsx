@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 import { loadLedgerPageData, type LedgerPageData } from '@/lib/gov-discount-reports/load-ledger'
 import { resolveReportPeriod } from '@/lib/gov-discount-reports/period'
 import { buildGovDiscountReport } from '@/lib/gov-discount-reports/report'
+import { photoIdsByGrant } from '@/lib/gov-discount-reports/id-photos'
 
 interface GovDiscountsPageProps {
   params: Promise<{ tenant: string }>
@@ -144,6 +145,7 @@ export default async function GovDiscountsPage({ params, searchParams }: GovDisc
         needsALook={report.needsALook}
         kinds={report.kinds}
         outlets={branchOutlets}
+        photoIdByGrant={photoIdsByGrant([...report.grants, ...report.needsALook], data.idPhotos)}
       />
 
       <GovExportsCard tenantId={tenant.id} period={period} kinds={report.kinds} isTruncated={data.isTruncated} />

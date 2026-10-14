@@ -43,6 +43,7 @@ import { ReceiptsSection } from "../../components/tax-settings/ReceiptsSection";
 import { DiscountsSection } from "../../components/tax-settings/DiscountsSection";
 import { ApprovalRuleSection, ServiceChargeSection } from "../../components/tax-settings/ApprovalRuleSection";
 import { ApprovalPinCard } from "../../components/tax-settings/ApprovalPinCard";
+import { IdPhotosSection } from "../../components/tax-settings/IdPhotosSection";
 
 function StatusBanner({ tone, title, message }: { tone: "warning" | "info"; title: string; message: string }) {
   const isWarning = tone === "warning";
@@ -185,6 +186,7 @@ export default function TaxSettingsScreen() {
         <DiscountsSection form={form} errors={errors} onChange={update} disabled={isLocked} />
         <ApprovalRuleSection form={form} errors={errors} onChange={update} disabled={isLocked} />
         <ServiceChargeSection form={form} errors={errors} onChange={update} disabled={isLocked} />
+        <IdPhotosSection form={form} errors={errors} onChange={update} disabled={isLocked} />
 
         {canEdit ? (
           <View style={styles.saveBlock}>

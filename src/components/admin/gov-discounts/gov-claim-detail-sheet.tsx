@@ -14,6 +14,7 @@ import { visibleFlags } from '@/lib/gov-discount-reports/review-queue'
 import type { ClaimVerification, GrantEntry } from '@/lib/gov-discount-reports/types'
 import { GrantStatusBadges } from './grant-status-badges'
 import { GovReviewForm } from './gov-review-form'
+import { IdPhotoViewer } from './id-photo-viewer'
 import { MaskedId } from './masked-id'
 
 export interface GovClaimDetailSheetProps {
@@ -22,6 +23,8 @@ export interface GovClaimDetailSheetProps {
   tenantSlug: string
   /** Shown only for a multi-branch store. */
   branchName: string | null
+  /** The grant's optional ID photo, when there is one the reviewer may open. */
+  photoId: string | null
   onClose: () => void
 }
 
@@ -147,7 +150,7 @@ function HistorySection({ grant }: { grant: GrantEntry }) {
 }
 
 /** One grant, everything about it, and the reviewer's two buttons. */
-export function GovClaimDetailSheet({ grant, tenantId, tenantSlug, branchName, onClose }: GovClaimDetailSheetProps) {
+export function GovClaimDetailSheet({ grant, tenantId, tenantSlug, branchName, photoId, onClose }: GovClaimDetailSheetProps) {
   return (
     <Sheet open={grant !== null} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
@@ -172,6 +175,9 @@ export function GovClaimDetailSheet({ grant, tenantId, tenantSlug, branchName, o
                     value={grant.allocationMode === 'shared' ? `Shared table of ${grant.diners ?? '?'}` : 'Their own order'}
                   />
                 </dl>
+                {photoId && (
+                  <IdPhotoViewer key={photoId} tenantId={tenantId} photoId={photoId} claimantName={grant.claimantName} />
+                )}
               </Section>
 
               <AmountsSection grant={grant} />

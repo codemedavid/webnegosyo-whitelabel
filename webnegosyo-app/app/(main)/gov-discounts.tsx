@@ -199,6 +199,8 @@ export default function GovDiscountsScreen() {
       <GrantDetailSheet
         key={openGrant?.id ?? "none"}
         grant={openGrant}
+        tenantId={tenantId}
+        photoId={openGrant ? query.data?.photoIdByGrant[openGrant.id] ?? null : null}
         onClose={() => setOpenGrantId(null)}
         onSubmitReview={handleReview}
       />

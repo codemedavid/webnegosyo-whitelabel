@@ -11,6 +11,8 @@ import {
   readStoredGovDiscount,
   type RecordGovDiscountRequest,
 } from '@/lib/gov-discount'
+import { MAX_ID_PHOTO_DATA_URL_CHARS } from './id-photos/rules'
+import type { IdPhotoUploadRequest } from './id-photos/upload-service'
 
 const uuid = z.string().uuid()
 const money = z.number().finite().min(0).max(10_000_000)
@@ -109,4 +111,30 @@ const WEAK_PINS = new Set(['0000', '1111', '1234', '4321', '123456', '654321', '
 
 export function isWeakPin(pin: string): boolean {
   return WEAK_PINS.has(pin) || /^(\d)\1+$/.test(pin)
+}
+
+const idPhotoUploadSchema = z
+  .object({
+    tenantId: uuid,
+    backend: z.enum(['convex', 'tenant_supabase', 'platform_supabase']),
+    externalOrderId: z.string().min(1).max(128),
+    claimantRef: z.string().min(1).max(128),
+    capturedAt: z.string().datetime({ offset: true }),
+    // Checked byte-for-byte by `decodePhotoDataUrl`; this only bounds the parse.
+    photo: z.string().min(1).max(MAX_ID_PHOTO_DATA_URL_CHARS),
+  })
+  .strict()
+
+export function parseIdPhotoUploadRequest(body: unknown): ParseResult<IdPhotoUploadRequest> {
+  const parsed = idPhotoUploadSchema.safeParse(body)
+  return parsed.success ? { ok: true, value: parsed.data } : { ok: false, error: firstIssue(parsed.error) }
+}
+
+const idPhotoLinkSchema = z.object({ tenantId: uuid, photoId: uuid }).strict()
+
+export type IdPhotoLinkRequest = z.infer<typeof idPhotoLinkSchema>
+
+export function parseIdPhotoLinkRequest(body: unknown): ParseResult<IdPhotoLinkRequest> {
+  const parsed = idPhotoLinkSchema.safeParse(body)
+  return parsed.success ? { ok: true, value: parsed.data } : { ok: false, error: firstIssue(parsed.error) }
 }

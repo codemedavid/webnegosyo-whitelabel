@@ -16,9 +16,13 @@ import { colors, radius, spacing, typography } from "../../theme/colors";
 import { Button } from "../Button";
 import { IconButton } from "../IconButton";
 import { Modal } from "../Modal";
+import { IdPhotoViewer } from "./IdPhotoViewer";
 
 interface GrantDetailSheetProps {
   grant: GrantEntry | null;
+  tenantId: string | null;
+  /** The grant's optional ID photo, when there is one this reviewer may open. */
+  photoId: string | null;
   onClose: () => void;
   onSubmitReview: (grant: GrantEntry, verdict: ReviewVerdict, note: string | null) => Promise<void>;
 }
@@ -76,7 +80,7 @@ function ReviewHistory({ grant }: { grant: GrantEntry }) {
   );
 }
 
-export function GrantDetailSheet({ grant, onClose, onSubmitReview }: GrantDetailSheetProps) {
+export function GrantDetailSheet({ grant, tenantId, photoId, onClose, onSubmitReview }: GrantDetailSheetProps) {
   const [isWritingProblem, setIsWritingProblem] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +155,9 @@ export function GrantDetailSheet({ grant, onClose, onSubmitReview }: GrantDetail
                   accessibilityLabel={isIdShown ? "Hide the full ID number" : "Show the full ID number"}
                 />
               </View>
+              {tenantId && photoId ? (
+                <IdPhotoViewer tenantId={tenantId} photoId={photoId} claimantName={grant.claimantName} />
+              ) : null}
               <Line label="Their share" value={formatPesoCentavos(grant.grossShare)} />
               {grant.vatRemoved !== 0 ? <Line label="VAT removed" value={formatPesoCentavos(grant.vatRemoved)} /> : null}
               <Line label={`${rule.ratePercent}% discount`} value={formatPesoCentavos(grant.discount)} />

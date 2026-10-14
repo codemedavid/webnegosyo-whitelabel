@@ -17,6 +17,7 @@ import {
   isMandatoryKind,
   type ApprovalRule,
   type GovDiscountKind,
+  type IdPhotoMode,
   type ServiceChargeMode,
   type TaxProfile,
   type VatStatus,
@@ -52,6 +53,7 @@ export interface TaxSettingsForm {
   approvalRule: ApprovalRule;
   approvalThreshold: string;
   serviceChargeMode: ServiceChargeMode;
+  idPhotoMode: IdPhotoMode;
 }
 
 export type TaxSettingsField = keyof TaxSettingsForm;
@@ -86,6 +88,7 @@ export function formFromProfile(profile: TaxProfile | null): TaxSettingsForm {
     approvalRule: source.approvalRule,
     approvalThreshold: String(source.approvalThreshold),
     serviceChargeMode: source.serviceChargeMode,
+    idPhotoMode: source.idPhotoMode,
   };
 }
 
@@ -181,6 +184,7 @@ export function profileFromForm(form: TaxSettingsForm): TaxProfile | null {
     approvalRule: form.approvalRule,
     approvalThreshold: toThreshold(form.approvalThreshold),
     serviceChargeMode: form.serviceChargeMode,
+    idPhotoMode: form.idPhotoMode,
   };
 }
 

@@ -45,6 +45,9 @@ import { KindTiles } from "./KindTiles";
 import { ManagerApprovalSheet } from "./ManagerApprovalSheet";
 import { ShareStep } from "./ShareStep";
 import { Stepper } from "./Stepper";
+import { useGovIdPhotoStore } from "../../../stores/gov-id-photo-store";
+import { discardIdPhoto } from "../../../lib/gov-id-photos/capture";
+import type { CapturedIdPhoto } from "../../../lib/gov-id-photos/types";
 
 type Props = {
   visible: boolean;
@@ -70,6 +73,9 @@ type Props = {
 type Step = "who" | "id" | "share";
 type SheetView = { kind: "summary" } | { kind: "draft"; step: Step; draft: ClaimantDraft };
 
+/** The photo that goes with a claimant being applied (null = none / removed). */
+type PhotoChange = { claimantId: string; photo: CapturedIdPhoto | null };
+
 const STEP_TITLES: Record<Step, string> = { who: "Who is claiming?", id: "Their ID", share: "What's theirs?" };
 const STEP_ORDER: readonly Step[] = ["who", "id", "share"];
 
@@ -90,6 +96,9 @@ export function GovDiscountSheet(props: Props) {
   const isCentered = useCenteredDialog();
   const [view, setView] = useState<SheetView>({ kind: "summary" });
   const [approvalFor, setApprovalFor] = useState<PosGovSession | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<PhotoChange | null>(null);
+  const appliedPhotos = useGovIdPhotoStore((state) => state.photos);
+  const setIdPhoto = useGovIdPhotoStore((state) => state.setPhoto);
 
   // Opening on an empty sale goes straight to step 1 — no extra tap.
   useEffect(() => {
@@ -113,21 +122,38 @@ export function GovDiscountSheet(props: Props) {
 
   function editClaimant(id: string) {
     const claimant = session.claimants.find((entry) => entry.id === id);
-    if (claimant) setView({ kind: "draft", step: "share", draft: draftFromClaimant(claimant) });
+    if (claimant) {
+      setView({ kind: "draft", step: "share", draft: draftFromClaimant(claimant, appliedPhotos[id] ?? null) });
+    }
   }
 
-  function finish(next: PosGovSession) {
+  function savePhoto(change: PhotoChange | null) {
+    if (!change) return;
+    const previous = appliedPhotos[change.claimantId];
+    if (previous && previous.fileUri !== change.photo?.fileUri) void discardIdPhoto(previous.fileUri);
+    setIdPhoto(change.claimantId, change.photo);
+  }
+
+  function finish(next: PosGovSession, photo: PhotoChange | null = pendingPhoto) {
     onApply(next);
+    savePhoto(photo);
     setApprovalFor(null);
+    setPendingPhoto(null);
     setView({ kind: "summary" });
   }
 
-  function apply(candidate: PosGovSession, reduction: number) {
+  function apply(candidate: PosGovSession, reduction: number, photo: PhotoChange) {
     if (context.profile && needsManagerApproval(context.profile, reduction) && govApprovalPending(candidate, context.profile, reduction)) {
       setApprovalFor(candidate);
+      setPendingPhoto(photo);
       return;
     }
-    finish(candidate);
+    finish(candidate, photo);
+  }
+
+  function removeClaimant(id: string) {
+    onApply(withoutClaimant(session, id));
+    savePhoto({ claimantId: id, photo: null });
   }
 
   const body = !context.profile ? (
@@ -139,7 +165,7 @@ export function GovDiscountSheet(props: Props) {
       saleGross={saleGross}
       onAdd={startDraft}
       onEdit={editClaimant}
-      onRemove={(id) => onApply(withoutClaimant(session, id))}
+      onRemove={removeClaimant}
       onDiners={(diners) => onApply(withDiners(session, diners))}
       onDone={onClose}
     />
@@ -150,6 +176,7 @@ export function GovDiscountSheet(props: Props) {
       enabledKinds={enabledKinds}
       onView={setView}
       onApplyCandidate={apply}
+      appliedPhoto={view.kind === "draft" ? appliedPhotos[view.draft.id] ?? null : null}
     />
   );
 
@@ -197,7 +224,10 @@ export function GovDiscountSheet(props: Props) {
           }))}
           onApproved={(approval: PosGovApproval) => finish(withApproval(approvalFor, approval))}
           onSkipOffline={() => finish(withOfflineSkip(approvalFor))}
-          onClose={() => setApprovalFor(null)}
+          onClose={() => {
+            setApprovalFor(null);
+            setPendingPhoto(null);
+          }}
         />
       ) : null}
     </Modal>
@@ -210,7 +240,8 @@ type DraftFlowProps = Props & {
   view: Extract<SheetView, { kind: "draft" }>;
   enabledKinds: readonly GovDiscountKind[];
   onView: (view: SheetView) => void;
-  onApplyCandidate: (candidate: PosGovSession, reduction: number) => void;
+  onApplyCandidate: (candidate: PosGovSession, reduction: number, photo: PhotoChange) => void;
+  appliedPhoto: CapturedIdPhoto | null;
 };
 
 function DraftFlow(props: DraftFlowProps) {
@@ -270,6 +301,8 @@ function DraftFlow(props: DraftFlowProps) {
           <IdentityStep
             draft={draft}
             onChange={setDraft}
+            photoMode={context.profile?.idPhotoMode ?? "off"}
+            appliedPhoto={props.appliedPhoto}
             onSubmit={() => isIdentityComplete(draft) && onView({ ...view, step: "share" })}
           />
         ) : null}
@@ -308,7 +341,14 @@ function DraftFlow(props: DraftFlowProps) {
         <PrimaryButton
           label={claimant ? `Apply ${rule.code} discount · −${formatPeso(claimant.reduction)}` : `Apply ${rule.code} discount`}
           isDisabled={!priced || !claimant || claimant.reduction <= 0}
-          onPress={() => priced && props.onApplyCandidate(candidate, priced.totalReduction)}
+          onPress={() =>
+            priced &&
+            props.onApplyCandidate(candidate, priced.totalReduction, {
+              claimantId: draft.id,
+              // A store that switched photos off keeps none, even one taken earlier.
+              photo: context.profile?.idPhotoMode === "optional" ? draft.idPhoto : null,
+            })
+          }
         />
       ) : null}
     </>

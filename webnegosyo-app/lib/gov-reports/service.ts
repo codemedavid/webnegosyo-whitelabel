@@ -17,10 +17,13 @@ import { readAllPages, type PageResponse } from "./paging";
 import type { GovReportPeriod } from "./period";
 import { CLAIM_COLUMNS, REVERSAL_COLUMNS, REVIEW_COLUMNS, mapRows, toLedgerClaim, toLedgerReview, toReversalStamp, type Row } from "./rows";
 import type { LedgerClaim, LedgerReview, ReversalStamp, ReviewVerdict } from "./types";
+import type { IdPhotoRef } from "./id-photos";
 
 export const MAX_LEDGER_ROWS = 5_000;
 const MAX_LATER_REVERSALS = 5_000;
 const MAX_REVIEW_ROWS = 5_000;
+/** Photos are opt-in and live 90 days, so this is never close in practice. */
+const MAX_ID_PHOTO_ROWS = 5_000;
 const PAGE_SIZE = 1000;
 /** Slack for a register clock running ahead of the database's. */
 const REVIEW_CLOCK_SLACK_MS = 24 * 60 * 60 * 1000;
@@ -31,6 +34,8 @@ export interface GovLedgerData {
   reviews: LedgerReview[];
   /** True when a cap was hit: totals would be incomplete. */
   isTruncated: boolean;
+  /** The optional ID photos this reviewer may open. */
+  idPhotos: IdPhotoRef[];
 }
 
 const asPage = (response: { data: unknown; error: { message: string } | null }): PageResponse<Row> => ({
@@ -99,14 +104,44 @@ async function loadReviews(tenantId: string, period: GovReportPeriod, grantIds: 
   return { rows: reviews, isTruncated: result.isTruncated };
 }
 
+/**
+ * Every ID photo this reviewer may see (RLS: reviewers only, unexpired). A
+ * failure hides the photos, never the sales book.
+ */
+async function loadIdPhotos(tenantId: string): Promise<IdPhotoRef[]> {
+  try {
+    const result = await readAllPages<Row>(
+      (from, to) =>
+        supabase
+          .from("gov_discount_id_photos")
+          .select("id, backend, external_order_id, claimant_ref")
+          .eq("tenant_id", tenantId)
+          .order("captured_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+          .then(asPage),
+      { pageSize: PAGE_SIZE, maxRows: MAX_ID_PHOTO_ROWS },
+    );
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      backend: String(row.backend),
+      externalOrderId: String(row.external_order_id),
+      claimantRef: String(row.claimant_ref),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchGovLedger(
   tenantId: string,
   period: GovReportPeriod,
   nowMs: number,
 ): Promise<GovLedgerData> {
-  const [window, later] = await Promise.all([
+  const [window, later, idPhotos] = await Promise.all([
     loadWindow(tenantId, period),
     loadLaterReversals(tenantId, period, nowMs),
+    loadIdPhotos(tenantId),
   ]);
   const grantIds = new Set(window.rows.filter((row) => row.event === "granted").map((row) => row.id));
   const reviews = await loadReviews(tenantId, period, grantIds);
@@ -115,6 +150,7 @@ export async function fetchGovLedger(
     laterReversals: later.rows,
     reviews: reviews.rows,
     isTruncated: window.isTruncated || later.isTruncated || reviews.isTruncated,
+    idPhotos,
   };
 }
 

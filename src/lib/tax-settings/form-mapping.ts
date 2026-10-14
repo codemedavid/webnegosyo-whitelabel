@@ -53,6 +53,7 @@ export function formValuesFromProfile(profile: TaxProfile | null): TaxSettingsFo
     approvalRule: source.approvalRule,
     approvalThreshold: String(source.approvalThreshold),
     serviceChargeMode: source.serviceChargeMode,
+    idPhotoMode: source.idPhotoMode,
   }
 }
 
@@ -89,6 +90,7 @@ export function profileFromFormValues(values: TaxSettingsFormValues): TaxProfile
     approvalRule: values.approvalRule,
     approvalThreshold: toThreshold(values.approvalThreshold),
     serviceChargeMode: values.serviceChargeMode,
+    idPhotoMode: values.idPhotoMode,
   }
 }
 

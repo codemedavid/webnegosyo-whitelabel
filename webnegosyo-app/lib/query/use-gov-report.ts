@@ -13,6 +13,7 @@ import { resourceKey } from "../backends/query-keys";
 import { buildGovReport, type GovReport } from "../gov-reports/report";
 import type { GovReportPeriod } from "../gov-reports/period";
 import { fetchGovLedger } from "../gov-reports/service";
+import { photoIdsByGrant } from "../gov-reports/id-photos";
 import { invalidateResource, useResource, type ResourceResult } from "./use-resource";
 
 export const GOV_REPORT_RESOURCE = "gov-report";
@@ -20,6 +21,8 @@ export const GOV_REPORT_RESOURCE = "gov-report";
 export interface GovReportData {
   report: GovReport;
   isTruncated: boolean;
+  /** Grant id → its optional ID photo's id. */
+  photoIdByGrant: Readonly<Record<string, string>>;
 }
 
 /** `period` must be memoised by the caller (it is a fetcher dependency). */
@@ -29,7 +32,12 @@ export function useGovReport(
 ): ResourceResult<GovReportData> {
   const fetcher = useCallback(async (): Promise<GovReportData> => {
     const ledger = await fetchGovLedger(tenantId as string, period, Date.now());
-    return { report: buildGovReport(ledger), isTruncated: ledger.isTruncated };
+    const report = buildGovReport(ledger);
+    return {
+      report,
+      isTruncated: ledger.isTruncated,
+      photoIdByGrant: photoIdsByGrant(report.grants, ledger.idPhotos),
+    };
   }, [tenantId, period]);
   const key = tenantId ? resourceKey(GOV_REPORT_RESOURCE, tenantId, period.key, period.startIso) : null;
   return useResource<GovReportData>(key, fetcher);

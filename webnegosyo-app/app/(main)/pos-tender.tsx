@@ -40,7 +40,7 @@ import { burnPosRedemptions } from "../../lib/voucher-service";
 import { placeCounterSale } from "../../lib/offline/place-sale";
 import { newLocalOrderId } from "../../lib/offline/local-id";
 import { runPosSaleBookkeeping } from "../../lib/offline/pos-sale-bookkeeping";
-import { completeGovRecord } from "../../lib/gov-ledger/record-request";
+import { completeGovRecord, ledgerBackendOf } from "../../lib/gov-ledger/record-request";
 import { isOffline } from "../../lib/offline/connectivity";
 import { isNetworkFailure } from "../../lib/offline/network-error";
 import { useTenderPaymentMethods } from "../../lib/query/use-tender-payment-methods";
@@ -80,6 +80,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { useOrderPrint } from "../../hooks/useOrderPrint";
 import { printPosKitchenChit, readPosKitchenPrintDeps } from "../../lib/pos-kitchen-print";
+import { useGovIdPhotoStore } from "../../stores/gov-id-photo-store";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updatePaymentStatusRef =
@@ -425,14 +426,25 @@ export default function PosTenderScreen() {
         .governmentLedgerDraft({ occurredAt: new Date(), orderTotal: saved.newTotal });
       if (tenantId && govDraft) {
         const { recordGovGrant } = await import("../../lib/gov-ledger/live-ledger");
-        await recordGovGrant(
-          completeGovRecord(govDraft, {
-            tenantId,
-            backend: resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl }),
-            orderId: editContext.orderId,
-          }),
-        );
+        const backend = resolveOrderBackend({ order_backend: orderBackend, convex_deployment_url: convexUrl });
+        await recordGovGrant(completeGovRecord(govDraft, { tenantId, backend, orderId: editContext.orderId }));
+        // A claimant added (or re-photographed) during the edit sends their photo too.
+        const photos = govDraft.government
+          ? useGovIdPhotoStore.getState().photosFor(govDraft.government.claimants.map((claimant) => claimant.id))
+          : [];
+        if (photos.length > 0) {
+          const { queueSaleIdPhotos } = await import("../../lib/gov-id-photos/live-photo-queue");
+          await queueSaleIdPhotos(
+            photos.map((photo) => ({
+              ...photo,
+              tenantId,
+              backend: ledgerBackendOf(backend),
+              externalOrderId: editContext.orderId,
+            })),
+          );
+        }
       }
+      useGovIdPhotoStore.getState().clear();
 
       endEdit();
       router.back();
@@ -578,6 +590,9 @@ export default function PosTenderScreen() {
           }
         : {};
       const orderArgs = { ...rest, ...serviceChargeArg(builtCharge), ...platformFields };
+      const govRecord = usePosCartStore
+        .getState()
+        .governmentLedgerDraft({ occurredAt: new Date(createdAt), orderTotal: args.total });
       // Everything the sale owes the platform after the row exists, computed
       // NOW from the cart, so a sale written behind reports exactly what a
       // live one would (lib/offline/pos-sale-bookkeeping.ts).
@@ -593,9 +608,11 @@ export default function PosTenderScreen() {
         channel: args.orderType ?? null,
         captureItems: lines.map((line) => ({ name: line.name, quantity: line.quantity })),
         // The Senior/PWD sales-book record; ids are added when it is written.
-        govRecord: usePosCartStore
-          .getState()
-          .governmentLedgerDraft({ occurredAt: new Date(createdAt), orderTotal: args.total }),
+        govRecord,
+        // Optional ID photos of this sale's claimants, uploaded after the record.
+        govIdPhotos: govRecord?.government
+          ? useGovIdPhotoStore.getState().photosFor(govRecord.government.claimants.map((claimant) => claimant.id))
+          : [],
       };
 
       // The platform register does not wait on the server: the id is minted
@@ -655,6 +672,8 @@ export default function PosTenderScreen() {
         canOpenOrder: !isSavedOffline,
       });
       reset();
+      // The sale (and its upload queue) owns its ID photos now.
+      useGovIdPhotoStore.getState().clear();
       // navigate, not replace: replacing into a sibling tab renames the tab
       // navigator's state key and remounts it mid-transition, which crashes with
       // "Cannot read property 'stale' of undefined". See lib/tab-navigation.ts.

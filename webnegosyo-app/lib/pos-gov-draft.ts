@@ -17,6 +17,7 @@ import {
 } from "./gov-discount";
 import type { PosCartLine } from "./pos-cart";
 import { govLinesFromCart, withClaimant, type PosGovSession } from "./pos-gov-discount";
+import type { CapturedIdPhoto } from "./gov-id-photos/types";
 
 /**
  * How the claimant's share is decided.
@@ -34,13 +35,18 @@ export interface ClaimantDraft {
   share: ShareChoice;
   /** Units picked per cart line key (used when `share` is `items`). */
   units: Readonly<Record<string, number>>;
+  /** The optional photo of their ID (only when the store allows photos). */
+  idPhoto: CapturedIdPhoto | null;
 }
 
 export function newClaimantDraft(id: string, kind: GovDiscountKind): ClaimantDraft {
-  return { id, kind, name: "", idNumber: "", share: "whole", units: {} };
+  return { id, kind, name: "", idNumber: "", share: "whole", units: {}, idPhoto: null };
 }
 
-export function draftFromClaimant(claimant: GovClaimantInput): ClaimantDraft {
+export function draftFromClaimant(
+  claimant: GovClaimantInput,
+  idPhoto: CapturedIdPhoto | null = null,
+): ClaimantDraft {
   return {
     id: claimant.id,
     kind: claimant.kind,
@@ -48,6 +54,7 @@ export function draftFromClaimant(claimant: GovClaimantInput): ClaimantDraft {
     idNumber: claimant.idNumber,
     share: claimant.allocation.mode === "shared" ? "shared" : "items",
     units: claimant.allocation.mode === "items" ? claimant.allocation.units : {},
+    idPhoto,
   };
 }
 

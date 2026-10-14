@@ -11,6 +11,31 @@ import type { GovDiscountKind, ServiceChargeMode, VatStatus } from './types'
 
 export type ApprovalRule = 'never' | 'above' | 'always'
 
+/**
+ * Whether the register may photograph the claimant's ID. Off unless the owner
+ * opts in (Data Privacy Act): the photo is private, reviewer-only and purged
+ * after 90 days. A photo is never REQUIRED — the law asks for the name and ID
+ * number, and a sale must never wait on a camera — so there is no such mode.
+ */
+export type IdPhotoMode = 'off' | 'optional'
+
+export const ID_PHOTO_MODES: readonly IdPhotoMode[] = ['off', 'optional']
+
+/**
+ * How long an ID photo is kept. The purge
+ * (`/api/gov-discounts/id-photos/purge`) and the database (`expires_at`,
+ * `20261012140000_gov_discount_id_photos.sql`) both enforce it.
+ */
+export const ID_PHOTO_RETENTION_DAYS = 90
+
+/** The privacy promise shown beside the setting, on the web and in the app. */
+export const ID_PHOTO_PRIVACY_NOTE = `ID photos are personal data. They are kept private, only people who review Senior/PWD discounts can view them, and they are deleted automatically ${ID_PHOTO_RETENTION_DAYS} days after they are taken.`
+
+/** Anything but `optional` (an old `required`, a typo, nothing) reads as off. */
+export function idPhotoModeOf(value: unknown): IdPhotoMode {
+  return value === 'optional' ? 'optional' : 'off'
+}
+
 export interface TaxProfile {
   vatStatus: VatStatus
   registeredName: string | null
@@ -26,6 +51,7 @@ export interface TaxProfile {
   approvalRule: ApprovalRule
   approvalThreshold: number
   serviceChargeMode: ServiceChargeMode
+  idPhotoMode: IdPhotoMode
 }
 
 /** The recommended defaults a new profile starts from. */
@@ -47,6 +73,7 @@ export function defaultTaxProfile(vatStatus: VatStatus): TaxProfile {
     approvalRule: 'above',
     approvalThreshold: DEFAULT_APPROVAL_THRESHOLD,
     serviceChargeMode: 'full',
+    idPhotoMode: 'off',
   }
 }
 
@@ -77,6 +104,7 @@ export function taxProfileFromRow(row: unknown): TaxProfile | null {
     approvalRule: rule === 'never' || rule === 'always' ? rule : 'above',
     approvalThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : DEFAULT_APPROVAL_THRESHOLD,
     serviceChargeMode: r.service_charge_mode === 'exempt_share' ? 'exempt_share' : 'full',
+    idPhotoMode: idPhotoModeOf(r.id_photo_mode),
   }
 }
 
@@ -97,6 +125,7 @@ export function taxProfileToRow(profile: TaxProfile): Record<string, unknown> {
     approval_rule: profile.approvalRule,
     approval_threshold: profile.approvalThreshold,
     service_charge_mode: profile.serviceChargeMode,
+    id_photo_mode: profile.idPhotoMode,
   }
 }
 
@@ -116,6 +145,7 @@ export const TAX_PROFILE_COLUMNS = [
   'approval_rule',
   'approval_threshold',
   'service_charge_mode',
+  'id_photo_mode',
 ].join(', ')
 
 /**

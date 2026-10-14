@@ -1,13 +1,19 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, radius, spacing, typography } from "../../../theme/colors";
-import { GOV_DISCOUNT_RULES } from "../../../lib/gov-discount";
+import { GOV_DISCOUNT_RULES, type IdPhotoMode } from "../../../lib/gov-discount";
 import { checkDraft, type ClaimantDraft } from "../../../lib/pos-gov-draft";
+import type { CapturedIdPhoto } from "../../../lib/gov-id-photos/types";
+import { IdPhotoField } from "./IdPhotoField";
 
 type Props = {
   draft: ClaimantDraft;
   onChange: (draft: ClaimantDraft) => void;
   onSubmit: () => void;
+  /** `optional` adds the skippable photo field; `off` (the default) hides it. */
+  photoMode?: IdPhotoMode;
+  /** The claimant's photo already on the sale (when editing them). */
+  appliedPhoto?: CapturedIdPhoto | null;
 };
 
 /**
@@ -15,7 +21,7 @@ type Props = {
  * (RR 7-2010 §7). Errors appear only after a field is left, so the cashier is
  * not scolded mid-word.
  */
-export function IdentityStep({ draft, onChange, onSubmit }: Props) {
+export function IdentityStep({ draft, onChange, onSubmit, photoMode = "off", appliedPhoto = null }: Props) {
   const [touched, setTouched] = useState({ name: false, idNumber: false });
   const rule = GOV_DISCOUNT_RULES[draft.kind];
   const check = checkDraft(draft);
@@ -58,6 +64,15 @@ export function IdentityStep({ draft, onChange, onSubmit }: Props) {
         {touched.idNumber && check.idNumber ? <Text style={styles.error}>{check.idNumber}</Text> : null}
         {check.idHint ? <Text style={styles.hint}>{check.idHint}</Text> : null}
       </View>
+
+      {photoMode === "optional" ? (
+        <IdPhotoField
+          claimantId={draft.id}
+          photo={draft.idPhoto}
+          appliedPhoto={appliedPhoto}
+          onChange={(idPhoto) => onChange({ ...draft, idPhoto })}
+        />
+      ) : null}
 
       <Text style={styles.footnote}>
         Check the photo on the card. The name and number print on the receipt and go to the

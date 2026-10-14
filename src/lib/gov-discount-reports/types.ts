@@ -88,6 +88,14 @@ export interface GrantEntry extends LedgerClaim {
   reviews: LedgerReview[]
 }
 
+/** An ID photo the reviewer may open, matched to a grant by order + claimant. */
+export interface IdPhotoRef {
+  id: string
+  backend: string
+  externalOrderId: string
+  claimantRef: string
+}
+
 export interface OutletName {
   id: string
   name: string

@@ -1526,6 +1526,63 @@ export type Database = {
           },
         ]
       }
+      gov_discount_id_photos: {
+        Row: {
+          backend: string
+          captured_at: string
+          claimant_ref: string
+          created_at: string
+          expires_at: string
+          external_order_id: string
+          id: string
+          object_path: string
+          outlet_id: string | null
+          tenant_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          backend: string
+          captured_at: string
+          claimant_ref: string
+          created_at?: string
+          expires_at: string
+          external_order_id: string
+          id?: string
+          object_path: string
+          outlet_id?: string | null
+          tenant_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          backend?: string
+          captured_at?: string
+          claimant_ref?: string
+          created_at?: string
+          expires_at?: string
+          external_order_id?: string
+          id?: string
+          object_path?: string
+          outlet_id?: string | null
+          tenant_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gov_discount_id_photos_outlet_id_fkey"
+            columns: ["outlet_id"]
+            isOneToOne: false
+            referencedRelation: "outlets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gov_discount_id_photos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gov_discount_reviews: {
         Row: {
           claim_id: string
@@ -7103,6 +7160,7 @@ export type Database = {
           business_address: string | null
           created_at: string
           enabled_kinds: string[]
+          id_photo_mode: string
           is_bir_registered_pos: boolean
           pos_min: string | null
           pos_ptu_no: string | null
@@ -7123,6 +7181,7 @@ export type Database = {
           business_address?: string | null
           created_at?: string
           enabled_kinds?: string[]
+          id_photo_mode?: string
           is_bir_registered_pos?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
@@ -7143,6 +7202,7 @@ export type Database = {
           business_address?: string | null
           created_at?: string
           enabled_kinds?: string[]
+          id_photo_mode?: string
           is_bir_registered_pos?: boolean
           pos_min?: string | null
           pos_ptu_no?: string | null
@@ -8684,6 +8744,7 @@ export type Database = {
           is_active: boolean
           is_stackable: boolean
           max_discount_amount: number | null
+          max_discounted_units: number | null
           min_order_amount: number
           name: string
           outlet_ids: string[] | null
@@ -8708,6 +8769,7 @@ export type Database = {
           is_active?: boolean
           is_stackable?: boolean
           max_discount_amount?: number | null
+          max_discounted_units?: number | null
           min_order_amount?: number
           name: string
           outlet_ids?: string[] | null
@@ -8732,6 +8794,7 @@ export type Database = {
           is_active?: boolean
           is_stackable?: boolean
           max_discount_amount?: number | null
+          max_discounted_units?: number | null
           min_order_amount?: number
           name?: string
           outlet_ids?: string[] | null
@@ -8744,7 +8807,6 @@ export type Database = {
           used_count?: number
         }
         Relationships: [
-          max_discounted_units: number | null
           {
             foreignKeyName: "vouchers_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -8769,7 +8831,6 @@ export type Database = {
         Returns: Json
       }
       allow_loyalty_verification_attempt: {
-          max_discounted_units?: number | null
         Args: { p_ip_hash: string; p_phone_hash: string; p_tenant_id: string }
         Returns: Json
       }
@@ -8794,7 +8855,6 @@ export type Database = {
         Returns: boolean
       }
       app_user_may_reach_branch: {
-          max_discounted_units?: number | null
         Args: { target_outlet_id: string; target_tenant_id: string }
         Returns: boolean
       }

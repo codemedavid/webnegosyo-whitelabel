@@ -4,7 +4,8 @@
  * Mounted once by the register screen: it loads the tax profile (offline
  * snapshot included), derives which menu items the owner excluded from the
  * catalog the register already sells from, publishes both to the context
- * store, and sends any sales-book records still waiting on this device.
+ * store, and sends any sales-book records (then ID photos) still waiting on
+ * this device.
  */
 
 import { useEffect } from "react";
@@ -30,8 +31,13 @@ export function useGovDiscountRegister(tenantId: string | null, items: readonly 
   useEffect(() => {
     if (!tenantId) return;
     // Records saved while offline, or before a crash, go out on the next open.
+    // ID photos follow their records (a photo needs its grant filed first),
+    // and abandoned ones are deleted from the device.
     import("./gov-ledger/live-ledger")
       .then(({ liveGovLedger }) => liveGovLedger().flush())
+      .catch(() => undefined)
+      .then(() => import("./gov-id-photos/live-photo-queue"))
+      .then(({ flushIdPhotos }) => flushIdPhotos())
       .catch(() => undefined);
   }, [tenantId]);
 }
