@@ -8,6 +8,7 @@ import { editModeTotals, enterEditMode } from "./pos-edit-mode";
 import { lineKey, type PosCartLine } from "./pos-cart";
 import {
   fromOrderLineKeys,
+  toOrderLineKeys,
   govSessionAfterCartChange,
   govSessionFromStored,
   priceGovSession,
@@ -121,5 +122,22 @@ describe("editing an order with a Senior/PWD discount", () => {
 
     expect(totals.settledDiscount?.government?.claimants[0].reduction).toBe(160);
     expect(totals.settledDiscount?.total).toBe(160);
+  });
+
+  it("keeps each line's share of the discount on the revision", () => {
+    // The store hands the record over by order position (`toOrderLineKeys`);
+    // the revision must keep that per-line split, or the edited order's
+    // order_items.discount_amount reads 0 and a split bill spreads the
+    // senior's discount over the whole table.
+    const cart = [line("m-sisig", 560), line("m-rice", 100)];
+    const { entered, session: placed } = placedSession();
+    const session = govSessionAfterCartChange(placed, cart);
+    const state = priceGovSession({ session, cart, context: CONTEXT, serviceCharge: 0, deliveryFee: 0 });
+    if (state.status !== "priced") throw new Error("expected a priced session");
+    const record = storedGovDiscount({ session, pricing: state.pricing, profile: CONTEXT.profile!, itemsTotal: 0, serviceCharge: 0, deliveryFee: 0 });
+
+    const totals = editModeTotals(cart, entered.context, state.pricing.lines, toOrderLineKeys(record, cart));
+
+    expect(totals.settledDiscount?.allocationsByLine).toEqual({ "line-0": 160 });
   });
 });

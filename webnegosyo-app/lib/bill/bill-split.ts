@@ -82,37 +82,75 @@ function piecesOf(order: BillOrder): Piece[] {
   });
 }
 
+/** How one order line's Senior/PWD reduction divides, in centavos. */
+interface LineGovShare {
+  /** Units of the line that "their items" claimants took for themselves. */
+  claimedUnits: number;
+  /** Reduction on those claimed units. */
+  claimedCents: number;
+}
+
+/** Per line position, what the order's "their items" claimants took. */
+function claimedShares(order: BillOrder): Map<number, LineGovShare> {
+  const shares = new Map<number, LineGovShare>();
+  for (const claimant of readOrderDiscount(order)?.government?.claimants ?? []) {
+    if (claimant.allocation.mode !== "items") continue;
+    for (const [key, amount] of Object.entries(claimant.lineReductions)) {
+      const match = /^line-(\d+)$/.exec(key);
+      if (!match) continue;
+      const lineIndex = Number(match[1]);
+      const current = shares.get(lineIndex) ?? { claimedUnits: 0, claimedCents: 0 };
+      shares.set(lineIndex, {
+        claimedUnits: current.claimedUnits + Math.max(0, Math.floor(claimant.allocation.units[key] ?? 0)),
+        claimedCents: current.claimedCents + toCents(amount),
+      });
+    }
+  }
+  return shares;
+}
+
+/** Spreads `cents` over `indexes` by piece price, writing into a copy of `perPiece`. */
+function spreadOver(perPiece: readonly number[], indexes: readonly number[], pieces: readonly Piece[], cents: number): number[] {
+  if (cents <= 0 || indexes.length === 0) return [...perPiece];
+  const shares = allocateCents(cents, indexes.map((index) => pieces[index].cents));
+  return perPiece.map((value, index) => {
+    const position = indexes.indexOf(index);
+    return position === -1 ? value : value + shares[position];
+  });
+}
+
 /**
  * A Senior/PWD discount belongs to the claimant's own dishes, so on a split
  * bill it rides on THOSE pieces — whoever takes the senior's plate takes the
- * senior's discount — instead of being spread over the whole table. Read from
- * the order's per-line allocations (`line-<index>`); any part not tied to a
- * line (VAT taken off a service-charge share) is spread like every other
- * charge. Null for an order without a Senior/PWD discount.
+ * senior's discount — instead of being spread over the whole table. When a
+ * claimant took 1 of 5 fries, the whole reduction sits on ONE fries piece
+ * (the engine's claims take a line's first units, so the first pieces); a
+ * shared-table share spreads over the pieces nobody claimed. Read from the
+ * order's per-line allocations (`line-<index>`); any part not tied to a line
+ * (VAT taken off a service-charge share) is spread like every other charge.
+ * Null for an order without a Senior/PWD discount.
  */
 function governmentPieceCents(order: BillOrder, pieces: readonly Piece[]): number[] | null {
   const discount = readOrderDiscount(order);
   if (!discount?.government || discount.total <= 0) return null;
 
-  const perPiece = pieces.map(() => 0);
+  const claimed = claimedShares(order);
   const byLine = new Map<number, number[]>();
   pieces.forEach((piece, index) => byLine.set(piece.lineIndex, [...(byLine.get(piece.lineIndex) ?? []), index]));
+
+  let perPiece = pieces.map(() => 0);
   for (const [lineIndex, indexes] of byLine) {
     const allocated = toCents(discount.allocationsByLine[`line-${lineIndex}`] ?? 0);
-    const shares = allocateCents(allocated, indexes.map((index) => pieces[index].cents));
-    indexes.forEach((index, position) => {
-      perPiece[index] = shares[position];
-    });
+    const share = claimed.get(lineIndex);
+    const units = Math.min(share?.claimedUnits ?? 0, indexes.length);
+    const claimedCents = units > 0 ? Math.min(allocated, share?.claimedCents ?? 0) : 0;
+    const rest = indexes.slice(units);
+    perPiece = spreadOver(perPiece, indexes.slice(0, units), pieces, claimedCents);
+    perPiece = spreadOver(perPiece, rest.length > 0 ? rest : indexes, pieces, allocated - claimedCents);
   }
 
   const unallocated = toCents(discount.total) - perPiece.reduce((sum, cents) => sum + cents, 0);
-  if (unallocated > 0) {
-    const spread = allocateCents(unallocated, pieces.map((piece) => piece.cents));
-    spread.forEach((cents, index) => {
-      perPiece[index] += cents;
-    });
-  }
-  return perPiece;
+  return spreadOver(perPiece, pieces.map((_, index) => index), pieces, unallocated);
 }
 
 const GOVERNMENT_LABEL = "Senior/PWD discount";

@@ -33,6 +33,7 @@ import { revisedOrderTotal, type PosCartLine } from "./pos-cart";
 import { readOrderDiscount, type OrderDiscountPayload } from "./order-discount";
 import type { OrderDiscountLine } from "./order-totals";
 import { repriceEditDiscount } from "./pos-edit-discount";
+import { orderLineAllocations } from "./pos-gov-discount";
 import type { StoredGovDiscount } from "./gov-discount";
 import type { Voucher } from "./vouchers/types";
 import { buildPosStockItems, type PosStockItem } from "./pos-stock";
@@ -744,8 +745,11 @@ function settledDiscountOf(
       ...(line.code != null ? { code: line.code } : {}),
       ...(line.voucherId != null ? { voucherId: line.voucherId } : {}),
     })),
-    // Per-line allocation is the checkout's; the register has no equivalent.
-    allocationsByLine: {},
+    // Only a Senior/PWD discount is tied to lines (the claimant's own items),
+    // keyed by order position like a new sale's (`pos-order.ts`); without it
+    // the revision's order_items.discount_amount reads 0 and a split bill
+    // spreads the senior's discount over the whole table.
+    allocationsByLine: government ? orderLineAllocations(government) : {},
     ...(government ? { government } : {}),
   };
 }
