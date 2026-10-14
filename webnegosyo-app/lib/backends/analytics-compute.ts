@@ -11,6 +11,9 @@
 
 import { localDateKey, localDayOfWeek, localHour } from "./analytics-time";
 import { resolveOrderIdentityKey } from "../customer-identity";
+import { orderMethodSlices, type AnalyticsPayment, type MethodSlice } from "./analytics-payment-slices";
+
+export type { AnalyticsPayment } from "./analytics-payment-slices";
 
 export interface AnalyticsOrder {
   id: string;
@@ -20,6 +23,12 @@ export interface AnalyticsOrder {
   source?: string;
   orderType?: string;
   paymentMethod?: string;
+  /**
+   * The order's settlement ledger, when the caller read it. A bill paid with
+   * several methods is split between them by these; without them the whole
+   * total counts under `paymentMethod`.
+   */
+  payments?: readonly AnalyticsPayment[];
   customerName: string;
   customerContact: string;
   customerData: unknown;
@@ -157,6 +166,21 @@ function groupRevenue(
   return sortedByRevenue(Array.from(groups.entries()).map(([key, g]) => ({ key, ...g })));
 }
 
+/**
+ * Revenue by payment method: each order's share under each method it was paid
+ * with, counted once per method it used. Highest revenue first.
+ */
+function groupByMethod(orders: readonly AnalyticsOrder[]): { key: string; revenue: number; count: number }[] {
+  const groups = new Map<string, { revenue: number; count: number }>();
+  for (const order of orders) {
+    for (const slice of orderMethodSlices(order)) {
+      const g = groups.get(slice.method) ?? { revenue: 0, count: 0 };
+      groups.set(slice.method, { revenue: g.revenue + slice.amount, count: g.count + 1 });
+    }
+  }
+  return sortedByRevenue(Array.from(groups.entries()).map(([key, g]) => ({ key, ...g })));
+}
+
 export function computeRevenueBreakdown(orders: readonly AnalyticsOrder[]) {
   const live = orders.filter((o) => !isCancelled(o));
   return {
@@ -164,7 +188,7 @@ export function computeRevenueBreakdown(orders: readonly AnalyticsOrder[]) {
       type: key,
       ...g,
     })),
-    byPaymentMethod: groupRevenue(live, (o) => o.paymentMethod ?? UNKNOWN).map(({ key, ...g }) => ({
+    byPaymentMethod: groupByMethod(live).map(({ key, ...g }) => ({
       method: key,
       ...g,
     })),
@@ -233,7 +257,7 @@ export function computeSalesAnalytics(
 export function computePaymentMethodAnalytics(orders: readonly AnalyticsOrder[]) {
   const live = orders.filter((o) => !isCancelled(o));
 
-  const methods = groupRevenue(live, (o) => o.paymentMethod ?? UNKNOWN).map(({ key, revenue, count }) => ({
+  const methods = groupByMethod(live).map(({ key, revenue, count }) => ({
     method: key,
     count,
     revenue,
@@ -244,9 +268,11 @@ export function computePaymentMethodAnalytics(orders: readonly AnalyticsOrder[])
   const daily = new Map<string, Record<string, number>>();
   for (const order of live) {
     const date = localDateKey(order.createdAtMs);
-    const method = order.paymentMethod ?? UNKNOWN;
-    const day = daily.get(date) ?? {};
-    daily.set(date, { ...day, [method]: (day[method] ?? 0) + order.total });
+    const day = orderMethodSlices(order).reduce<Record<string, number>>(
+      (acc, slice: MethodSlice) => ({ ...acc, [slice.method]: (acc[slice.method] ?? 0) + slice.amount }),
+      daily.get(date) ?? {}
+    );
+    daily.set(date, day);
   }
 
   const dailyBreakdown = Array.from(daily.entries())

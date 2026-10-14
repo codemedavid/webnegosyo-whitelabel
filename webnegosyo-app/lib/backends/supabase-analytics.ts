@@ -23,6 +23,7 @@ import {
   type AnalyticsEvent,
   type AnalyticsItem,
   type AnalyticsOrder,
+  type AnalyticsPayment,
 } from "./analytics-compute";
 import {
   computeProductAnalytics,
@@ -83,6 +84,14 @@ const ANALYTICS_ORDER_COLUMNS =
 const ANALYTICS_ITEM_COLUMNS =
   "order_id, menu_item_id, menu_item_name, quantity, subtotal, is_upsell_item, orders!inner(tenant_id, created_at, status, outlet_id)";
 
+/**
+ * Settlement rows of the window's orders, so a bill paid by several methods
+ * counts under each. Joined through the parent order, which carries the window,
+ * the branch and the cancellation filter, as the line-item read does.
+ */
+const ANALYTICS_PAYMENT_COLUMNS =
+  "order_id, kind, amount, payment_method_name, orders!inner(tenant_id, created_at, status, outlet_id)";
+
 const UPSELL_EVENT_TYPES = ["upsell_shown", "upsell_clicked", "upsell_converted"];
 const BUNDLE_EVENT_TYPES = ["bundle_viewed", "bundle_added"];
 
@@ -108,6 +117,13 @@ interface AnalyticsItemRow {
   quantity: unknown;
   subtotal: unknown;
   is_upsell_item: boolean | null;
+}
+
+interface AnalyticsPaymentRow {
+  order_id: string;
+  kind: string | null;
+  amount: unknown;
+  payment_method_name: string | null;
 }
 
 interface AnalyticsEventRow {
@@ -291,6 +307,57 @@ async function fetchItems(
   return rows.map(toAnalyticsItem);
 }
 
+/**
+ * The window's orders, each with its settlement ledger. Only the payment-method
+ * figures need the ledger, so only they pay for the second read.
+ */
+async function fetchOrdersWithPayments(
+  client: PlatformClient,
+  tenantId: string,
+  scope: BranchScope,
+  window: Window
+): Promise<AnalyticsOrder[]> {
+  const build = () => {
+    let builder = scopeToBranch(
+      client
+        .from("order_payments")
+        .select(ANALYTICS_PAYMENT_COLUMNS)
+        .eq("tenant_id", tenantId)
+        .eq("orders.tenant_id", tenantId)
+        // A payment never predates its order, so this bound is safe and lets
+        // the read use the ledger's (tenant_id, created_at) index.
+        .gte("created_at", new Date(window.startMs).toISOString())
+        .gte("orders.created_at", new Date(window.startMs).toISOString())
+        .neq("orders.status", "cancelled"),
+      scope,
+      "orders.outlet_id"
+    );
+    if (window.endMs !== undefined) {
+      builder = builder.lt("orders.created_at", new Date(window.endMs).toISOString());
+    }
+    return builder.order("created_at", { ascending: true }).order("id", { ascending: true });
+  };
+
+  const [orders, rows] = await Promise.all([
+    fetchOrders(client, tenantId, scope, window),
+    readAllPages<AnalyticsPaymentRow>(build),
+  ]);
+
+  const byOrder = new Map<string, AnalyticsPayment[]>();
+  for (const row of rows) {
+    const payment: AnalyticsPayment = {
+      kind: row.kind ?? "charge",
+      amount: toNumber(row.amount),
+      method: row.payment_method_name ?? undefined,
+    };
+    byOrder.set(row.order_id, [...(byOrder.get(row.order_id) ?? []), payment]);
+  }
+  return orders.map((order) => {
+    const payments = byOrder.get(order.id);
+    return payments ? { ...order, payments } : order;
+  });
+}
+
 async function fetchEvents(
   client: PlatformClient,
   tenantId: string,
@@ -383,7 +450,9 @@ export async function runPlatformAnalyticsQuery(
     case "analytics:getTrends":
       return computeTrends(await fetchOrders(client, tenant, scope, localDayWindow(params, 30)));
     case "analytics:getRevenueBreakdown":
-      return computeRevenueBreakdown(await fetchOrders(client, tenant, scope, rollingWindow(params, 7)));
+      return computeRevenueBreakdown(
+        await fetchOrdersWithPayments(client, tenant, scope, rollingWindow(params, 7))
+      );
     case "analytics:getUpsellTrends": {
       const window = rollingWindow(params, 7);
       const [events, items] = await Promise.all([
@@ -402,7 +471,7 @@ export async function runPlatformAnalyticsQuery(
     }
     case "analytics:getPaymentMethodAnalytics":
       return computePaymentMethodAnalytics(
-        await fetchOrders(client, tenant, scope, rollingWindow(params, 7))
+        await fetchOrdersWithPayments(client, tenant, scope, rollingWindow(params, 7))
       );
     case "analytics:getOrderHeatmap":
       return computeOrderHeatmap(await fetchOrders(client, tenant, scope, rollingWindow(params, 30)));
