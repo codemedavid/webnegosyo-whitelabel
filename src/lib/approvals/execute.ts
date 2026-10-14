@@ -10,6 +10,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ApprovalRequestRecord } from './types'
+import type { StockWriteOutcome } from '@/lib/inventory/order-stock-service'
 
 export type SideEffectOutcome = 'done' | 'skipped' | 'not_needed' | `failed: ${string}`
 
@@ -211,6 +212,15 @@ export async function runApprovalSideEffects(
   return { stock, presell, loyalty, statusEvent, finishedAt: deps.now().toISOString() }
 }
 
+/**
+ * The stock writers never throw; they answer `failed` when nothing was
+ * written. Turned into a throw here so the side effect is recorded as
+ * failed on the request instead of "done".
+ */
+async function requireSettled(write: Promise<StockWriteOutcome>): Promise<void> {
+  if ((await write) === 'failed') throw new Error('stock write did not settle')
+}
+
 /** The production wiring. Imported lazily so the pure parts stay testable. */
 export async function defaultSideEffectDeps(): Promise<SideEffectDeps> {
   const [{ createAdminClient }, stockService, presellClaim, presellSchedule, loyalty, orderEvents] = await Promise.all([
@@ -224,12 +234,14 @@ export async function defaultSideEffectDeps(): Promise<SideEffectDeps> {
   const admin = createAdminClient()
   return {
     restoreWholeOrderStock: (tenantId, orderId, actorUserId) =>
-      stockService.reverseOrderStockBestEffort(tenantId, orderId, { source: 'merchant_app', actorUserId }),
+      requireSettled(stockService.reverseOrderStockBestEffort(tenantId, orderId, { source: 'merchant_app', actorUserId })),
     restoreLinesStock: ({ tenantId, orderId, revision, lines, outletId, actorUserId }) =>
-      stockService.applyOrderStockBestEffort(tenantId, orderId, lines, 'void', revision, outletId, {
-        context: { source: 'merchant_app', actorUserId },
-        event: 'order_restore',
-      }),
+      requireSettled(
+        stockService.applyOrderStockBestEffort(tenantId, orderId, lines, 'void', revision, outletId, {
+          context: { source: 'merchant_app', actorUserId },
+          event: 'order_restore',
+        }),
+      ),
     hasWastedItemRefunds: async (tenantId, orderId) => {
       const { data, error } = await (admin as unknown as SupabaseClient)
         .from('order_refunds')
@@ -243,10 +255,12 @@ export async function defaultSideEffectDeps(): Promise<SideEffectDeps> {
       return (data ?? []).length > 0
     },
     restoreRevisionStock: ({ tenantId, orderId, revision, restore, outletId, actorUserId }) =>
-      stockService.applyOrderRevisionStockBestEffort(tenantId, orderId, revision, [], restore, outletId, {
-        source: 'merchant_app',
-        actorUserId,
-      }),
+      requireSettled(
+        stockService.applyOrderRevisionStockBestEffort(tenantId, orderId, revision, [], restore, outletId, {
+          source: 'merchant_app',
+          actorUserId,
+        }),
+      ),
     loadOrder: async (tenantId, orderId) => {
       const { data, error } = await admin
         .from('orders')
