@@ -89,6 +89,8 @@ export function parseLifecycleSyncRequest(body: unknown): LifecycleSyncParse {
 
   const why = parseOrderEventReason({ reason: input.reason, note: input.note })
   if (!why.ok) return { ok: false, error: why.error }
+  // A reason explains a cancel; it is not kept for any other move (as on the web).
+  const isCancel = status === 'cancelled'
 
   const updatedAt = text(input.updatedAt)
   if (!updatedAt || Number.isNaN(new Date(updatedAt).getTime())) {
@@ -108,8 +110,8 @@ export function parseLifecycleSyncRequest(body: unknown): LifecycleSyncParse {
       source: !text(input.source) ? null : text(input.source) === 'pos' ? 'pos' : 'online',
       outletId: text(input.outletId) || null,
       updatedAt,
-      reason: why.value.reason,
-      note: why.value.note,
+      reason: isCancel ? why.value.reason : null,
+      note: isCancel ? why.value.note : null,
     },
   }
 }

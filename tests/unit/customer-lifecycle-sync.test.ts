@@ -53,6 +53,12 @@ describe('parseLifecycleSyncRequest', () => {
     expect(without.ok && without.value.reason).toBeNull()
   })
 
+  it('keeps a reason only for a cancel, like the web status change', () => {
+    const parsed = parseLifecycleSyncRequest({ ...VALID, status: 'delivered', reason: 'x', note: 'y' })
+    expect(parsed.ok && parsed.value.reason).toBeNull()
+    expect(parsed.ok && parsed.value.note).toBeNull()
+  })
+
   it('refuses a reason over 500 characters', () => {
     expect(parseLifecycleSyncRequest({ ...VALID, reason: 'x'.repeat(501) }).ok).toBe(false)
   })
