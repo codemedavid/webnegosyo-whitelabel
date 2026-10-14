@@ -153,10 +153,13 @@ export async function saveSettings(db: SupabaseClient, tenantId: string, setting
   if (error) throw new Error(`texting rules could not be saved: ${error.message}`)
 }
 
-/** Withdraw texts still waiting for the phone (one automation, or all). */
+/**
+ * Withdraw automated texts still waiting for the phone (one automation, or
+ * all). Campaign texts are never touched: they are paused from the campaign.
+ */
 export async function cancelWaiting(db: SupabaseClient, tenantId: string, automationId?: string): Promise<number> {
   let request = db.from('sms_outbox').update({ status: 'cancelled', skip_reason: 'owner_cancelled' })
-    .eq('tenant_id', tenantId).eq('status', 'queued')
+    .eq('tenant_id', tenantId).eq('status', 'queued').neq('source', 'campaign')
   if (automationId) request = request.eq('automation_id', automationId)
   const { data, error } = await request.select('id')
   if (error) throw new Error(`waiting texts could not be cancelled: ${error.message}`)
