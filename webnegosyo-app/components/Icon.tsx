@@ -87,7 +87,6 @@ export type IconName =
   | "pin"
   | "external"
   // Approvals
-  | "bell"
   | "shield";
 
 interface IconProps {
@@ -475,16 +474,6 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
     </>
   ),
 
-  // A hand bell on its clapper — the notifications inbox.
-  bell: (
-    <>
-      <Path d="M6 17V11a6 6 0 0 1 12 0v6" />
-      <Line x1={4} y1={17} x2={20} y2={17} />
-      <Path d="M10 20.5h4" />
-      <Line x1={12} y1={3} x2={12} y2={5} />
-    </>
-  ),
-
   "arrow-right": (
     <>
       <Line x1={4} y1={12} x2={19.5} y2={12} />
@@ -606,7 +595,8 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Path d="M18 14v6H4V6h6" />
     </>
   ),
-  // A bell with its clapper: a request waiting for someone.
+  // A bell with its clapper: the notifications inbox, and a request waiting
+  // for someone. One glyph for both.
   bell: (
     <>
       <Path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" />
