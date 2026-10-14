@@ -10,6 +10,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import { InventoryManager } from '@/components/admin/inventory-manager'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 jest.mock('@/components/admin/recipe-editor', () => ({ RecipeEditor: () => null }))
@@ -67,7 +68,7 @@ beforeEach(() => {
 
 function renderManager(item: InventoryItem = FLOUR) {
   render(
-    <InventoryManager
+    <InventoryManager access={FULL_INVENTORY_ACCESS}
       tenantId="t1"
       tenantSlug="demo"
       initialIngredients={[item]}
@@ -335,7 +336,7 @@ describe('InventoryManager delivery price unit', () => {
 
   function renderWithUnits() {
     render(
-      <InventoryManager
+      <InventoryManager access={FULL_INVENTORY_ACCESS}
         tenantId="t1"
         tenantSlug="demo"
         initialIngredients={[FLOUR]}

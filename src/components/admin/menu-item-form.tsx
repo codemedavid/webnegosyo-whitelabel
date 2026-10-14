@@ -59,6 +59,7 @@ import { buildSectionNav } from '@/lib/menu-editor/section-nav'
 import { DeleteDishSection } from '@/components/admin/menu-editor/delete-dish-section'
 import { RecipeStepDialog } from '@/components/admin/menu-editor/recipe-step-dialog'
 import { useLeaveGuard } from '@/components/admin/menu-editor/use-leave-guard'
+import { CostVisibilityProvider } from '@/components/admin/inventory-manager/cost-visibility'
 
 interface MenuItemFormProps {
   item?: MenuItem
@@ -84,6 +85,12 @@ interface MenuItemFormProps {
   branchesPanel?: ReactNode
   /** A new dish starts in this category (e.g. "Add" from a category on the menu list). */
   defaultCategoryId?: string
+  /**
+   * The caller holds `costs`. Without it every cost, profit and margin on this
+   * screen is absent and the cost action is never asked. Defaults to hidden: a
+   * page that forgot to say must not show costs.
+   */
+  canSeeCosts?: boolean
 }
 
 const FORM_ID = 'menu-item-form'
@@ -103,16 +110,20 @@ export function MenuItemForm(props: MenuItemFormProps) {
     defaultCategoryId: props.defaultCategoryId,
   }))
 
+  // Provided here, once, because the cost displays sit below components that
+  // carry no permissions (the modifier groups editor, the recipe disclosure).
   return (
-    <DishEditor
-      key={session.key}
-      {...props}
-      item={session.item}
-      defaultCategoryId={session.defaultCategoryId}
-      presellDraftOverride={session.presellDraft}
-      onCommitted={(item, presellDraft) => setSession((prev) => ({ ...prev, item, presellDraft }))}
-      onRestart={(next) => setSession((prev) => ({ ...prev, ...next, key: prev.key + 1 }))}
-    />
+    <CostVisibilityProvider canSeeCosts={props.canSeeCosts ?? false}>
+      <DishEditor
+        key={session.key}
+        {...props}
+        item={session.item}
+        defaultCategoryId={session.defaultCategoryId}
+        presellDraftOverride={session.presellDraft}
+        onCommitted={(item, presellDraft) => setSession((prev) => ({ ...prev, item, presellDraft }))}
+        onRestart={(next) => setSession((prev) => ({ ...prev, ...next, key: prev.key + 1 }))}
+      />
+    </CostVisibilityProvider>
   )
 }
 
@@ -146,6 +157,7 @@ function DishEditor({
   convexUrl,
   branchesPanel,
   defaultCategoryId,
+  canSeeCosts = false,
   presellDraftOverride,
   onCommitted,
   onRestart,
@@ -155,8 +167,13 @@ function DishEditor({
   const [persistedItemId, setPersistedItemId] = useState(item?.id)
   const [stockBaseline, setStockBaseline] = useState<ModifierGroup[]>(item?.modifier_groups ?? [])
   // Recipe-derived costs for the margin displays. No-ops when the tenant has
-  // no inventory or the item has not been saved yet.
-  const { optionRecipeCosts, baseRecipeCost, refresh: refreshCosts } = useMenuItemCosts(tenantId, item?.id, inventoryEnabled)
+  // no inventory, the item has not been saved yet, or the account lacks `costs`.
+  const { optionRecipeCosts, baseRecipeCost, refresh: refreshCosts } = useMenuItemCosts(
+    tenantId,
+    item?.id,
+    inventoryEnabled,
+    canSeeCosts,
+  )
 
   const [basics, setBasics] = useState<DishBasics>({
     name: item?.name || '',

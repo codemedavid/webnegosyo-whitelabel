@@ -50,6 +50,16 @@ export const STAFF_PERMISSION_KEYS = [
   // Store activity & approvals — OPT-IN (see OPT_IN_PERMISSION_KEYS below).
   "activity_view",
   "approve_requests",
+  // Sales reports: summary, breakdowns, transactions, end-of-day, exports.
+  // Implied by "analytics", which already showed every sales figure.
+  "reports",
+  // Stock: deliveries, waste, counts, transfers, reorder levels, the
+  // low-stock bell. Carved out of "menu" (recipes + the ingredient list stay
+  // there); every menu holder was given it once in the database.
+  "inventory",
+  // What things cost: ingredient prices, dish cost, COGS, food cost %.
+  // Carved out of "menu" and backfilled the same way.
+  "costs",
 ] as const;
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number];
@@ -83,6 +93,7 @@ export interface StaffPermissionHolder {
 export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
   kitchen: "orders",
   tables: "orders",
+  reports: "analytics",
 };
 
 /**
@@ -98,6 +109,37 @@ export function isGrantedByFullAccess(key: string): boolean {
   return !(OPT_IN_PERMISSION_KEYS as readonly string[]).includes(key);
 }
 
+/**
+ * Who may read a store's orders and order lines at all. Mirror of
+ * `ORDER_READ_KEYS` in src/lib/staff-permissions.ts, which the orders SELECT
+ * policy enforces in the database; the web parity test pins the two copies.
+ *
+ * The phone asks this before reading orders, because a refused read is not an
+ * error: it comes back empty, and an empty read draws as ₱0 and a quiet queue.
+ * `kitchen` and `tables` are listed although `orders` implies them — a cook's
+ * or host's tablet holds them without `orders`.
+ */
+export const ORDER_READ_KEYS = [
+  "orders",
+  "pos",
+  "kitchen",
+  "tables",
+  "analytics",
+  "reports",
+] as const satisfies readonly StaffPermissionKey[];
+
+/**
+ * Who may read the money taken on an order (order_payments, order_revisions).
+ * The kitchen display reads tickets, never the till.
+ */
+export const PAYMENT_READ_KEYS = [
+  "orders",
+  "pos",
+  "tables",
+  "analytics",
+  "reports",
+] as const satisfies readonly StaffPermissionKey[];
+
 /** Whether `permissions` grants `key` outright or through its containing grant. */
 function listGrants(permissions: readonly string[], key: StaffPermissionKey): boolean {
   if (permissions.includes(key)) return true;
@@ -112,6 +154,24 @@ export function hasPermission(
   if (user.role === "superadmin" || user.isOwner) return true;
   if (user.permissions == null) return isGrantedByFullAccess(key);
   return listGrants(user.permissions, key);
+}
+
+/** Whether the holder has at least one of `keys` (an empty list grants nothing). */
+export function hasAnyPermission(
+  user: StaffPermissionHolder,
+  keys: readonly StaffPermissionKey[],
+): boolean {
+  return keys.some((key) => hasPermission(user, key));
+}
+
+/** Whether the database will hand this account the store's orders. */
+export function canReadOrders(user: StaffPermissionHolder): boolean {
+  return hasAnyPermission(user, ORDER_READ_KEYS);
+}
+
+/** Whether the database will hand this account the payments taken on orders. */
+export function canReadPayments(user: StaffPermissionHolder): boolean {
+  return hasAnyPermission(user, PAYMENT_READ_KEYS);
 }
 
 /** The keys `permissions` grants only by containment, for a picker to show as included. */
@@ -157,13 +217,16 @@ const TAB_PERMISSIONS: Record<string, StaffPermissionKey> = {
   // menu key. An unmapped tab defaults to ALLOWED, which would let anyone with
   // only the POS grant take a dish off another branch's board.
   "branch-menu": "menu",
-  // Reordering an ingredient is a menu decision, so it rides the same key.
-  inventory: "menu",
-  // The daily report is that same shelf, reconciled — whoever may see the
-  // stock may see whether it added up. Mapping it at all is the point: an
-  // unmapped tab defaults to ALLOWED, and this one names what went missing
-  // and what it cost.
-  "daily-report": "menu",
+  // The shelf: deliveries, waste, counts, transfers and reorder levels. Its own
+  // key since stock was carved out of "menu" (which keeps recipes and the
+  // ingredient list); every menu holder was given it once in the database.
+  inventory: "inventory",
+  // The daily report prices everything it shows — stock used, wasted and
+  // missing are pesos, and its headline is food cost % — so it rides "costs",
+  // not the shelf. Mapping it at all is the point: an unmapped tab defaults to
+  // ALLOWED, and this one names what went missing and what it cost. Its sales
+  // figure additionally needs "reports" (the screen checks that itself).
+  "daily-report": "costs",
   // Where the store's money lands is store setup, not a shift task. An
   // unmapped tab defaults to allowed, which would let any cashier retire the
   // merchant's GCash account mid-service.

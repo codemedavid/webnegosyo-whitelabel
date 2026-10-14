@@ -157,6 +157,38 @@ export function draftFromIngredient(row: IngredientRecord): IngredientDraft {
   };
 }
 
+/** Which parts of an ingredient this account may change. */
+export interface IngredientEditGrants {
+  /** Menu: the ingredient master — name, category, SKU, unit, prep, archive. */
+  canEditMaster: boolean;
+  /** Costs: what it costs. */
+  canSeeCosts: boolean;
+  /** Inventory: its reorder level. */
+  canSetReorder: boolean;
+}
+
+const MASTER_FIELDS = ["name", "sku", "category", "stock_unit_id", "is_prep", "is_active"] as const;
+
+/**
+ * The columns of an update this account may send. The database checks each
+ * changed column against its own grant; sending only what may change keeps a
+ * value the account was never shown (a price, to a stock clerk) out of the
+ * write entirely. Returns a new object.
+ */
+export function restrictIngredientUpdate(
+  payload: IngredientPayload,
+  grants: IngredientEditGrants,
+): Partial<IngredientPayload> {
+  const dropped = new Set<keyof IngredientPayload>([
+    ...(grants.canEditMaster ? [] : MASTER_FIELDS),
+    ...(grants.canSeeCosts ? [] : (["unit_cost"] as const)),
+    ...(grants.canSetReorder ? [] : (["reorder_level"] as const)),
+  ]);
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !dropped.has(key as keyof IngredientPayload)),
+  ) as Partial<IngredientPayload>;
+}
+
 /**
  * Whether the stock unit may be changed.
  *

@@ -9,6 +9,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
 import { InventoryManager } from '@/components/admin/inventory-manager'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 const mockTableRender = jest.fn()
 jest.mock('@/components/admin/inventory-table', () => {
@@ -67,7 +68,7 @@ function renderManager(
   props: Partial<React.ComponentProps<typeof InventoryManager>> = {},
 ) {
   render(
-    <InventoryManager
+    <InventoryManager access={FULL_INVENTORY_ACCESS}
       tenantId="t1"
       tenantSlug="demo"
       initialIngredients={ingredients}
@@ -127,7 +128,7 @@ describe('InventoryManager table', () => {
 
   it('will not let a merchant add an ingredient before any unit exists', () => {
     render(
-      <InventoryManager tenantId="t1" tenantSlug="demo" initialIngredients={[]} initialUnits={[]} />,
+      <InventoryManager access={FULL_INVENTORY_ACCESS} tenantId="t1" tenantSlug="demo" initialIngredients={[]} initialUnits={[]} />,
     )
 
     expect(screen.getByRole('button', { name: /add ingredient/i })).toBeDisabled()
@@ -157,10 +158,10 @@ describe('InventoryManager table', () => {
       tenantId: 't1', tenantSlug: 'demo', initialUnits: [KG],
       initialIngredients: [BROCCOLI, item({ id: 'i2', name: 'Carrots' })],
     }
-    const { rerender } = render(<InventoryManager {...props} stockItemId="i1" />)
+    const { rerender } = render(<InventoryManager access={FULL_INVENTORY_ACCESS} {...props} stockItemId="i1" />)
     fireEvent.change(screen.getByLabelText(/^quantity$/i), { target: { value: '20' } })
 
-    rerender(<InventoryManager {...props} stockItemId="i2" />)
+    rerender(<InventoryManager access={FULL_INVENTORY_ACCESS} {...props} stockItemId="i2" />)
 
     expect(screen.getByRole('dialog')).toHaveTextContent('Stock — Carrots')
     expect(screen.getByLabelText(/^quantity$/i)).toHaveValue(null)

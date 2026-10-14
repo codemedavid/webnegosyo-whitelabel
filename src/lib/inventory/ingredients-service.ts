@@ -8,12 +8,18 @@
  */
 
 import { cache } from 'react'
+import type { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { verifyTenantPermission } from '@/lib/admin-service'
+import { verifyTenantAdmin, verifyTenantPermission } from '@/lib/admin-service'
 import type { ProvisioningCtx } from '@/lib/provisioning/context'
 import type { InventoryItem } from '@/types/database'
 import { ingredientInputSchema, type IngredientInput } from '@/lib/inventory/schemas'
 import { parseIngredientDeleteImpact, type IngredientDeleteImpact } from '@/lib/inventory/ingredient-delete'
+import {
+  grantsForIngredientWrite,
+  ingredientWriteRefusal,
+  type StoredIngredient,
+} from '@/lib/inventory/ingredient-write-grants'
 
 export { ingredientInputSchema, type IngredientInput }
 
@@ -35,8 +41,13 @@ export async function createIngredient(
   input: IngredientInput,
   ctx?: ProvisioningCtx,
 ): Promise<InventoryItem> {
-  if (!ctx) await verifyTenantPermission(tenantId, 'menu', 'create')
+  const caller = ctx ? null : await verifyTenantPermission(tenantId, 'menu', 'create')
   const validated = ingredientInputSchema.parse(input)
+  if (caller) {
+    // The master is `menu`; a starting price is also `costs` (Phase 0d).
+    const refusal = ingredientWriteRefusal(caller.userRole, grantsForIngredientWrite(null, validated))
+    if (refusal) throw new Error(refusal)
+  }
   const supabase = ctx?.client ?? (await createClient())
 
   const { data, error } = await supabase
@@ -49,14 +60,38 @@ export async function createIngredient(
   return data as unknown as InventoryItem
 }
 
+/**
+ * An update as a form sends it. The price and reorder level may be left out —
+ * a screen that hides prices from this account does — and then stay as stored.
+ */
+export type IngredientUpdateInput = z.input<typeof ingredientInputSchema>
+
+/** Fields whose schema default would OVERWRITE a stored value if applied on update. */
+const KEEP_WHEN_ABSENT = ['unit_cost', 'reorder_level'] as const
+
+function withoutDefaultedFields(validated: IngredientInput, input: IngredientUpdateInput): Partial<IngredientInput> {
+  return Object.fromEntries(
+    Object.entries(validated).filter(
+      ([key]) => !(KEEP_WHEN_ABSENT as readonly string[]).includes(key) || input[key as keyof IngredientUpdateInput] !== undefined,
+    ),
+  ) as Partial<IngredientInput>
+}
+
 export async function updateIngredient(
   ingredientId: string,
   tenantId: string,
-  input: IngredientInput,
+  input: IngredientUpdateInput,
 ): Promise<InventoryItem> {
-  await verifyTenantPermission(tenantId, 'menu')
-  const validated = ingredientInputSchema.parse(input)
+  const { userRole } = await verifyTenantAdmin(tenantId)
+  const validated = withoutDefaultedFields(ingredientInputSchema.parse(input), input)
   const supabase = await createClient()
+
+  // Each CHANGED field asks for its own grant: the master is `menu`, the price
+  // `costs`, the reorder level `inventory` (Phase 0d). The form resubmits every
+  // field, so the stored row decides what actually changed.
+  const stored = await readStoredIngredient(supabase, ingredientId, tenantId)
+  const refusal = ingredientWriteRefusal(userRole, grantsForIngredientWrite(stored, validated))
+  if (refusal) throw new Error(refusal)
 
   const { data, error } = await supabase
     .from('inventory_items')
@@ -68,6 +103,25 @@ export async function updateIngredient(
 
   if (error) throw error
   return data as unknown as InventoryItem
+}
+
+const STORED_COLUMNS = 'name, sku, category, stock_unit_id, unit_cost, is_prep, image_url, reorder_level, is_active'
+
+async function readStoredIngredient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ingredientId: string,
+  tenantId: string,
+): Promise<StoredIngredient> {
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select(STORED_COLUMNS)
+    .eq('id', ingredientId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) throw new Error('This ingredient no longer exists. Refresh the page to see the current list.')
+  return data as unknown as StoredIngredient
 }
 
 /**

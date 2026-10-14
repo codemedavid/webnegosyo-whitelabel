@@ -22,6 +22,13 @@ export interface AdminSidebarFlags {
   isBranchScopedAccount?: boolean | null
   /** The store is in its first weeks after onboarding: "Start here" is offered. Absent = not offered. */
   hasStartHere?: boolean | null
+  /**
+   * `resolveOrderBackend(tenant) === 'platform'`. Sales reports read only the
+   * platform database for now (Convex coverage is reports Phase 7), and on a
+   * platform store Product Analytics redirects into Reports → Items. Absent =
+   * unknown: neither entry changes.
+   */
+  isPlatformBackend?: boolean | null
 }
 
 export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
@@ -39,6 +46,9 @@ export function hiddenAdminSidebarPaths(flags: AdminSidebarFlags): Set<string> {
     // only hide it when there is no Convex backend at all.
     if (!flags.convexConfigured) paths.add('/product-analytics')
   }
+
+  if (flags.isPlatformBackend === true) paths.add('/product-analytics')
+  if (flags.isPlatformBackend === false) paths.add('/admin/reports')
 
   if (!flags.bundlesEnabled) paths.add('/bundles')
   if (!flags.inventoryEnabled) paths.add('/inventory')

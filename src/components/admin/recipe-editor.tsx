@@ -29,6 +29,7 @@ import {
   findRecipeProblem,
   unitAfterIngredientChange,
 } from '@/lib/inventory/recipe-line-rules'
+import { useCanSeeCosts } from '@/components/admin/inventory-manager/cost-visibility'
 
 interface RecipeEditorProps {
   tenantId: string
@@ -72,6 +73,7 @@ export function RecipeEditor({
   onSaved,
   onSavingChange,
 }: RecipeEditorProps) {
+  const canSeeCosts = useCanSeeCosts()
   const [ingredients, setIngredients] = useState<InventoryItem[]>([])
   const [units, setUnits] = useState<InventoryUnitRow[]>([])
   const [form, setForm] = useState<RecipeFormState>({ notes: '', lines: [createEmptyRecipeLine()] })
@@ -275,7 +277,8 @@ export function RecipeEditor({
     )
   }
 
-  const estimatedCost = estimateRecipeCost(form.lines, ingredients, units)
+  // Without `costs` the estimate is never computed, let alone shown as ₱0.
+  const estimatedCost = canSeeCosts ? estimateRecipeCost(form.lines, ingredients, units) : 0
 
   return (
     <div className="space-y-2 rounded-md border p-3">

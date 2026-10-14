@@ -112,4 +112,12 @@ describe('GET /api/inventory/ceilings', () => {
     expect(response.headers.get('retry-after')).toBe('12')
     expect(getMenuStockAvailability).not.toHaveBeenCalled()
   })
+
+  it('counts the limit per address and store, holding across instances', async () => {
+    await GET(request(`?tenantId=${TENANT}`))
+
+    const [key, options] = checkRateLimit.mock.calls[0] as [string, { onRedisFailure?: string }]
+    expect(key).toContain(TENANT)
+    expect(options.onRedisFailure).toBe('instance')
+  })
 })

@@ -1,0 +1,181 @@
+name: Tests
+
+# The first workflow that runs the test suites. Until it landed nothing on a PR
+# executed Jest, so a red suite was only ever seen by whoever happened to run it
+# locally.
+#
+#   web      - the Next.js app's Jest suite (tests/, src/; next/jest + jsdom).
+#              Property tests (*.property.test.*) run here too, at the everyday
+#              FC_NUM_RUNS budget.
+#   sql      - PGlite runners in tests/sql: real migrations executed against an
+#              in-process Postgres (WASM). No database server, no network.
+#   app      - the merchant app (webnegosyo-app), a separate Expo project with
+#              its own lockfile and its own Jest (ts-jest logic + RN components).
+#   property - NIGHTLY ONLY: the same property tests with a 25x larger budget,
+#              to shake out the rare inputs a PR-sized run is unlikely to draw.
+#
+# Opt-in live suites (tests/live/*, tests/integration/inventory-live-e2e) gate
+# themselves on ASSISTANT_LIVE, ASSISTANT_GOLDEN, INVENTORY_COST_LIVE,
+# ONBOARDING_INVITES_LIVE, SALES_LIVE, PIPELINE_LIVE and RUN_LIVE_INVENTORY_E2E
+# (each must equal '1'). None of those is set here, so they report as skipped;
+# they also only read .env.local inside that gate, so its absence is harmless.
+# Never set them in this file: they talk to the real platform database.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # 18:00 UTC = 02:00 Asia/Manila, after the stores' trading day. Scheduled
+    # runs only ever fire from the default branch's copy of this file.
+    - cron: '0 18 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a PR (or to main) supersedes the run in flight for that ref.
+  # The event name is part of the key so a merge to main cannot cancel the
+  # nightly property run, which also runs on refs/heads/main.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # PLACEHOLDERS, NOT CREDENTIALS. The suite was written with these three set
+  # (developers keep an untracked .env.test), and some modules read them at
+  # import time: without them tests/unit/lib/leads/leads-service.test.ts fails
+  # and tests/unit/lib/cache.test.ts crashes its worker on an unhandled
+  # "Missing NEXT_PUBLIC_SUPABASE_URL". Every Supabase call in the suite is
+  # mocked; nothing may reach a network, which is why the URL points at a port
+  # nobody is listening on. Never replace these with secrets: this repository
+  # is public and pull requests run this workflow.
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+
+jobs:
+  web:
+    name: Web (Jest)
+    runs-on: ubuntu-latest
+    # The whole suite (~1,250 suites) takes well under 10 minutes on the
+    # 4-core public runner, so it is not sharded; the timeout is several times
+    # a normal run so a slow runner is not mistaken for a hung test.
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Same major as the merchant Android build and local development.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Jest
+        # --ci: a missing snapshot fails instead of being written.
+        # jest.config.cjs is named explicitly because Node 22 cannot load a .ts
+        # config through next/jest (see the header of jest.config.cjs).
+        run: npx jest --ci --config jest.config.cjs
+        env:
+          FC_NUM_RUNS: 200
+
+  sql:
+    name: SQL (PGlite)
+    runs-on: ubuntu-latest
+    # Its own job rather than a step after `web`: it reports as its own check,
+    # runs in parallel instead of after the Jest suite, and a red Jest run can
+    # never hide whether the migrations still behave. The price is a second
+    # `npm ci`, about a minute with the npm cache warm.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: SQL runners
+        # Runs from the repository root: the runners read migrations by
+        # relative path (supabase/migrations/...).
+        run: npm run test:sql
+
+  app:
+    name: Merchant app (Jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: webnegosyo-app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webnegosyo-app/package-lock.json
+
+      # postinstall runs patch-package over webnegosyo-app/patches. The
+      # expo-router patch is named for 6.0.23 while the lockfile pins 6.0.24:
+      # patch-package prints a version warning but the hunk still applies, so
+      # the install succeeds. If that warning ever turns into a failed hunk,
+      # regenerate the patch against the locked version.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Jest
+        # Both projects (logic + components) from webnegosyo-app/jest.config.js.
+        # --testTimeout raises only the DEFAULT per-test budget (5 s): the first
+        # test in a components file pays for babel-transforming and mounting
+        # the whole register on a cold cache, and under a loaded machine
+        # DiscountSheet's first test hit 5 s once while taking ~0.3 s alone.
+        # A runner has slower cores than a laptop; a real hang still fails.
+        run: npx jest --ci --testTimeout=20000
+
+  property:
+    name: Property tests (nightly, deep)
+    # Pull requests and pushes already run every property test inside `web` at
+    # FC_NUM_RUNS=200. The nightly run spends 25x that on the same properties.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Property tests
+        # No --passWithNoTests on purpose: if the file pattern ever stops
+        # matching, "No tests found" should turn the nightly red rather than
+        # quietly testing nothing.
+        run: npm run test:property -- --ci
+        env:
+          FC_NUM_RUNS: 5000

@@ -21,6 +21,7 @@ import { setOptionCostMode } from '@/lib/modifier-groups-form'
 import { computeOptionMargin } from '@/lib/modifier-margin'
 import { STOCK_MODE_HINT } from '@/lib/inventory/recipe-copy'
 import { ModifierOptionRecipeEditor } from '@/components/admin/modifier-option-recipe-editor'
+import { useCanSeeCosts } from '@/components/admin/inventory-manager/cost-visibility'
 import type { LinkableMenuItem, ModifierRecipeContext } from '@/components/admin/modifier-groups-editor'
 
 interface ModifierOptionRowProps {
@@ -160,11 +161,14 @@ interface OptionSettingsProps {
 }
 
 function OptionSettings({ option, basePrice, recipeContext, recipeCost, linkableItems, isLinked, onUpdate, onReplace }: OptionSettingsProps) {
+  // The cost source, the manual cost and the margin are all `costs`; without it
+  // the block is absent and the margin is never computed, let alone shown.
+  const canSeeCosts = useCanSeeCosts()
   const stockMode: ModifierStockMode = option.stock_mode ?? 'none'
   const isComposite = option.cost_mode === 'composite'
   // Live margin honoring the option's cost source. Options with no mode keep the
   // legacy rule (an attached recipe cost overrides the typed one).
-  const margin = computeOptionMargin(basePrice, option, recipeCost)
+  const margin = canSeeCosts ? computeOptionMargin(basePrice, option, recipeCost) : null
   const canAttachRecipe = Boolean(recipeContext?.inventoryEnabled && recipeContext.menuItemId)
 
   return (
@@ -207,38 +211,40 @@ function OptionSettings({ option, basePrice, recipeContext, recipeCost, linkable
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label className="text-sm">Cost source</Label>
-          <CostSourceToggle mode={option.cost_mode} onSelect={(mode) => onReplace(setOptionCostMode(option, mode))} />
-          {isComposite ? (
-            <p className="text-xs text-muted-foreground">
-              {recipeCost === undefined
-                ? 'Add a recipe below to cost this option from ingredients.'
-                : `From recipe: ₱${recipeCost.toFixed(2)}`}
-            </p>
-          ) : (
-            <>
-              <Input
-                type="number"
-                step="0.01"
-                min={0}
-                inputMode="decimal"
-                placeholder="0.00"
-                aria-label="Manual cost"
-                value={option.manual_cost ?? ''}
-                onChange={(e) => {
-                  const raw = e.target.value.trim()
-                  onUpdate('manual_cost', raw === '' ? undefined : Math.max(0, parseFloat(raw) || 0))
-                }}
-                className="h-10 bg-background"
-              />
+        {canSeeCosts && (
+          <div className="space-y-1.5">
+            <Label className="text-sm">Cost source</Label>
+            <CostSourceToggle mode={option.cost_mode} onSelect={(mode) => onReplace(setOptionCostMode(option, mode))} />
+            {isComposite ? (
               <p className="text-xs text-muted-foreground">
-                Manual cost (₱), used for margin.
-                {option.cost_mode === undefined && ' An attached recipe overrides this.'}
+                {recipeCost === undefined
+                  ? 'Add a recipe below to cost this option from ingredients.'
+                  : `From recipe: ₱${recipeCost.toFixed(2)}`}
               </p>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  aria-label="Manual cost"
+                  value={option.manual_cost ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim()
+                    onUpdate('manual_cost', raw === '' ? undefined : Math.max(0, parseFloat(raw) || 0))
+                  }}
+                  className="h-10 bg-background"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Manual cost (₱), used for margin.
+                  {option.cost_mode === undefined && ' An attached recipe overrides this.'}
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <Label className="text-sm">Stock tracking</Label>
@@ -287,7 +293,7 @@ function OptionSettings({ option, basePrice, recipeContext, recipeCost, linkable
         />
       )}
 
-      {margin.price > 0 && margin.cost > 0 && (
+      {margin && margin.price > 0 && margin.cost > 0 && (
         <p className="text-xs text-muted-foreground">
           Sells at ₱{margin.price.toFixed(2)} · cost ₱{margin.cost.toFixed(2)} ·{' '}
           <span className={marginTone(margin.marginPercent)}>{margin.marginPercent.toFixed(0)}% margin</span>

@@ -64,6 +64,7 @@ export function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags
     multiBranchEnabled,
     isBranchScopedAccount,
     hasStartHere,
+    isPlatformBackend,
   } = flags
 
   const hiddenPaths = useMemo(
@@ -77,6 +78,7 @@ export function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags
         multiBranchEnabled,
         isBranchScopedAccount,
         hasStartHere,
+        isPlatformBackend,
       }),
     [
       enableOrderManagement,
@@ -87,6 +89,7 @@ export function useFilteredItems(items: SidebarEntry[], flags: AdminSidebarFlags
       multiBranchEnabled,
       isBranchScopedAccount,
       hasStartHere,
+      isPlatformBackend,
     ],
   )
 

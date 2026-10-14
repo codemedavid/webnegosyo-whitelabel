@@ -25,7 +25,7 @@ import {
   updateStaffPermissionsAction,
 } from '@/app/actions/staff'
 import { selectableDefaultScreens } from '@/lib/staff-default-screen'
-import type { StaffPermissionKey } from '@/lib/staff-permissions'
+import { editablePermissions, type StaffPermissionKey } from '@/lib/staff-permissions'
 import {
   BranchRadioGroup,
   DefaultScreenRadioGroup,
@@ -74,7 +74,7 @@ export function StaffAccessCard({
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
 
-  const [draftPermissions, setDraftPermissions] = useState<string[]>(permissions ?? [])
+  const [draftPermissions, setDraftPermissions] = useState<string[]>(() => editablePermissions(permissions))
   const [draftScreen, setDraftScreen] = useState(defaultTab ?? '')
   const [draftOutlet, setDraftOutlet] = useState(outletId ?? '')
   const [newPassword, setNewPassword] = useState('')

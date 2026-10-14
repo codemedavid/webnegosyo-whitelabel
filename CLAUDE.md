@@ -27,10 +27,18 @@ npm run lint             # ESLint
 npm run test             # Jest unit tests
 npm run test:watch       # Jest watch mode
 npm run test:coverage    # Coverage report
-npm run test -- --testPathPattern="cart-utils"  # Run a single test file
+npm run test -- --testPathPatterns="cart-utils"  # Run a single test file (Jest 30: plural flag)
+npm run test:property    # fast-check suites only (*.property.test.ts); FC_NUM_RUNS=5000 for the nightly depth
+npm run test:sql         # every PGlite SQL runner in tests/sql (RLS/trigger checks over the real migrations)
 ```
 
-Tests live in `tests/unit/` with fixtures in `tests/fixtures/`. Jest uses jsdom environment with `@/` path alias mapped to `src/`.
+Tests live in `tests/unit/` with fixtures in `tests/fixtures/`. Jest uses jsdom environment with `@/` path alias mapped to `src/`. The suite expects `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` to be set (placeholders are enough; CI sets placeholders, `.github/workflows/tests.yml`).
+
+**Test infrastructure** (Phase 0e, `docs/testing/test-infrastructure.tdd.md`):
+- **Read seams**: `tests/fixtures/fake-supabase-tables.ts` caps every response at 1000 rows like PostgREST `max-rows` and applies filter → order → range → cap. A reader that forgets to page fails against it; a hand-rolled mock without the cap does not. Use it instead of a new ad-hoc builder mock.
+- **Random orders**: `tests/fixtures/report-orders.ts` (`reportOrdersArb`, `toPlatformTables`) generates untidy `ReportOrder`s in whole centavos and projects them onto platform rows, so engine and reader tests share one source.
+- **Properties**: any `fc.assert` lives in a `*.property.test.ts` file and takes `propertyParameters()` (`tests/utils/property.ts`); a failure prints a seed and path, replay with `FC_SEED` + `FC_PATH`. Test-enforced (`tests/unit/property-test-conventions.test.ts`).
+- **SQL**: new PGlite runners build on `tests/sql/lib/platform-auth.cjs` (roles, `auth.uid()`, Supabase default grants), copy live helper bodies verbatim, run the REAL migration file and assert affected rows per role.
 
 ## Architecture
 
@@ -73,6 +81,44 @@ Supabase client factories:
 - **Types**: `src/types/database.ts` — Full DB type definitions used with `createClient<Database>()`
 - **Migrations**: `supabase/migrations/` (28 SQL files)
 - **Queries**: `src/lib/queries/` for reusable data fetching
+
+### Inventory ledger: stock changes only through a movement
+
+The Reports & Inventory suite (`docs/plans/2026-10-12-reports-and-inventory-suite.md`) reads every profit, variance and stock-value figure from `stock_movements`, so the database refuses anything from a CLIENT role (`anon`/`authenticated`) that would bypass it. Applied 2026-10-12 (`20261012170000_inventory_ledger_guards.sql`, `20261012170100_inventory_write_scopes.sql`):
+
+- `inventory_items.current_qty` / `inventory_stock.current_qty` are written ONLY by `apply_stock_movement` (it runs as the invoker, one trigger level down, so the guards pass `pg_trigger_depth() > 1`). Client inserts start at 0; a branch shelf row is never deleted (no row = ZERO stock). Ingredient writes need `menu`.
+- A client movement needs `menu` and may only be `receive` (≥ 0), `waste` (≤ 0), `stocktake`, or a transfer leg bounded by its transfer (item on it, |delta| ≤ sent, `transfer_out` from the sender while draft, `transfer_in`/shortfall waste while sent, each leg once — `20261012170200`). `sale`/`void` and any `order_id` come from the service role only. `stock_unit_id` can't change while the item holds stock.
+- `order_stock_applications` (deduction claims) are service-role writes only. Recipes, components and units need `menu` on a store-wide account (`app_user_may_reach_branch(tenant, NULL)`); a branch-locked UPDATE is refused with zero rows, so writers must check affected rows.
+- The receiving branch of a transfer may only record what arrived. Actor/time stamping and the `menu` check on movement inserts belong to the Store Activity security floor (`20261012140000`), not here.
+- A new server writer of stock must use the service role or go through a movement; a new client path that changes `current_qty` directly will fail with 42501.
+- **Costs are frozen by the ledger** (`20261012180000_inventory_frozen_cost.sql`, applied 2026-10-12). A `receive` keeps the price it was given (per STOCK unit; blank = uncosted) and `apply_stock_movement` blends the weighted average under the row lock — never blend in app code. Every other movement's `unit_cost` is set by the database whatever the caller sends: a void reuses what its order took out, a transfer arrival/shortfall reuses its departure, the rest freeze today's cost (prep = recipe ÷ yield via `inventory_effective_unit_cost`, the SQL mirror of `costing.ts` — change both; `INVENTORY_COST_LIVE=1 npx jest tests/live/inventory-frozen-cost-live.test.ts` checks parity). Reports value movements at their frozen cost, never today's. NULL = not recorded (pre-2026-10-12 or uncostable).
+- `order_items.category_name` = the category at sale (NULL before 2026-10-12 → report "by current menu"). Dish cost at sale lives in `order_item_costs` (recipe, else typed product cost), NOT on `order_items`, because every staff account that can see an order can read its lines.
+
+### Sales numbers: one definition (`src/lib/reports/`)
+
+"Net sales", discounts, collected, unpaid and payment-method totals are defined ONLY in `src/lib/reports/sales-model.ts` + `payment-buckets.ts` (plan §5; `docs/testing/reports-sales-model.tdd.md`). Don't add another revenue formula.
+
+- Money is integer centavos (`money.ts`). The order TOTAL is the authority: gross = total − service − (delivery − delivery discount) + food discount; lines are scaled to it. Σ items = Σ categories = Σ channels = Σ branches = net, exactly.
+- A ledger `refund` is change returned after an edit lowered the bill — never subtract it from sales again. Unpaid money is never shown under the checkout method; over-collection is "Overpaid".
+- `orders.discount_data` is the one stored discount and `discount_total` is derived from it by the `orders_sync_discount_total` trigger (POS blob copied in, removal clears both, forged values overwritten) — `20261013090000`/`090100`. That trigger is SECURITY INVOKER and runs as anon at checkout: any helper it calls must be executable by anon.
+- Convex `getDashboardStatsByPeriod` is inclusive at both ends: half-open callers pass `inclusiveEndFor(end)` (`src/lib/convex/period-bounds.ts`), never `end` or `end − 1`.
+- Live reconciliation: `SALES_LIVE=1 SALES_LIVE_TENANT=… SALES_LIVE_FROM=… SALES_LIVE_TO=… [SALES_LIVE_EXPECT=…] npx jest tests/live/sales-model-live.test.ts`.
+
+### Sales reports (`/admin/reports`, platform stores)
+
+Phase 1 of the suite (`docs/testing/reports-phase1-sales.tdd.md`). Overview at `/[tenant]/admin/reports`; breakdowns at `/admin/reports/[dim]` (`items` incl. `?view=matrix`, `categories`, `payments`, `channels`, `hours`, `branches`). Product Analytics redirects there on platform stores; Convex/tenant-DB stores keep it (reports for them = Phase 7).
+
+- **SQL twins of the engine**: `report_sales_summary` / `_by_period` / `_by_dimension` / `_by_hour` / `_by_item` / `_by_category` / `report_payments` (`20261014110000` + `130000` + `140000` + `150000`), SECURITY INVOKER (RLS applies) + `reports` key (42501), ≤93 days, helpers in the non-exposed `reporting` schema. A change to `sales-model.ts`/`payment-buckets.ts`/`sales-breakdowns.ts` must change the SQL too — `tests/unit/reports/report-sql-parity.property.test.ts` (PGlite via `tests/sql/report-sales-worker.cjs`) fails on any centavo of drift; `report-sql-access.test.ts` pins who may call them.
+- **Read through the caller's session client only** (`src/lib/reports/read/report-rpc.ts`); never a service-role client. Pages decide access/period/branch in `report-context.ts` (fails closed; a branch-locked account always reads its own branch whatever the URL says).
+- **Children by `order_id = any(array(select …))`, plpgsql `RETURN QUERY EXECUTE … USING`.** A SQL-function version hash-joined all of `order_items` under RLS and took the platform DB down for 8 minutes (2026-10-14). Any live probe of a report function starts with `set local statement_timeout = '5s'` and a one-day window.
+
+### Staff permission keys: reports, inventory, costs
+
+- Four registry copies must change together: web `src/lib/staff-permissions.ts` (source of truth), app `webnegosyo-app/lib/staff-permissions.ts`, desktop, and `supabase/functions/manage-staff/staff-core.ts` (redeploy). The SQL twin is `public.app_user_has_permission` (IMPLIED_BY included). Parity and migration tests pin all of them.
+- `reports` = sales figures (implied by `analytics`; `orders` does NOT grant it). `inventory` = stock, deliveries, waste, counts, transfers, reorder levels. `costs` = unit cost, dish cost, COGS, margins, food cost %, ₱ stock value. `menu` keeps recipes, units and the ingredient master. A screen showing money checks the money key, not the page key.
+- **An admin section missing from `ADMIN_SECTION_PERMISSIONS` is open to every staff account.** New sections are mapped or listed in `OPEN_ADMIN_SECTIONS`; the guardrail test walks `src/app/[tenant]/admin` and fails otherwise.
+- Order reads (HIGH-3): `ORDER_READ_KEYS` / `PAYMENT_READ_KEYS` mirror the orders/payments SELECT policies. A screen open to all staff (app Home) must not read orders without one of them.
+- `permissions: null` (legacy full access) holds every non-opt-in key; editors open such accounts with everything ticked (`editablePermissions`). Production validates lists against its own registry and rejects unknown keys, so a key backfill ships WITH the code that knows the key. Evidence + deploy runbook: `docs/testing/permission-keys.tdd.md`.
 
 ### State Management
 

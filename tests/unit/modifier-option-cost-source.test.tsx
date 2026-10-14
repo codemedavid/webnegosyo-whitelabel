@@ -14,6 +14,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { ModifierGroup } from '@/types/database'
 import { ModifierGroupsEditor } from '@/components/admin/modifier-groups-editor'
+import { CostVisibilityProvider } from '@/components/admin/inventory-manager/cost-visibility'
 
 // The recipe editor talks to server actions; not under test here.
 jest.mock('@/components/admin/modifier-option-recipe-editor', () => ({
@@ -56,14 +57,17 @@ function groupWith(optionOverrides: Partial<ModifierGroup['options'][number]> = 
  */
 function renderEditor(group: ModifierGroup, extra: Record<string, unknown> = {}) {
   const onChange = jest.fn()
+  // Cost source and margin are shown only to an account with `costs`.
   render(
-    <ModifierGroupsEditor
-      groups={[group]}
-      onChange={onChange}
-      basePrice={0}
-      recipeContext={RECIPE_CONTEXT}
-      {...extra}
-    />,
+    <CostVisibilityProvider canSeeCosts>
+      <ModifierGroupsEditor
+        groups={[group]}
+        onChange={onChange}
+        basePrice={0}
+        recipeContext={RECIPE_CONTEXT}
+        {...extra}
+      />
+    </CostVisibilityProvider>,
   )
   const settings = screen.queryByRole('button', { name: /more settings for/i })
   if (settings) fireEvent.click(settings)

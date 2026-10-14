@@ -177,3 +177,28 @@ describe('transfers', () => {
     expect(isHiddenAdminHref('/demo/admin/inventory/transfers', hidden)).toBe(false)
   })
 })
+
+describe('sales reports vs Product Analytics (reports Phase 1)', () => {
+  it('offers Sales reports to a platform store and retires Product Analytics there (it redirects to Items)', () => {
+    const hidden = hiddenAdminSidebarPaths(flags({ isPlatformBackend: true, convexConfigured: true, menuEngineeringEnabled: true }))
+    expect(hidden.has('/admin/reports')).toBe(false)
+    expect(hidden.has('/product-analytics')).toBe(true)
+  })
+
+  it('keeps Product Analytics for a Convex store and hides Sales reports, which only read the platform database yet', () => {
+    const hidden = hiddenAdminSidebarPaths(flags({ isPlatformBackend: false, convexConfigured: true }))
+    expect(hidden.has('/admin/reports')).toBe(true)
+    expect(hidden.has('/product-analytics')).toBe(false)
+  })
+
+  it('an unknown backend changes nothing (the regression lock above)', () => {
+    expect(hiddenAdminSidebarPaths(flags()).has('/admin/reports')).toBe(false)
+  })
+
+  it('the Reports rule does not swallow any other entry', () => {
+    const hidden = hiddenAdminSidebarPaths(flags({ isPlatformBackend: false, convexConfigured: true, inventoryEnabled: true }))
+    for (const href of ['/shop/admin', '/shop/admin/orders', '/shop/admin/inventory', '/shop/admin/product-analytics']) {
+      expect(isHiddenAdminHref(href, hidden)).toBe(false)
+    }
+  })
+})

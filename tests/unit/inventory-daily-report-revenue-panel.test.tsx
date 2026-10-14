@@ -12,6 +12,7 @@ import { DailyReportPanel } from '@/components/admin/daily-report-panel'
 import { InventoryManager } from '@/components/admin/inventory-manager'
 import type { DailyInventoryReportForDay } from '@/lib/inventory/daily-report-read'
 import type { InventoryItem, InventoryUnitRow } from '@/types/database'
+import { FULL_INVENTORY_ACCESS } from '@/components/admin/inventory-manager/inventory-access'
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }))
 
@@ -99,7 +100,7 @@ describe('DailyReportPanel — takings and food cost', () => {
 describe('InventoryManager — revenue passthrough', () => {
   test('hands the day\'s takings to the report', () => {
     render(
-      <InventoryManager
+      <InventoryManager access={FULL_INVENTORY_ACCESS}
         tenantId="t1"
         tenantSlug="acme"
         initialIngredients={[] as unknown as InventoryItem[]}

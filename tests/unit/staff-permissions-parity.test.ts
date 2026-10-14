@@ -1,10 +1,21 @@
-import { IMPLIED_BY, OPT_IN_PERMISSION_KEYS, STAFF_PERMISSION_KEYS } from '@/lib/staff-permissions'
+import {
+  IMPLIED_BY,
+  OPT_IN_PERMISSION_KEYS,
+  ORDER_READ_KEYS,
+  PAYMENT_READ_KEYS,
+  STAFF_PERMISSION_KEYS,
+  permissionForMobileTab,
+} from '@/lib/staff-permissions'
 import {
   IMPLIED_BY as APP_IMPLIED_BY,
   OPT_IN_PERMISSION_KEYS as APP_OPT_IN_PERMISSION_KEYS,
+  ORDER_READ_KEYS as APP_ORDER_READ_KEYS,
+  PAYMENT_READ_KEYS as APP_PAYMENT_READ_KEYS,
   hasPermission as appHasPermission,
   STAFF_PERMISSION_KEYS as APP_STAFF_PERMISSION_KEYS,
+  isTabAllowed as appIsTabAllowed,
 } from '../../webnegosyo-app/lib/staff-permissions'
+import { WORKSPACES as APP_WORKSPACES } from '../../webnegosyo-app/lib/workspaces'
 import {
   IMPLIED_BY as CORE_IMPLIED_BY,
   OPT_IN_PERMISSION_KEYS as CORE_OPT_IN_PERMISSION_KEYS,
@@ -96,5 +107,37 @@ describe('staff permission registry parity', () => {
   it('gives the app Team picker a label for every key, opt-in ones included', () => {
     expect(PERMISSION_OPTIONS.map((option) => option.key)).toEqual([...STAFF_PERMISSION_KEYS])
     for (const option of PERMISSION_OPTIONS) expect(option.label.trim()).not.toBe('')
+  })
+
+  /**
+   * The database refuses orders (and the money taken on them) to an account
+   * holding none of these keys. The phone decides from its own copy whether to
+   * ask at all; a copy that is wider would ask, be refused silently, and show
+   * the merchant ₱0 and an empty queue.
+   */
+  it('agrees with the merchant app on who may read orders and payments', () => {
+    expect([...APP_ORDER_READ_KEYS]).toEqual([...ORDER_READ_KEYS])
+    expect([...APP_PAYMENT_READ_KEYS]).toEqual([...PAYMENT_READ_KEYS])
+  })
+
+  /**
+   * The web's copy of the app's tab map names only some tabs. Each one it does
+   * name must be the grant the app itself asks for — the stock screen and its
+   * priced report moved off 'menu', and a stale copy would describe the old rule.
+   */
+  it('names the same grant as the merchant app for every app tab it maps', () => {
+    const mapped = APP_WORKSPACES.flatMap((w) => [...w.tabs]).filter(
+      (tab) => permissionForMobileTab(tab) !== null
+    )
+    expect(mapped).toEqual(expect.arrayContaining(['inventory', 'daily-report']))
+    for (const tab of mapped) {
+      const key = permissionForMobileTab(tab) as string
+      const holder = { role: 'admin', isOwner: false, permissions: [key] }
+      expect({ tab, allowed: appIsTabAllowed(holder, tab) }).toEqual({ tab, allowed: true })
+      const nobody = { role: 'admin', isOwner: false, permissions: [] }
+      expect({ tab, allowed: appIsTabAllowed(nobody, tab) }).toEqual({ tab, allowed: false })
+    }
+    expect(permissionForMobileTab('inventory')).toBe('inventory')
+    expect(permissionForMobileTab('daily-report')).toBe('costs')
   })
 })

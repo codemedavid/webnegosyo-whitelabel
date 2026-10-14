@@ -18,6 +18,7 @@ import { router, useFocusEffect } from "expo-router";
 import { FunctionReference } from "convex/server";
 import { useOrderWriteBackend, useSafeMutation } from "../../lib/hooks";
 import { useAuthStore } from "../../stores/auth-store";
+import { canReadOrders } from "../../lib/staff-permissions";
 import { withOrderOutlet } from "../../lib/order-outlet";
 import { hasLiveOrderBackend } from "../../lib/order-backend";
 import { notifyCustomerCapture } from "../../lib/customers/capture";
@@ -56,6 +57,14 @@ import {
 } from "../../lib/scan-handoff-validate";
 import { markPaidAfterHandover, planOrderStatusChange } from "../../lib/order-status-change";
 import { syncStockForStatusChange } from "../../lib/order-cancel-stock";
+
+/**
+ * Shown instead of the camera to an account without an order-facing grant.
+ * Every scan files a new order or hands one over, and the database refuses
+ * both — better said up front than after the customer has shown their code.
+ */
+const SCAN_NEEDS_ORDERS_MESSAGE =
+  "Scanning order codes needs Orders or POS access. Ask the owner to turn it on for your account.";
 
 const createOrderRef = "orders:createOrder" as unknown as FunctionReference<"mutation">;
 const updateOrderStatusRef =
@@ -189,6 +198,10 @@ export default function ScanScreen() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const outletId = useAuthStore((s) => s.outletId);
   const outletName = useAuthStore((s) => s.outletName);
+  const role = useAuthStore((s) => s.role);
+  const isOwner = useAuthStore((s) => s.isOwner);
+  const permissions = useAuthStore((s) => s.permissions);
+  const canSeeOrders = canReadOrders({ role, isOwner, permissions });
   const createOrder = useSafeMutation(createOrderRef);
   // Where `createOrder` writes — the capture below must be filed under the
   // same backend, or a platform store's order lands in the external ledger.
@@ -488,6 +501,19 @@ export default function ScanScreen() {
     // Reject writes nothing. Return to the dashboard.
     router.back();
   }, []);
+
+  // --- Staff grant gating (ahead of the camera: no grant, no camera prompt) ---
+  if (!canSeeOrders) {
+    return (
+      <View style={styles.screen}>
+        <ScanHeader title="Scan QR" onClose={() => router.back()} />
+        <View style={styles.permissionBody}>
+          <Text style={styles.permissionTitle}>Not available on this account</Text>
+          <Text style={styles.permissionText}>{SCAN_NEEDS_ORDERS_MESSAGE}</Text>
+        </View>
+      </View>
+    );
+  }
 
   // --- Permission gating ---
   if (!permission) {

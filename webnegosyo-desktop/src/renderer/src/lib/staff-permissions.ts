@@ -36,7 +36,11 @@ export const STAFF_PERMISSION_KEYS = [
   'loyalty_redeem',
   // Store activity & approvals — OPT-IN (see OPT_IN_PERMISSION_KEYS below).
   'activity_view',
-  'approve_requests'
+  'approve_requests',
+  // Reports & inventory suite: sales reports, stock, and what things cost.
+  'reports',
+  'inventory',
+  'costs'
 ] as const
 
 export type StaffPermissionKey = (typeof STAFF_PERMISSION_KEYS)[number]
@@ -56,7 +60,8 @@ export interface StaffPermissionHolder {
  */
 export const IMPLIED_BY: Readonly<Partial<Record<StaffPermissionKey, StaffPermissionKey>>> = {
   kitchen: 'orders',
-  tables: 'orders'
+  tables: 'orders',
+  reports: 'analytics'
 }
 
 /** Whether `permissions` grants `key` outright or through its containing grant. */

@@ -1,5 +1,6 @@
 import { fetchConvexAggregates, type ConvexTenantTarget } from '@/lib/queries/convex-platform-aggregator'
 import { rangeToWindows } from '@/lib/queries/platform-analytics-merge'
+import { inclusiveEndFor } from '@/lib/convex/period-bounds'
 
 const NOW = Date.parse('2026-07-08T12:00:00Z')
 const windows7d = rangeToWindows('7d', NOW)
@@ -77,7 +78,14 @@ describe('fetchConvexAggregates', () => {
       (c) => c.path === 'orders:getDashboardStatsByPeriodInternal' && c.args.startDate === windows7d.startMs,
     )
     expect(current).toBeDefined()
-    expect(current!.args.endDate).toBe(windows7d.endMs)
+    // getDashboardStatsByPeriod is inclusive at both ends: the half-open
+    // windows end just before their boundary, so the order at the boundary is
+    // counted in the current window only, never in both.
+    expect(current!.args.endDate).toBe(inclusiveEndFor(windows7d.endMs))
+    const previous = aCalls.find(
+      (c) => c.path === 'orders:getDashboardStatsByPeriodInternal' && c.args.startDate === windows7d.prevStartMs,
+    )
+    expect(previous!.args.endDate).toBe(inclusiveEndFor(windows7d.startMs ?? 0))
   })
 
   it('does not query the previous window for the all range', async () => {

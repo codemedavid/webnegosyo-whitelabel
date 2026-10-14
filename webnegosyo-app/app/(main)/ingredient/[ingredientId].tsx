@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../../../stores/auth-store";
+import { useHasPermission } from "../../../lib/use-has-permission";
 import { useBranchScope } from "../../../lib/use-branch-scope";
 import { loadInventoryStock } from "../../../lib/inventory-service";
 import { formatStockQuantity, stockFillRatio, type StockItemView } from "../../../lib/inventory-stock";
@@ -66,6 +67,8 @@ type Missing = "archived" | "gone";
 export default function IngredientScreen() {
   const { ingredientId } = useLocalSearchParams<{ ingredientId: string }>();
   const tenantId = useAuthStore((s) => s.tenantId);
+  // Stock value and unit cost are absent without `costs` — never ₱0 or "Not set".
+  const canSeeCosts = useHasPermission("costs");
   const scope = useBranchScope();
   const outletId = scope.kind === "branch" ? scope.outletId : undefined;
 
@@ -263,13 +266,17 @@ export default function IngredientScreen() {
         </View>
 
         <View style={styles.stats}>
-          <Stat label="Stock value" value={unitCost > 0 ? formatPeso(valueOf(item)) : "—"} />
-          <Stat
-            label={`Cost per ${unitLabel}`}
-            value={unitCost > 0 ? formatPeso(unitCost) : "Not set"}
-            isMuted={unitCost <= 0}
-            onPress={unitCost > 0 ? undefined : openEditor}
-          />
+          {canSeeCosts && (
+            <>
+              <Stat label="Stock value" value={unitCost > 0 ? formatPeso(valueOf(item)) : "—"} />
+              <Stat
+                label={`Cost per ${unitLabel}`}
+                value={unitCost > 0 ? formatPeso(unitCost) : "Not set"}
+                isMuted={unitCost <= 0}
+                onPress={unitCost > 0 ? undefined : openEditor}
+              />
+            </>
+          )}
           <Stat
             label="Reorder level"
             value={hasThreshold ? formatStockQuantity(item.reorderLevel, item.unitAbbreviation) : "Not set"}

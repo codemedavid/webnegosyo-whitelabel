@@ -14,6 +14,7 @@ import { refreshOfferCaches } from '@/lib/boost/refresh-offer-caches'
 import { invalidateTenantCache } from '@/lib/cache'
 import { createMenuItemAction } from '@/app/actions/menu-items'
 import { recordStockMovement } from '@/lib/inventory/stock-service'
+import { isPermissionRefusal } from '@/lib/inventory/permission-refusals'
 import { saveVoucherAction } from '@/app/actions/voucher-admin'
 import { createSmsCampaign } from '@/lib/sms-campaigns-service'
 import type { VoucherDraft } from '@/lib/vouchers/admin-validation'
@@ -117,9 +118,13 @@ async function executeVoucher(store: StoreRef, payload: { draft: VoucherDraft })
   }
 }
 
-function friendly(error: unknown): string {
+/** What the owner reads when a confirmed change could not be made. */
+export function friendlyExecuteError(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   if (message.startsWith('Unauthorized')) return 'You no longer have permission to do this.'
+  // A named refusal ("Recording stock needs the Inventory permission…") says
+  // what to ask for, which the generic line above cannot.
+  if (isPermissionRefusal(message)) return message
   if (message.includes('subscription')) return 'Your subscription is paused, so changes are on hold.'
   return 'That change could not be made. Nothing was changed.'
 }
@@ -165,6 +170,6 @@ export async function executeAction(action: StoredAction, store: StoreRef): Prom
     }
   } catch (error) {
     console.error('[assistant] action failed', { actionId: action.id, kind: action.kind, message: error instanceof Error ? error.message : String(error) })
-    return { ok: false, error: friendly(error) }
+    return { ok: false, error: friendlyExecuteError(error) }
   }
 }

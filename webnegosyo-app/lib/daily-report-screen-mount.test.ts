@@ -53,7 +53,7 @@ describe("daily report tab registration", () => {
     // Same reasoning the registry already gives for `inventory`: the merchant
     // who counts the flour and the merchant who asks whether the count matched
     // are the same person, standing in the same place. It is not a sales
-    // analytic — the phone report carries no revenue at all.
+    // analytic — its one sales figure shows only with Sales reports.
     expect(workspaceForTab(TAB)).toBe("products");
   });
 
@@ -68,13 +68,17 @@ describe("daily report tab registration", () => {
     expect(isTabAllowed(holderOfNothing, TAB)).toBe(false);
   });
 
-  it("rides the same grant as the inventory tab", () => {
-    // The report is the shelf the inventory tab shows, reconciled. Whoever may
-    // see the stock may see whether it added up.
+  it("rides the costs grant, because every figure on it is priced", () => {
+    // Stock used, wasted and missing are pesos, and the headline is food cost
+    // %. Since stock got its own key, holding the shelf no longer means seeing
+    // what it cost.
+    const holderOfCosts = { role: "admin", permissions: ["costs"] } as never;
     const holderOfMenu = { role: "admin", permissions: ["menu"] } as never;
+    const holderOfStock = { role: "admin", permissions: ["inventory"] } as never;
 
-    expect(isTabAllowed(holderOfMenu, TAB)).toBe(isTabAllowed(holderOfMenu, "inventory"));
-    expect(isTabAllowed(holderOfMenu, TAB)).toBe(true);
+    expect(isTabAllowed(holderOfCosts, TAB)).toBe(true);
+    expect(isTabAllowed(holderOfMenu, TAB)).toBe(false);
+    expect(isTabAllowed(holderOfStock, TAB)).toBe(false);
   });
 });
 
@@ -230,5 +234,28 @@ describe("daily report — the branch the merchant is confined to", () => {
     // only dates. Treating those as one case publishes a food cost built from a
     // branch numerator over store-wide takings on every Convex tenant.
     expect(screen).toMatch(/isRevenueBranchScoped/);
+  });
+});
+
+describe("daily report — who may see what", () => {
+  const screen = read("app", "(main)", "daily-report.tsx");
+
+  it("refuses on its own without the costs grant, since it is reachable by route", () => {
+    expect(screen).toMatch(/hasPermission\([^)]*"costs"\)/);
+  });
+
+  it("asks for Sales reports before it states any sales", () => {
+    expect(screen).toMatch(/hasPermission\([^)]*"reports"\)/);
+    expect(screen).toMatch(/resolveRevenueAccess/);
+  });
+
+  it("does not read orders at all without Sales reports", () => {
+    // The stats query is skipped unless the access decision is "shown": an
+    // account the database refuses would otherwise draw an empty read as ₱0.
+    expect(screen).toMatch(/revenueAccess === "shown" \? revenueWindow : "skip"/);
+  });
+
+  it("tells the account why the sales are missing instead of leaving a gap", () => {
+    expect(screen).toMatch(/SALES_NEED_REPORTS_NOTE/);
   });
 });

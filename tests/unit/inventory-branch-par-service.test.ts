@@ -17,7 +17,9 @@
 import { setBranchReorderLevel } from '@/lib/inventory/branch-par-service'
 
 jest.mock('@/lib/admin-service', () => ({
-  verifyTenantPermission: jest.fn(() => Promise.resolve()),
+  verifyTenantAdmin: jest.fn(() =>
+    Promise.resolve({ user: { id: 'u1' }, userRole: { role: 'admin', is_owner: true, permissions: null } }),
+  ),
 }))
 
 const from = jest.fn()
@@ -129,11 +131,23 @@ describe('setBranchReorderLevel', () => {
   })
 
   it('checks the caller may manage this tenant before writing', async () => {
-    const { verifyTenantPermission } = jest.requireMock('@/lib/admin-service')
+    const { verifyTenantAdmin } = jest.requireMock('@/lib/admin-service')
     wire()
 
     await setBranchReorderLevel(TENANT, FLOUR, SOUTH, 5)
 
-    expect(verifyTenantPermission).toHaveBeenCalledWith(TENANT, 'menu', 'create')
+    expect(verifyTenantAdmin).toHaveBeenCalledWith(TENANT, 'create')
+  })
+
+  it('refuses a menu-only account: a reorder level is Inventory (Phase 0d)', async () => {
+    const { verifyTenantAdmin } = jest.requireMock('@/lib/admin-service')
+    verifyTenantAdmin.mockResolvedValueOnce({
+      user: { id: 'u1' },
+      userRole: { role: 'admin', is_owner: false, permissions: ['menu'] },
+    })
+    const chain = wire()
+
+    await expect(setBranchReorderLevel(TENANT, FLOUR, SOUTH, 5)).rejects.toThrow(/Inventory permission/)
+    expect(chain.calls.update).toBeUndefined()
   })
 })

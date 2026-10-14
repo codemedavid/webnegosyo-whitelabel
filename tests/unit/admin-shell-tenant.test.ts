@@ -41,6 +41,8 @@ describe('toAdminShellTenant', () => {
       menu_engineering_enabled: false,
       bundles_enabled: true,
       is_convex_configured: true,
+      // `auto` + a Convex URL resolves to Convex (resolveOrderBackend).
+      is_platform_backend: false,
       inventory_enabled: true,
       multi_branch_enabled: false,
       assistant_enabled: true,
@@ -68,6 +70,13 @@ describe('toAdminShellTenant', () => {
     const shell = toAdminShellTenant({ ...FULL_ROW, convex_deployment_url: null } as Tenant)
 
     expect(shell.is_convex_configured).toBe(false)
+  })
+
+  test('says whether orders live on the platform database, by resolveOrderBackend and never by credentials alone', () => {
+    expect(toAdminShellTenant({ ...FULL_ROW, order_backend: 'auto', convex_deployment_url: null } as Tenant).is_platform_backend).toBe(true)
+    // A leftover Convex URL on a store pinned to platform still reads platform.
+    expect(toAdminShellTenant({ ...FULL_ROW, order_backend: 'platform' } as Tenant).is_platform_backend).toBe(true)
+    expect(toAdminShellTenant({ ...FULL_ROW, order_backend: 'convex' } as Tenant).is_platform_backend).toBe(false)
   })
 
   test('treats an unset assistant flag as off, so the owl only appears where a superadmin enabled it', () => {

@@ -32,6 +32,7 @@ import { UnitsTab } from '@/components/admin/inventory-manager/units-tab'
 import { IngredientEditorDialog } from '@/components/admin/inventory-manager/ingredient-editor-dialog'
 import { StockMovementDialog } from '@/components/admin/inventory-manager/stock-movement-dialog'
 import { describeActionError } from '@/components/admin/server-action-safety'
+import type { InventoryAccess } from '@/components/admin/inventory-manager/inventory-access'
 
 interface IngredientsTabProps {
   tenantId: string
@@ -54,6 +55,8 @@ interface IngredientsTabProps {
   countProgress: CountSessionProgress | null
   openCountOutletId: string | null
   branches: SelectableBranch[]
+  /** What this account may do here; see `inventory-access.ts`. */
+  access: InventoryAccess
 }
 
 export function IngredientsTab({
@@ -75,6 +78,7 @@ export function IngredientsTab({
   countProgress,
   openCountOutletId,
   branches,
+  access,
 }: IngredientsTabProps) {
   const router = useRouter()
   const [isUnitsOpen, setIsUnitsOpen] = useState(false)
@@ -171,6 +175,12 @@ export function IngredientsTab({
     if (item) action(item)
   }
 
+  // The ingredient master (add, edit, recipe, delete, units) is `menu`. Both
+  // spreadsheets carry unit costs — the export writes them, the import shows
+  // the old and new price and writes it — so they also need `costs`.
+  const { canEditMaster, canSeeCosts } = access
+  const canImport = canEditMaster && canSeeCosts
+
   return (
     <div className="space-y-6">
       {health && <InventoryHealthStrip health={health} />}
@@ -180,18 +190,21 @@ export function IngredientsTab({
       {noUnits && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20">
           <p className="flex-1 text-sm">
-            Ingredients are priced per unit, so add a unit of measure before your first
-            ingredient.
+            {canEditMaster
+              ? 'Ingredients are priced per unit, so add a unit of measure before your first ingredient.'
+              : 'No units of measure are set up yet. Ask the owner to add them in Inventory.'}
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            className="max-sm:h-11 max-sm:w-full"
-            onClick={() => setIsUnitsOpen(true)}
-          >
-            <Ruler className="mr-2 h-4 w-4" />
-            Add a unit
-          </Button>
+          {canEditMaster && (
+            <Button
+              type="button"
+              variant="outline"
+              className="max-sm:h-11 max-sm:w-full"
+              onClick={() => setIsUnitsOpen(true)}
+            >
+              <Ruler className="mr-2 h-4 w-4" />
+              Add a unit
+            </Button>
+          )}
         </div>
       )}
 
@@ -212,32 +225,34 @@ export function IngredientsTab({
       <InventoryTable
         rows={rows}
         isCreateDisabled={noUnits}
-        onCreate={openCreate}
-        onEdit={withItem(openEdit)}
+        onCreate={canEditMaster ? openCreate : undefined}
+        onEdit={canEditMaster ? withItem(openEdit) : undefined}
         onStock={withItem(openStock)}
-        onRecipe={(id) => toggleRecipe(id)}
-        onDelete={withItem(handleDelete)}
-        onManageUnits={() => setIsUnitsOpen(true)}
-        onImport={() => setIsImportOpen(true)}
-        onExport={spreadsheets.exportIngredients}
-        onDownloadTemplate={spreadsheets.downloadTemplate}
+        onRecipe={canEditMaster ? (id) => toggleRecipe(id) : undefined}
+        onDelete={canEditMaster ? withItem(handleDelete) : undefined}
+        onManageUnits={canEditMaster ? () => setIsUnitsOpen(true) : undefined}
+        onImport={canImport ? () => setIsImportOpen(true) : undefined}
+        onExport={canSeeCosts ? spreadsheets.exportIngredients : undefined}
+        onDownloadTemplate={canSeeCosts ? spreadsheets.downloadTemplate : undefined}
       />
 
-      <ImportWizard
-        open={isImportOpen}
-        onOpenChange={setIsImportOpen}
-        tenantId={tenantId}
-        storeName={tenantSlug}
-        ingredients={ingredients}
-        units={units}
-        branches={branches}
-        isTemplatePending={spreadsheets.pending === 'template'}
-        onDownloadTemplate={spreadsheets.downloadTemplate}
-        onImported={(saved) => {
-          onChange(mergeImportedItems(ingredients, saved))
-          router.refresh()
-        }}
-      />
+      {canImport && (
+        <ImportWizard
+          open={isImportOpen}
+          onOpenChange={setIsImportOpen}
+          tenantId={tenantId}
+          storeName={tenantSlug}
+          ingredients={ingredients}
+          units={units}
+          branches={branches}
+          isTemplatePending={spreadsheets.pending === 'template'}
+          onDownloadTemplate={spreadsheets.downloadTemplate}
+          onImported={(saved) => {
+            onChange(mergeImportedItems(ingredients, saved))
+            router.refresh()
+          }}
+        />
+      )}
 
       <InventoryLogs
         autoHidden={autoHidden}
@@ -290,6 +305,8 @@ export function IngredientsTab({
           tenantSlug={tenantSlug}
           item={editingItem}
           units={units}
+          canSeeCosts={canSeeCosts}
+          canManageStock={access.canManageStock}
           onClose={() => setIsOpen(false)}
           onSaved={(saved) => onChange(editingItem
             ? ingredients.map((item) => item.id === editingItem.id ? saved : item)
@@ -308,6 +325,7 @@ export function IngredientsTab({
           branchStockByItemId={branchStockByItemId}
           openCountId={openCountId}
           openCountOutletId={openCountOutletId}
+          canSeeCosts={canSeeCosts}
           onClose={() => setStockSelection(null)}
           onSaved={(saved) => onChange(ingredients.map((item) => item.id === saved.id ? saved : item))}
         />

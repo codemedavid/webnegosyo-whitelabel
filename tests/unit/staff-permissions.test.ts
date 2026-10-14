@@ -52,6 +52,12 @@ describe('staff permission registry', () => {
       // get them without the owner ticking them (see OPT_IN_PERMISSION_KEYS).
       'activity_view',
       'approve_requests',
+      // Reports & inventory suite (Phase 0d): sales reports (implied by
+      // analytics), stock, and what things cost — the last two carved out of
+      // 'menu' and backfilled once onto every menu holder.
+      'reports',
+      'inventory',
+      'costs',
     ])
   })
 
@@ -105,7 +111,8 @@ describe('hasPermission', () => {
 
   it('leaves every separate authority opt-in', () => {
     for (const key of ['order_edit', 'order_refund', 'vouchers', 'branch_staff',
-                       'loyalty_manage', 'loyalty_redeem', 'pos', 'menu'] as const) {
+                       'loyalty_manage', 'loyalty_redeem', 'pos', 'menu',
+                       'reports', 'inventory', 'costs'] as const) {
       expect(hasPermission(ordersOnlyStaff, key)).toBe(false)
     }
   })
@@ -153,7 +160,7 @@ describe('opt-in permissions (activity_view, approve_requests)', () => {
 
 describe('IMPLIED_BY', () => {
   it('names only grants that are strict subsets of their parent', () => {
-    expect(IMPLIED_BY).toEqual({ kitchen: 'orders', tables: 'orders' })
+    expect(IMPLIED_BY).toEqual({ kitchen: 'orders', tables: 'orders', reports: 'analytics' })
   })
 
   it('never points a key at itself or at a key outside the registry', () => {

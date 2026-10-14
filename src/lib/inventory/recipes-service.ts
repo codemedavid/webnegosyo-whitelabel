@@ -175,12 +175,21 @@ export async function saveRecipeForTarget(
     if (insertError) throw insertError
     recipe = created as unknown as Recipe
   } else {
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('recipes')
       .update({ ...rowFields, updated_at: new Date().toISOString() } as never)
       .eq('id', recipe.id)
       .eq('tenant_id', tenantId)
+      .select('id')
     if (updateError) throw updateError
+    // RLS refuses an UPDATE with zero rows, not an error: a branch-locked
+    // account may read the store-wide recipe but not change it. Stop here,
+    // before the component rewrite below "succeeds" over the same refusal.
+    if (!updated || (updated as unknown[]).length === 0) {
+      throw new Error(
+        'This recipe applies to every branch, so only a store-wide account with Menu access can change it.',
+      )
+    }
   }
 
   // Replace components wholesale (delete-then-insert).
