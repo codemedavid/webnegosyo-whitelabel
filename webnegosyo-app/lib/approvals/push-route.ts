@@ -3,13 +3,16 @@
  * registers (their ids match src/lib/approvals/push.ts `categoryId`), the
  * Android channel id, and where a tapped push or action lands. The root
  * layout's tap handler is a thin shell around `routeFromPushResponse`, the
- * app's ONE push router (announcements are delegated to their own rule).
+ * app's ONE push router. Order: approvals, approval batches, then the
+ * merchant-notification router (announcements, then stock alerts), then
+ * texting (texts waiting, a campaign's send reminder).
  *
  * Design-spec §0.1 / §3.12: Approve must OPEN the app on both platforms (an
  * Android background action runs with the phone still locked) and require the
  * device unlock on iOS; the app then shows a 4-second Undo before sending.
  */
-import { announcementRouteFromPushData } from "../announcements/popup";
+import { routeFromPushData } from "../merchant-notifications/push-route";
+import { textingRouteFromPushData } from "../sms-automations/push-route";
 
 export const APPROVALS_CHANNEL_ID = "approvals";
 export const APPROVAL_CATEGORY_WITHIN_LIMIT = "approval_within_limit";
@@ -84,5 +87,5 @@ export function routeFromPushResponse(data: unknown, actionIdentifier: string | 
   const target = approvalTargetFromPush(data, actionIdentifier);
   if (target) return approvalHref(target);
   if (readData(data)?.type === "approval_batch") return ACTIVITY_REVIEW_HREF;
-  return announcementRouteFromPushData(data);
+  return routeFromPushData(data) ?? textingRouteFromPushData(data);
 }

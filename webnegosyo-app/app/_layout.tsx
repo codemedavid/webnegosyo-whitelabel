@@ -457,9 +457,10 @@ const routedPushResponses = new Set<string>();
 /**
  * The app's one push router: opens the screen a tapped push (or one of its
  * action buttons) points at — approvals (review screen; Approve/Decline carry
- * their intent) and announcements — both for a tap that wakes a running app
- * and for the tap that launched it. Order pushes carry neither and are left
- * to the order screens.
+ * their intent), What's New posts, low-stock alerts and texting notifications
+ * (in that order; lib/approvals/push-route.ts `routeFromPushResponse`) — both
+ * for a tap that wakes a running app and for the tap that launched it. Order
+ * pushes match none of these and are left to the order screens.
  *
  * A response is acted on once EVER: handled keys are persisted for 7 days
  * (lib/approvals/push-consumed.ts), so a kill and reopen after Undo cannot

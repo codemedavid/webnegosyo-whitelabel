@@ -74,4 +74,14 @@ describe("planPushRoute", () => {
       "/(main)/whats-new/a1",
     );
   });
+
+  test("stock alerts and texting pushes route through the same plan (one push router)", () => {
+    const fresh = { status: "read" as const, keys: [] };
+    expect(planPushRoute({ ...base, actionIdentifier: null, data: { type: "stock_alert", inventoryItemId: "inv-1" }, consumed: fresh })).toBe(
+      "/(main)/ingredient/inv-1",
+    );
+    expect(planPushRoute({ ...base, actionIdentifier: null, data: { kind: "sms_texts_waiting" }, consumed: fresh })).toBe("/(main)/texts");
+    expect(planPushRoute({ ...base, actionIdentifier: null, data: { campaignId: "c1" }, consumed: fresh })).toBe("/(main)/campaign/c1");
+    expect(planPushRoute({ ...base, actionIdentifier: null, data: { orderId: "o1" }, consumed: fresh })).toBeNull();
+  });
 });

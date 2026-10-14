@@ -63,6 +63,26 @@ describe("routeFromPushResponse (the app's one push router)", () => {
     expect(routeFromPushResponse({ orderId: "o1" }, null)).toBeNull();
   });
 
+  test("then stock alerts, then texting — every push kind goes through this one router", () => {
+    expect(routeFromPushResponse({ type: "stock_alert", inventoryItemId: "inv-1" }, null)).toBe("/(main)/ingredient/inv-1");
+    expect(routeFromPushResponse({ type: "stock_alert" }, null)).toBe("/(main)/notifications");
+    expect(routeFromPushResponse({ kind: "sms_texts_waiting" }, null)).toBe("/(main)/texts");
+    expect(routeFromPushResponse({ campaignId: "c1" }, null)).toBe("/(main)/campaign/c1");
+  });
+
+  test("the order of the rules decides a push that matches more than one", () => {
+    // An approval wins over everything after it.
+    expect(
+      routeFromPushResponse({ type: "approval_request", approvalId: "req-1", announcementId: "a1", campaignId: "c1" }, null),
+    ).toBe("/(main)/approval/req-1");
+    // Announcements before stock alerts (merchant-notifications order).
+    expect(routeFromPushResponse({ announcementId: "a1", kind: "post", type: "stock_alert" }, null)).toBe("/(main)/whats-new/a1");
+    // Stock alerts before texting.
+    expect(routeFromPushResponse({ type: "stock_alert", inventoryItemId: "inv-1", campaignId: "c1" }, null)).toBe(
+      "/(main)/ingredient/inv-1",
+    );
+  });
+
   test("hrefs escape the id", () => {
     expect(approvalHref({ approvalId: "a b", intent: null })).toBe("/(main)/approval/a%20b");
   });
