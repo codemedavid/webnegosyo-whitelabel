@@ -145,6 +145,14 @@ A loyalty member can add their stamp card to Apple or Google Wallet from the ord
 - **Plan** (mode, guests, who-had-what, per-guest paid) is in-memory zustand (`stores/bill-store.ts`), locked once a guest pays; the ledgers stay the truth. By item is refused once money was taken outside the split.
 - **Receipts** go through the merchant's layout: `ReceiptOrder.bill` (heading / orderRefs / share) + `amountPaid` (Paid · Balance due · Amount due). Bills print without the tracking QR (`printOrder(order, { printKey, withQr: false })`) and never inherit an order's stored cash/change.
 
+### Per-item & per-unit discounts ("50% off ONE fries")
+
+- **Engine** (`src/lib/vouchers/discount.ts`, byte-identical in the app): `vouchers.max_discounted_units` (NULL = every unit; CHECK refuses it on free delivery) limits a voucher to N units — the **cheapest** eligible units, ties in cart order, unless `DiscountContext.unitPicks` (code → line id → units) chose others; an invalid pick falls back to cheapest, never throws. Percent comes off each unit; fixed comes off EACH unit (≤ the unit); the peso cap covers the lot. `RemainingAmounts.byUnit` (centavos) makes stacked discounts work per unit, so nothing goes below zero.
+- **Register**: `ManualItemDiscount` (one per line, % or ₱ off each of N units, reason + `vouchers` permission) via the sheet's "One item" tab; "Which item gets it" moves a unit-limited voucher (`session.unitPicks`). Order: vouchers → item discounts → whole-order discount, each on what is left. Senior/PWD never stacks: "higher of the two" counts all of these as the other side.
+- **Checkout**: preview returns `unitLimit`/`eligibleLineIds`/`items` (the customer's own lines only); "Applies to · Change" sends picks to `createOrderAction` as `line-<index>`, sanitized (`unit-picks.ts`) and re-validated by the engine.
+- **Stored**: discount lines carry `items: [{ lineKey: "line-<i>", units, amount }]` (read via `discountLineItems`); `allocationsByLine` holds every line-specific share → `order_items.discount_amount`, split bills (on that dish's next pieces), edits. Receipts/order screens/Messenger print the dish under the row ("  Fries x1"). Convex unchanged (`customerData`/`discount` are `v.any()`).
+- **Old registers**: `/api/vouchers/{lookup,list}` withhold unit-limited vouchers unless the request sends `X-Voucher-Features: units` (an old build would discount every unit). Live check: `VOUCHERS_UNITS_LIVE=1 npx jest tests/live/vouchers-unit-limit-live.test.ts` (demo store, cleans up).
+
 ### POS checkout questions & delivery (merchant app)
 
 The register asks the storefront's own checkout questions (`customer_form_fields`, per order type) — all OPTIONAL at the counter.
