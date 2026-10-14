@@ -65,6 +65,7 @@ export type IconName =
   | "export"
   | "info"
   | "warning"
+  | "bell"
   | "arrow-right"
   | "chevron-left"
   | "minus"
@@ -468,6 +469,16 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
       <Path d="M12 3.5L21 20H3z" />
       <Line x1={12} y1={9.5} x2={12} y2={14} />
       <Line x1={12} y1={16.5} x2={12} y2={17} />
+    </>
+  ),
+
+  // A hand bell on its clapper — the notifications inbox.
+  bell: (
+    <>
+      <Path d="M6 17V11a6 6 0 0 1 12 0v6" />
+      <Line x1={4} y1={17} x2={20} y2={17} />
+      <Path d="M10 20.5h4" />
+      <Line x1={12} y1={3} x2={12} y2={5} />
     </>
   ),
 

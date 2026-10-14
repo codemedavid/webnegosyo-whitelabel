@@ -6,6 +6,9 @@
  * offline-aware mutation, then the paid flag), spread over the bill's orders
  * by `settleBill`. The receipt for the share prints afterwards when the
  * merchant's setting prints a bill-out; a dead printer never fails a payment.
+ *
+ * A split tender (`submitSplit`: ₱120 GCash, the rest in cash) goes through the
+ * same path as several payments, and prints one slip naming every method.
  */
 import { useCallback, useState } from "react";
 import { Alert } from "react-native";
@@ -17,7 +20,7 @@ import { billSummary, type BillOrder } from "./bill-orders";
 import { recordPartPayment, type BillPlan } from "./bill-plan";
 import type { BillPartView } from "./bill-parts";
 import { wholeBillReceipt } from "./bill-receipt";
-import { settleBill } from "./settle-bill";
+import { settleBillTenders } from "./settle-bill";
 
 export type CollectTarget = { kind: "bill" } | { kind: "part"; part: BillPartView };
 
@@ -42,13 +45,35 @@ export interface BillCollect {
   open: (target: CollectTarget) => void;
   close: () => void;
   submit: (payment: CollectedPayment) => Promise<void>;
+  /** One share paid with several methods, each recorded under its own. */
+  submitSplit: (payments: readonly CollectedPayment[]) => Promise<void>;
+}
+
+/** Each method once, in the order the money was taken: "GCash + Cash". */
+function joinUnique(values: readonly (string | undefined)[], separator: string): string | undefined {
+  const unique = [...new Set(values.map((v) => v?.trim()).filter((v): v is string => Boolean(v)))];
+  return unique.length > 0 ? unique.join(separator) : undefined;
+}
+
+/**
+ * Cash and change for the slip: the cash lines' together. Printed only for a
+ * payment that went through whole; a half-recorded one would show change for
+ * money not all on the ledger.
+ */
+function cashOnPaper(payments: readonly CollectedPayment[], isWhole: boolean) {
+  const cash = payments.filter((p) => p.cashTendered !== undefined && p.changeDue !== undefined);
+  if (!isWhole || cash.length === 0) return {};
+  return {
+    cashTendered: fromCents(cash.reduce((sum, p) => sum + toCents(p.cashTendered ?? 0), 0)),
+    changeDue: fromCents(cash.reduce((sum, p) => sum + toCents(p.changeDue ?? 0), 0)),
+  };
 }
 
 function paperFor(
   target: CollectTarget,
   orders: readonly BillOrder[],
   recordedCents: number,
-  payment: CollectedPayment,
+  payments: readonly CollectedPayment[],
   isWhole: boolean,
 ): ReceiptOrder {
   const base =
@@ -60,13 +85,9 @@ function paperFor(
         };
   return {
     ...base,
-    paymentMethod: payment.methodName,
-    paymentReference: payment.reference,
-    // Cash and change are printed only for a payment that went through whole;
-    // a half-recorded one would show change for money not all on the ledger.
-    ...(isWhole && payment.cashTendered !== undefined && payment.changeDue !== undefined
-      ? { cashTendered: payment.cashTendered, changeDue: payment.changeDue }
-      : {}),
+    paymentMethod: joinUnique(payments.map((p) => p.methodName), " + "),
+    paymentReference: joinUnique(payments.map((p) => p.reference), " / "),
+    ...cashOnPaper(payments, isWhole),
   };
 }
 
@@ -74,14 +95,14 @@ export function useBillCollect(input: BillCollectInput): BillCollect {
   const [target, setTarget] = useState<CollectTarget | null>(null);
   const owed = billSummary(input.orders).owed;
 
-  const submit = useCallback(
-    async (payment: CollectedPayment) => {
-      if (!target) return;
+  const run = useCallback(
+    async (payments: readonly CollectedPayment[]) => {
+      if (!target || payments.length === 0) return;
       let result;
       try {
-        result = await settleBill({
+        result = await settleBillTenders({
           orders: input.orders,
-          payment,
+          payments,
           preferred: target.kind === "part" ? target.part.preferred : undefined,
           billTitle: input.billTitle,
           userId: input.userId,
@@ -101,7 +122,7 @@ export function useBillCollect(input: BillCollectInput): BillCollect {
 
       if (result.recordedCents > 0) {
         const isWhole = result.failure === null;
-        input.printBillOut(paperFor(target, input.orders, result.recordedCents, payment, isWhole), {
+        input.printBillOut(paperFor(target, input.orders, result.recordedCents, result.recorded, isWhole), {
           printKey: `${input.billKey}:${target.kind === "part" ? target.part.key : "bill"}`,
           withQr: false,
         });
@@ -117,6 +138,7 @@ export function useBillCollect(input: BillCollectInput): BillCollect {
     },
     [target, input],
   );
+  const submit = useCallback((payment: CollectedPayment) => run([payment]), [run]);
 
   return {
     target,
@@ -125,6 +147,7 @@ export function useBillCollect(input: BillCollectInput): BillCollect {
     open: setTarget,
     close: () => setTarget(null),
     submit,
+    submitSplit: run,
   };
 }
 

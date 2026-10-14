@@ -16,6 +16,7 @@ import { TUTORIAL_HUB_ROUTE } from "../../lib/tutorial/routes";
 import { useTutorialChapters, useTutorialProgress } from "../../lib/tutorial/use-tutorial";
 import { progressSummary } from "../../lib/tutorial/progress";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { NotificationBell } from "../../components/notifications/NotificationBell";
 import { ListRow } from "../../components/ListRow";
 import { Icon } from "../../components/Icon";
 
@@ -74,7 +75,7 @@ export default function ManageScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Manage" subtitle="How the store works" />
+      <ScreenHeader title="Manage" subtitle="How the store works" actions={<NotificationBell />} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <TouchableOpacity
           style={styles.storeCard}

@@ -2,6 +2,7 @@
 
 import { Input } from '@/components/ui/input'
 import { formatDailyOrderNumber } from '@/lib/order-number'
+import { Owl } from '@/components/mascot/owl'
 
 import { useState } from 'react'
 import { formatDistance } from 'date-fns'
@@ -118,7 +119,7 @@ export function OrdersList({ orders, tenantSlug, tenantId }: OrdersListProps) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <ShoppingBag className="h-12 w-12 text-muted-foreground mb-4" />
+          <Owl state="waiting" size={120} className="mb-4" />
           <h3 className="text-lg font-semibold mb-2">No orders yet</h3>
           <p className="text-muted-foreground">Orders from customers will appear here</p>
         </CardContent>

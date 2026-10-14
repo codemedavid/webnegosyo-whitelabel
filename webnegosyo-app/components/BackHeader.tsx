@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenTopInset } from "../lib/use-screen-top-inset";
 import { colors, typography, spacing } from "../theme/colors";
 import { IconButton } from "./IconButton";
 
@@ -21,9 +21,9 @@ interface BackHeaderProps {
 }
 
 export function BackHeader({ title, subtitle, onBack, actions }: BackHeaderProps) {
-  const insets = useSafeAreaInsets();
+  const topInset = useScreenTopInset();
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + spacing.sm }]}>
+    <View style={[styles.wrap, { paddingTop: topInset + spacing.sm }]}>
       <IconButton icon="back" label="Back" onPress={onBack ?? (() => router.back())} />
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={1} accessibilityRole="header">

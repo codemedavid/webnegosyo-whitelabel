@@ -1,0 +1,282 @@
+/*
+ * Smarty's states, set by data-state on the root svg element. Embedded into
+ * smarty.svg by build_smarty.py; every moving part is a group with class
+ * "s-PART" and its own transform-origin, so a state only says what parts do.
+ *
+ * A state = FACE (static poses: which eyes and beak show, brows, where the
+ * head and arms rest) + MOTION (animations). Reduced motion keeps the face.
+ *
+ *   idle         default screen      breathes, blinks, glances, nudges the thumb
+ *   happy        success / saved     two hops, ^ ^ eyes, thumb pumps, then rests
+ *   thinking     loading / working   looks up, beak shut, "…" dots pulse
+ *   waiting      your turn / input   presents the tablet, glances, taps a foot
+ *   sorry        error / failed      sad brows, looks down, droops, sweat drop
+ *   celebrating  big win / launch    jumps, hat pops, confetti
+ *   sleeping     empty / closed      eyes shut, slumps, "Z z z"
+ */
+
+.smarty { overflow: visible; }
+
+/* Hand-offs between states. */
+.smarty :is(.s-head, .s-hat, .s-brow-left, .s-brow-right, .s-iris-left, .s-iris-right,
+  .s-wing-right, .s-tablet-arm, .s-leg-right) {
+  transition: transform 320ms cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.smarty :is(.s-eye-left, .s-eye-right, .s-eye-happy-left, .s-eye-happy-right, .s-eye-closed-left,
+  .s-eye-closed-right, .s-beak, .s-beak-closed, .s-sparks, .s-fx-dots, .s-fx-sweat, .s-fx-zz, .s-fx-confetti) {
+  transition: opacity 180ms ease;
+}
+.smarty :is(.s-dot, .s-z1, .s-z2, .s-z3, .s-piece) {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ------------------------------------------------------------ shared faces */
+
+/* ^ ^ eyes, brows up */
+.smarty:is([data-state='happy'], [data-state='celebrating']) :is(.s-eye-left, .s-eye-right) { opacity: 0; }
+.smarty:is([data-state='happy'], [data-state='celebrating']) :is(.s-eye-happy-left, .s-eye-happy-right) { opacity: 1; }
+.smarty:is([data-state='happy'], [data-state='celebrating']) :is(.s-brow-left, .s-brow-right) { transform: translateY(-7px); }
+
+/* eyes shut */
+.smarty[data-state='sleeping'] :is(.s-eye-left, .s-eye-right) { opacity: 0; }
+.smarty[data-state='sleeping'] :is(.s-eye-closed-left, .s-eye-closed-right) { opacity: 1; }
+
+/* beak shut */
+.smarty:is([data-state='thinking'], [data-state='waiting'], [data-state='sorry'], [data-state='sleeping']) .s-beak { opacity: 0; }
+.smarty:is([data-state='thinking'], [data-state='waiting'], [data-state='sorry'], [data-state='sleeping']) .s-beak-closed { opacity: 1; }
+
+/* the "ding" marks by the thumb only go with good news */
+.smarty:is([data-state='thinking'], [data-state='sorry'], [data-state='sleeping']) .s-sparks { opacity: 0; }
+
+/* ------------------------------------------------------------ shared motion */
+
+.smarty:is([data-state='idle'], [data-state='thinking'], [data-state='waiting']) .s-upper {
+  animation: smarty-breathe 3.6s ease-in-out infinite;
+}
+.smarty:is([data-state='idle'], [data-state='thinking'], [data-state='waiting'], [data-state='sorry']) :is(.s-eye-left, .s-eye-right) {
+  animation: smarty-blink 5.2s ease-in-out infinite;
+}
+
+@keyframes smarty-breathe {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-2px) scale(1, 1.012); }
+}
+@keyframes smarty-blink {
+  0%, 90%, 96%, 100% { transform: scaleY(1); }
+  93% { transform: scaleY(0.08); }
+}
+
+/* ------------------------------------------------------------ idle */
+
+.smarty[data-state='idle'] :is(.s-iris-left, .s-iris-right) { animation: smarty-glance 9s ease-in-out infinite; }
+.smarty[data-state='idle'] .s-head { animation: smarty-tilt 7s ease-in-out infinite; }
+.smarty[data-state='idle'] .s-wing-right { animation: smarty-nudge 5s ease-in-out infinite; }
+.smarty[data-state='idle'] .s-tablet-arm { animation: smarty-sway 4.5s ease-in-out infinite; }
+.smarty[data-state='idle'] .s-sparks { animation: smarty-twinkle 2.4s ease-in-out infinite; }
+
+@keyframes smarty-glance {
+  0%, 40%, 84%, 100% { transform: translate(0, 0); }
+  45%, 58% { transform: translate(-5px, 3px); }
+  63%, 79% { transform: translate(4px, -2px); }
+}
+@keyframes smarty-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-1.6deg); }
+  70% { transform: rotate(1deg); }
+}
+@keyframes smarty-nudge {
+  0%, 78%, 100% { transform: rotate(0deg); }
+  84% { transform: rotate(-7deg); }
+  90% { transform: rotate(1.5deg); }
+  95% { transform: rotate(0deg); }
+}
+@keyframes smarty-sway {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(1.4deg); }
+}
+@keyframes smarty-twinkle {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.86); opacity: 0.55; }
+}
+
+/* ------------------------------------------------------------ happy */
+
+.smarty[data-state='happy'] .s-figure { animation: smarty-hop 0.8s cubic-bezier(0.3, 0, 0.3, 1) 2; }
+.smarty[data-state='happy'] .s-shadow { animation: smarty-hop-shadow 0.8s cubic-bezier(0.3, 0, 0.3, 1) 2; }
+.smarty[data-state='happy'] .s-hat { animation: smarty-hop-hat 0.8s cubic-bezier(0.3, 0, 0.3, 1) 2; }
+.smarty[data-state='happy'] .s-wing-right { animation: smarty-pump 0.4s ease-in-out 4 alternate; }
+.smarty[data-state='happy'] .s-sparks { animation: smarty-pop 0.8s ease-out 2; }
+.smarty[data-state='happy'] .s-upper { animation: smarty-breathe 3.6s ease-in-out 1.6s infinite; }
+
+@keyframes smarty-hop {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  18% { transform: translateY(0) scale(1.03, 0.96); }
+  45% { transform: translateY(-28px) scale(0.98, 1.03); }
+  72% { transform: translateY(0) scale(1.03, 0.97); }
+  86% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes smarty-hop-shadow {
+  0%, 18%, 86%, 100% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(0.74); opacity: 0.55; }
+}
+@keyframes smarty-hop-hat {
+  0%, 30%, 86%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-9px) rotate(-4deg); }
+}
+@keyframes smarty-pump {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-11deg); }
+}
+@keyframes smarty-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  45% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ------------------------------------------------------------ thinking */
+
+.smarty[data-state='thinking'] :is(.s-iris-left, .s-iris-right) { transform: translate(5px, -8px); }
+.smarty[data-state='thinking'] .s-brow-right { transform: translateY(-7px) rotate(4deg); }
+.smarty[data-state='thinking'] .s-brow-left { transform: translateY(2px); }
+.smarty[data-state='thinking'] .s-head { transform: rotate(-4deg); }
+.smarty[data-state='thinking'] .s-wing-right { transform: rotate(10deg); }
+.smarty[data-state='thinking'] .s-fx-dots { opacity: 1; }
+.smarty[data-state='thinking'] .s-dot { animation: smarty-dot 1.4s ease-in-out infinite; }
+.smarty[data-state='thinking'] .s-dot:nth-child(2) { animation-delay: 0.2s; }
+.smarty[data-state='thinking'] .s-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes smarty-dot {
+  0%, 60%, 100% { transform: scale(0.75); opacity: 0.35; }
+  30% { transform: scale(1.12); opacity: 1; }
+}
+
+/* ------------------------------------------------------------ waiting */
+
+.smarty[data-state='waiting'] :is(.s-iris-left, .s-iris-right) { animation: smarty-look-around 3.2s ease-in-out infinite; }
+.smarty[data-state='waiting'] .s-head { animation: smarty-bob 1.2s ease-in-out infinite; }
+.smarty[data-state='waiting'] .s-leg-right { animation: smarty-tap 0.6s ease-in-out infinite; }
+.smarty[data-state='waiting'] .s-tablet-arm { animation: smarty-present 2.4s ease-in-out infinite; }
+
+@keyframes smarty-look-around {
+  0%, 15%, 100% { transform: translate(0, 0); }
+  25%, 45% { transform: translate(-6px, 1px); }
+  60%, 80% { transform: translate(6px, 1px); }
+}
+@keyframes smarty-bob {
+  0%, 100% { transform: rotate(-1.2deg); }
+  50% { transform: rotate(1.2deg); }
+}
+@keyframes smarty-tap {
+  0%, 50%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-5px) rotate(-3deg); }
+}
+@keyframes smarty-present {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(-4.5deg) translateY(-3px); }
+}
+
+/* ------------------------------------------------------------ sorry */
+
+.smarty[data-state='sorry'] .s-brow-left { transform: translateY(-2px) rotate(-14deg); }
+.smarty[data-state='sorry'] .s-brow-right { transform: translateY(-2px) rotate(14deg); }
+.smarty[data-state='sorry'] :is(.s-iris-left, .s-iris-right) { transform: translate(-2px, 7px); }
+.smarty[data-state='sorry'] .s-head { transform: rotate(5deg) translateY(5px); }
+.smarty[data-state='sorry'] .s-hat { transform: rotate(7deg) translateX(4px); }
+.smarty[data-state='sorry'] .s-wing-right { transform: rotate(20deg); }
+.smarty[data-state='sorry'] .s-tablet-arm { transform: rotate(5deg); }
+.smarty[data-state='sorry'] .s-upper { animation: smarty-sigh 5s ease-in-out infinite; }
+.smarty[data-state='sorry'] .s-fx-sweat { animation: smarty-sweat 2.6s ease-in infinite; }
+
+@keyframes smarty-sigh {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  45% { transform: translateY(3px) scale(1, 0.988); }
+}
+@keyframes smarty-sweat {
+  0% { transform: translateY(-6px); opacity: 0; }
+  20% { opacity: 1; }
+  75% { transform: translateY(10px); opacity: 1; }
+  100% { transform: translateY(16px); opacity: 0; }
+}
+
+/* ------------------------------------------------------------ celebrating */
+
+.smarty[data-state='celebrating'] .s-figure { animation: smarty-jump 1s cubic-bezier(0.3, 0, 0.3, 1) infinite; }
+.smarty[data-state='celebrating'] .s-shadow { animation: smarty-jump-shadow 1s cubic-bezier(0.3, 0, 0.3, 1) infinite; }
+.smarty[data-state='celebrating'] .s-hat { animation: smarty-hat-pop 1s cubic-bezier(0.3, 0, 0.3, 1) infinite; }
+.smarty[data-state='celebrating'] .s-wing-right { animation: smarty-cheer 0.5s ease-in-out infinite alternate; }
+.smarty[data-state='celebrating'] .s-tablet-arm { animation: smarty-raise 1s ease-in-out infinite; }
+.smarty[data-state='celebrating'] .s-sparks { animation: smarty-twinkle 0.5s ease-in-out infinite; }
+.smarty[data-state='celebrating'] .s-fx-confetti { opacity: 1; }
+.smarty[data-state='celebrating'] .s-piece {
+  animation: smarty-confetti 1.8s linear infinite;
+  animation-delay: calc(var(--i) * -0.13s);
+}
+.smarty[data-state='celebrating'] .s-piece:nth-child(odd) { animation-name: smarty-confetti-alt; }
+
+@keyframes smarty-jump {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  15% { transform: translateY(0) scale(1.05, 0.93); }
+  40% { transform: translateY(-46px) rotate(-3deg) scale(0.97, 1.04); }
+  60% { transform: translateY(-46px) rotate(3deg) scale(1, 1); }
+  82% { transform: translateY(0) scale(1.05, 0.95); }
+  92% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes smarty-jump-shadow {
+  0%, 15%, 82%, 100% { transform: scale(1); opacity: 1; }
+  40%, 60% { transform: scale(0.6); opacity: 0.45; }
+}
+@keyframes smarty-hat-pop {
+  0%, 25%, 88%, 100% { transform: translateY(0) rotate(0deg); }
+  45% { transform: translateY(-34px) rotate(-12deg); }
+  65% { transform: translateY(-26px) rotate(8deg); }
+}
+@keyframes smarty-cheer {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-18deg); }
+}
+@keyframes smarty-raise {
+  0%, 100% { transform: rotate(0deg); }
+  45% { transform: rotate(-8deg); }
+}
+@keyframes smarty-confetti {
+  0% { transform: translate(0, -70px) rotate(0deg); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translate(18px, 230px) rotate(540deg); opacity: 0; }
+}
+@keyframes smarty-confetti-alt {
+  0% { transform: translate(0, -70px) rotate(0deg); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translate(-22px, 210px) rotate(-420deg); opacity: 0; }
+}
+
+/* ------------------------------------------------------------ sleeping */
+
+.smarty[data-state='sleeping'] .s-head { transform: rotate(7deg) translateY(10px); }
+.smarty[data-state='sleeping'] .s-hat { transform: rotate(5deg) translateY(9px); }
+.smarty[data-state='sleeping'] :is(.s-brow-left, .s-brow-right) { transform: translateY(5px); }
+.smarty[data-state='sleeping'] .s-wing-right { transform: rotate(18deg); }
+.smarty[data-state='sleeping'] .s-tablet-arm { transform: rotate(7deg); }
+.smarty[data-state='sleeping'] .s-upper { animation: smarty-snore 4.8s ease-in-out infinite; }
+.smarty[data-state='sleeping'] .s-fx-zz { opacity: 1; }
+.smarty[data-state='sleeping'] :is(.s-z1, .s-z2, .s-z3) { animation: smarty-z 3s ease-in-out infinite; opacity: 0; }
+.smarty[data-state='sleeping'] .s-z2 { animation-delay: 1s; }
+.smarty[data-state='sleeping'] .s-z3 { animation-delay: 2s; }
+
+@keyframes smarty-snore {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(2px) scale(1.01, 1.025); }
+}
+@keyframes smarty-z {
+  0% { transform: translate(-6px, 10px) scale(0.6); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translate(10px, -16px) scale(1.05); opacity: 0; }
+}
+
+/* ------------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .smarty * { animation: none !important; transition: none !important; }
+  .smarty .s-fx-confetti { opacity: 0 !important; }
+  .smarty:is([data-state='sleeping']) :is(.s-z1, .s-z2, .s-z3) { opacity: 1; }
+}

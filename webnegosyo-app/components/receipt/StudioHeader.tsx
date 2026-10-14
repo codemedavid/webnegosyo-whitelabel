@@ -1,6 +1,6 @@
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenTopInset } from "../../lib/use-screen-top-inset";
 import { colors, radius, spacing } from "../../theme/colors";
 import { Icon } from "../Icon";
 import type { PublishStatus } from "../../hooks/useReceiptStudio";
@@ -82,9 +82,9 @@ export function StudioHeader({
   onUndo,
   onPublish,
 }: StudioHeaderProps) {
-  const insets = useSafeAreaInsets();
+  const topInset = useScreenTopInset();
   return (
-    <View style={[styles.bar, { paddingTop: insets.top + spacing.sm }]}>
+    <View style={[styles.bar, { paddingTop: topInset + spacing.sm }]}>
       <TouchableOpacity
         onPress={onBack}
         style={styles.round}

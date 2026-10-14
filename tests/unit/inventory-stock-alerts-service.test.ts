@@ -183,6 +183,66 @@ describe('processStockLevelChanges — alerts', () => {
       expect.objectContaining({ level: 'out', quantity: 0 }),
     ])
   })
+
+  it("escalates an open 'low' alert to 'out' when the ingredient runs out", async () => {
+    // The dedup guard used to swallow this crossing: the row kept saying "low"
+    // over an empty shelf, and the merchant was never told it ran out. The
+    // UPDATE is what the bell's trigger turns into an "out of stock" notice.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      stock_alerts: table([
+        { id: 'open-1', inventory_item_id: 'flour', level: 'low', outlet_id: null },
+      ]),
+    })
+
+    const result = await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 10, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+    )
+
+    expect(result.alertsRaised).toBe(1)
+    expect(tables.stock_alerts.calls.insert).toBeUndefined()
+    expect(tables.stock_alerts.calls.update?.[0][0]).toEqual({ level: 'out', quantity: 0 })
+    expect(tables.stock_alerts.calls.in).toEqual(expect.arrayContaining([['id', ['open-1']]]))
+  })
+
+  it("does not let a store-wide crossing escalate a branch's low alert", async () => {
+    // The roll-up ran out, but North's row is about North's shelf, which this
+    // caller never looked at.
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      stock_alerts: table([
+        { id: 'north-1', inventory_item_id: 'flour', level: 'low', outlet_id: 'north' },
+      ]),
+    })
+
+    await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 10, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+    )
+
+    expect(tables.stock_alerts.calls.update).toBeUndefined()
+  })
+
+  it("leaves an open 'out' alert alone when stock dips further", async () => {
+    const tables = wire({
+      tenants: table(FLAGS_ALL_ON),
+      stock_alerts: table([
+        { id: 'open-1', inventory_item_id: 'flour', level: 'out', outlet_id: null },
+      ]),
+    })
+
+    const result = await processStockLevelChanges(
+      't1',
+      [ingredient({ current_qty: 10, reorder_level: 20 })],
+      new Map([['flour', -10]]),
+    )
+
+    expect(result.alertsRaised).toBe(0)
+    expect(tables.stock_alerts.calls.update).toBeUndefined()
+  })
 })
 
 describe('processStockLevelChanges — auto-86', () => {

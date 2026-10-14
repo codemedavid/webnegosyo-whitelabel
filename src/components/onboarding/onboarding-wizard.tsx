@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowRight, Eye, Loader2, X } from 'lucide-react'
+import { Owl } from '@/components/mascot/owl'
 import { MIN_OWNER_PASSWORD } from '@/lib/onboarding/answers'
 import { STORE_TYPES } from '@/lib/onboarding/store-type'
 import type { PublicOnboardingAssets } from '@/lib/onboarding/repository'
@@ -18,6 +19,7 @@ import { BrandStep, MenuStep, StoreStep } from './wizard-steps'
 import { AccountStep, HoursStep, OrderingStep, PaymentsStep } from './wizard-steps-setup'
 import { BestSellersStep } from './wizard-bestsellers'
 import { ChapterProgress } from './wizard-progress'
+import { guideOwlState } from './guide-owl'
 import { useMenuRead } from './use-menu-read'
 import {
   AUTO_ADVANCE_STEPS,
@@ -322,6 +324,8 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
   const storeName = draft.storeName.trim() || view.businessName
   const shift = isReducedMotion ? 0 : STEP_SHIFT_PX * direction
   const hasPreviewButton = PREVIEW_STEPS.has(step)
+  // Owl guides the set-up: he stays put while the questions slide, so he can react.
+  const owlState = guideOwlState(step, { isSubmitting, isUploadingMenu })
 
   const question = (
     <AnimatePresence mode="wait" initial={false} custom={direction}>
@@ -362,7 +366,10 @@ export function OnboardingWizard({ token, view, onSubmitted }: OnboardingWizardP
       <div className={`min-w-0 px-5 pb-40 pt-4 sm:px-8 ${isAboutChapter ? '' : 'lg:flex lg:items-start lg:justify-center lg:px-12 lg:pb-36 lg:pt-8'}`}>
         <div className={`mx-auto w-full ${isAboutChapter ? 'max-w-[36rem]' : 'max-w-[34rem]'}`}>
           {!isWelcome && <div className="mb-8"><ChapterProgress step={step} /></div>}
-          {isWelcome && <div className="h-6 sm:h-10" aria-hidden />}
+          {isWelcome && <div className="h-2 sm:h-6" aria-hidden />}
+          {isWelcome
+            ? <Owl state={owlState} size={132} className="mb-4" />
+            : <Owl state={owlState} framing="bust" size={56} className="mb-3" />}
           {question}
           {error && <div className="mt-6"><ErrorNote>{error}</ErrorNote></div>}
         </div>

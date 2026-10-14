@@ -3,9 +3,10 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowUpDown, Plus, SearchX, UtensilsCrossed } from 'lucide-react'
+import { ArrowUpDown, Plus, SearchX } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Owl } from '@/components/mascot/owl'
 import { toggleAvailabilityAction } from '@/app/actions/menu-items'
 import { describeActionError } from '@/components/admin/server-action-safety'
 import type { Category, OutletMenuOverride } from '@/types/database'
@@ -188,9 +189,7 @@ export function MenuItemsList({
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 py-16 text-center">
-        <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-          <UtensilsCrossed className="h-6 w-6 text-muted-foreground" />
-        </span>
+        <Owl state="waiting" size={120} className="mb-4" />
         <h3 className="text-lg font-semibold">Add your first dish</h3>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
           A photo, a name and a price is all it takes. It shows on your menu right away.

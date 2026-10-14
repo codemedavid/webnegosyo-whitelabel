@@ -16,6 +16,8 @@ import {
 } from "../../lib/order-collect";
 import { computeChange, quickTenderSuggestions } from "../../lib/pos-cash";
 import { formatPeso } from "../../lib/format";
+import { initialTenderLines, validateSplitTender, type TenderLine } from "../../lib/bill/split-tender";
+import { SplitTenderEditor } from "./SplitTenderEditor";
 
 export interface CollectPaymentMethod {
   id: string;
@@ -50,6 +52,11 @@ interface CollectPaymentSheetProps {
   title?: string;
   /** Defaults to "Record payment". */
   submitLabel?: string;
+  /**
+   * Offers "Split between methods" (₱120 GCash, the rest in cash) when given.
+   * Each payment is recorded under its own method.
+   */
+  onSubmitSplit?: (payments: CollectedPayment[]) => Promise<void>;
 }
 
 /**
@@ -76,6 +83,7 @@ export function CollectPaymentSheet({
   initialReference,
   title = "Collect payment",
   submitLabel = "Record payment",
+  onSubmitSplit,
 }: CollectPaymentSheetProps) {
   // Pre-filled with the whole balance: settling in full is the overwhelmingly
   // common case, and retyping a figure already on screen is how a wrong one
@@ -89,6 +97,8 @@ export function CollectPaymentSheet({
   const [reference, setReference] = useState(initialReference ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSplit, setIsSplit] = useState(false);
+  const [tenderLines, setTenderLines] = useState<readonly TenderLine[]>([]);
 
   // The sheet stays mounted between visits, so every opening starts from the
   // bill as it stands NOW — a part payment since the last visit has moved the
@@ -101,6 +111,8 @@ export function CollectPaymentSheet({
     setMethodId(defaultCollectMethodId(methods, preferredMethodName));
     setReference(initialReference ?? "");
     setError(null);
+    setIsSplit(false);
+    setTenderLines([]);
     // Re-seeded on opening only: a list refresh while the sheet is open must
     // not wipe what the cashier is typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,7 +126,33 @@ export function CollectPaymentSheet({
   const cashNumber = cash.trim() === "" ? -1 : Number(cash);
   const change = computeChange(collectingNow, Number.isFinite(cashNumber) ? cashNumber : -1);
   const suggestions = quickTenderSuggestions(collectingNow);
-  const isPartial = collectingNow > 0 && collectingNow < balanceDue - 0.005;
+  const isPartial = !isSplit && collectingNow > 0 && collectingNow < balanceDue - 0.005;
+  const canSplit = onSubmitSplit !== undefined && methods.length >= 2;
+
+  function toggleSplit() {
+    clearError();
+    if (isSplit) {
+      setIsSplit(false);
+      return;
+    }
+    setTenderLines(initialTenderLines(methods, methodId));
+    setIsSplit(true);
+  }
+
+  async function recordSplit() {
+    if (!onSubmitSplit) return;
+    const verdict = validateSplitTender(tenderLines, methods, balanceDue);
+    if (!verdict.ok) {
+      setError(verdict.error);
+      return;
+    }
+    setIsRecording(true);
+    try {
+      await onSubmitSplit(verdict.payments);
+    } finally {
+      setIsRecording(false);
+    }
+  }
 
   function close() {
     if (isRecording) return;
@@ -129,6 +167,10 @@ export function CollectPaymentSheet({
 
   async function record() {
     if (isRecording) return;
+    if (isSplit) {
+      await recordSplit();
+      return;
+    }
 
     const cashVerdict = isCash
       ? validateCashCollect({ amountRaw: amount, cashRaw: cash, balanceDue })
@@ -189,111 +231,133 @@ export function CollectPaymentSheet({
               <Text style={styles.owing}>{formatPeso(balanceDue)}</Text>
             </View>
 
-            {methods.length > 0 && (
+            {isSplit ? (
+              <SplitTenderEditor
+                lines={tenderLines}
+                methods={methods}
+                balanceDue={balanceDue}
+                onChange={(next) => {
+                  setTenderLines(next);
+                  clearError();
+                }}
+              />
+            ) : (
               <>
-                <Text style={styles.label}>Paid with</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  <View style={styles.methodRow}>
-                    {methods.map((candidate) => {
-                      const isActive = candidate.id === methodId;
-                      return (
+                {methods.length > 0 && (
+                  <>
+                    <Text style={styles.label}>Paid with</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      <View style={styles.methodRow}>
+                        {methods.map((candidate) => {
+                          const isActive = candidate.id === methodId;
+                          return (
+                            <TouchableOpacity
+                              key={candidate.id}
+                              style={[styles.methodChip, isActive && styles.methodChipActive]}
+                              onPress={() => {
+                                setMethodId(candidate.id);
+                                clearError();
+                              }}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: isActive }}
+                            >
+                              <Text style={[styles.methodText, isActive && styles.methodTextActive]}>
+                                {candidate.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </>
+                )}
+
+                {isCash ? (
+                  <>
+                    <Text style={styles.label}>Cash received</Text>
+                    <TextInput
+                      accessibilityLabel="Cash received"
+                      style={styles.cashInput}
+                      value={cash}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textTertiary}
+                      onChangeText={(next) => {
+                        setCash(next);
+                        clearError();
+                      }}
+                    />
+                    <View style={styles.suggestions}>
+                      {suggestions.map((suggestion, index) => (
                         <TouchableOpacity
-                          key={candidate.id}
-                          style={[styles.methodChip, isActive && styles.methodChipActive]}
+                          key={suggestion}
+                          style={styles.suggestion}
                           onPress={() => {
-                            setMethodId(candidate.id);
+                            setCash(suggestion.toFixed(2));
                             clearError();
                           }}
                           accessibilityRole="button"
-                          accessibilityState={{ selected: isActive }}
                         >
-                          <Text style={[styles.methodText, isActive && styles.methodTextActive]}>
-                            {candidate.name}
+                          <Text style={styles.suggestionText}>
+                            {index === 0 ? `Exact ${formatPeso(suggestion)}` : formatPeso(suggestion)}
                           </Text>
                         </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
+                      ))}
+                    </View>
+
+                    <View
+                      style={[styles.changeBox, change.isSufficient && styles.changeBoxReady]}
+                      accessibilityLabel={`Change ${formatPeso(change.changeDue)}`}
+                    >
+                      <Text style={styles.changeLabel}>Change</Text>
+                      <Text style={styles.changeAmount}>{formatPeso(change.changeDue)}</Text>
+                    </View>
+
+                    {isEditingAmount ? (
+                      amountInput
+                    ) : (
+                      <View style={styles.collectingRow}>
+                        <Text style={styles.collectingText}>
+                          Collecting {formatPeso(collectingNow)}
+                          {isPartial ? " (part of the bill)" : " — the full balance"}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => setIsEditingAmount(true)}
+                          accessibilityRole="button"
+                        >
+                          <Text style={styles.linkText}>Collect less</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {amountInput}
+                    <Text style={styles.label}>Reference number (optional)</Text>
+                    <TextInput
+                      accessibilityLabel="Reference number"
+                      style={styles.input}
+                      value={reference}
+                      onChangeText={setReference}
+                      autoCapitalize="characters"
+                      placeholder="e.g. GCash ref"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                  </>
+                )}
               </>
             )}
 
-            {isCash ? (
-              <>
-                <Text style={styles.label}>Cash received</Text>
-                <TextInput
-                  accessibilityLabel="Cash received"
-                  style={styles.cashInput}
-                  value={cash}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textTertiary}
-                  onChangeText={(next) => {
-                    setCash(next);
-                    clearError();
-                  }}
-                />
-                <View style={styles.suggestions}>
-                  {suggestions.map((suggestion, index) => (
-                    <TouchableOpacity
-                      key={suggestion}
-                      style={styles.suggestion}
-                      onPress={() => {
-                        setCash(suggestion.toFixed(2));
-                        clearError();
-                      }}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.suggestionText}>
-                        {index === 0 ? `Exact ${formatPeso(suggestion)}` : formatPeso(suggestion)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <View
-                  style={[styles.changeBox, change.isSufficient && styles.changeBoxReady]}
-                  accessibilityLabel={`Change ${formatPeso(change.changeDue)}`}
-                >
-                  <Text style={styles.changeLabel}>Change</Text>
-                  <Text style={styles.changeAmount}>{formatPeso(change.changeDue)}</Text>
-                </View>
-
-                {isEditingAmount ? (
-                  amountInput
-                ) : (
-                  <View style={styles.collectingRow}>
-                    <Text style={styles.collectingText}>
-                      Collecting {formatPeso(collectingNow)}
-                      {isPartial ? " (part of the bill)" : " — the full balance"}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => setIsEditingAmount(true)}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.linkText}>Collect less</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
-            ) : (
-              <>
-                {amountInput}
-                <Text style={styles.label}>Reference number (optional)</Text>
-                <TextInput
-                  accessibilityLabel="Reference number"
-                  style={styles.input}
-                  value={reference}
-                  onChangeText={setReference}
-                  autoCapitalize="characters"
-                  placeholder="e.g. GCash ref"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </>
+            {canSplit && (
+              <TouchableOpacity onPress={toggleSplit} accessibilityRole="button">
+                <Text style={styles.linkText}>
+                  {isSplit ? "Pay with one method" : "Split between methods (e.g. GCash + cash)"}
+                </Text>
+              </TouchableOpacity>
             )}
 
             {isPartial && (
@@ -314,7 +378,9 @@ export function CollectPaymentSheet({
               disabled={isRecording}
               accessibilityRole="button"
             >
-              <Text style={styles.submitText}>{isRecording ? "Recording..." : submitLabel}</Text>
+              <Text style={styles.submitText}>
+                {isRecording ? "Recording..." : isSplit ? `Record ${tenderLines.length} payments` : submitLabel}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={close} accessibilityRole="button">

@@ -73,10 +73,10 @@ bindSessionLossToAuth({
 });
 import { fetchWithTimeout } from "../lib/fetch-timeout";
 import * as Notifications from "expo-notifications";
-import { registerForPushNotifications, ensureOrdersChannel } from "../lib/notifications";
+import { registerForPushNotifications, ensureOrdersChannel, ensureStockAlertsChannel } from "../lib/notifications";
 import { platformDeviceRegistration } from "../lib/platform-device-token";
 import { upsertPlatformDeviceToken } from "../lib/announcements/service";
-import { announcementRouteFromPushData } from "../lib/announcements/popup";
+import { routeFromPushData } from "../lib/merchant-notifications/push-route";
 import { textingRouteFromPushData } from "../lib/sms-automations/push-route";
 import {
   shouldRegisterPushToken,
@@ -317,6 +317,7 @@ function usePushNotifications() {
   // first order's local alert can ring even if push registration hasn't run.
   useEffect(() => {
     ensureOrdersChannel().catch(() => {});
+    ensureStockAlertsChannel().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -445,17 +446,17 @@ function usePushNotifications() {
 }
 
 /**
- * Opens the screen an announcement push points at when the merchant taps it —
- * both for a tap that wakes a running app and for the tap that launched it.
- * Texting notifications ("texts are waiting", a campaign's send reminder) open
- * Texts or the campaign. Order pushes match neither and are left to the order
- * screens.
+ * Opens the screen a push points at when the merchant taps it — both for a
+ * tap that wakes a running app and for the tap that launched it. Handles
+ * What's New posts and low-stock alerts, then texting notifications ("texts are
+ * waiting", a campaign's send reminder) which open Texts or the campaign. Order
+ * pushes match none of these and are left to the order screens.
  */
-function useAnnouncementPushRouting() {
+function usePushTapRouting() {
   useEffect(() => {
     const open = (response: Notifications.NotificationResponse | null) => {
       const data = response?.notification.request.content.data;
-      const route = announcementRouteFromPushData(data) ?? textingRouteFromPushData(data);
+      const route = routeFromPushData(data) ?? textingRouteFromPushData(data);
       if (route) router.push(route as never);
     };
     Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
@@ -471,7 +472,7 @@ function RootLayout() {
   useAuthInit();
   useAuthRedirect();
   usePushNotifications();
-  useAnnouncementPushRouting();
+  usePushTapRouting();
 
   // Load saved device settings (printer config, register prefs) on app start
   useEffect(() => {

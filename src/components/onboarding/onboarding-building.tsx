@@ -3,6 +3,7 @@
 import { Check, Minus, Play, X } from 'lucide-react'
 import type { OnboardingBuildStepId, StepStatus } from '@/lib/onboarding/plan'
 import { GOALS, type GoalId } from '@/lib/onboarding/goals'
+import { Owl } from '@/components/mascot/owl'
 import type { OnboardingView } from '@/lib/onboarding/view'
 import { ACCENT, ACCENT_INK, ACCENT_SOFT, OB } from './onboarding-ui'
 import { LiveStoreFrame, PhoneFrame, PhoneSkeleton, StorePreviewPhone, type StorePreviewProps } from './store-preview-phone'
@@ -118,6 +119,7 @@ export function OnboardingBuilding({ view, isOpening = false, preview = null }: 
     <div className="lg:grid lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-2">
       <div className="px-5 pb-16 pt-8 sm:px-8 lg:flex lg:justify-center lg:px-12 lg:pt-16">
         <div className="mx-auto w-full max-w-[34rem]">
+          <Owl state="thinking" size={120} className="mb-5" />
           <p className="text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: OB.faint }}>Go live</p>
           <h1 className="mt-2 text-balance text-[2.25rem] font-extrabold leading-[1.06] tracking-[-0.03em] sm:text-[3rem]" style={{ color: OB.ink }}>
             Building {storeName}

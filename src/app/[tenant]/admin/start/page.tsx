@@ -1,4 +1,3 @@
-import Image from 'next/image'
 import { notFound, redirect } from 'next/navigation'
 import { getCachedTenantBySlug } from '@/lib/cache'
 import { verifyTenantAdmin } from '@/lib/admin-service'
@@ -12,6 +11,7 @@ import { findOnboardingByTenant } from '@/lib/onboarding/repository'
 import { loadLaunchSnapshot } from '@/lib/onboarding/launch-snapshot'
 import { buildLaunchReadiness } from '@/lib/onboarding/readiness'
 import { listStoreAddresses } from '@/lib/qr-print/qr-links'
+import { Owl } from '@/components/mascot/owl'
 import { LaunchChecklist } from '@/components/admin/launch/launch-checklist'
 import { PathStepRow, type LessonChip } from '@/components/admin/start-here/path-step'
 import { GoalTrackerCard } from '@/components/admin/start-here/goal-tracker-card'
@@ -97,7 +97,9 @@ export default async function StartHerePage({ params }: StartPageProps) {
       )}
 
       <header className="flex items-start gap-3.5">
-        <Image src="/assistant/owl-96.webp" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-full ring-1 ring-wn-line" />
+        <span className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-gradient-to-b from-[#FFF8EA] to-[#FCE3B4] ring-1 ring-wn-line">
+          <Owl framing="bust" size={48} state={data.path.isComplete ? 'happy' : 'idle'} />
+        </span>
         <div className="min-w-0 flex-1">
           <h1 className="text-[1.6rem] font-extrabold leading-tight tracking-[-0.02em] text-wn-ink sm:text-[1.85rem]">
             {data.path.isComplete ? 'You finished your first weeks' : greeting}
