@@ -18,7 +18,7 @@ Plan: `docs/plans/2026-10-12-reports-and-inventory-suite.md` §6 (roles), §8.7 
 
 | File | State | What |
 |---|---|---|
-| `20261013120000_staff_permission_keys.sql` | **APPLIED 2026-10-13** (`staff_permission_keys`), probed | `app_user_has_permission` defined in full on this branch (it existed live only from the unmerged gov-discounts/store-activity branches). Strict superset of the live body: adds `reports` ← `analytics`. Changes nobody's access today (no one holds `reports` by name). |
+| `20261013120050_staff_permission_keys.sql` | **APPLIED 2026-10-13** (`staff_permission_keys`), probed | `app_user_has_permission` defined in full on this branch (it existed live only from the unmerged gov-discounts/store-activity branches). Strict superset of the live body: adds `reports` ← `analytics`. Changes nobody's access today (no one holds `reports` by name). |
 | `20261013120100_inventory_costs_permission_gates.sql` | **Rehearsed, NOT applied — apply with the deploy** | Backfill `inventory`+`costs` onto every scoped `menu` holder (27); stock writes → `inventory`; a delivery PRICE → `costs` (dropped otherwise); ingredient row split (master `menu`, `unit_cost` `costs`, changing `reorder_level` `inventory`); `order_item_costs` → `costs`; counts/transfers paperwork → `inventory`. |
 | `20261013120200_order_reads_need_permission.sql` | **Rehearsed, NOT applied — apply with the deploy** | HIGH-3: `orders` (and `order_items` through its EXISTS) need one of `ORDER_READ_KEYS`; `order_payments` + `order_revisions` need one of `PAYMENT_READ_KEYS`. Staff INSERT/UPDATE policies on the same tables carry the same check (a plain INSERT never consults a SELECT policy). |
 

@@ -86,7 +86,7 @@ begin
     raise exception 'PROBE FAIL 1: no approval.requested activity row';
   end if;
   -- Same tap again (same request) returns the same request. (Since
-  -- 20261012170000 a replay with DIFFERENT details is idempotency_conflict.)
+  -- 20261012170300 a replay with DIFFERENT details is idempotency_conflict.)
   v_out := public.create_approval_request(c_tenant, c_staff, 'refund', v_order::text,
     jsonb_build_object('scope', 'items', 'lines', jsonb_build_array(jsonb_build_object('orderItemId', v_item, 'quantity', 1)),
                        'restock', false, 'reasonLabel', 'Wrong item served'),

@@ -7,7 +7,7 @@
 //   PRE_0D_POLICIES    order/payment/revision policies as live BEFORE 0d
 //                      (20261013120200 alters them; load it after these)
 // Requires installPlatformAuth (lib/platform-auth.cjs) and, for the status
-// guard in PRE_0D_POLICIES, app_user_has_permission (20261013120000) first.
+// guard in PRE_0D_POLICIES, app_user_has_permission (20261013120050) first.
 const STUB_SCHEMA = `
   create table tenants (id uuid primary key, is_active boolean not null default true, lalamove_enabled boolean default false);
   create table outlets (id uuid primary key, tenant_id uuid not null);

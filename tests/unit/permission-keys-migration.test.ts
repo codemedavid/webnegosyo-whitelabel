@@ -1,7 +1,7 @@
 /**
  * Phase 0d migrations, pinned to the TypeScript registry they mirror.
  *
- *   20261013120000  app_user_has_permission learns `reports` <- `analytics`
+ *   20261013120050  app_user_has_permission learns `reports` <- `analytics`
  *                   (APPLIED 2026-10-13)
  *   20261013120100  backfill inventory+costs onto menu holders; stock/cost
  *                   gates move off `menu`            (apply WITH the deploy)
@@ -26,7 +26,7 @@ const code = (sql: string): string =>
     .filter((line) => !line.trimStart().startsWith('--'))
     .join('\n')
 
-const KEYS = code(migration('20261013120000_staff_permission_keys.sql'))
+const KEYS = code(migration('20261013120050_staff_permission_keys.sql'))
 const GATES = code(migration('20261013120100_inventory_costs_permission_gates.sql'))
 const ORDERS = code(migration('20261013120200_order_reads_need_permission.sql'))
 
@@ -43,7 +43,7 @@ function sqlArray(keys: readonly string[]): string {
   return `array[${keys.map((key) => `'${key}'`).join(', ')}]`
 }
 
-describe('20261013120000 app_user_has_permission', () => {
+describe('20261013120050 app_user_has_permission', () => {
   const body = functionBody(KEYS, 'app_user_has_permission')
 
   it('honours every IMPLIED_BY containment of the registry', () => {

@@ -1,4 +1,4 @@
--- Probe for 20261012170000_approvals_hardening.sql. ONE transaction, ends in
+-- Probe for 20261012170300_approvals_hardening.sql. ONE transaction, ends in
 -- ROLLBACK. RAISEs on the first failure; NOTICEs on passes. Run after
 -- 20261012140000, 20261012150000..152000, 20261012160000 and 20261012170000
 -- are applied, as the postgres / service owner.

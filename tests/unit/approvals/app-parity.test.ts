@@ -10,7 +10,7 @@ import * as app from '../../../webnegosyo-app/lib/approvals/types'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const HARDENING = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20261012170000_approvals_hardening.sql'), 'utf8')
+const HARDENING = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20261012170300_approvals_hardening.sql'), 'utf8')
 
 describe('approvals vocabulary: web ⇄ app', () => {
   test('kinds and statuses match', () => {
@@ -31,7 +31,7 @@ describe('approvals vocabulary: web ⇄ app', () => {
   })
 })
 
-describe('approvals hardening migration (20261012170000)', () => {
+describe('approvals hardening migration (20261012170300)', () => {
   test('every refund row, from any role, goes through the guard', () => {
     expect(HARDENING).toMatch(/create trigger order_payments_refund_guard\s+before insert on public\.order_payments\s+for each row\s+when \(new\.kind = 'refund'\)/)
   })

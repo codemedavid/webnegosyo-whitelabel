@@ -45,7 +45,7 @@ export const STAFF_PERMISSION_KEYS = [
   // low-stock bell. Carved out of 'menu', which keeps recipes and the
   // ingredient master, so a kitchen hand can count the shelf without editing
   // the menu. Every account holding 'menu' was given it once (migration
-  // 20261013120000), so nobody lost the stock screens.
+  // 20261013120100), so nobody lost the stock screens.
   'inventory',
   // What things cost: ingredient prices, dish cost, COGS, gross profit and
   // food cost %. The database enforces every cost CHANGE (a price edit or a

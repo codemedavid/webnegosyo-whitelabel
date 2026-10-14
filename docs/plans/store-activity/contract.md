@@ -186,7 +186,7 @@ push should feed THAT inbox once it lands on main, not build a second bell.
   a requester must reach the order's branch (approval_user_reaches); an approver's cap applies to
   decline too (design-spec §3.7: over-limit requests are read-only, the owner answers them).
 
-### Approvals hardening (20261012170000, 2026-10-13)
+### Approvals hardening (20261012170300, 2026-10-13)
 
 - Every `order_payments` refund row (any role) passes `order_payments_refund_guard`: order locked, refunds
   never exceed what was charged (implicit ledger = paid-by-status total). Client roles also need the direct

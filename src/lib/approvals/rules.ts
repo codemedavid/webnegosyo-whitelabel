@@ -105,7 +105,7 @@ export type RouteDecision =
 
 /**
  * Refund / cancel within the person's own limit — the TS twin of
- * approval_refund_within_own_limit (20261012170000). Cumulative on purpose:
+ * approval_refund_within_own_limit (20261012170300). Cumulative on purpose:
  * the ORDER's refunds stay within the cap however they are split, and an
  * order_refund holder's direct refunds today stay within the manager cap.
  */

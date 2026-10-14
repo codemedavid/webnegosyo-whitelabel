@@ -111,7 +111,7 @@ export interface ApprovalRefusal {
 
 /**
  * The database's refusal when a register writes a refund row beyond the
- * cashier's own limit (order_payments_refund_guard, 20261012170000). The app
+ * cashier's own limit (order_payments_refund_guard, 20261012170300). The app
  * matches this exact text to offer "Ask a manager" instead of an error.
  */
 export const REFUND_NEEDS_APPROVAL_MESSAGE = 'This refund needs approval. Ask a manager to approve it.'

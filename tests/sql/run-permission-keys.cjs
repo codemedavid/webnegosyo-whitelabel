@@ -1,7 +1,7 @@
 // Phase 0d permission keys, pinned in an isolated PostgreSQL (PGlite).
 //
 // Loads the REAL migrations
-//   20261013120000_staff_permission_keys.sql      app_user_has_permission (applied live 2026-10-13)
+//   20261013120050_staff_permission_keys.sql      app_user_has_permission (applied live 2026-10-13)
 //   20261013120200_order_reads_need_permission.sql HIGH-3: order reads/writes need an order key
 // over a stub of the live platform schema, then checks every rule as the role
 // that really runs the query: anon, owner, legacy full access, scoped staff,
@@ -250,7 +250,7 @@ async function main() {
   try {
     await installPlatformAuth(db)
     await db.exec(STUB_SCHEMA)
-    await db.exec(readMigration('20261013120000_staff_permission_keys.sql'))
+    await db.exec(readMigration('20261013120050_staff_permission_keys.sql'))
     await db.exec(PRE_0D_POLICIES)
     await db.exec(SEED)
     await checkBaseline(db)

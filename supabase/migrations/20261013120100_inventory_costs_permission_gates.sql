@@ -1,6 +1,6 @@
 -- ===========================================================================
 -- Move the database's inventory and cost gates off `menu` (Phase 0d, §6.1).
--- Requires 20261013120000_staff_permission_keys (app_user_has_permission).
+-- Requires 20261013120050_staff_permission_keys (app_user_has_permission).
 --
 --   menu      keeps: the ingredient master (add / rename / archive an
 --             ingredient, its unit, category, photo), recipes, units,

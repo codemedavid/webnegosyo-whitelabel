@@ -78,7 +78,7 @@ async function build(scenario) {
   const db = new PGlite()
   await installPlatformAuth(db)
   await db.exec(STUB_SCHEMA)
-  await db.exec(readMigration('20261013120000_staff_permission_keys.sql'))
+  await db.exec(readMigration('20261013120050_staff_permission_keys.sql'))
   await db.exec(PRE_0D_POLICIES)
   await db.exec(REPORT_COLUMNS)
   await db.exec(readMigration('20261013090000_orders_discount_total_sync.sql'))

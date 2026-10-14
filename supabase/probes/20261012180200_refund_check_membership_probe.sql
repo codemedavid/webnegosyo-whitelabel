@@ -1,4 +1,4 @@
--- Probe for 20261012180000_refund_check_membership.sql. ONE transaction, ends
+-- Probe for 20261012180200_refund_check_membership.sql. ONE transaction, ends
 -- in ROLLBACK. RAISEs on the first failure.
 --
 -- Fixtures (real platform rows):

@@ -1,6 +1,6 @@
 -- Direct refunds are serialized; the refund check answers only a branch the
 -- caller reaches; append-only ledgers cannot be truncated. Follow-up to
--- 20261012170000_approvals_hardening.sql and 20261012180000_refund_check_membership.sql.
+-- 20261012170300_approvals_hardening.sql and 20261012180200_refund_check_membership.sql.
 --
 -- 1. Race on cumulative limits (review 2026-10-15). create_and_execute_approval
 --    quoted a direct refund (order's refunds so far + this <= cap; the person's
@@ -27,7 +27,7 @@
 --    store_activity (reviews go through mark_store_activity_reviewed).
 --
 -- Rollback: re-run create_and_execute_approval from 20261012160000 and
--- order_refund_insert_check from 20261012180000; drop function
+-- order_refund_insert_check from 20261012180200; drop function
 -- public.approval_direct_lock_key(uuid, uuid); grant truncate back if wanted.
 
 set lock_timeout = '5s';

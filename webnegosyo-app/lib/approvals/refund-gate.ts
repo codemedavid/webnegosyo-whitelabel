@@ -2,7 +2,7 @@
  * May this cashier record a refund straight into the ledger? — pure.
  *
  * The database refuses a client `order_payments` refund row beyond the
- * caller's own limit (order_payments_refund_guard, 20261012170000) with
+ * caller's own limit (order_payments_refund_guard, 20261012170300) with
  * REFUND_NEEDS_APPROVAL_MESSAGE. The register's edit saves the order revision
  * BEFORE the refund row, so the decision must be made here, first: this is
  * the twin of the server's `refundWithinOwnLimit` (src/lib/approvals/rules.ts):

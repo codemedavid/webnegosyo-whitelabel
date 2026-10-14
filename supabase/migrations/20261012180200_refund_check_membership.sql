@@ -1,4 +1,4 @@
--- Refund check answers only the order's own store — follow-up to 20261012170000.
+-- Refund check answers only the order's own store — follow-up to 20261012170300.
 --
 -- order_refund_insert_check must stay EXECUTE-able by `authenticated` (the
 -- invoker trigger order_payments_refund_guard runs it AS the inserting staff
@@ -9,7 +9,7 @@
 -- (order_payments_insert_admin) anyway. The server (auth.uid() IS NULL:
 -- service role, execute_refund) is unchanged.
 --
--- Rollback: re-run order_refund_insert_check from 20261012170000.
+-- Rollback: re-run order_refund_insert_check from 20261012170300.
 
 create or replace function public.order_refund_insert_check(p_order_id uuid, p_amount numeric, p_is_client boolean)
 returns void

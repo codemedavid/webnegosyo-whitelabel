@@ -1,5 +1,5 @@
 /**
- * Direct refunds are serialized (follow-up to 20261012170000 / 180000),
+ * Direct refunds are serialized (follow-up to 20261012170300 / 180200),
  * asserted against the migration corpus: the LATEST definition of each
  * function must hold the locks, so a later migration cannot quietly undo it.
  *
