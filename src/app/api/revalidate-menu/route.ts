@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireBearerStoreCaller } from '@/lib/auth/bearer-caller'
 import { revalidatePath } from 'next/cache'
 import { readTenantSlugById } from '@/lib/tenant-revalidation'
+import { generateCacheKey, invalidateCache } from '@/lib/redis-cache'
 
 /**
  * POST /api/revalidate-menu
@@ -17,6 +18,11 @@ import { readTenantSlugById } from '@/lib/tenant-revalidation'
  * for it. The purged slug is read from that tenant's row: a body `tenantSlug`
  * (still sent by older app builds) is ignored, because `[tenant]` would purge
  * every storefront.
+ *
+ * The admin's menu and category lists are also held in Redis (5 and 10 min),
+ * and only the web's own writers drop those entries, so they are dropped here
+ * too; otherwise an item edited on the phone shows its old state on the web
+ * admin until the entry expires.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json().catch(() => null)
@@ -37,6 +43,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   revalidatePath(`/${tenantSlug}/menu`)
   revalidatePath(`/${tenantSlug}/menu/item/[itemId]`, 'page')
+  await Promise.all([
+    invalidateCache(generateCacheKey('menu-items', tenantId)),
+    invalidateCache(generateCacheKey('categories', tenantId)),
+  ])
 
   return NextResponse.json({ success: true })
 }
