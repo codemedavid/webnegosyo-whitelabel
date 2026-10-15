@@ -20,6 +20,11 @@ jest.mock('next/cache', () => ({
   revalidatePath: jest.fn(),
 }))
 
+jest.mock('@/lib/redis-cache', () => ({
+  invalidateCache: jest.fn(async () => undefined),
+  generateCacheKey: (type: string, identifier: string) => `${type}:${identifier}`,
+}))
+
 function makeRequest(body: unknown, authHeader?: string): NextRequest {
   return new NextRequest('http://localhost/api/revalidate-menu', {
     method: 'POST',
@@ -142,6 +147,31 @@ describe('POST /api/revalidate-menu', () => {
     expect(res.status).toBe(200)
     expect(json.success).toBe(true)
     expect(revalidatePath).toHaveBeenCalledWith('/coffee/menu')
+  })
+
+  test("drops the tenant's Redis menu and category entries, which the app's writes never touch", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
+    singleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 't1' }, error: null })
+    const { POST } = await import('@/app/api/revalidate-menu/route')
+    const { invalidateCache } = await import('@/lib/redis-cache')
+
+    const res = await POST(makeRequest({ tenantId: 't1' }, 'Bearer token-1'))
+
+    expect(res.status).toBe(200)
+    expect(invalidateCache).toHaveBeenCalledWith('menu-items:t1')
+    expect(invalidateCache).toHaveBeenCalledWith('categories:t1')
+  })
+
+  test('drops no Redis entries for a caller from another store', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null })
+    singleMock.mockResolvedValue({ data: { role: 'admin', tenant_id: 'other-tenant' }, error: null })
+    const { POST } = await import('@/app/api/revalidate-menu/route')
+    const { invalidateCache } = await import('@/lib/redis-cache')
+
+    const res = await POST(makeRequest({ tenantId: 't1' }, 'Bearer token-1'))
+
+    expect(res.status).toBe(403)
+    expect(invalidateCache).not.toHaveBeenCalled()
   })
 
   test('allows a superadmin to revalidate any tenant', async () => {

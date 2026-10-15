@@ -9612,6 +9612,10 @@ export type Database = {
         Args: { p_permission: string; p_tenant_id: string }
         Returns: boolean
       }
+      app_user_holds_any_permission: {
+        Args: { p_keys: string[]; p_tenant_id: string }
+        Returns: boolean
+      }
       app_user_is_store_owner: {
         Args: { p_tenant_id: string }
         Returns: boolean
