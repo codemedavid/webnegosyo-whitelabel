@@ -53,6 +53,10 @@ import {
 } from '@/lib/category-studio'
 import { reorderCategoriesAction, updateCategoryAction } from '@/app/actions/categories'
 import { publishStudio } from '@/lib/branding-studio/publish-studio'
+import { createTenantColorResolver } from '@/lib/branding-studio/tenant-field-effective'
+import { listTenantContrastIssues } from '@/lib/branding-studio/tenant-contrast'
+import type { StoreColor } from './color-picker'
+import { ContrastSummary } from './contrast-summary'
 import { componentBreadcrumb, getBrandingComponent } from '@/lib/branding-components'
 import { FieldRow } from './field-row'
 import { ComponentPanel, EditModeToggle, SettingsSearch, matchesSettingQuery } from './component-panel'
@@ -140,6 +144,21 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   // Product Detail rows resolve through the product page's own merge, against
   // the desktop brand the merchant is editing right now.
   const desktopBranding = useMemo(() => getTenantBranding({ ...savedTenant, ...draft }), [savedTenant, draft])
+  // Store-wide rows show what the storefront renders (palette, legacy brand
+  // colour, modal → cards fallbacks), not just the registry's own chain.
+  const tenantColor = useMemo(() => createTenantColorResolver(draft, savedTenant), [draft, savedTenant])
+  // The store's own colours, offered first in every colour picker.
+  const storeColors = useMemo<StoreColor[]>(() => [
+    { label: 'Brand', color: desktopBranding.accent },
+    { label: 'Main', color: desktopBranding.primary },
+    { label: 'Button', color: desktopBranding.buttonPrimary },
+    { label: 'Page', color: desktopBranding.background },
+    { label: 'Cards', color: desktopBranding.cards },
+    { label: 'Text', color: desktopBranding.textPrimary },
+    { label: 'Soft text', color: desktopBranding.textSecondary },
+    { label: 'Lines', color: desktopBranding.border },
+  ].filter((entry): entry is StoreColor => typeof entry.color === 'string' && entry.color.length > 0), [desktopBranding])
+  const contrastIssues = useMemo(() => listTenantContrastIssues(draft, savedTenant), [draft, savedTenant])
   const productFields = useMemo(
     () => createProductFieldResolver(productDraft, savedProduct, desktopBranding),
     [productDraft, savedProduct, desktopBranding]
@@ -325,8 +344,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     // Desktop-resolved value first — mobile rows fall back to it when they
     // have no override of their own.
     const productField = isProductSurface ? productFields.effective(field.id) : null
-    const desktopValue = productField ? productField.value : resolveFieldValue(field.id, draft, savedTenant)
     const desktopIsSet = productField ? productField.isSet : isFieldSet(field.id, draft, savedTenant)
+    const desktopValue = productField
+      ? productField.value
+      : (!desktopIsSet && tenantColor(field.id)) || resolveFieldValue(field.id, draft, savedTenant)
     const desktopInherit = productField ? productField.inheritLabel : getInheritSourceLabel(field.id, draft, savedTenant)
     const activeMobileDraft = isProductSurface ? mobileProductDraft : mobileDraft
     const activeSavedMobile = isProductSurface ? savedMobileProduct : savedMobile
@@ -363,7 +384,14 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
               ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
               : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
           }
-          contrastIssue={productField && !usesMobilePath ? productFields.contrastIssue(field.id) : null}
+          contrastIssue={
+            usesMobilePath
+              ? null
+              : productField
+                ? productFields.contrastIssue(field.id)
+                : contrastIssues.find((issue) => issue.fieldId === field.id) ?? null
+          }
+          storeColors={storeColors}
         />
       </div>
     )
@@ -484,8 +512,28 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
+            {!selectedComponent && !isCategoriesSurface && (
+              <SettingsSearch
+                query={settingQuery}
+                onQueryChange={(query) => {
+                  setSettingQuery(query)
+                  setHoveredFieldId(null)
+                }}
+                inputRef={searchInputRef}
+              />
+            )}
+
+            {/* Store-wide readability — global surface only */}
+            {surface.id === 'global' && !selectedComponent && !settingQuery.trim() && (
+              <ContrastSummary
+                issues={contrastIssues}
+                onFix={(fieldId, color) => setFieldValue(fieldId, color)}
+                onFixAll={() => applyValues(Object.fromEntries(contrastIssues.map((issue) => [issue.fieldId, issue.fix])))}
+              />
+            )}
+
             {/* Palette presets — global surface only */}
-            {surface.id === 'global' && (
+            {surface.id === 'global' && !selectedComponent && !settingQuery.trim() && (
               <div className="border-b border-[#E5E0D6] px-[18px] pb-4 pt-3.5">
                 <div className="mb-2.5 text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">
                   Palette presets
@@ -557,16 +605,6 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
               />
             ) : (
               <>
-                {!isCategoriesSurface && (
-                  <SettingsSearch
-                    query={settingQuery}
-                    onQueryChange={(query) => {
-                      setSettingQuery(query)
-                      setHoveredFieldId(null)
-                    }}
-                    inputRef={searchInputRef}
-                  />
-                )}
                 {/* Accordion sections — every setting on the screen */}
                 {panelSections.map((section, sectionIndex) => {
                   const isSearching = settingQuery.trim().length > 0

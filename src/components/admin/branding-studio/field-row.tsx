@@ -11,6 +11,7 @@ import type { BrandingField } from '@/lib/branding-registry'
 import type { PromotionBanner } from '@/types/database'
 import { ImageUpload } from '@/components/shared/image-upload'
 import { CardTemplateGallery, PageLayoutGallery, type GalleryContext } from './template-gallery'
+import { ColorPicker, type StoreColor } from './color-picker'
 
 export interface FieldRowProps {
   field: BrandingField
@@ -28,6 +29,8 @@ export interface FieldRowProps {
   gallery?: GalleryContext
   /** A chosen colour that is hard to read on its fill, with the one-tap fix. */
   contrastIssue?: { ratio: number; minRatio: number; fix: string } | null
+  /** The store's own colours, offered first in the colour picker. */
+  storeColors?: readonly StoreColor[]
 }
 
 const INHERIT_SOURCE_TEXT: Record<string, string> = {
@@ -41,7 +44,7 @@ function toPickerHex(value: unknown): string {
   return typeof value === 'string' && HEX_COLOR_PATTERN.test(value) ? value : '#000000'
 }
 
-function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear, contrastIssue }: FieldRowProps) {
+function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear, contrastIssue, storeColors }: FieldRowProps) {
   const hex = toPickerHex(value)
   const sourceText = INHERIT_SOURCE_TEXT[inheritLabel]
   return (
@@ -68,19 +71,31 @@ function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear, contra
       <span className="font-mono text-[10.5px] text-neutral-400">
         {typeof value === 'string' && value ? value : ''}
       </span>
-      <label
-        className={`relative h-6 w-9 flex-shrink-0 cursor-pointer overflow-hidden rounded-md ${
-          isSet ? 'ring-2 ring-neutral-800' : 'border-[1.5px] border-dashed border-neutral-300'
-        }`}
-      >
-        <input
-          type="color"
-          value={hex}
-          onChange={(e) => onChange(e.target.value)}
-          aria-label={field.label}
-          className="absolute -inset-2 h-12 w-14 cursor-pointer border-none p-0"
+      {storeColors ? (
+        <ColorPicker
+          label={field.label}
+          value={typeof value === 'string' ? value : ''}
+          storeColors={storeColors}
+          onChange={(color) => onChange(color)}
+          onUseDefault={onClear}
+          defaultLabel={field.inheritsFrom ? inheritLabel : undefined}
+          isSet={isSet}
         />
-      </label>
+      ) : (
+        <label
+          className={`relative h-6 w-9 flex-shrink-0 cursor-pointer overflow-hidden rounded-md ${
+            isSet ? 'ring-2 ring-neutral-800' : 'border-[1.5px] border-dashed border-neutral-300'
+          }`}
+        >
+          <input
+            type="color"
+            value={hex}
+            onChange={(e) => onChange(e.target.value)}
+            aria-label={field.label}
+            className="absolute -inset-2 h-12 w-14 cursor-pointer border-none p-0"
+          />
+        </label>
+      )}
     </div>
     {contrastIssue && (
       <div role="status" className="mt-1 flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900">
