@@ -140,3 +140,21 @@ export function componentsUsingField(surfaceId: BrandingSurface['id'], fieldId: 
     const elements = owners.filter((component) => component.parent !== null)
     return (elements.length > 0 ? elements : owners).map((component) => component.id)
 }
+
+export interface ComponentTreeNode {
+    component: BrandingComponent
+    children: BrandingComponent[]
+}
+
+/**
+ * Every tappable part of a screen as a two-level tree (section › element),
+ * in registry order — the keyboard / screen-reader way to pick a part.
+ */
+export function componentTree(surfaceId: BrandingSurface['id']): ComponentTreeNode[] {
+    const onSurface = Object.values(BRANDING_COMPONENTS).filter((component) => component.surfaceId === surfaceId)
+    const isListedUnderParent = (component: BrandingComponent) =>
+        component.parent !== null && onSurface.some((candidate) => candidate.id === component.parent)
+    return onSurface
+        .filter((component) => !isListedUnderParent(component))
+        .map((component) => ({ component, children: onSurface.filter((child) => child.parent === component.id) }))
+}

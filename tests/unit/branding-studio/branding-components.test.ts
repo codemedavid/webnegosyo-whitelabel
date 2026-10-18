@@ -13,6 +13,7 @@ import {
     componentsUsingField,
     getBrandingComponent,
     BRANDING_COMPONENTS,
+    componentTree,
 } from '@/lib/branding-components'
 
 describe('branding components', () => {
@@ -107,5 +108,22 @@ describe('label parts', () => {
 
     it('the checkout button opens its colours', () => {
         expect(getBrandingComponent('checkout/place-order')?.fieldIds).toEqual(['checkout_button_color', 'checkout_button_text_color'])
+    })
+})
+
+describe('componentTree', () => {
+    it('lists each section once with its elements under it', () => {
+        const tree = componentTree('product')
+        const footer = tree.find((node) => node.component.id === 'product/sticky-footer')
+
+        expect(footer?.children.map((child) => child.id)).toContain('product/add-to-cart')
+        expect(tree.some((node) => node.component.id === 'product/add-to-cart')).toBe(false)
+    })
+
+    it('covers every part of the screen exactly once', () => {
+        const ids = componentTree('checkout').flatMap((node) => [node.component.id, ...node.children.map((child) => child.id)])
+        const expected = Object.values(BRANDING_COMPONENTS).filter((component) => component.surfaceId === 'checkout').map((component) => component.id)
+
+        expect([...ids].sort()).toEqual([...expected].sort())
     })
 })

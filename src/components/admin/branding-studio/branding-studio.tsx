@@ -71,6 +71,7 @@ import { componentBreadcrumb, getBrandingComponent } from '@/lib/branding-compon
 import { FieldRow } from './field-row'
 import { ComponentPanel, EditModeToggle, SettingsSearch, matchesSettingQuery } from './component-panel'
 import { SettingsSheet, SurfaceRail, previewInsetFor, type SheetSize } from './studio-shell'
+import { PartsList } from './parts-list'
 import { ChangesMenu, HistoryButtons, RestoreBanner } from './changes-menu'
 import { useStudioDrafts } from './use-studio-drafts'
 import { PreviewFrame } from './preview-frame'
@@ -564,6 +565,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
               />
             )}
 
+            {!selectedComponent && !isCategoriesSurface && !settingQuery.trim() && (
+              <PartsList surfaceId={surface.id} onSelect={handleScopeSelected} />
+            )}
+
             {/* Store-wide readability — global surface only */}
             {surface.id === 'global' && !selectedComponent && !settingQuery.trim() && (
               <ContrastSummary
@@ -697,6 +702,9 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
             <div className="h-8" />
           </div>
         </SettingsSheet>
+        <div role="status" aria-live="polite" className="sr-only">
+          {selectedComponent ? `Editing ${selectedComponent.label}` : ''}
+        </div>
 
         {/* ============ LIVE PREVIEW ============ */}
         <PreviewFrame
