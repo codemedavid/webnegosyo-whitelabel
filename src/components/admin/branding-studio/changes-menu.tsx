@@ -54,15 +54,20 @@ export function ChangesMenu({ changes, onRevert, onDiscardAll }: ChangesMenuProp
     useEffect(() => {
         if (!isOpen) return
         const close = (event: MouseEvent | KeyboardEvent) => {
-            if (event instanceof KeyboardEvent ? event.key === 'Escape' : !menuRef.current?.contains(event.target as Node)) {
+            if (event instanceof KeyboardEvent) {
+                if (event.key !== 'Escape') return
+                // The Studio's own Esc (step out of a selection) must not also fire.
+                event.preventDefault()
                 setIsOpen(false)
+                return
             }
+            if (!menuRef.current?.contains(event.target as Node)) setIsOpen(false)
         }
         window.addEventListener('mousedown', close)
-        window.addEventListener('keydown', close)
+        window.addEventListener('keydown', close, true)
         return () => {
             window.removeEventListener('mousedown', close)
-            window.removeEventListener('keydown', close)
+            window.removeEventListener('keydown', close, true)
         }
     }, [isOpen])
 

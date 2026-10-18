@@ -24,6 +24,7 @@ import {
   resolveFieldValue,
   editsTenantColumn,
   isFieldVisible,
+  type BrandingField,
   type BrandingSurface,
 } from '@/lib/branding-registry'
 import { getTenantBranding } from '@/lib/branding-utils'
@@ -44,8 +45,6 @@ import {
   resolveMobileFieldValue,
 } from '@/lib/mobile-overrides'
 import {
-  resolveBrandingScope,
-  getScopeSectionIndex,
   getBrandingSectionAnchorId,
   getBrandingFieldAnchorId,
 } from '@/lib/branding-inspect'
@@ -54,7 +53,9 @@ import {
 } from '@/lib/category-studio'
 import { reorderCategoriesAction, updateCategoryAction } from '@/app/actions/categories'
 import { publishStudio } from '@/lib/branding-studio/publish-studio'
+import { componentBreadcrumb, getBrandingComponent } from '@/lib/branding-components'
 import { FieldRow } from './field-row'
+import { ComponentPanel, EditModeToggle, SettingsSearch, matchesSettingQuery } from './component-panel'
 import { ChangesMenu, HistoryButtons, RestoreBanner } from './changes-menu'
 import { useStudioDrafts } from './use-studio-drafts'
 import { PreviewFrame } from './preview-frame'
@@ -63,10 +64,6 @@ import type { GalleryContext } from './template-gallery'
 import type { Category, MenuItem, Tenant } from '@/types/database'
 
 const PUBLISHED_TOAST_MS = 2500
-/** How long a section header pulses after a click-to-inspect jump. */
-const SECTION_FLASH_MS = 1600
-/** Wait for the accordion to open before scrolling the section into view. */
-const SECTION_SCROLL_DELAY_MS = 60
 
 interface BrandingStudioProps {
   tenant: Tenant
@@ -124,11 +121,15 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const [isPublishing, setIsPublishing] = useState(false)
   const publishingRef = useRef(false)
   const [showPublishedToast, setShowPublishedToast] = useState(false)
-  // Click-to-inspect: while on, the preview highlights hovered regions and a
-  // click jumps the panel to that region's settings section.
-  const [isInspecting, setIsInspecting] = useState(false)
-  const [flashSectionIndex, setFlashSectionIndex] = useState<number | null>(null)
-  const [flashFieldId, setFlashFieldId] = useState<string | null>(null)
+  // Tap-to-edit: in Edit mode a tap in the preview selects that part and the
+  // panel shows only its settings; Try it lets the preview behave like the store.
+  const [isEditing, setIsEditing] = useState(true)
+  const [selectedScope, setSelectedScope] = useState<string | null>(null)
+  const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null)
+  const [settingQuery, setSettingQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const selectedScopeRef = useRef(selectedScope)
+  selectedScopeRef.current = selectedScope
 
   const isMobile = device === 'mobile'
 
@@ -191,14 +192,29 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const setMobileProductFieldValue = useCallback((fieldId: string, value: unknown) => setField('mobileProduct', fieldId, value), [setField])
   const clearMobileProductFieldValue = useCallback((fieldId: string) => clearField('mobileProduct', fieldId), [clearField])
 
-  // ⌘Z / ⇧⌘Z (Ctrl on Windows). Text boxes keep their own typing undo.
+  // ⌘Z / ⇧⌘Z undo/redo, ⌘K find a setting, Esc steps out of the selection.
+  // Text boxes keep their own typing undo.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
       const target = event.target as HTMLElement | null
       const isTyping = target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable === true
         || (target?.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'color')
-      if (isTyping) return
+      const key = event.key.toLowerCase()
+      // A popover or menu that handled the key owns it.
+      if (event.defaultPrevented || target?.closest('[role="dialog"], [role="menu"], [data-studio-popover]')) return
+      if ((event.metaKey || event.ctrlKey) && key === 'k') {
+        if (!searchInputRef.current && !selectedScopeRef.current) return
+        event.preventDefault()
+        setSelectedScope(null)
+        // The search box mounts once the full list is back.
+        window.requestAnimationFrame(() => searchInputRef.current?.focus())
+        return
+      }
+      if (key === 'escape' && !isTyping) {
+        setSelectedScope((current) => (current ? getBrandingComponent(current)?.parent ?? null : null))
+        return
+      }
+      if (!(event.metaKey || event.ctrlKey) || key !== 'z' || isTyping) return
       event.preventDefault()
       if (event.shiftKey) redo()
       else undo()
@@ -210,38 +226,29 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const pickSurface = useCallback((id: BrandingSurface['id']) => {
     setSurfaceId(id)
     setOpenSections({ 0: true })
+    setSelectedScope(null)
+    setSettingQuery('')
+    setHoveredFieldId(null)
   }, [])
 
-  // A region was clicked in the preview: jump to its surface, open exactly
-  // its section, pulse it, and drop back out of inspect mode (single-shot,
-  // DevTools-style).
+  // A part of the preview was tapped: show its screen and only its settings.
   const handleScopeSelected = useCallback((scope: string) => {
-    const target = resolveBrandingScope(scope)
-    if (!target) {
-      toast.error('No settings are mapped to that element yet')
+    const component = getBrandingComponent(scope)
+    if (!component) {
+      toast.error('No settings are mapped to that part yet')
       return
     }
-    const sectionIndex = getScopeSectionIndex(target)
-    setSurfaceId(target.surfaceId)
-    setOpenSections(sectionIndex >= 0 ? { [sectionIndex]: true } : { 0: true })
-    setIsInspecting(false)
-    if (sectionIndex < 0) return
-    // Field-level scopes pulse the exact row; section scopes pulse the header.
-    if (target.fieldId) {
-      setFlashFieldId(target.fieldId)
-      window.setTimeout(() => setFlashFieldId(null), SECTION_FLASH_MS)
-    } else {
-      setFlashSectionIndex(sectionIndex)
-      window.setTimeout(() => setFlashSectionIndex(null), SECTION_FLASH_MS)
-    }
-    window.setTimeout(() => {
-      const anchorId = target.fieldId
-        ? getBrandingFieldAnchorId(target.fieldId)
-        : getBrandingSectionAnchorId(sectionIndex)
-      document
-        .getElementById(anchorId)
-        ?.scrollIntoView({ behavior: 'smooth', block: target.fieldId ? 'center' : 'start' })
-    }, SECTION_SCROLL_DELAY_MS)
+    setSurfaceId(component.surfaceId)
+    setSelectedScope(component.id)
+    setSettingQuery('')
+    setHoveredFieldId(null)
+  }, [])
+
+  // Panel navigation: a breadcrumb or "All … settings" — null = the whole screen.
+  const selectScope = useCallback((scope: string | null) => {
+    setSelectedScope(scope)
+    setHoveredFieldId(null)
+    if (!scope) setOpenSections({ 0: true })
   }, [])
 
   const applyValues = useCallback((values: Record<string, string>) => studio.applyValues('tenant', values), [studio])
@@ -307,6 +314,61 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
 
   const [logoColor, setLogoColor] = useState('#E4572E')
 
+  const panelSections = isProductSurface ? PRODUCT_DETAIL_SECTIONS : surface.sections
+  const tappedComponent = selectedScope ? getBrandingComponent(selectedScope) : null
+  const selectedComponent = tappedComponent?.surfaceId === surface.id ? tappedComponent : null
+  const isFieldShown = (field: BrandingField) =>
+    (!field.mobileOnly || device === 'mobile') && (isProductSurface || isFieldVisible(field, resolveEditorValue))
+
+  // One settings row, wherever it is shown (component panel or full list).
+  const renderField = (field: BrandingField) => {
+    // Desktop-resolved value first — mobile rows fall back to it when they
+    // have no override of their own.
+    const productField = isProductSurface ? productFields.effective(field.id) : null
+    const desktopValue = productField ? productField.value : resolveFieldValue(field.id, draft, savedTenant)
+    const desktopIsSet = productField ? productField.isSet : isFieldSet(field.id, draft, savedTenant)
+    const desktopInherit = productField ? productField.inheritLabel : getInheritSourceLabel(field.id, draft, savedTenant)
+    const activeMobileDraft = isProductSurface ? mobileProductDraft : mobileDraft
+    const activeSavedMobile = isProductSurface ? savedMobileProduct : savedMobile
+    // Column-backed fields (e.g. mobile_grid_columns) always edit their real
+    // tenant column, even on the mobile tab — the storefront reads it directly.
+    const usesMobilePath = !editsTenantColumn(field, isMobile)
+
+    return (
+      <div
+        key={field.id}
+        id={getBrandingFieldAnchorId(field.id)}
+        className="rounded-md"
+        onMouseEnter={() => setHoveredFieldId(field.id)}
+        onMouseLeave={() => setHoveredFieldId((current) => (current === field.id ? null : current))}
+      >
+        <FieldRow
+          field={field}
+          productOptions={productOptions}
+          gallery={galleryContext}
+          value={
+            usesMobilePath
+              ? resolveMobileFieldValue(field.id, activeMobileDraft, activeSavedMobile, desktopValue)
+              : desktopValue
+          }
+          isSet={usesMobilePath ? isFieldSet(field.id, activeMobileDraft, activeSavedMobile) : desktopIsSet}
+          inheritLabel={usesMobilePath ? 'Desktop' : desktopInherit}
+          onChange={(value) =>
+            usesMobilePath
+              ? (isProductSurface ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
+              : (isProductSurface ? setProductFieldValue : setFieldValue)(field.id, value)
+          }
+          onClear={() =>
+            usesMobilePath
+              ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
+              : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
+          }
+          contrastIssue={productField && !usesMobilePath ? productFields.contrastIssue(field.id) : null}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#EFECE6] font-sans text-[#1D1815]">
       {/* ============ TOP BAR ============ */}
@@ -332,21 +394,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
 
         <HistoryButtons canUndo={studio.canUndo} canRedo={studio.canRedo} onUndo={undo} onRedo={redo} />
 
-        {/* click-to-inspect toggle */}
-        <button
-          type="button"
-          onClick={() => setIsInspecting((prev) => !prev)}
-          aria-pressed={isInspecting}
-          title="Hover the preview and click any element to open its settings"
-          className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition-colors ${
-            isInspecting
-              ? 'bg-[#2A6FDB] text-white'
-              : 'bg-[#EFECE6] text-[#8B857B] hover:text-[#1D1815]'
-          }`}
-        >
-          <span aria-hidden="true">⌖</span>
-          {isInspecting ? 'Click an element…' : 'Inspect'}
-        </button>
+        <EditModeToggle isEditing={isEditing} onChange={setIsEditing} />
 
         {/* device toggle */}
         <div className="flex gap-0.5 rounded-full bg-[#EFECE6] p-[3px]">
@@ -497,116 +545,76 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
               />
             )}
 
-            {/* Accordion sections */}
-            {(isProductSurface ? PRODUCT_DETAIL_SECTIONS : surface.sections).map((section, sectionIndex) => {
-              const isOpen = !!openSections[sectionIndex]
-              const columnDraft = isProductSurface ? productDraft : draft
-              const overrideDraft = isProductSurface ? mobileProductDraft : mobileDraft
-              const isSectionDirty = section.fields.some((f) => {
-                if (f.type === 'note') return false
-                // Column-backed fields stay in the tenant-column draft even on mobile.
-                const bag = editsTenantColumn(f, isMobile) ? columnDraft : overrideDraft
-                return Object.prototype.hasOwnProperty.call(bag, f.id)
-              })
-              const visibleFields = section.fields.filter((f) =>
-                (!f.mobileOnly || device === 'mobile') &&
-                (isProductSurface || isFieldVisible(f, resolveEditorValue))
-              )
-              if (visibleFields.length === 0) return null
-              const isFlashing = flashSectionIndex === sectionIndex
-              return (
-                <div
-                  key={section.title}
-                  id={getBrandingSectionAnchorId(sectionIndex)}
-                  className={`border-b border-[#E5E0D6] transition-colors duration-500 ${
-                    isFlashing ? 'bg-amber-100' : ''
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenSections((prev) => ({ ...prev, [sectionIndex]: !prev[sectionIndex] }))
-                    }
-                    className="flex w-full items-center gap-2 px-[18px] py-3 text-left text-[13px] font-extrabold hover:bg-black/[0.02]"
-                  >
-                    <span className="flex-1">{section.title}</span>
-                    {isSectionDirty && <span className="h-1.5 w-1.5 rounded-full bg-[#E4572E]" />}
-                    <span
-                      className="text-[11px] text-neutral-400 transition-transform"
-                      style={{ transform: `rotate(${isOpen ? 0 : -90}deg)` }}
+            {selectedComponent ? (
+              <ComponentPanel
+                component={selectedComponent}
+                crumbs={componentBreadcrumb(selectedComponent.id)}
+                fields={panelSections
+                  .flatMap((section) => section.fields)
+                  .filter((field) => selectedComponent.fieldIds.includes(field.id) && isFieldShown(field))}
+                renderField={renderField}
+                onSelectScope={selectScope}
+              />
+            ) : (
+              <>
+                {!isCategoriesSurface && (
+                  <SettingsSearch
+                    query={settingQuery}
+                    onQueryChange={(query) => {
+                      setSettingQuery(query)
+                      setHoveredFieldId(null)
+                    }}
+                    inputRef={searchInputRef}
+                  />
+                )}
+                {/* Accordion sections — every setting on the screen */}
+                {panelSections.map((section, sectionIndex) => {
+                  const isSearching = settingQuery.trim().length > 0
+                  const isOpen = isSearching || !!openSections[sectionIndex]
+                  const columnDraft = isProductSurface ? productDraft : draft
+                  const overrideDraft = isProductSurface ? mobileProductDraft : mobileDraft
+                  const isSectionDirty = section.fields.some((f) => {
+                    if (f.type === 'note') return false
+                    // Column-backed fields stay in the tenant-column draft even on mobile.
+                    const bag = editsTenantColumn(f, isMobile) ? columnDraft : overrideDraft
+                    return Object.prototype.hasOwnProperty.call(bag, f.id)
+                  })
+                  const visibleFields = section.fields.filter(
+                    (f) => isFieldShown(f) && (!isSearching || matchesSettingQuery(f, settingQuery))
+                  )
+                  if (visibleFields.length === 0) return null
+                  return (
+                    <div
+                      key={section.title}
+                      id={getBrandingSectionAnchorId(sectionIndex)}
+                      className="border-b border-[#E5E0D6]"
                     >
-                      ▼
-                    </span>
-                  </button>
-                  {isOpen && (
-                    <div className="flex flex-col gap-3 px-[18px] pb-4 pt-0.5">
-                      {visibleFields.map((field) => {
-                        // Desktop-resolved value first — mobile rows fall back
-                        // to it when they have no override of their own.
-                        const productField = isProductSurface
-                          ? productFields.effective(field.id)
-                          : null
-                        const desktopValue = productField
-                          ? productField.value
-                          : resolveFieldValue(field.id, draft, savedTenant)
-                        const desktopIsSet = productField
-                          ? productField.isSet
-                          : isFieldSet(field.id, draft, savedTenant)
-                        const desktopInherit = productField
-                          ? productField.inheritLabel
-                          : getInheritSourceLabel(field.id, draft, savedTenant)
-
-                        const activeMobileDraft = isProductSurface ? mobileProductDraft : mobileDraft
-                        const activeSavedMobile = isProductSurface ? savedMobileProduct : savedMobile
-
-                        // Column-backed fields (e.g. mobile_grid_columns) always
-                        // edit their real tenant column, even on the mobile tab —
-                        // the storefront reads that column directly.
-                        const usesMobilePath = !editsTenantColumn(field, isMobile)
-
-                        return (
-                          <div
-                            key={field.id}
-                            id={getBrandingFieldAnchorId(field.id)}
-                            className={`rounded-md transition-colors duration-500 ${
-                              flashFieldId === field.id ? 'bg-amber-100' : ''
-                            }`}
-                          >
-                          <FieldRow
-                            field={field}
-                            productOptions={productOptions}
-                            gallery={galleryContext}
-                            value={
-                              usesMobilePath
-                                ? resolveMobileFieldValue(field.id, activeMobileDraft, activeSavedMobile, desktopValue)
-                                : desktopValue
-                            }
-                            isSet={usesMobilePath ? isFieldSet(field.id, activeMobileDraft, activeSavedMobile) : desktopIsSet}
-                            inheritLabel={usesMobilePath ? 'Desktop' : desktopInherit}
-                            onChange={(value) =>
-                              usesMobilePath
-                                ? (isProductSurface ? setMobileProductFieldValue : setMobileFieldValue)(field.id, value)
-                                : (isProductSurface ? setProductFieldValue : setFieldValue)(field.id, value)
-                            }
-                            onClear={() =>
-                              usesMobilePath
-                                ? (isProductSurface ? clearMobileProductFieldValue : clearMobileFieldValue)(field.id)
-                                : (isProductSurface ? clearProductFieldValue : clearFieldValue)(field.id)
-                            }
-                            contrastIssue={
-                              productField && !usesMobilePath
-                                ? productFields.contrastIssue(field.id)
-                                : null
-                            }
-                          />
-                          </div>
-                        )
-                      })}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenSections((prev) => ({ ...prev, [sectionIndex]: !prev[sectionIndex] }))
+                        }
+                        className="flex w-full items-center gap-2 px-[18px] py-3 text-left text-[13px] font-extrabold hover:bg-black/[0.02]"
+                      >
+                        <span className="flex-1">{section.title}</span>
+                        {isSectionDirty && <span className="h-1.5 w-1.5 rounded-full bg-[#E4572E]" />}
+                        <span
+                          className="text-[11px] text-neutral-400 transition-transform"
+                          style={{ transform: `rotate(${isOpen ? 0 : -90}deg)` }}
+                        >
+                          ▼
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <div className="flex flex-col gap-3 px-[18px] pb-4 pt-0.5">
+                          {visibleFields.map((field) => renderField(field))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )
-            })}
+                  )
+                })}
+              </>
+            )}
             <div className="h-8" />
           </div>
         </aside>
@@ -622,8 +630,10 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           productMobileOverrides={mergeMobileOverrides(savedMobileProduct, mobileProductDraft)}
           device={device}
           sampleItemId={sampleItemId}
-          inspectMode={isInspecting}
+          inspectMode={isEditing}
           onScopeSelected={handleScopeSelected}
+          selectedScope={isEditing ? selectedScope : null}
+          hoveredFieldId={isEditing ? hoveredFieldId : null}
         />
       </div>
     </div>

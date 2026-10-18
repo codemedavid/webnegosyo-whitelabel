@@ -18,6 +18,10 @@ import { PRODUCT_DETAIL_SECTIONS } from '@/lib/product-detail-registry'
 export const BRANDING_INSPECT_MODE_MESSAGE = 'wn-branding-inspect-mode'
 /** Iframe → editor: the merchant clicked a highlighted region. */
 export const BRANDING_SCOPE_SELECTED_MESSAGE = 'wn-branding-scope-selected'
+/** Editor → iframe: outline the selected component ({ scope: string | null }). */
+export const BRANDING_SELECT_MESSAGE = 'wn-branding-select'
+/** Editor → iframe: outline everything one setting changes ({ surfaceId, fieldId: string | null }). */
+export const BRANDING_FIELD_HOVER_MESSAGE = 'wn-branding-field-hover'
 /** DOM attribute storefront regions are tagged with. */
 export const BRANDING_SCOPE_ATTRIBUTE = 'data-branding-scope'
 
@@ -129,8 +133,8 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
  * editor target, or null when it is not a known scope.
  */
 export function resolveBrandingScope(scopeKey: unknown): BrandingScopeTarget | null {
-  if (typeof scopeKey !== 'string') return null
-  return BRANDING_SCOPE_MAP[scopeKey] ?? null
+  if (typeof scopeKey !== 'string' || !Object.prototype.hasOwnProperty.call(BRANDING_SCOPE_MAP, scopeKey)) return null
+  return BRANDING_SCOPE_MAP[scopeKey]
 }
 
 /**

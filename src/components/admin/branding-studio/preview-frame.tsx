@@ -16,8 +16,10 @@ import {
   type BrandingPreviewDraft,
 } from '@/hooks/use-branding-preview'
 import {
+  BRANDING_FIELD_HOVER_MESSAGE,
   BRANDING_INSPECT_MODE_MESSAGE,
   BRANDING_SCOPE_SELECTED_MESSAGE,
+  BRANDING_SELECT_MESSAGE,
 } from '@/lib/branding-inspect'
 import { getPreviewTarget } from './preview-routes'
 import type { BrandingSurface } from '@/lib/branding-registry'
@@ -50,6 +52,22 @@ interface PreviewFrameProps {
   inspectMode?: boolean
   /** Called with the scope key when a highlighted region is clicked. */
   onScopeSelected?: (scope: string) => void
+  /** The component the panel is editing — outlined in the preview. */
+  selectedScope?: string | null
+  /** The setting under the owner's pointer — everything it changes is outlined. */
+  hoveredFieldId?: string | null
+}
+
+function postOutlines(
+  frameWindow: Window,
+  surfaceId: BrandingSurface['id'],
+  { selectedScope, hoveredFieldId }: { selectedScope: string | null; hoveredFieldId: string | null }
+): void {
+  frameWindow.postMessage({ type: BRANDING_SELECT_MESSAGE, scope: selectedScope }, window.location.origin)
+  frameWindow.postMessage(
+    { type: BRANDING_FIELD_HOVER_MESSAGE, surfaceId, fieldId: hoveredFieldId },
+    window.location.origin
+  )
 }
 
 export function PreviewFrame({
@@ -64,6 +82,8 @@ export function PreviewFrame({
   sampleItemId,
   inspectMode = false,
   onScopeSelected,
+  selectedScope = null,
+  hoveredFieldId = null,
 }: PreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
@@ -73,6 +93,8 @@ export function PreviewFrame({
   const productMobileOverridesRef = useRef(productMobileOverrides)
   const surfaceRef = useRef(surfaceId)
   const inspectModeRef = useRef(inspectMode)
+  const outlineRef = useRef({ selectedScope, hoveredFieldId })
+  outlineRef.current = { selectedScope, hoveredFieldId }
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const previewPath = useMemo(() => {
@@ -120,13 +142,20 @@ export function PreviewFrame({
       },
       window.location.origin
     )
-    // Ride inspect mode on every draft send so a freshly (re)loaded or
-    // navigated iframe always knows the current mode.
+    // Ride inspect mode and the outlines on every draft send so a freshly
+    // (re)loaded or navigated iframe always knows the current state.
     frameWindow.postMessage(
       { type: BRANDING_INSPECT_MODE_MESSAGE, enabled: inspectModeRef.current },
       window.location.origin
     )
+    postOutlines(frameWindow, surfaceRef.current, outlineRef.current)
   }, [])
+
+  // Selection and setting-hover outlines go straight through (no debounce).
+  useEffect(() => {
+    const frameWindow = iframeRef.current?.contentWindow
+    if (frameWindow) postOutlines(frameWindow, surfaceId, { selectedScope, hoveredFieldId })
+  }, [surfaceId, selectedScope, hoveredFieldId])
 
   // Stream draft changes (debounced — color pickers fire on every drag tick).
   useEffect(() => {
