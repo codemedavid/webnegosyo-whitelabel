@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
@@ -82,7 +83,7 @@ export const ClassicCard = memo(function ClassicCard({ item, onSelect, branding,
         {!isOrderable && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <span className="rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-gray-900">
-              Unavailable
+              <StoreLabel name="menu.unavailable" fallback="Unavailable" />
             </span>
           </div>
         )}

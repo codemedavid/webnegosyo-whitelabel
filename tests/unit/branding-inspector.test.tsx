@@ -4,6 +4,8 @@ import {
   BRANDING_INSPECT_MODE_MESSAGE,
   BRANDING_SCOPE_SELECTED_MESSAGE,
   BRANDING_SCOPE_ATTRIBUTE,
+  BRANDING_SELECT_MESSAGE,
+  BRANDING_FIELD_HOVER_MESSAGE,
 } from '@/lib/branding-inspect'
 
 /**
@@ -128,5 +130,64 @@ describe('BrandingInspector', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
 
     expect(screen.queryByTestId('branding-inspector-highlight')).not.toBeInTheDocument()
+  })
+})
+
+describe('BrandingInspector selection and field hover (tap-to-edit)', () => {
+  function post(data: Record<string, unknown>) {
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data, origin: window.location.origin }))
+    })
+  }
+
+  function renderProductPage() {
+    return render(
+      <>
+        <BrandingInspector />
+        <div {...{ [BRANDING_SCOPE_ATTRIBUTE]: 'product/sticky-footer' }}>
+          <button type="button" {...{ [BRANDING_SCOPE_ATTRIBUTE]: 'product/add-to-cart' }}>Add To Cart</button>
+          <button type="button" {...{ [BRANDING_SCOPE_ATTRIBUTE]: 'product/buy-now' }}>Buy Now</button>
+        </div>
+      </>
+    )
+  }
+
+  it('outlines the component the Studio has selected', () => {
+    renderProductPage()
+
+    post({ type: BRANDING_SELECT_MESSAGE, scope: 'product/add-to-cart' })
+
+    expect(screen.getByTestId('branding-inspector-selection')).toHaveTextContent('Add to Cart button')
+  })
+
+  it('clears the selection outline', () => {
+    renderProductPage()
+    post({ type: BRANDING_SELECT_MESSAGE, scope: 'product/add-to-cart' })
+
+    post({ type: BRANDING_SELECT_MESSAGE, scope: null })
+
+    expect(screen.queryByTestId('branding-inspector-selection')).not.toBeInTheDocument()
+  })
+
+  it('outlines everything a hovered setting changes', () => {
+    renderProductPage()
+
+    post({ type: BRANDING_FIELD_HOVER_MESSAGE, surfaceId: 'product', fieldId: 'add_to_cart_button_background' })
+
+    // The button it changes — not the whole footer section around it.
+    expect(screen.getAllByTestId('branding-inspector-field-hover')).toHaveLength(1)
+  })
+
+  it('ignores selection messages from other origins', () => {
+    renderProductPage()
+
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { type: BRANDING_SELECT_MESSAGE, scope: 'product/add-to-cart' },
+        origin: 'https://evil.example',
+      }))
+    })
+
+    expect(screen.queryByTestId('branding-inspector-selection')).not.toBeInTheDocument()
   })
 })

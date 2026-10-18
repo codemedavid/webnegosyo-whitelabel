@@ -18,6 +18,7 @@
  * Colors always come from tenant branding; nothing here assumes a palette.
  */
 
+import { useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import { formatPrice } from '@/lib/cart-utils'
@@ -122,10 +123,11 @@ export function CardMedia({
 
 /** Sold-out veil over the photo. The card stays tappable so the dish can be read. */
 export function SoldOutVeil({ label = 'Sold out' }: { label?: string }) {
+  const text = useStorefrontLabel(label === 'Unavailable' ? 'menu.unavailable' : 'menu.sold_out', label)
   return (
     <div className="absolute inset-0 z-[1] flex items-center justify-center bg-black/45 backdrop-blur-[1.5px]">
       <span className="rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-900">
-        {label}
+        {text}
       </span>
     </div>
   )
@@ -194,6 +196,8 @@ const PlusGlyph = ({ className = 'h-4 w-4' }: { className?: string }) => (
 export function AddButton({
   item, variant, isOrderable, onSelect, background, color, label = 'Add', showGlyph = true, className = '', buttonStyle,
 }: AddButtonProps) {
+  const addText = useStorefrontLabel('menu.add', label)
+  const soldOutText = useStorefrontLabel('menu.sold_out', 'Sold out')
   if (variant === 'hidden') return null
   const isGlyphShown = variant === 'icon' || showGlyph
 
@@ -216,7 +220,7 @@ export function AddButton({
       style={{ backgroundColor: background, color, ...buttonStyle }}
     >
       {isGlyphShown && <PlusGlyph className={variant === 'bar' ? 'h-4 w-4' : 'h-[15px] w-[15px]'} />}
-      {variant !== 'icon' && <span>{isOrderable ? label : 'Sold out'}</span>}
+      {variant !== 'icon' && <span>{isOrderable ? addText : soldOutText}</span>}
     </button>
   )
 }

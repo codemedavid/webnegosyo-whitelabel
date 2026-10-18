@@ -10,7 +10,7 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { getCartPalette, setAlpha } from '@/lib/branding-utils'
+import { setAlpha } from '@/lib/branding-utils'
 import { formatPrice } from '@/lib/cart-utils'
 import {
   CartItemRow,
@@ -19,36 +19,40 @@ import {
   CartCheckoutButton,
   CartContinueShopping,
   CartEmptyState,
+  cartColorVars,
+  getCartColors,
 } from './cart-primitives'
 import type { UseCartViewReturn } from '@/hooks/useCartView'
 import { CartOffers } from './cart-shared'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
   const { tenant, items, bundleItems, total } = cart
 
   if (!tenant) return null
 
-  const palette = getCartPalette(cart.tenant, cart.branding)
+  const palette = getCartColors(cart.tenant, cart.branding)
   const accent = palette.accent
   const isEmpty = items.length === 0 && bundleItems.length === 0
   const bundles = bundleItems.filter((bi) => Array.isArray(bi.slots))
   const itemCount = items.length + bundles.length
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
+    <div className="min-h-screen" style={{ ...cartColorVars(palette), backgroundColor: palette.background }}>
       {/* Sticky compact header */}
-      <header data-senior-hidden className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
+      <header data-senior-hidden className="sticky top-0 z-40 backdrop-blur-sm border-b" style={{ backgroundColor: palette.card, borderColor: palette.border }}>
         <div className="mx-auto flex h-14 max-w-lg items-center gap-3 px-4">
           <button
             type="button"
             onClick={cart.exitToMenu}
             aria-label="Go back"
-            className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-700 hover:bg-gray-100 transition-colors touch-manipulation"
+            className="-ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full hover:bg-[var(--cart-soft)] transition-colors touch-manipulation"
+            style={{ color: palette.text }}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <h1 className="flex-1 text-base font-bold text-gray-900" style={{ color: palette.text }}>
-            Your Cart
+          <h1 className="flex-1 text-base font-bold" style={{ color: palette.text }}>
+            <StoreLabel name="cart.title" fallback="Your Cart" />
           </h1>
           {!isEmpty && (
             <span
@@ -81,12 +85,12 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
 
             {/* Order summary */}
             <div
-              className="mt-4 rounded-2xl bg-white p-5 shadow-sm border border-gray-100"
-              style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}
+              className="mt-4 rounded-2xl p-5 shadow-sm border"
+              style={{ backgroundColor: palette.summary, borderColor: palette.border }}
             >
               <h2
-                className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500"
-                style={{ color: palette.mutedText }}
+                className="mb-4 text-sm font-bold uppercase tracking-wide"
+                style={{ color: palette.muted }}
               >
                 Order Summary
               </h2>
@@ -100,17 +104,17 @@ export function ExpressCart({ cart }: { cart: UseCartViewReturn }) {
 
           {/* Fixed bottom checkout bar */}
           <div
-            className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white"
+            className="fixed inset-x-0 bottom-0 z-40 border-t"
             style={{
               paddingBottom: 'env(safe-area-inset-bottom)',
-              backgroundColor: palette.cardBackground,
+              backgroundColor: palette.card,
               borderColor: palette.border,
             }}
           >
             <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
               <div className="flex shrink-0 flex-col">
-                <span className="text-xs font-medium text-gray-500" style={{ color: palette.mutedText }}>
-                  Total
+                <span className="text-xs font-medium" style={{ color: palette.muted }}>
+                  <StoreLabel name="cart.total" fallback="Total" />
                 </span>
                 <span className="text-lg font-bold" style={{ color: accent }}>
                   {formatPrice(total)}

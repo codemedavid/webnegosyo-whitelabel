@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { OptimizedImage } from '@/components/shared/optimized-image'
@@ -112,11 +113,11 @@ export function RelatedItemsSection({ relatedItems, tenantSlug, onSelectItem }: 
             <h3
                 className="text-lg font-bold mb-4"
                 style={{
-                    color: 'var(--pd-related-title)',
+                    color: 'var(--pd-related-title)', fontFamily: 'var(--pd-font-heading)',
                     fontSize: 'var(--pd-related-title-font-size)'
                 }}
             >
-                You might also like
+                <StoreLabel name="item.related_title" fallback="You might also like" />
             </h3>
             <div className="flex gap-4 overflow-x-auto pb-4 -mx-5 px-5 scrollbar-hide">
                 {relatedItems.map((relatedItem, index) => (

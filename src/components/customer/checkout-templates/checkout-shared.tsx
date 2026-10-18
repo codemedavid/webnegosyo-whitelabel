@@ -12,6 +12,7 @@
  * the experience is unchanged.
  */
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { addonLabel } from '@/lib/addon-quantity'
 import { ArrowLeft, QrCode, Copy, CheckCircle2, ExternalLink, Package, CalendarClock, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,10 @@ import { kioskReturnPath } from '@/lib/kiosk/kiosk-mode'
 import { buildOrderTrackingPath } from '@/lib/checkout/tracking-redirect'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
+import { checkoutThemeStyle } from './checkout-theme'
+
+/** Rules on the confirmation screen use the checkout border colour. */
+const RULE_COLOR = 'bg-[var(--co-border)]'
 
 /**
  * Full-screen loading state (shared across designs).
@@ -31,7 +36,8 @@ import { TenantFlashLoading } from '@/components/customer/flash-screen-loader'
  * Reuses the tenant's branded flash splash (via TenantFlashLoading, fed by the
  * [tenant] layout's TenantFlashProvider) so the client-side checkout load matches
  * the route-level loading.tsx and the menu. Tenants without the flash feature see
- * the existing orange spinner — zero regression. Kept propless so it also works
+ * a neutral spinner in the app theme (no tenant is known yet, so there is no
+ * checkout palette to draw from). Kept propless so it also works
  * as the next/dynamic() `loading` fallback for the lazy design chunks.
  */
 export function CheckoutLoading() {
@@ -40,10 +46,10 @@ export function CheckoutLoading() {
 
 function CheckoutSpinner() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+    <div className="min-h-screen bg-background text-[color:var(--co-muted)] flex items-center justify-center">
       <div className="text-center">
-        <div className="h-16 w-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading checkout...</p>
+        <div className="h-16 w-16 border-4 border-current border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-[color:var(--co-muted)]">Loading checkout...</p>
       </div>
     </div>
   )
@@ -52,9 +58,9 @@ function CheckoutSpinner() {
 /** Restaurant-not-found state (shared across designs). */
 export function CheckoutNotFound() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/30 to-orange-100/20 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center">
-        <p className="text-gray-600">Restaurant not found</p>
+        <p className="text-[color:var(--co-muted)]">Restaurant not found</p>
       </div>
     </div>
   )
@@ -103,10 +109,10 @@ function OrderSaveFailedNotice({
   return (
     <div
       role="alert"
-      className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-left"
+      className="rounded-2xl border border-[color:var(--co-warning-border)] bg-[var(--co-warning-soft)] p-4 text-left"
     >
-      <p className="text-sm font-semibold text-amber-900">{headline}</p>
-      <p className="mt-1 text-sm text-amber-800">{recovery}</p>
+      <p className="text-sm font-semibold text-[color:var(--co-text)]">{headline}</p>
+      <p className="mt-1 text-sm text-[color:var(--co-muted)]">{recovery}</p>
     </div>
   )
 }
@@ -143,7 +149,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
   const hasMessengerFallback = Boolean(messengerEnabled && completedOrderData.messengerUrl)
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50/40 to-white">
+    <div className="min-h-screen bg-[var(--co-bg)] text-[color:var(--co-text)]" style={checkoutThemeStyle(checkout)}>
       <main className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-2xl space-y-6">
 
@@ -153,19 +159,19 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           <div className="text-center py-8">
             <div
               className={`inline-flex items-center justify-center w-24 h-24 rounded-full mb-5 ${
-                hasOrderSaveFailed ? 'bg-amber-100' : 'bg-green-100'
+                hasOrderSaveFailed ? 'bg-[var(--co-warning-soft)]' : 'bg-[var(--co-success-soft)]'
               }`}
             >
               {hasOrderSaveFailed ? (
-                <AlertTriangle className="h-14 w-14 text-amber-600" />
+                <AlertTriangle className="h-14 w-14 text-[color:var(--co-warning)]" />
               ) : (
-                <CheckCircle2 className="h-14 w-14 text-green-600 animate-[scale-in_0.4s_ease-out]" />
+                <CheckCircle2 className="h-14 w-14 text-[color:var(--co-success)] animate-[scale-in_0.4s_ease-out]" />
               )}
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              {hasOrderSaveFailed ? 'Order Not Confirmed' : 'Order Placed!'}
+            <h1 className="text-3xl font-bold text-[color:var(--co-text)] mb-2">
+              {hasOrderSaveFailed ? 'Order Not Confirmed' : <StoreLabel name="confirmation.title" fallback="Order Placed!" />}
             </h1>
-            <p className="text-gray-500 text-lg">
+            <p className="text-[color:var(--co-muted)] text-lg">
               {hasOrderSaveFailed
                 ? `We could not reach ${tenant.name} with this order.`
                 : `Your order has been sent to ${tenant.name}`}
@@ -177,13 +183,13 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           )}
 
           {/* Order Summary */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-1">Order Summary</h2>
+          <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+            <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-1"><StoreLabel name="checkout.summary" fallback="Order Summary" /></h2>
             {completedOrderData.orderTypeName && (
-              <p className={`text-sm text-gray-500 ${completedOrderData.scheduledForLabel ? 'mb-2' : 'mb-4'}`}>{completedOrderData.orderTypeName}</p>
+              <p className={`text-sm text-[color:var(--co-muted)] ${completedOrderData.scheduledForLabel ? 'mb-2' : 'mb-4'}`}>{completedOrderData.orderTypeName}</p>
             )}
             {completedOrderData.scheduledForLabel && (
-              <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-orange-50 border border-orange-200 px-3 py-1 text-sm font-medium text-orange-700">
+              <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-[var(--co-accent-soft)] border border-[color:var(--co-accent-border)] px-3 py-1 text-sm font-medium text-[color:var(--co-accent)]">
                 <CalendarClock className="h-3.5 w-3.5" />
                 Scheduled for {completedOrderData.scheduledForLabel}
               </div>
@@ -192,26 +198,26 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
             <div className="space-y-3">
               {completedOrderData.items.map((item, index) => (
                 <div key={item.id}>
-                  {index > 0 && <Separator className="my-3" />}
+                  {index > 0 && <Separator className={`my-3 ${RULE_COLOR}`} />}
                   <div className="flex justify-between">
                     <div className="flex-1 mr-4">
                       <span className="font-medium text-sm">{item.menu_item.name}</span>
                       {item.selected_variation && (
-                        <span className="text-xs text-muted-foreground"> ({item.selected_variation.name})</span>
+                        <span className="text-xs text-[color:var(--co-muted)]"> ({item.selected_variation.name})</span>
                       )}
                       {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-[color:var(--co-muted)]">
                           {' '}({Object.values(item.selected_variations).map(opt => opt.name).join(', ')})
                         </span>
                       )}
-                      <span className="text-xs text-muted-foreground"> x{item.quantity}</span>
+                      <span className="text-xs text-[color:var(--co-muted)]"> x{item.quantity}</span>
                       {item.selected_addons.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="text-xs text-[color:var(--co-muted)] mt-0.5">
                           Add-ons: {item.selected_addons.map(addonLabel).join(', ')}
                         </p>
                       )}
                       {item.special_instructions && (
-                        <p className="text-xs italic text-muted-foreground mt-0.5">
+                        <p className="text-xs italic text-[color:var(--co-muted)] mt-0.5">
                           Note: {item.special_instructions}
                         </p>
                       )}
@@ -221,23 +227,23 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 </div>
               ))}
 
-              <Separator className="my-3" />
+              <Separator className={`my-3 ${RULE_COLOR}`} />
 
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Subtotal</span>
+                <span className="text-[color:var(--co-muted)]">Subtotal</span>
                 <span className="font-medium">{formatPrice(completedOrderData.total)}</span>
               </div>
 
               {completedOrderData.deliveryFee !== null && completedOrderData.deliveryFee > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Delivery Fee</span>
+                  <span className="text-[color:var(--co-muted)]">Delivery Fee</span>
                   <span className="font-medium">{formatPrice(completedOrderData.deliveryFee)}</span>
                 </div>
               )}
 
               {completedOrderData.serviceChargeAmount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Service Charge</span>
+                  <span className="text-[color:var(--co-muted)]">Service Charge</span>
                   <span className="font-medium">{formatPrice(completedOrderData.serviceChargeAmount)}</span>
                 </div>
               )}
@@ -247,16 +253,16 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                   never disagree about what a voucher was worth. */}
               {(completedOrderData.discounts ?? []).map(discount => (
                 <div key={discount.code ?? discount.label} className="flex justify-between text-sm">
-                  <span className="text-gray-600">{discount.label}</span>
-                  <span className="font-medium text-green-700">-{formatPrice(discount.amount)}</span>
+                  <span className="text-[color:var(--co-muted)]">{discount.label}</span>
+                  <span className="font-medium text-[color:var(--co-success)]">-{formatPrice(discount.amount)}</span>
                 </div>
               ))}
 
-              <Separator className="my-2" />
+              <Separator className={`my-2 ${RULE_COLOR}`} />
 
               <div className="flex justify-between text-lg font-bold">
                 <span>Total</span>
-                <span className="text-green-700">
+                <span className="text-[color:var(--co-accent)]">
                   {formatPrice(computeOrderTotals({
                     subtotal: completedOrderData.total,
                     deliveryFee: completedOrderData.deliveryFee,
@@ -270,15 +276,15 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 
           {/* Customer Information */}
           {completedOrderData.formFields.length > 0 && (
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Customer Information</h2>
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+              <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-4"><StoreLabel name="checkout.customer" fallback="Customer Information" /></h2>
               <div className="space-y-2">
                 {completedOrderData.formFields.map(field => {
                   const value = completedOrderData.customerData[field.field_name]
                   if (!value) return null
                   return (
                     <div key={field.field_name} className="flex justify-between text-sm">
-                      <span className="text-gray-600">{field.field_label}</span>
+                      <span className="text-[color:var(--co-muted)]">{field.field_label}</span>
                       <span className="font-medium text-right ml-4 max-w-[60%] break-words">{value}</span>
                     </div>
                   )
@@ -289,37 +295,37 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
 
           {/* Payment Method */}
           {completedOrderData.paymentMethodName && (
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-bold text-gray-900 mb-2">Payment Method</h2>
-              <p className="font-medium text-gray-900">{completedOrderData.paymentMethodName}</p>
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
+              <h2 className="text-lg font-bold text-[color:var(--co-text)] mb-2"><StoreLabel name="checkout.payment" fallback="Payment Method" /></h2>
+              <p className="font-medium text-[color:var(--co-text)]">{completedOrderData.paymentMethodName}</p>
               {completedOrderData.paymentMethodDetails && (
-                <p className="text-sm text-gray-600 mt-1">{completedOrderData.paymentMethodDetails}</p>
+                <p className="text-sm text-[color:var(--co-muted)] mt-1">{completedOrderData.paymentMethodDetails}</p>
               )}
             </div>
           )}
 
           {/* Kiosk: say what is about to happen, and offer a way to skip the wait. */}
           {isKiosk ? (
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+            <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
               <div className="space-y-4 text-center">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-[color:var(--co-text)]">
                   {hasOrderSaveFailed
                     ? `This order did not reach ${tenant.name}. Please tell a staff member.`
                     : `Your order has been sent to ${tenant.name}.`}
                 </p>
                 <div className="flex items-center justify-center gap-2">
-                  <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm text-gray-600" aria-live="polite">
+                  <div className="inline-flex items-center justify-center w-8 h-8 border-2 border-[color:var(--co-accent)] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-[color:var(--co-muted)]" aria-live="polite">
                     Returning to the menu
                     {kioskCountdown !== null && kioskCountdown > 0 && (
-                      <> in <span className="font-bold text-green-700">{kioskCountdown}s</span></>
+                      <> in <span className="font-bold text-[color:var(--co-accent)]">{kioskCountdown}s</span></>
                     )}
                     ...
                   </p>
                 </div>
                 <Button
                   size="lg"
-                  className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+                  className="w-full h-12 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold rounded-full"
                   onClick={() => router.push(kioskReturnPath(tenantSlug))}
                 >
                   <ArrowLeft className="mr-2 h-5 w-5" />
@@ -330,17 +336,17 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           ) : (
           <>
           {/* Messenger Redirect Section — skipped when the order type has Messenger turned off */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+          <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] p-6 shadow-sm border border-[color:var(--co-border)]">
             {!messengerEnabled ? (
               <div className="space-y-2 text-center">
                 {hasOrderSaveFailed ? (
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-[color:var(--co-text)]">
                     This order did not reach {tenant.name}. Please contact them directly.
                   </p>
                 ) : (
                   <>
-                    <p className="text-sm font-medium text-gray-900">Your order has been sent to {tenant.name}.</p>
-                    <p className="text-sm text-gray-600">They&apos;ll confirm it shortly — no further action needed.</p>
+                    <p className="text-sm font-medium text-[color:var(--co-text)]">Your order has been sent to {tenant.name}.</p>
+                    <p className="text-sm text-[color:var(--co-muted)]">They&apos;ll confirm it shortly — no further action needed.</p>
                   </>
                 )}
               </div>
@@ -350,13 +356,13 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 <div className="text-center space-y-2">
                   {redirectCountdown !== null && redirectCountdown > 0 ? (
                     <>
-                      <div className="inline-flex items-center justify-center w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                      <p className="text-sm text-gray-600">
-                        Redirecting to Messenger in <span className="font-bold text-green-700">{redirectCountdown}s</span>...
+                      <div className="inline-flex items-center justify-center w-10 h-10 border-2 border-[color:var(--co-accent)] border-t-transparent rounded-full animate-spin mx-auto" />
+                      <p className="text-sm text-[color:var(--co-muted)]">
+                        Redirecting to Messenger in <span className="font-bold text-[color:var(--co-accent)]">{redirectCountdown}s</span>...
                       </p>
                     </>
                   ) : (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[color:var(--co-muted)]">
                       Messenger should have opened in a new tab.
                     </p>
                   )}
@@ -365,7 +371,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 {/* Go to Messenger button */}
                 <Button
                   size="lg"
-                  className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+                  className="w-full h-12 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold rounded-full"
                   onClick={() => window.open(completedOrderData.messengerUrl, '_blank', 'noopener,noreferrer')}
                 >
                   <ExternalLink className="mr-2 h-5 w-5" />
@@ -375,13 +381,13 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 {/* Copy fallback */}
                 <div className="relative text-center">
                   <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-gray-200" />
+                    <span className="w-full border-t border-[color:var(--co-border)]" />
                   </div>
-                  <span className="relative bg-white px-3 text-xs text-gray-400">or</span>
+                  <span className="relative bg-[var(--co-card)] px-3 text-xs text-[color:var(--co-muted)]">or</span>
                 </div>
 
                 <button
-                  className="w-full text-sm text-green-700 hover:text-green-800 hover:underline py-1"
+                  className="w-full text-sm text-[color:var(--co-accent)] hover:underline py-1"
                   onClick={() => copyOrderMessage(completedOrderData.messengerMessage, COPIED_TO_MESSENGER)}
                 >
                   <Copy className="inline mr-1.5 h-3.5 w-3.5" />
@@ -390,13 +396,13 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
               </div>
             ) : (
               <div className="space-y-3 text-center">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-[color:var(--co-muted)]">
                   Copy the order message and send it to the restaurant.
                 </p>
                 <Button
                   size="lg"
                   variant="outline"
-                  className="w-full h-12 rounded-full border-green-300 text-green-700 hover:bg-green-50"
+                  className="w-full h-12 rounded-full border-[color:var(--co-accent-border)] bg-transparent text-[color:var(--co-accent)] hover:bg-[var(--co-accent-softer)] hover:text-[color:var(--co-accent)]"
                   onClick={() => copyOrderMessage(completedOrderData.messengerMessage, COPIED_TO_MESSENGER)}
                 >
                   <Copy className="mr-2 h-5 w-5" />
@@ -407,20 +413,20 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
           </div>
 
           {/* Order Message Box (collapsible) */}
-          <div className="rounded-2xl bg-white shadow-sm border border-gray-100 overflow-hidden">
+          <div data-branding-scope="checkout/card" className="rounded-2xl bg-[var(--co-card)] shadow-sm border border-[color:var(--co-border)] overflow-hidden">
             <button
               onClick={() => setMessageExpanded(!messageExpanded)}
               aria-expanded={messageExpanded}
-              className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between p-6 text-left hover:bg-[var(--co-subtle)] transition-colors"
             >
-              <h2 className="text-lg font-bold text-gray-900">Order Message</h2>
-              <span className="text-sm text-gray-400">{messageExpanded ? 'Hide' : 'Show'}</span>
+              <h2 className="text-lg font-bold text-[color:var(--co-text)]">Order Message</h2>
+              <span className="text-sm text-[color:var(--co-muted)]">{messageExpanded ? 'Hide' : 'Show'}</span>
             </button>
 
             {messageExpanded && (
               <div className="px-6 pb-6 space-y-3">
-                <div className="bg-gray-50 rounded-xl p-4 max-h-64 overflow-y-auto">
-                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                <div className="bg-[var(--co-subtle)] rounded-xl p-4 max-h-64 overflow-y-auto">
+                  <pre className="text-sm text-[color:var(--co-text)] whitespace-pre-wrap font-sans leading-relaxed">
                     {completedOrderData.messengerMessage}
                   </pre>
                 </div>
@@ -428,14 +434,14 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
                 <Button
                   size="lg"
                   variant="outline"
-                  className="w-full h-12 rounded-full border-green-300 text-green-700 hover:bg-green-50"
+                  className="w-full h-12 rounded-full border-[color:var(--co-accent-border)] bg-transparent text-[color:var(--co-accent)] hover:bg-[var(--co-accent-softer)] hover:text-[color:var(--co-accent)]"
                   onClick={() => copyOrderMessage(completedOrderData.messengerMessage, 'Order message copied to clipboard!')}
                 >
                   <Copy className="mr-2 h-5 w-5" />
                   Copy Order Message
                 </Button>
 
-                <p className="text-xs text-gray-400 text-center">
+                <p className="text-xs text-[color:var(--co-muted)] text-center">
                   {messengerEnabled ? 'Paste this in Messenger or any chat app' : 'A copy of your order for your records'}
                 </p>
               </div>
@@ -447,7 +453,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
             {trackingOrderId && trackingToken && (
               <Button
                 size="lg"
-                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full"
+                className="w-full h-12 bg-[var(--co-button)] hover:bg-[var(--co-button)] hover:opacity-90 text-[color:var(--co-accent-text)] font-semibold rounded-full"
                 onClick={() => router.push(buildOrderTrackingPath(tenantSlug, trackingOrderId, trackingToken))}
               >
                 <Package className="mr-2 h-5 w-5" />
@@ -457,7 +463,7 @@ export function CheckoutConfirmation({ checkout }: { checkout: UseCheckoutReturn
             <Button
               size="lg"
               variant="ghost"
-              className="w-full h-12 rounded-full text-gray-600 hover:text-gray-900"
+              className="w-full h-12 rounded-full text-[color:var(--co-muted)] hover:bg-[var(--co-subtle)] hover:text-[color:var(--co-text)]"
               onClick={() => router.push(`/${tenantSlug}/menu`)}
             >
               <ArrowLeft className="mr-2 h-5 w-5" />
@@ -482,23 +488,25 @@ export { PaymentDetailsDialog } from './payment-details-dialog'
 /** Full-size payment QR dialog (shared across designs). */
 export function QrCodeDialog({ checkout }: { checkout: UseCheckoutReturn }) {
   const { qrDialogOpen, selectedQrCode, setQrDialogOpen } = checkout
+  const themeStyle = checkoutThemeStyle(checkout)
 
   if (!qrDialogOpen || !selectedQrCode) return null
 
   return (
     <div
       className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
+      style={themeStyle}
       onClick={() => setQrDialogOpen(false)}
     >
       <div
-        className="bg-white rounded-lg p-6 max-w-md w-full"
+        className="bg-[var(--co-card)] rounded-lg p-6 max-w-md w-full"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold">Payment QR Code</h3>
+          <h3 className="text-xl font-semibold text-[color:var(--co-text)]">Payment QR Code</h3>
           <button
             onClick={() => setQrDialogOpen(false)}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-[color:var(--co-muted)] hover:text-[color:var(--co-text)]"
           >
             <span className="sr-only">Close</span>
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -510,9 +518,9 @@ export function QrCodeDialog({ checkout }: { checkout: UseCheckoutReturn }) {
         <img
           src={selectedQrCode}
           alt="Payment QR Code"
-          className="w-full h-auto object-contain rounded"
+          className="w-full h-auto object-contain rounded bg-white"
         />
-        <p className="text-sm text-gray-500 text-center mt-4">
+        <p className="text-sm text-[color:var(--co-muted)] text-center mt-4">
           Scan this QR code with your payment app
         </p>
       </div>

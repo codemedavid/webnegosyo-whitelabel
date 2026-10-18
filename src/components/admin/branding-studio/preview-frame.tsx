@@ -8,6 +8,7 @@
  * mobile toggle exercises real responsive breakpoints.
  */
 
+import { SAMPLE_CART_KEY } from '@/lib/branding-studio/sample-cart'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BRANDING_DRAFT_MESSAGE,
@@ -16,13 +17,19 @@ import {
   type BrandingPreviewDraft,
 } from '@/hooks/use-branding-preview'
 import {
+  BRANDING_FIELD_HOVER_MESSAGE,
   BRANDING_INSPECT_MODE_MESSAGE,
   BRANDING_SCOPE_SELECTED_MESSAGE,
+  BRANDING_SELECT_MESSAGE,
+  BRANDING_TEXT_EDIT_MESSAGE,
 } from '@/lib/branding-inspect'
+import { STOREFRONT_LABELS, cleanLabelText, type StorefrontLabelKey } from '@/lib/storefront-labels'
 import { getPreviewTarget } from './preview-routes'
+import { PREVIEW_STATES_KEY } from '@/lib/branding-studio/preview-states'
 import type { BrandingSurface } from '@/lib/branding-registry'
 
 const DRAFT_POST_DEBOUNCE_MS = 60
+const NO_STATES: readonly string[] = []
 const MOBILE_PREVIEW_WIDTH_PX = 390
 /**
  * How long the storefront gets to announce itself before the pane admits it
@@ -50,6 +57,36 @@ interface PreviewFrameProps {
   inspectMode?: boolean
   /** Called with the scope key when a highlighted region is clicked. */
   onScopeSelected?: (scope: string) => void
+  /** The component the panel is editing — outlined in the preview. */
+  selectedScope?: string | null
+  /** The setting under the owner's pointer — everything it changes is outlined. */
+  hoveredFieldId?: string | null
+  /** Studio-only samples the item page shows (sale price, photo viewer…). */
+  previewStates?: readonly string[]
+  /** Toggles for those samples, shown under the preview. */
+  stateControls?: React.ReactNode
+  /** Sample dishes for the cart and checkout previews (used only when the cart is empty). */
+  sampleCart?: readonly unknown[]
+  /** Screen switcher shown above the preview. */
+  journey?: React.ReactNode
+  /** Cart surfaces: the drawer over the menu or the full cart page. */
+  cartView?: 'drawer' | 'page'
+  /** A label was retyped on the page (blank = back to the default wording). */
+  onLabelEdited?: (key: StorefrontLabelKey, text: string) => void
+  /** Phone editor: room kept below the preview for the settings sheet. */
+  phoneInsetClass?: string
+}
+
+function postOutlines(
+  frameWindow: Window,
+  surfaceId: BrandingSurface['id'],
+  { selectedScope, hoveredFieldId }: { selectedScope: string | null; hoveredFieldId: string | null }
+): void {
+  frameWindow.postMessage({ type: BRANDING_SELECT_MESSAGE, scope: selectedScope }, window.location.origin)
+  frameWindow.postMessage(
+    { type: BRANDING_FIELD_HOVER_MESSAGE, surfaceId, fieldId: hoveredFieldId },
+    window.location.origin
+  )
 }
 
 export function PreviewFrame({
@@ -64,6 +101,15 @@ export function PreviewFrame({
   sampleItemId,
   inspectMode = false,
   onScopeSelected,
+  selectedScope = null,
+  hoveredFieldId = null,
+  previewStates = NO_STATES,
+  stateControls,
+  sampleCart = NO_STATES,
+  journey,
+  cartView = 'drawer',
+  phoneInsetClass = 'max-md:pb-[64px]',
+  onLabelEdited,
 }: PreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
@@ -72,13 +118,18 @@ export function PreviewFrame({
   const mobileOverridesRef = useRef(mobileOverrides)
   const productMobileOverridesRef = useRef(productMobileOverrides)
   const surfaceRef = useRef(surfaceId)
+  const previewStatesRef = useRef(previewStates)
+  const sampleCartRef = useRef(sampleCart)
+  sampleCartRef.current = sampleCart
   const inspectModeRef = useRef(inspectMode)
+  const outlineRef = useRef({ selectedScope, hoveredFieldId })
+  outlineRef.current = { selectedScope, hoveredFieldId }
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const previewPath = useMemo(() => {
-    const { path } = getPreviewTarget(tenantSlug, surfaceId, sampleItemId)
+    const { path } = getPreviewTarget(tenantSlug, surfaceId, sampleItemId, cartView)
     return `${path}?${BRANDING_PREVIEW_PARAM}=1`
-  }, [tenantSlug, surfaceId, sampleItemId])
+  }, [tenantSlug, surfaceId, sampleItemId, cartView])
 
   // Which load the storefront last said "ready" for. Keyed by path plus a
   // retry counter so switching surface, or pressing retry, starts the clock
@@ -116,17 +167,26 @@ export function PreviewFrame({
           __categoryDraft: categoryDraftRef.current ?? {},
           __mobileOverrides: mobileOverridesRef.current ?? {},
           __productMobileOverrides: productMobileOverridesRef.current ?? {},
+          [PREVIEW_STATES_KEY]: previewStatesRef.current,
+          [SAMPLE_CART_KEY]: sampleCartRef.current,
         },
       },
       window.location.origin
     )
-    // Ride inspect mode on every draft send so a freshly (re)loaded or
-    // navigated iframe always knows the current mode.
+    // Ride inspect mode and the outlines on every draft send so a freshly
+    // (re)loaded or navigated iframe always knows the current state.
     frameWindow.postMessage(
       { type: BRANDING_INSPECT_MODE_MESSAGE, enabled: inspectModeRef.current },
       window.location.origin
     )
+    postOutlines(frameWindow, surfaceRef.current, outlineRef.current)
   }, [])
+
+  // Selection and setting-hover outlines go straight through (no debounce).
+  useEffect(() => {
+    const frameWindow = iframeRef.current?.contentWindow
+    if (frameWindow) postOutlines(frameWindow, surfaceId, { selectedScope, hoveredFieldId })
+  }, [surfaceId, selectedScope, hoveredFieldId])
 
   // Stream draft changes (debounced — color pickers fire on every drag tick).
   useEffect(() => {
@@ -136,12 +196,13 @@ export function PreviewFrame({
     mobileOverridesRef.current = mobileOverrides
     productMobileOverridesRef.current = productMobileOverrides
     surfaceRef.current = surfaceId
+    previewStatesRef.current = previewStates
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(postDraft, DRAFT_POST_DEBOUNCE_MS)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [draft, productDraft, categoryDraft, mobileOverrides, productMobileOverrides, surfaceId, postDraft])
+  }, [draft, productDraft, categoryDraft, mobileOverrides, productMobileOverrides, surfaceId, previewStates, postDraft])
 
   // Push inspect-mode changes immediately (no debounce — it's a UI toggle).
   useEffect(() => {
@@ -160,7 +221,7 @@ export function PreviewFrame({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
-      const data = event.data as { type?: unknown; scope?: unknown } | null
+      const data = event.data as { type?: unknown; scope?: unknown; key?: unknown; text?: unknown } | null
       if (!data || typeof data !== 'object') return
       if (data.type === BRANDING_READY_MESSAGE) {
         setReadyFrameKey(frameKeyRef.current)
@@ -169,20 +230,31 @@ export function PreviewFrame({
       }
       if (data.type === BRANDING_SCOPE_SELECTED_MESSAGE && typeof data.scope === 'string') {
         onScopeSelected?.(data.scope)
+        return
+      }
+      if (
+        data.type === BRANDING_TEXT_EDIT_MESSAGE &&
+        typeof data.key === 'string' &&
+        typeof data.text === 'string' &&
+        Object.prototype.hasOwnProperty.call(STOREFRONT_LABELS, data.key)
+      ) {
+        const key = data.key as StorefrontLabelKey
+        onLabelEdited?.(key, cleanLabelText(data.text, STOREFRONT_LABELS[key].maxLength))
       }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [postDraft, onScopeSelected])
+  }, [postDraft, onScopeSelected, onLabelEdited])
 
   const isMobile = device === 'mobile'
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-auto p-6 [background-image:radial-gradient(circle,rgba(0,0,0,0.07)_1px,transparent_1px)] [background-size:18px_18px]">
+    <div className={`flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-auto p-6 max-md:p-0 ${phoneInsetClass} [background-image:radial-gradient(circle,rgba(0,0,0,0.07)_1px,transparent_1px)] [background-size:18px_18px]`}>
+      {journey}
       <div
         className={`mx-auto flex min-h-0 flex-1 flex-col overflow-hidden bg-white shadow-[0_18px_50px_rgba(30,22,12,0.18)] ${
           isMobile
-            ? 'w-[390px] max-w-full rounded-[30px] border-8 border-[#23201B]'
+            ? 'w-[390px] max-w-full rounded-[30px] border-8 border-[#23201B] max-md:rounded-none max-md:border-0'
             : 'w-full rounded-xl border border-black/10'
         }`}
         style={isMobile ? { width: MOBILE_PREVIEW_WIDTH_PX } : undefined}
@@ -215,7 +287,8 @@ export function PreviewFrame({
           className="h-full w-full flex-1 border-0"
         />
       </div>
-      <div className="mt-3 text-center text-[11.5px] font-bold text-[rgba(80,72,60,0.75)]">
+      {stateControls}
+      <div className="mt-3 text-center text-[11.5px] font-bold text-[rgba(80,72,60,0.75)] max-md:hidden">
         {isMobile
           ? 'Mobile preview · 390px — real responsive breakpoints'
           : 'Live preview · changes apply instantly, nothing is saved until you publish'}

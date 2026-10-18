@@ -19,9 +19,11 @@ import type { CSSProperties, ReactNode } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { formatPrice } from '@/lib/cart-utils'
 import { getCheckoutPalette } from '@/lib/branding-utils'
+import { checkoutThemeStyle } from './checkout-theme'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { CartItem } from '@/types/database'
 import { VoucherField } from './voucher-field'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 export type OrderSummaryVariant = 'default' | 'classic'
 
@@ -51,48 +53,51 @@ interface SummarySkin {
   totalValue: string
 }
 
+const RULE = 'border-t border-[color:var(--co-border)]'
+const SEPARATOR_COLOR = 'bg-[var(--co-border)]'
+
 const DEFAULT_SKIN: SummarySkin = {
   container: 'space-y-3',
-  itemBreak: <div className="my-3 border-t border-gray-100" />,
-  itemsBreak: <div className="my-3 border-t border-gray-100" />,
+  itemBreak: <div className={`my-3 ${RULE}`} />,
+  itemsBreak: <div className={`my-3 ${RULE}`} />,
   rowTrailingBreak: null,
-  voucherLeadingBreak: <div className="my-2 border-t border-gray-200" />,
+  voucherLeadingBreak: <div className={`my-2 ${RULE}`} />,
   discountLeadingBreak: null,
-  totalLeadingBreak: <div className="my-2 border-t border-gray-200" />,
-  itemName: 'font-medium text-sm text-gray-900',
-  itemMeta: 'text-xs text-gray-500',
-  itemAddons: 'text-xs text-gray-500 mt-0.5',
-  itemNote: 'text-xs italic text-gray-500 mt-0.5',
-  itemPrice: 'font-semibold text-sm text-gray-900 flex-shrink-0',
-  rowLabel: 'text-gray-600',
-  rowValue: 'font-medium text-gray-900',
-  discountValue: 'font-medium text-green-700',
-  errorText: 'text-xs text-red-600',
+  totalLeadingBreak: <div className={`my-2 ${RULE}`} />,
+  itemName: 'font-medium text-sm text-[color:var(--co-text)]',
+  itemMeta: 'text-xs text-[color:var(--co-muted)]',
+  itemAddons: 'text-xs text-[color:var(--co-muted)] mt-0.5',
+  itemNote: 'text-xs italic text-[color:var(--co-muted)] mt-0.5',
+  itemPrice: 'font-semibold text-sm text-[color:var(--co-text)] flex-shrink-0',
+  rowLabel: 'text-[color:var(--co-muted)]',
+  rowValue: 'font-medium text-[color:var(--co-text)]',
+  discountValue: 'font-medium text-[color:var(--co-success)]',
+  errorText: 'text-xs text-[color:var(--co-error)]',
   totalRow: 'flex justify-between items-baseline',
-  totalLabel: 'text-base font-bold text-gray-900',
+  totalLabel: 'text-base font-bold text-[color:var(--co-text)]',
   totalValue: 'text-xl font-bold',
 }
 
 const CLASSIC_SKIN: SummarySkin = {
   container: 'space-y-4',
-  itemBreak: <Separator className="my-4" />,
-  itemsBreak: <Separator className="my-4" />,
-  rowTrailingBreak: <Separator className="my-2" />,
+  itemBreak: <Separator className={`my-4 ${SEPARATOR_COLOR}`} />,
+  itemsBreak: <Separator className={`my-4 ${SEPARATOR_COLOR}`} />,
+  rowTrailingBreak: <Separator className={`my-2 ${SEPARATOR_COLOR}`} />,
   voucherLeadingBreak: null,
-  discountLeadingBreak: <Separator className="my-2" />,
+  discountLeadingBreak: <Separator className={`my-2 ${SEPARATOR_COLOR}`} />,
   totalLeadingBreak: null,
-  itemName: 'font-medium',
-  itemMeta: 'text-sm text-muted-foreground',
-  itemAddons: 'text-sm text-muted-foreground',
-  itemNote: 'text-sm italic text-muted-foreground',
-  itemPrice: 'font-semibold flex-shrink-0',
-  rowLabel: 'text-gray-600',
-  rowValue: 'font-semibold',
-  discountValue: 'font-semibold text-green-700',
-  errorText: 'text-sm text-red-600',
-  totalRow: 'flex justify-between text-xl font-bold pt-4 border-t',
+  itemName: 'font-medium text-[color:var(--co-text)]',
+  itemMeta: 'text-sm text-[color:var(--co-muted)]',
+  itemAddons: 'text-sm text-[color:var(--co-muted)]',
+  itemNote: 'text-sm italic text-[color:var(--co-muted)]',
+  itemPrice: 'font-semibold text-[color:var(--co-text)] flex-shrink-0',
+  rowLabel: 'text-[color:var(--co-muted)]',
+  rowValue: 'font-semibold text-[color:var(--co-text)]',
+  discountValue: 'font-semibold text-[color:var(--co-success)]',
+  errorText: 'text-sm text-[color:var(--co-error)]',
+  totalRow: `flex justify-between text-xl font-bold pt-4 ${RULE}`,
   totalLabel: '',
-  totalValue: 'text-orange-600',
+  totalValue: 'text-[color:var(--co-accent)]',
 }
 
 const SKINS: Record<OrderSummaryVariant, SummarySkin> = {
@@ -225,7 +230,7 @@ export function OrderSummaryLines({
   const rowValueStyle = isClassic ? { color: text } : undefined
 
   return (
-    <div className={skin.container}>
+    <div className={skin.container} style={checkoutThemeStyle(checkout)}>
       {showItems && items.map((item, index) => (
         <div key={item.id}>
           {index > 0 && skin.itemBreak}
@@ -264,7 +269,7 @@ export function OrderSummaryLines({
               ) : feeMatches ? (
                 formatPrice(deliveryFee!)
               ) : (
-                <span className="text-gray-400">—</span>
+                <span style={{ color: mutedText }}>—</span>
               )
             }
           />
@@ -337,7 +342,7 @@ export function OrderSummaryLines({
       {skin.totalLeadingBreak}
 
       <div className={skin.totalRow}>
-        <span className={skin.totalLabel} style={{ color: text }}>Total</span>
+        <span className={skin.totalLabel} style={{ color: text }}><StoreLabel name="checkout.total" fallback="Total" /></span>
         <span className={skin.totalValue} style={{ color: accent }}>
           {isFetchingDeliveryFee ? <span className="animate-pulse">Calculating...</span> : formatPrice(grandTotal)}
         </span>

@@ -31,9 +31,16 @@ describe('getPreviewTarget', () => {
     expect(target.path).toBe('/demo/menu')
   })
 
-  it('previews the checkout page for checkout and upsell surfaces', () => {
+  it('previews the checkout page for the checkout surface', () => {
     expect(getPreviewTarget(slug, 'checkout', null).path).toBe('/demo/checkout')
-    expect(getPreviewTarget(slug, 'upsell', null).path).toBe('/demo/checkout')
+  })
+
+  it('previews the cart for the upsell surface — the last-call offers live there', () => {
+    expect(getPreviewTarget(slug, 'upsell', null)).toEqual({ path: '/demo/menu', openCart: true })
+  })
+
+  it('previews the full cart page when asked, so the Cart layout setting shows', () => {
+    expect(getPreviewTarget(slug, 'cart', null, 'page').path).toBe('/demo/cart')
   })
 
   it('previews the menu page for global, storefront, footer and flash surfaces', () => {

@@ -2,16 +2,18 @@
 
 /**
  * Wizard checkout design — a focused, step-by-step flow inspired by
- * Shop Pay / Stripe Checkout. One section at a time inside a centered white
+ * Shop Pay / Stripe Checkout. One section at a time inside a centered
  * card, with a branded numbered progress stepper. Pure presentation: all logic
  * comes from useCheckout() and the branding-aware primitives. The confirmation
  * screen and payment/QR dialogs are rendered by the page shell (shared).
  */
 
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { useState } from 'react'
 import { ArrowLeft, Check, ChevronLeft } from 'lucide-react'
 import { getCheckoutPalette } from '@/lib/branding-utils'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
+import { checkoutThemeStyle } from './checkout-theme'
 import { resolveWizardSteps, type WizardStep } from '@/lib/checkout-wizard-steps'
 import {
   OrderTypeSelector,
@@ -30,6 +32,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     customerData, paymentMethods, selectedPaymentMethod,
     scheduleMode, scheduledForLabel, isScheduleValid,
   } = checkout
+  const receiveTitle = useStorefrontLabel('checkout.order_type', 'How would you like to receive your order?')
+  const detailsTitle = useStorefrontLabel('checkout.customer', 'Your information')
+  const paymentTitle = useStorefrontLabel('checkout.payment', 'How would you like to pay?')
+  const reviewTitle = useStorefrontLabel('checkout.summary', 'Review your order')
 
   const [step, setStep] = useState(0)
 
@@ -80,10 +86,10 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
     : null
 
   const stepTitles: Record<WizardStep, string> = {
-    Receive: 'How would you like to receive your order?',
-    Details: 'Your information',
-    Payment: 'How would you like to pay?',
-    Review: 'Review your order',
+    Receive: receiveTitle,
+    Details: detailsTitle,
+    Payment: paymentTitle,
+    Review: reviewTitle,
   }
   const stepSubtitles: Record<WizardStep, string> = {
     Receive: 'Choose a fulfillment method' + (advanceConfig.enabled ? ' and when you want it.' : '.'),
@@ -93,21 +99,21 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: palette.background }}>
+    <div className="min-h-screen bg-[var(--co-bg)] text-[color:var(--co-text)]" style={checkoutThemeStyle(checkout)}>
       {/* Header */}
-      <header data-senior-hidden className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
+      <header data-senior-hidden className="sticky top-0 z-50 border-b border-[color:var(--co-border)] bg-[var(--co-card)]/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-2xl items-center gap-3 px-4">
           <button
             type="button"
             onClick={() => router.back()}
             aria-label="Go back"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-gray-100"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[color:var(--co-muted)] transition-colors hover:bg-[var(--co-subtle-strong)]"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold text-gray-900">Checkout</h1>
-            <p className="truncate text-xs text-gray-500">{tenant.name}</p>
+            <h1 className="truncate text-lg font-bold text-[color:var(--co-text)]"><StoreLabel name="checkout.title" fallback="Checkout" /></h1>
+            <p className="truncate text-xs text-[color:var(--co-muted)]">{tenant.name}</p>
           </div>
         </div>
       </header>
@@ -133,7 +139,7 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                       style={
                         isDone
                           ? { backgroundColor: accent, color: accentText }
-                          : { backgroundColor: '#f3f4f6', color: '#9ca3af' }
+                          : { backgroundColor: 'var(--co-subtle-strong)', color: 'var(--co-muted)' }
                       }
                       aria-current={isActive ? 'step' : undefined}
                     >
@@ -141,14 +147,14 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                     </span>
                     <span
                       className={`hidden text-[11px] font-medium sm:block ${
-                        isDone ? 'text-gray-900' : 'text-gray-400'
+                        isDone ? 'text-[color:var(--co-text)]' : 'text-[color:var(--co-muted)]'
                       }`}
                     >
                       {label}
                     </span>
                   </div>
                   {index < steps.length - 1 && (
-                    <span className="relative mx-2 h-0.5 flex-1 rounded-full bg-gray-200">
+                    <span className="relative mx-2 h-0.5 flex-1 rounded-full bg-[var(--co-border)]">
                       <span
                         className="absolute inset-y-0 left-0 rounded-full transition-all"
                         style={{
@@ -166,15 +172,15 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
 
         {/* Step card */}
         <div
-          className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100 sm:p-7"
+          className="rounded-2xl bg-[var(--co-card)] p-5 shadow-sm ring-1 ring-[color:var(--co-border)] sm:p-7"
           style={{ backgroundColor: palette.cardBackground }}
         >
           <div className="mb-5 sm:mb-6">
             <p data-senior-hidden className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>
               Step {stepIndex + 1} of {steps.length}
             </p>
-            <h2 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl" style={{ color: palette.text }}>{stepTitles[current]}</h2>
-            <p className="mt-1 text-sm text-gray-500" style={{ color: palette.mutedText }}>{stepSubtitles[current]}</p>
+            <h2 className="mt-1 text-xl font-bold text-[color:var(--co-text)] sm:text-2xl" style={{ color: palette.text }}>{stepTitles[current]}</h2>
+            <p className="mt-1 text-sm text-[color:var(--co-muted)]" style={{ color: palette.mutedText }}>{stepSubtitles[current]}</p>
           </div>
 
           {/*
@@ -195,7 +201,7 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
             {orderType && formFields.length > 0 ? (
               <CheckoutFields checkout={checkout} columns={1} />
             ) : (
-              <p className="text-sm text-gray-500">No additional information is needed for this order.</p>
+              <p className="text-sm text-[color:var(--co-muted)]">No additional information is needed for this order.</p>
             )}
           </div>
 
@@ -211,8 +217,8 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                 className="flex items-center justify-between rounded-xl px-4 py-3"
                 style={{ backgroundColor: accentSoft }}
               >
-                <span className="text-sm font-medium text-gray-600">Order type</span>
-                <span className="text-sm font-semibold text-gray-900">{selectedOrderTypeData.name}</span>
+                <span className="text-sm font-medium text-[color:var(--co-muted)]">Order type</span>
+                <span className="text-sm font-semibold text-[color:var(--co-text)]">{selectedOrderTypeData.name}</span>
               </div>
             )}
             {checkout.scheduledForLabel && (
@@ -220,14 +226,14 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
                 className="flex items-center justify-between rounded-xl px-4 py-3"
                 style={{ backgroundColor: accentSoft }}
               >
-                <span className="text-sm font-medium text-gray-600">
+                <span className="text-sm font-medium text-[color:var(--co-muted)]">
                   {selectedOrderTypeData?.type === 'delivery' ? 'Arriving' : 'Ready'}
                 </span>
-                <span className="text-sm font-semibold text-gray-900">{checkout.scheduledForLabel}</span>
+                <span className="text-sm font-semibold text-[color:var(--co-text)]">{checkout.scheduledForLabel}</span>
               </div>
             )}
             <div
-              className="rounded-xl border border-gray-100 p-4"
+              className="rounded-xl border border-[color:var(--co-border)] p-4"
               style={{ backgroundColor: palette.summaryBackground, borderColor: palette.border }}
             >
               <OrderSummaryLines checkout={checkout} />
@@ -235,12 +241,12 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           </div>
 
           {/* Footer navigation */}
-          <div className="mt-7 flex items-center gap-3 border-t border-gray-100 pt-5">
+          <div className="mt-7 flex items-center gap-3 border-t border-[color:var(--co-border)] pt-5">
             <button
               type="button"
               onClick={goBack}
               disabled={isFirstStep}
-              className="inline-flex h-12 items-center justify-center gap-1.5 rounded-full border border-gray-300 px-5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-12 items-center justify-center gap-1.5 rounded-full border border-[color:var(--co-border)] px-5 text-sm font-semibold text-[color:var(--co-text)] transition-colors hover:bg-[var(--co-subtle)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
               Back
@@ -265,11 +271,11 @@ export function WizardCheckout({ checkout }: { checkout: UseCheckoutReturn }) {
           </div>
 
           {continueHint && !isLastStep && (
-            <p className="mt-3 text-center text-xs font-medium text-amber-600">{continueHint}</p>
+            <p className="mt-3 text-center text-xs font-medium text-[color:var(--co-warning)]">{continueHint}</p>
           )}
         </div>
 
-        <p className="mt-4 text-center text-xs text-gray-400">
+        <p className="mt-4 text-center text-xs text-[color:var(--co-muted)]">
           Your order will be sent to {tenant.name} for confirmation.
         </p>
       </main>

@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { CheckCircle2 } from 'lucide-react'
 import type { OfferTheme } from './offer-theme'
 import { OfferProductCard } from './offer-product-card'
@@ -16,7 +17,7 @@ export interface AddedSheetContentProps {
   suggestions: readonly AddedSuggestion[]
   addedIds: ReadonlySet<string>
   theme: OfferTheme
-  primaryLabel: string
+  primaryLabel: React.ReactNode
   secondaryLabel: string
   onAdd: (id: string) => void
   onPrimary: () => void
@@ -44,14 +45,14 @@ export function AddedSheetContent({
       <div className="flex items-start gap-3 px-5 pt-5">
         <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" style={{ color: theme.success }} aria-hidden="true" />
         <div className="min-w-0">
-          <p className="text-base font-semibold leading-snug">Added to your order</p>
+          <p className="text-base font-semibold leading-snug"><StoreLabel name="item.added_title" fallback="Added to your order" /></p>
           <p className="truncate text-sm" style={{ color: theme.muted }}>{addedName}</p>
         </div>
       </div>
 
       {suggestions.length > 0 && (
         <div className="pt-5">
-          <p className="px-5 text-sm font-semibold">Goes well with it</p>
+          <p className="px-5 text-sm font-semibold"><StoreLabel name="item.added_pairings" fallback="Goes well with it" /></p>
           <div className="flex snap-x gap-3 overflow-x-auto px-5 pb-1 pt-3 [scrollbar-width:none]">
             {suggestions.map((suggestion) => (
               <OfferProductCard

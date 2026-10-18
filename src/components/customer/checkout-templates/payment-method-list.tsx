@@ -20,8 +20,10 @@ import { isPaymentProofRequired } from '@/lib/payment-proof'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { PaymentMethod } from '@/types/database'
 import { PaymentDetailRows } from './payment-detail-rows'
+import { checkoutThemeStyle } from './checkout-theme'
 
-const NEUTRAL_BORDER = '#e5e7eb'
+/** QR codes keep a white quiet zone on every theme so phone cameras can read them. */
+const QR_BACKDROP = 'bg-white'
 
 export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn }) {
   const {
@@ -33,14 +35,18 @@ export function PaymentMethodList({ checkout }: { checkout: UseCheckoutReturn })
 
   if (paymentMethods.length === 0) {
     if (!orderType || !tenant) return null
-    return <NoPaymentMethods />
+    return (
+      <div style={checkoutThemeStyle(checkout)}>
+        <NoPaymentMethods />
+      </div>
+    )
   }
 
   return (
     <fieldset
       className="min-w-0"
       data-payment-methods
-      style={{ ['--checkout-accent' as string]: palette.accent }}
+      style={checkoutThemeStyle(checkout)}
     >
       <legend className="sr-only">Payment method</legend>
 
@@ -84,10 +90,11 @@ interface PaymentMethodTileProps {
 function PaymentMethodTile({ method, isSelected, accent, accentText, accentSoft, onSelect }: PaymentMethodTileProps) {
   return (
     <label
-      className="relative flex w-[7.25rem] shrink-0 snap-start cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 bg-white px-2 pb-3 pt-4 text-center transition-[border-color,background-color,transform] hover:border-gray-300 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-[color:var(--checkout-accent)] motion-safe:active:scale-[0.97]"
+      data-branding-scope="checkout/choice"
+      className="relative flex w-[7.25rem] shrink-0 snap-start cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 bg-[var(--co-card)] px-2 pb-3 pt-4 text-center transition-[border-color,background-color,transform] hover:border-[color:var(--co-accent-border)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-[color:var(--co-accent)] has-[:focus-visible]:ring-offset-[color:var(--co-card)] motion-safe:active:scale-[0.97]"
       style={{
-        borderColor: isSelected ? accent : NEUTRAL_BORDER,
-        backgroundColor: isSelected ? accentSoft : '#ffffff',
+        borderColor: isSelected ? accent : 'var(--co-border)',
+        backgroundColor: isSelected ? accentSoft : 'var(--co-card)',
       }}
     >
       <input
@@ -101,14 +108,14 @@ function PaymentMethodTile({ method, isSelected, accent, accentText, accentSoft,
       {isSelected && (
         <span
           aria-hidden="true"
-          className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200"
+          className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-[color:var(--co-card)] motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200"
           style={{ backgroundColor: accent, color: accentText }}
         >
           <Check className="h-3.5 w-3.5" strokeWidth={3} />
         </span>
       )}
       <MethodMark method={method} accent={accent} accentSoft={accentSoft} />
-      <span className="line-clamp-2 w-full text-[13px] font-semibold leading-tight text-gray-900">
+      <span className="line-clamp-2 w-full text-[13px] font-semibold leading-tight text-[color:var(--co-text)]">
         {method.name}
       </span>
     </label>
@@ -123,7 +130,7 @@ function MethodMark({ method, accent, accentSoft }: { method: PaymentMethod; acc
       <img
         src={method.qr_code_url}
         alt=""
-        className="h-14 w-14 rounded-xl border border-gray-200 bg-white object-cover"
+        className={`h-14 w-14 rounded-xl border border-[color:var(--co-border)] object-cover ${QR_BACKDROP}`}
       />
     )
   }
@@ -153,31 +160,31 @@ function PaymentTicket({ method, accent, copiedText, onCopy, onEnlargeQr }: Paym
   const needsProof = isPaymentProofRequired(method)
 
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-200">
+    <div className="mt-4 overflow-hidden rounded-2xl border border-[color:var(--co-border)] bg-[var(--co-card)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-200">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <p className="text-sm font-semibold text-gray-900">Pay with {method.name}</p>
+        <p className="text-sm font-semibold text-[color:var(--co-text)]">Pay with {method.name}</p>
         {needsProof && (
-          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700">
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-[var(--co-subtle-strong)] px-2.5 py-1 text-[11px] font-medium text-[color:var(--co-text)]">
             <Receipt className="h-3 w-3" /> Proof required
           </span>
         )}
       </div>
 
       {(qrUrl || rows.length > 0) && (
-        <div className="space-y-3 border-t border-dashed border-gray-200 bg-gray-50/70 px-4 py-4">
+        <div className="space-y-3 border-t border-dashed border-[color:var(--co-border)] bg-[var(--co-subtle)] px-4 py-4">
           {qrUrl && (
             <div className="flex items-center gap-4">
               <button
                 type="button"
                 onClick={() => onEnlargeQr(qrUrl)}
                 aria-label={`Enlarge ${method.name} QR code`}
-                className="shrink-0 rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--checkout-accent)] motion-safe:active:scale-[0.97]"
+                className={`shrink-0 rounded-xl border border-[color:var(--co-border)] p-1.5 shadow-sm transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--co-accent)] motion-safe:active:scale-[0.97] ${QR_BACKDROP}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={qrUrl} alt="" className="h-24 w-24 object-contain" />
               </button>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900">Scan to pay with {method.name}</p>
+                <p className="text-sm font-medium text-[color:var(--co-text)]">Scan to pay with {method.name}</p>
                 <button
                   type="button"
                   onClick={() => onEnlargeQr(qrUrl)}
@@ -198,11 +205,11 @@ function PaymentTicket({ method, accent, copiedText, onCopy, onEnlargeQr }: Paym
 
 function NoPaymentMethods() {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+    <div className="flex items-start gap-3 rounded-2xl border border-[color:var(--co-warning-border)] bg-[var(--co-warning-soft)] p-4">
+      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--co-warning)]" />
       <div>
-        <h3 className="text-sm font-semibold text-amber-900">No payment methods yet</h3>
-        <p className="mt-0.5 text-sm text-amber-800">
+        <h3 className="text-sm font-semibold text-[color:var(--co-text)]">No payment methods yet</h3>
+        <p className="mt-0.5 text-sm text-[color:var(--co-muted)]">
           None have been set up for this order type. You can still place your order, and payment will be arranged with the store.
         </p>
       </div>

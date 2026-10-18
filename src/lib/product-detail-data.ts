@@ -308,9 +308,13 @@ export const getCachedUpsellsForItem = cache(async (
     }
 })
 
-/** Product detail page settings. Cached across requests. */
+/**
+ * Product detail page settings. Cached across requests. The key is versioned:
+ * v2 rows store NULL for "follow the brand" (20261019100000), and a cached v1
+ * row would paint its stored table defaults over the brand.
+ */
 export const getCachedProductDetailSettings = cache(
-    createCachedRead(['product-detail-settings'], async (tenantId: string) => {
+    createCachedRead(['product-detail-settings-v2'], async (tenantId: string) => {
         const { data, error } = await createPublicClient()
             .from('product_detail_settings')
             .select('*')

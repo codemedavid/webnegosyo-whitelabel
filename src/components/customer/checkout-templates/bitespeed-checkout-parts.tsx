@@ -49,7 +49,7 @@ export function BiteSpeedHeader({ tenantSlug, storeName }: { tenantSlug: string;
 }
 
 interface SectionProps {
-  title: string
+  title: ReactNode
   icon: LucideIcon
   action?: ReactNode
   children: ReactNode
@@ -60,6 +60,7 @@ export function BiteSpeedSection({ title, icon: Icon, action, children }: Sectio
   const headingId = useId()
   return (
     <section
+      data-branding-scope="checkout/card"
       aria-labelledby={headingId}
       className="rounded-[var(--bs-radius)] bg-[var(--bs-surface)] p-5 sm:p-6"
       style={{ boxShadow: BITESPEED_CARD_SHADOW }}
@@ -202,6 +203,7 @@ function PlaceOrderButton({ checkout }: { checkout: UseCheckoutReturn }) {
       type="button"
       onClick={handleProceedToPayment}
       disabled={isProcessing || orderMinimum?.meets === false}
+      data-branding-scope="checkout/place-order"
       className="inline-flex h-14 flex-1 items-center justify-center gap-2 rounded-[var(--bs-radius)] bg-[var(--bs-accent)] px-4 text-sm leading-tight font-bold uppercase tracking-wide sm:text-base text-[var(--bs-on-accent)] transition-[opacity,transform] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 motion-safe:active:scale-[0.98]"
       style={DISPLAY_FONT}
     >

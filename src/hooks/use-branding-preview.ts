@@ -120,6 +120,20 @@ function subscribeDraft(listener: () => void): () => void {
   }
 }
 
+const notInPreview = () => false
+// The preview flag lingers in the tab's sessionStorage after the Studio
+// closes, so editor-only decisions also require actually being framed.
+const isFramedPreview = () => window.parent !== window && isPreviewModeActive()
+
+/**
+ * True when the page runs inside the Branding Studio preview iframe — from the
+ * first render, before any draft arrives. Editor-only storefront tools (the
+ * old in-page pencils) hide on this: the Studio is the editor there.
+ */
+export function useIsBrandingPreview(): boolean {
+  return useSyncExternalStore(noSubscription, isFramedPreview, notInPreview)
+}
+
 export function useBrandingPreviewDraft(): BrandingPreviewDraft | null {
   const [isEnabled] = useState(isPreviewModeActive)
   return useSyncExternalStore(
@@ -160,17 +174,14 @@ export function useMobileOverrides(tenant: { mobile_overrides?: unknown } | null
 }
 
 /**
- * The page's tenant object with the live Branding Studio draft merged over
- * its columns. Outside preview mode (or before the first draft arrives) the
- * original reference is returned so there is zero behavioural change.
+ * The tenant object with the live Branding Studio draft (and, on a phone, the
+ * mobile overrides) merged over its columns — with no side effects, so any
+ * number of components may call it. Outside preview mode on desktop the
+ * original reference is returned.
  */
-export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T {
+export function useBrandingPreviewColumns<T extends object | null>(tenant: T): T {
   const draft = useBrandingPreviewDraft()
   const isMobile = useIsMobileViewport()
-  // Called from here rather than from each page: every surface that takes part
-  // in the preview already calls this hook, so a new one cannot forget and
-  // render a drafted pairing in the fallback typeface.
-  useStorefrontFontPreview()
   return useMemo(() => {
     if (!tenant) return tenant
     let result = { ...(tenant as Record<string, unknown>) }
@@ -189,6 +200,21 @@ export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T 
     if (!draft && !isMobile) return tenant
     return result as T
   }, [tenant, draft, isMobile])
+}
+
+/**
+ * The page's tenant object with the live Branding Studio draft merged over
+ * its columns. Outside preview mode (or before the first draft arrives) the
+ * original reference is returned so there is zero behavioural change.
+ * Also loads the preview typefaces — for page-level surfaces; leaf helpers
+ * use `useBrandingPreviewColumns`.
+ */
+export function useBrandingPreviewTenant<T extends object | null>(tenant: T): T {
+  // Called from here rather than from each page: every surface that takes part
+  // in the preview already calls this hook, so a new one cannot forget and
+  // render a drafted pairing in the fallback typeface.
+  useStorefrontFontPreview()
+  return useBrandingPreviewColumns(tenant)
 }
 
 /**

@@ -39,6 +39,7 @@ import {
   OrderLines,
   PlaceOrderBar,
 } from './bitespeed-checkout-parts'
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 
 function OrderSection({ checkout }: { checkout: UseCheckoutReturn }) {
   const { items, bundleItems, tenantSlug } = checkout
@@ -57,7 +58,7 @@ function OrderSection({ checkout }: { checkout: UseCheckoutReturn }) {
 function FulfillmentSection({ checkout }: { checkout: UseCheckoutReturn }) {
   if (!checkout.shouldAskFulfillment) return null
   return (
-    <BiteSpeedSection title="How do you want it?" icon={UtensilsCrossed}>
+    <BiteSpeedSection title={<StoreLabel name="checkout.order_type" fallback="How do you want it?" />} icon={UtensilsCrossed}>
       <OrderTypeSelector checkout={checkout} compact />
       {checkout.advanceConfig.enabled && (
         <div className="mt-5 border-t border-[var(--bs-outline)] pt-5">
@@ -73,7 +74,7 @@ function DetailsSection({ checkout }: { checkout: UseCheckoutReturn }) {
   if (!orderType || formFields.length === 0) return null
   const title = selectedOrderTypeData?.type === 'delivery' ? 'Delivery Details' : 'Your Details'
   return (
-    <BiteSpeedSection title={title} icon={MapPin}>
+    <BiteSpeedSection title={<StoreLabel name="checkout.customer" fallback={title} />} icon={MapPin}>
       <CheckoutFields checkout={checkout} columns={1} />
     </BiteSpeedSection>
   )
@@ -87,12 +88,12 @@ function CheckoutBody({ checkout }: { checkout: UseCheckoutReturn }) {
       <DetailsSection checkout={checkout} />
 
       {/* Always mounted: the hook scrolls here when no method is chosen. */}
-      <BiteSpeedSection title="Payment" icon={Wallet}>
+      <BiteSpeedSection title={<StoreLabel name="checkout.payment" fallback="Payment" />} icon={Wallet}>
         <PaymentMethodList checkout={checkout} />
       </BiteSpeedSection>
 
       {/* The lines are already listed under "Your Order". */}
-      <BiteSpeedSection title="Summary" icon={Receipt}>
+      <BiteSpeedSection title={<StoreLabel name="checkout.summary" fallback="Summary" />} icon={Receipt}>
         <OrderSummaryLines checkout={checkout} showItems={false} />
       </BiteSpeedSection>
 

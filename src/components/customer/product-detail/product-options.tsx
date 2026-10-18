@@ -6,12 +6,9 @@ import { addonQuantity } from '@/lib/addon-quantity'
 import { formatPrice } from '@/lib/cart-utils'
 import type { Addon, MenuItem, Variation, VariationOption } from '@/types/database'
 import type { ProductDetailColors } from '@/lib/product-detail-theme'
-import { AdminEditPencil } from '@/components/customer/product-detail/admin-edit-pencil'
 
 interface BrandingProps {
     themeColors: ProductDetailColors
-    isBrandAdmin: boolean
-    onEditBranding: (section: 'variations' | 'addons') => void
 }
 
 interface ProductVariationsProps extends BrandingProps {
@@ -29,7 +26,7 @@ interface ProductVariationsProps extends BrandingProps {
 export const ProductVariations = memo(function ProductVariations({
     variations, variationTypes, selectedVariation, selectedVariations,
     onVariationTypeSelect, onLegacyVariationSelect, dynamicStyles,
-    menuEngineeringEnabled, themeColors, isBrandAdmin, onEditBranding,
+    menuEngineeringEnabled, themeColors,
 }: ProductVariationsProps) {
     return <>
         {/* Variation Types (New System) */}
@@ -47,7 +44,7 @@ export const ProductVariations = memo(function ProductVariations({
                             <h3
                                 className="text-base font-semibold"
                                 style={{
-                                    color: 'var(--pd-variation-title)',
+                                    color: 'var(--pd-variation-title)', fontFamily: 'var(--pd-font-heading)',
                                     fontSize: 'var(--pd-variation-title-font-size)'
                                 }}
                             >
@@ -60,11 +57,6 @@ export const ProductVariations = memo(function ProductVariations({
                                 {variationType.is_required ? themeColors.variationRequiredText : themeColors.variationOptionalText}
                             </span>
                         </div>
-                        <AdminEditPencil
-                            visible={isBrandAdmin}
-                            onClick={() => onEditBranding('variations')}
-                            label="Edit variation selector branding"
-                        />
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -93,7 +85,7 @@ export const ProductVariations = memo(function ProductVariations({
                         <h3
                             className="text-base font-semibold"
                             style={{
-                                color: 'var(--pd-variation-title)',
+                                color: 'var(--pd-variation-title)', fontFamily: 'var(--pd-font-heading)',
                                 fontSize: 'var(--pd-variation-title-font-size)'
                             }}
                         >
@@ -106,11 +98,6 @@ export const ProductVariations = memo(function ProductVariations({
                             {themeColors.variationRequiredText}
                         </span>
                     </div>
-                    <AdminEditPencil
-                        visible={isBrandAdmin}
-                        onClick={() => onEditBranding('variations')}
-                        label="Edit variation selector branding"
-                    />
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -139,7 +126,7 @@ interface ProductAddonsProps extends BrandingProps {
 
 export const ProductAddons = memo(function ProductAddons({
     addons, selectedAddons, onQuantityChange, hideCurrencySymbol,
-    themeColors, isBrandAdmin, onEditBranding,
+    themeColors,
 }: ProductAddonsProps) {
     const quantities = useMemo(
         () => new Map(selectedAddons.map((addon) => [addon.id, addonQuantity(addon)])),
@@ -153,20 +140,15 @@ export const ProductAddons = memo(function ProductAddons({
                     <h3
                         className="text-base font-semibold"
                         style={{
-                            color: 'var(--pd-addon-title)',
+                            color: 'var(--pd-addon-title)', fontFamily: 'var(--pd-font-heading)',
                             fontSize: 'var(--pd-addon-title-font-size)'
                         }}
                     >
                         Add-ons <span style={{ color: 'var(--pd-text-muted)' }} className="font-normal text-xs">{themeColors.addonOptionalText}</span>
                     </h3>
-                    <AdminEditPencil
-                        visible={isBrandAdmin}
-                        onClick={() => onEditBranding('addons')}
-                        label="Edit add-ons branding"
-                    />
                 </div>
 
-                <p className="mb-3 text-xs opacity-70">Quantities are per item.</p>
+                <p className="mb-3 text-xs" style={{ color: 'var(--pd-text-muted)' }}>Quantities are per item.</p>
                 <div className="space-y-2">
                     {addons.map((addon) => (
                         <AddonQuantityControl
@@ -176,6 +158,7 @@ export const ProductAddons = memo(function ProductAddons({
                             quantity={quantities.get(addon.id) ?? 0}
                             onChange={value => onQuantityChange(addon, value)}
                             hideCurrencySymbol={hideCurrencySymbol}
+                            freeLabel={themeColors.addonPriceFreeText}
                         />
                     ))}
                 </div>
@@ -224,8 +207,8 @@ const VariationOptionButton = memo(function VariationOptionButton({
                 <span
         className="ml-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
         style={{
-            backgroundColor: 'var(--pd-button-primary, var(--button-primary))',
-            color: 'var(--pd-button-primary-text, #fff)',
+            backgroundColor: 'var(--pd-add-cart-bg)',
+            color: 'var(--pd-add-cart-text)',
             opacity: 0.85,
         }}
                 >

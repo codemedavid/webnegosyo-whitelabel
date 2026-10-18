@@ -9,9 +9,7 @@ import {
     mergeSettingsWithBranding,
     getProductDetailThemeCSS,
     computeProductDetailStyles,
-    type ProductDetailSettings,
-
-} from '@/lib/product-detail-theme'
+    type ProductDetailSettings, productMotionSeconds } from '@/lib/product-detail-theme'
 
 // Mock the Supabase client import used by fetchProductDetailSettings
 jest.mock('@/lib/supabase/client', () => ({
@@ -124,20 +122,23 @@ describe('mergeSettingsWithBranding', () => {
         expect(result.border).toBe(mockBranding.border)
     })
 
-    it('uses branding when setting matches default value (custom() helper behavior)', () => {
-        // When the setting value equals the default, custom() returns the branding fallback
+    it('honours a saved colour even when it equals the old table default', () => {
+        // White is a real choice: a store on a dark brand that picks a white
+        // page, option or add-on background must get white (2026-10-19).
         const settings: ProductDetailSettings = {
             tenant_id: 'test-tenant',
-            page_background_color: '#ffffff', // matches default
-            product_name_color: '#111827', // matches default
-            description_color: '#6b7280', // matches default
+            page_background_color: '#ffffff',
+            product_name_color: '#111827',
+            description_color: '#6b7280',
+            addon_background_color: '#ffffff',
         }
 
         const result = mergeSettingsWithBranding(settings, mockBranding)
 
-        expect(result.pageBackground).toBe(mockBranding.background)
-        expect(result.productName).toBe(mockBranding.textPrimary)
-        expect(result.description).toBe(mockBranding.textSecondary)
+        expect(result.pageBackground).toBe('#ffffff')
+        expect(result.productName).toBe('#111827')
+        expect(result.description).toBe('#6b7280')
+        expect(result.addonBackground).toBe('#ffffff')
     })
 
     it('uses custom value when setting differs from default', () => {
@@ -204,17 +205,45 @@ describe('mergeSettingsWithBranding', () => {
         }
     })
 
-    it('uses addon branding fallbacks for selected states', () => {
+    it('unchosen option chips follow the brand cards, text and border when unset', () => {
         const result = mergeSettingsWithBranding(null, mockBranding)
 
-        // addonSelectedText, addonSelectedBorder, addonSelectedCheck all use branding.primary
-        expect(result.addonSelectedText).toBe(mockBranding.primary)
+        expect(result.variationOptionBackground).toBe(mockBranding.cards)
+        expect(result.variationOptionText).toBe(mockBranding.textPrimary)
+        expect(result.variationOptionBorder).toBe(mockBranding.border)
+    })
+
+    it('unchosen option chips saved at the old table default keep that colour', () => {
+        const result = mergeSettingsWithBranding({
+            variation_option_background_color: '#f9fafb',
+            variation_option_text_color: '#374151',
+            variation_option_border_color: '#e5e7eb',
+        } as never, mockBranding)
+
+        expect(result.variationOptionBackground).toBe('#f9fafb')
+        expect(result.variationOptionText).toBe('#374151')
+        expect(result.variationOptionBorder).toBe('#e5e7eb')
+    })
+
+    it('keeps a picked add-on row as readable as an unpicked one when its colours are unset', () => {
+        const result = mergeSettingsWithBranding(null, mockBranding)
+
+        // Picked rows are marked by the brand border; their fill and text follow
+        // the unpicked row, so a dark store never gets primary text on a 3% tint.
+        expect(result.addonSelectedBackground).toBe(result.addonBackground)
+        expect(result.addonSelectedText).toBe(result.addonText)
         expect(result.addonSelectedBorder).toBe(mockBranding.primary)
         expect(result.addonSelectedCheck).toBe(mockBranding.primary)
+    })
 
-        // addonSelectedBackground uses setAlpha(branding.primary, 0.03)
-        expect(result.addonSelectedBackground).toContain('rgba(')
-        expect(result.addonSelectedBackground).toContain('0.03')
+    it('picked add-on rows follow the owner\'s own row colours', () => {
+        const result = mergeSettingsWithBranding({
+            addon_background_color: '#1a1a1a',
+            addon_text_color: '#fafafa',
+        } as never, mockBranding)
+
+        expect(result.addonSelectedBackground).toBe('#1a1a1a')
+        expect(result.addonSelectedText).toBe('#fafafa')
     })
 
     it('uses variation branding fallbacks for selected states', () => {
@@ -387,10 +416,10 @@ describe('computeProductDetailStyles', () => {
         const colors = mergeSettingsWithBranding(null, mockBranding)
         const styles = computeProductDetailStyles(colors)
 
-        // Variation button defaults
-        expect(styles.variationButton.backgroundColor).toBe('#f9fafb')
-        expect(styles.variationButton.color).toBe('#374151')
-        expect(styles.variationButton.borderColor).toBe('#e5e7eb')
+        // Unset variation buttons follow the brand
+        expect(styles.variationButton.backgroundColor).toBe(mockBranding.cards)
+        expect(styles.variationButton.color).toBe(mockBranding.textPrimary)
+        expect(styles.variationButton.borderColor).toBe(mockBranding.border)
 
         // Variation selected uses branding.primary
         expect(styles.variationButtonSelected.backgroundColor).toBe(mockBranding.primary)
@@ -401,8 +430,8 @@ describe('computeProductDetailStyles', () => {
         expect(styles.addonButton.color).toBe(mockBranding.textPrimary)
         expect(styles.addonButton.borderColor).toBe(mockBranding.border)
 
-        // Addon selected uses branding.primary
-        expect(styles.addonButtonSelected.color).toBe(mockBranding.primary)
+        // A picked add-on keeps the row's text colour; the brand border marks it
+        expect(styles.addonButtonSelected.color).toBe(colors.addonText)
         expect(styles.addonButtonSelected.borderColor).toBe(mockBranding.primary)
     })
 
@@ -437,5 +466,17 @@ describe('DEFAULT_PRODUCT_DETAIL_SETTINGS', () => {
     it('contains expected animation defaults', () => {
         expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.enable_animations).toBe(true)
         expect(DEFAULT_PRODUCT_DETAIL_SETTINGS.animation_speed).toBe('normal')
+    })
+})
+
+describe('productMotionSeconds', () => {
+    it('follows the animation speed', () => {
+        expect(productMotionSeconds(mergeSettingsWithBranding({ animation_speed: 'slow' } as never, mockBranding))).toBe(0.5)
+        expect(productMotionSeconds(mergeSettingsWithBranding({ animation_speed: 'fast' } as never, mockBranding))).toBe(0.15)
+        expect(productMotionSeconds(mergeSettingsWithBranding(null, mockBranding))).toBe(0.3)
+    })
+
+    it('is zero with animations off', () => {
+        expect(productMotionSeconds(mergeSettingsWithBranding({ enable_animations: false } as never, mockBranding))).toBe(0)
     })
 })

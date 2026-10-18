@@ -40,7 +40,9 @@ export function LegacyMenuStorefront() {
   const { tenant, tenantSlug, allMenuItems, categoriesWithBundles, filteredItems,
     searchQuery, setSearchQuery: handleSearchChange, activeCategory, setActiveCategory,
     itemCount: item_count, openStatus, isCartOpen, selectItem: handleItemSelect } = menu
-  const isCartPreview = useBrandingPreviewDraft()?.__previewSurface === 'cart'
+  const previewSurface = useBrandingPreviewDraft()?.__previewSurface
+  // Cart and Upsell (the cart's last-call offers) both preview in the open drawer.
+  const isCartPreview = previewSurface === 'cart' || previewSurface === 'upsell'
   const mobileOverrides = useMobileOverrides(tenant)
   const isMobile = useIsMobileViewport()
   const [currentSlide, setCurrentSlide] = useState(0)

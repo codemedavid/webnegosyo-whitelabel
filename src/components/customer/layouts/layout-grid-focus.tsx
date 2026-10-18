@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import { isAboveTheFold, pageIndexOf } from '@/lib/above-the-fold'
 
 import type { MenuLayoutContentProps } from '@/storefront/contracts'
@@ -37,6 +38,7 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
     menuEngineeringEnabled,
     hideCurrencySymbol,
 }: Omit<LayoutGridFocusProps, 'tenantSlug' | 'mobileGridColumns'>) {
+    const searchPlaceholder = useStorefrontLabel('menu.search_placeholder', 'Search menu...')
     // Get banners
     const displayBanners = bannerOverride?.promotionBanners ?? tenant?.promotion_banners ?? []
     const showPromotionBanners = (bannerOverride?.isPromotionVisible ?? tenant?.is_promotion_visible) && displayBanners.length > 0
@@ -72,7 +74,7 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
-                        placeholder="Search menu..."
+                        placeholder={searchPlaceholder}
                         branding={branding}
                     />
                 </div>
@@ -168,7 +170,7 @@ export const LayoutGridFocus = memo(function LayoutGridFocus({
                         <span className="text-2xl">🍽️</span>
                     </div>
                     <h3 className="text-lg font-semibold mb-2" style={{ color: branding.textPrimary }}>
-                        No items found
+                        <StoreLabel name="menu.no_results" fallback="No items found" />
                     </h3>
                     <p className="text-sm" style={{ color: branding.textSecondary }}>
                         Try a different search or category

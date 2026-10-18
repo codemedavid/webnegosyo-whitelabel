@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel, useStorefrontLabel } from '@/components/customer/storefront-labels-provider'
 import type { MenuLayoutContentProps } from '@/storefront/contracts'
 
 import { memo } from 'react'
@@ -32,6 +33,7 @@ export const LayoutSidebar = memo(function LayoutSidebar({
     menuEngineeringEnabled,
     hideCurrencySymbol,
 }: Omit<LayoutSidebarProps, 'activeCategory' | 'setActiveCategory'>) {
+    const searchPlaceholder = useStorefrontLabel('menu.search_placeholder', 'Search menu...')
     // Local state for scroll spy
     const [activeSection, setActiveSection] = useState<string | null>(null)
     const observerRef = useRef<IntersectionObserver | null>(null)
@@ -183,7 +185,7 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                     <SearchBar
                         value={searchQuery}
                         onChange={setSearchQuery}
-                        placeholder="Search menu..."
+                        placeholder={searchPlaceholder}
                         branding={branding}
                     />
                 </div>
@@ -254,7 +256,7 @@ export const LayoutSidebar = memo(function LayoutSidebar({
                             className="text-lg font-semibold mb-2"
                             style={{ color: branding.textPrimary }}
                         >
-                            No items found
+                            <StoreLabel name="menu.no_results" fallback="No items found" />
                         </h3>
                         <p style={{ color: branding.textSecondary }}>
                             Try adjusting your search

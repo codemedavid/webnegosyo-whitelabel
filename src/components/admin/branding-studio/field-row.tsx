@@ -11,6 +11,7 @@ import type { BrandingField } from '@/lib/branding-registry'
 import type { PromotionBanner } from '@/types/database'
 import { ImageUpload } from '@/components/shared/image-upload'
 import { CardTemplateGallery, PageLayoutGallery, type GalleryContext } from './template-gallery'
+import { ColorPicker, type StoreColor } from './color-picker'
 
 export interface FieldRowProps {
   field: BrandingField
@@ -26,6 +27,15 @@ export interface FieldRowProps {
   productOptions?: readonly { value: string; label: string }[]
   /** Sample dish + live branding for `card-gallery` / `layout-gallery` selects. */
   gallery?: GalleryContext
+  /** A chosen colour that is hard to read on its fill, with the one-tap fix. */
+  contrastIssue?: { ratio: number; minRatio: number; fix: string } | null
+  /** The store's own colours, offered first in the colour picker. */
+  storeColors?: readonly StoreColor[]
+}
+
+const INHERIT_SOURCE_TEXT: Record<string, string> = {
+  Brand: "Follows your store's brand",
+  Default: 'Standard colour',
 }
 
 const HEX_COLOR_PATTERN = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -34,14 +44,19 @@ function toPickerHex(value: unknown): string {
   return typeof value === 'string' && HEX_COLOR_PATTERN.test(value) ? value : '#000000'
 }
 
-function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear }: FieldRowProps) {
+function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear, contrastIssue, storeColors }: FieldRowProps) {
   const hex = toPickerHex(value)
+  const sourceText = INHERIT_SOURCE_TEXT[inheritLabel]
   return (
+    <div>
     <div className="flex min-h-[30px] items-center gap-2">
       <div className="min-w-0 flex-1">
         <div className="text-[12.5px] font-semibold leading-tight">{field.label}</div>
         {!isSet && field.inheritsFrom && (
           <div className="mt-0.5 text-[10.5px] text-neutral-400">↳ Inherits · {inheritLabel}</div>
+        )}
+        {!isSet && !field.inheritsFrom && sourceText && (
+          <div className="mt-0.5 text-[10.5px] text-neutral-400">↳ {sourceText}</div>
         )}
       </div>
       {isSet && (
@@ -56,19 +71,46 @@ function ColorRow({ field, value, isSet, inheritLabel, onChange, onClear }: Fiel
       <span className="font-mono text-[10.5px] text-neutral-400">
         {typeof value === 'string' && value ? value : ''}
       </span>
-      <label
-        className={`relative h-6 w-9 flex-shrink-0 cursor-pointer overflow-hidden rounded-md ${
-          isSet ? 'ring-2 ring-neutral-800' : 'border-[1.5px] border-dashed border-neutral-300'
-        }`}
-      >
-        <input
-          type="color"
-          value={hex}
-          onChange={(e) => onChange(e.target.value)}
-          aria-label={field.label}
-          className="absolute -inset-2 h-12 w-14 cursor-pointer border-none p-0"
+      {storeColors ? (
+        <ColorPicker
+          label={field.label}
+          value={typeof value === 'string' ? value : ''}
+          storeColors={storeColors}
+          onChange={(color) => onChange(color)}
+          onUseDefault={onClear}
+          defaultLabel={field.inheritsFrom ? inheritLabel : undefined}
+          isSet={isSet}
         />
-      </label>
+      ) : (
+        <label
+          className={`relative h-6 w-9 flex-shrink-0 cursor-pointer overflow-hidden rounded-md ${
+            isSet ? 'ring-2 ring-neutral-800' : 'border-[1.5px] border-dashed border-neutral-300'
+          }`}
+        >
+          <input
+            type="color"
+            value={hex}
+            onChange={(e) => onChange(e.target.value)}
+            aria-label={field.label}
+            className="absolute -inset-2 h-12 w-14 cursor-pointer border-none p-0"
+          />
+        </label>
+      )}
+    </div>
+    {contrastIssue && (
+      <div role="status" className="mt-1 flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900">
+        <span className="flex-1">
+          Hard to read on its background ({contrastIssue.ratio.toFixed(1)}:1). Customers see {contrastIssue.fix} instead.
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(contrastIssue.fix)}
+          className="rounded bg-amber-900 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-amber-800"
+        >
+          Fix
+        </button>
+      </div>
+    )}
     </div>
   )
 }
@@ -138,6 +180,7 @@ function TextRow({ field, value, onChange }: FieldRowProps) {
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
+        maxLength={field.maxLength}
         aria-label={field.label}
         className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12.5px] outline-none focus:border-neutral-800"
       />

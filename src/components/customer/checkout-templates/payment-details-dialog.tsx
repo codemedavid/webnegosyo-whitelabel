@@ -27,6 +27,7 @@ import { PaymentProofField } from '@/components/customer/payment-proof-field'
 import type { UseCheckoutReturn } from '@/hooks/useCheckout'
 import type { PaymentMethod } from '@/types/database'
 import { PaymentDetailRows } from './payment-detail-rows'
+import { checkoutThemeStyle } from './checkout-theme'
 
 /** Gate: only mounts the sheet (and its effects) while the step is open. */
 export function PaymentDetailsDialog({ checkout }: { checkout: UseCheckoutReturn }) {
@@ -87,6 +88,7 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
     <PaymentProofField
       required={proofRequired}
       accent={palette.accent}
+      accentText={palette.accentText}
       screenshotUrl={paymentProofUrl}
       reference={paymentProofReference}
       onUploaded={handlePaymentProofUploaded}
@@ -107,8 +109,8 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
         aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl outline-none sm:max-h-[88vh] sm:max-w-md sm:rounded-3xl motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-300 motion-safe:ease-out sm:motion-safe:slide-in-from-bottom-4 sm:motion-safe:fade-in"
-        style={{ ['--checkout-accent' as string]: palette.accent }}
+        className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-[var(--co-card)] text-[color:var(--co-text)] shadow-2xl outline-none sm:max-h-[88vh] sm:max-w-md sm:rounded-3xl motion-safe:animate-in motion-safe:slide-in-from-bottom motion-safe:duration-300 motion-safe:ease-out sm:motion-safe:slide-in-from-bottom-4 sm:motion-safe:fade-in"
+        style={checkoutThemeStyle(checkout)}
       >
         {/* Header: a brand-colored band carrying the amount and the method. */}
         <header
@@ -144,26 +146,26 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
               Order breakdown
               <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
             </summary>
-            <dl className="mt-2 space-y-1.5 rounded-xl bg-white px-4 py-3 text-sm text-gray-900">
+            <dl className="mt-2 space-y-1.5 rounded-xl bg-[var(--co-card)] px-4 py-3 text-sm text-[color:var(--co-text)]">
               <div className="flex justify-between">
-                <dt className="text-gray-600">Subtotal</dt>
+                <dt className="text-[color:var(--co-muted)]">Subtotal</dt>
                 <dd className="font-medium tabular-nums">{formatPrice(total)}</dd>
               </div>
               {/* Same staleness guard the summary uses: a fee quoted for a
                   different address is not billed, so it is not shown either. */}
               {hasDeliveryFee && (
                 <div className="flex justify-between">
-                  <dt className="text-gray-600">Delivery fee</dt>
+                  <dt className="text-[color:var(--co-muted)]">Delivery fee</dt>
                   <dd className="font-medium tabular-nums">{formatPrice(deliveryFee ?? 0)}</dd>
                 </div>
               )}
               {serviceChargeAmount > 0 && (
                 <div className="flex justify-between">
-                  <dt className="text-gray-600">Service charge</dt>
+                  <dt className="text-[color:var(--co-muted)]">Service charge</dt>
                   <dd className="font-medium tabular-nums">{formatPrice(serviceChargeAmount)}</dd>
                 </div>
               )}
-              <div className="flex justify-between border-t border-gray-200 pt-1.5 font-semibold">
+              <div className="flex justify-between border-t border-[color:var(--co-border)] pt-1.5 font-semibold">
                 <dt>Total</dt>
                 <dd className="tabular-nums">{formatPrice(grandTotal)}</dd>
               </div>
@@ -174,12 +176,12 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
         {/* Body: how to pay. */}
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5">
           {method.qr_code_url && (
-            <section className="rounded-2xl bg-gray-50 p-5" aria-label="Payment QR code">
+            <section className="rounded-2xl bg-[var(--co-subtle)] p-5" aria-label="Payment QR code">
               <button
                 type="button"
                 onClick={() => openQrDialog(method.qr_code_url!)}
                 aria-label="Enlarge payment QR code"
-                className="group mx-auto block rounded-2xl bg-white p-3 shadow-lg shadow-gray-900/10 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--checkout-accent)] motion-safe:active:scale-[0.98]"
+                className="group mx-auto block rounded-2xl bg-white p-3 shadow-lg shadow-black/10 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--co-accent)] motion-safe:active:scale-[0.98]"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -188,7 +190,7 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
                   className="h-52 w-52 object-contain"
                 />
               </button>
-              <p className="mt-4 text-center text-sm font-medium text-gray-900">
+              <p className="mt-4 text-center text-sm font-medium text-[color:var(--co-text)]">
                 Scan to pay with {method.name}
               </p>
               <button
@@ -204,7 +206,7 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
 
           {detailRows.length > 0 && (
             <section aria-label="Account details">
-              <h3 className="mb-2 text-sm font-semibold text-gray-900">
+              <h3 className="mb-2 text-sm font-semibold text-[color:var(--co-text)]">
                 {method.qr_code_url ? 'Or send to' : 'Send payment to'}
               </h3>
               <PaymentDetailRows
@@ -223,10 +225,10 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
 
         {/* Footer: what happens next, and the one action. */}
         <footer
-          className="shrink-0 border-t border-gray-100 bg-white px-5 pt-4"
+          className="shrink-0 border-t border-[color:var(--co-border)] bg-[var(--co-card)] px-5 pt-4"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          <p className="mb-3 text-center text-[13px] leading-snug text-gray-600" aria-live="polite">
+          <p className="mb-3 text-center text-[13px] leading-snug text-[color:var(--co-muted)]" aria-live="polite">
             {isBlockedOnProof
               ? 'Attach a screenshot or enter your reference number to continue.'
               : isQrHandoff
@@ -239,7 +241,7 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
             type="button"
             onClick={isQrHandoff ? handleQrHandoff : handleCheckout}
             disabled={isProcessing || isBlockedOnProof}
-            className="inline-flex h-14 w-full items-center justify-center gap-2.5 rounded-full text-base font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--checkout-accent)]"
+            className="inline-flex h-14 w-full items-center justify-center gap-2.5 rounded-full text-base font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--co-card)] focus-visible:ring-[color:var(--co-accent)]"
             style={{ backgroundColor: bandColor, color: palette.accentText }}
           >
             {isProcessing ? (
@@ -260,7 +262,7 @@ function PaymentSheet({ checkout, method }: { checkout: UseCheckoutReturn; metho
             type="button"
             onClick={close}
             disabled={isProcessing}
-            className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 disabled:opacity-40"
+            className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full text-sm font-medium text-[color:var(--co-muted)] transition-colors hover:text-[color:var(--co-text)] disabled:opacity-40"
           >
             Go back
           </button>

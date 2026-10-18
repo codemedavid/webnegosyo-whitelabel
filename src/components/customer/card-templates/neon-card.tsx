@@ -1,5 +1,6 @@
 'use client'
 
+import { StoreLabel } from '@/components/customer/storefront-labels-provider'
 import { memo } from 'react'
 import { OptimizedImage } from '@/components/shared/optimized-image'
 import type { MenuItem } from '@/types/database'
@@ -128,7 +129,7 @@ export const NeonCard = memo(function NeonCard({ item, onSelect, branding, isOrd
                                 textShadow: `0 0 10px ${branding.primary}`,
                             }}
                         >
-                            Unavailable
+                            <StoreLabel name="menu.unavailable" fallback="Unavailable" />
                         </span>
                     </div>
                 )}

@@ -73,7 +73,6 @@ jest.mock('@/components/customer/product-detail-lazy', () => ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     LazyImageModal: ({ isOpen, onOpenChange, imageUrl, itemName }: any) =>
         isOpen ? <div data-testid="image-modal">{itemName}</div> : null,
-    LazyProductDetailCustomizer: () => null,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     LazyRelatedItemsSection: ({ relatedItems, tenantSlug }: any) => (
         <div>

@@ -1,5 +1,6 @@
 'use client'
 
+import { readSectionScheme, schemeColors } from '@/lib/section-schemes'
 import type { ReactNode } from 'react'
 import type { MenuItem, Tenant } from '@/types/database'
 import type { HeroDesign } from '@/types/hero-designer'
@@ -84,9 +85,13 @@ export function StorefrontHero({
 
   const title = heroOverride?.title || tenant?.hero_title || defaultTitle
   const description = heroOverride?.description || tenant?.hero_description || defaultDescription
-  const titleColor = heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary
+  // A colour style (Studio → Hero → Colour style) replaces the hero's own colours.
+  const heroScheme = readSectionScheme(tenant as unknown as Record<string, unknown>, 'hero')
+  const schemed = heroScheme ? schemeColors(heroScheme, branding.accent || branding.primary) : null
+  const titleColor = schemed?.text || heroOverride?.heroTitleColor || tenant?.hero_title_color || branding.textPrimary
   const descriptionColor =
-    heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary
+    schemed?.muted || heroOverride?.heroDescriptionColor || tenant?.hero_description_color || branding.textSecondary
+  const heroBackground = schemed?.background || tenant?.hero_background_color || undefined
 
   const preset = resolveHeroPreset(tenant?.hero_preset)
   if (preset) {
@@ -129,7 +134,7 @@ export function StorefrontHero({
         ctaPrimaryColor={tenant?.hero_cta_primary_color || undefined}
         ctaPrimaryTextColor={tenant?.hero_cta_primary_text_color || undefined}
         ctaSecondaryTextColor={tenant?.hero_cta_secondary_text_color || undefined}
-        sectionBackground={tenant?.hero_background_color || undefined}
+        sectionBackground={heroBackground}
         onPrimaryCta={scrollToMenu}
         onSecondaryCta={scrollToMenu}
         featuredProduct={featuredProduct}
@@ -148,7 +153,7 @@ export function StorefrontHero({
     <div
       className="text-center mb-16"
       data-branding-scope="storefront/hero"
-      style={tenant?.hero_background_color ? { background: tenant.hero_background_color } : undefined}
+      style={heroBackground ? { background: heroBackground } : undefined}
     >
       <div className="inline-flex items-center gap-2 justify-center">
         <h1

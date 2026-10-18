@@ -24,15 +24,18 @@ export interface PreviewTarget {
 export function getPreviewTarget(
   tenantSlug: string,
   surfaceId: BrandingSurface['id'],
-  sampleItemId?: string | null
+  sampleItemId?: string | null,
+  /** Cart surfaces: the drawer over the menu (default) or the full cart page. */
+  cartView: 'drawer' | 'page' = 'drawer'
 ): PreviewTarget {
   const base = `/${tenantSlug}`
   switch (surfaceId) {
     case 'cart':
-      // Cart drawer overlays the menu; the storefront opens it via the draft.
-      return { path: `${base}/menu`, openCart: true }
-    case 'checkout':
     case 'upsell':
+      // The cart drawer over the menu, or the cart page (which follows the Cart
+      // layout setting). The "last call" offers (Upsell Modal) show in both.
+      return cartView === 'page' ? { path: `${base}/cart` } : { path: `${base}/menu`, openCart: true }
+    case 'checkout':
       return { path: `${base}/checkout` }
     case 'layout':
       // A storefront pack draws the tenant home (legacy shows its menu there).

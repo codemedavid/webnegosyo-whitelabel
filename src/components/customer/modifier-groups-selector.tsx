@@ -5,7 +5,12 @@ import { describeSelectionRule, isOptionAvailable, isSelectionAtMax } from '@/li
 import type { ModifierSelection } from '@/lib/modifier-groups-cart'
 import { formatPrice } from '@/lib/cart-utils'
 import { cn } from '@/lib/utils'
+import type { ModifierLabels } from '@/lib/product-detail-labels'
 import { AddonQuantityControl } from './addon-quantity-control'
+
+const PRICE_STYLE = { color: 'var(--pd-variation-price)' } as const
+// A chosen chip's price stays in the chosen text colour, readable on its fill.
+const CHOSEN_PRICE_STYLE = { opacity: 0.85 } as const
 
 interface ModifierGroupsSelectorProps {
   groups: ModifierGroup[]
@@ -14,7 +19,11 @@ interface ModifierGroupsSelectorProps {
   onQuantityChange?: (group: ModifierGroup, optionId: string, quantity: number) => void
   parentQuantity?: number
   hideCurrencySymbol?: boolean
+  /** The store's own rule and ₱0 labels (Studio → Product Detail). */
+  labels?: ModifierLabels
 }
+
+const NO_LABELS: ModifierLabels = { rule: {}, freeLabel: undefined }
 
 /**
  * Storefront selector for the unified modifier-groups model. Presentational:
@@ -33,6 +42,7 @@ export function ModifierGroupsSelector({
   onQuantityChange,
   parentQuantity = 1,
   hideCurrencySymbol,
+  labels = NO_LABELS,
 }: ModifierGroupsSelectorProps) {
   if (groups.length === 0) {
     return null
@@ -48,14 +58,13 @@ export function ModifierGroupsSelector({
         const progress = describeSelectionProgress(group, selectedIds.length)
 
         return (
-          <div key={group.id} className="mb-2" data-branding-scope="product/variations">
+          <div key={group.id} className="mb-2" data-branding-scope={quantityMode ? 'product/addons' : 'product/variations'}>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <h3
                 className="text-base font-semibold"
-                style={{
-                  color: 'var(--pd-variation-title)',
-                  fontSize: 'var(--pd-variation-title-font-size)',
-                }}
+                style={quantityMode
+                  ? { color: 'var(--pd-addon-title)', fontFamily: 'var(--pd-font-heading)', fontSize: 'var(--pd-addon-title-font-size)' }
+                  : { color: 'var(--pd-variation-title)', fontFamily: 'var(--pd-font-heading)', fontSize: 'var(--pd-variation-title-font-size)' }}
               >
                 {group.name}
               </h3>
@@ -63,16 +72,16 @@ export function ModifierGroupsSelector({
                 className="rounded px-2 py-0.5 text-xs font-medium"
                 style={{ color: 'var(--pd-variation-required)' }}
               >
-                {describeSelectionRule(group)}
+                {describeSelectionRule(group, labels.rule)}
               </span>
               {progress && (
-                <span className="text-xs opacity-70" style={{ color: 'var(--pd-variation-text)' }}>
+                <span className="text-xs" style={{ color: 'var(--pd-text-muted)' }}>
                   {progress}
                 </span>
               )}
             </div>
 
-            {quantityMode && <p className="mb-3 text-xs opacity-70">Quantities are per item. Choose how many of each extra to add.</p>}
+            {quantityMode && <p className="mb-3 text-xs" style={{ color: 'var(--pd-text-muted)' }}>Quantities are per item. Choose how many of each extra to add.</p>}
 
             <div className="flex flex-wrap gap-2">
               {group.options.map((option) => {
@@ -80,7 +89,7 @@ export function ModifierGroupsSelector({
                 if (quantityMode) {
                   const portions = selectedIds.filter(id => id === option.id).length
                   return <AddonQuantityControl key={option.id} name={option.name} price={option.price_modifier}
-                    quantity={portions} disabled={!isOptionAvailable(option)} hideCurrencySymbol={hideCurrencySymbol}
+                    quantity={portions} disabled={!isOptionAvailable(option)} hideCurrencySymbol={hideCurrencySymbol} freeLabel={labels.freeLabel}
                     atMax={(group.max_select !== null && selectedIds.length >= group.max_select)
                       || (option.stock_mode === 'simple' && (portions + 1) * parentQuantity > (option.stock_qty ?? 0))}
                     onChange={value => onQuantityChange?.(group, option.id, value)} />
@@ -96,6 +105,7 @@ export function ModifierGroupsSelector({
                     isCapped={atMax && !isSelected}
                     onToggle={() => onToggle(group, option.id)}
                     hideCurrencySymbol={hideCurrencySymbol}
+                    freeLabel={labels.freeLabel}
                   />
                 )
               })}
@@ -134,6 +144,7 @@ interface ModifierOptionChipProps {
   isCapped: boolean
   onToggle: () => void
   hideCurrencySymbol?: boolean
+  freeLabel?: string
 }
 
 function ModifierOptionChip({
@@ -143,13 +154,14 @@ function ModifierOptionChip({
   isCapped,
   onToggle,
   hideCurrencySymbol,
+  freeLabel,
 }: ModifierOptionChipProps) {
   const available = isOptionAvailable(option)
   const disabled = !available || isCapped
   const priceLabel =
     option.price_modifier > 0
       ? `+${formatPrice(option.price_modifier, { hideCurrencySymbol })}`
-      : option.price_modifier === 0 ? 'No extra charge' : null
+      : option.price_modifier === 0 ? (freeLabel ?? 'No extra charge') : null
 
   return (
     <button
@@ -160,19 +172,22 @@ function ModifierOptionChip({
       // role stays `button`), so the mode is exposed for styling and tests
       // rather than by swapping in an invalid role/attribute pairing.
       data-select-mode={isMultiSelect ? 'multi' : 'single'}
+      data-branding-scope="product/variation-option"
       disabled={disabled}
       onClick={onToggle}
       className={cn(
-        'flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
+        'flex items-center gap-1.5 border px-4 py-2 text-sm font-medium transition-colors',
         isSelected ? 'border-2' : 'border',
         disabled && 'cursor-not-allowed opacity-50',
       )}
       style={{
-        borderColor: isSelected ? 'var(--pd-variation-selected-border)' : 'var(--pd-border)',
+        borderRadius: 'var(--pd-chip-radius, 0.5rem)',
+        transitionDuration: 'var(--pd-transition-duration)',
+        borderColor: isSelected ? 'var(--pd-variation-selected-border, var(--border))' : 'var(--pd-variation-option-border, var(--border))',
         backgroundColor: isSelected
           ? 'var(--pd-variation-selected-bg)'
-          : 'var(--pd-variation-bg)',
-        color: isSelected ? 'var(--pd-variation-selected-text)' : 'var(--pd-variation-text)',
+          : 'var(--pd-variation-option-bg)',
+        color: isSelected ? 'var(--pd-variation-selected-text)' : 'var(--pd-variation-option-text)',
       }}
     >
       {isMultiSelect && (
@@ -182,13 +197,15 @@ function ModifierOptionChip({
             'flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none',
             isSelected && 'font-bold',
           )}
-          style={{ borderColor: 'currentColor' }}
+          style={isSelected
+            ? { borderColor: 'var(--pd-addon-check)', color: 'var(--pd-addon-check)' }
+            : { borderColor: 'currentColor' }}
         >
           {isSelected ? '✓' : ''}
         </span>
       )}
       <span>{option.name}</span>
-      {priceLabel && <span className="opacity-80">{priceLabel}</span>}
+      {priceLabel && <span style={isSelected ? CHOSEN_PRICE_STYLE : PRICE_STYLE}>{priceLabel}</span>}
       {!available && <span className="text-xs opacity-70">(sold out)</span>}
     </button>
   )

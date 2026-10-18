@@ -6,68 +6,10 @@
 
 import { createClient } from '@/lib/supabase/client'
 import type { BrandingColors } from '@/lib/branding-utils'
+import { MIN_TEXT_CONTRAST, readableTextOn } from '@/lib/color-contrast'
 
-/**
- * Set the alpha (opacity) of a color string.
- * Local copy to avoid circular dependency/build issues.
- */
-function setAlpha(color: string, alpha: number): string {
-    const clampedAlpha = Math.max(0, Math.min(1, alpha))
-    const trimmed = color.trim()
-
-    // Handle hex colors (#RGB, #RRGGBB, #RRGGBBAA)
-    const hexMatch = /^#([A-Fa-f0-9]{3,8})$/.exec(trimmed)
-    if (hexMatch) {
-        const hex = hexMatch[1]
-        let r: number, g: number, b: number
-
-        if (hex.length === 3) {
-            // #RGB -> #RRGGBB
-            r = parseInt(hex[0] + hex[0], 16)
-            g = parseInt(hex[1] + hex[1], 16)
-            b = parseInt(hex[2] + hex[2], 16)
-        } else if (hex.length === 4) {
-            // #RGBA -> ignore existing alpha
-            r = parseInt(hex[0] + hex[0], 16)
-            g = parseInt(hex[1] + hex[1], 16)
-            b = parseInt(hex[2] + hex[2], 16)
-        } else if (hex.length === 6) {
-            // #RRGGBB
-            r = parseInt(hex.substring(0, 2), 16)
-            g = parseInt(hex.substring(2, 4), 16)
-            b = parseInt(hex.substring(4, 6), 16)
-        } else if (hex.length === 8) {
-            // #RRGGBBAA -> ignore existing alpha
-            r = parseInt(hex.substring(0, 2), 16)
-            g = parseInt(hex.substring(2, 4), 16)
-            b = parseInt(hex.substring(4, 6), 16)
-        } else {
-            return `rgba(0, 0, 0, ${clampedAlpha})`
-        }
-
-        return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
-    }
-
-    // Handle rgb() and rgba()
-    const rgbMatch = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(trimmed)
-    if (rgbMatch) {
-        const r = parseInt(rgbMatch[1], 10)
-        const g = parseInt(rgbMatch[2], 10)
-        const b = parseInt(rgbMatch[3], 10)
-        return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`
-    }
-
-    // Handle hsl() and hsla()
-    const hslMatch = /^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(trimmed)
-    if (hslMatch) {
-        const h = parseFloat(hslMatch[1])
-        const s = parseFloat(hslMatch[2])
-        const l = parseFloat(hslMatch[3])
-        return `hsla(${h}, ${s}%, ${l}%, ${clampedAlpha})`
-    }
-
-    return `rgba(0, 0, 0, ${clampedAlpha})`
-}
+/** WCAG minimum for large text and icons. */
+const LARGE_TEXT_CONTRAST = 3
 
 export interface ProductDetailSettings {
     id?: string
@@ -373,6 +315,17 @@ export interface ProductDetailColors {
     border: string
 }
 
+// Gradient stops are owner-typed text placed inside linear-gradient(): colours
+// (hex, rgb/hsl/oklch, names), angles and percentages only — never url().
+const GRADIENT_STOPS = /^[#a-z0-9.,%()\s/-]+$/i
+const GRADIENT_FORBIDDEN = /url|image|var\(|expression|attr\(/i
+
+function safeGradientStops(value: string | undefined | null): string | undefined {
+    const trimmed = value?.trim()
+    if (!trimmed || !GRADIENT_STOPS.test(trimmed) || GRADIENT_FORBIDDEN.test(trimmed)) return undefined
+    return trimmed
+}
+
 export function mergeSettingsWithBranding(
     settings: ProductDetailSettings | null,
     branding: BrandingColors
@@ -380,24 +333,19 @@ export function mergeSettingsWithBranding(
     const defaults = DEFAULT_PRODUCT_DETAIL_SETTINGS
     const s: Partial<ProductDetailSettings> = settings || {}
 
-    // Helper: only use the product detail setting if it was explicitly customized
-    // (i.e., differs from the default). Otherwise fall back to the branding value.
-    const custom = (
-        settingValue: string | undefined | null,
-        defaultValue: string | undefined,
-        brandingFallback: string
-    ): string => {
-        // If the setting is null/undefined, use branding
-        if (!settingValue) return brandingFallback
-        // If the setting matches the table default, use branding (tenant didn't customize it)
-        if (defaultValue && settingValue === defaultValue) return brandingFallback
-        // The tenant explicitly set a custom value
-        return settingValue
-    }
+    // A saved colour is the owner's pick; blank follows the store's brand.
+    // (A value equal to the old column default used to read as "not chosen",
+    // so picking white for a background did nothing — those stored defaults
+    // were cleared to NULL by 20261019100000_product_detail_brand_null.)
+    const custom = (settingValue: string | undefined | null, brandingFallback: string): string =>
+        settingValue || brandingFallback
+
+    const addonBackground = custom(s.addon_background_color, branding.cards)
+    const addonText = custom(s.addon_text_color, branding.textPrimary)
 
     return {
-        pageBackground: custom(s.page_background_color, defaults.page_background_color, branding.background),
-        pageGradient: s.page_background_gradient,
+        pageBackground: custom(s.page_background_color, branding.background),
+        pageGradient: safeGradientStops(s.page_background_gradient),
 
         headerBackground: s.header_background_color || branding.header,
         headerButtonBackground: s.header_button_background_color || '#ffffff',
@@ -408,26 +356,28 @@ export function mergeSettingsWithBranding(
         saleBadgeBackground: s.sale_badge_background_color || defaults.sale_badge_background_color!,
         saleBadgeText: s.sale_badge_text_color || defaults.sale_badge_text_color!,
 
-        productName: custom(s.product_name_color, defaults.product_name_color, branding.textPrimary),
+        productName: custom(s.product_name_color, branding.textPrimary),
         productNameFontSize: s.product_name_font_size || defaults.product_name_font_size!,
         productNameFontWeight: s.product_name_font_weight || defaults.product_name_font_weight!,
 
         breadcrumb: s.breadcrumb_color || branding.textMuted,
         breadcrumbActive: s.breadcrumb_active_color || branding.link,
 
-        description: custom(s.description_color, defaults.description_color, branding.textSecondary),
+        description: custom(s.description_color, branding.textSecondary),
         descriptionFontSize: s.description_font_size || defaults.description_font_size!,
 
         dietaryTagBackground: s.dietary_tag_background_color || 'transparent',
         dietaryTagText: s.dietary_tag_text_color || branding.textPrimary,
         dietaryTagBorder: s.dietary_tag_border_color || branding.border,
 
-        variationSectionTitle: custom(s.variation_section_title_color, defaults.variation_section_title_color, branding.textPrimary),
+        variationSectionTitle: custom(s.variation_section_title_color, branding.textPrimary),
         variationSectionTitleFontSize: s.variation_section_title_font_size || defaults.variation_section_title_font_size!,
 
-        variationOptionBackground: s.variation_option_background_color || defaults.variation_option_background_color!,
-        variationOptionText: s.variation_option_text_color || defaults.variation_option_text_color!,
-        variationOptionBorder: s.variation_option_border_color || defaults.variation_option_border_color!,
+        // Unchosen chips follow the store's cards/text/border like add-on rows,
+        // so a dark store never gets pale grey slabs (or dark-on-dark text).
+        variationOptionBackground: custom(s.variation_option_background_color, branding.cards),
+        variationOptionText: custom(s.variation_option_text_color, branding.textPrimary),
+        variationOptionBorder: custom(s.variation_option_border_color, branding.border),
         variationOptionSelectedBackground: s.variation_option_selected_background_color || branding.primary,
         variationOptionSelectedText: s.variation_option_selected_text_color || defaults.variation_option_selected_text_color!,
         variationOptionSelectedBorder: s.variation_option_selected_border_color || branding.primary,
@@ -437,33 +387,35 @@ export function mergeSettingsWithBranding(
         variationRequiredText: s.variation_required_text || defaults.variation_required_text!,
         variationOptionalText: s.variation_optional_text || defaults.variation_optional_text!,
 
-        addonSectionTitle: custom(s.addon_section_title_color, defaults.addon_section_title_color, branding.textPrimary),
+        addonSectionTitle: custom(s.addon_section_title_color, branding.textPrimary),
         addonSectionTitleFontSize: s.addon_section_title_font_size || defaults.addon_section_title_font_size!,
 
-        addonBackground: custom(s.addon_background_color, defaults.addon_background_color, branding.cards),
-        addonText: custom(s.addon_text_color, defaults.addon_text_color, branding.textPrimary),
-        addonBorder: custom(s.addon_border_color, defaults.addon_border_color, branding.border),
-        addonSelectedBackground: s.addon_selected_background_color || setAlpha(branding.primary, 0.03),
-        addonSelectedText: s.addon_selected_text_color || branding.primary,
+        addonBackground,
+        addonText,
+        addonBorder: custom(s.addon_border_color, branding.border),
+        // Unset picked colours follow the unpicked row (the brand border marks
+        // the pick), so a picked add-on is never less readable than the rest.
+        addonSelectedBackground: s.addon_selected_background_color || addonBackground,
+        addonSelectedText: s.addon_selected_text_color || addonText,
         addonSelectedBorder: s.addon_selected_border_color || branding.primary,
         addonSelectedCheck: s.addon_selected_check_color || branding.primary,
         addonPrice: s.addon_price_color || defaults.addon_price_color!,
         addonPriceFreeText: s.addon_price_free_text || defaults.addon_price_free_text!,
         addonOptionalText: s.addon_optional_text || defaults.addon_optional_text!,
 
-        relatedSectionTitle: custom(s.related_section_title_color, defaults.related_section_title_color, branding.textPrimary),
+        relatedSectionTitle: custom(s.related_section_title_color, branding.textPrimary),
         relatedSectionTitleFontSize: s.related_section_title_font_size || defaults.related_section_title_font_size!,
         relatedItemBackground: s.related_item_background_color || branding.cards,
-        relatedItemName: custom(s.related_item_name_color, defaults.related_item_name_color, branding.cardTitle),
+        relatedItemName: custom(s.related_item_name_color, branding.cardTitle),
         relatedItemPrice: s.related_item_price_color || branding.cardPrice,
 
-        footerBackground: custom(s.footer_background_color, defaults.footer_background_color, branding.cards),
-        footerBorder: custom(s.footer_border_color, defaults.footer_border_color, branding.border),
+        footerBackground: custom(s.footer_background_color, branding.cards),
+        footerBorder: custom(s.footer_border_color, branding.border),
         footerShadow: s.footer_shadow_color || defaults.footer_shadow_color!,
 
-        summaryText: custom(s.summary_text_color, defaults.summary_text_color, branding.textMuted),
-        totalPrice: custom(s.total_price_color, defaults.total_price_color, branding.textPrimary),
-        originalPrice: custom(s.original_price_color, defaults.original_price_color, branding.textMuted),
+        summaryText: custom(s.summary_text_color, branding.textMuted),
+        totalPrice: custom(s.total_price_color, branding.textPrimary),
+        originalPrice: custom(s.original_price_color, branding.textMuted),
         footerEmptySummaryText: s.footer_empty_summary_text || defaults.footer_empty_summary_text!,
 
         quantityControlsBackground: s.quantity_controls_background || defaults.quantity_controls_background!,
@@ -500,8 +452,9 @@ export function mergeSettingsWithBranding(
         checkoutModalButtonText: s.checkout_modal_button_text_color || branding.buttonPrimaryText,
         checkoutModalBorder: s.checkout_modal_border_color || branding.border,
 
-        fontFamilyHeading: s.font_family_heading || 'system-ui, -apple-system, sans-serif',
-        fontFamilyBody: s.font_family_body || 'system-ui, -apple-system, sans-serif',
+        // Unset fonts inherit the storefront's font pair instead of forcing system-ui.
+        fontFamilyHeading: s.font_family_heading || 'inherit',
+        fontFamilyBody: s.font_family_body || 'inherit',
 
         sectionPadding: s.section_padding || defaults.section_padding!,
         cardBorderRadius: s.card_border_radius || defaults.card_border_radius!,
@@ -519,13 +472,83 @@ export function mergeSettingsWithBranding(
     }
 }
 
+type ColorKey = keyof ProductDetailColors & string
+
+export interface ReadablePair {
+    /** Settings column the owner edits for the text colour. */
+    field: keyof ProductDetailSettings
+    text: ColorKey
+    fill: ColorKey
+    /** 4.5 for body text; 3 for large text and icons (WCAG 1.4.3 / 1.4.11). */
+    minRatio: number
+}
+
+// Every product page text that sits on a fill it doesn't own.
+export const PRODUCT_READABLE_PAIRS: readonly ReadablePair[] = [
+    { field: 'variation_option_text_color', text: 'variationOptionText', fill: 'variationOptionBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'variation_option_selected_text_color', text: 'variationOptionSelectedText', fill: 'variationOptionSelectedBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'addon_text_color', text: 'addonText', fill: 'addonBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'addon_selected_text_color', text: 'addonSelectedText', fill: 'addonSelectedBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'addon_price_color', text: 'addonPrice', fill: 'addonBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'variation_price_modifier_color', text: 'variationPriceModifier', fill: 'variationOptionBackground', minRatio: MIN_TEXT_CONTRAST },
+    // The ✓ in a chosen multi-pick chip sits on the chosen fill.
+    { field: 'addon_selected_check_color', text: 'addonSelectedCheck', fill: 'variationOptionSelectedBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'add_to_cart_button_text_color', text: 'addToCartButtonText', fill: 'addToCartButtonBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'buy_now_button_text_color', text: 'buyNowButtonText', fill: 'buyNowButtonBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'quantity_text_color', text: 'quantityText', fill: 'quantityControlsBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'quantity_button_color', text: 'quantityButton', fill: 'quantityControlsBackground', minRatio: LARGE_TEXT_CONTRAST },
+    // Bold badge text: white on the standard red (3.8:1) must stay white.
+    { field: 'sale_badge_text_color', text: 'saleBadgeText', fill: 'saleBadgeBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'header_button_icon_color', text: 'headerButtonIcon', fill: 'headerButtonBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'related_item_name_color', text: 'relatedItemName', fill: 'relatedItemBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'product_name_color', text: 'productName', fill: 'pageBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'description_color', text: 'description', fill: 'pageBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'variation_required_badge_color', text: 'variationRequiredBadge', fill: 'pageBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'breadcrumb_color', text: 'breadcrumb', fill: 'pageBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'breadcrumb_active_color', text: 'breadcrumbActive', fill: 'pageBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'related_item_price_color', text: 'relatedItemPrice', fill: 'relatedItemBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'original_price_color', text: 'originalPrice', fill: 'footerBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'dietary_tag_text_color', text: 'dietaryTagText', fill: 'pageBackground', minRatio: MIN_TEXT_CONTRAST },
+    { field: 'variation_section_title_color', text: 'variationSectionTitle', fill: 'pageBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'addon_section_title_color', text: 'addonSectionTitle', fill: 'pageBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'related_section_title_color', text: 'relatedSectionTitle', fill: 'pageBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'total_price_color', text: 'totalPrice', fill: 'footerBackground', minRatio: LARGE_TEXT_CONTRAST },
+    { field: 'summary_text_color', text: 'summaryText', fill: 'footerBackground', minRatio: MIN_TEXT_CONTRAST },
+]
+
+/**
+ * Product page colours as the diner sees them: the merge, then every text
+ * colour that would be hard to read on its fill swapped for readable ink.
+ * Colours that already read are kept exactly; an owner's unreadable pick is
+ * flagged in the Studio with a one-tap Fix.
+ */
+export function resolveProductDetailColors(
+    settings: ProductDetailSettings | null,
+    branding: BrandingColors
+): ProductDetailColors {
+    const colors = mergeSettingsWithBranding(settings, branding)
+    // Under a gradient the flat page colour isn't what the diner sees, so text
+    // on the page can't be measured against it.
+    const fixes = PRODUCT_READABLE_PAIRS
+        .filter((pair) => !(pair.fill === 'pageBackground' && colors.pageGradient))
+        .map((pair) => [pair.text, readableTextOn(colors[pair.text] as string, colors[pair.fill] as string, pair.minRatio)] as const)
+    return { ...colors, ...Object.fromEntries(fixes) }
+}
+
+const MOTION_SECONDS: Record<ProductDetailColors['animationSpeed'], number> = {
+    slow: 0.5,
+    normal: 0.3,
+    fast: 0.15,
+}
+
+/** Product page motion length (Layout & motion); 0 with animations off. */
+export function productMotionSeconds(colors: ProductDetailColors): number {
+    if (!colors.enableAnimations) return 0
+    return MOTION_SECONDS[colors.animationSpeed] ?? MOTION_SECONDS.normal
+}
+
 export function getProductDetailThemeCSS(colors: ProductDetailColors): React.CSSProperties {
-    const speedMap = {
-        slow: '0.5s',
-        normal: '0.3s',
-        fast: '0.15s',
-    }
-    const transitionDuration = colors.enableAnimations ? speedMap[colors.animationSpeed] : '0s'
+    const transitionDuration = `${productMotionSeconds(colors)}s`
 
     // Helper to ensure valid CSS values with fallbacks
     const val = (v: string | undefined, fallback: string): string => v || fallback
@@ -607,11 +630,15 @@ export function getProductDetailThemeCSS(colors: ProductDetailColors): React.CSS
         '--pd-checkout-button': val(colors.checkoutModalButton, '#3b82f6'),
         '--pd-checkout-button-text': val(colors.checkoutModalButtonText, '#ffffff'),
         '--pd-checkout-border': val(colors.checkoutModalBorder, '#e5e7eb'),
-        '--pd-font-heading': val(colors.fontFamilyHeading, 'system-ui, -apple-system, sans-serif'),
-        '--pd-font-body': val(colors.fontFamilyBody, 'system-ui, -apple-system, sans-serif'),
+        '--pd-font-heading': val(colors.fontFamilyHeading, 'inherit'),
+        '--pd-font-body': val(colors.fontFamilyBody, 'inherit'),
         '--pd-section-padding': val(colors.sectionPadding, '24px'),
         '--pd-card-radius': val(colors.cardBorderRadius, '12px'),
         '--pd-btn-radius': val(colors.buttonBorderRadius, '9999px'),
+        // Option chips keep their rounded-rectangle look until the owner sets a button radius.
+        '--pd-chip-radius': colors.buttonBorderRadius && colors.buttonBorderRadius !== DEFAULT_PRODUCT_DETAIL_SETTINGS.button_border_radius
+            ? colors.buttonBorderRadius
+            : '0.5rem',
         '--pd-transition-duration': transitionDuration,
         '--pd-primary': val(colors.primary, '#3b82f6'),
         '--pd-secondary': val(colors.secondary, '#64748b'),
