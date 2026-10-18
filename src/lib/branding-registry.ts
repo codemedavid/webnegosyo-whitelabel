@@ -329,9 +329,9 @@ export const BRANDING_SURFACES: BrandingSurface[] = [
         ],
       },
       {
-        title: 'Quick-view modal',
+        title: 'Item pop-ups',
         fields: [
-          note('note_quickview', 'The quick-view popup opened from a menu card. The full product page has its own surface (Product Detail).'),
+          note('note_quickview', 'The pop-up for changing a dish already in the cart, and the item page offers (upgrades, "just added" sheet). The item page itself has its own screen (Product Detail).'),
           color('modal_background_color', 'Background', '#ffffff'),
           color('modal_title_color', 'Title', null, 'text_primary_color'),
           color('modal_price_color', 'Price', null, 'primary_color'),

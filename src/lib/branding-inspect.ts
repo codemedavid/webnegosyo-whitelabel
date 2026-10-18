@@ -89,10 +89,10 @@ export const BRANDING_SCOPE_MAP: Record<string, BrandingScopeTarget> = {
   'storefront/card-title': scope('storefront', 'Layout & menu cards', 'Card title', 'card_title_color'),
   'storefront/card-price': scope('storefront', 'Layout & menu cards', 'Card price', 'card_price_color'),
   'storefront/card-description': scope('storefront', 'Layout & menu cards', 'Card description', 'card_description_color'),
-  'storefront/quickview': scope('storefront', 'Quick-view modal', 'Quick-view modal'),
-  'storefront/quickview-title': scope('storefront', 'Quick-view modal', 'Quick-view title', 'modal_title_color'),
-  'storefront/quickview-price': scope('storefront', 'Quick-view modal', 'Quick-view price', 'modal_price_color'),
-  'storefront/quickview-description': scope('storefront', 'Quick-view modal', 'Quick-view description', 'modal_description_color'),
+  'storefront/quickview': scope('storefront', 'Item pop-ups', 'Edit-item pop-up'),
+  'storefront/quickview-title': scope('storefront', 'Item pop-ups', 'Pop-up title', 'modal_title_color'),
+  'storefront/quickview-price': scope('storefront', 'Item pop-ups', 'Pop-up price', 'modal_price_color'),
+  'storefront/quickview-description': scope('storefront', 'Item pop-ups', 'Pop-up description', 'modal_description_color'),
 
   // Header elements (shared header-parts pieces used by every template).
   'storefront/header-logo': scope('storefront', 'Header', 'Logo', 'header_logo_shape'),

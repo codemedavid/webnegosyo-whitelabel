@@ -141,10 +141,10 @@ describe('element-level scopes (inspect every storefront element)', () => {
     // Hero text elements (Storefront → Hero)
     'storefront/hero-title': ['Hero', 'hero_title_color'],
     'storefront/hero-description': ['Hero', 'hero_description_color'],
-    // Quick-view modal elements (Storefront → Quick-view modal)
-    'storefront/quickview-title': ['Quick-view modal', 'modal_title_color'],
-    'storefront/quickview-price': ['Quick-view modal', 'modal_price_color'],
-    'storefront/quickview-description': ['Quick-view modal', 'modal_description_color'],
+    // Item pop-up elements (Storefront → Item pop-ups)
+    'storefront/quickview-title': ['Item pop-ups', 'modal_title_color'],
+    'storefront/quickview-price': ['Item pop-ups', 'modal_price_color'],
+    'storefront/quickview-description': ['Item pop-ups', 'modal_description_color'],
     // Cart drawer elements (Cart → Colors)
     'cart/item': ['Colors', 'cart_card_background_color'],
     'cart/item-price': ['Colors', 'cart_accent_color'],
