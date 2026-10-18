@@ -6,6 +6,7 @@
  * showed as white while a dark store's page rendered #171717 (2026-10-18).
  */
 
+import { contrastRatio } from '@/lib/color-contrast'
 import { getTenantBranding } from '@/lib/branding-utils'
 import { resolveProductDetailColors, type ProductDetailColors } from '@/lib/product-detail-theme'
 import {
@@ -131,7 +132,7 @@ describe('productContrastIssue', () => {
 
         expect(issue).not.toBeNull()
         expect(issue?.ratio).toBeLessThan(1.1)
-        expect(issue?.fix).toBe('#111111')
+        expect(contrastRatio(issue!.fix, '#ffffff')).toBeGreaterThanOrEqual(4.5)
     })
 
     it('says nothing when the chosen colour reads', () => {

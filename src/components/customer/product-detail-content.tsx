@@ -832,7 +832,8 @@ export const ProductDetailContent = memo(function ProductDetailContent({
                     {hasDiscount && (
                         <div
                             data-branding-scope="product/sale-badge"
-                            className="absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-semibold shadow-lg"
+                            // Bottom corner: the top of the photo sits under the floating back/share buttons.
+                            className="absolute bottom-4 left-4 px-3 py-1 rounded-full text-sm font-semibold shadow-lg"
                             style={{
                                 backgroundColor: 'var(--pd-sale-badge-bg)',
                                 color: 'var(--pd-sale-badge-text)'

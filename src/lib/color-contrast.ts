@@ -29,14 +29,34 @@ export function contrastRatio(a: string, b: string): number | null {
     return (high + 0.05) / (low + 0.05)
 }
 
+/** Step size when nudging a colour toward ink (5% per step, at most 20 steps). */
+const NUDGE_STEP = 0.05
+
+function toHex(channelsInUnit: readonly number[]): string {
+    return `#${channelsInUnit.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('')}`
+}
+
+function mix(from: string, to: string, amount: number): string {
+    const a = channels(from)
+    const b = channels(to)
+    return toHex(a.map((value, index) => value + (b[index] - value) * amount))
+}
+
 /**
- * `text` when it reads on `background` at `minRatio`, else the more readable
- * of dark or light ink. Colours that can't be measured are left alone.
+ * `text` when it reads on `background` at `minRatio`; otherwise the closest
+ * readable shade of it — nudged toward dark or light ink (whichever reads
+ * better) only as far as needed, so a muted grey stays a grey and a brand blue
+ * stays blue. Colours that can't be measured are left alone.
  */
 export function readableTextOn(text: string, background: string, minRatio = MIN_TEXT_CONTRAST): string {
     const ratio = contrastRatio(text, background)
     if (ratio === null || ratio >= minRatio) return text
     const dark = contrastRatio(DARK_INK, background) ?? 0
     const light = contrastRatio(LIGHT_INK, background) ?? 0
-    return dark >= light ? DARK_INK : LIGHT_INK
+    const ink = dark >= light ? DARK_INK : LIGHT_INK
+    for (let amount = NUDGE_STEP; amount < 1; amount += NUDGE_STEP) {
+        const candidate = mix(text, ink, amount)
+        if ((contrastRatio(candidate, background) ?? 0) >= minRatio) return candidate
+    }
+    return ink
 }
