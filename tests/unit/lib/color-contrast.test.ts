@@ -24,12 +24,25 @@ describe('readableTextOn', () => {
         expect(readableTextOn('#fafafa', '#1a1a1a')).toBe('#fafafa')
     })
 
-    it('swaps unreadable light text on a white fill for dark ink', () => {
-        expect(readableTextOn('#fafafa', '#ffffff')).toBe('#111111')
+    it('makes unreadable light text on white readable', () => {
+        const fixed = readableTextOn('#fafafa', '#ffffff')
+
+        expect(contrastRatio(fixed, '#ffffff')).toBeGreaterThanOrEqual(4.5)
     })
 
-    it('swaps unreadable dark text on a dark fill for white', () => {
-        expect(readableTextOn('#374151', '#1a1a1a')).toBe('#ffffff')
+    it('makes unreadable dark text on a dark fill readable', () => {
+        const fixed = readableTextOn('#374151', '#1a1a1a')
+
+        expect(contrastRatio(fixed, '#1a1a1a')).toBeGreaterThanOrEqual(4.5)
+    })
+
+    it('nudges only as far as needed, keeping the colour\'s character', () => {
+        // A muted grey breadcrumb on white becomes a darker grey, not black.
+        const fixed = readableTextOn('#9ca3af', '#ffffff')
+
+        expect(contrastRatio(fixed, '#ffffff')).toBeGreaterThanOrEqual(4.5)
+        expect(fixed).not.toBe('#111111')
+        expect(contrastRatio(fixed, '#ffffff')).toBeLessThan(7)
     })
 
     it('leaves colours it cannot measure alone', () => {
@@ -40,6 +53,6 @@ describe('readableTextOn', () => {
     it('uses the given minimum ratio', () => {
         // #777777 on white is about 4.48:1 — fine for large text (3), not body (4.5)
         expect(readableTextOn('#777777', '#ffffff', 3)).toBe('#777777')
-        expect(readableTextOn('#777777', '#ffffff', 4.5)).toBe('#111111')
+        expect(contrastRatio(readableTextOn('#777777', '#ffffff', 4.5), '#ffffff')).toBeGreaterThanOrEqual(4.5)
     })
 })

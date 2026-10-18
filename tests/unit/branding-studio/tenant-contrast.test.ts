@@ -3,6 +3,7 @@
  * one-tap Fix, and Global Brand counts every such pair across the store.
  */
 
+import { contrastRatio } from '@/lib/color-contrast'
 import { listTenantContrastIssues, tenantContrastIssue } from '@/lib/branding-studio/tenant-contrast'
 
 const DARK = { background_color: '#171717', cards_color: '#1a1a1a', text_primary_color: '#fafafa', header_color: '#111111' }
@@ -11,7 +12,7 @@ describe('tenantContrastIssue', () => {
     it('flags header text the same colour as the header', () => {
         const issue = tenantContrastIssue('header_font_color', { header_font_color: '#121212' }, DARK)
 
-        expect(issue?.fix).toBe('#ffffff')
+        expect(contrastRatio(issue!.fix, '#111111')).toBeGreaterThanOrEqual(4.5)
         expect(issue?.ratio).toBeLessThan(1.1)
     })
 

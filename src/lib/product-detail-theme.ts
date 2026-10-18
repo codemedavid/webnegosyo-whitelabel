@@ -505,7 +505,8 @@ export const PRODUCT_READABLE_PAIRS: readonly ReadablePair[] = [
     { field: 'buy_now_button_text_color', text: 'buyNowButtonText', fill: 'buyNowButtonBackground', minRatio: MIN_TEXT_CONTRAST },
     { field: 'quantity_text_color', text: 'quantityText', fill: 'quantityControlsBackground', minRatio: MIN_TEXT_CONTRAST },
     { field: 'quantity_button_color', text: 'quantityButton', fill: 'quantityControlsBackground', minRatio: LARGE_TEXT_CONTRAST },
-    { field: 'sale_badge_text_color', text: 'saleBadgeText', fill: 'saleBadgeBackground', minRatio: MIN_TEXT_CONTRAST },
+    // Bold badge text: white on the standard red (3.8:1) must stay white.
+    { field: 'sale_badge_text_color', text: 'saleBadgeText', fill: 'saleBadgeBackground', minRatio: LARGE_TEXT_CONTRAST },
     { field: 'header_button_icon_color', text: 'headerButtonIcon', fill: 'headerButtonBackground', minRatio: LARGE_TEXT_CONTRAST },
     { field: 'related_item_name_color', text: 'relatedItemName', fill: 'relatedItemBackground', minRatio: MIN_TEXT_CONTRAST },
     { field: 'product_name_color', text: 'productName', fill: 'pageBackground', minRatio: LARGE_TEXT_CONTRAST },
