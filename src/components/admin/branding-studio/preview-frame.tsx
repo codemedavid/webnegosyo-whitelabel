@@ -21,7 +21,9 @@ import {
   BRANDING_INSPECT_MODE_MESSAGE,
   BRANDING_SCOPE_SELECTED_MESSAGE,
   BRANDING_SELECT_MESSAGE,
+  BRANDING_TEXT_EDIT_MESSAGE,
 } from '@/lib/branding-inspect'
+import { STOREFRONT_LABELS, cleanLabelText, type StorefrontLabelKey } from '@/lib/storefront-labels'
 import { getPreviewTarget } from './preview-routes'
 import { PREVIEW_STATES_KEY } from '@/lib/branding-studio/preview-states'
 import type { BrandingSurface } from '@/lib/branding-registry'
@@ -69,6 +71,10 @@ interface PreviewFrameProps {
   journey?: React.ReactNode
   /** Cart surfaces: the drawer over the menu or the full cart page. */
   cartView?: 'drawer' | 'page'
+  /** A label was retyped on the page (blank = back to the default wording). */
+  onLabelEdited?: (key: StorefrontLabelKey, text: string) => void
+  /** Phone editor: room kept below the preview for the settings sheet. */
+  phoneInsetClass?: string
 }
 
 function postOutlines(
@@ -102,6 +108,8 @@ export function PreviewFrame({
   sampleCart = NO_STATES,
   journey,
   cartView = 'drawer',
+  phoneInsetClass = 'max-md:pb-[64px]',
+  onLabelEdited,
 }: PreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const draftRef = useRef(draft)
@@ -213,7 +221,7 @@ export function PreviewFrame({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
-      const data = event.data as { type?: unknown; scope?: unknown } | null
+      const data = event.data as { type?: unknown; scope?: unknown; key?: unknown; text?: unknown } | null
       if (!data || typeof data !== 'object') return
       if (data.type === BRANDING_READY_MESSAGE) {
         setReadyFrameKey(frameKeyRef.current)
@@ -222,21 +230,31 @@ export function PreviewFrame({
       }
       if (data.type === BRANDING_SCOPE_SELECTED_MESSAGE && typeof data.scope === 'string') {
         onScopeSelected?.(data.scope)
+        return
+      }
+      if (
+        data.type === BRANDING_TEXT_EDIT_MESSAGE &&
+        typeof data.key === 'string' &&
+        typeof data.text === 'string' &&
+        Object.prototype.hasOwnProperty.call(STOREFRONT_LABELS, data.key)
+      ) {
+        const key = data.key as StorefrontLabelKey
+        onLabelEdited?.(key, cleanLabelText(data.text, STOREFRONT_LABELS[key].maxLength))
       }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [postDraft, onScopeSelected])
+  }, [postDraft, onScopeSelected, onLabelEdited])
 
   const isMobile = device === 'mobile'
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-auto p-6 [background-image:radial-gradient(circle,rgba(0,0,0,0.07)_1px,transparent_1px)] [background-size:18px_18px]">
+    <div className={`flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-auto p-6 max-md:p-0 ${phoneInsetClass} [background-image:radial-gradient(circle,rgba(0,0,0,0.07)_1px,transparent_1px)] [background-size:18px_18px]`}>
       {journey}
       <div
         className={`mx-auto flex min-h-0 flex-1 flex-col overflow-hidden bg-white shadow-[0_18px_50px_rgba(30,22,12,0.18)] ${
           isMobile
-            ? 'w-[390px] max-w-full rounded-[30px] border-8 border-[#23201B]'
+            ? 'w-[390px] max-w-full rounded-[30px] border-8 border-[#23201B] max-md:rounded-none max-md:border-0'
             : 'w-full rounded-xl border border-black/10'
         }`}
         style={isMobile ? { width: MOBILE_PREVIEW_WIDTH_PX } : undefined}
@@ -270,7 +288,7 @@ export function PreviewFrame({
         />
       </div>
       {stateControls}
-      <div className="mt-3 text-center text-[11.5px] font-bold text-[rgba(80,72,60,0.75)]">
+      <div className="mt-3 text-center text-[11.5px] font-bold text-[rgba(80,72,60,0.75)] max-md:hidden">
         {isMobile
           ? 'Mobile preview · 390px — real responsive breakpoints'
           : 'Live preview · changes apply instantly, nothing is saved until you publish'}

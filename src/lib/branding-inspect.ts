@@ -23,6 +23,8 @@ export const BRANDING_SCOPE_SELECTED_MESSAGE = 'wn-branding-scope-selected'
 export const BRANDING_SELECT_MESSAGE = 'wn-branding-select'
 /** Editor → iframe: outline everything one setting changes ({ surfaceId, fieldId: string | null }). */
 export const BRANDING_FIELD_HOVER_MESSAGE = 'wn-branding-field-hover'
+/** Iframe → editor: the owner retyped a label on the page ({ key, text }). */
+export const BRANDING_TEXT_EDIT_MESSAGE = 'wn-branding-text-edit'
 /** DOM attribute storefront regions are tagged with. */
 export const BRANDING_SCOPE_ATTRIBUTE = 'data-branding-scope'
 
@@ -55,9 +57,18 @@ const LABEL_SURFACE: Record<LabelScreen, BrandingSurface['id']> = {
   confirmation: 'checkout',
 }
 
+const LABEL_SCOPE_PREFIX = 'label/'
+
+/** The label key behind a `label/<key>` scope, or null for any other scope. */
+export function labelKeyOfScope(scopeKey: unknown): StorefrontLabelKey | null {
+  if (typeof scopeKey !== 'string' || !scopeKey.startsWith(LABEL_SCOPE_PREFIX)) return null
+  const key = scopeKey.slice(LABEL_SCOPE_PREFIX.length)
+  return Object.prototype.hasOwnProperty.call(STOREFRONT_LABELS, key) ? (key as StorefrontLabelKey) : null
+}
+
 /** Scope a storefront label's text carries in the preview (`label/cart.title`). */
 export function labelScope(key: StorefrontLabelKey): string {
-  return `label/${key}`
+  return `${LABEL_SCOPE_PREFIX}${key}`
 }
 
 // Every label is its own tappable part: tapping the words opens just that label.

@@ -19,8 +19,10 @@ import {
   BRANDING_SCOPE_ATTRIBUTE,
   BRANDING_SELECT_MESSAGE,
   BRANDING_FIELD_HOVER_MESSAGE,
+  labelKeyOfScope,
   resolveBrandingScope,
 } from '@/lib/branding-inspect'
+import { useInlineLabelEdit } from './use-inline-label-edit'
 import { componentsUsingField } from '@/lib/branding-components'
 import type { BrandingSurface } from '@/lib/branding-registry'
 
@@ -107,6 +109,7 @@ export function BrandingInspector() {
   const { selection, fieldRects } = useStudioOutlines(selectedScope, fieldHover)
   const [highlight, setHighlight] = useState<HighlightState | null>(null)
   const highlightedElementRef = useRef<Element | null>(null)
+  useInlineLabelEdit(isActive)
 
   // Editor → iframe: enable/disable inspect mode (same-origin only).
   useEffect(() => {
@@ -155,7 +158,8 @@ export function BrandingInspector() {
         return
       }
       highlightedElementRef.current = element
-      setHighlight({ scopeKey, label: target.label, rect: measure(element) })
+      const label = labelKeyOfScope(scopeKey) ? `${target.label} · double-click to retype` : target.label
+      setHighlight({ scopeKey, label, rect: measure(element) })
     }
 
     const handleClick = (event: MouseEvent) => {

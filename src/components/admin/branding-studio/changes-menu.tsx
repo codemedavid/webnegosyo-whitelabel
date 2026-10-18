@@ -72,7 +72,7 @@ export function ChangesMenu({ changes, onRevert, onDiscardAll }: ChangesMenuProp
     }, [isOpen])
 
     if (changes.length === 0) {
-        return <div className="text-[12px] font-semibold text-[#8B857B]">No changes</div>
+        return <div className="whitespace-nowrap text-[12px] font-semibold text-[#8B857B] max-md:hidden">No changes</div>
     }
 
     const countLabel = `${changes.length} ${changes.length === 1 ? 'change' : 'changes'}`

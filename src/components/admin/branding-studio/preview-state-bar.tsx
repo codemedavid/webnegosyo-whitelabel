@@ -16,7 +16,7 @@ interface PreviewStateBarProps {
 
 export function PreviewStateBar({ chosen, automatic, onToggle }: PreviewStateBarProps) {
     return (
-        <div role="group" aria-label="Show in preview" className="mx-auto mt-3 flex max-w-full flex-wrap items-center justify-center gap-1.5">
+        <div role="group" aria-label="Show in preview" className="mx-auto mt-3 flex max-w-full flex-wrap items-center justify-center gap-1.5 max-md:mt-2 max-md:flex-nowrap max-md:justify-start max-md:overflow-x-auto max-md:px-2">
             <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#8B857B]">Show</span>
             {PRODUCT_PREVIEW_STATES.map((state) => {
                 const isAutomatic = automatic.has(state.id)

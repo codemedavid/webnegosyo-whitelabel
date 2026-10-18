@@ -22,7 +22,7 @@ interface JourneyBarProps {
 
 export function JourneyBar({ surfaceId, onPick }: JourneyBarProps) {
     return (
-        <nav aria-label="Customer journey" className="mx-auto mb-3 flex max-w-full flex-wrap items-center justify-center gap-1">
+        <nav aria-label="Customer journey" className="mx-auto mb-3 flex max-w-full flex-wrap items-center justify-center gap-1 max-md:hidden">
             {JOURNEY_STEPS.map((step, index) => {
                 const isCurrent = step.surfaceId === surfaceId
                 return (

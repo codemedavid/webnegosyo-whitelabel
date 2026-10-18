@@ -106,7 +106,7 @@ interface EditModeToggleProps {
 
 export function EditModeToggle({ isEditing, onChange }: EditModeToggleProps) {
     const option = (active: boolean) =>
-        `rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors ${active ? 'bg-white text-[#1D1815] shadow-sm' : 'text-[#8B857B]'}`
+        `whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors max-md:px-2.5 ${active ? 'bg-white text-[#1D1815] shadow-sm' : 'text-[#8B857B]'}`
     return (
         <div className="flex gap-0.5 rounded-full bg-[#EFECE6] p-[3px]" role="group" aria-label="Preview mode">
             <button type="button" onClick={() => onChange(true)} aria-pressed={isEditing} className={option(isEditing)} title="Tap anything in the preview to change it">

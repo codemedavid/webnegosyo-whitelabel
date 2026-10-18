@@ -79,3 +79,8 @@ export function readStorefrontLabels(tenant: Record<string, unknown> | null | un
     })
     return Object.fromEntries(entries)
 }
+
+/** The words typed into a label: one line, trimmed, at most the label's length. */
+export function cleanLabelText(raw: string, maxLength: number): string {
+    return raw.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}

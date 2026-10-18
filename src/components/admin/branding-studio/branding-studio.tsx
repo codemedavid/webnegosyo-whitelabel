@@ -53,7 +53,9 @@ import {
 import {
   getBrandingSectionAnchorId,
   getBrandingFieldAnchorId,
+  labelScope,
 } from '@/lib/branding-inspect'
+import type { StorefrontLabelKey } from '@/lib/storefront-labels'
 import {
   hasCategoryDraftChanges,
 } from '@/lib/category-studio'
@@ -68,6 +70,7 @@ import { previewStatesForField, type ProductPreviewState } from '@/lib/branding-
 import { componentBreadcrumb, getBrandingComponent } from '@/lib/branding-components'
 import { FieldRow } from './field-row'
 import { ComponentPanel, EditModeToggle, SettingsSearch, matchesSettingQuery } from './component-panel'
+import { SettingsSheet, SurfaceRail, previewInsetFor, type SheetSize } from './studio-shell'
 import { ChangesMenu, HistoryButtons, RestoreBanner } from './changes-menu'
 import { useStudioDrafts } from './use-studio-drafts'
 import { PreviewFrame } from './preview-frame'
@@ -76,6 +79,8 @@ import type { GalleryContext } from './template-gallery'
 import type { Category, MenuItem, Tenant } from '@/types/database'
 
 const PUBLISHED_TOAST_MS = 2500
+/** Below Tailwind's md breakpoint the Studio switches to its phone layout. */
+const PHONE_EDITOR_QUERY = '(max-width: 767px)'
 const NO_SAMPLE_DISHES: readonly MenuItem[] = []
 /** Screens whose preview needs a cart with something in it. */
 const CART_SURFACES = new Set<BrandingSurface['id']>(['cart', 'upsell', 'checkout'])
@@ -119,6 +124,12 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   const router = useRouter()
   const [surfaceId, setSurfaceId] = useState<BrandingSurface['id']>(initialSurfaceId ?? 'storefront')
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
+  // Phone: the settings are a bottom sheet over the preview.
+  const [sheetSize, setSheetSize] = useState<SheetSize>('peek')
+  // On a phone the preview is the phone: start on the mobile layout.
+  useEffect(() => {
+    if (window.matchMedia?.(PHONE_EDITOR_QUERY).matches) setDevice('mobile')
+  }, [])
   // Every unpublished edit, undoable, kept in the browser until published.
   const studio = useStudioDrafts({ tenant, productSettings, categories })
   const {
@@ -284,7 +295,16 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
     setSelectedScope(component.id)
     setSettingQuery('')
     setHoveredFieldId(null)
+    setSheetSize((size) => (size === 'peek' ? 'half' : size))
   }, [])
+
+  // A label retyped on the page: same draft as its settings row, then open that row.
+  const handleLabelEdited = useCallback((key: StorefrontLabelKey, text: string) => {
+    const fieldId = `storefront_labels.${key}`
+    if (text) setFieldValue(fieldId, text)
+    else clearFieldValue(fieldId)
+    handleScopeSelected(labelScope(key))
+  }, [setFieldValue, clearFieldValue, handleScopeSelected])
 
   // Panel navigation: a breadcrumb or "All … settings" — null = the whole screen.
   const selectScope = useCallback((scope: string | null) => {
@@ -446,20 +466,20 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#EFECE6] font-sans text-[#1D1815]">
       {/* ============ TOP BAR ============ */}
-      <div className="z-20 flex h-[54px] flex-shrink-0 items-center gap-4 border-b border-[#E5E0D6] bg-white px-4">
+      <div className="z-20 flex h-[54px] flex-shrink-0 items-center gap-2 border-b border-[#E5E0D6] bg-white px-2 md:gap-4 md:px-4">
         <div className="flex items-center gap-2.5">
           <Link
             href={`/${tenantSlug}/admin`}
-            className="flex h-[26px] items-center gap-1 rounded-lg px-2 text-[12px] font-bold text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+            className="flex h-[26px] items-center gap-1 whitespace-nowrap rounded-lg px-2 text-[12px] font-bold text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
             aria-label="Back to admin"
           >
             ← Admin
           </Link>
-          <div className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-[#1D1815] text-[13px] font-black text-white">
+          <div className="flex h-[26px] max-md:hidden w-[26px] items-center justify-center rounded-lg bg-[#1D1815] text-[13px] font-black text-white">
             W
           </div>
-          <div className="text-[14px] font-extrabold">Branding Studio</div>
-          <div className="border-l border-[#E5E0D6] pl-3 text-[12px] font-semibold text-[#8B857B]">
+          <div className="text-[14px] font-extrabold max-md:hidden">Branding Studio</div>
+          <div className="border-l border-[#E5E0D6] pl-3 text-[12px] font-semibold text-[#8B857B] max-lg:hidden">
             {tenant.name}
           </div>
         </div>
@@ -471,7 +491,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
         <EditModeToggle isEditing={isEditing} onChange={setIsEditing} />
 
         {/* device toggle */}
-        <div className="flex gap-0.5 rounded-full bg-[#EFECE6] p-[3px]">
+        <div className="flex gap-0.5 rounded-full bg-[#EFECE6] p-[3px] max-md:hidden">
           {(['desktop', 'mobile'] as const).map((d) => (
             <button
               key={d}
@@ -495,7 +515,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           type="button"
           onClick={handlePublish}
           disabled={isPublishing || !isDirty}
-          className="rounded-full bg-[#1D1815] px-5 py-2 text-[13px] font-extrabold text-white transition-opacity hover:opacity-85 disabled:opacity-40"
+          className="whitespace-nowrap rounded-full bg-[#1D1815] px-4 py-2 text-[13px] font-extrabold text-white md:px-5 transition-opacity hover:opacity-85 disabled:opacity-40"
         >
           {isPublishing ? 'Publishing…' : 'Publish'}
         </button>
@@ -509,38 +529,13 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
         />
       )}
 
-      <div className="flex min-h-0 flex-1">
-        {/* ============ ICON RAIL ============ */}
-        <nav className="flex w-[84px] flex-shrink-0 flex-col items-center gap-1 overflow-y-auto bg-[#1D1815] px-2 py-3">
-          {BRANDING_SURFACES.map((s) => {
-            const isActive = s.id === surface.id
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => pickSurface(s.id)}
-                className={`flex w-[68px] flex-col items-center gap-1.5 rounded-[10px] px-0.5 pb-2 pt-2 transition-colors hover:bg-white/15 ${
-                  isActive ? 'bg-white/15 text-white' : 'text-white/60'
-                }`}
-              >
-                <span
-                  className={`inline-flex h-6 w-6 items-center justify-center rounded-[7px] text-[12px] font-black ${
-                    isActive ? 'bg-amber-500 text-[#1D1815]' : 'bg-white/10 text-white/70'
-                  }`}
-                >
-                  {s.glyph}
-                </span>
-                <span className="text-center text-[9.5px] font-bold leading-[1.15] tracking-wide">
-                  {s.label}
-                </span>
-              </button>
-            )
-          })}
-        </nav>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        {/* ============ SCREENS (rail on a computer, chips on a phone) ============ */}
+        <SurfaceRail surfaces={BRANDING_SURFACES} activeId={surface.id} onPick={pickSurface} />
 
         {/* ============ SETTINGS PANEL ============ */}
-        <aside className="flex w-[336px] flex-shrink-0 flex-col border-r border-[#E5E0D6] bg-white">
-          <div className="border-b border-[#E5E0D6] px-[18px] pb-3 pt-4">
+        <SettingsSheet size={sheetSize} onSizeChange={setSheetSize} title={surface.label}>
+          <div className="border-b border-[#E5E0D6] px-[18px] pb-3 pt-4 max-md:pt-1">
             <div className="flex items-baseline gap-2.5">
               <div className="text-[16px] font-extrabold">{surface.label}</div>
               <div className="flex-1" />
@@ -554,7 +549,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
                 </button>
               )}
             </div>
-            <div className="mt-1 text-[12px] leading-snug text-[#8B857B]">{surface.description}</div>
+            <div className="mt-1 max-md:hidden text-[12px] leading-snug text-[#8B857B]">{surface.description}</div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -701,7 +696,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
             )}
             <div className="h-8" />
           </div>
-        </aside>
+        </SettingsSheet>
 
         {/* ============ LIVE PREVIEW ============ */}
         <PreviewFrame
@@ -716,6 +711,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
           sampleItemId={sampleItemId}
           inspectMode={isEditing}
           onScopeSelected={handleScopeSelected}
+          onLabelEdited={handleLabelEdited}
           selectedScope={isEditing ? selectedScope : null}
           hoveredFieldId={isEditing ? hoveredFieldId : null}
           previewStates={previewStates}
@@ -723,6 +719,7 @@ export function BrandingStudio({ tenant, tenantSlug, sampleItemId, productSettin
             !CART_SURFACES.has(surface.id) || (isCartEmptyPreview && surface.id === 'cart') ? NO_SAMPLE_DISHES : sampleCartItems
           }
           cartView={cartView}
+          phoneInsetClass={previewInsetFor(sheetSize)}
           journey={<JourneyBar surfaceId={surface.id} onPick={pickSurface} />}
           stateControls={
             isProductSurface ? (
